@@ -213,8 +213,8 @@ public class FrameTxValidationTests
 
     private static IEnumerable<TestCaseData> ValidationWorkCases()
     {
-        static TestCaseData Work(string name, TxFrame[] frames, TxFrameSignature[] signatures, ulong expected) =>
-            new TestCaseData(frames, signatures, expected).SetName($"ValidationWorkGas_{name}");
+        static TestCaseData Work(string name, TxFrame[] frames, TxFrameSignature[] signatures, ulong expected, bool senderHasCode = false) =>
+            new TestCaseData(frames, signatures, expected, senderHasCode).SetName($"ValidationWorkGas_{name}");
 
         static TxFrameSignature Signature(byte scheme) => new(scheme, null, default, Array.Empty<byte>());
 
@@ -255,10 +255,22 @@ public class FrameTxValidationTests
 
         yield return Work("OverflowingFrameGas_Saturates",
             [Frame(gasLimit: ulong.MaxValue), Frame(gasLimit: 1)], [], ulong.MaxValue);
+
+        // Permission to approve is not the same as the ability to: a DEFAULT frame resolving to a
+        // codeless sender runs default code, which approves only in VERIFY mode. Stopping the walk
+        // there would leave the frames behind it unbudgeted.
+        TxFrame[] defaultApprovalFrames =
+        [
+            Frame(flags: TxFrame.ApproveExecutionAndPayment, gasLimit: 1_000),
+            Frame(gasLimit: 3_000_000),
+            SelfVerifyFrame(),
+        ];
+        yield return Work("DefaultFrameOnACodelessSender_KeepsWalking", defaultApprovalFrames, [], 3_101_000);
+        yield return Work("DefaultFrameOnAContractSender_EndsThePrefix", defaultApprovalFrames, [], 1_000, senderHasCode: true);
     }
 
     [TestCaseSource(nameof(ValidationWorkCases))]
-    public void ValidationWorkGas_BoundsThePrefixAndSignatures(TxFrame[] frames, TxFrameSignature[] signatures, ulong expected)
+    public void ValidationWorkGas_BoundsThePrefixAndSignatures(TxFrame[] frames, TxFrameSignature[] signatures, ulong expected, bool senderHasCode)
     {
         Transaction tx = CreateValidFrameTx(candidate =>
         {
@@ -266,7 +278,7 @@ public class FrameTxValidationTests
             candidate.FrameSignatures = signatures;
         });
 
-        Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(expected));
+        Assert.That(FrameTxValidation.ValidationWorkGas(tx, senderHasCode), Is.EqualTo(expected));
     }
 
     [Test]
