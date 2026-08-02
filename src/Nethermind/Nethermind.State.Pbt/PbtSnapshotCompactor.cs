@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
@@ -61,6 +62,11 @@ public class PbtSnapshotCompactor(IPbtResourcePool resourcePool, PbtCompactionSc
             for (int i = 0; i < chainOldestFirst.Count; i++)
             {
                 PbtSnapshotContent content = chainOldestFirst[i].Content;
+
+                foreach ((PbtFullKey key, ValueHash256? value) in content.FullLeaves)
+                {
+                    merged.SetFullLeaf(key, value);
+                }
 
                 foreach (PbtSnapshotContent.Partition partition in content.Partitions)
                 {

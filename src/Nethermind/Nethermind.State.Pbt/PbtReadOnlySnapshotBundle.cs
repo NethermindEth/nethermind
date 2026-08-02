@@ -76,6 +76,16 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     public ValueHash256 TreeRoot => PartitionRoots.Root;
 
+    internal ValueHash256? GetFullLeaf(PbtFullKey key)
+    {
+        GuardDispose();
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].Content.TryGetFullLeaf(key, out ValueHash256? value)) return value;
+        }
+        return reader.GetFullLeaf(key);
+    }
+
     /// <remarks>Decoded from the account's header stem leaf blob; see <see cref="PbtLeafDecoder"/>.</remarks>
     public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AccountHeaderStem(address));
 

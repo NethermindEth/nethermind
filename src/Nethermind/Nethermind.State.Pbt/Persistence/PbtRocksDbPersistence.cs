@@ -160,6 +160,37 @@ public class PbtRocksDbPersistence : IPbtPersistence
             return ReadOwned(snapshot.GetColumn(TrieNodeColumn(key)), dbKey);
         }
 
+        public ValueHash256? GetFullLeaf(PbtFullKey key)
+        {
+            byte[]? value = snapshot.GetColumn(PbtColumns.FullLeaves).Get(key.Bytes);
+            if (value is null) return null;
+            if (value.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT full-leaf value length.");
+            return new ValueHash256(value);
+        }
+
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix)
+        {
+            ArgumentNullException.ThrowIfNull(prefix);
+            ISortedKeyValueStore leaves = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.FullLeaves);
+            byte[] upper = PrefixUpperBound(prefix.Bytes);
+            using ISortedView view = leaves.GetViewBetween(prefix.Bytes, upper);
+            while (view.MoveNext())
+            {
+                if (view.CurrentValue.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT full-leaf value length.");
+                yield return new KeyValuePair<PbtFullKey, ValueHash256>(new PbtFullKey(view.CurrentKey), new ValueHash256(view.CurrentValue));
+            }
+        }
+
+        private static byte[] PrefixUpperBound(ReadOnlySpan<byte> prefix)
+        {
+            byte[] upper = prefix.ToArray();
+            for (int i = upper.Length - 1; i >= 0; i--)
+            {
+                if (++upper[i] != 0) return upper[..(i + 1)];
+            }
+            return new byte[PbtFullKey.MaxLength + 1];
+        }
+
         private static RefCountingMemory? ReadOwned(IReadOnlyKeyValueStore column, scoped ReadOnlySpan<byte> key)
         {
             MemoryManager<byte>? memory = column.GetOwnedMemory(key);
@@ -210,6 +241,13 @@ public class PbtRocksDbPersistence : IPbtPersistence
             {
                 trieNodes.PutSpan(dbKey, node, flags);
             }
+        }
+
+        public void SetFullLeaf(PbtFullKey key, ValueHash256? value)
+        {
+            IWriteBatch leaves = _batch.GetColumnBatch(PbtColumns.FullLeaves);
+            if (value is null) leaves.Set(key.Bytes, null, flags);
+            else leaves.PutSpan(key.Bytes, value.Value.Bytes, flags);
         }
 
         public void Dispose()

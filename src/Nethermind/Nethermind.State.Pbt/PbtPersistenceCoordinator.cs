@@ -161,6 +161,11 @@ public class PbtPersistenceCoordinator(
         PbtSnapshotContent content = merged.Content;
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(merged.From, merged.To, merged.PartitionRoots, WriteFlags.None);
 
+        foreach ((PbtFullKey key, ValueHash256? value) in content.FullLeaves)
+        {
+            batch.SetFullLeaf(key, value);
+        }
+
         foreach (PbtSnapshotContent.Partition partition in content.Partitions)
         {
             foreach ((Stem stem, RefCountingMemory? blob) in partition.LeafBlobs)

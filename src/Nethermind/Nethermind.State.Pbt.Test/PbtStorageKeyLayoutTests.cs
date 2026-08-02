@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -102,6 +103,31 @@ public class PbtStorageKeyLayoutTests
         Assert.That(storageScan, Is.EqualTo(Ascending(storageStems)).AsCollection);
         // the storage zone is the first nibble's high bit rather than one nibble value
         Assert.That(storageScan, Has.All.Matches<Stem>(static stem => stem.Zone >= 0x8));
+    }
+
+    [Test]
+    public void FullKeysRoundTripAndDeleteInStagedColumn()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, new UInt256(1000));
+        ValueHash256 value = TestItem.KeccakA.ValueHash256;
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), PbtPartitionRoots.Empty, WriteFlags.None))
+        {
+            batch.SetFullLeaf(key, value);
+        }
+        using (IPbtPersistence.IReader reader = persistence.CreateReader())
+        {
+            Assert.That(reader.GetFullLeaf(key), Is.EqualTo(value));
+            Assert.That(reader.EnumerateFullLeaves(PbtStateKey.StoragePrefix(TestItem.AddressA)),
+                Is.EqualTo(new[] { new KeyValuePair<PbtFullKey, ValueHash256>(key, value) }).AsCollection);
+        }
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, value), new StateId(2, value), PbtPartitionRoots.Empty, WriteFlags.None))
+        {
+            batch.SetFullLeaf(key, null);
+        }
+        using IPbtPersistence.IReader deleted = persistence.CreateReader();
+        Assert.That(deleted.GetFullLeaf(key), Is.Null);
     }
 
     /// <summary>A database written under an older key layout must be refused, not silently read as all-zero slots.</summary>

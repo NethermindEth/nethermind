@@ -5,6 +5,7 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -171,6 +172,10 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
 
         public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => inner.GetTrieNode(in key);
 
+        public ValueHash256? GetFullLeaf(PbtFullKey key) => inner.GetFullLeaf(key);
+
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix) => inner.EnumerateFullLeaves(prefix);
+
         public bool TryLease() => TryAcquireLease();
 
         protected override void CleanUp() => inner.Dispose();
@@ -184,6 +189,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public void SetLeafBlob(in Stem stem, scoped ReadOnlySpan<byte> blob) => inner.SetLeafBlob(in stem, blob);
 
         public void SetTrieNode(in TrieNodeKey key, scoped ReadOnlySpan<byte> node) => inner.SetTrieNode(in key, node);
+
+        public void SetFullLeaf(PbtFullKey key, ValueHash256? value) => inner.SetFullLeaf(key, value);
 
         public void Dispose()
         {

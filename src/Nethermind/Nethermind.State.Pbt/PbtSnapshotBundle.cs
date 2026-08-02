@@ -56,6 +56,18 @@ public class PbtSnapshotBundle(
 
     public ValueHash256 TreeRoot => PartitionRoots.Root;
 
+    internal ValueHash256? GetFullLeaf(PbtFullKey key)
+    {
+        if (WriteBuffer.TryGetFullLeaf(key, out ValueHash256? value)) return value;
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].Content.TryGetFullLeaf(key, out value)) return value;
+        }
+        return readOnlyBundle.GetFullLeaf(key);
+    }
+
+    internal void SetFullLeaf(PbtFullKey key, ValueHash256? value) => WriteBuffer.SetFullLeaf(key, value);
+
     private PbtSnapshotContent WriteBuffer
     {
         get

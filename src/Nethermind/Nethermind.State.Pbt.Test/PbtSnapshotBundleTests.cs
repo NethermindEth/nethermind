@@ -727,6 +727,9 @@ public class PbtSnapshotBundleTests
             return TrieNodes.TryGetValue(key, out byte[]? node) ? RefCountingMemory.Wrapping(node) : null;
         }
 
+        public ValueHash256? GetFullLeaf(PbtFullKey key) => null;
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix) => [];
+
         public void Dispose() => Disposed = true;
     }
 }
