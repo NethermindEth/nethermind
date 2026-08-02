@@ -23,7 +23,8 @@ namespace Nethermind.TxPool.Filters;
 /// client must reject. Runs the same check the processor runs before any frame executes, so a pooled
 /// transaction cannot fail pre-flight on its signatures.
 /// Must run after <see cref="MalformedTxFilter"/>, which guarantees the frame and signature lists are
-/// structurally well-formed.
+/// structurally well-formed, and last among the incoming filters: the signature list is uncapped, so the
+/// cheap state filters must reject what they can before any elliptic-curve work is spent on a payload.
 /// </remarks>
 internal sealed class FrameTxSignatureFilter(
     IChainHeadSpecProvider specProvider,
@@ -40,7 +41,9 @@ internal sealed class FrameTxSignatureFilter(
 
         IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        IPrecompile? p256Precompile = spec.IsEip7951Enabled ? SecP256r1Precompile.Instance : null;
+        // Mirrors the precompile set the EVM exposes, so a chain that reaches P256VERIFY through
+        // RIP-7212 is not refused here for a signature the processor verifies.
+        IPrecompile? p256Precompile = spec.IsEip7951Enabled || spec.IsRip7212Enabled ? SecP256r1Precompile.Instance : null;
         if (!FrameTxSignatureValidator.Validate(tx, in sigHash, ecdsa, p256Precompile, spec, out string? error))
         {
             Metrics.PendingTransactionsMalformed++;
