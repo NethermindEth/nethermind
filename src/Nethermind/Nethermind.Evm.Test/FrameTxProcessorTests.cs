@@ -860,15 +860,19 @@ public class FrameTxProcessorTests
 
     // A declared reference is only satisfied by the commitment the predeploy holds for that slot. The
     // committed case also proves the reference's intrinsic gas is charged.
-    [TestCase(1_000UL, true, TestName = "a committed reference inside the window executes")]
-    [TestCase(1_001UL, false, TestName = "a reference to the current slot is not yet referenceable")]
-    [TestCase(9_193UL, false, TestName = "a reference older than the usable window has been overwritten")]
-    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool expectedExecuted)
+    [TestCase(1_000UL, false, true, TestName = "a committed reference inside the window executes")]
+    [TestCase(1_001UL, false, false, TestName = "a reference to the current slot is not yet referenceable")]
+    [TestCase(9_193UL, false, false, TestName = "a reference older than the usable window has been overwritten")]
+    [TestCase(1_000UL, true, false, TestName = "a reference to a different root at a committed slot fails")]
+    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, bool expectedExecuted)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [CommitReference(committedSlot)];
+        RecentRootReference committed = CommitReference(committedSlot);
+        tx.RecentRootReferences = [declareOtherRoot
+            ? new RecentRootReference(committed.SourceId, committed.Slot, TestItem.KeccakC.ValueHash256)
+            : committed];
 
         CallOutputTracer referencingTracer = new();
         TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: HeadSlot);
