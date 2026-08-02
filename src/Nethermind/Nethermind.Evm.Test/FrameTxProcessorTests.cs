@@ -749,20 +749,22 @@ public class FrameTxProcessorTests
         }
     }
 
-    // A VERIFY frame runs as a STATICCALL, so a write inside it halts the frame and, because a failed
-    // VERIFY invalidates the transaction, drops the transaction. Without this the validation prefix
-    // could mutate state the mempool never simulated.
-    [Test]
-    public void Execute_VerifyFrameWritesState_InvalidatesTheTransaction()
+    /// <summary>A VERIFY frame runs as a STATICCALL, so a write inside it halts the frame, and a failed
+    /// VERIFY invalidates the transaction.</summary>
+    /// <remarks>
+    /// The write-free case is the control: without it a transaction dropped for any other reason would
+    /// satisfy the assertion, and the post-state is no evidence either — the failure path restores it.
+    /// </remarks>
+    [TestCase(true, ExpectedResult = false, TestName = "Execute_VerifyFrameWritesState_InvalidatesTheTransaction")]
+    [TestCase(false, ExpectedResult = true, TestName = "Execute_VerifyFrameWithoutWrite_Executes")]
+    public bool Execute_VerifyFrame_IsStatic(bool writesState)
     {
-        DeploySmartSender(Prepare.EvmCode
-            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+        Prepare code = Prepare.EvmCode;
+        if (writesState) code = code.PushData(1).PushData(0).Op(Instruction.SSTORE);
+        DeploySmartSender(code
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
 
-        TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame()));
-
-        Assert.That(result.TransactionExecuted, Is.False);
-        AssertStorage(Sender, 0, UInt256.Zero, "a VERIFY frame cannot write");
+        return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
     }
 
     // The difference from a VERIFY revert: the body unwinds but the transaction stays valid and pays.
