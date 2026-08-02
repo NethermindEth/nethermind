@@ -26,8 +26,8 @@ public sealed class FrameTxContext(
     in UInt256 maxPriorityFeePerGas,
     in UInt256 maxFeePerGas,
     in UInt256 maxFeePerBlobGas,
-    UInt256[]? nonceKeys = null,
-    UInt256 legacyNonce = default)
+    in UInt256 legacyNonce,
+    UInt256[]? nonceKeys)
 {
     public Address Sender { get; } = sender;
     public ulong Nonce { get; } = nonce;
@@ -51,9 +51,12 @@ public sealed class FrameTxContext(
     /// Valid key sets are strictly increasing, so each set has exactly one encoding and one hash. The
     /// EIP-8141 envelope hashes as the key set <c>[0]</c>, the domain its single account nonce occupies.
     /// </remarks>
-    public ValueHash256 NonceKeysHash => _nonceKeysHash ??= ComputeNonceKeysHash(NonceKeys ?? [UInt256.Zero]);
+    public ValueHash256 NonceKeysHash =>
+        NonceKeys is { } nonceKeys ? _nonceKeysHash ??= ComputeNonceKeysHash(nonceKeys) : AccountNonceKeySetHash;
 
     private ValueHash256? _nonceKeysHash;
+
+    private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([UInt256.Zero]);
 
     public TxFrame[] Frames { get; } = frames;
     public TxFrameSignature[] Signatures { get; } = signatures;
