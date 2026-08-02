@@ -792,9 +792,10 @@ public class FrameTxProcessorTests
 
     // Asserted through a sentinel stored after the opcode: a silent zero push would also leave slot 0
     // at zero, and it would read as a real reference committing to the zero root.
-    [TestCase(1, 0, TestName = "Execute_RecentRootRefLoad_IndexPastTheDeclaredList_Halts")]
-    [TestCase(0, 3, TestName = "Execute_RecentRootRefLoad_UndefinedField_Halts")]
-    public void Execute_RecentRootRefLoad_OutOfRange_ExceptionallyHalts(int index, int field)
+    [TestCase(0, 0, 1, TestName = "Execute_RecentRootRefLoad_InRange_Continues")]
+    [TestCase(1, 0, 0, TestName = "Execute_RecentRootRefLoad_IndexPastTheDeclaredList_Halts")]
+    [TestCase(0, 3, 0, TestName = "Execute_RecentRootRefLoad_UndefinedField_Halts")]
+    public void Execute_RecentRootRefLoad_OutOfRange_ExceptionallyHalts(int index, int field, int expectedSentinel)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
@@ -805,7 +806,7 @@ public class FrameTxProcessorTests
         tx.RecentRootReferences = [CommitReference(ReferencedSlot)];
 
         Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, UInt256.Zero);
+        AssertStorage(Observer, 0, (UInt256)expectedSentinel);
     }
 
     [TestCase(0, TestName = "Execute_TxParamReferenceCount_WithoutReferences")]
