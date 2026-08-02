@@ -145,13 +145,13 @@ namespace Nethermind.Serialization.Rlp
             SetRequiredItems(header, requiredItems);
 
             if (requiredItems[0]) writer.Encode(header.BaseFeePerGas);
-            if (requiredItems[1]) writer.Encode(GetRequiredField(header.WithdrawalsRoot, nameof(header.WithdrawalsRoot)));
-            if (requiredItems[2]) writer.Encode(GetRequiredField(header.BlobGasUsed, nameof(header.BlobGasUsed)));
-            if (requiredItems[3]) writer.Encode(GetRequiredField(header.ExcessBlobGas, nameof(header.ExcessBlobGas)));
+            if (requiredItems[1]) writer.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
+            if (requiredItems[2]) writer.Encode(header.BlobGasUsed.GetValueOrDefault());
+            if (requiredItems[3]) writer.Encode(header.ExcessBlobGas.GetValueOrDefault());
             if (requiredItems[4]) writer.Encode(header.ParentBeaconBlockRoot);
             if (requiredItems[5]) writer.Encode(header.RequestsHash);
             if (requiredItems[6]) writer.Encode(header.BlockAccessListHash);
-            if (requiredItems[7]) writer.Encode(GetRequiredField(header.SlotNumber, nameof(header.SlotNumber)));
+            if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
         }
 
         public override Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -200,13 +200,13 @@ namespace Nethermind.Serialization.Rlp
             SetRequiredItems(item, requiredItems);
 
             if (requiredItems[0]) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
-            if (requiredItems[1]) contentLength += Rlp.LengthOf(GetRequiredField(item.WithdrawalsRoot, nameof(item.WithdrawalsRoot)));
-            if (requiredItems[2]) contentLength += Rlp.LengthOf(GetRequiredField(item.BlobGasUsed, nameof(item.BlobGasUsed)));
-            if (requiredItems[3]) contentLength += Rlp.LengthOf(GetRequiredField(item.ExcessBlobGas, nameof(item.ExcessBlobGas)));
+            if (requiredItems[1]) contentLength += Rlp.LengthOf(item.WithdrawalsRoot ?? Keccak.Zero);
+            if (requiredItems[2]) contentLength += Rlp.LengthOf(item.BlobGasUsed.GetValueOrDefault());
+            if (requiredItems[3]) contentLength += Rlp.LengthOf(item.ExcessBlobGas.GetValueOrDefault());
             if (requiredItems[4]) contentLength += Rlp.LengthOf(item.ParentBeaconBlockRoot);
             if (requiredItems[5]) contentLength += Rlp.LengthOf(item.RequestsHash);
             if (requiredItems[6]) contentLength += Rlp.LengthOf(item.BlockAccessListHash);
-            if (requiredItems[7]) contentLength += Rlp.LengthOf(GetRequiredField(item.SlotNumber, nameof(item.SlotNumber)));
+            if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
 
             return contentLength;
         }
@@ -227,12 +227,6 @@ namespace Nethermind.Serialization.Rlp
                 requiredItems[i] |= requiredItems[i + 1];
             }
         }
-
-        private static Hash256 GetRequiredField(Hash256? value, string fieldName) =>
-            value ?? throw new RlpException($"Cannot encode {nameof(BlockHeader)} without required {fieldName}.");
-
-        private static ulong GetRequiredField(ulong? value, string fieldName) =>
-            value ?? throw new RlpException($"Cannot encode {nameof(BlockHeader)} without required {fieldName}.");
 
         public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
             => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

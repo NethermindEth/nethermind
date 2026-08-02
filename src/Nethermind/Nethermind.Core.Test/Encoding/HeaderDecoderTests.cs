@@ -283,7 +283,7 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Encode_rejects_missing_excess_blob_gas()
+    public void Can_encode_decode_with_missing_excess_blob_gas()
     {
         BlockHeader header = Build.A.BlockHeader
                 .WithHash(new Hash256("0x3d8b9cc98eee58243461bd5a83663384b50293cd1e459a6841cb005296305590"))
@@ -305,9 +305,25 @@ public class HeaderDecoderTests
                 .WithWithdrawalsRoot(new Hash256("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"))
                 .WithBlobGasUsed(0)
                 .TestObject;
-        ;
 
-        Assert.That(() => Rlp.Encode(header), Throws.TypeOf<RlpException>());
+        BlockHeader decoded = DecodeHeader(Rlp.Encode(header));
+
+        Assert.That(decoded.ExcessBlobGas, Is.Zero);
+    }
+
+    [Test]
+    public void Can_encode_decode_with_missing_withdrawals_root_and_later_fields()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(null)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .TestObject;
+
+        BlockHeader decoded = DecodeHeader(Rlp.Encode(header));
+
+        Assert.That(decoded.WithdrawalsRoot, Is.EqualTo(Keccak.Zero));
     }
 
     [Test]
