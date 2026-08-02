@@ -197,7 +197,7 @@ public static class FrameTxValidation
     /// from being an under-estimate. Signature validation counts against the same budget per
     /// EIP-8141 "Validation Prefix".
     /// </remarks>
-    public static ulong ValidationWorkGas(Transaction transaction)
+    public static ulong ValidationWorkGas(Transaction transaction, bool senderHasCode)
     {
         ulong total = 0;
 
@@ -211,7 +211,8 @@ public static class FrameTxValidation
 
                 byte scope = frame.AllowedApproveScope;
                 bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
-                if ((scope & TxFrame.ApprovePayment) != 0 && (approvesExecution || senderApproved))
+                if ((scope & TxFrame.ApprovePayment) != 0 && (approvesExecution || senderApproved)
+                    && CanApprove(frame, transaction.SenderAddress, senderHasCode))
                 {
                     break;
                 }
@@ -232,6 +233,15 @@ public static class FrameTxValidation
 
         return total;
     }
+
+    /// <summary>
+    /// Whether <paramref name="frame"/> can reach an <c>APPROVE</c> at all: a frame resolving to a
+    /// codeless sender runs the EIP-8141 default code, which approves only in <c>VERIFY</c> mode.
+    /// </summary>
+    private static bool CanApprove(TxFrame frame, Address? sender, bool senderHasCode) =>
+        frame.Mode == TxFrame.ModeVerify
+        || senderHasCode
+        || (frame.Target is not null && frame.Target != sender);
 
     /// <summary>
     /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.
