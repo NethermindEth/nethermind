@@ -170,6 +170,7 @@ namespace Nethermind.TxPool
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new MalformedTxFilter(_specProvider, validator, ecdsa, _logger),
+                new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // after MalformedTxFilter: verifies signatures of an already well-formed frame tx
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
