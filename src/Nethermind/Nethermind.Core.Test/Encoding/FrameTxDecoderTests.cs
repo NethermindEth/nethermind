@@ -134,7 +134,49 @@ public class FrameTxDecoderTests
 
     // Anything another client would read differently must throw rather than decode.
     [TestCaseSource(nameof(MalformedReferenceListCases))]
-    public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references)
+    public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references) =>
+        Assert.That(() => DecodeReferenceEnvelope(references), Throws.InstanceOf<RlpException>());
+
+    // Control: the same envelope with a well-formed list must decode, or the malformed cases above
+    // would be satisfied by any exception the surrounding payload throws.
+    [Test]
+    public void Decode_WellFormedRecentRootReferenceList_Decodes()
+    {
+        Transaction tx = DecodeReferenceEnvelope(Rlp.Encode(new[]
+        {
+            EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray())
+        }));
+
+        Assert.That(tx.RecentRootReferences, Has.Length.EqualTo(1));
+    }
+
+    private static IEnumerable<TestCaseData> MalformedReferenceListCases()
+    {
+        Rlp wellFormed = EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray());
+
+        yield return new TestCaseData(Rlp.Encode(new[]
+        {
+            EncodeReference(new byte[31], 7, TestItem.KeccakB.BytesToArray())
+        })).SetName("Decode_ReferenceWithUndersizedSourceId_Throws");
+        yield return new TestCaseData(Rlp.Encode(new[]
+        {
+            Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L) })
+        })).SetName("Decode_ReferenceMissingRoot_Throws");
+        yield return new TestCaseData(Rlp.Encode(Enumerable.Repeat(wellFormed, Eip8272Constants.MaxRecentRootReferences + 1).ToArray()))
+            .SetName("Decode_MoreReferencesThanTheCap_Throws");
+        yield return new TestCaseData(Rlp.Encode(new[] { Rlp.OfEmptyList }))
+            .SetName("Decode_EmptyListAsAReference_Throws");
+        yield return new TestCaseData(Rlp.Encode(new[]
+        {
+            Rlp.Encode(new[]
+            {
+                Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L),
+                Rlp.Encode(TestItem.KeccakB.BytesToArray()), Rlp.Encode(0L)
+            })
+        })).SetName("Decode_ReferenceWithAFourthElement_Throws");
+    }
+
+    private Transaction DecodeReferenceEnvelope(Rlp references)
     {
         Rlp sequence = Rlp.Encode(
             Rlp.Encode(TestBlockchainIds.ChainId),
@@ -152,26 +194,8 @@ public class FrameTxDecoderTests
         payload[0] = (byte)TxType.FrameTx;
         sequence.Bytes.CopyTo(payload, 1);
 
-        Assert.That(() => { RlpReader reader = new(payload); _txDecoder.Decode(ref reader); }, Throws.InstanceOf<RlpException>());
-    }
-
-    private static IEnumerable<TestCaseData> MalformedReferenceListCases()
-    {
-        Rlp wellFormed = EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray());
-
-        yield return new TestCaseData(Rlp.Encode(EncodeReference(new byte[31], 7, TestItem.KeccakB.BytesToArray())))
-            .SetName("Decode_ReferenceWithUndersizedSourceId_Throws");
-        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(new[] { Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L) })))
-            .SetName("Decode_ReferenceMissingRoot_Throws");
-        yield return new TestCaseData(Rlp.Encode(Enumerable.Repeat(wellFormed, Eip8272Constants.MaxRecentRootReferences + 1).ToArray()))
-            .SetName("Decode_MoreReferencesThanTheCap_Throws");
-        yield return new TestCaseData(Rlp.Encode(new[] { Rlp.OfEmptyList }))
-            .SetName("Decode_EmptyListAsAReference_Throws");
-        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(new[]
-        {
-            Rlp.Encode(TestItem.KeccakA.BytesToArray()), Rlp.Encode(7L),
-            Rlp.Encode(TestItem.KeccakB.BytesToArray()), Rlp.Encode(0L)
-        }))).SetName("Decode_ReferenceWithAFourthElement_Throws");
+        RlpReader reader = new(payload);
+        return _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
     }
 
     private static Rlp EncodeReference(byte[] sourceId, ulong slot, byte[] root) =>
