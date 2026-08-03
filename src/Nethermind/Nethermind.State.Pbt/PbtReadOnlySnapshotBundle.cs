@@ -76,6 +76,32 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     public ValueHash256 TreeRoot => PartitionRoots.Root;
 
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves() => EnumerateFullLeavesCore(null);
+
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix) => EnumerateFullLeavesCore(prefix);
+
+    private IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeavesCore(PbtFullKey? prefix)
+    {
+        GuardDispose();
+        SortedDictionary<PbtFullKey, ValueHash256?> visible = [];
+        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> persisted = prefix is null ? reader.EnumerateFullLeaves() : reader.EnumerateFullLeaves(prefix);
+        foreach (KeyValuePair<PbtFullKey, ValueHash256> entry in persisted)
+        {
+            visible[entry.Key] = entry.Value;
+        }
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            foreach ((PbtFullKey key, ValueHash256? value) in snapshots[i].Content.FullLeaves)
+            {
+                if (prefix is null || prefix.IsPrefixOf(key)) visible[key] = value;
+            }
+        }
+        foreach ((PbtFullKey key, ValueHash256? value) in visible)
+        {
+            if (value is not null) yield return new KeyValuePair<PbtFullKey, ValueHash256>(key, value.Value);
+        }
+    }
+
     internal ValueHash256? GetFullLeaf(PbtFullKey key)
     {
         GuardDispose();
@@ -86,8 +112,18 @@ public sealed class PbtReadOnlySnapshotBundle(
         return reader.GetFullLeaf(key);
     }
 
-    /// <remarks>Decoded from the account's header stem leaf blob; see <see cref="PbtLeafDecoder"/>.</remarks>
-    public Account? GetAccount(Address address) => GetAccount(PbtKeyDerivation.AccountHeaderStem(address));
+    /// <remarks>Decoded from the account's full-key header leaves when present, otherwise from a legacy stem blob.</remarks>
+    public Account? GetAccount(Address address)
+    {
+        ValueHash256? basicData = GetFullLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey));
+        ValueHash256? codeHash = GetFullLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey));
+        if (basicData is null && codeHash is null) return GetAccount(PbtKeyDerivation.AccountHeaderStem(address));
+        ulong nonce = 0;
+        UInt256 balance = default;
+        if (basicData is not null) PbtKeyDerivation.UnpackBasicData(basicData.Value.Bytes, out nonce, out balance);
+        return new Account(nonce, balance, Keccak.EmptyTreeHash,
+            codeHash is null ? Keccak.OfAnEmptyString : new Hash256(codeHash.Value.Bytes));
+    }
 
     /// <inheritdoc cref="GetAccount(Address)"/>
     /// <param name="stem">The account's header stem, already derived — which costs a hash of the address.</param>
@@ -118,8 +154,13 @@ public sealed class PbtReadOnlySnapshotBundle(
     /// not that blob carries this slot — an absent leaf there means the slot is unset, not that the walk
     /// should go on below.
     /// </remarks>
-    public EvmWord GetSlot(Address address, in UInt256 slot) =>
-        GetSlot(PbtLeafDecoder.SlotStem(address, slot, out byte subIndex), subIndex);
+    public EvmWord GetSlot(Address address, in UInt256 slot)
+    {
+        ValueHash256? fullLeaf = GetFullLeaf(PbtStateKey.Storage(address, slot));
+        return fullLeaf is not null
+            ? EvmWordSlot.FromStripped(fullLeaf.Value.Bytes)
+            : GetSlot(PbtLeafDecoder.SlotStem(address, slot, out byte subIndex), subIndex);
+    }
 
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
     /// <param name="stem">The stem the slot lives on, already derived — which costs up to two hashes.</param>

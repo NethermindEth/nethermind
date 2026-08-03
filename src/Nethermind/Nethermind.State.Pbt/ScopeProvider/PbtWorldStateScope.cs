@@ -224,10 +224,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             _partitionRoots = TrieUpdater.UpdateRoot(
                 this, _partitionRoots, changes, PooledRefCountingMemoryProvider.Instance, _writeLayout, _rootFoldConcurrency, out _);
         }
+        ValueHash256 canonicalRoot = PbtCanonicalTree.Rebuild(Bundle.EnumerateFullLeaves());
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
 
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
-        _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _partitionRoots.Root.ToHash256();
+        _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? canonicalRoot.ToHash256();
         _rootDirty = false;
     }
 
@@ -346,26 +347,44 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         Span<byte> basicDataAndCodeHash = stackalloc byte[2 * ValueHash256.MemorySize];
         PbtKeyDerivation.PackBasicData(basicDataAndCodeHash[..ValueHash256.MemorySize], codeSize, account.Nonce, account.Balance);
         account.CodeHash.Bytes.CopyTo(basicDataAndCodeHash[ValueHash256.MemorySize..]);
+        Bundle.SetFullLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), new ValueHash256(basicDataAndCodeHash[..ValueHash256.MemorySize]));
+        Bundle.SetFullLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), new ValueHash256(basicDataAndCodeHash[ValueHash256.MemorySize..]));
         _writeBatchBuilder.SetLeafRange(headerStem, PbtKeyDerivation.BasicDataLeafKey, basicDataAndCodeHash);
 
         if (chunks is null) return;
 
         int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
         int headerChunks = Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks);
+        for (int i = 0; i < headerChunks; i++)
+        {
+            ReadOnlySpan<byte> chunk = chunks.AsSpan(i * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
+            PbtFullKey key = PbtStateKey.Code(address, account.CodeHash.ValueHash256, i);
+            Bundle.SetFullLeaf(key, chunk.IndexOfAnyExcept((byte)0) < 0 ? null : new ValueHash256(chunk));
+        }
         _writeBatchBuilder.SetLeafRange(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(0), ChunkRun(chunks, 0, headerChunks));
 
         for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount;)
         {
+            int chunkStart = i;
             Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
             int run = Math.Min(chunkCount - i, PbtKeyDerivation.StemSubtreeWidth - subIndex);
+            for (int chunkId = chunkStart; chunkId < chunkStart + run; chunkId++)
+            {
+                ReadOnlySpan<byte> chunk = chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
+                Bundle.SetFullLeaf(Eip8297KeyDerivation.OverflowCodeKey(account.CodeHash.Bytes, chunkId),
+                    chunk.IndexOfAnyExcept((byte)0) < 0 ? null : new ValueHash256(chunk));
+            }
             _writeBatchBuilder.SetLeafRange(overflowStem, subIndex, ChunkRun(chunks, i, run));
             i += run;
         }
     }
 
-    // Clearing BASIC_DATA and CODE_HASH makes the account absent; clearing unused header leaves is unnecessary.
-    private void ClearAccountHeader(Address address) =>
+    private void ClearAccountHeader(Address address)
+    {
+        Bundle.DeleteFullLeafPrefix(PbtStateKey.AccountPrefix(address));
+        Bundle.DeleteFullLeafPrefix(PbtStateKey.StoragePrefix(address));
         _writeBatchBuilder.SetLeafRange(PbtKeyDerivation.AccountHeaderStem(address), PbtKeyDerivation.BasicDataLeafKey, _clearedAccountHeader);
+    }
 
     private static ReadOnlySpan<byte> ChunkRun(byte[] chunks, int firstChunk, int count) =>
         chunks.AsSpan(firstChunk * PbtKeyDerivation.CodeChunkSize, count * PbtKeyDerivation.CodeChunkSize);
@@ -436,7 +455,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
             Stem stem = _deriver.Derive(index, out byte subIndex);
 
-            scope._writeBatchBuilder.SetLeaf(stem, subIndex, SlotLeaf(word));
+            ValueHash256 slotLeaf = SlotLeaf(word);
+            scope.Bundle.SetFullLeaf(PbtStateKey.Storage(address, index), slotLeaf == default ? null : slotLeaf);
+            scope._writeBatchBuilder.SetLeaf(stem, subIndex, slotLeaf);
             scope.Bundle.SetSlot(address, index, word);
             scope._rootDirty = true;
         }

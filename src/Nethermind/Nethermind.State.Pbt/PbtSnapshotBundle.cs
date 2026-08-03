@@ -68,6 +68,49 @@ public class PbtSnapshotBundle(
 
     internal void SetFullLeaf(PbtFullKey key, ValueHash256? value) => WriteBuffer.SetFullLeaf(key, value);
 
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves() => EnumerateFullLeavesCore(null);
+
+    internal IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix) => EnumerateFullLeavesCore(prefix);
+
+    private IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeavesCore(PbtFullKey? prefix)
+    {
+        SortedDictionary<PbtFullKey, ValueHash256?> visible = [];
+        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> shared = prefix is null ? readOnlyBundle.EnumerateFullLeaves() : readOnlyBundle.EnumerateFullLeaves(prefix);
+        foreach (KeyValuePair<PbtFullKey, ValueHash256> entry in shared)
+        {
+            visible[entry.Key] = entry.Value;
+        }
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            foreach ((PbtFullKey key, ValueHash256? value) in snapshots[i].Content.FullLeaves)
+            {
+                if (prefix is null || prefix.IsPrefixOf(key)) visible[key] = value;
+            }
+        }
+        foreach ((PbtFullKey key, ValueHash256? value) in WriteBuffer.FullLeaves)
+        {
+            if (prefix is null || prefix.IsPrefixOf(key)) visible[key] = value;
+        }
+        foreach ((PbtFullKey key, ValueHash256? value) in visible)
+        {
+            if (value is not null) yield return new KeyValuePair<PbtFullKey, ValueHash256>(key, value.Value);
+        }
+    }
+
+    internal bool AnyFullLeaf(PbtFullKey prefix)
+    {
+        foreach (KeyValuePair<PbtFullKey, ValueHash256> _ in EnumerateFullLeaves(prefix)) return true;
+        return false;
+    }
+
+    internal void DeleteFullLeafPrefix(PbtFullKey prefix)
+    {
+        foreach (KeyValuePair<PbtFullKey, ValueHash256> entry in EnumerateFullLeaves(prefix))
+        {
+            WriteBuffer.SetFullLeaf(entry.Key, null);
+        }
+    }
+
     private PbtSnapshotContent WriteBuffer
     {
         get
@@ -104,6 +147,17 @@ public class PbtSnapshotBundle(
     {
         if (PendingFlatWrites.Accounts.TryGetValue(address, out Account? account)) return account;
 
+        ValueHash256? basicData = GetFullLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey));
+        ValueHash256? codeHash = GetFullLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey));
+        if (basicData is not null || codeHash is not null)
+        {
+            ulong nonce = 0;
+            UInt256 balance = default;
+            if (basicData is not null) PbtKeyDerivation.UnpackBasicData(basicData.Value.Bytes, out nonce, out balance);
+            return new Account(nonce, balance, Keccak.EmptyTreeHash,
+                codeHash is null ? Keccak.OfAnEmptyString : new Hash256(codeHash.Value.Bytes));
+        }
+
         using RefCountingMemory? blob = GetAndCacheLeafBlob(PbtKeyDerivation.AccountHeaderStem(address));
         return blob is null ? null : PbtLeafDecoder.DecodeAccount(blob.GetSpan());
     }
@@ -116,6 +170,8 @@ public class PbtSnapshotBundle(
         PbtPendingFlatWrites pending = PendingFlatWrites;
         if (pending.Slots.TryGetValue((key, slot), out EvmWord value)) return value;
         if (pending.SelfDestructs.ContainsKey(key)) return default;
+        ValueHash256? fullLeaf = GetFullLeaf(PbtStateKey.Storage(address, slot));
+        if (fullLeaf is not null) return EvmWordSlot.FromStripped(fullLeaf.Value.Bytes);
 
         Stem stem = PbtLeafDecoder.SlotStem(address, slot, out byte subIndex);
         using RefCountingMemory? blob = GetAndCacheLeafBlob(stem);

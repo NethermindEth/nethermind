@@ -291,6 +291,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public RefCountingMemory? GetLeafBlob(in Stem stem) => null;
         public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => null;
         public ValueHash256? GetFullLeaf(PbtFullKey key) => null;
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves() => [];
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix) => [];
 
         public void Dispose()
