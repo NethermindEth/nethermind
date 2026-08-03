@@ -7,6 +7,8 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Enr;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 
 namespace Nethermind.Bootnode;
@@ -43,13 +45,7 @@ internal sealed class BootnodeNodeRecordProvider(
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(IdEntry.Instance);
         IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
-        selfNodeRecord.SetEntry(new IpEntry(ip.ExternalIp));
-        if (networkConfig.P2PPort > 0)
-        {
-            selfNodeRecord.SetEntry(new TcpEntry(networkConfig.P2PPort));
-        }
-
-        selfNodeRecord.SetEntry(new UdpEntry(networkConfig.DiscoveryPort));
+        SetEndpointEntries(selfNodeRecord, ip.ExternalIp);
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = 0;
         string contentHash = selfNodeRecord.ContentHash.ToString();
@@ -64,6 +60,30 @@ internal sealed class BootnodeNodeRecordProvider(
         }
 
         return selfNodeRecord;
+    }
+
+    private void SetEndpointEntries(NodeRecord selfNodeRecord, IPAddress externalIp)
+    {
+        if (externalIp.AddressFamily == AddressFamily.InterNetworkV6 && !externalIp.IsIPv4MappedToIPv6)
+        {
+            selfNodeRecord.SetEntry(new Ip6Entry(externalIp));
+            if (networkConfig.P2PPort > 0)
+            {
+                selfNodeRecord.SetEntry(new Tcp6Entry(networkConfig.P2PPort));
+            }
+
+            selfNodeRecord.SetEntry(new Udp6Entry(networkConfig.DiscoveryPort));
+        }
+        else if (!Equals(externalIp, IPAddress.None))
+        {
+            selfNodeRecord.SetEntry(new IpEntry(externalIp));
+            if (networkConfig.P2PPort > 0)
+            {
+                selfNodeRecord.SetEntry(new TcpEntry(networkConfig.P2PPort));
+            }
+
+            selfNodeRecord.SetEntry(new UdpEntry(networkConfig.DiscoveryPort));
+        }
     }
 
     private async Task<ulong> GetSequenceAsync(string contentHash, CancellationToken cancellationToken)
