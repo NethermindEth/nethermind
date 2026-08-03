@@ -49,9 +49,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
-        if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) || tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
+        }
+
+        if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
         }
 
         ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
