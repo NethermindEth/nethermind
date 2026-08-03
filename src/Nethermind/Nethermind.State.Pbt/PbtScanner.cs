@@ -1,815 +1,142 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
-using System.Diagnostics;
-using System.Globalization;
-using System.Numerics;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
-using Nethermind.Pbt.Tiles;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>The zone subtrees the statistics are grouped by, mirroring the leaf columns' split.</summary>
-public enum PbtTreePartition
-{
-    /// <summary>The root group, which is above the zone split and so belongs to no one zone.</summary>
-    Root,
-
-    /// <summary>The account header zone, 0x0.</summary>
-    Account,
-
-    /// <summary>The content-addressed code zone, 0x1.</summary>
-    Code,
-
-    /// <summary>The storage zones, 0x8-0xF.</summary>
-    Storage,
-}
-
-/// <summary>
-/// Counts what the persisted PBT columns hold: the shape of the stem trie by depth and zone, and how
-/// many nodes each of the store's space optimizations elides.
-/// </summary>
+/// <summary>Validates the full-key columns of a persisted EIP-8297 PBT database.</summary>
 /// <remarks>
-/// A flat sweep of the columns rather than a descent from the root. Every statistic here follows from
-/// one entry's key and value alone — a trie node key <em>is</em> its path and depth, its column names
-/// its zone, and a group's bitmaps pin its whole shape, the runs it holds included — so the
-/// scan needs no parent context and does no random reads. What it therefore cannot see is anything
-/// only a descent establishes: it does not check that a node is reachable from the root, nor refold
-/// any hash, so an orphaned blob is counted rather than reported.
+/// This diagnostic intentionally scans the canonical columns rather than interpreting obsolete
+/// stem blobs or tiled node groups. It validates state-layer leaf invariants and recomputes the
+/// root from the visible full-key index.
 /// </remarks>
 public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILogManager logManager)
 {
-    /// <summary>
-    /// Entries a worker counts locally before publishing them, and so also how often it checks for
-    /// cancellation; the sweep is otherwise a tight loop over hundreds of millions of rows.
-    /// </summary>
-    private const int ProgressPublishInterval = 100_000;
-
-    private static readonly TimeSpan ProgressLogInterval = TimeSpan.FromSeconds(5);
-
-    /// <summary>Ranges per worker, so that work stealing can even out the uneven ones.</summary>
-    private const int RangesPerWorker = 16;
-
-    /// <summary>Key prefix the ranges are split over, the first two bytes of a key.</summary>
-    private const int PrefixSpace = 1 << 16;
-
     private readonly ILogger _logger = logManager.GetClassLogger<PbtScanner>();
 
-    private delegate void ScanEntry(PbtScanReport report, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
-
-    public async Task<PbtScanReport> Scan(CancellationToken cancellationToken)
+    /// <summary>Scans full leaves and compressed-node records, returning all detected violations.</summary>
+    public Task<PbtScanReport> Scan(CancellationToken cancellationToken)
     {
         PbtScanReport report = new();
-        int workerCount = config.ScanTreeConcurrency > 0 ? config.ScanTreeConcurrency : Environment.ProcessorCount;
-        int rangeCount = Math.Min(workerCount * RangesPerWorker, PrefixSpace);
-        byte[][] trieBounds = PrefixBounds(rangeCount, TrieNodeKey.Length);
-        byte[][] leafBounds = PrefixBounds(rangeCount, Stem.Length);
+        List<KeyValuePair<PbtFullKey, ValueHash256>> leaves = [];
 
-        await ScanColumn(PbtColumns.AccountTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Account), report, workerCount, cancellationToken);
-        await ScanColumn(PbtColumns.CodeTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Code), report, workerCount, cancellationToken);
-        await ScanColumn(PbtColumns.StorageTrieNodes, trieBounds, TrieNodeScanner(PbtTreePartition.Storage), report, workerCount, cancellationToken);
-        await ScanColumn(PbtColumns.AccountLeaves, leafBounds, static (report, key, value) => ScanLeafBlob(value, key.Length, report.AccountLeaves, report.AccountSections), report, workerCount, cancellationToken);
-        await ScanColumn(PbtColumns.CodeLeaves, leafBounds, static (report, key, value) => ScanLeafBlob(value, key.Length, report.CodeLeaves, null), report, workerCount, cancellationToken);
-        await ScanColumn(PbtColumns.StorageLeaves, leafBounds, static (report, key, value) => ScanLeafBlob(value, key.Length, report.StorageLeaves, null), report, workerCount, cancellationToken);
+        ScanLeaves(report, leaves, cancellationToken);
+        ScanNodes(report, cancellationToken);
 
-        return report;
+        report.PersistedRoot = PbtRocksDbPersistence.ReadCurrentState(db.GetColumnDb(PbtColumns.Metadata)).TreeRoot;
+        if (report.InvalidLeafCount == 0)
+        {
+            report.ComputedRoot = PbtCanonicalTree.Rebuild(leaves);
+            report.RootMatches = report.ComputedRoot == report.PersistedRoot;
+        }
+
+        if (_logger.IsInfo) _logger.Info($"PBT scan completed with {config.ScanTreeConcurrency} configured scan workers: {report.LeafCount:N0} full leaves and {report.NodeCount:N0} compressed nodes.");
+        return Task.FromResult(report);
     }
 
-    /// <summary>
-    /// Sweeps one column in parallel, counting every entry into <paramref name="report"/>.
-    /// </summary>
-    /// <remarks>
-    /// The workers claim the ranges <paramref name="bounds"/> delimits on demand rather than by an
-    /// up-front assignment, because the ranges are wildly uneven. Each worker owns a range, the
-    /// iterator over it and a report of its own, so nothing is shared until the reports are folded
-    /// together here; the counters the progress ticker samples are all that cross threads.
-    /// </remarks>
-    private async Task ScanColumn(
-        PbtColumns columnName,
-        byte[][] bounds,
-        ScanEntry scanEntry,
-        PbtScanReport report,
-        int workerCount,
-        CancellationToken cancellationToken)
+    private void ScanLeaves(PbtScanReport report, List<KeyValuePair<PbtFullKey, ValueHash256>> leaves, CancellationToken cancellationToken)
     {
-        IDb column = db.GetColumnDb(columnName);
+        IDb column = db.GetColumnDb(PbtColumns.FullLeaves);
         if (column is not ISortedKeyValueStore sorted)
         {
-            throw new InvalidOperationException($"The PBT {columnName} column is a {column.GetType().Name}, which cannot be range scanned.");
+            throw new InvalidOperationException($"The PBT {PbtColumns.FullLeaves} column is a {column.GetType().Name}, which cannot be range scanned.");
         }
 
-        int rangeCount = bounds.Length - 1;
-        int nextRange = -1, doneRanges = 0;
-        long scanned = 0;
-
-        PbtScanReport[] shards = new PbtScanReport[workerCount];
-        for (int i = 0; i < shards.Length; i++) shards[i] = new PbtScanReport();
-
-        void ScanRanges(PbtScanReport shard)
+        using ISortedView view = sorted.GetViewBetween([], [0xFF, 0xFF]);
+        while (view.MoveNext())
         {
-            long pending = 0;
-            int range;
-            while ((range = Interlocked.Increment(ref nextRange)) < rangeCount)
+            cancellationToken.ThrowIfCancellationRequested();
+            report.LeafCount++;
+            report.LeafKeyBytes += view.CurrentKey.Length;
+            report.LeafBytes += view.CurrentValue.Length;
+
+            if (!TryValidateLeaf(view.CurrentKey, view.CurrentValue, out PbtFullKey? key))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                using ISortedView view = sorted.GetViewBetween(bounds[range], bounds[range + 1]);
-                while (view.MoveNext())
-                {
-                    ReadOnlySpan<byte> value = view.CurrentValue;
-                    if (value.IsEmpty) continue;   // an empty value is a removal marker, never stored
-
-                    scanEntry(shard, view.CurrentKey, value);
-
-                    if (++pending >= ProgressPublishInterval)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        Interlocked.Add(ref scanned, pending);
-                        pending = 0;
-                    }
-                }
-
-                Interlocked.Increment(ref doneRanges);
+                report.InvalidLeafCount++;
+                continue;
             }
 
-            Interlocked.Add(ref scanned, pending);
+            leaves.Add(new KeyValuePair<PbtFullKey, ValueHash256>(key, new ValueHash256(view.CurrentValue)));
         }
-
-        // ProgressLogger is neither thread-safe nor self-throttling, so one ticker owns it and samples
-        // the counters the workers publish, rather than the workers logging as they go
-        ProgressLogger progress = CreateProgressLogger(columnName, column, () => Volatile.Read(ref doneRanges) / (float)rangeCount);
-        using CancellationTokenSource loggingCts = new();
-        Task logging = Task.Run(async () =>
-        {
-            try
-            {
-                using PeriodicTimer timer = new(ProgressLogInterval);
-                while (await timer.WaitForNextTickAsync(loggingCts.Token))
-                {
-                    progress.Update((ulong)Interlocked.Read(ref scanned));
-                    progress.LogProgress();
-                }
-            }
-            catch (OperationCanceledException) { /* the sweep finished */ }
-        }, CancellationToken.None);
-
-        Stopwatch sweeping = Stopwatch.StartNew();
-        Task[] workers = new Task[workerCount];
-        for (int i = 0; i < workerCount; i++)
-        {
-            PbtScanReport shard = shards[i];
-            workers[i] = Task.Run(() => ScanRanges(shard), cancellationToken);
-        }
-
-        try
-        {
-            await Task.WhenAll(workers);
-        }
-        finally
-        {
-            await loggingCts.CancelAsync();
-            await logging;
-        }
-
-        foreach (PbtScanReport shard in shards) report.MergeFrom(shard);
-
-        progress.Update((ulong)scanned);
-        progress.MarkEnd();
-        if (_logger.IsInfo) _logger.Info($"PBT scan {columnName}: {scanned:N0} entries in {sweeping.Elapsed:hh\\:mm\\:ss} at {progress.TotalPerSecond:N0}/s");
     }
 
-    /// <summary>Counts the entries of one partition's trie node column into that partition's statistics.</summary>
-    private ScanEntry TrieNodeScanner(PbtTreePartition partition) => (config.TrieNodeLayout.Tiling(), partition) switch
+    private void ScanNodes(PbtScanReport report, CancellationToken cancellationToken)
     {
-        (PbtTiling.SixLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtSixLevelTileLayout, PbtDepth4>>(partition),
-        (PbtTiling.SixLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtSixLevelTileLayout, PbtDepth1>>(partition),
-        (PbtTiling.EightLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtEightLevelTileLayout, PbtDepth4>>(partition),
-        (PbtTiling.EightLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtEightLevelTileLayout, PbtDepth1>>(partition),
-        (PbtTiling.FourLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtFourLevelTileLayout, PbtDepth4>>(partition),
-        (PbtTiling.FourLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtFourLevelTileLayout, PbtDepth1>>(partition),
-        (PbtTiling.FiveLevel, PbtTreePartition.Account or PbtTreePartition.Code) => TrieNodeScanner<PbtRootedTileLayout<PbtFiveLevelTileLayout, PbtDepth4>>(partition),
-        (PbtTiling.FiveLevel, PbtTreePartition.Storage) => TrieNodeScanner<PbtRootedTileLayout<PbtFiveLevelTileLayout, PbtDepth1>>(partition),
-        _ => throw new ArgumentOutOfRangeException(nameof(partition)),
-    };
-
-    private static ScanEntry TrieNodeScanner<TLayout>(PbtTreePartition partition) where TLayout : IPbtTileLayout =>
-        (report, key, value) =>
+        IDb column = db.GetColumnDb(PbtColumns.CompressedNodes);
+        if (column is not ISortedKeyValueStore sorted)
         {
-            // the key is the node's position: the zero-padded path, then the depth byte
-            int depth = key[Stem.Length];
-            ScanTrieNode<TLayout>(value, key.Length, depth, partition, report);
-        };
-
-    /// <summary>Counts one trie-node group and the runs hanging off it.</summary>
-    private static void ScanTrieNode<TLayout>(ReadOnlySpan<byte> value, int keyBytes, int depth, PbtTreePartition partition, PbtScanReport report)
-        where TLayout : IPbtTileLayout
-    {
-        PbtScanReport.TrieNodeStats stats = report[partition];
-        stats.BlobCount++;
-        stats.KeyBytes += keyBytes;
-        ScanGroup(PbtTrieNodeGroup<TLayout>.Decode(value), value.Length, depth, stats, report);
-    }
-
-    /// <summary>
-    /// The key range boundaries of any column, splitting the space evenly over the first two bytes of
-    /// the key.
-    /// </summary>
-    /// <remarks>
-    /// Every column is keyed path-major — a leaf blob by its stem, a trie node by its path then its
-    /// depth (see <see cref="TrieNodeKey.WriteTo"/>) — and a stem is a hash, so an even split of that
-    /// prefix gives ranges holding comparable numbers of entries. A trie node column covers only its
-    /// own zone, so the ranges outside it are empty and cost no more than the seek that finds them so.
-    /// </remarks>
-    private static byte[][] PrefixBounds(int rangeCount, int keyLength)
-    {
-        byte[][] bounds = new byte[rangeCount + 1][];
-        for (int range = 0; range < rangeCount; range++)
-        {
-            byte[] bound = new byte[keyLength];
-            BinaryPrimitives.WriteUInt16BigEndian(bound, (ushort)((long)range * PrefixSpace / rangeCount));
-            bounds[range] = bound;
+            throw new InvalidOperationException($"The PBT {PbtColumns.CompressedNodes} column is a {column.GetType().Name}, which cannot be range scanned.");
         }
 
-        bounds[rangeCount] = MaxKey(keyLength);
-        return bounds;
-    }
-
-    /// <summary>
-    /// The exclusive upper bound of the last range: one byte longer than the keys it must sit above, so
-    /// that it also excludes none of them — an all-<c>0xFF</c> key of <paramref name="keyLength"/> is a
-    /// prefix of it, and so sorts below it.
-    /// </summary>
-    private static byte[] MaxKey(int keyLength)
-    {
-        byte[] max = new byte[keyLength + 1];
-        max.AsSpan().Fill(0xFF);
-        return max;
-    }
-
-    private static void ScanChain<TLayout>(ReadOnlySpan<byte> entry, int startDepth, PbtScanReport.TrieNodeStats stats)
-        where TLayout : IPbtTileLayout
-    {
-        PbtNodeChain chain = PbtNodeChain.Decode<TLayout>(entry, startDepth);
-        int span = chain.TargetDepth - startDepth;
-
-        stats.ChainCount++;
-        stats.ChainBytes += entry.Length;
-        stats.ChainsByStartDepth[startDepth]++;
-        stats.ChainsBySpan[span]++;
-
-        // the run's own node is the chain blob and the target's is the group it lands on, so the levels
-        // strictly between them are the ones the collapse leaves without an entry
-        stats.ChainSkippedNodes += span - 1;
-
-        // every level the run stands for holds an internal node, its own included; the target's is the
-        // group it lands on, which counts it itself
-        stats.IntermediateNodeCount += span;
-
-        // an every-level spine would spend one group per LevelsPerGroup levels, each storing a hash at
-        // every level of the path but its root — which the parent caches — so LevelsPerGroup entries
-        int groupsSpanned = span / TLayout.LevelsPerGroup;
-        stats.ChainEntriesAvoided += groupsSpanned * TLayout.LevelsPerGroup - PbtScanReport.ChainStoredHashes;
-        stats.ChainGroupBlobsAvoided += groupsSpanned;
-    }
-
-    /// <summary>
-    /// Counts one group and the runs its boundary slots hold, each at the depth it starts at — one
-    /// group below the group holding it.
-    /// </summary>
-    private static void ScanGroup<TLayout>(
-        in PbtTrieNodeGroup<TLayout> group, int bytes, int depth, PbtScanReport.TrieNodeStats stats, PbtScanReport report)
-        where TLayout : IPbtTileLayout
-    {
-        // A run's entry is the run's, not the group's; the byte totals still say what each costs.
-        int chainBytes = 0;
-        for (int slot = 0; slot < TLayout.BoundarySlots; slot++)
+        using ISortedView view = sorted.GetViewBetween([], [0xFF, 0xFF]);
+        while (view.MoveNext())
         {
-            int position = PbtLayout.TrieNodeGroupBoundarySlotPosition(slot);
-            if (group.KindAt(position) != PbtTrieNodeGroup.NodeKind.Chain) continue;
+            cancellationToken.ThrowIfCancellationRequested();
+            report.NodeCount++;
+            report.NodeKeyBytes += view.CurrentKey.Length;
+            report.NodeBytes += view.CurrentValue.Length;
+            if (view.CurrentKey.Length == 0 || view.CurrentValue.Length == 0) report.InvalidNodeCount++;
+        }
+    }
 
-            ReadOnlySpan<byte> chain = group[position].ChainData;
-            chainBytes += chain.Length;
-            ScanChain<TLayout>(chain, depth + TLayout.LevelsPerGroup, stats);
+    private static bool TryValidateLeaf(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, out PbtFullKey? key)
+    {
+        key = null;
+        if (value.Length != ValueHash256.MemorySize || value.IndexOfAnyExcept((byte)0) < 0) return false;
+        if (keyBytes.Length is not (Eip8297KeyDerivation.AccountKeyLength or Eip8297KeyDerivation.StorageKeyLength)) return false;
+
+        byte zone = keyBytes[0];
+        if (zone is Eip8297KeyDerivation.AccountZone or Eip8297KeyDerivation.CodeZone)
+        {
+            if (keyBytes.Length != Eip8297KeyDerivation.AccountKeyLength) return false;
+        }
+        else if (zone == Eip8297KeyDerivation.StorageZone)
+        {
+            if (keyBytes.Length != Eip8297KeyDerivation.StorageKeyLength) return false;
+        }
+        else
+        {
+            return false;
         }
 
-        stats.GroupCount++;
-        stats.GroupBytes += bytes - chainBytes;
-        stats.GroupsByDepth[depth]++;
-        stats.GroupBytesByDepth[depth] += bytes - chainBytes;
-        if (group.Format == PbtGroupFormat.Interleaved) stats.InterleavedGroupCount++;
-        if (group.Format == PbtGroupFormat.BoundaryOnly) stats.BoundaryOnlyGroupCount++;
-        if (group.Format == PbtGroupFormat.Every4Depth) stats.Every4DepthGroupCount++;
-        if (group.Format == PbtGroupFormat.Every3Depth) stats.Every3DepthGroupCount++;
-        if (depth == TLayout.RootDepth) report.RootSubtreeStemCount += group.Stats.StemCount;
-
-        WalkPosition(group, TLayout.RootPosition, TLayout.BoundarySlots, depth, stats);
-    }
-
-    /// <summary>
-    /// Walks the tile in post-order from <paramref name="position"/>, counting the stems it holds, the
-    /// internal nodes it roots and those of them an interleaved encoding leaves unstored; returns
-    /// whether the subtree is occupied at all.
-    /// </summary>
-    /// <remarks>
-    /// A position covering <paramref name="width"/> boundary slots has its children at
-    /// <c>position - width</c> and <c>position - 1</c>, each covering half as many, so the recursion
-    /// tracks the group-relative level in <paramref name="depth"/> without any position-to-level table.
-    /// The occupancy it returns is what the skipped-level count needs:
-    /// <see cref="PbtTrieNodeGroup.KindAt"/> reports what the <em>encoding</em> holds, so an internal
-    /// node at a skipped level reads absent though the trie has one, and only its subtree says whether
-    /// it is there.
-    /// </remarks>
-    private static bool WalkPosition<TLayout>(in PbtTrieNodeGroup<TLayout> group, int position, int width, int depth, PbtScanReport.TrieNodeStats stats)
-        where TLayout : IPbtTileLayout
-    {
-        PbtTrieNodeGroup.NodeKind kind = group.KindAt(position);
-        if (kind == PbtTrieNodeGroup.NodeKind.Stem)
-        {
-            // a stem is stored wherever it lands, skipped level or not, so it terminates the walk here
-            stats.StemCount++;
-            stats.StemsByDepth[depth]++;
-            return true;
-        }
-
-        // a boundary slot roots no position of this tile; it holds the cached root of the blob below it,
-        // or the run hanging from it, and nothing at all means an absent subtree. Its node is the one the
-        // blob below counts as its own root, or the one the run counts as its first level.
-        if (width == 1) return kind != PbtTrieNodeGroup.NodeKind.Absent;
-
-        int childWidth = width / 2;
-        bool left = WalkPosition(group, position - width, childWidth, depth + 1, stats);
-        bool right = WalkPosition(group, position - 1, childWidth, depth + 1, stats);
-        if (!left && !right) return false;
-
-        stats.IntermediateNodeCount++;
-        if (PbtLayout.TrieNodeGroupIsSkippedPosition(group.Format, position)) stats.SkippedLevelNodes++;
+        key = new PbtFullKey(keyBytes);
         return true;
-    }
-
-    /// <remarks>
-    /// A blob's entries are its present leaves and its branching internals in one undifferentiated
-    /// post-order run, so the leaf count comes from the footer bitmap and the internals are whatever
-    /// the run holds beyond them.
-    /// </remarks>
-    /// <param name="sections">The breakdown to split the blob's sub-index space into, for the account column alone.</param>
-    private static void ScanLeafBlob(ReadOnlySpan<byte> blob, int keyBytes, PbtScanReport.LeafColumnStats stats, PbtScanReport.AccountLeafSections? sections)
-    {
-        TwoLevelBitmapReader reader = TwoLevelBitmapReader.FromBlob(blob, out ReadOnlySpan<byte> entries);
-        Span<byte> bitmap = stackalloc byte[TwoLevelBitmapReader.BitmapLength];
-        reader.ExpandTo(bitmap);
-
-        PbtLeafFormat format = TwoLevelBitmapReader.FormatOf(blob);
-        int leaves = PopCountRange(bitmap, 0, PbtKeyDerivation.StemSubtreeWidth);
-        if (sections is not null) ScanAccountSections(bitmap, format, sections);
-
-        stats.BlobCount++;
-        stats.Bytes += blob.Length;
-        stats.KeyBytes += keyBytes;
-        stats.LeafCount += leaves;
-        stats.IntermediateNodeCount += entries.Length / StemLeafBlob.ValueLength - leaves;
-        stats.BlobsByLeafCount[leaves]++;
-        switch (format)
-        {
-            case PbtLeafFormat.Legacy: stats.LegacyBlobCount++; break;
-            case PbtLeafFormat.Interleaved: stats.InterleavedBlobCount++; break;
-            case PbtLeafFormat.LeavesOnly: stats.LeavesOnlyBlobCount++; break;
-            case PbtLeafFormat.Every4Depth: stats.Every4DepthBlobCount++; break;
-        }
-    }
-
-    /// <summary>
-    /// Splits one account blob over the three things EIP-8297 embeds in an account's stem: the account's
-    /// own fields, its first <see cref="PbtKeyDerivation.HeaderStorageOffset"/> storage slots and its
-    /// first <see cref="PbtKeyDerivation.HeaderCodeChunks"/> code chunks.
-    /// </summary>
-    private static void ScanAccountSections(ReadOnlySpan<byte> bitmap, PbtLeafFormat format, PbtScanReport.AccountLeafSections sections)
-    {
-        ScanAccountSection(bitmap, 0, PbtKeyDerivation.HeaderStorageOffset, format, sections.Fields);
-        ScanAccountSection(bitmap, PbtKeyDerivation.HeaderStorageOffset, PbtKeyDerivation.CodeOffset, format, sections.Storage);
-        ScanAccountSection(bitmap, PbtKeyDerivation.CodeOffset, PbtKeyDerivation.StemSubtreeWidth, format, sections.Code);
-    }
-
-    /// <summary>Counts the leaves one sub-index range holds and the entries the blob spends on them.</summary>
-    /// <remarks>
-    /// Each range is an aligned subtree of the stem's 256 leaves, so the entries within it are its own —
-    /// its leaves and whichever internals between them <paramref name="format"/> stores. What that
-    /// leaves out is the handful of nodes joining the ranges themselves, and the footer, which belong to
-    /// no one of them.
-    /// </remarks>
-    private static void ScanAccountSection(
-        ReadOnlySpan<byte> bitmap, int fromSubIndex, int toSubIndex, PbtLeafFormat format, PbtScanReport.LeafSectionStats section)
-    {
-        int leaves = PopCountRange(bitmap, fromSubIndex, toSubIndex);
-        if (leaves == 0) return;
-
-        section.BlobCount++;
-        section.LeafCount += leaves;
-        section.EntryBytes += StemLeafBlob.CountStoredNodes(bitmap, fromSubIndex, toSubIndex, format) * StemLeafBlob.ValueLength;
-    }
-
-    /// <summary>The leaves present in <c>[fromSubIndex, toSubIndex)</c>, a range of whole bitmap bytes.</summary>
-    private static int PopCountRange(ReadOnlySpan<byte> bitmap, int fromSubIndex, int toSubIndex)
-    {
-        int leaves = 0;
-        for (int i = fromSubIndex / 8; i < toSubIndex / 8; i++) leaves += BitOperations.PopCount(bitmap[i]);
-        return leaves;
-    }
-
-    /// <remarks>
-    /// Ranges are claimed in turn and there are far more of them than workers, so the fraction finished
-    /// is a fair completion estimate — fairer than the entry count, whose target is RocksDB's own
-    /// estimate. The count still drives <see cref="ProgressLogger.CurrentValue"/> only so that it moves
-    /// every tick: the logger drops a repeated line unless it changes, which a long range would stall.
-    /// </remarks>
-    private ProgressLogger CreateProgressLogger(PbtColumns columnName, IDb column, Func<float> completion)
-    {
-        ProgressLogger progress = new($"PBT scan {columnName}", logManager);
-        progress.SetFormat(logger =>
-        {
-            float percentage = Math.Clamp(completion(), 0, 1);
-            return $"PBT scan {columnName,-14} {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
-                $"{logger.CurrentValue,15:N0} entries ({logger.CurrentPerSecond,10:N0}/s) of ~{logger.TargetValue,15:N0}";
-        });
-        progress.Reset(0, (ulong)Math.Max(column.EstimatedCount, 0));
-        return progress;
     }
 }
 
-/// <summary>What a <see cref="PbtScanner"/> sweep counted, grouped by <see cref="PbtTreePartition"/>.</summary>
+/// <summary>Summary of a full-key PBT database scan.</summary>
 public sealed class PbtScanReport
 {
-    /// <summary>Depths a histogram covers; a trie node key's depth is one byte.</summary>
-    private const int DepthSlots = 256;
+    public long LeafCount { get; internal set; }
+    public long LeafKeyBytes { get; internal set; }
+    public long LeafBytes { get; internal set; }
+    public long NodeCount { get; internal set; }
+    public long NodeKeyBytes { get; internal set; }
+    public long NodeBytes { get; internal set; }
+    public long InvalidLeafCount { get; internal set; }
+    public long InvalidNodeCount { get; internal set; }
+    public ValueHash256 ComputedRoot { get; internal set; }
+    public ValueHash256 PersistedRoot { get; internal set; }
+    public bool RootMatches { get; internal set; }
+    public bool IsValid => InvalidLeafCount == 0 && InvalidNodeCount == 0 && RootMatches;
 
-    /// <summary>Leaves one stem can hold, plus the unused zero bucket — a stored blob has at least one.</summary>
-    private const int LeafSlots = 257;
-
-    /// <summary>Hashes a chain stores in place of the spine it replaces: its target's root and its own node hash.</summary>
-    internal const int ChainStoredHashes = 2;
-
-    private static readonly PbtTreePartition[] Partitions = Enum.GetValues<PbtTreePartition>();
-
-    private readonly TrieNodeStats[] _byPartition = CreatePartitions();
-
-    private static TrieNodeStats[] CreatePartitions()
-    {
-        TrieNodeStats[] partitions = new TrieNodeStats[Partitions.Length];
-        for (int i = 0; i < partitions.Length; i++) partitions[i] = new TrieNodeStats();
-        return partitions;
-    }
-
-    public TrieNodeStats this[PbtTreePartition partition] => _byPartition[(int)partition];
-
-    /// <summary>Legacy aggregate bucket; partition roots are counted in their respective partitions.</summary>
-    public TrieNodeStats Root => this[PbtTreePartition.Root];
-
-    public TrieNodeStats AccountNodes => this[PbtTreePartition.Account];
-    public TrieNodeStats CodeNodes => this[PbtTreePartition.Code];
-    public TrieNodeStats StorageNodes => this[PbtTreePartition.Storage];
-
-    public LeafColumnStats AccountLeaves { get; } = new();
-    public LeafColumnStats CodeLeaves { get; } = new();
-    public LeafColumnStats StorageLeaves { get; } = new();
-
-    /// <summary>How much of <see cref="AccountLeaves"/> is the accounts themselves, and how much the storage and code their stems embed.</summary>
-    public AccountLeafSections AccountSections { get; } = new();
-
-    /// <summary>
-    /// The sum of the stem counts cached by the three partition roots; it must equal
-    /// <see cref="StemCount"/>, so the two disagreeing means the sweep or the stored statistics are wrong.
-    /// </summary>
-    public long RootSubtreeStemCount { get; internal set; }
-
-    public long GroupCount => Sum(static stats => stats.GroupCount);
-    public long ChainCount => Sum(static stats => stats.ChainCount);
-    public long StemCount => Sum(static stats => stats.StemCount);
-    public long IntermediateNodeCount => Sum(static stats => stats.IntermediateNodeCount);
-    public long TrieNodeBytes => Sum(static stats => stats.GroupBytes + stats.ChainBytes);
-    public long TrieNodeBlobCount => Sum(static stats => stats.BlobCount);
-    public long TrieNodeKeyBytes => Sum(static stats => stats.KeyBytes);
-    public long SkippedLevelNodes => Sum(static stats => stats.SkippedLevelNodes);
-    public long ChainSkippedNodes => Sum(static stats => stats.ChainSkippedNodes);
-    public long ChainEntriesAvoided => Sum(static stats => stats.ChainEntriesAvoided);
-    public long ChainGroupBlobsAvoided => Sum(static stats => stats.ChainGroupBlobsAvoided);
-
-    public bool StemCountAgrees => RootSubtreeStemCount == StemCount;
-
-    /// <summary>Adds everything <paramref name="other"/> counted into this report.</summary>
-    internal void MergeFrom(PbtScanReport other)
-    {
-        for (int i = 0; i < _byPartition.Length; i++) _byPartition[i].MergeFrom(other._byPartition[i]);
-
-        AccountLeaves.MergeFrom(other.AccountLeaves);
-        CodeLeaves.MergeFrom(other.CodeLeaves);
-        StorageLeaves.MergeFrom(other.StorageLeaves);
-        AccountSections.MergeFrom(other.AccountSections);
-
-        RootSubtreeStemCount += other.RootSubtreeStemCount;
-    }
-
-    private static void AddInto(long[] into, long[] from)
-    {
-        for (int i = 0; i < into.Length; i++) into[i] += from[i];
-    }
-
-    private long Sum(Func<TrieNodeStats, long> selector)
-    {
-        long total = 0;
-        foreach (TrieNodeStats stats in _byPartition) total += selector(stats);
-        return total;
-    }
-
-    /// <summary>The trie nodes of one zone subtree.</summary>
-    public sealed class TrieNodeStats
-    {
-        public long GroupCount { get; internal set; }
-        public long InterleavedGroupCount { get; internal set; }
-        public long BoundaryOnlyGroupCount { get; internal set; }
-        public long Every4DepthGroupCount { get; internal set; }
-        public long Every3DepthGroupCount { get; internal set; }
-        public long ChainCount { get; internal set; }
-        public long StemCount { get; internal set; }
-
-        /// <summary>
-        /// Internal nodes of the stem trie — every node that is not a stem — whether the encoding holds
-        /// an entry for them or elides them into an interleaved level or a chain.
-        /// </summary>
-        public long IntermediateNodeCount { get; internal set; }
-
-        public long GroupBytes { get; internal set; }
-        public long ChainBytes { get; internal set; }
-
-        /// <summary>Stored entries, which is what the nodes above cost the store in keys and lookups.</summary>
-        public long BlobCount { get; internal set; }
-
-        /// <summary>The keys of those entries, a cost the value totals do not see.</summary>
-        public long KeyBytes { get; internal set; }
-
-        public long[] GroupsByDepth { get; } = new long[DepthSlots];
-        public long[] GroupBytesByDepth { get; } = new long[DepthSlots];
-        public long[] StemsByDepth { get; } = new long[DepthSlots];
-
-        public long[] ChainsByStartDepth { get; } = new long[DepthSlots];
-        public long[] ChainsBySpan { get; } = new long[DepthSlots];
-
-        /// <summary>Internal nodes the encoding leaves unstored at a level it skips; also the entries it saves, one hash each.</summary>
-        public long SkippedLevelNodes { get; internal set; }
-
-        /// <summary>Trie levels the chains collapsed, each a real single-child node with no entry of its own.</summary>
-        public long ChainSkippedNodes { get; internal set; }
-
-        /// <summary>Hash entries the chains saved against an every-level spine of groups.</summary>
-        public long ChainEntriesAvoided { get; internal set; }
-
-        /// <summary>Group blobs the chains replaced, holding no blob of their own to set against them.</summary>
-        public long ChainGroupBlobsAvoided { get; internal set; }
-
-        public bool IsEmpty => GroupCount == 0 && ChainCount == 0;
-
-        internal void MergeFrom(TrieNodeStats other)
-        {
-            GroupCount += other.GroupCount;
-            InterleavedGroupCount += other.InterleavedGroupCount;
-            BoundaryOnlyGroupCount += other.BoundaryOnlyGroupCount;
-            Every4DepthGroupCount += other.Every4DepthGroupCount;
-            Every3DepthGroupCount += other.Every3DepthGroupCount;
-            ChainCount += other.ChainCount;
-            StemCount += other.StemCount;
-            IntermediateNodeCount += other.IntermediateNodeCount;
-            GroupBytes += other.GroupBytes;
-            ChainBytes += other.ChainBytes;
-            BlobCount += other.BlobCount;
-            KeyBytes += other.KeyBytes;
-            SkippedLevelNodes += other.SkippedLevelNodes;
-            ChainSkippedNodes += other.ChainSkippedNodes;
-            ChainEntriesAvoided += other.ChainEntriesAvoided;
-            ChainGroupBlobsAvoided += other.ChainGroupBlobsAvoided;
-
-            AddInto(GroupsByDepth, other.GroupsByDepth);
-            AddInto(GroupBytesByDepth, other.GroupBytesByDepth);
-            AddInto(StemsByDepth, other.StemsByDepth);
-            AddInto(ChainsByStartDepth, other.ChainsByStartDepth);
-            AddInto(ChainsBySpan, other.ChainsBySpan);
-        }
-    }
-
-    /// <summary>
-    /// An account stem's 256 leaves as EIP-8297 divides them: the account's own fields below
-    /// <see cref="PbtKeyDerivation.HeaderStorageOffset"/>, the storage slots it embeds up to
-    /// <see cref="PbtKeyDerivation.CodeOffset"/>, and the code chunks above that.
-    /// </summary>
-    public sealed class AccountLeafSections
-    {
-        /// <summary>The account's own values: <c>BASIC_DATA</c> and the code hash.</summary>
-        public LeafSectionStats Fields { get; } = new();
-
-        public LeafSectionStats Storage { get; } = new();
-        public LeafSectionStats Code { get; } = new();
-
-        internal void MergeFrom(AccountLeafSections other)
-        {
-            Fields.MergeFrom(other.Fields);
-            Storage.MergeFrom(other.Storage);
-            Code.MergeFrom(other.Code);
-        }
-    }
-
-    /// <summary>What one sub-index range of the account column's blobs holds.</summary>
-    public sealed class LeafSectionStats
-    {
-        /// <summary>Blobs holding a leaf of this section at all, which is how many accounts have one.</summary>
-        public long BlobCount { get; internal set; }
-
-        public long LeafCount { get; internal set; }
-
-        /// <summary>The bytes of this section's own entries: its leaves and the internals between them.</summary>
-        public long EntryBytes { get; internal set; }
-
-        internal void MergeFrom(LeafSectionStats other)
-        {
-            BlobCount += other.BlobCount;
-            LeafCount += other.LeafCount;
-            EntryBytes += other.EntryBytes;
-        }
-    }
-
-    /// <summary>What one leaf-blob column holds.</summary>
-    public sealed class LeafColumnStats
-    {
-        public long BlobCount { get; internal set; }
-        public long Bytes { get; internal set; }
-
-        /// <summary>The stems those blobs are keyed by, a cost <see cref="Bytes"/> does not see.</summary>
-        public long KeyBytes { get; internal set; }
-
-        /// <summary>Present leaves across every blob: the stored slots, code chunks or header fields.</summary>
-        public long LeafCount { get; internal set; }
-
-        /// <summary>Internal nodes stored alongside those leaves.</summary>
-        public long IntermediateNodeCount { get; internal set; }
-
-        /// <summary>Blobs still in the legacy layout, which caches every single-child internal too.</summary>
-        public long LegacyBlobCount { get; internal set; }
-
-        /// <summary>Blobs in the interleaved layout, which stores no internal node at a skipped level.</summary>
-        public long InterleavedBlobCount { get; internal set; }
-
-        /// <summary>Blobs in the leaves-only layout, which stores no internal node at all.</summary>
-        public long LeavesOnlyBlobCount { get; internal set; }
-
-        /// <summary>Blobs in the every-4-depth layout, which stores one internal node every four depth.</summary>
-        public long Every4DepthBlobCount { get; internal set; }
-
-        /// <summary>Blobs by how many of the stem's 256 leaves they hold, indexed by that count.</summary>
-        public long[] BlobsByLeafCount { get; } = new long[LeafSlots];
-
-        internal void MergeFrom(LeafColumnStats other)
-        {
-            BlobCount += other.BlobCount;
-            Bytes += other.Bytes;
-            KeyBytes += other.KeyBytes;
-            LeafCount += other.LeafCount;
-            IntermediateNodeCount += other.IntermediateNodeCount;
-            LegacyBlobCount += other.LegacyBlobCount;
-            InterleavedBlobCount += other.InterleavedBlobCount;
-            LeavesOnlyBlobCount += other.LeavesOnlyBlobCount;
-            Every4DepthBlobCount += other.Every4DepthBlobCount;
-
-            AddInto(BlobsByLeafCount, other.BlobsByLeafCount);
-        }
-    }
-
+    /// <summary>Formats the diagnostic report for the startup step.</summary>
     public string Format()
     {
         StringBuilder report = new();
         report.AppendLine();
         report.AppendLine("=== PBT scan ===");
-        report.AppendLine();
-
-        report.AppendLine($"Totals: {GroupCount + ChainCount:N0} trie nodes ({TrieNodeBytes:N0} bytes), {GroupCount:N0} groups, {ChainCount:N0} chains, {StemCount:N0} stems over {IntermediateNodeCount:N0} intermediate nodes");
-        report.AppendLine($"Stored in {TrieNodeBlobCount:N0} blobs keyed by {TrieNodeKeyBytes:N0} bytes; every chain rides in the group above it");
-        report.AppendLine($"Root records {RootSubtreeStemCount:N0} stems for its subtree ({(StemCountAgrees ? "agrees" : "MISMATCH")})");
-        report.AppendLine();
-
-        report.AppendLine("Intermediate nodes with no stored entry");
-        report.AppendLine($"  {"partition",-10}  {"skipped levels",20}  {"chain levels",14}  {"chain entries saved",21}");
-        foreach (PbtTreePartition partition in Partitions)
-        {
-            TrieNodeStats stats = this[partition];
-            if (stats.IsEmpty) continue;
-            report.AppendLine($"  {partition,-10}  {stats.SkippedLevelNodes,20:N0}  {stats.ChainSkippedNodes,14:N0}  {stats.ChainEntriesAvoided,21:N0}");
-        }
-
-        report.AppendLine($"  {"TOTAL",-10}  {SkippedLevelNodes,20:N0}  {ChainSkippedNodes,14:N0}  {ChainEntriesAvoided,21:N0}");
-        report.AppendLine($"  (a skipped level saves exactly one entry each; chains also replaced {ChainGroupBlobsAvoided:N0} group blobs)");
-        report.AppendLine();
-
-        foreach (PbtTreePartition partition in Partitions) AppendPartition(report, partition);
-
-        AppendLeafColumn(report, "Account leaf blobs (zone 0x0)", AccountLeaves);
-        AppendAccountSections(report);
-        AppendLeafColumn(report, "Code leaf blobs (zone 0x1)", CodeLeaves);
-        AppendLeafColumn(report, "Storage leaf blobs (zones 0x8-0xF)", StorageLeaves);
-
+        report.AppendLine($"Full leaves: {LeafCount:N0} ({LeafBytes:N0} value bytes, {LeafKeyBytes:N0} key bytes)");
+        report.AppendLine($"Compressed nodes: {NodeCount:N0} ({NodeBytes:N0} value bytes, {NodeKeyBytes:N0} key bytes)");
+        report.AppendLine($"Computed root: {ComputedRoot}");
+        report.AppendLine($"Persisted root: {PersistedRoot} ({(RootMatches ? "matches" : "MISMATCH")})");
+        report.AppendLine($"Violations: {InvalidLeafCount + InvalidNodeCount:N0} ({InvalidLeafCount:N0} leaves, {InvalidNodeCount:N0} nodes)");
         return report.ToString();
-    }
-
-    private void AppendPartition(StringBuilder report, PbtTreePartition partition)
-    {
-        TrieNodeStats stats = this[partition];
-        if (stats.IsEmpty) return;
-
-        report.AppendLine($"--- {partition} ---");
-        report.AppendLine($"  {stats.GroupCount:N0} groups ({stats.InterleavedGroupCount:N0} interleaved, {stats.BoundaryOnlyGroupCount:N0} boundary-only, {stats.Every4DepthGroupCount:N0} every-4-depth, {stats.Every3DepthGroupCount:N0} every-3-depth, {stats.GroupBytes:N0} bytes), {stats.ChainCount:N0} chains ({stats.ChainBytes:N0} bytes), {stats.StemCount:N0} stems over {stats.IntermediateNodeCount:N0} intermediate nodes");
-        report.AppendLine($"  in {stats.BlobCount:N0} blobs, whose keys take a further {stats.KeyBytes:N0} bytes");
-        report.AppendLine();
-
-        AppendDepthTable(report, "Trie node groups by depth", ("groups", "bytes", "avg size"), stats.GroupsByDepth, stats.GroupBytesByDepth);
-        AppendCountTable(report, "Stems by depth", "depth", "stems", stats.StemsByDepth);
-        AppendCountTable(report, "Node chains by start depth", "depth", "chains", stats.ChainsByStartDepth);
-        AppendCountTable(report, "Node chains by span", "levels", "chains", stats.ChainsBySpan);
-    }
-
-    /// <summary>A depth histogram of two totals, the second averaged over the first.</summary>
-    private static void AppendDepthTable(StringBuilder report, string title, (string Count, string Total, string Average) columns, long[] counts, long[] totals)
-    {
-        if (!HasAny(counts)) return;
-
-        report.AppendLine($"  {title}");
-        report.AppendLine($"    {"depth",5}  {columns.Count,15}  {columns.Total,18}  {columns.Average,12}");
-        for (int depth = 0; depth < counts.Length; depth++)
-        {
-            if (counts[depth] == 0) continue;
-            report.AppendLine($"    {depth,5}  {counts[depth],15:N0}  {totals[depth],18:N0}  {(double)totals[depth] / counts[depth],12:N1}");
-        }
-
-        report.AppendLine();
-    }
-
-    private static void AppendCountTable(StringBuilder report, string title, string keyHeader, string unit, long[] counts)
-    {
-        if (!HasAny(counts)) return;
-
-        report.AppendLine($"  {title}");
-        report.AppendLine($"    {keyHeader,6}  {unit,15}");
-        for (int i = 0; i < counts.Length; i++)
-        {
-            if (counts[i] != 0) report.AppendLine($"    {i,6}  {counts[i],15:N0}");
-        }
-
-        report.AppendLine();
-    }
-
-    private static bool HasAny(long[] counts)
-    {
-        foreach (long count in counts)
-        {
-            if (count != 0) return true;
-        }
-
-        return false;
-    }
-
-    /// <remarks>
-    /// The sections' entries do not add up to the account column's bytes: the nodes joining them and the
-    /// presence bitmap belong to the blob rather than to any one section.
-    /// </remarks>
-    private void AppendAccountSections(StringBuilder report)
-    {
-        if (AccountLeaves.BlobCount == 0) return;
-
-        report.AppendLine("--- Account leaf blobs by what the stem embeds ---");
-        report.AppendLine($"    {"section",-8}  {"blobs",15}  {"leaves",15}  {"entry bytes",18}");
-        AppendSection(report, "fields", AccountSections.Fields);
-        AppendSection(report, "storage", AccountSections.Storage);
-        AppendSection(report, "code", AccountSections.Code);
-        report.AppendLine();
-
-        static void AppendSection(StringBuilder report, string name, LeafSectionStats stats) =>
-            report.AppendLine($"    {name,-8}  {stats.BlobCount,15:N0}  {stats.LeafCount,15:N0}  {stats.EntryBytes,18:N0}");
-    }
-
-    private static void AppendLeafColumn(StringBuilder report, string title, LeafColumnStats stats)
-    {
-        report.AppendLine($"--- {title} ---");
-        report.AppendLine($"  {stats.BlobCount:N0} blobs, {stats.Bytes:N0} bytes plus {stats.KeyBytes:N0} of keys, {stats.LeafCount:N0} leaves, {stats.IntermediateNodeCount:N0} intermediate nodes, {stats.InterleavedBlobCount:N0} interleaved, {stats.LeavesOnlyBlobCount:N0} leaves-only, {stats.Every4DepthBlobCount:N0} every-4-depth, {stats.LegacyBlobCount:N0} legacy");
-        if (stats.BlobCount == 0)
-        {
-            report.AppendLine();
-            return;
-        }
-
-        report.AppendLine($"    {"leaves",6}  {"blobs",15}");
-        for (int leaves = 0; leaves < stats.BlobsByLeafCount.Length; leaves++)
-        {
-            if (stats.BlobsByLeafCount[leaves] != 0) report.AppendLine($"    {leaves,6}  {stats.BlobsByLeafCount[leaves],15:N0}");
-        }
-
-        report.AppendLine();
     }
 }
