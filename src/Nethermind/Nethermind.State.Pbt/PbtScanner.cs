@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
-using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
@@ -30,7 +29,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         ScanLeaves(report, leaves, cancellationToken);
         ScanNodes(report, cancellationToken);
 
-        report.PersistedRoot = PbtRocksDbPersistence.ReadCurrentState(db.GetColumnDb(PbtColumns.Metadata)).PartitionRoots.Root;
+        report.PersistedRoot = PbtRocksDbPersistence.ReadCurrentState(db.GetColumnDb(PbtColumns.Metadata)).TreeRoot;
         if (report.InvalidLeafCount == 0)
         {
             report.ComputedRoot = PbtCanonicalTree.Rebuild(leaves);
@@ -63,7 +62,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                 continue;
             }
 
-            leaves.Add(new KeyValuePair<PbtFullKey, ValueHash256>(key!, new ValueHash256(view.CurrentValue)));
+            leaves.Add(new KeyValuePair<PbtFullKey, ValueHash256>(key, new ValueHash256(view.CurrentValue)));
         }
     }
 
