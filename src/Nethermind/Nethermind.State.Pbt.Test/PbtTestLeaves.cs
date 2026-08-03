@@ -38,42 +38,23 @@ internal static class PbtTestLeaves
 
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)
     {
-        Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
-
         ValueHash256 basicData = default;
         PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, code is null ? 0u : (uint)code.Length, account.Nonce, account.Balance);
-        into.Add(new RebuildEntry(headerStem, PbtKeyDerivation.BasicDataLeafKey, basicData));
-        into.Add(new RebuildEntry(headerStem, PbtKeyDerivation.CodeHashLeafKey, account.CodeHash.ValueHash256));
+        into.Add(new RebuildEntry(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), basicData));
+        into.Add(new RebuildEntry(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256));
 
         if (code is not { Length: > 0 }) return;
 
         byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
         int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
-        int headerChunks = Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks);
-        for (int i = 0; i < headerChunks; i++)
+        for (int i = 0; i < chunkCount; i++)
         {
-            into.Add(new RebuildEntry(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(i), Chunk(chunks, i)));
-        }
-
-        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount;)
-        {
-            Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash.ValueHash256, i, out byte subIndex);
-            int run = Math.Min(chunkCount - i, PbtKeyDerivation.StemSubtreeWidth - subIndex);
-            for (int j = 0; j < run; j++)
-            {
-                into.Add(new RebuildEntry(overflowStem, (byte)(subIndex + j), Chunk(chunks, i + j)));
-            }
-
-            i += run;
+            into.Add(new RebuildEntry(PbtStateKey.Code(address, account.CodeHash.ValueHash256, i), Chunk(chunks, i)));
         }
     }
 
-    public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value)
-    {
-        PbtSlotKeyDeriver deriver = new(address);
-        Stem stem = deriver.Derive(slot, out byte subIndex);
-        into.Add(new RebuildEntry(stem, subIndex, new ValueHash256(value.ToBigEndian())));
-    }
+    public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
+        into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), new ValueHash256(value.ToBigEndian())));
 
     /// <summary>Lays <paramref name="leaves"/> out as one stem's leaves-only blob, the way a bulk load writes one.</summary>
     /// <param name="leaves">Sub-index and its value, which is left-padded to the 32-byte leaf as the storage columns hand them over.</param>
@@ -92,13 +73,9 @@ internal static class PbtTestLeaves
         return blob;
     }
 
-    /// <summary>Orders leaves by tree key, the order the importer emits them in.</summary>
+    /// <summary>Orders leaves by their complete EIP-8297 keys.</summary>
     public static void SortByTreeKey(List<RebuildEntry> leaves) =>
-        leaves.Sort(static (a, b) =>
-        {
-            int byStem = a.Stem.Bytes.SequenceCompareTo(b.Stem.Bytes);
-            return byStem != 0 ? byStem : a.SubIndex.CompareTo(b.SubIndex);
-        });
+        leaves.Sort(static (a, b) => a.Key.CompareTo(b.Key));
 
     private static ValueHash256 Chunk(byte[] chunks, int chunkId) =>
         new(chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));

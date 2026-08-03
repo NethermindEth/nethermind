@@ -202,9 +202,9 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
 
     private static RebuildEntry Entry(byte first, byte second)
     {
-        byte[] stem = new byte[Stem.Length];
-        stem[0] = first;
-        stem[1] = second;
-        return new RebuildEntry(new Stem(stem), 0, TestItem.KeccakA.ValueHash256);
+        byte[] key = new byte[Eip8297KeyDerivation.AccountKeyLength];
+        key[0] = first;
+        key[1] = second;
+        return new RebuildEntry(new PbtFullKey(key), TestItem.KeccakA.ValueHash256);
     }
 }
