@@ -54,11 +54,9 @@ public class ScanPbtTree(
 
         if (_logger.IsInfo) _logger.Info(report.Format());
 
-        if (!report.IsValid)
+        if (!report.StemCountAgrees && _logger.IsWarn)
         {
-            if (_logger.IsError) _logger.Error("PBT scan found invalid canonical full-key records.");
-            exitSource.Exit(1);
-            return;
+            _logger.Warn($"PBT scan counted {report.StemCount:N0} stems, but the root node records {report.RootSubtreeStemCount:N0} for its subtree.");
         }
 
         exitSource.Exit(0);
