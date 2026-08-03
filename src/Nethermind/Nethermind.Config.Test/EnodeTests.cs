@@ -64,6 +64,41 @@ namespace Nethermind.Config.Test
             Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse("192.168.2.54")));
         }
 
+        [Test]
+        public void info_brackets_native_ipv6_host()
+        {
+            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            IPAddress ipv6 = IPAddress.Parse("fd00:beef:cafe::11");
+            Enode enode = new(publicKey, ipv6, 30303, 30304);
+
+            Assert.That(enode.Info, Does.Contain("@[fd00:beef:cafe::11]:30303"));
+            Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
+            Enode reparsed = new(enode.Info);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reparsed.HostIp, Is.EqualTo(ipv6));
+                Assert.That(reparsed.Port, Is.EqualTo(30303));
+                Assert.That(reparsed.DiscoveryPort, Is.EqualTo(30304));
+            }
+        }
+
+        [Test]
+        public void can_parse_bracketed_native_ipv6_host()
+        {
+            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            IPAddress ipv6 = IPAddress.Parse("fd00:beef:cafe::11");
+
+            Enode enode = new($"enode://{publicKey.ToString(false)}@[fd00:beef:cafe::11]:30303?discport=30304");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.HostIp, Is.EqualTo(ipv6));
+                Assert.That(enode.Port, Is.EqualTo(30303));
+                Assert.That(enode.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(enode.PublicKey, Is.EqualTo(publicKey));
+            }
+        }
+
         public static IEnumerable Ipv4vs6TestCases
         {
             get
@@ -74,7 +109,7 @@ namespace Nethermind.Config.Test
                 yield return new TestCaseData(new object[] { new[] { ipv4 } }).Returns(ipv4);
                 yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv6_2, ipv4 } }).Returns(ipv4);
                 yield return new TestCaseData(new object[] { new[] { ipv4, ipv6_1, ipv6_2 } }).Returns(ipv4);
-                yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv6_2 } }).Returns(ipv6_1.MapToIPv4());
+                yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv6_2 } }).Returns(ipv6_1);
             }
         }
 
