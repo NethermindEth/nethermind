@@ -21,6 +21,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
@@ -686,11 +687,41 @@ public class AdminModuleTests
         }
     }
 
+    [Test]
+    public async Task AdminNodeInfo_WithNodeRecordProvider_ReturnsEnr()
+    {
+        const string enrString = "enr:-Iu4QExs-VuocNcT-C-bs0EP4h7MGinmnKQHu7OSoHu_wG95TjjU61ifQ_q51GGjsy-1dcvqffYeLuRtV0jfBYJZGoSAgmlkgnY0gmlwhJ_fdDyJc2VjcDI1NmsxoQIsggF1NrG3S2KqKoF2n0oSE6ye3Tod9Dr1_QCPMwXpK4N0Y3CCdl-DdWRwgnZf";
+        INodeRecordProvider nodeRecordProvider = Substitute.For<INodeRecordProvider>();
+        nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<NodeRecord>(NodeRecord.FromEnrString(enrString)));
+
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(nodeRecordProvider: nodeRecordProvider);
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
+
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
+
+        Assert.That(nodeInfo.Enr, Is.EqualTo(enrString), "admin_nodeInfo surfaces the signed local ENR");
+    }
+
+    [Test]
+    public async Task AdminNodeInfo_WithoutNodeRecordProvider_OmitsEnr()
+    {
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_nodeInfo");
+
+        JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
+        NodeInfo nodeInfo = ((JsonElement)response.Result!).Deserialize<NodeInfo>(EthereumJsonSerializer.JsonOptions)!;
+
+        Assert.That(nodeInfo.Enr, Is.Null, "the ENR is unavailable when discovery is disabled");
+    }
+
     private IAdminRpcModule BuildAdminRpcModuleWith(
         IStaticNodesManager? staticNodesManager = null,
         ITrustedNodesManager? trustedNodesManager = null,
         IPeerPool? peerPool = null,
-        IBlockProcessingPauseControl? blockProcessingPauseControl = null)
+        IBlockProcessingPauseControl? blockProcessingPauseControl = null,
+        INodeRecordProvider? nodeRecordProvider = null)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
@@ -705,7 +736,8 @@ public class AdminModuleTests
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),
             _subscriptionManager,
             new JsonRpcConfig(),
-            blockProcessingPauseControl ?? Substitute.For<IBlockProcessingPauseControl>());
+            blockProcessingPauseControl ?? Substitute.For<IBlockProcessingPauseControl>(),
+            nodeRecordProvider);
     }
 
     private JsonRpcResult RaisePeerEventAndCapture(Action raiseEvent, out string subscriptionId, bool disposeSubscription = false, bool shouldReceive = true)

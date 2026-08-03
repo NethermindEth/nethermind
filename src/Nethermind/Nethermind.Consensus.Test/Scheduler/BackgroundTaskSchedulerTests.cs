@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -51,6 +52,28 @@ public class BackgroundTaskSchedulerTests
         Assert.DoesNotThrowAsync(
             async () => await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
             "DisposeAsync did not complete within timeout - possible deadlock in background task scheduler");
+    }
+
+    [Test]
+    public async Task Scheduling_after_dispose_does_not_warn_queue_is_full()
+    {
+        TestLogger testLogger = new() { IsInfo = false };
+        BackgroundTaskScheduler scheduler = new(
+            _branchProcessor,
+            _chainHeadInfo,
+            1,
+            65536,
+            new OneLoggerLogManager(new ILogger(testLogger)));
+        await scheduler.DisposeAsync();
+
+        bool scheduled = scheduler.TryScheduleTask(1, static (_, _) => Task.CompletedTask, source: "Transactions");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scheduled, Is.False, "a disposed scheduler must reject new tasks");
+            Assert.That(testLogger.LogList, Has.None.Contains("Background task queue is full"),
+                "shutdown rejection must not be reported as queue saturation");
+        }
     }
 
     [Test]

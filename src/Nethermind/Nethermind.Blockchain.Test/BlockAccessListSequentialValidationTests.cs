@@ -28,10 +28,9 @@ using System.Threading;
 namespace Nethermind.Blockchain.Test;
 
 /// <summary>
-/// Covers the column-index fast path on the sequential execution path, reachable only because
-/// <c>MergeAndReturnBal</c> feeds each per-tx slice into the generated validation index. Drives
-/// real execution to produce a BAL, then re-validates it: a matching BAL is accepted (and the
-/// generated index that gates the fast path is shown to be populated), a tampered BAL is rejected.
+/// Covers BAL generation and the column-index fast path on the sequential execution path,
+/// reachable only because <c>MergeAndReturnBal</c> feeds each per-tx slice into the generated
+/// validation index.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class BlockAccessListSequentialValidationTests
@@ -82,17 +81,37 @@ public class BlockAccessListSequentialValidationTests
         Assert.DoesNotThrow(() => RunSequentialValidation(tampered, processingOptions));
     }
 
+    [Test]
+    public void Generated_bal_includes_system_address_fee_recipient_credited_with_zero_fee()
+    {
+        ReadOnlyBlockAccessList generated = GenerateBlockAccessList(static block => block.Header.Beneficiary = Address.SystemUser);
+
+        // EIP-7928 BAL generation records touched accounts even when no state value changes.
+        ReadOnlyAccountChanges? systemAccount = generated.GetAccountChanges(Address.SystemUser);
+        Assert.That(systemAccount, Is.Not.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(systemAccount!.BalanceChanges, Is.Empty);
+            Assert.That(systemAccount.NonceChanges, Is.Empty);
+            Assert.That(systemAccount.CodeChanges, Is.Empty);
+            Assert.That(systemAccount.StorageChanges, Is.Empty);
+            Assert.That(systemAccount.StorageReads, Is.Empty);
+        }
+    }
+
     /// <summary>
     /// Runs the block once on the sequential path with no suggested BAL so the executor
     /// constructs the generated BAL, then re-encodes it as a wire <see cref="ReadOnlyBlockAccessList"/>.
     /// </summary>
-    private static ReadOnlyBlockAccessList GenerateBlockAccessList()
+    private static ReadOnlyBlockAccessList GenerateBlockAccessList(Action<Block>? configureBlock = null)
     {
         (IWorldState stateProvider, BlockAccessListManager balManager) = CreateFundedAmsterdamSetup();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         FundSender(stateProvider);
 
         Block block = BuildBlock();
+        configureBlock?.Invoke(block);
         RunSequential(stateProvider, balManager, block, blockAccessList: null);
 
         byte[] encoded = BlockAccessListDecoder.EncodeToBytes(balManager.GeneratedBlockAccessList);

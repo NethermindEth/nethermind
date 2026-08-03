@@ -766,8 +766,6 @@ public class PersistenceManagerTests
         toPersist!.Dispose();
     }
 
-    #region PersistSnapshot Tests
-
     [Test]
     public void PersistSnapshot_WithAccountsStorageAndTrieNodes_WritesToBatch()
     {
@@ -840,8 +838,6 @@ public class PersistenceManagerTests
         _persistence.Received(1).CreateWriteBatch(from, to);
     }
 
-    #endregion
-
     [Test]
     public async Task AddToPersistence_WithAvailableSnapshot_PersistsAndUpdatesState()
     {
@@ -865,7 +861,178 @@ public class PersistenceManagerTests
         Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(to));
     }
 
-    #region FlushToPersistence Tests
+    [Test]
+    public async Task AddToPersistence_WithCaptureHook_CapturesHistoryUpToPersistedBlock()
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            hook);
+
+        StateId from = Block0;
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _ = CreateSnapshot(from, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        await manager.AddToPersistence(latest);
+
+        Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
+    }
+
+    // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed
+    // range permanently absent from history on every shutdown.
+    [Test]
+    public void FlushToPersistence_WithCaptureHook_CapturesTheFlushedRange()
+    {
+        RecordingCaptureHook hook = new();
+        using PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            hook);
+
+        StateId to = CreateStateId(16);
+        _ = CreateSnapshot(Block0, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = manager.FlushToPersistence();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed, Is.EqualTo(to));
+            Assert.That(hook.CapturedUpTo, Is.EqualTo(to), "the flushed range must be captured before it is pruned");
+        }
+    }
+
+    // The flush path (genesis-loader / shutdown) must uphold the same capture-before-persist invariant.
+    [Test]
+    public void FlushToPersistence_WhenCaptureHookThrows_DoesNotPersist()
+    {
+        using PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            new FlakyCaptureHook(failures: 1));
+
+        StateId to = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        CreateSnapshot(Block0, to, compacted: true);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        Assert.Throws<System.InvalidOperationException>(() => manager.FlushToPersistence());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+        }
+    }
+
+    [Test]
+    public async Task AddToPersistence_WhenCaptureHookThrows_DoesNotAdvancePersistence()
+    {
+        FlakyCaptureHook hook = new(failures: 1);
+        using PersistenceManager manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            hook);
+
+        StateId from = Block0;
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _ = CreateSnapshot(from, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        Assert.ThrowsAsync<System.InvalidOperationException>(() => manager.AddToPersistence(latest));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(Block0), "the barrier must not advance past a failed capture");
+            _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+        }
+
+        // The aborted range is retried and completes once the hook recovers.
+        await manager.AddToPersistence(latest);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+            Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
+        }
+    }
+
+    [Test]
+    public async Task AddToPersistence_CapturesHistoryBeforeAdvancingTheBarrier()
+    {
+        PersistenceManager manager = null!;
+        BarrierObservingCaptureHook hook = new(() => manager.GetCurrentPersistedStateId());
+        manager = new(
+            _config,
+            ScheduleHelper.CreateWithOffset(_config, 0),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            hook);
+        using PersistenceManager managerScope = manager;
+
+        StateId from = Block0;
+        StateId to = CreateStateId(16);
+        StateId latest = CreateStateId(100);
+        _ = CreateSnapshot(from, to, compacted: true);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(to.StateRoot.Bytes));
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId barrierBefore = manager.GetCurrentPersistedStateId();
+        await manager.AddToPersistence(latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hook.BarrierAtCapture, Is.EqualTo(barrierBefore), "history must be captured before the persisted-state barrier is published");
+            Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+        }
+    }
 
     [Test]
     public void FlushToPersistence_NoSnapshots_ReturnsCurrentPersistedState()
@@ -1053,8 +1220,6 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
-    #endregion
-
     private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
     {
         // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the
@@ -1075,8 +1240,6 @@ public class PersistenceManagerTests
         method.Invoke(_persistenceManager, [compacted]);
     }
 
-    #region Helper Classes
-
     private class TestFinalizedStateProvider : IFinalizedStateProvider
     {
         private ulong _finalizedBlockNumber;
@@ -1092,5 +1255,32 @@ public class PersistenceManagerTests
             _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
     }
 
-    #endregion
+    private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook
+    {
+        public StateId? CapturedUpTo { get; private set; }
+
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
+            CapturedUpTo = persistedHead;
+    }
+
+    private sealed class FlakyCaptureHook(int failures) : IFlatPersistenceCaptureHook
+    {
+        private int _remainingFailures = failures;
+
+        public StateId? CapturedUpTo { get; private set; }
+
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken)
+        {
+            if (_remainingFailures-- > 0) throw new System.InvalidOperationException("simulated history capture failure");
+            CapturedUpTo = persistedHead;
+        }
+    }
+
+    private sealed class BarrierObservingCaptureHook(System.Func<StateId> readBarrier) : IFlatPersistenceCaptureHook
+    {
+        public StateId BarrierAtCapture { get; private set; }
+
+        public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
+            BarrierAtCapture = readBarrier();
+    }
 }
