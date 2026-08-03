@@ -61,24 +61,30 @@ node_issue=0
 cell_fail=0   # load-test cells that ran but failed (distinct from a client skipped for never starting)
 stop_fail=0   # stop-node.sh reported a DB-integrity/teardown failure (overlay clients; direct only warns)
 
-# Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
-# same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
+# Each entry is a client type, optionally 'ctype@image' (empty image = that type's default) and optionally a
+# trailing '@KEY=VALUE' container env assignment (e.g. nethermind@@NETHERMIND_EVM_STREAM=1), which A/Bs one
+# image against itself with a runtime switch flipped — the tightest arm pairing, since the binary is shared.
+# Sequential (one node up at a time), so same-snapshot variants are safe.
 for entry in $CLIENTS; do
   ctype="${entry%%@*}"
-  if [[ "$entry" == *@* ]]; then
-    img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
-  else
-    img="$(default_image "$ctype")" || { echo "skip $entry: no image"; continue; }; label="$ctype"
+  spec="${entry#"$ctype"}"; spec="${spec#@}"          # image[@KEY=VALUE]
+  img="${spec%%@*}"; env_kv=""
+  [[ "$spec" == *@* ]] && env_kv="${spec#*@}"
+  label="$ctype"
+  [[ -n "$img" ]] && label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
+  [[ -n "$env_kv" ]] && label="${label}_$(printf '%s' "$env_kv" | tr -c 'a-zA-Z0-9' '_')"
+  if [[ -z "$img" ]]; then
+    img="$(default_image "$ctype")" || { echo "skip $entry: no image"; continue; }
   fi
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
-  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=$(snap_path "$ctype"), head=${SNAPSHOT_BLOCK})"
+  echo "::group::sweep ${label} (type=${ctype}, image=${img}, env=${env_kv:-none}, db=$(snap_path "$ctype"), head=${SNAPSHOT_BLOCK})"
   if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" \
        DB_SOURCE="$(snap_path "$ctype")" DB_ISOLATION="$(isolation "$ctype")" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$(layout_flags "$ctype")" \
-       ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+       ADDITIONAL_FLAGS="" NODE_ENV_VARS="$env_kv" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
        "$here/start-node.sh"; then
     echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
