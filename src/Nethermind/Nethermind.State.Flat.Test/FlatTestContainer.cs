@@ -32,7 +32,7 @@ namespace Nethermind.State.Flat.Test;
 /// <see cref="FlatTestContainer"/> over the same <see cref="BaseDbPath"/> and the same
 /// <see cref="CatalogDb"/> instance to verify data survives a restart.
 /// </remarks>
-internal sealed class FlatTestContainer : IDisposable
+public sealed class FlatTestContainer : IDisposable
 {
     private readonly ContainerBuilder _builder;
     private readonly CancellationTokenSource _cts = new();

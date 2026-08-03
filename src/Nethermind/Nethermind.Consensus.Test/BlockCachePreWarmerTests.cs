@@ -1215,10 +1215,15 @@ public class BlockCachePreWarmerTests
             return new ThrowingBuildEnv();
         }
 
+        /// <remarks>
+        /// Refuses retention so every rental is a fresh <see cref="Create"/>: a pooled env rented
+        /// twice would otherwise increment <see cref="Returned"/> twice against a single create,
+        /// failing the <c>Returned == Created</c> assertion on timing-dependent pool hits.
+        /// </remarks>
         public bool Return(IReadOnlyTxProcessorSource obj)
         {
             Interlocked.Increment(ref _returned);
-            return true;
+            return false;
         }
 
         private sealed class ThrowingBuildEnv : IReadOnlyTxProcessorSource
