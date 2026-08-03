@@ -26,12 +26,7 @@ public sealed class PbtStorageTree(
         return EvmWordSlot.IsZero(value) ? StorageTree.ZeroBytes : EvmWordSlot.ToStrippedBytes(value);
     }
 
-    public void HintSet(in UInt256 index, byte[]? value)
-    {
-        EvmWord word = EvmWordSlot.FromStripped(value ?? []);
-        scope.Bundle.SetSlot(address, index, word);
-        QueuePrewarm(index, multiProducer: false);
-    }
+    public void HintSet(in UInt256 index, byte[]? value) => QueuePrewarm(index, multiProducer: false);
 
     internal void QueuePrewarm(in UInt256 index, bool multiProducer) { }
 

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -26,7 +28,7 @@ public class PbtSnapshotCompactorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(compacted.Content.TryGetLeaf(key, out ValueHash256? leaf) && leaf == TestItem.KeccakB.ValueHash256, Is.True);
-            Assert.That(compacted.Content.TryGetNode(locator, out byte[]? node) && node.SequenceEqual([2]), Is.True);
+            Assert.That(compacted.Content.TryGetNode(locator, out byte[]? node) && node.AsSpan().SequenceEqual([(byte)2]), Is.True);
         }
     }
 

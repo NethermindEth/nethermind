@@ -143,6 +143,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
     public void UpdateRootHash()
     {
         if (!_rootDirty) return;
+        foreach ((AddressAsKey address, Account? account) in Bundle.EnumeratePendingAccounts())
+        {
+            if (account is null) DeleteAccount(address);
+            else ApplyAccount(address, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
+        }
         long start = Stopwatch.GetTimestamp();
         PbtCanonicalBuildResult result = PbtCanonicalTree.RebuildWithNodes(Bundle.EnumerateLeaves());
         Bundle.ReplaceNodes(result.Nodes);
@@ -300,8 +305,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
         public void Set(in UInt256 index, byte[] value)
         {
             EvmWord word = EvmWordSlot.FromStripped(value);
-            scope.Bundle.SetLeaf(PbtStateKey.Storage(address, index),
-                EvmWordSlot.IsZero(word) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in word)));
+            PbtFullKey key = PbtStateKey.Storage(address, index);
+            scope.Bundle.SetLeaf(key, EvmWordSlot.IsZero(word) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in word)));
             scope.Bundle.SetSlot(address, index, word);
             scope._rootDirty = true;
         }
