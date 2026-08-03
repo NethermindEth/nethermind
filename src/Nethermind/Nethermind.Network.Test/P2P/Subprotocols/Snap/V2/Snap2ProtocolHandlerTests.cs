@@ -11,8 +11,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Network.P2P.Subprotocols.Snap.V2;
@@ -60,6 +62,22 @@ public class Snap2ProtocolHandlerTests
         {
             buffer?.SafeRelease();
         }
+    }
+
+    private static byte StaticVersion<T>() where T : IStaticProtocolInfo => T.Version;
+
+    [Test]
+    public void Version_is_snap2() =>
+        Assert.That(StaticVersion<Snap2ProtocolHandler>(), Is.EqualTo(SnapVersions.Snap2));
+
+    [Test]
+    public void MessageIdSpaceSize_covers_block_access_list_codes()
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        Snap2ProtocolHandler handler = CreateHandler(session, Substitute.For<ISnapServer>(), new MessageSerializationService());
+
+        Assert.That(handler.MessageIdSpaceSize, Is.EqualTo(10));
     }
 
     [Test]

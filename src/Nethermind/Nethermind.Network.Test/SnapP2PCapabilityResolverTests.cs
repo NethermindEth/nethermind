@@ -32,6 +32,21 @@ public class SnapP2PCapabilityResolverTests
         Assert.That(capabilities.Contains(new Capability(Protocol.Snap, SnapVersions.Snap1)), Is.EqualTo(expected));
     }
 
+    [TestCase(true, TestName = "Snap2Enabled advertises snap/2")]
+    [TestCase(false, TestName = "Snap2 disabled advertises no snap/2")]
+    public void Resolve_advertises_snap2_only_when_enabled(bool snap2Enabled)
+    {
+        ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = true, Snap2Enabled = snap2Enabled };
+        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+        syncModeSelector.Current.Returns(SyncMode.StateNodes);
+        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector, LimboLogs.Instance);
+
+        HashSet<Capability> capabilities = [];
+        resolver.Resolve(capabilities);
+
+        Assert.That(capabilities.Contains(new Capability(Protocol.Snap, SnapVersions.Snap2)), Is.EqualTo(snap2Enabled));
+    }
+
     [TestCase(false, true, SyncMode.StateNodes, SyncMode.Full, true, TestName = "Snap sync finishing flips snap and fires Changed")]
     [TestCase(false, true, SyncMode.StateNodes, SyncMode.FastBlocks, false, TestName = "Non-Full to non-Full leaves snap unchanged")]
     [TestCase(true, true, SyncMode.StateNodes, SyncMode.Full, false, TestName = "Snap serving keeps snap constant across sync modes")]
