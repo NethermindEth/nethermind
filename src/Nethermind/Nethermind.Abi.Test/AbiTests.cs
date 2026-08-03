@@ -688,6 +688,17 @@ public class AbiTests
         Assert.Throws<AbiException>(() => _abiEncoder.Decode(encodingStyle, signature, []));
     }
 
+    [Test]
+    public void Should_wrap_out_of_bounds_dynamic_bytes_length_one_decode()
+    {
+        AbiSignature abi = new("Test", AbiType.DynamicBytes);
+        byte[] data = new byte[64];
+        data[31] = 32;
+        data[63] = 1;
+
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, abi, data));
+    }
+
     private static byte[] DynamicValueWithMissingPayload(UInt256 declaredLength, int trailingDataLength = 0)
     {
         byte[] data = new byte[64 + trailingDataLength];
