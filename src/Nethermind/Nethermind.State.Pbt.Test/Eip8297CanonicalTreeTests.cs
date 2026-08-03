@@ -135,6 +135,28 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
+    public void Rebuild_with_nodes_returns_root_and_encoded_nodes()
+    {
+        PbtFullKey left = new([0x20]);
+        PbtFullKey right = new([0xA0]);
+        KeyValuePair<PbtFullKey, Nethermind.Core.Crypto.ValueHash256>[] entries =
+        [
+            new(left, new Nethermind.Core.Crypto.ValueHash256(Value(1))),
+            new(right, new Nethermind.Core.Crypto.ValueHash256(Value(2))),
+        ];
+
+        PbtCanonicalBuildResult result = PbtCanonicalTree.RebuildWithNodes(entries);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.RootHash, Is.EqualTo(PbtCanonicalTree.Rebuild(entries)));
+            Assert.That(result.Nodes, Has.Count.EqualTo(3));
+            Assert.That(result.Nodes[0].LocatorEncoding.ToArray(), Is.EqualTo(new byte[4]));
+            Assert.That(result.Nodes[0].NodeEncoding.IsEmpty, Is.False);
+        }
+    }
+
+    [Test]
     public void Persisted_prefix_and_locator_reject_noncanonical_padding()
     {
         Assert.Throws<ArgumentException>(() => new PbtBitPrefix([0x01], 1));

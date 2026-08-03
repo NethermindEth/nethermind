@@ -111,6 +111,19 @@ internal sealed class PbtCanonicalStore
         return false;
     }
 
+    internal PbtEncodedNode[] ExportNodes()
+    {
+        PbtEncodedNode[] result = new PbtEncodedNode[_nodes.Count];
+        int index = 0;
+        foreach ((PbtNodeLocator locator, byte[] encoding) in _nodes)
+        {
+            result[index++] = new PbtEncodedNode(locator.Encode(), encoding);
+        }
+
+        Array.Sort(result, static (left, right) => left.LocatorEncoding.Span.SequenceCompareTo(right.LocatorEncoding.Span));
+        return result;
+    }
+
     private static ValueHash256 Insert(Dictionary<PbtNodeLocator, byte[]> nodes, PbtNodeLocator locator,
         ValueHash256 expectedHash, PbtFullKey key, byte[] value)
     {
