@@ -204,6 +204,15 @@ internal sealed class InstructionStream
                 ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), 1, 0));
                 openBlock = -1;
             }
+            else if (IsConsumableSuccessor(ops, instruction) && GetInBlockCost(instruction) is ulong soloCost && soloCost != NotInBlock)
+            {
+                // A preceding handler may consume this op and land one entry past it. Giving it its own
+                // block keeps that landing on a charging entry instead of inside a bypassed one.
+                blockGas.Add(soloCost);
+                blockOpCount.Add(1);
+                ops.Add(new StreamOp((byte)instruction, StreamOpKind.BlockFirst, (ushort)pc, (ushort)(blockGas.Count - 1), (byte)size, 0));
+                openBlock = -1;
+            }
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
@@ -420,6 +429,11 @@ internal sealed class InstructionStream
             : new StreamOp((byte)Instruction.PUSH32, under.Kind, under.Pc, under.BlockIndex, (byte)advance, Intern(constants, constantIndex, in result));
         return true;
     }
+
+    private static bool IsConsumableSuccessor(List<StreamOp> ops, Instruction instruction) =>
+        ops.Count > 0
+        && ops[^1].Opcode == (byte)Instruction.EXTCODESIZE
+        && instruction is Instruction.ISZERO or Instruction.GT or Instruction.EQ;
 
     private static ulong Intern(List<UInt256> constants, Dictionary<UInt256, int> index, in UInt256 value)
     {

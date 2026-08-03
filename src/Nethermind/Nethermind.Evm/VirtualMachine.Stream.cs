@@ -463,8 +463,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 int landing = pcToEntry[programCounter];
                 if (landing == InstructionStream.InvalidEntry)
                 {
-                    // Nothing may land between entries — fail loudly rather than silently succeed.
-                    exceptionType = EvmExceptionType.InvalidJumpDestination;
+                    // A fusion unmapped this pc, yet a table peephole landed on it. The raw walk owns
+                    // the exact gas and failure semantics from here, so hand it the frame.
+                    MeteredResult unmapped = RunMeteredSegment<TCancelable>(stream, ref stack, ref gas, programCounter, opCodeCount, callDepth);
+                    programCounter = unmapped.ProgramCounter;
+                    opCodeCount = unmapped.OpCodeCount;
+                    entryIndex = unmapped.EntryIndex;
+                    metered = unmapped.Metered;
+                    exceptionType = unmapped.Exception;
+                    if (unmapped.Outcome == MeteredOutcome.Continue)
+                        continue;
+                    if (unmapped.Outcome == MeteredOutcome.OutOfGas)
+                    {
+                        OpCodeCount += opCodeCount;
+                        goto OutOfGas;
+                    }
+
                     break;
                 }
 
