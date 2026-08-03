@@ -28,13 +28,18 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         List<KeyValuePair<PbtFullKey, ValueHash256>> leaves = [];
 
         ScanLeaves(report, leaves, cancellationToken);
-        ScanNodes(report, cancellationToken);
 
         report.PersistedRoot = PbtRocksDbPersistence.ReadCurrentState(db.GetColumnDb(PbtColumns.Metadata)).Root;
         if (report.InvalidLeafCount == 0)
         {
-            report.ComputedRoot = PbtCanonicalTree.Rebuild(leaves);
+            PbtCanonicalBuildResult rebuilt = PbtCanonicalTree.RebuildWithNodes(leaves);
+            report.ComputedRoot = rebuilt.RootHash;
             report.RootMatches = report.ComputedRoot == report.PersistedRoot;
+            ScanNodes(report, rebuilt.Nodes, cancellationToken);
+        }
+        else
+        {
+            ScanNodes(report, [], cancellationToken);
         }
 
         if (_logger.IsInfo) _logger.Info($"PBT scan completed with {config.ScanTreeConcurrency} configured scan workers: {report.LeafCount:N0} full leaves and {report.NodeCount:N0} compressed nodes.");
@@ -67,7 +72,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         }
     }
 
-    private void ScanNodes(PbtScanReport report, CancellationToken cancellationToken)
+    private void ScanNodes(PbtScanReport report, IReadOnlyList<PbtEncodedNode> expectedNodes, CancellationToken cancellationToken)
     {
         IDb column = db.GetColumnDb(PbtColumns.CompressedNodes);
         if (column is not ISortedKeyValueStore sorted)
@@ -75,6 +80,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             throw new InvalidOperationException($"The PBT {PbtColumns.CompressedNodes} column is a {column.GetType().Name}, which cannot be range scanned.");
         }
 
+        int expectedIndex = 0;
         using ISortedView view = sorted.GetViewBetween([], [0xFF, 0xFF]);
         while (view.MoveNext())
         {
@@ -82,8 +88,17 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             report.NodeCount++;
             report.NodeKeyBytes += view.CurrentKey.Length;
             report.NodeBytes += view.CurrentValue.Length;
-            if (view.CurrentKey.Length == 0 || view.CurrentValue.Length == 0) report.InvalidNodeCount++;
+            if (expectedIndex >= expectedNodes.Count ||
+                !view.CurrentKey.SequenceEqual(expectedNodes[expectedIndex].LocatorEncoding.Span) ||
+                !view.CurrentValue.SequenceEqual(expectedNodes[expectedIndex].NodeEncoding.Span))
+            {
+                report.InvalidNodeCount++;
+            }
+            expectedIndex++;
         }
+
+        if (expectedIndex < expectedNodes.Count)
+            report.InvalidNodeCount += expectedNodes.Count - expectedIndex;
     }
 
     private static bool TryValidateLeaf(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, out PbtFullKey? key)
