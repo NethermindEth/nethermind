@@ -23,15 +23,17 @@ internal static class PbtTestLeaves
     /// <summary>The account a persisted state holds, decoded out of its header stem's blob as every read path does.</summary>
     public static Account? ReadAccount(IPbtPersistence.IReader reader, Address address)
     {
-        using RefCountingMemory? blob = reader.GetLeafBlob(PbtKeyDerivation.AccountHeaderStem(address));
-        return blob is null ? null : PbtLeafDecoder.DecodeAccount(blob.GetSpan());
+        ValueHash256? basic = reader.GetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey));
+        ValueHash256? codeHash = reader.GetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey));
+        if (basic is null && codeHash is null) return null;
+        PbtKeyDerivation.UnpackBasicData((basic ?? default).Bytes, out ulong nonce, out UInt256 balance);
+        return new Account(nonce, balance, Keccak.EmptyTreeHash, codeHash is null ? Keccak.OfAnEmptyString : new Hash256(codeHash.Value.Bytes));
     }
 
-    /// <summary>The slot value a persisted state holds, decoded out of its stem's blob at its sub-index.</summary>
     public static EvmWord ReadSlot(IPbtPersistence.IReader reader, Address address, in UInt256 slot)
     {
-        using RefCountingMemory? blob = reader.GetLeafBlob(PbtLeafDecoder.SlotStem(address, slot, out byte subIndex));
-        return blob is null ? default : PbtLeafDecoder.DecodeSlot(blob.GetSpan(), subIndex);
+        ValueHash256? value = reader.GetLeaf(PbtStateKey.Storage(address, slot));
+        return value is null ? default : EvmWordSlot.FromStripped(value.Value.Bytes);
     }
 
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)

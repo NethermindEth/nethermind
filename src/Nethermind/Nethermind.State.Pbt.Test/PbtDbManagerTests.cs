@@ -201,7 +201,7 @@ public class PbtDbManagerTests
             using (Persistence.IPbtPersistence.IReader reader = reopened.Persistence.CreateReader())
             {
                 Assert.That(reader.CurrentState, Is.EqualTo(new StateId(first)));
-                Assert.That(reader.CurrentPartitionRoots.Root, Is.EqualTo(treeRoot));
+                Assert.That(reader.CurrentRoot, Is.EqualTo(treeRoot));
             }
 
             BlockHeader second = childHeaders.Add(first, TestItem.KeccakB);

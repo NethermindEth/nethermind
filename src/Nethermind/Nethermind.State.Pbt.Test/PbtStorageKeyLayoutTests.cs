@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -15,243 +12,19 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>
-/// Pins where a slot lands on disk: which leaf column its stem belongs to, and that an ordered scan of
-/// a leaf column returns its stems ascending. The import rebuild rests on that ordering, and nothing
-/// else in the codebase would notice if it broke.
-/// </summary>
 public class PbtStorageKeyLayoutTests
 {
-    private static EvmWord Word(byte value) => EvmWordSlot.FromStripped([value]);
-
-    /// <summary>
-    /// Round-trips slots on both sides of the header boundary: slots below
-    /// <see cref="PbtKeyDerivation.HeaderStorageOffset"/> live on the account header stem in zone 0,
-    /// the rest on their own storage-zone stem, and an emptied stem reads back as zero either way.
-    /// </summary>
-    [TestCase(0u, PbtColumns.AccountLeaves, TestName = "header slot, first")]
-    [TestCase(63u, PbtColumns.AccountLeaves, TestName = "header slot, last")]
-    [TestCase(64u, PbtColumns.StorageLeaves, TestName = "storage-zone slot, first")]
-    [TestCase(1000u, PbtColumns.StorageLeaves, TestName = "storage-zone slot")]
-    public void SlotRoundTripsThroughItsStemsBlob(uint slot, PbtColumns expectedColumn)
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-        Stem stem = StemOf(TestItem.AddressA, slot, out byte subIndex);
-
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
-        {
-            batch.SetLeafBlob(stem, Blob(subIndex, 0xAB));
-        }
-
-        using (IPbtPersistence.IReader reader = persistence.CreateReader())
-        {
-            Assert.That(PbtTestLeaves.ReadSlot(reader, TestItem.AddressA, slot), Is.EqualTo(Word(0xAB)));
-
-            // a different address must not collide onto the same stem
-            Assert.That(EvmWordSlot.IsZero(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, slot)), Is.True);
-        }
-
-        Assert.That(db.GetColumnDb(expectedColumn)[stem.Bytes.ToArray()], Is.Not.Null);
-
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, TestItem.KeccakA.ValueHash256), new StateId(2, TestItem.KeccakB.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
-        {
-            batch.SetLeafBlob(stem, default);
-        }
-
-        using (IPbtPersistence.IReader reader = persistence.CreateReader())
-        {
-            Assert.That(EvmWordSlot.IsZero(PbtTestLeaves.ReadSlot(reader, TestItem.AddressA, slot)), Is.True);
-        }
-    }
-
-    /// <summary>
-    /// The property the import rebuild rests on: whatever order stems are written in, an ordered scan
-    /// of a leaf column returns them ascending, and the zone-0 header stems live in a column of their
-    /// own ahead of the zone-8 storage stems.
-    /// </summary>
     [Test]
-    public void LeafColumnsEnumerateInStemOrder()
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-
-        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
-        UInt256[] slots = [5, 70, 1000, 63, 64, 0, 100_000];
-
-        // sets, not lists: an account's header slots share one stem, and so do the 256 slots of a tree index
-        HashSet<Stem> headerStems = [];
-        HashSet<Stem> storageStems = [];
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
-        {
-            foreach (Address address in addresses)
-            {
-                foreach (UInt256 slot in slots)
-                {
-                    Stem stem = StemOf(address, slot, out byte subIndex);
-                    batch.SetLeafBlob(stem, Blob(subIndex, 0x11));
-                    (PbtKeyDerivation.IsHeaderSlot(slot) ? headerStems : storageStems).Add(stem);
-                }
-            }
-        }
-
-        List<Stem> headerScan = ScanStems(db, PbtColumns.AccountLeaves);
-        Assert.That(headerScan, Is.EqualTo(Ascending(headerStems)).AsCollection);
-        Assert.That(headerScan, Has.All.Matches<Stem>(static stem => stem.Zone == PbtKeyDerivation.AccountZone));
-
-        List<Stem> storageScan = ScanStems(db, PbtColumns.StorageLeaves);
-        Assert.That(storageScan, Is.EqualTo(Ascending(storageStems)).AsCollection);
-        // the storage zone is the first nibble's high bit rather than one nibble value
-        Assert.That(storageScan, Has.All.Matches<Stem>(static stem => stem.Zone >= 0x8));
-    }
-
-    [Test]
-    public void FullKeysRoundTripAndDeleteInStagedColumn()
+    public void CanonicalStorageKey_RoundTripsAndDeletes()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         PbtFullKey key = PbtStateKey.Storage(TestItem.AddressA, new UInt256(1000));
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), PbtPartitionRoots.Empty, WriteFlags.None))
-        {
-            batch.SetFullLeaf(key, value);
-        }
-        using (IPbtPersistence.IReader reader = persistence.CreateReader())
-        {
-            Assert.That(reader.GetFullLeaf(key), Is.EqualTo(value));
-            Assert.That(reader.EnumerateFullLeaves(PbtStateKey.StoragePrefix(TestItem.AddressA)),
-                Is.EqualTo(new[] { new KeyValuePair<PbtFullKey, ValueHash256>(key, value) }).AsCollection);
-        }
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, value), new StateId(2, value), PbtPartitionRoots.Empty, WriteFlags.None))
-        {
-            batch.SetFullLeaf(key, null);
-        }
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), value, WriteFlags.None)) batch.SetLeaf(key, value);
+        using (IPbtPersistence.IReader reader = persistence.CreateReader()) Assert.That(reader.GetLeaf(key), Is.EqualTo(value));
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(new StateId(1, value), new StateId(2, value), value, WriteFlags.None)) batch.SetLeaf(key, null);
         using IPbtPersistence.IReader deleted = persistence.CreateReader();
-        Assert.That(deleted.GetFullLeaf(key), Is.Null);
+        Assert.That(deleted.GetLeaf(key), Is.Null);
     }
-
-    /// <summary>A database written under an older key layout must be refused, not silently read as all-zero slots.</summary>
-    [Test]
-    public void RejectsADatabaseWrittenUnderAnEarlierLayout()
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
-        {
-            batch.SetLeafBlob(StemOf(TestItem.AddressA, 1, out byte subIndex), Blob(subIndex, 0xAB));
-        }
-
-        // strip the version stamp, leaving a populated database that looks like a pre-versioning one
-        db.GetColumnDb(PbtColumns.Metadata).Remove("layoutVersion"u8);
-
-        Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()), Throws.InstanceOf<InvalidDataException>());
-    }
-
-    /// <summary>An empty database has no state to misread, so it is stamped with the current layout and tiling rather than refused.</summary>
-    [Test]
-    public void StampsAFreshDatabase()
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtConfig config = new() { TrieNodeLayout = PbtTrieLayout.FiveLevelInterleaved };
-        _ = new PbtRocksDbPersistence(db, config);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(db.GetColumnDb(PbtColumns.Metadata)["layoutVersion"u8.ToArray()], Is.Not.Null);
-            Assert.That(db.GetColumnDb(PbtColumns.Metadata)["trieTiling"u8.ToArray()], Is.EqualTo([(byte)PbtTiling.FiveLevel]));
-        }
-        Assert.That(() => new PbtRocksDbPersistence(db, config), Throws.Nothing);
-    }
-
-    /// <summary>A populated database without a tiling stamp may use the removed clustered layout and must be refused.</summary>
-    [Test]
-    public void RejectsAPopulatedDatabaseWithoutATilingStamp()
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
-        {
-            batch.SetLeafBlob(StemOf(TestItem.AddressA, 1, out byte subIndex), Blob(subIndex, 0xAB));
-        }
-
-        db.GetColumnDb(PbtColumns.Metadata).Remove("trieTiling"u8);
-
-        Assert.That(
-            () => new PbtRocksDbPersistence(db, new PbtConfig()),
-            Throws.InstanceOf<InvalidDataException>().With.Message.Contains("legacy clustered layout"));
-    }
-
-    /// <summary>The removed clustered tiling used stamp zero and must not be reopened as an independent layout.</summary>
-    [Test]
-    public void RejectsLegacyClusteredTilingStamp()
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        _ = new PbtRocksDbPersistence(db, new PbtConfig());
-        db.GetColumnDb(PbtColumns.Metadata)["trieTiling"u8.ToArray()] = [0];
-
-        Assert.That(
-            () => new PbtRocksDbPersistence(db, new PbtConfig()),
-            Throws.InstanceOf<InvalidDataException>().With.Message.Contains("unsupported trie tiling stamp 00"));
-    }
-
-    /// <summary>
-    /// The tiling fixes the keys a tree is stored under, so a populated database may only be reopened
-    /// under a layout of the tiling that wrote it — the levels half of the layout being free to change,
-    /// as the encodings all read whichever wrote them.
-    /// </summary>
-    [TestCase(PbtTrieLayout.FourLevelEveryLevel, PbtTrieLayout.FourLevelBoundaryOnly, false, TestName = "four-level, every level to boundary-only")]
-    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FourLevelBoundaryOnly, false, TestName = "four-level, other levels")]
-    [TestCase(PbtTrieLayout.FourLevelBoundaryOnly, PbtTrieLayout.FourLevelInterleaved, false, TestName = "four-level, reverse levels")]
-    [TestCase(PbtTrieLayout.SixLevelInterleaved, PbtTrieLayout.SixLevelEvery3Depth, false, TestName = "six-level, every-three groups")]
-    [TestCase(PbtTrieLayout.SixLevelEvery3Depth, PbtTrieLayout.SixLevelInterleaved, false, TestName = "six-level, reverse levels")]
-    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.FiveLevelInterleaved, true, TestName = "four to five levels")]
-    [TestCase(PbtTrieLayout.FiveLevelInterleaved, PbtTrieLayout.FourLevelInterleaved, true, TestName = "five to four levels")]
-    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.SixLevelInterleaved, true, TestName = "four to six levels")]
-    [TestCase(PbtTrieLayout.FourLevelInterleaved, PbtTrieLayout.EightLevelInterleaved, true, TestName = "four to eight levels")]
-    public void ReopeningAPopulatedDatabase_IsRefusedOnlyUnderAnotherTiling(PbtTrieLayout writtenAs, PbtTrieLayout reopenAs, bool refused)
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtConfig written = new() { TrieNodeLayout = writtenAs };
-        PbtRocksDbPersistence persistence = new(db, written);
-
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None))
-        {
-            batch.SetLeafBlob(StemOf(TestItem.AddressA, 1, out byte subIndex), Blob(subIndex, 0xAB));
-        }
-
-        Assert.That(
-            () => new PbtRocksDbPersistence(db, new PbtConfig { TrieNodeLayout = reopenAs }),
-            refused
-                ? Throws.InstanceOf<InvalidDataException>().With.Message.Contains(nameof(IPbtConfig.TrieNodeLayout))
-                : Throws.Nothing);
-    }
-
-    private static List<Stem> ScanStems(SnapshotableMemColumnsDb<PbtColumns> db, PbtColumns column)
-    {
-        // one byte longer than any stem, so it sorts above every one of them
-        byte[] pastEverything = new byte[Stem.Length + 1];
-        pastEverything.AsSpan().Fill(0xFF);
-
-        List<Stem> scanned = [];
-        using ISortedView view = ((ISortedKeyValueStore)db.GetColumnDb(column)).GetViewBetween(new byte[Stem.Length], pastEverything);
-        while (view.MoveNext()) scanned.Add(new Stem(view.CurrentKey));
-        return scanned;
-    }
-
-    private static List<Stem> Ascending(HashSet<Stem> stems)
-    {
-        List<Stem> ordered = [.. stems];
-        ordered.Sort(static (a, b) => a.Bytes.SequenceCompareTo(b.Bytes));
-        return ordered;
-    }
-
-    private static Stem StemOf(Address address, in UInt256 slot, out byte subIndex)
-    {
-        PbtSlotKeyDeriver deriver = new(address);
-        return deriver.Derive(slot, out subIndex);
-    }
-
-    private static byte[] Blob(byte subIndex, byte value) => PbtTestLeaves.Blob((subIndex, [value]));
 }

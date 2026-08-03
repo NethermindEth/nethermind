@@ -109,7 +109,7 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
 
         using IPbtPersistence.IReader reader = target.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
-        Assert.That(reader.CurrentPartitionRoots.Root, Is.EqualTo(root), "and record the tree root beside it");
+        Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
     }
 
     /// <summary>
