@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -15,39 +14,24 @@ using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
-/// <summary>Provides the read/write surface for a processing branch backed by an EIP-8297 tree.</summary>
-/// <remarks>
-/// The scope retains the folded tree root and the header root separately. The latter is reported and
-/// used to key states so Patricia-rooted blocks validate against the root their header claims.
-/// </remarks>
-public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtStore, ITrieWarmer.IAddressWarmer
+/// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
+public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
-    private static readonly byte[] _clearedAccountHeader = new byte[2 * ValueHash256.MemorySize];
-
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
-    private readonly PbtTrieLayout _writeLayout;
-    private readonly int _rootFoldConcurrency;
     private readonly ITrieWarmer _trieWarmer;
-
-    // Storage and account writes use disjoint sub-index bands, allowing their batches to share this builder.
-    private readonly PbtWriteBatchBuilder _writeBatchBuilder;
-
-    // Not pooled: an unjoined code writer after a failed block could otherwise write into a later scope.
     private readonly Dictionary<ValueHash256, byte[]> _pendingCode = [];
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
     private readonly HashSet<Stem> _queuedPrewarms = [];
     private readonly object _warmupLock = new();
 
     private StateId _currentStateId;
-    private PbtPartitionRoots _partitionRoots;
     private Hash256 _rootHash;
+    private ValueHash256 _treeRoot;
     private Hash256? _authoritativeRoot;
-
     private BlockHeader? _currentHeader;
     private BlockHeader? _childHeader;
-
     private bool _rootDirty;
     private bool _isDisposed;
     private bool _pausePrewarmer;
@@ -73,33 +57,25 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         Bundle = bundle;
         _commitTarget = commitTarget;
         _childHeaders = childHeaders;
-        _writeBatchBuilder = resourcePool.GetWriteBatchBuilder(usage);
         _isReadOnly = isReadOnly;
-        _writeLayout = writeLayout;
-        _rootFoldConcurrency = rootFoldConcurrency;
         _trieWarmer = trieWarmer;
-        _partitionRoots = bundle.PartitionRoots;
+        _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, _pendingCode);
         _trieWarmer.OnEnterScope();
     }
 
     internal PbtSnapshotBundle Bundle { get; }
-
     public Hash256 RootHash => _rootHash;
+    public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
+    internal bool IsDisposed => Volatile.Read(ref _isDisposed);
+    internal int HintSequenceId => Volatile.Read(ref _hintSequenceId);
 
-    /// <summary>Uses <paramref name="root"/> to report and key the current state.</summary>
-    /// <remarks>
-    /// The mirror scope supplies the authoritative backend's root for genesis and self-built blocks,
-    /// which lack a child header. Applying it here also covers blocks with no dirty state.
-    /// </remarks>
     internal void UseAuthoritativeRoot(Hash256 root)
     {
         _authoritativeRoot = root;
         _rootHash = root;
     }
-
-    public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
     public Account? Get(Address address)
     {
@@ -108,17 +84,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         return account;
     }
 
-    public void HintGet(Address address, Account? account)
-    {
-        Bundle.PromoteAccount(address, account);
-        QueueAccountPrewarm(address);
-    }
-
-    public void HintWarmAccount(in ValueAddress address) => QueueAccountPrewarm(address.ToAddress());
-
-    public void HintWarmSlot(in ValueAddress address, in UInt256 index) =>
-        GetOrCreateStorageTree(address.ToAddress()).QueuePrewarm(index, multiProducer: true);
-
+    public void HintGet(Address address, Account? account) => Bundle.PromoteAccount(address, account);
+    public void HintWarmAccount(in ValueAddress address) { }
+    public void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => GetOrCreateStorageTree(address);
@@ -128,20 +96,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         lock (_storages)
         {
             ref PbtStorageTree? tree = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-            if (!exists) tree = new PbtStorageTree(this, address, _trieWarmer);
+            if (!exists) tree = new PbtStorageTree(this, address);
             return tree!;
         }
-    }
-
-    private void QueueAccountPrewarm(Address address)
-    {
-        Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
-        if (!TryReservePrewarm(stem, out int sequenceId)) return;
-
-        if (_trieWarmer.PushAddressJob(this, address, sequenceId))
-            Metrics.IncrementPbtTrieWarmerTriggered();
-        else
-            CancelPrewarm(stem);
     }
 
     internal bool TryReservePrewarm(in Stem stem, out int sequenceId)
@@ -150,12 +107,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         {
             sequenceId = _hintSequenceId;
             if (_isDisposed || _pausePrewarmer) return false;
-            if (!_queuedPrewarms.Add(stem))
-            {
-                Metrics.IncrementPbtTrieWarmerSkippedByDeduplication();
-                return false;
-            }
-
+            if (!_queuedPrewarms.Add(stem)) return false;
             _outstandingWarmups++;
             return true;
         }
@@ -170,103 +122,53 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
     }
 
-    internal int HintSequenceId => Volatile.Read(ref _hintSequenceId);
+    internal void CompletePrewarm()
+    {
+        lock (_warmupLock) CompletePrewarmUnderLock();
+    }
 
-    internal PbtTrieLayout WriteLayout => _writeLayout;
-
-    internal PbtPartitionRoots PartitionRoots => _partitionRoots;
-
-    internal bool IsDisposed => Volatile.Read(ref _isDisposed);
+    private void CompletePrewarmUnderLock()
+    {
+        if (--_outstandingWarmups == 0) Monitor.PulseAll(_warmupLock);
+    }
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        try
-        {
-            if (IsDisposed || HintSequenceId != sequenceId) return false;
-            Stem stem = PbtKeyDerivation.AccountHeaderStem(address);
-            return Bundle.WarmStemPath(_writeLayout, _partitionRoots, stem);
-        }
-        finally
-        {
-            CompletePrewarm();
-        }
+        CompletePrewarm();
+        return false;
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch(this);
 
-    /// <summary>Folds dirty stems into the tree and records the resulting nodes and blobs in the write buffer.</summary>
-    /// <remarks>
-    /// A block header root takes precedence over the folded root. Synthetic and self-built blocks have
-    /// no child header, so they use the folded root they carry when later processed.
-    /// </remarks>
     public void UpdateRootHash()
     {
         if (!_rootDirty) return;
-
-        PauseAndDrainPrewarmer();
-        try
-        {
-            UpdateRootHashCore();
-        }
-        finally
-        {
-            ResumePrewarmer();
-        }
-    }
-
-    private void UpdateRootHashCore()
-    {
-        if (!_rootDirty) return;
-
         long start = Stopwatch.GetTimestamp();
-        using (PbtWriteBatchSet changes = _writeBatchBuilder.DrainToWriteBatches())
-        {
-            _partitionRoots = TrieUpdater.UpdateRoot(
-                this, _partitionRoots, changes, PooledRefCountingMemoryProvider.Instance, _writeLayout, _rootFoldConcurrency, out _);
-        }
-        ValueHash256 canonicalRoot = PbtCanonicalTree.Rebuild(Bundle.EnumerateFullLeaves());
+        PbtCanonicalBuildResult result = PbtCanonicalTree.RebuildWithNodes(Bundle.EnumerateLeaves());
+        Bundle.ReplaceNodes(result.Nodes);
+        _treeRoot = result.RootHash;
         Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
-
         _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
-        _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? canonicalRoot.ToHash256();
+        _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
         _rootDirty = false;
     }
-
-    RefCountingMemory? IPbtStore.GetTrieNode(in TrieNodeKey key, in ValueHash256 hash) => Bundle.GetTrieNode(key, hash);
-
-    RefCountingMemory? IPbtStore.GetLeafBlob(in Stem stem, in ValueHash256 hash) => Bundle.GetLeafBlob(stem, hash);
-
-    void IPbtStore.SetTrieNode(in TrieNodeKey key, in ValueHash256 hash, RefCountingMemory? node) => Bundle.SetOwnedTrieNode(key, hash, node);
-
-    void IPbtStore.SetLeafBlob(in Stem stem, in ValueHash256 hash, RefCountingMemory? blob) => Bundle.SetOwnedLeafBlob(stem, hash, blob);
 
     public void Commit(ulong blockNumber)
     {
         PauseAndDrainPrewarmer();
         try
         {
-            UpdateRootHashCore();
-
+            UpdateRootHash();
             StateId newStateId = new(blockNumber, _rootHash);
             if (newStateId != _currentStateId)
             {
-                PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _partitionRoots);
-                if (_isReadOnly)
-                {
-                    snapshot.Dispose();
-                }
-                else
-                {
-                    _commitTarget.AddSnapshot(snapshot);
-                }
-
+                PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot);
+                if (_isReadOnly) snapshot.Dispose();
+                else _commitTarget.AddSnapshot(snapshot);
                 _currentStateId = newStateId;
             }
-
-            // Clear the header when no child was found so the next block does not resolve itself as its child.
             _currentHeader = _childHeader;
             _childHeader = null;
-
             _pendingCode.Clear();
             lock (_storages) _storages.Clear();
             _rootDirty = false;
@@ -277,7 +179,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         }
     }
 
-    /// <summary>Stops and joins warmers before the fold mutates or snapshot collection resets the mutable bundle.</summary>
     private void PauseAndDrainPrewarmer()
     {
         lock (_warmupLock)
@@ -294,17 +195,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
         lock (_warmupLock) _pausePrewarmer = false;
     }
 
-    internal void CompletePrewarm()
-    {
-        lock (_warmupLock) CompletePrewarmUnderLock();
-    }
-
-    private void CompletePrewarmUnderLock()
-    {
-        if (--_outstandingWarmups == 0) Monitor.PulseAll(_warmupLock);
-    }
-
-    /// <remarks>Disposing returns pending stem-change maps to the pool when a scope is abandoned before its final fold.</remarks>
     public void Dispose()
     {
         lock (_warmupLock)
@@ -315,128 +205,88 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
             _hintSequenceId++;
             while (_outstandingWarmups != 0) Monitor.Wait(_warmupLock);
         }
-
         try
         {
-            _writeBatchBuilder.Dispose();
+            Bundle.Dispose();
         }
         finally
         {
-            try
-            {
-                Bundle.Dispose();
-            }
-            finally
-            {
-                _trieWarmer.OnExitScope();
-            }
+            _trieWarmer.OnExitScope();
         }
     }
 
-    private void ApplyAccountHeader(Address address, Account account)
+    private void ApplyAccount(Address address, Account account)
     {
-        Stem headerStem = PbtKeyDerivation.AccountHeaderStem(address);
+        ValueHash256 oldCodeHash = Bundle.GetAccount(address)?.CodeHash.ValueHash256 ?? ValueKeccak.OfAnEmptyString;
+        ValueHash256 newCodeHash = account.CodeHash.ValueHash256;
+        if (oldCodeHash != newCodeHash)
+        {
+            RemoveCodeReference(oldCodeHash);
+            AddCodeReference(newCodeHash);
+        }
 
-        // Unchanged code is not in the pending map, so recover its size without fetching its bytes.
-        byte[]? updatedCode = account.HasCode && _pendingCode.TryGetValue(account.CodeHash, out byte[]? c) ? c : null;
-        uint codeSize = updatedCode is not null ? (uint)updatedCode.Length
+        byte[]? code = account.HasCode && _pendingCode.TryGetValue(newCodeHash, out byte[]? pending) ? pending : null;
+        ValueHash256? prior = Bundle.GetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey));
+        uint codeSize = code is not null ? (uint)code.Length
             : !account.HasCode ? 0
-            : PriorCodeSize(headerStem);
-        byte[]? chunks = updatedCode is null ? null : PbtKeyDerivation.ChunkifyCode(updatedCode);
+            : prior is null ? 0 : PbtKeyDerivation.ReadBasicDataCodeSize(prior.Value.Bytes);
+        Span<byte> basicData = stackalloc byte[ValueHash256.MemorySize];
+        PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
+        Bundle.SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), new ValueHash256(basicData));
+        Bundle.SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), newCodeHash);
 
-        Span<byte> basicDataAndCodeHash = stackalloc byte[2 * ValueHash256.MemorySize];
-        PbtKeyDerivation.PackBasicData(basicDataAndCodeHash[..ValueHash256.MemorySize], codeSize, account.Nonce, account.Balance);
-        account.CodeHash.Bytes.CopyTo(basicDataAndCodeHash[ValueHash256.MemorySize..]);
-        Bundle.SetFullLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), new ValueHash256(basicDataAndCodeHash[..ValueHash256.MemorySize]));
-        Bundle.SetFullLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), new ValueHash256(basicDataAndCodeHash[ValueHash256.MemorySize..]));
-        _writeBatchBuilder.SetLeafRange(headerStem, PbtKeyDerivation.BasicDataLeafKey, basicDataAndCodeHash);
-
-        if (chunks is null) return;
-
-        int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
-        int headerChunks = Math.Min(chunkCount, PbtKeyDerivation.HeaderCodeChunks);
-        for (int i = 0; i < headerChunks; i++)
+        if (code is null) return;
+        byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
+        int count = chunks.Length / PbtKeyDerivation.CodeChunkSize;
+        for (int chunkId = 0; chunkId < count; chunkId++)
         {
-            ReadOnlySpan<byte> chunk = chunks.AsSpan(i * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
-            PbtFullKey key = PbtStateKey.Code(address, account.CodeHash.ValueHash256, i);
-            Bundle.SetFullLeaf(key, chunk.IndexOfAnyExcept((byte)0) < 0 ? null : new ValueHash256(chunk));
-        }
-        _writeBatchBuilder.SetLeafRange(headerStem, PbtKeyDerivation.HeaderCodeChunkSubIndex(0), ChunkRun(chunks, 0, headerChunks));
-
-        for (int i = PbtKeyDerivation.HeaderCodeChunks; i < chunkCount;)
-        {
-            int chunkStart = i;
-            Stem overflowStem = PbtKeyDerivation.CodeOverflowStem(account.CodeHash, i, out byte subIndex);
-            int run = Math.Min(chunkCount - i, PbtKeyDerivation.StemSubtreeWidth - subIndex);
-            for (int chunkId = chunkStart; chunkId < chunkStart + run; chunkId++)
-            {
-                ReadOnlySpan<byte> chunk = chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
-                Bundle.SetFullLeaf(Eip8297KeyDerivation.OverflowCodeKey(account.CodeHash.Bytes, chunkId),
-                    chunk.IndexOfAnyExcept((byte)0) < 0 ? null : new ValueHash256(chunk));
-            }
-            _writeBatchBuilder.SetLeafRange(overflowStem, subIndex, ChunkRun(chunks, i, run));
-            i += run;
+            ReadOnlySpan<byte> chunk = chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);
+            PbtFullKey key = PbtStateKey.Code(address, newCodeHash, chunkId);
+            Bundle.SetLeaf(key, chunk.IndexOfAnyExcept((byte)0) < 0 ? null : new ValueHash256(chunk));
         }
     }
 
-    private void ClearAccountHeader(Address address)
+    private void DeleteAccount(Address address)
     {
-        Bundle.DeleteFullLeafPrefix(PbtStateKey.AccountPrefix(address));
-        Bundle.DeleteFullLeafPrefix(PbtStateKey.StoragePrefix(address));
-        _writeBatchBuilder.SetLeafRange(PbtKeyDerivation.AccountHeaderStem(address), PbtKeyDerivation.BasicDataLeafKey, _clearedAccountHeader);
-    }
-
-    private static ReadOnlySpan<byte> ChunkRun(byte[] chunks, int firstChunk, int count) =>
-        chunks.AsSpan(firstChunk * PbtKeyDerivation.CodeChunkSize, count * PbtKeyDerivation.CodeChunkSize);
-
-    private static ValueHash256 SlotLeaf(in EvmWord value) =>
-        EvmWordSlot.IsZero(value) ? default : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
-
-    private uint PriorCodeSize(in Stem headerStem)
-    {
-        using RefCountingMemory? prior = Bundle.GetLeafBlob(headerStem);
-        return prior is not null && StemLeafBlob.TryGetValue(prior.GetSpan(), PbtKeyDerivation.BasicDataLeafKey, out ReadOnlySpan<byte> basicData)
-            ? PbtKeyDerivation.ReadBasicDataCodeSize(basicData)
-            : 0;
-    }
-
-    // The marker lets cleared-account storage reads return zero without rewriting all storage stems.
-    private void SelfDestructStorage(Address address)
-    {
+        Account? prior = Bundle.GetAccount(address);
+        if (prior is not null) RemoveCodeReference(prior.CodeHash.ValueHash256);
+        Bundle.DeletePrefix(PbtStateKey.AccountPrefix(address));
+        Bundle.DeletePrefix(PbtStateKey.StoragePrefix(address));
         Bundle.SelfDestruct(address);
-        _rootDirty = true;
+    }
+
+    private void AddCodeReference(in ValueHash256 codeHash)
+    {
+        if (codeHash == ValueKeccak.OfAnEmptyString) return;
+        Bundle.SetCodeReference(codeHash, checked(Bundle.GetCodeReference(codeHash) + 1));
+    }
+
+    private void RemoveCodeReference(in ValueHash256 codeHash)
+    {
+        if (codeHash == ValueKeccak.OfAnEmptyString) return;
+        ulong count = Bundle.GetCodeReference(codeHash);
+        if (count <= 1)
+        {
+            Bundle.SetCodeReference(codeHash, null);
+            Bundle.DeletePrefix(PbtStateKey.OverflowCodePrefix(codeHash));
+        }
+        else
+        {
+            Bundle.SetCodeReference(codeHash, count - 1);
+        }
     }
 
     private sealed class WriteBatch(PbtWorldStateScope scope) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly long _start = Stopwatch.GetTimestamp();
-
-        // PBT accounts have no storage root to propagate.
-        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
-        {
-            add
-            {
-            }
-            remove
-            {
-            }
-        }
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated { add { } remove { } }
 
         public void Set(Address key, Account? account)
         {
             scope.Bundle.SetAccount(key, account);
+            if (account is null) scope.DeleteAccount(key);
+            else scope.ApplyAccount(key, account.WithChangedStorageRoot(Keccak.EmptyTreeHash));
             scope._rootDirty = true;
-
-            if (account is null)
-            {
-                // Removed accounts bypass the storage batch, so clear their storage here.
-                scope.ClearAccountHeader(key);
-                scope.SelfDestructStorage(key);
-            }
-            else
-            {
-                scope.ApplyAccountHeader(key, account);
-            }
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
@@ -447,25 +297,21 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, IPbtSt
 
     private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        private PbtSlotKeyDeriver _deriver = new(address);
-
         public void Set(in UInt256 index, byte[] value)
         {
             EvmWord word = EvmWordSlot.FromStripped(value);
-
-            Stem stem = _deriver.Derive(index, out byte subIndex);
-
-            ValueHash256 slotLeaf = SlotLeaf(word);
-            scope.Bundle.SetFullLeaf(PbtStateKey.Storage(address, index), slotLeaf == default ? null : slotLeaf);
-            scope._writeBatchBuilder.SetLeaf(stem, subIndex, slotLeaf);
+            scope.Bundle.SetLeaf(PbtStateKey.Storage(address, index),
+                EvmWordSlot.IsZero(word) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in word)));
             scope.Bundle.SetSlot(address, index, word);
             scope._rootDirty = true;
         }
 
-        public void Clear() => scope.SelfDestructStorage(address);
-
-        public void Dispose()
+        public void Clear()
         {
+            scope.Bundle.SelfDestruct(address);
+            scope._rootDirty = true;
         }
+
+        public void Dispose() { }
     }
 }

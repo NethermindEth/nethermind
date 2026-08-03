@@ -3,36 +3,23 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
-using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>
-/// A sealed diff layer covering the state transition <see cref="From"/> → <see cref="To"/>.
-/// Content is immutable once sealed; the snapshot is leased by every bundle reading through it
-/// and released when pruned.
-/// </summary>
-/// <remarks>
-/// The snapshot owns <paramref name="content"/> from construction: it is returned to
-/// <paramref name="resourcePool"/> when the last lease drops, so nothing may read the content after
-/// that. <paramref name="usage"/> is captured here rather than read back from whoever releases the
-/// last lease, because a content returned to a category it was not rented from is never detected —
-/// it just starves one pool and inflates another.
-/// </remarks>
-public class PbtSnapshot(in StateId from, in StateId to, in PbtPartitionRoots partitionRoots, PbtSnapshotContent content, IPbtResourcePool resourcePool, PbtResourcePool.Usage usage)
-    : RefCountingDisposable
+/// <summary>A sealed canonical EIP-8297 diff covering <see cref="From"/> to <see cref="To"/>.</summary>
+public class PbtSnapshot(
+    in StateId from,
+    in StateId to,
+    in ValueHash256 treeRoot,
+    PbtSnapshotContent content,
+    IPbtResourcePool resourcePool,
+    PbtResourcePool.Usage usage) : RefCountingDisposable
 {
     private PbtSnapshotPayloadSize? _payloadSize;
 
     public StateId From { get; } = from;
     public StateId To { get; } = to;
-
-    /// <summary>The three partition roots of the state at <see cref="To"/>.</summary>
-    public PbtPartitionRoots PartitionRoots { get; } = partitionRoots;
-
-    /// <summary>The EIP-8297 root derived from <see cref="PartitionRoots"/>.</summary>
-    public ValueHash256 TreeRoot => PartitionRoots.Root;
-
+    public ValueHash256 TreeRoot { get; } = treeRoot;
     public PbtSnapshotContent Content { get; } = content;
 
     internal PbtSnapshotPayloadSize PayloadSize => _payloadSize ??= Content.GetPayloadSize();

@@ -2,50 +2,40 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
 
-/// <summary>Durable storage for a world state's leaf blobs, trie nodes, and <see cref="StateId"/>.</summary>
+/// <summary>Durable atomic storage for one canonical EIP-8297 state.</summary>
 public interface IPbtPersistence
 {
     IReader CreateReader();
 
-    /// <summary>Starts an atomic batch advancing the persisted state from <paramref name="from"/> to <paramref name="to"/>.</summary>
-    /// <param name="toPartitionRoots">The partition roots of <paramref name="to"/>, which <see cref="StateId.StateRoot"/> does not carry.</param>
-    /// <param name="flags">
-    /// Applied to every write. <see cref="WriteFlags.DisableWAL"/> requires <see cref="Flush"/> for crash durability.
-    /// </param>
-    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in PbtPartitionRoots toPartitionRoots, WriteFlags flags);
+    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags);
 
-    /// <summary>Makes preceding <see cref="WriteFlags.DisableWAL"/> writes crash-durable.</summary>
     void Flush();
 
     public interface IReader : IDisposable
     {
         StateId CurrentState { get; }
+        ValueHash256 CurrentRoot { get; }
 
-        /// <summary>Gets the partition roots of <see cref="CurrentState"/>.</summary>
-        PbtPartitionRoots CurrentPartitionRoots { get; }
+        ValueHash256? GetLeaf(PbtFullKey key);
+        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves();
+        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix);
 
-        RefCountingMemory? GetLeafBlob(in Stem stem);
-        RefCountingMemory? GetTrieNode(in TrieNodeKey key);
+        byte[]? GetNode(PbtFullKey locator);
+        IEnumerable<KeyValuePair<PbtFullKey, byte[]>> EnumerateNodes();
 
-        ValueHash256? GetFullLeaf(PbtFullKey key);
-        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves();
-        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix);
+        ulong GetCodeReference(in ValueHash256 codeHash);
     }
 
     public interface IWriteBatch : IDisposable
     {
-        /// <summary>An empty value deletes the blob.</summary>
-        void SetLeafBlob(in Stem stem, scoped ReadOnlySpan<byte> blob);
-
-        /// <summary>An empty value deletes the node.</summary>
-        void SetTrieNode(in TrieNodeKey key, scoped ReadOnlySpan<byte> node);
-
-        void SetFullLeaf(PbtFullKey key, ValueHash256? value);
+        void SetLeaf(PbtFullKey key, ValueHash256? value);
+        void SetNode(PbtFullKey locator, ReadOnlySpan<byte> encoding);
+        void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount);
     }
 }

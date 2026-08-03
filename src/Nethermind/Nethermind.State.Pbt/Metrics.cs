@@ -82,12 +82,9 @@ public static class Metrics
 
     internal static void AddPbtBaseSnapshot(in PbtSnapshotPayloadSize size, long direction)
     {
-        PbtBaseSnapshotMemory.AddBy(AccountLeafSnapshotMemory, direction * size.AccountLeaf);
-        PbtBaseSnapshotMemory.AddBy(AccountTrieSnapshotMemory, direction * size.AccountTrie);
-        PbtBaseSnapshotMemory.AddBy(CodeLeafSnapshotMemory, direction * size.CodeLeaf);
-        PbtBaseSnapshotMemory.AddBy(CodeTrieSnapshotMemory, direction * size.CodeTrie);
-        PbtBaseSnapshotMemory.AddBy(StorageLeafSnapshotMemory, direction * size.StorageLeaf);
-        PbtBaseSnapshotMemory.AddBy(StorageTrieSnapshotMemory, direction * size.StorageTrie);
+        PbtBaseSnapshotMemory.AddBy(AccountLeafSnapshotMemory, direction * size.Leaf);
+        PbtBaseSnapshotMemory.AddBy(AccountTrieSnapshotMemory, direction * size.Node);
+        PbtBaseSnapshotMemory.AddBy(CodeLeafSnapshotMemory, direction * size.CodeReference);
         Interlocked.Add(ref _pbtBaseSnapshotCount, direction);
     }
 

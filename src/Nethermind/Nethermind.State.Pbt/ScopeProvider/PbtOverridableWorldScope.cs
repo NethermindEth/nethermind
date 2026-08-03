@@ -106,7 +106,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         try
         {
             readOnlyBundle = _manager.GatherReadOnlyBundle(current);
-            return new PbtSnapshotBundle(localChain, readOnlyBundle, _storeCache, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, _recordDetailedMetrics);
+            return new PbtSnapshotBundle(localChain, readOnlyBundle, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv);
         }
         catch
         {
