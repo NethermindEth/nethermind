@@ -2257,18 +2257,18 @@ public partial class EthRpcModuleTests
     {
         // execution-apis #854: when all gas-fee fields are omitted, the request must not fail
         // solely because the sender cannot afford client-selected default fees.
-        using Context ctx = await Context.Create();
+        // London-enabled so the head block has a nonzero base fee — the divergent client
+        // behavior is defaulting maxFeePerGas to the base fee and failing affordability.
+        using Context ctx = await Context.CreateWithLondonEnabled();
 
         // Unfunded sender, codeless recipient, zero value, no gas/fee fields.
-        object transaction = JsonSerializer.Deserialize<object>(
-            """{"from":"0x000000000000000000000000000000000000dead","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""")!;
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx,
+            """{"from":"0x000000000000000000000000000000000000dead","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
+            stateOverrideJson: null, optimize: true);
 
-        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", transaction, "latest", null, true);
-
-        JToken? result = JToken.Parse(serialized)["result"];
-        Assert.That(result, Is.Not.Null, $"expected success for an unfunded sender with omitted fee fields, got: {serialized}");
-        Assert.That(result!["accessList"]!.Children().Count(), Is.EqualTo(0), "expected empty access list for a plain transfer to a codeless account");
-        Assert.That(Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16), Is.EqualTo(21000));
+        Assert.That(result["error"], Is.Null);
+        Assert.That(result["accessList"]!.ToArray(), Is.Empty, "expected empty access list for a plain transfer to a codeless account");
+        Assert.That(gasUsed, Is.EqualTo(21_000));
     }
 
     private static async Task<(JToken Result, long GasUsed)> CallCreateAccessList(
@@ -2280,8 +2280,9 @@ public partial class EthRpcModuleTests
             : JsonSerializer.Deserialize<object>(stateOverrideJson);
         string serialized = await ctx.Test.TestEthRpc(
             "eth_createAccessList", tx, "latest", stateOverride, optimize);
-        JToken result = JToken.Parse(serialized)["result"]!;
-        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        JToken? result = JToken.Parse(serialized)["result"];
+        Assert.That(result, Is.Not.Null, $"expected a result, got: {serialized}");
+        long gasUsed = Convert.ToInt64(result!["gasUsed"]!.Value<string>(), 16);
         return (result, gasUsed);
     }
 
