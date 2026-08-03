@@ -54,7 +54,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 },
                 (k, b) =>
                 {
-                    b.Add(subscription);
+                    // The bag is a plain HashSet; concurrent subscribe/unsubscribe/close on the same client
+                    // can otherwise mutate it from multiple threads at once. Lock on the bag for every access.
+                    lock (b)
+                    {
+                        b.Add(subscription);
+                    }
                     if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} added to client's subscriptions bag.");
                     return b;
                 });
@@ -80,8 +85,16 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (!_subscriptionsByJsonRpcClient.TryGetValue(subscription.JsonRpcDuplexClient.Id, out HashSet<Subscription> clientsSubscriptionsBag))
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed trying to find subscription {subscription.Id} in subscriptions bag of client {subscription.JsonRpcDuplexClient.Id}.");
+                return;
             }
-            else if (!clientsSubscriptionsBag.Remove(subscription))
+
+            bool removed;
+            lock (clientsSubscriptionsBag)
+            {
+                removed = clientsSubscriptionsBag.Remove(subscription);
+            }
+
+            if (!removed)
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscription.Id} from client's subscriptions bag.");
             }
@@ -110,7 +123,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void DisposeAndRemoveFromDictionary(HashSet<Subscription> subscriptionsBag)
         {
-            foreach (Subscription subscriptionInBag in subscriptionsBag)
+            Subscription[] subscriptions;
+            lock (subscriptionsBag)
+            {
+                subscriptions = [.. subscriptionsBag];
+            }
+
+            foreach (Subscription subscriptionInBag in subscriptions)
             {
                 if (_subscriptions.TryRemove(subscriptionInBag.Id, out Subscription subscription)
                    && subscription is not null)

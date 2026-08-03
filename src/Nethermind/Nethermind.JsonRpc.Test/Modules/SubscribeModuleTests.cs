@@ -1231,5 +1231,58 @@ namespace Nethermind.JsonRpc.Test.Modules
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":true,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
+
+        [Test]
+        [Repeat(20)]
+        public async Task Concurrent_add_and_client_close_do_not_corrupt_the_bag()
+        {
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(ci => new NoopSubscription((IJsonRpcDuplexClient)ci[0]));
+            SubscriptionManager manager = new(factory, LimboLogs.Instance);
+
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.Id.Returns("concurrent-client");
+
+            const int adders = 8;
+            const int perAdder = 100;
+            ConcurrentQueue<Exception> failures = new();
+            using ManualResetEventSlim start = new();
+
+            Task Run(Action body) => Task.Run(() =>
+            {
+                start.Wait();
+                try { body(); }
+                catch (Exception e) { failures.Enqueue(e); }
+            });
+
+            List<Task> tasks = [];
+            for (int i = 0; i < adders; i++)
+            {
+                tasks.Add(Run(() =>
+                {
+                    for (int j = 0; j < perAdder; j++) manager.AddSubscription(client, "test");
+                }));
+            }
+            // Racing the enumerate-and-dispose path against the concurrent adds.
+            for (int i = 0; i < 4; i++)
+            {
+                tasks.Add(Run(() =>
+                {
+                    for (int j = 0; j < perAdder; j++) manager.RemoveClientSubscriptions(client);
+                }));
+            }
+
+            start.Set();
+            await Task.WhenAll(tasks);
+
+            Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures));
+        }
+
+        private sealed class NoopSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient)
+        {
+            public override string Type => "test";
+        }
     }
 }
