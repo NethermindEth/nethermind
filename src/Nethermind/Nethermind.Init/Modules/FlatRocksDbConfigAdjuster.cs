@@ -18,11 +18,35 @@ namespace Nethermind.Init.Modules;
 internal class FlatRocksDbConfigAdjuster(
     IRocksDbConfigFactory rocksDbConfigFactory,
     IFlatDbConfig flatDbConfig,
+    IHardwareInfo hardwareInfo,
     IDisposableStack disposeStack,
     ILogManager logManager)
     : IRocksDbConfigFactory
 {
+    private const int AutoScaleMemoryDivisor = 8;
+    private static readonly ulong AutoScaleFloor = 1UL.GiB;
+    private static readonly ulong AutoScaleCap = 32UL.GiB;
+
     private readonly ILogger _logger = logManager.GetClassLogger<FlatRocksDbConfigAdjuster>();
+    private ulong? _blockCacheSizeBudget;
+
+    internal ulong BlockCacheSizeBudget => _blockCacheSizeBudget ??= ResolveBlockCacheSizeBudget();
+
+    private ulong ResolveBlockCacheSizeBudget()
+    {
+        ulong totalMemory = (ulong)Math.Max(hardwareInfo.AvailableMemoryBytes, 0);
+        ulong configured = flatDbConfig.BlockCacheSizeBudget;
+        if (configured != 0)
+        {
+            if (configured > totalMemory / 2 && _logger.IsWarn)
+                _logger.Warn($"Flat db block cache budget of {configured / 1UL.MiB:N0} MB exceeds half of the {totalMemory / 1UL.MiB:N0} MB of system memory");
+            return configured;
+        }
+
+        ulong budget = Math.Clamp(totalMemory / AutoScaleMemoryDivisor, AutoScaleFloor, AutoScaleCap);
+        if (_logger.IsInfo) _logger.Info($"Auto-scaled flat db block cache budget to {budget / 1UL.MiB:N0} MB based on {totalMemory / 1UL.MiB:N0} MB of system memory");
+        return budget;
+    }
 
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
     {
@@ -43,7 +67,7 @@ internal class FlatRocksDbConfigAdjuster(
             IntPtr? cacheHandle = null;
             if (columnName == nameof(FlatDbColumns.Account))
             {
-                ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.3);
+                ulong cacheCapacity = (ulong)(BlockCacheSizeBudget * 0.3);
                 if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to account");
                 HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
                 cacheHandle = cacheWrapper.Handle;
@@ -52,7 +76,7 @@ internal class FlatRocksDbConfigAdjuster(
 
             if (columnName == nameof(FlatDbColumns.Storage))
             {
-                ulong cacheCapacity = (ulong)(flatDbConfig.BlockCacheSizeBudget * 0.7);
+                ulong cacheCapacity = (ulong)(BlockCacheSizeBudget * 0.7);
                 if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to storage");
                 HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
                 cacheHandle = cacheWrapper.Handle;
