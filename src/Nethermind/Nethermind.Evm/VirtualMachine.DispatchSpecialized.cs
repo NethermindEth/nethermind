@@ -105,6 +105,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.LT:
                             exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpLt, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;
+                        case Instruction.DIV:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpDiv, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.SDIV:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpSDiv, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.MOD:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpMod, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.SMOD:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpSMod, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.SLT:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpSLt, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.SGT:
+                            exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpSGt, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
+                        case Instruction.XOR:
+                            exceptionType = EvmInstructions.InstructionBitwise<TGasPolicy, EvmInstructions.OpBitwiseXor>(this, ref stack, ref gas, ref pc);
+                            break;
                         case Instruction.GT:
                             exceptionType = EvmInstructions.InstructionMath2Param<TGasPolicy, EvmInstructions.OpGt, TTracingInst>(this, ref stack, ref gas, ref pc);
                             break;
