@@ -2225,9 +2225,10 @@ namespace Nethermind.TxPool.Test
         // The pool must reach the same verdict as the processor: the EVM resolves P256VERIFY through the
         // code-info repository, so gating it on a fork flag here would refuse — and disconnect the peer
         // over — a transaction the processor accepts.
-        [TestCase(true, false, TestName = "P256VERIFY reached through EIP-7951")]
-        [TestCase(false, true, TestName = "P256VERIFY reached through RIP-7212")]
-        public void Frame_transaction_with_a_valid_p256_signature_is_pooled(bool eip7951, bool rip7212)
+        [TestCase(true, false, true, TestName = "P256VERIFY reached through EIP-7951")]
+        [TestCase(false, true, true, TestName = "P256VERIFY reached through RIP-7212")]
+        [TestCase(false, false, false, TestName = "P256VERIFY absent from the active precompiles")]
+        public void Frame_transaction_with_a_valid_p256_signature_is_pooled(bool eip7951, bool rip7212, bool expectedAccepted)
         {
             OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip7951Enabled = eip7951, IsRip7212Enabled = rip7212 };
             _txPool = CreatePool(null, new TestSpecProvider(spec));
@@ -2239,8 +2240,11 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
 
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
         }
 
         private static TxFrameSignature P256Signature(Transaction tx)

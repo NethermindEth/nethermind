@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -40,11 +38,13 @@ internal sealed class FrameTxSignatureFilter(
         }
 
         IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        // Mirrors the precompile set the EVM exposes, so a chain that reaches P256VERIFY through
-        // RIP-7212 is not refused here for a signature the processor verifies.
-        IPrecompile? p256Precompile = spec.IsEip7951Enabled || spec.IsRip7212Enabled ? SecP256r1Precompile.Instance : null;
-        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, ecdsa, p256Precompile, spec, out string? error))
+        // Same availability test the processor resolves through ICodeInfoRepository.GetPrecompile, so a
+        // chain that reaches P256VERIFY through RIP-7212 rather than EIP-7951 is not refused here for a
+        // signature block processing verifies.
+        IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress)
+            ? SecP256r1Precompile.Instance
+            : null;
+        if (!FrameTxSignatureValidator.Validate(tx, ecdsa, p256Precompile, spec, out string? error))
         {
             Metrics.PendingTransactionsMalformed++;
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, {error}.");

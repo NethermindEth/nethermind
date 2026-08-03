@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -32,6 +33,16 @@ public static class FrameTxSignatureValidator
     public static readonly Address P256VerifyPrecompileAddress = Address.FromNumber(0x100);
 
     public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error);
+
+    /// <summary>
+    /// Same validation, for callers that have no sig hash at hand: it is computed on the first entry
+    /// that needs it, so a transaction whose entries all carry an explicit digest never pays for it.
+    /// </summary>
+    public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
+        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error);
+
+    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
     {
         error = null;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
@@ -52,6 +63,12 @@ public static class FrameTxSignatureValidator
             if (!signature.Msg.IsEmpty && signature.Msg.Length != Hash256.Size)
             {
                 return Fail(InvalidMsgLength, out error);
+            }
+
+            if (signature.Msg.IsEmpty && !sigHashComputed)
+            {
+                sigHash = FrameTxSigHash.ComputeValue(tx);
+                sigHashComputed = true;
             }
 
             ValueHash256 message = signature.Msg.IsEmpty ? sigHash : new ValueHash256(signature.Msg.Span);
