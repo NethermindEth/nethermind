@@ -248,8 +248,8 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
         PbtScanReport report = await new PbtScanner(pbtDb, new PbtConfig(), LimboLogs.Instance).Scan(CancellationToken.None);
-        Assert.That(report.StorageLeaves.BlobCount, Is.EqualTo(1), "two slots in one 256-block must share a single storage stem");
-        Assert.That(report.StorageLeaves.LeafCount, Is.EqualTo(2), "the shared stem's blob must hold both slots' leaves");
+        Assert.That(report.LeafCount, Is.EqualTo(4), "two account leaves and two storage leaves must be present");
+        Assert.That(report.InvalidLeafCount, Is.Zero);
     }
 
     /// <summary>

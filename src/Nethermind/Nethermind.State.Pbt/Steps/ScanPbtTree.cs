@@ -54,11 +54,8 @@ public class ScanPbtTree(
 
         if (_logger.IsInfo) _logger.Info(report.Format());
 
-        if (!report.StemCountAgrees && _logger.IsWarn)
-        {
-            _logger.Warn($"PBT scan counted {report.StemCount:N0} stems, but the root node records {report.RootSubtreeStemCount:N0} for its subtree.");
-        }
+        if (!report.IsValid && _logger.IsWarn) _logger.Warn("The PBT scan found invalid canonical records or a root mismatch.");
 
-        exitSource.Exit(0);
+        exitSource.Exit(report.IsValid ? 0 : 1);
     }
 }

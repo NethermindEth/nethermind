@@ -28,8 +28,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
             {
                 foreach (RebuildEntry entry in chunk.AsSpan())
                 {
-                    ValueHash256 legacyKey = PbtKeyDerivation.TreeKey(entry.Stem, entry.SubIndex);
-                    leaves[new PbtFullKey(legacyKey.Bytes)] = entry.Leaf;
+                    if (entry.Leaf != default) leaves[entry.Key] = entry.Leaf;
                 }
             }
         }
