@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -27,7 +28,9 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -106,10 +109,30 @@ public class ReceiptsRegenerationTests
     // must restore it from the switcher or PREVRANDAO evaluates to the difficulty field instead of the mix hash,
     // and any transaction reading it regenerates receipts that fail the root check.
     [Test]
-    public void Regenerates_a_post_merge_block_whose_stored_header_lost_the_flag()
+    public void Regenerates_a_post_merge_block_whose_stored_header_lost_the_flag() =>
+        AssertRegeneratesPostMergeBlock(AlwaysPoS.Instance);
+
+    // The production failure arrived as a mainnet-shaped header with TotalDifficulty unset; this pins the real
+    // switcher's TD-null derivation end to end, not only the honour-the-switcher contract AlwaysPoS covers.
+    [Test]
+    public void Regenerates_a_post_merge_block_through_the_real_switcher()
+    {
+        TestSpecProvider mergeSpecProvider = new(Berlin.Instance) { TerminalTotalDifficulty = 1 };
+        PoSSwitcher poSSwitcher = new(
+            new MergeConfig(),
+            new SyncConfig(),
+            new MemDb(),
+            Substitute.For<IBlockTree>(),
+            mergeSpecProvider,
+            new ChainSpec(),
+            LimboLogs.Instance);
+        AssertRegeneratesPostMergeBlock(poSSwitcher);
+    }
+
+    private void AssertRegeneratesPostMergeBlock(IPoSSwitcher poSSwitcher)
     {
         ReceiptsRegenerator regenerator = new(
-            _envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, AlwaysPoS.Instance, LimboLogs.Instance);
+            _envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, poSSwitcher, LimboLogs.Instance);
         BlockHeader parent = _chain.BlockTree.Head!.Header;
         ulong nonce = _chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.PrivateKeyA.Address);
         Block postMerge = Build.A.Block
@@ -134,6 +157,7 @@ public class ReceiptsRegenerationTests
 
         Block reloaded = new(postMerge.Header.Clone(), postMerge.Body);
         reloaded.Header.IsPostMerge = false;
+        reloaded.Header.TotalDifficulty = null;
 
         Assert.That(regenerator.TryRegenerate(reloaded, out TxReceipt[] regenerated), Is.True,
             "re-execution must read PREVRANDAO from the mix hash, not the zeroed difficulty");
