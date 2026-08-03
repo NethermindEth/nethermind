@@ -27,13 +27,13 @@ namespace Nethermind.Network.Test.Rlpx
                 buffer.WriteByte(frameSize >> 8);
                 buffer.WriteByte(frameSize);
 
-                NettyRlpStream stream = new(buffer);
                 int contentLength = Rlp.LengthOf(0) + Rlp.LengthOf(1) + Rlp.LengthOf(totalPacketSize);
                 buffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                stream.StartSequence(contentLength);
-                stream.Encode(0);
-                stream.Encode(1);
-                stream.Encode(totalPacketSize);
+                ByteBufferRlpWriter writer = new(buffer);
+                writer.StartSequence(contentLength);
+                writer.Encode(0);
+                writer.Encode(1);
+                writer.Encode(totalPacketSize);
 
                 buffer.WriteZero(Frame.HeaderSize - buffer.WriterIndex);
 

@@ -139,6 +139,13 @@ internal sealed class HttpJsonRpcResponseSink(
         }
 
         _completed = true;
+        if (_bufferedStream is null &&
+            HttpProtocol.IsHttp11(context.Request.Protocol) &&
+            !context.Response.HasStarted)
+        {
+            context.Response.ContentLength = BytesWritten;
+        }
+
         ValueTask writerCompleteTask = _writer.CompleteAsync();
         return writerCompleteTask.IsCompletedSuccessfully
             ? CompleteResponseAsync(cancellationToken)

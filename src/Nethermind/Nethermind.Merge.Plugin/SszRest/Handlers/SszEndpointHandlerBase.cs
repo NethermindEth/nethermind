@@ -32,6 +32,13 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     /// <inheritdoc/>
     public abstract Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body);
 
+    /// <summary>
+    /// The fork requested via the <c>Eth-Execution-Version</c> header for this fork-scoped request,
+    /// as stashed by <see cref="SszMiddleware"/>, or <c>null</c> for unscoped/blob endpoints.
+    /// </summary>
+    protected static string? GetRequestedFork(HttpContext ctx) =>
+        ctx.Items.TryGetValue(SszMiddleware.RouteForkItemKey, out object? fork) ? fork as string : null;
+
     private static async Task WriteSszAsync<T>(HttpContext ctx, T value, Func<T, IBufferWriter<byte>, int> encode)
     {
         // GetSpan/Advance buffer into the response pipe without starting the response;

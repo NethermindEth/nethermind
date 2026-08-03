@@ -78,10 +78,10 @@ public class ChainSpecLoaderTest
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
         ChainSpec chainSpec = LoadChainSpec(path);
-        IDictionary<long, IDictionary<Address, byte[]>> expected = new Dictionary<long, IDictionary<Address, byte[]>>
+        IDictionary<ulong, IDictionary<Address, byte[]>> expected = new Dictionary<ulong, IDictionary<Address, byte[]>>
         {
             {
-                21300000, new Dictionary<Address, byte[]>()
+                21300000UL, new Dictionary<Address, byte[]>()
                 {
                     {new Address("0x1234000000000000000000000000000000000001"), Bytes.FromHexString("0x111")},
                     {new Address("0x1234000000000000000000000000000000000002"), Bytes.FromHexString("0x222")},

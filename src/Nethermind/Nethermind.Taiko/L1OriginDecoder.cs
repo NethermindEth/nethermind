@@ -13,7 +13,7 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
     const int BuildPayloadArgsIdLength = 8;
     internal const int SignatureLength = 65;
 
-    protected override L1Origin DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override L1Origin DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int _, int contentLength) = decoderContext.ReadPrefixAndContentLength();
         int itemsCount = decoderContext.PeekNumberOfItemsRemaining(maxSearch: contentLength);
@@ -42,19 +42,20 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         if (item is null)
             return Rlp.OfEmptyList;
 
-        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-        Encode(rlpStream, item, rlpBehaviors);
-        return new(rlpStream.Data.ToArray()!);
+        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
+        RlpWriter writer = new(bytes);
+        Encode(ref writer, item, rlpBehaviors);
+        return new(bytes);
     }
 
-    public override void Encode(RlpStream stream, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
+        writer.StartSequence(GetContentLength(item, rlpBehaviors));
 
-        stream.Encode(item.BlockId);
-        stream.Encode(item.L2BlockHash);
-        stream.Encode(item.L1BlockHeight ?? 0);
-        stream.Encode(item.L1BlockHash);
+        writer.Encode(item.BlockId);
+        writer.Encode(item.L2BlockHash);
+        writer.Encode(item.L1BlockHeight ?? 0);
+        writer.Encode(item.L1BlockHash);
 
         // If all optional remaining fields are missing, nothing to encode
         if (item.BuildPayloadArgsId is null && !item.IsForcedInclusion && item.Signature is null)
@@ -67,18 +68,25 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
             {
                 throw new RlpException($"{nameof(item.BuildPayloadArgsId)} should be exactly {BuildPayloadArgsIdLength}");
             }
-            stream.Encode(Array.ConvertAll(item.BuildPayloadArgsId, Convert.ToByte));
+
+            Span<byte> buildPayloadArgsId = stackalloc byte[BuildPayloadArgsIdLength];
+            for (int i = 0; i < BuildPayloadArgsIdLength; i++)
+            {
+                buildPayloadArgsId[i] = Convert.ToByte(item.BuildPayloadArgsId[i]);
+            }
+
+            writer.Encode(buildPayloadArgsId);
         }
         else
         {
-            stream.Encode(Array.Empty<byte>());
+            writer.Encode(Array.Empty<byte>());
         }
 
         // If neither IsForcedInclusion nor Signature are present, return
         if (!item.IsForcedInclusion && item.Signature is null)
             return;
 
-        stream.Encode(item.IsForcedInclusion);
+        writer.Encode(item.IsForcedInclusion);
 
         if (item.Signature is not null)
         {
@@ -87,7 +95,7 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
                 throw new RlpException($"{nameof(item.Signature)} should be exactly {SignatureLength}");
             }
 
-            stream.Encode(item.Signature);
+            writer.Encode(item.Signature);
         }
     }
 

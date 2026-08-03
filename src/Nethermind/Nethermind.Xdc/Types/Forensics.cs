@@ -16,7 +16,7 @@ public class ForensicsInfo
 
 public class ForensicsContent
 {
-    public long DivergingBlockNumber { get; set; }
+    public ulong DivergingBlockNumber { get; set; }
     public string DivergingBlockHash { get; set; } = string.Empty;
     public bool AcrossEpoch { get; set; }
     public ForensicsInfo SmallerRoundInfo { get; set; } = null!;

@@ -342,7 +342,7 @@ public class GethGenesisLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(allocation.Balance, Is.EqualTo(UInt256.Parse("1000000000000000000"))); // 1 ETH in wei
-            Assert.That(allocation.Nonce, Is.EqualTo(UInt256.One));
+            Assert.That(allocation.Nonce, Is.EqualTo(1UL));
             Assert.That(allocation.Code, Is.EqualTo(new byte[] { 0x60, 0x80, 0x60, 0x40, 0x52 }));
             Assert.That(allocation.Storage!.Count, Is.EqualTo(1));
         }

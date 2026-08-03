@@ -30,7 +30,7 @@ public class ShutterTxSource(
 
     public bool SupportsBlobs => false;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (!shutterConfig.Validator)
         {

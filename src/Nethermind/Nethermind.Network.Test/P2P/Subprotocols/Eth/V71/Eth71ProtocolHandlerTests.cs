@@ -66,7 +66,7 @@ public class Eth71ProtocolHandlerTests
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
-        _syncManager.LowestBlock.Returns(0);
+        _syncManager.LowestBlock.Returns(0UL);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);

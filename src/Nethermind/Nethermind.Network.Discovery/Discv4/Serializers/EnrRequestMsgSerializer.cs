@@ -18,9 +18,9 @@ public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedP
 
         byteBuffer.MarkIndex();
         PrepareBufferForSerialization(byteBuffer, length, (byte)msg.MsgType);
-        NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
-        stream.Encode(msg.ExpirationTime);
+        ByteBufferRlpWriter writer = new(byteBuffer);
+        writer.StartSequence(contentLength);
+        writer.Encode(msg.ExpirationTime);
 
         byteBuffer.ResetIndex();
 
@@ -34,7 +34,7 @@ public sealed class EnrRequestMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedP
     public EnrRequestMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey farPublicKey, ValueHash256 mdc, IByteBuffer data) = PrepareForDeserialization(msgBytes);
-        Rlp.ValueDecoderContext ctx = data.AsRlpContext();
+        RlpReader ctx = new(data.AsSpan());
 
         ctx.ReadSequenceLength();
         long expirationTime = ctx.DecodeLong();

@@ -138,7 +138,7 @@ public interface IDiscoveryConfig : IConfig
     [Obsolete]
     float DropFullBucketNodeProbability { get; set; }
 
-    [ConfigItem(Description = "Limit number of outgoing discovery message per second.", DefaultValue = "100", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Limit number of outgoing discovery message per second.", DefaultValue = "500", HiddenFromDocs = true)]
     int MaxOutgoingMessagePerSecond { get; set; }
 
     [ConfigItem(Description = "Discovery version(s) to enable", DefaultValue = "V4", HiddenFromDocs = true)]

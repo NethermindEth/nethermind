@@ -16,9 +16,10 @@ internal interface IMsgSerializer
 
     int GetContentLength(Discv5Message msg);
 
-    void Serialize(NettyRlpStream stream, Discv5Message msg);
+    void Serialize<TWriter>(ref TWriter writer, Discv5Message msg)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-    Discv5Message Deserialize(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner);
+    Discv5Message Deserialize(ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner);
 }
 
 internal abstract class MsgSerializerBase<TMessage>(MessageType messageType, bool requiresOwnedMemory = false) : IMsgSerializer
@@ -31,14 +32,15 @@ internal abstract class MsgSerializerBase<TMessage>(MessageType messageType, boo
     public int GetContentLength(TMessage msg)
         => msg.RequestId.GetRlpLength() + GetContentLengthCore(msg);
 
-    public void Serialize(NettyRlpStream stream, TMessage msg)
+    public void Serialize<TWriter>(ref TWriter writer, TMessage msg)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         RequestId requestId = msg.RequestId;
-        EncodeRequestId(stream, in requestId);
-        SerializeCore(stream, msg);
+        EncodeRequestId(ref writer, in requestId);
+        SerializeCore(ref writer, msg);
     }
 
-    public TMessage Deserialize(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    public TMessage Deserialize(ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
     {
         RequestId requestId = DecodeRequestId(ref ctx);
         return DeserializeCore(in requestId, ref ctx, ownedMessage, owner);
@@ -46,18 +48,19 @@ internal abstract class MsgSerializerBase<TMessage>(MessageType messageType, boo
 
     int IMsgSerializer.GetContentLength(Discv5Message msg) => GetContentLength((TMessage)msg);
 
-    void IMsgSerializer.Serialize(NettyRlpStream stream, Discv5Message msg) => Serialize(stream, (TMessage)msg);
+    void IMsgSerializer.Serialize<TWriter>(ref TWriter writer, Discv5Message msg) => Serialize(ref writer, (TMessage)msg);
 
-    Discv5Message IMsgSerializer.Deserialize(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
+    Discv5Message IMsgSerializer.Deserialize(ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner)
         => Deserialize(ref ctx, ownedMessage, owner);
 
     protected abstract int GetContentLengthCore(TMessage msg);
 
-    protected abstract void SerializeCore(NettyRlpStream stream, TMessage msg);
+    protected abstract void SerializeCore<TWriter>(ref TWriter writer, TMessage msg)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
-    protected abstract TMessage DeserializeCore(in RequestId requestId, ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner);
+    protected abstract TMessage DeserializeCore(in RequestId requestId, ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage, ArrayPoolSpan<byte>? owner);
 
-    protected static ReadOnlyMemory<byte> DecodeByteMemory(ref Rlp.ValueDecoderContext ctx, ReadOnlyMemory<byte> ownedMessage)
+    protected static ReadOnlyMemory<byte> DecodeByteMemory(ref RlpReader ctx, ReadOnlyMemory<byte> ownedMessage)
     {
         ReadOnlySpan<byte> value = ctx.DecodeByteArraySpan();
         if (ownedMessage.IsEmpty)
@@ -68,11 +71,13 @@ internal abstract class MsgSerializerBase<TMessage>(MessageType messageType, boo
         return ownedMessage.Slice(1 + ctx.Position - value.Length, value.Length);
     }
 
-    protected static void Encode(NettyRlpStream stream, ulong value) => stream.Encode(value);
+    protected static void Encode<TWriter>(ref TWriter writer, ulong value)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Encode(value);
 
-    protected static void Encode(NettyRlpStream stream, int value) => stream.Encode(value);
+    protected static void Encode<TWriter>(ref TWriter writer, int value)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Encode(value);
 
-    private static RequestId DecodeRequestId(ref Rlp.ValueDecoderContext ctx)
+    private static RequestId DecodeRequestId(ref RlpReader ctx)
     {
         ReadOnlySpan<byte> requestId = ctx.DecodeByteArraySpan();
         if (requestId.Length > RequestId.MaxLength)
@@ -84,10 +89,11 @@ internal abstract class MsgSerializerBase<TMessage>(MessageType messageType, boo
     }
 
     [SkipLocalsInit]
-    private static void EncodeRequestId(NettyRlpStream stream, in RequestId requestId)
+    private static void EncodeRequestId<TWriter>(ref TWriter writer, in RequestId requestId)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         Span<byte> bytes = stackalloc byte[RequestId.MaxLength];
         requestId.CopyTo(bytes);
-        stream.Encode(bytes[..requestId.Length]);
+        writer.Encode(bytes[..requestId.Length]);
     }
 }

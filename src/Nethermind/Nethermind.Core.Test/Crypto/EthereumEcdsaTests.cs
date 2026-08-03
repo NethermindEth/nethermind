@@ -91,6 +91,39 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(address, Is.EqualTo(key.Address));
         }
 
+        // Typed txs are served from the hash-keyed sender cache on repeat recovery; legacy txs
+        // are excluded (signing hash depends on the ambient chain id)
+        [TestCase(TxType.EIP1559, true)]
+        [TestCase(TxType.Legacy, false)]
+        public void RecoverAddress_repeat_recovery_uses_sender_cache_for_typed_tx_only(TxType txType, bool servedFromCache)
+        {
+            // The sender cache is a process-wide static; reset it so the miss/hit sequence
+            // asserted below cannot depend on what other tests recovered earlier.
+            EthereumEcdsaExtensions.ClearSenderCache();
+
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            PrivateKey keyA = TestItem.PrivateKeyA;
+            PrivateKey keyB = TestItem.PrivateKeyB;
+            // Unique content per case so the process-wide cache cannot collide across tests
+            static Transaction Create(TxType txType) => Build.A.Transaction
+                .WithType(txType)
+                .WithNonce(txType == TxType.Legacy ? 0xBEEFUL : 0xC0FFEEUL)
+                .TestObject;
+
+            Transaction txA = Create(txType);
+            ecdsa.Sign(keyA, txA);
+            txA.Hash = txA.CalculateHash();
+            Assert.That(ecdsa.RecoverAddress(txA), Is.EqualTo(keyA.Address));
+
+            // Same hash, different signature: a cache hit returns the previously recovered
+            // sender, a recompute returns keyB's address
+            Transaction txB = Create(txType);
+            ecdsa.Sign(keyB, txB);
+            txB.Hash = txA.Hash;
+
+            Assert.That(ecdsa.RecoverAddress(txB), Is.EqualTo(servedFromCache ? keyA.Address : keyB.Address));
+        }
+
         [Test]
         [Repeat(3)]
         public void RecoverAddress_AuthorizationTupleOfDifferentSize_RecoversAddressCorrectly()

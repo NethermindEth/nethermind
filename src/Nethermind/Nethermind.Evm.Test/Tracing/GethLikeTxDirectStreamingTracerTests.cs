@@ -25,7 +25,7 @@ public class GethLikeTxDirectStreamingTracerTests : VirtualMachineTestsBase
     [TestCase(true, TestName = "Refund is rolled back when the clearing frame reverts")]
     public void Streams_journaled_refund_counter(bool clearingFrameReverts)
     {
-        long sClearRefund = Spec.GasCosts.SClearRefund;
+        ulong sClearRefund = Spec.GasCosts.SClearRefund;
 
         List<StructLog> logs = ExecuteAndStream(clearingFrameReverts);
 
@@ -46,16 +46,42 @@ public class GethLikeTxDirectStreamingTracerTests : VirtualMachineTestsBase
 
     private static long? RefundAt(IEnumerable<StructLog> logs, string opcode) => logs.Single(l => l.Op == opcode).Refund;
 
-    private List<StructLog> ExecuteAndStream(bool clearingFrameReverts)
+    [Test]
+    public void Streams_returndata_when_enabled()
     {
-        byte[] code = clearingFrameReverts ? RevertingCallCode() : ClearingSstoreCode();
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+        List<StructLog> logs = StreamLogs(ReturnDataCallCode(word), GethTraceOptions.Default with { EnableReturnData = true });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs.Last(l => l.Op == "CALL").ReturnData, Is.Null, "no return data before the call executes");
+            Assert.That(logs.Last(l => l.Op == "STOP" && l.Depth == 1).ReturnData, Is.EqualTo($"0x{word}"));
+        }
+    }
+
+    [Test]
+    public void Omits_returndata_when_not_enabled()
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+        List<StructLog> logs = StreamLogs(ReturnDataCallCode(word), GethTraceOptions.Default);
+
+        Assert.That(logs.All(l => l.ReturnData is null), Is.True);
+    }
+
+    private List<StructLog> ExecuteAndStream(bool clearingFrameReverts) =>
+        StreamLogs(clearingFrameReverts ? RevertingCallCode() : ClearingSstoreCode(), GethTraceOptions.Default);
+
+    private List<StructLog> StreamLogs(byte[] code, GethTraceOptions options)
+    {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
 
         using MemoryStream stream = new();
         using (Utf8JsonWriter writer = new(stream))
         {
             writer.WriteStartArray();
-            GethLikeTxDirectStreamingTracer tracer = new(transaction, GethTraceOptions.Default, writer, null, CancellationToken.None);
+            GethLikeTxDirectStreamingTracer tracer = new(transaction, options, writer, null, CancellationToken.None);
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
             tracer.BuildResult();
             writer.WriteEndArray();
@@ -65,7 +91,25 @@ public class GethLikeTxDirectStreamingTracerTests : VirtualMachineTestsBase
         return [.. document.RootElement.EnumerateArray().Select(static e => new StructLog(
             e.GetProperty("op").GetString()!,
             e.GetProperty("depth").GetInt32(),
-            e.TryGetProperty("refund", out JsonElement refund) ? refund.GetInt64() : null))];
+            e.TryGetProperty("refund", out JsonElement refund) ? refund.GetInt64() : null,
+            e.TryGetProperty("returnData", out JsonElement returnData) ? returnData.GetString() : null))];
+    }
+
+    private byte[] ReturnDataCallCode(string word)
+    {
+        byte[] calleeCode = Prepare.EvmCode
+            .StoreDataInMemory(0, word)
+            .Return(32, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        return Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
     }
 
     private byte[] ClearingSstoreCode()
@@ -100,5 +144,5 @@ public class GethLikeTxDirectStreamingTracerTests : VirtualMachineTestsBase
             .Done;
     }
 
-    private readonly record struct StructLog(string Op, int Depth, long? Refund);
+    private readonly record struct StructLog(string Op, int Depth, long? Refund, string? ReturnData);
 }

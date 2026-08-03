@@ -166,7 +166,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
             txs[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithChainId(1)
-                .WithNonce((UInt256)i)
+                .WithNonce((ulong)i)
                 .WithGasLimit(21_000)
                 .WithMaxFeePerGas(20_000_000_000)
                 .WithMaxPriorityFeePerGas(1_000_000_000)

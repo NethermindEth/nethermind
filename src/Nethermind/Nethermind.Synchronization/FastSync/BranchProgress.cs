@@ -24,9 +24,9 @@ namespace Nethermind.Synchronization.FastSync
         private long _lastReportMs = 0;
 
         public decimal LastProgress { get; private set; }
-        public long CurrentSyncBlock { get; }
+        public ulong CurrentSyncBlock { get; }
 
-        public BranchProgress(long syncBlockNumber, ILogger logger)
+        public BranchProgress(ulong syncBlockNumber, ILogger logger)
         {
             _logger = logger;
             CurrentSyncBlock = syncBlockNumber;

@@ -41,7 +41,7 @@ public class XdcStateSyncSnapshotManager(
             epochSwitchHeader = (XdcBlockHeader)_blockTree.FindHeader(epochSwitchHeader.ParentHash);
         }
 
-        long gapBlockNum = Math.Max(
+        ulong gapBlockNum = Math.Max(
             epochSwitchHeader.Number - epochSwitchHeader.Number % spec.EpochLength,
             spec.EpochLength
          ) - spec.Gap;

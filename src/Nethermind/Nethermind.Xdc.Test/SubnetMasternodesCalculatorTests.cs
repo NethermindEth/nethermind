@@ -28,7 +28,7 @@ internal class SubnetMasternodesCalculatorTests
         SubnetSnapshot snapshot = new(0, Hash256.Zero, [a1, a2, a3, a4, a5, a6], [a1, a2]);
 
         ISubnetSnapshotManager snapshotManager = Substitute.For<ISubnetSnapshotManager>();
-        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<long>(), Arg.Any<IXdcReleaseSpec>()).Returns(snapshot);
+        snapshotManager.GetSnapshotByBlockNumber(Arg.Any<ulong>(), Arg.Any<IXdcReleaseSpec>()).Returns(snapshot);
 
         SubnetMasternodesCalculator calculator = new(snapshotManager);
 

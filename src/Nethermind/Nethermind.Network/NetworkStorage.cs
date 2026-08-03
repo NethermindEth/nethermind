@@ -7,10 +7,12 @@ using System.Text;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
@@ -91,18 +93,18 @@ namespace Nethermind.Network
 
         public void UpdateNode(NetworkNode node)
         {
+            using ArrayPoolSpan<byte> rlp = NodeDecoder.EncodeToArrayPoolSpan(node);
             lock (_lock)
             {
-                byte[] rlp = NodeDecoder.Encode(node).Bytes;
                 UpdateNodeImpl(node, rlp);
             }
         }
 
-        private void UpdateNodeImpl(NetworkNode node, byte[] rlp)
+        private void UpdateNodeImpl(NetworkNode node, ReadOnlySpan<byte> rlp)
         {
             EnsureLoadedFromDbNoLock();
 
-            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = rlp;
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb).PutSpan(node.NodeId.Bytes, rlp);
             _updateCounter++;
 
             if (!_nodesDict.ContainsKey(node.NodeId))
@@ -119,18 +121,28 @@ namespace Nethermind.Network
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
         {
-            List<(NetworkNode Node, byte[] Rlp)> encodedNodes = [];
-            foreach (NetworkNode node in nodes)
+            List<(NetworkNode Node, ArrayPoolSpan<byte> Rlp)> encodedNodes = [];
+            try
             {
-                encodedNodes.Add((node, NodeDecoder.Encode(node).Bytes));
-            }
+                foreach (NetworkNode node in nodes)
+                {
+                    encodedNodes.Add((node, NodeDecoder.EncodeToArrayPoolSpan(node)));
+                }
 
-            lock (_lock)
+                lock (_lock)
+                {
+                    for (int i = 0; i < encodedNodes.Count; i++)
+                    {
+                        (NetworkNode node, ArrayPoolSpan<byte> rlp) = encodedNodes[i];
+                        UpdateNodeImpl(node, rlp);
+                    }
+                }
+            }
+            finally
             {
                 for (int i = 0; i < encodedNodes.Count; i++)
                 {
-                    (NetworkNode node, byte[] rlp) = encodedNodes[i];
-                    UpdateNodeImpl(node, rlp);
+                    encodedNodes[i].Rlp.Dispose();
                 }
             }
         }

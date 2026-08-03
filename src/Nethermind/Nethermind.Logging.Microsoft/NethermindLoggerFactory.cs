@@ -10,7 +10,11 @@ namespace Nethermind.Logging.Microsoft;
 
 public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false, MsLogLevel? maxLogLevel = null) : ILoggerFactory
 {
-    public MicrosoftLogger CreateLogger(string categoryName) => new NethermindLoggerAdapter(logManager.GetLogger(categoryName), lowerLogLevel, maxLogLevel);
+    public MicrosoftLogger CreateLogger(string categoryName)
+    {
+        string loggerName = categoryName.Replace("Nethermind.", string.Empty);
+        return new NethermindLoggerAdapter(logManager.GetLogger(loggerName), lowerLogLevel, maxLogLevel);
+    }
 
     public void Dispose() { }
 
@@ -52,7 +56,7 @@ public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLo
                 case MsLogLevel.Error:
                     if (logger.IsError)
                     {
-                        logger.Error(formatter(state, exception));
+                        logger.Error(formatter(state, exception), exception);
                     }
                     break;
                 case MsLogLevel.Warning:

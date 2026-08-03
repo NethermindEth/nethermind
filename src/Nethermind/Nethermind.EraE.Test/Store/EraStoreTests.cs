@@ -14,10 +14,10 @@ namespace Nethermind.EraE.Test.Store;
 
 public class EraStoreTests
 {
-    [TestCase(100, 16, 32)]
-    [TestCase(100, 16, 64)]
-    [TestCase(200, 50, 100)]
-    public async Task FirstAndLastBlock_AfterExport_MatchSpecifiedRange(int chainLength, int from, int to)
+    [TestCase(100, 16UL, 32UL)]
+    [TestCase(100, 16UL, 64UL)]
+    [TestCase(200, 50UL, 100UL)]
+    public async Task FirstAndLastBlock_AfterExport_MatchSpecifiedRange(int chainLength, ulong from, ulong to)
     {
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from, to);
         string tmpDirectory = ctx.ResolveTempDirPath();
@@ -70,20 +70,21 @@ public class EraStoreTests
     {
         await using EraStoreEnv env = await CreateDefaultEraStoreEnv();
 
-        long targetBlock = env.EraStore.BlockRange.First + 5;
+        ulong targetBlock = env.EraStore.BlockRange.First + 5;
         (Block? block, _) = await env.EraStore.FindBlockAndReceipts(targetBlock, ensureValidated: false);
 
         Assert.That(block!.Number, Is.EqualTo(targetBlock));
     }
 
     [Test]
-    public async Task FindBlockAndReceipts_WithNegativeBlockNumber_ThrowsArgumentOutOfRangeException()
+    public async Task FindBlockAndReceipts_WithHugeBlockNumber_ReturnsNull()
     {
         await using EraStoreEnv env = await CreateDefaultEraStoreEnv();
 
-        Assert.That(
-            async () => await env.EraStore.FindBlockAndReceipts(-1, ensureValidated: false),
-            Throws.TypeOf<ArgumentOutOfRangeException>());
+        (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(ulong.MaxValue, ensureValidated: false);
+
+        Assert.That(block, Is.Null);
+        Assert.That(receipts, Is.Null);
     }
 
     [Test]
@@ -102,7 +103,7 @@ public class EraStoreTests
         string tmpDirectory = ctx.ResolveTempDirPath();
 
         using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
-        long nextStart = eraStore.NextEraStart(eraStore.BlockRange.First);
+        ulong nextStart = eraStore.NextEraStart(eraStore.BlockRange.First);
 
         Assert.That(nextStart, Is.EqualTo(eraSize), "first era covers blocks 0..eraSize-1");
     }

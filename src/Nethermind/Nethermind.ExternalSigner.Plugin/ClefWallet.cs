@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -101,12 +102,12 @@ namespace Nethermind.ExternalSigner.Plugin
         {
             ArgumentNullException.ThrowIfNull(header);
 
-            using NettyRlpStream rlpStream = _headerDecoder.EncodeToNewNettyStream(header, RlpBehaviors.None);
+            using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header, RlpBehaviors.None);
             string? signed = rpcClient.Post<string>(
                 "account_signData",
                 "application/x-clique-header",
                 address.ToString(),
-                rlpStream.AsSpan().ToHexString(true))
+                ((ReadOnlySpan<byte>)rlp).ToHexString(true))
                 .GetAwaiter().GetResult();
             if (signed is null)
             {

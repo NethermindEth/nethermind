@@ -56,7 +56,7 @@ public class BodiesSyncFeedTests
             .WithBlocksDb(_blocksDb)
             .TestObject;
 
-        for (int i = 1; i < 100; i++)
+        for (ulong i = 1; i < 100; i++)
         {
             Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
             _syncingToBlockTree.Insert(block.Header);
@@ -206,12 +206,12 @@ public class BodiesSyncFeedTests
         Assert.That(req2.Infos[0]!.BlockNumber, Is.EqualTo(95));
     }
 
-    [TestCase(1, 99, false, null, false)]
-    [TestCase(1, 99, true, null, false)]
-    [TestCase(1, 99, false, 0, false)]
+    [TestCase(1UL, 99UL, false, null, false)]
+    [TestCase(1UL, 99UL, true, null, false)]
+    [TestCase(1UL, 99UL, false, 0L, false)]
     public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
-            long AncientBarrierInConfig,
-            long lowestInsertedBlockNumber,
+            ulong AncientBarrierInConfig,
+            ulong lowestInsertedBlockNumber,
             bool JustStarted,
             long? previousBarrierInDb,
             bool shouldFinish)
@@ -245,7 +245,7 @@ public class BodiesSyncFeedTests
     public async Task When_AncientBodiesBarrier_decreased_after_partial_sync_feed_resumes_download()
     {
         // Previous run downloaded bodies from pivot (99) down to block 60.
-        for (int i = 60; i <= 99; i++)
+        for (ulong i = 60; i <= 99; i++)
         {
             _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!);
         }

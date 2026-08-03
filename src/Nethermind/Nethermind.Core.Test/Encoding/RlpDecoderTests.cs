@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -29,8 +28,8 @@ public class RlpDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoder.GetContentLength((Withdrawal?[]?)null), Is.Zero);
-            Assert.That(decoder.GetLength((Withdrawal?[]?)null), Is.EqualTo(Rlp.OfEmptyList.Length));
+            Assert.That(decoder.GetContentLength(null), Is.Zero);
+            Assert.That(decoder.GetLength(null), Is.EqualTo(Rlp.OfEmptyList.Length));
         }
 
         int contentLength = decoder.GetContentLength(withdrawals);
@@ -44,9 +43,10 @@ public class RlpDecoderTests
             Assert.That(decoder.GetLength(withdrawals), Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
         }
 
-        RlpStream stream = new(decoder.GetLength(withdrawals));
-        decoder.Encode(stream, withdrawals);
-        Rlp.ValueDecoderContext context = new(stream.Data.AsSpan());
+        byte[] bytes = new byte[decoder.GetLength(withdrawals)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, withdrawals);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
@@ -69,72 +69,36 @@ public class RlpDecoderTests
         static void DecodeEmptyInput()
         {
             WithdrawalDecoder decoder = new();
-            Rlp.ValueDecoderContext context = new(ReadOnlySpan<byte>.Empty);
+            RlpReader context = new(ReadOnlySpan<byte>.Empty);
             decoder.Decode(ref context);
         }
     }
 
     [Test]
-    public void Netty_array_encoding_uses_empty_list_for_null_withdrawals()
+    public void Array_pool_span_encoding_uses_empty_list_for_null_withdrawals()
     {
         WithdrawalDecoder decoder = new();
-        Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
+        ReadOnlySpan<Withdrawal?> withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
-        using NettyRlpStream stream = decoder.EncodeToNewNettyStream(withdrawals);
+        using ArrayPoolSpan<byte> stream = decoder.EncodeToArrayPoolSpan(withdrawals);
 
-        AssertEncodedNullItem(decoder, stream.AsSpan());
+        AssertEncodedNullItem(decoder, stream);
     }
 
     [Test]
-    public void Netty_list_encoding_uses_empty_list_for_null_withdrawals()
-    {
-        WithdrawalDecoder decoder = new();
-        List<Withdrawal?> withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
-
-        using NettyRlpStream stream = decoder.EncodeToNewNettyStream(withdrawals);
-
-        AssertEncodedNullItem(decoder, stream.AsSpan());
-    }
-
-    [Test]
-    public void Netty_array_pool_list_ref_encoding_uses_empty_list_for_null_withdrawals()
-    {
-        WithdrawalDecoder decoder = new();
-        using ArrayPoolListRef<Withdrawal?> withdrawals = new(3);
-        withdrawals.Add(TestItem.WithdrawalA_1Eth);
-        withdrawals.Add(null);
-        withdrawals.Add(TestItem.WithdrawalB_2Eth);
-
-        using NettyRlpStream stream = decoder.EncodeToNewNettyStream(in withdrawals);
-
-        AssertEncodedNullItem(decoder, stream.AsSpan());
-    }
-
-    [Test]
-    public void Netty_collection_encoding_does_not_call_item_encoder_for_null_items()
+    public void Array_pool_span_encoding_does_not_call_item_encoder_for_null_items()
     {
         NonNullableItemDecoder decoder = new();
+        ReadOnlySpan<NonNullableItem?> items = [new(), null, new()];
 
-        NonNullableItem?[] array = [new(), null, new()];
-        using NettyRlpStream arrayStream = decoder.EncodeToNewNettyStream(array);
-        AssertEncodedNullItem(arrayStream.AsSpan());
+        using ArrayPoolSpan<byte> stream = decoder.EncodeToArrayPoolSpan(items);
 
-        List<NonNullableItem?> list = [new(), null, new()];
-        using NettyRlpStream listStream = decoder.EncodeToNewNettyStream(list);
-        AssertEncodedNullItem(listStream.AsSpan());
-
-        using ArrayPoolListRef<NonNullableItem?> pooled = new(3);
-        pooled.Add(new());
-        pooled.Add(null);
-        pooled.Add(new());
-
-        using NettyRlpStream pooledStream = decoder.EncodeToNewNettyStream(in pooled);
-        AssertEncodedNullItem(pooledStream.AsSpan());
+        AssertEncodedNullItem(stream);
     }
 
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
@@ -145,7 +109,7 @@ public class RlpDecoderTests
 
     private static void AssertEncodedNullItem(ReadOnlySpan<byte> bytes)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
@@ -166,13 +130,13 @@ public class RlpDecoderTests
             return Rlp.OfEmptyByteArray.Length;
         }
 
-        public override void Encode(RlpStream stream, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
-            stream.Encode(Rlp.OfEmptyByteArray);
+            writer.Encode(Rlp.OfEmptyByteArray);
         }
 
-        protected override NonNullableItem DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

@@ -1,16 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <Authors>Nethermind</Authors>
+    <Description>Generic Kademlia routing table, lookup, and active discovery primitives used by Nethermind peer discovery.</Description>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>Nethermind.Kademlia</PackageId>
+    <PackageLicenseExpression>LGPL-3.0-only</PackageLicenseExpression>
+    <PackageProjectUrl>https://nethermind.io/nethermind-client</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>nethermind;ethereum;kademlia;dht;peer-discovery</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/NethermindEth/nethermind</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Collections.Pooled" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

@@ -76,7 +76,7 @@ public class NetworkNode
         return [.. nodes];
     }
 
-    public override string ToString() => IsEnode ? Enode.ToString() : Enr.EnrString;
+    public override string ToString() => IsEnode ? Enode.ToString() : Enr.ToString();
 
     public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
         : this(new Enode(publicKey, IPAddress.Parse(ip), port)) => Reputation = reputation;
@@ -89,8 +89,8 @@ public class NetworkNode
 
     public PublicKey NodeId => IsEnode ? Enode.PublicKey : GetEnrPublicKey();
     public string Host => IsEnode ? Enode.HostIp.ToString() : HostIp.ToString();
-    public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr!.DiscoveryIp ?? IPAddress.None;
-    public int Port => IsEnode ? Enode.Port : Enr!.DiscoveryPort ?? 0;
+    public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr!.Ip ?? IPAddress.None;
+    public int Port => IsEnode ? Enode.Port : Enr!.TcpPort ?? 0;
     public int DiscoveryPort => IsEnode ? Enode.DiscoveryPort : Enr!.DiscoveryPort ?? 0;
     public long Reputation { get; set; }
 

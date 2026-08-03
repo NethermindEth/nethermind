@@ -11,11 +11,10 @@ namespace Nethermind.RpcTests.Monitor.Dynamic;
 /// <summary>
 /// Extends DynamicExpresso <see cref="Interpreter"/> with support for binding <typeparamref name="TContext"/> properties and methods.
 /// </summary>
-// TODO: simplify usage
 // ReSharper disable StaticMemberInGenericType - intended
 internal static class DynamicBinder<TContext>
 {
-    private static readonly PropertyInfo[] _props =
+    private static readonly PropertyInfo[] Props =
     [
         .. typeof(TContext)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
@@ -29,7 +28,7 @@ internal static class DynamicBinder<TContext>
             .Select(CreateInstanceBinder)
     ];
 
-    private static readonly Func<TContext, object>[] _getters = [.. _props.Select(MakeGetter)];
+    private static readonly Func<TContext, object>[] _getters = [.. Props.Select(MakeGetter)];
 
     private static readonly (string Name, Delegate Method)[] _staticMethods =
     [
@@ -40,7 +39,7 @@ internal static class DynamicBinder<TContext>
 
     public static readonly Parameter[] Parameters =
     [
-        .. _props.Select(static p => new Parameter(p.Name, p.PropertyType)),
+        .. Props.Select(static p => new Parameter(p.Name, p.PropertyType)),
         .. _methodBinders.Select(static b => new Parameter(b.Name, b.DelegateType))
     ];
 

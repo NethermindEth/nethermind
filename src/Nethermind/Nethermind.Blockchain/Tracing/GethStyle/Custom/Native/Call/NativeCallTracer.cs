@@ -26,14 +26,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 {
     public const string CallTracer = "callTracer";
 
-    private readonly long _gasLimit;
+    private readonly ulong _gasLimit;
     private readonly Hash256? _txHash;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
-    private long _remainingGas;
+    private ulong _remainingGas;
     private bool _resultBuilt = false;
 
     public NativeCallTracer(
@@ -87,7 +87,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         _callStack.Dispose();
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
@@ -126,19 +126,19 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         callFrame.Logs.Add(callLog);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         base.ReportOperationRemainingGas(gas);
         _remainingGas = gas > 0 ? gas : 0;
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         OnExit(gas, deployedCode);
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         OnExit(gas, output);
         base.ReportActionEnd(gas, output);
@@ -151,7 +151,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.ReportActionError(evmExceptionType);
     }
 
-    public override void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         _error = EvmExceptionType.Revert;
         OnExit(gas, output, _error);
@@ -210,7 +210,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    private void OnExit(long gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
+    private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
         if (!_config.OnlyTopCall && Depth > 0)
         {

@@ -160,7 +160,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 AccountAndStoragePaths = PathGroup.EncodeToRlpPathGroupList([group]),
             }, cancellationToken);
 
-            if (item is not null && item.Count > 0)
+            if (item is not null && item.Count > 0 && ValueKeccak.Compute(item[0]) == hash)
             {
                 return item[0].ToArray();
             }

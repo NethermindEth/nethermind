@@ -56,17 +56,17 @@ public class HintBasedCacheTests
     {
         HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 200000, 200000);
-        Assert.That(hintBasedCache.Get((uint)(200000 / Ethash.EpochLength)), Is.Not.Null);
+        Assert.That(hintBasedCache.Get(Ethash.GetEpoch(200000UL)), Is.Not.Null);
     }
 
     [Test]
     public async Task Many_threads()
     {
-        int range = 10000000;
+        ulong range = 10000000UL;
         HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
-        void KeepHinting(Guid guid, int start)
+        void KeepHinting(Guid guid, ulong start)
         {
-            for (int i = start; i <= range; i++)
+            for (ulong i = start; i <= range; i++)
             {
                 hintBasedCache.Hint(guid, i, i + 120000);
             }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain;
@@ -18,6 +19,8 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Repositories;
 
@@ -37,7 +40,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
+        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb, (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>());
         SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
 
         IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
@@ -54,6 +57,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
+            .AddSingleton<IUnresolvedBlockhashPolicy, NullUnresolvedBlockhashPolicy>()
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
@@ -65,8 +69,18 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());
 
         envLifetimeScope.Disposer.AddInstanceForDisposal(editableDbProvider);
-        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(envLifetimeScope);
-        return envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
+
+        SimulateReadOnlyBlocksProcessingEnv env = envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
+        return new DisposableSimulateReadOnlyBlocksProcessingEnv(env, envLifetimeScope);
+    }
+
+    private sealed class DisposableSimulateReadOnlyBlocksProcessingEnv(
+        SimulateReadOnlyBlocksProcessingEnv inner,
+        ILifetimeScope scope) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
+    {
+        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock) => inner.Begin(baseBlock);
+
+        public void Dispose() => scope.Dispose();
     }
 
     private static BlockTree CreateTempBlockTree(
@@ -77,11 +91,12 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         SimulateDictionaryHeaderStore tmpHeaderStore,
         IBlockAccessListStore tmpBalStore)
     {
-        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb);
+        IHeaderDecoder headerDecoder = (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>();
+        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb, headerDecoder);
         const int badBlocksStored = 1;
 
         SimulateDictionaryBlockStore tmpBlockStore = new(mainBlockStore);
-        IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
+        IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored, headerDecoder);
 
         return new(tmpBlockStore,
             tmpHeaderStore,
@@ -92,6 +107,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
             new SyncConfig(),
+            NullStateBoundary.Instance,
             new BlockTreeLogHider(logManager));
     }
 

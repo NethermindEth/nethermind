@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
 
 using Nethermind.Serialization.Json;
@@ -22,7 +23,6 @@ public class LongConverterTests : ConverterTestBase<long>
 
     [TestCase("\"0xa00000\"", 10485760L)]
     [TestCase("\"0x0\"", 0L)]
-    [TestCase("\"0x0000\"", 0L)]
     [TestCase("0", 0L)]
     [TestCase("1", 1L)]
     public void Can_read_value(string json, long expected)
@@ -75,4 +75,34 @@ public class LongConverterTests : ConverterTestBase<long>
             Assert.That(deserialized, Is.EqualTo(value), $"Roundtrip failed for nibbles={nibbles}, value=0x{(ulong)value:x}");
         }
     }
+
+    [TestCase("\"0x0b\"")]
+    [TestCase("\"0x00\"")]
+    [TestCase("\"0x0ff\"")]
+    public void StrictQuantity_rejects_leading_zero(string json)
+    {
+        JsonSerializerOptions strictOpts = new() { Converters = { new LongConverter(strictQuantity: true) } };
+        Assert.That(() => JsonSerializer.Deserialize<long>(json, strictOpts), Throws.InstanceOf<FormatException>());
+    }
+
+    [Test]
+    public void StrictQuantity_rejects_json_number() =>
+        Assert.That(
+            () => JsonSerializer.Deserialize<long>("11", new JsonSerializerOptions { Converters = { new LongConverter(strictQuantity: true) } }),
+            Throws.InstanceOf<JsonException>());
+
+    [TestCase("\"0x0\"", 0L)]
+    [TestCase("\"0xb\"", 11L)]
+    [TestCase("\"0xff\"", 255L)]
+    public void StrictQuantity_accepts_valid_quantity(string json, long expected)
+    {
+        JsonSerializerOptions strictOpts = new() { Converters = { new LongConverter(strictQuantity: true) } };
+        long result = JsonSerializer.Deserialize<long>(json, strictOpts);
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [TestCase("\"0x0000\"")]
+    [TestCase("\"0x0b\"")]
+    public void Lenient_accepts_leading_zero(string json) =>
+        Assert.That(() => JsonSerializer.Deserialize<long>(json, options), Throws.Nothing);
 }

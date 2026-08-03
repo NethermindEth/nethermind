@@ -9,7 +9,7 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 [JsonConverter(typeof(ParityTraceResultConverter))]
 public class ParityTraceResult
 {
-    public long GasUsed { get; set; }
+    public ulong GasUsed { get; set; }
     public byte[]? Output { get; set; }
     public Address? Address { get; set; }
     public byte[]? Code { get; set; }

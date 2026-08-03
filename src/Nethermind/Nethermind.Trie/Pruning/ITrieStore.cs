@@ -20,7 +20,7 @@ namespace Nethermind.Trie.Pruning
         /// (i.e., not partially pruned). Implementations that perform pruning should reject blocks
         /// whose state may have been partially pruned.
         /// </summary>
-        bool HasRoot(Hash256 stateRoot, long blockNumber) => HasRoot(stateRoot);
+        bool HasRoot(Hash256 stateRoot, ulong blockNumber) => HasRoot(stateRoot);
 
         IDisposable BeginScope(BlockHeader? baseBlock);
 
@@ -32,7 +32,7 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="blockNumber"></param>
         /// <returns></returns>
-        IBlockCommitter BeginBlockCommit(long blockNumber);
+        IBlockCommitter BeginBlockCommit(ulong blockNumber);
     }
 
     public interface IScopableTrieStore

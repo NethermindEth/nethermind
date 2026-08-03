@@ -8,6 +8,7 @@ namespace Nethermind.Db
         public const string Storage = "storage";
         public const string State = "state";
         public const string Flat = "flat";
+        public const string FlatHistory = "flatHistory";
         public const string Code = "code";
         public const string Blocks = "blocks";
         public const string Headers = "headers";
@@ -23,5 +24,6 @@ namespace Nethermind.Db
         public const string PeersDb = "peers";
         public const string LogIndex = "logIndex";
         public const string Preimage = "preimage";
+        public const string PersistedSnapshotCatalog = "persistedSnapshotCatalog";
     }
 }

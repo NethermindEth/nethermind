@@ -8,8 +8,12 @@ namespace Nethermind.History;
 
 public interface IHistoryPruner
 {
-    public long? CutoffBlockNumber { get; }
-    public long? BalCutoffBlockNumber { get; }
+    /// <summary>Block number below which historical blocks may be pruned. <c>null</c> when pruning is disabled.</summary>
+    public ulong? CutoffBlockNumber { get; }
+
+    /// <summary>Block number below which historical block-access-lists may be pruned. <c>null</c> when pruning is disabled.</summary>
+    public ulong? BalCutoffBlockNumber { get; }
+
     public BlockHeader? OldestBlockHeader { get; }
 
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
@@ -20,5 +24,5 @@ public interface IHistoryPruner
     /// Converts a retention window expressed in epochs to a block count using this pruner's
     /// slots-per-epoch constant. Keeps the epoch→blocks conversion co-located with the pruner.
     /// </summary>
-    long GetRetentionBlocks(long retentionEpochs);
+    ulong GetRetentionBlocks(ulong retentionEpochs);
 }
