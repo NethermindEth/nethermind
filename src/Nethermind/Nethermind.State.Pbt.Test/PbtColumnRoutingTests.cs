@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Pbt;
@@ -16,105 +13,28 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtColumnRoutingTests
 {
-    private static readonly PbtColumns[] LeafColumns = [PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves];
-    private static readonly PbtColumns[] TrieNodeColumns = [PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes];
-
-    private static Stem AccountStem => PbtKeyDerivation.AccountHeaderStem(TestItem.AddressA);
-    private static Stem CodeStem => PbtKeyDerivation.CodeOverflowStem(TestItem.KeccakA.ValueHash256, 300, out _);
-    private static Stem StorageStem => PbtKeyDerivation.StorageStem(TestItem.AddressA, 1000, out _);
-
     [Test]
-    public void LeafBlobs_AreStoredInTheirZoneColumn()
+    public void CanonicalLeavesAndNodes_AreStoredInTheirCanonicalColumns()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-
-        byte[] accountBlob = Bytes.FromHexString("0xaa");
-        byte[] codeBlob = Bytes.FromHexString("0xbb");
-        byte[] storageBlob = Bytes.FromHexString("0xcc");
-
-        using (IPbtPersistence.IWriteBatch batch = StartBatch(db))
-        {
-            batch.SetLeafBlob(AccountStem, accountBlob);
-            batch.SetLeafBlob(CodeStem, codeBlob);
-            batch.SetLeafBlob(StorageStem, storageBlob);
-        }
-
-        AssertOnlyIn(db, AccountStem.Bytes.ToArray(), PbtColumns.AccountLeaves, accountBlob, LeafColumns);
-        AssertOnlyIn(db, CodeStem.Bytes.ToArray(), PbtColumns.CodeLeaves, codeBlob, LeafColumns);
-        AssertOnlyIn(db, StorageStem.Bytes.ToArray(), PbtColumns.StorageLeaves, storageBlob, LeafColumns);
-    }
-
-    [Test]
-    public void Reader_transfers_owned_memory_with_ref_counted_lifetime()
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        byte[] blob = Bytes.FromHexString("0xaabbcc");
-        byte[] node = Bytes.FromHexString("0xddeeff");
-        TrieNodeKey nodeKey = PbtPartitions.RootKey(PbtPartition.Account);
-        using (IPbtPersistence.IWriteBatch batch = StartBatch(db))
-        {
-            batch.SetLeafBlob(AccountStem, blob);
-            batch.SetTrieNode(nodeKey, node);
-        }
-
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-        IPbtPersistence.IReader reader = persistence.CreateReader();
-        RefCountingMemory? memory = reader.GetLeafBlob(AccountStem);
-        using RefCountingMemory? trieNode = reader.GetTrieNode(nodeKey);
-        Assert.That(memory, Is.Not.Null);
-        Assert.That(reader.GetLeafBlob(CodeStem), Is.Null);
-        memory!.AcquireLease();
+        PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
+        PbtFullKey node = new([0x01, 0x02]);
+        ValueHash256 value = TestItem.KeccakA.ValueHash256;
 
-        reader.Dispose();
-        ((IDisposable)memory).Dispose();
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, value), value, WriteFlags.None))
+        {
+            batch.SetLeaf(leaf, value);
+            batch.SetNode(node, [0x11]);
+        }
 
+        using IPbtPersistence.IReader reader = persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(memory.GetSpan().ToArray(), Is.EqualTo(blob));
-            Assert.That(trieNode!.GetSpan().ToArray(), Is.EqualTo(node));
-        }
-        ((IDisposable)memory).Dispose();
-    }
-
-    [Test]
-    public void PartitionRootTrieNodes_AreStoredInTheirZoneColumns()
-    {
-        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        TrieNodeKey accountKey = PbtPartitions.RootKey(PbtPartition.Account);
-        TrieNodeKey codeKey = PbtPartitions.RootKey(PbtPartition.Code);
-        TrieNodeKey storageKey = PbtPartitions.RootKey(PbtPartition.Storage);
-        byte[] accountNode = Bytes.FromHexString("0x22");
-        byte[] codeNode = Bytes.FromHexString("0x33");
-        byte[] storageNode = Bytes.FromHexString("0x44");
-
-        using (IPbtPersistence.IWriteBatch batch = StartBatch(db))
-        {
-            batch.SetTrieNode(accountKey, accountNode);
-            batch.SetTrieNode(codeKey, codeNode);
-            batch.SetTrieNode(storageKey, storageNode);
-        }
-
-        AssertOnlyIn(db, accountKey.ToDbKey(), PbtColumns.AccountTrieNodes, accountNode, TrieNodeColumns);
-        AssertOnlyIn(db, codeKey.ToDbKey(), PbtColumns.CodeTrieNodes, codeNode, TrieNodeColumns);
-        AssertOnlyIn(db, storageKey.ToDbKey(), PbtColumns.StorageTrieNodes, storageNode, TrieNodeColumns);
-    }
-
-    private static IPbtPersistence.IWriteBatch StartBatch(SnapshotableMemColumnsDb<PbtColumns> db) =>
-        new PbtRocksDbPersistence(db, new PbtConfig()).CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakB.ValueHash256), PbtPartitionRoots.Empty, WriteFlags.None);
-
-    private static void AssertOnlyIn(SnapshotableMemColumnsDb<PbtColumns> db, byte[] key, PbtColumns expected, byte[] value, PbtColumns[] candidates)
-    {
-        foreach (PbtColumns column in candidates)
-        {
-            byte[]? stored = db.GetColumnDb(column)[key];
-            if (column == expected)
-            {
-                Assert.That(stored, Is.EqualTo(value), $"expected value in {column}");
-            }
-            else
-            {
-                Assert.That(stored, Is.Null, $"value leaked into {column}");
-            }
+            Assert.That(reader.GetLeaf(leaf), Is.EqualTo(value));
+            Assert.That(reader.GetNode(node), Is.EqualTo(new byte[] { 0x11 }));
+            Assert.That(db.GetColumnDb(PbtColumns.AccountLeaves).GetAll(), Is.Empty);
+            Assert.That(db.GetColumnDb(PbtColumns.CompressedNodes).GetAll(), Is.Not.Empty);
         }
     }
 }

@@ -82,7 +82,7 @@ public class ImportPbtFromPreimageFlatTests
 
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
-        Assert.That(reader.CurrentPartitionRoots.Root, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
+        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
@@ -121,7 +121,7 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
-        Assert.That(reader.CurrentPartitionRoots.Root, Is.EqualTo(PbtReferenceModel.Root(model)));
+        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
 
     /// <summary>
@@ -167,7 +167,7 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
-        Assert.That(reader.CurrentPartitionRoots.Root, Is.EqualTo(PbtReferenceModel.Root(model)));
+        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, first, 1000)).ToArray(), Is.EqualTo(((UInt256)0x22).ToBigEndian()));
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, second, 1000)).ToArray(), Is.EqualTo(((UInt256)0x44).ToBigEndian()));
     }
@@ -213,7 +213,7 @@ public class ImportPbtFromPreimageFlatTests
 
             using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
-            return reader.CurrentPartitionRoots.Root;
+            return reader.CurrentRoot;
         }
 
         ValueHash256 first = await Import();
@@ -301,7 +301,7 @@ public class ImportPbtFromPreimageFlatTests
 
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-        Assert.That(reader.CurrentPartitionRoots.Root, Is.EqualTo(PbtReferenceModel.Root(model)), "reopening the view mid-zone must fold to the same root");
+        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "reopening the view mid-zone must fold to the same root");
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)).ToArray(), Is.EqualTo(((UInt256)0x55).ToBigEndian()));
     }
@@ -361,7 +361,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         ValueHash256 existingRoot = new(Keccak.Compute("existing").Bytes);
-        using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), PbtPartitionRoots.Empty, WriteFlags.None)) { }
+        using (pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), default, WriteFlags.None)) { }
 
         RecordingExitSource exitSource = new();
         ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance, new PbtConfig()), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
