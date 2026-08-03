@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -130,6 +132,21 @@ namespace Nethermind.Specs.Test
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
         public SpecGasCosts GasCosts => new(this);
-        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => BuildPrecompiles();
+
+        private FrozenSet<AddressAsKey> BuildPrecompiles()
+        {
+            HashSet<AddressAsKey> precompiles = [.. spec.Precompiles];
+            if (IsRip7212Enabled || IsEip7951Enabled)
+            {
+                precompiles.Add(PrecompiledAddresses.P256Verify);
+            }
+            else
+            {
+                precompiles.Remove(PrecompiledAddresses.P256Verify);
+            }
+
+            return precompiles.ToFrozenSet();
+        }
     }
 }
