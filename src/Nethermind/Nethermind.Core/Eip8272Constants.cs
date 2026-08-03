@@ -9,7 +9,9 @@ namespace Nethermind.Core;
 public static class Eip8272Constants
 {
     public const ulong RecentRootLength = 8192;
-    public const ulong RecentRootUsableWindow = 8191;
+
+    /// <remarks>One less than <see cref="RecentRootLength"/>: a reference of age <see cref="RecentRootLength"/> aliases the current slot's ring-buffer index.</remarks>
+    public const ulong RecentRootUsableWindow = RecentRootLength - 1;
     public const int MaxRecentRootReferences = 16;
 
     public static readonly ValueHash256 RecentRootEntryDomain = ValueKeccak.Compute("RECENT_ROOT_ENTRY");
