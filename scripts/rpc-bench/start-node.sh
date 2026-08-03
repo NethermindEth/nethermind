@@ -48,6 +48,7 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"                   # e.g. --FlatDb.Enabled=true for the flat snapshot (nethermind only)
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+NODE_ENV_VARS="${NODE_ENV_VARS:-}"                 # extra docker -e assignments, e.g. "DOTNET_TieredCompilation=0"
 NODE_CPUSET="${NODE_CPUSET:-}"                     # e.g. 2-7,10-15 (expb pins the client to these cores)
 NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 
@@ -206,10 +207,7 @@ case "$CLIENT" in
       # Park the node at the snapshot head: no peers, no discovery, no sync writes.
       "--Init.DiscoveryEnabled=false"
       "--Network.MaxActivePeers=0"
-      # expb's stability flags: no forced GC between blocks, no background pruning.
-      "--Merge.SweepMemory=NoGC"
-      "--Merge.CompactMemory=No"
-      "--Merge.CollectionsPerDecommit=-1"
+      # No background pruning while serving a parked snapshot.
       "--Pruning.Mode=None"
       "--HealthChecks.Enabled=false"
       "--Metrics.Enabled=false"
@@ -257,12 +255,9 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
-if [[ "$CLIENT" == "nethermind" ]]; then
-  docker_args+=(
-    -e "DOTNET_TieredCompilation=0"
-    -e "DOTNET_GCLatencyLevel=0"
-  )
-fi
+# Production-default code generation (no DOTNET_* pins); one-off experiments use NODE_ENV_VARS.
+# shellcheck disable=SC2086
+for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
 [[ -n "$NODE_MEMORY" ]] && docker_args+=(--memory "$NODE_MEMORY")
 
@@ -287,10 +282,9 @@ if [[ "$DOTTRACE" == "true" ]]; then
     --entrypoint /opt/dottrace/dottrace
   )
   entry_args=(start --framework=NetCore "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.dtp" --propagate-exit-code -- /nethermind/nethermind)
-elif [[ "$CLIENT" == "nethermind" ]]; then
-  # Run the binary directly (as expb does) — skips entrypoint.sh host tuning.
-  docker_args+=(--entrypoint /nethermind/nethermind)
 fi
+# Nethermind keeps the image's entrypoint.sh (as expb and production do): it applies
+# host tuning and enables a shipped PGO profile, which a direct binary call skips.
 # geth/reth official images already have the client binary as their entrypoint;
 # node_args are passed as the container command.
 
