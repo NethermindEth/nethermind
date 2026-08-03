@@ -429,7 +429,7 @@ public class ReceiptsRegenerationTests
 
     private sealed class RecoverReceiptsBlockchain : BasicTestBlockchain
     {
-        public static async Task<RecoverReceiptsBlockchain> Create(Action<ContainerBuilder> configure = null)
+        public static new async Task<RecoverReceiptsBlockchain> Create(Action<ContainerBuilder> configure = null)
         {
             RecoverReceiptsBlockchain chain = new();
             await chain.Build(builder =>
