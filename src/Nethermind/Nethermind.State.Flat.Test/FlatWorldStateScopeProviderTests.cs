@@ -1040,7 +1040,6 @@ public class FlatWorldStateScopeProviderTests
 
     private static ReadOnlyBlockAccessList CreateBal(params ReadOnlyAccountChanges[] accounts)
     {
-        // The constructor expects address-sorted accounts (as the RLP decoder guarantees).
         Array.Sort(accounts, static (a, b) => a.Address.Bytes.SequenceCompareTo(b.Address.Bytes));
         return new ReadOnlyBlockAccessList(accounts, accounts.Length);
     }
@@ -1143,8 +1142,6 @@ public class FlatWorldStateScopeProviderTests
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         scope.StartWriteBatch(0).Dispose();
 
-        // The write set is only valid for the block it was hinted for; after commit the scope
-        // must fall back to warm-everything.
         scope.HintGet(TestItem.AddressA, null);
 
         Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
@@ -1224,8 +1221,6 @@ public class FlatWorldStateScopeProviderTests
             return acceptMpmcSlotJob;
         }
 
-        // HintBal phase 1 pushes from parallel workers, hence the lock. Returns false so no
-        // outstanding-warmup balancing is needed on dispose.
         public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
         {
             lock (_lock)

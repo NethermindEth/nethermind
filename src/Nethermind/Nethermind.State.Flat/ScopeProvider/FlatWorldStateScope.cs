@@ -46,10 +46,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
-    // EIP-7928: with a suggested BAL the block's write set is known upfront. Trie nodes are only
-    // needed at commit for written accounts (flat rows serve execution reads), so address trie-warm
-    // hints are skipped for accounts the BAL declares read-only. Null (no BAL known: pre-Amsterdam,
-    // block building, sequential path) means the write set is unknown and every account warms.
     private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
@@ -204,8 +200,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         CancelHintBal();
 
-        // Published before the warmup task starts (and before execution workers issue HintGet)
-        // so the write-set gate is in place for the whole block.
         _warmupWriteSet = bal;
 
         _hintBalCts = new CancellationTokenSource();
@@ -230,8 +224,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    // HasStateChanges first: read-only accounts neither push a trie-warm job nor
-                    // enter the dedupe bloom, keeping its false-positive rate low.
                     if (ac.HasStateChanges
                         && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
