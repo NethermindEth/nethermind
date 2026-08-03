@@ -37,6 +37,7 @@ public class BootnodeDiscoveryV5NodeSourceTests
             new EthereumEcdsa(1),
             networkConfig,
             LimboLogs.Instance,
+            new BootnodeExternalIps(System.Net.IPAddress.Loopback, System.Net.IPAddress.Loopback, null),
             TestContext.CurrentContext.WorkDirectory);
         NodeRecord nodeRecord = await provider.GetCurrentAsync();
         Node discoveryNode = new(privateKey.PublicKey, "127.0.0.1", 30303)

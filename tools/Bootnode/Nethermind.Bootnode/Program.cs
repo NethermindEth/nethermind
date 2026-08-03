@@ -104,6 +104,16 @@ Option<string?> externalIpOption = new("--external-ip")
     Description = "Advertised external IP address."
 };
 
+Option<string?> externalIpV4Option = new("--external-ip-v4")
+{
+    Description = "Advertised external IPv4 address. Use with --external-ip-v6 to publish a dual-stack ENR."
+};
+
+Option<string?> externalIpV6Option = new("--external-ip-v6")
+{
+    Description = "Advertised external IPv6 address. Use with --external-ip-v4 to publish a dual-stack ENR."
+};
+
 Option<string[]> bootnodesOption = new("--bootnode", "--bootnodes")
 {
     Description = "Bootnode enode/ENR values. May be repeated or comma-separated.",
@@ -167,6 +177,8 @@ RootCommand rootCommand = new("Nethermind standalone discovery bootnode")
     discoveryIntervalOption,
     localIpOption,
     externalIpOption,
+    externalIpV4Option,
+    externalIpV6Option,
     bootnodesOption,
     useDefaultDiscv5BootnodesOption,
     logLevelOption,
@@ -286,6 +298,9 @@ BootnodeOptions CreateOptions(ParseResult parseResult)
     string dataDir = Path.GetFullPath(parseResult.GetRequiredValue(dataDirOption));
     string[] bootnodes = SplitBootnodes(parseResult.GetRequiredValue(bootnodesOption));
     string? localIp = parseResult.GetValue(localIpOption);
+    string? externalIp = parseResult.GetValue(externalIpOption);
+    string? externalIpV4 = parseResult.GetValue(externalIpV4Option);
+    string? externalIpV6 = parseResult.GetValue(externalIpV6Option);
     int discoveryPort = parseResult.GetRequiredValue(discoveryPortOption);
     ApplyAddr(parseResult.GetValue(addrOption), ref localIp, ref discoveryPort);
     int httpPort = parseResult.GetRequiredValue(httpPortOption);
@@ -329,7 +344,9 @@ BootnodeOptions CreateOptions(ParseResult parseResult)
         Concurrency = concurrency,
         DiscoveryIntervalMs = discoveryIntervalMs,
         LocalIp = localIp,
-        ExternalIp = parseResult.GetValue(externalIpOption),
+        ExternalIp = externalIp,
+        ExternalIpV4 = externalIpV4,
+        ExternalIpV6 = externalIpV6,
         Bootnodes = bootnodes,
         UseDefaultDiscv5Bootnodes = parseResult.GetRequiredValue(useDefaultDiscv5BootnodesOption),
         LogLevel = parseResult.GetRequiredValue(logLevelOption),

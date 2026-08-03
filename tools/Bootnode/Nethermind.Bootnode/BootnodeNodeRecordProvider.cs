@@ -19,6 +19,7 @@ internal sealed class BootnodeNodeRecordProvider(
     IEthereumEcdsa ethereumEcdsa,
     INetworkConfig networkConfig,
     ILogManager logManager,
+    BootnodeExternalIps externalIps,
     string dataDir) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -45,7 +46,7 @@ internal sealed class BootnodeNodeRecordProvider(
         NodeRecord selfNodeRecord = new();
         selfNodeRecord.SetEntry(IdEntry.Instance);
         IIPResolver.NethermindIp ip = await ipResolver.Resolve(cancellationToken);
-        SetEndpointEntries(selfNodeRecord, ip.ExternalIp);
+        SetEndpointEntries(selfNodeRecord, externalIps.WithFallback(ip.ExternalIp));
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = 0;
         string contentHash = selfNodeRecord.ContentHash.ToString();
@@ -62,27 +63,28 @@ internal sealed class BootnodeNodeRecordProvider(
         return selfNodeRecord;
     }
 
-    private void SetEndpointEntries(NodeRecord selfNodeRecord, IPAddress externalIp)
+    private void SetEndpointEntries(NodeRecord selfNodeRecord, BootnodeExternalIps endpointIps)
     {
-        if (externalIp.AddressFamily == AddressFamily.InterNetworkV6 && !externalIp.IsIPv4MappedToIPv6)
+        if (endpointIps.IpV4 is not null)
         {
-            selfNodeRecord.SetEntry(new Ip6Entry(externalIp));
-            if (networkConfig.P2PPort > 0)
-            {
-                selfNodeRecord.SetEntry(new Tcp6Entry(networkConfig.P2PPort));
-            }
-
-            selfNodeRecord.SetEntry(new Udp6Entry(networkConfig.DiscoveryPort));
-        }
-        else if (!Equals(externalIp, IPAddress.None))
-        {
-            selfNodeRecord.SetEntry(new IpEntry(externalIp));
+            selfNodeRecord.SetEntry(new IpEntry(endpointIps.IpV4));
             if (networkConfig.P2PPort > 0)
             {
                 selfNodeRecord.SetEntry(new TcpEntry(networkConfig.P2PPort));
             }
 
             selfNodeRecord.SetEntry(new UdpEntry(networkConfig.DiscoveryPort));
+        }
+
+        if (endpointIps.IpV6 is not null)
+        {
+            selfNodeRecord.SetEntry(new Ip6Entry(endpointIps.IpV6));
+            if (networkConfig.P2PPort > 0)
+            {
+                selfNodeRecord.SetEntry(new Tcp6Entry(networkConfig.P2PPort));
+            }
+
+            selfNodeRecord.SetEntry(new Udp6Entry(networkConfig.DiscoveryPort));
         }
     }
 
