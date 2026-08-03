@@ -19,9 +19,12 @@ public class PbtSnapshotBundleTests
         ValueHash256 shared = new([2]);
         ValueHash256 local = new([3]);
         PbtResourcePool pool = new(new PbtConfig());
-        PbtSnapshotContent sharedContent = new(); sharedContent.SetLeaf(key, shared);
-        PbtSnapshotPooledList sharedSnapshots = new(1);
-        sharedSnapshots.Add(new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing));
+        PbtSnapshotContent sharedContent = new();
+        sharedContent.SetLeaf(key, shared);
+        PbtSnapshotPooledList sharedSnapshots = new(1)
+        {
+            new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing)
+        };
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(sharedSnapshots, new Reader(key, persisted)), pool, PbtResourcePool.Usage.MainBlockProcessing);
         Assert.That(bundle.GetLeaf(key), Is.EqualTo(shared));
         bundle.SetLeaf(key, local);
@@ -35,7 +38,7 @@ public class PbtSnapshotBundleTests
         ValueHash256 value = new([2]);
         ValueHash256 root = new([3]);
         PbtResourcePool pool = new(new PbtConfig());
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtFullKey([0]), null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetLeaf(key, value);
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         using (Assert.EnterMultipleScope())

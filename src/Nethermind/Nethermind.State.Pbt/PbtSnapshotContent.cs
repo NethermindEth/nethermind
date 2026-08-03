@@ -19,7 +19,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal void SetLeaf(PbtFullKey key, ValueHash256? value)
     {
         ArgumentNullException.ThrowIfNull(key);
-        Leaves[key] = value;
+        Leaves[key] = value is null || value.Value == default ? null : value;
     }
 
     internal bool TryGetLeaf(PbtFullKey key, out ValueHash256? value) => Leaves.TryGetValue(key, out value);

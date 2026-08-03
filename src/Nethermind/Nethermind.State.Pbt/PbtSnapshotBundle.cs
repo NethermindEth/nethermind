@@ -171,6 +171,8 @@ public sealed class PbtSnapshotBundle(
 
     internal void PromoteAccount(Address address, Account? account) => Pending.Accounts.TryAdd(address, account);
 
+    internal IEnumerable<KeyValuePair<AddressAsKey, Account?>> EnumeratePendingAccounts() => Pending.Accounts;
+
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value) => Pending.Slots[(address, slot)] = value;
 
     public void SelfDestruct(Address address)
