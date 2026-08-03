@@ -728,6 +728,7 @@ public class PbtSnapshotBundleTests
         }
 
         public ValueHash256? GetFullLeaf(PbtFullKey key) => null;
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves() => [];
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix) => [];
 
         public void Dispose() => Disposed = true;

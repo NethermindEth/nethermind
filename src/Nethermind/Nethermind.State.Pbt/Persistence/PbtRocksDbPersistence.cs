@@ -168,6 +168,17 @@ public class PbtRocksDbPersistence : IPbtPersistence
             return new ValueHash256(value);
         }
 
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves()
+        {
+            ISortedKeyValueStore leaves = (ISortedKeyValueStore)snapshot.GetColumn(PbtColumns.FullLeaves);
+            using ISortedView view = leaves.GetViewBetween([], [0xFF, 0xFF]);
+            while (view.MoveNext())
+            {
+                if (view.CurrentValue.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT full-leaf value length.");
+                yield return new KeyValuePair<PbtFullKey, ValueHash256>(new PbtFullKey(view.CurrentKey), new ValueHash256(view.CurrentValue));
+            }
+        }
+
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix)
         {
             ArgumentNullException.ThrowIfNull(prefix);

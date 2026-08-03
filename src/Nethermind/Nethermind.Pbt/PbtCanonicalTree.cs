@@ -25,4 +25,12 @@ public sealed class PbtCanonicalTree
     }
 
     public bool TryGet(PbtFullKey key, Span<byte> value) => _store.TryGet(key, value);
+
+    public static ValueHash256 Rebuild(IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        PbtCanonicalTree tree = new();
+        foreach ((PbtFullKey key, ValueHash256 value) in entries) tree.Set(key, value.Bytes);
+        return tree.RootHash;
+    }
 }

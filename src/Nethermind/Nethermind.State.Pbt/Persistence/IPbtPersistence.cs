@@ -34,6 +34,7 @@ public interface IPbtPersistence
         RefCountingMemory? GetTrieNode(in TrieNodeKey key);
 
         ValueHash256? GetFullLeaf(PbtFullKey key);
+        IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves();
         IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix);
     }
 

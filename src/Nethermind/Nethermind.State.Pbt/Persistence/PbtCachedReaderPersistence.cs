@@ -174,6 +174,8 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
 
         public ValueHash256? GetFullLeaf(PbtFullKey key) => inner.GetFullLeaf(key);
 
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves() => inner.EnumerateFullLeaves();
+
         public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix) => inner.EnumerateFullLeaves(prefix);
 
         public bool TryLease() => TryAcquireLease();
