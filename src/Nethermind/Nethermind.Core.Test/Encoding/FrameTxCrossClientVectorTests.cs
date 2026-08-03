@@ -10,16 +10,15 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>
-/// Decodes a frame-transaction payload produced by another client's encoder, covering the EIP-8250
-/// keyed nonce and EIP-8272 reference fields.
+/// Decodes a frame-transaction payload produced by a second implementation's encoder, covering the
+/// EIP-8250 keyed nonce and EIP-8272 reference fields.
 /// </summary>
 /// <remarks>
-/// A round-trip test only proves this decoder agrees with this encoder. The vector below was produced
-/// by ethrex's own encoder (`crates/common/types/transaction.rs`, branch `hegota-devnet`) rather than
-/// by this one — regenerating it with our encoder would silently reduce this file to a round-trip
-/// test. It pins the field order and the signature-hash preimage against a
-/// second implementation: a transaction the two clients decode differently is a consensus split, and
-/// a signature hash they compute differently makes every cross-client transaction unspendable.
+/// A round-trip test only proves this decoder agrees with this encoder. The vector below comes from a
+/// second implementation, so regenerating it here would silently reduce this file to a round-trip test.
+/// It pins the field order and the signature-hash preimage against that implementation: a transaction
+/// the two clients decode differently is a consensus split, and a signature hash they compute
+/// differently makes every cross-client transaction unspendable.
 /// </remarks>
 public class FrameTxCrossClientVectorTests
 {
