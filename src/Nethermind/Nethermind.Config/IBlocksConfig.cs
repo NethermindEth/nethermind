@@ -74,6 +74,12 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "true")]
     bool ParallelExecutionBatchRead { get; set; }
 
+    [ConfigItem(
+        Description = "Diagnostics for the parallel Block Level Access List path: recompute the post-block state root by bulk-applying the BAL's final values on a shadow copy of the parent state and compare it with the canonical root, reporting mismatches via error logs and metrics. Never affects consensus results; adds one extra state-root computation per block.",
+        DefaultValue = "false",
+        HiddenFromDocs = true)]
+    bool ParallelBalStateRootShadow { get; set; }
+
     byte[] GetExtraDataBytes();
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]

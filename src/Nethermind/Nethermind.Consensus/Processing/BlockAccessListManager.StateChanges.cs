@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -34,52 +35,59 @@ public partial class BlockAccessListManager
     /// </remarks>
     public static void ApplyStateChanges(ReadOnlyBlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
-        foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
+        using (MetricsTimer<BalApplyTimeSink> _ = new())
         {
-            if (accountChanges.BalanceChanges.Length > 0)
+            foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
             {
-                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                UInt256 oldBalance = stateProvider.GetBalance(accountChanges.Address);
-                UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
-                if (newBalance > oldBalance)
+                if (accountChanges.BalanceChanges.Length > 0)
                 {
-                    stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
+                    stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+                    UInt256 oldBalance = stateProvider.GetBalance(accountChanges.Address);
+                    UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
+                    if (newBalance > oldBalance)
+                    {
+                        stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
+                    }
+                    else if (newBalance < oldBalance)
+                    {
+                        stateProvider.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
+                    }
                 }
-                else if (newBalance < oldBalance)
+
+                if (accountChanges.NonceChanges.Length > 0)
                 {
-                    stateProvider.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
+                    stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+                    stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
                 }
-            }
 
-            if (accountChanges.NonceChanges.Length > 0)
-            {
-                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
-            }
-
-            if (accountChanges.CodeChanges.Length > 0)
-            {
-                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
-            }
-
-            foreach (ReadOnlySlotChanges slotChange in accountChanges.StorageChanges)
-            {
-                StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
-                int slotCount = slotChange.Changes.Length;
-                if (slotCount > 0)
+                if (accountChanges.CodeChanges.Length > 0)
                 {
-                    // StorageChange.Value is now EvmWord (Vector256<byte>) in big-endian wire form.
-                    EvmWord value = slotChange.Changes[^1].Value;
-                    ReadOnlySpan<byte> valueBytes = MemoryMarshal.CreateReadOnlySpan(
-                        ref Unsafe.As<EvmWord, byte>(ref value), 32);
-                    stateProvider.Set(storageCell, [.. valueBytes.WithoutLeadingZeros()]);
+                    stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
+                }
+
+                foreach (ReadOnlySlotChanges slotChange in accountChanges.StorageChanges)
+                {
+                    StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
+                    int slotCount = slotChange.Changes.Length;
+                    if (slotCount > 0)
+                    {
+                        // StorageChange.Value is now EvmWord (Vector256<byte>) in big-endian wire form.
+                        EvmWord value = slotChange.Changes[^1].Value;
+                        ReadOnlySpan<byte> valueBytes = MemoryMarshal.CreateReadOnlySpan(
+                            ref Unsafe.As<EvmWord, byte>(ref value), 32);
+                        stateProvider.Set(storageCell, [.. valueBytes.WithoutLeadingZeros()]);
+                    }
                 }
             }
         }
-        stateProvider.Commit(spec);
-        if (shouldComputeStateRoot)
+
+        using (MetricsTimer<BalStateRootTimeSink> _ = new())
         {
-            stateProvider.RecalculateStateRoot();
+            stateProvider.Commit(spec);
+            if (shouldComputeStateRoot)
+            {
+                stateProvider.RecalculateStateRoot();
+            }
         }
     }
 
@@ -98,6 +106,8 @@ public partial class BlockAccessListManager
 
         CheckInitialized();
         MergeAndReturnBal(uint.MaxValue);
+
+        RunShadowStateRootComparison(block);
 
         if (VerifyOnly)
         {

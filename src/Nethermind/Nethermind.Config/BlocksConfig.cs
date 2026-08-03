@@ -72,6 +72,7 @@ namespace Nethermind.Config
 
         public bool ParallelExecution { get; set; } = true;
         public bool ParallelExecutionBatchRead { get; set; } = true;
+        public bool ParallelBalStateRootShadow { get; set; }
 
         public string ExtraData
         {

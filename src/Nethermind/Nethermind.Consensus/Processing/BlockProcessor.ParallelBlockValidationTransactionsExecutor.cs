@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,6 +37,12 @@ public partial class BlockProcessor
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
+
+        // BalRootReadyLagTime tracking: Stopwatch timestamps of "all tx workers finished" and
+        // "BAL apply produced the root", captured per block only when detailed metrics are on.
+        private long _balRemainingTxWorkers;
+        private long _balWorkersDrainedAt;
+        private long _balRootReadyAt;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -126,6 +133,7 @@ public partial class BlockProcessor
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+            ResetBalRootLagTracking(len);
 
             try
             {
@@ -140,7 +148,7 @@ public partial class BlockProcessor
                         len + 1,
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
-                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
+                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner, self: this),
                         static (i, state) =>
                         {
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
@@ -154,6 +162,7 @@ public partial class BlockProcessor
                                 {
                                     state.balManager.WaitForBalWarmup();
                                     BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                    state.self.OnBalRootReady();
                                     return state;
                                 }
 
@@ -198,6 +207,7 @@ public partial class BlockProcessor
                                     throw;
                                 }
 
+                                state.self.OnBalTxWorkerFinished();
                                 return state;
                             }
                             finally
@@ -232,6 +242,7 @@ public partial class BlockProcessor
                 }
 
                 incrementalValidation.GetResult();
+                ReportBalRootReadyLag();
                 return CombineReceipts(receiptsTracers, len);
             }
             finally
@@ -242,6 +253,40 @@ public partial class BlockProcessor
                 // consistent on success.
                 HarvestPerTxReceiptsIntoOuter(receiptsTracers, len, outerReceiptsTracer);
             }
+        }
+
+        private void ResetBalRootLagTracking(int txCount)
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            Volatile.Write(ref _balRootReadyAt, 0);
+            Volatile.Write(ref _balRemainingTxWorkers, txCount);
+            // With no tx workers the drain point is the start of the parallel loop.
+            Volatile.Write(ref _balWorkersDrainedAt, txCount == 0 ? Stopwatch.GetTimestamp() : 0);
+        }
+
+        private void OnBalTxWorkerFinished()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            if (Interlocked.Decrement(ref _balRemainingTxWorkers) == 0)
+            {
+                Volatile.Write(ref _balWorkersDrainedAt, Stopwatch.GetTimestamp());
+            }
+        }
+
+        private void OnBalRootReady()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            Volatile.Write(ref _balRootReadyAt, Stopwatch.GetTimestamp());
+        }
+
+        private void ReportBalRootReadyLag()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            long rootReadyAt = Volatile.Read(ref _balRootReadyAt);
+            long workersDrainedAt = Volatile.Read(ref _balWorkersDrainedAt);
+            if (rootReadyAt == 0 || workersDrainedAt == 0) return;
+            Metrics.IncrementBalRootReadyLagTime(
+                rootReadyAt > workersDrainedAt ? Stopwatch.GetElapsedTime(workersDrainedAt, rootReadyAt).Ticks : 0);
         }
 
         private void EnsureParallelBuffers(int length)
