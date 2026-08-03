@@ -145,6 +145,37 @@ public class KademliaAdapterTests
         }
     }
 
+    [Test]
+    public void HasDiscoveryEndpoint_ShouldMatchBothFamiliesInDualStackRecord()
+    {
+        IPAddress ip = IPAddress.Parse("172.19.0.2");
+        IPAddress ip6 = IPAddress.Parse("2001:db8::1");
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            ip,
+            tcpPort: null,
+            udpPort: 30304,
+            configureExtras: enr =>
+            {
+                enr.SetEntry(new Ip6Entry(ip6));
+                enr.SetEntry(new Udp6Entry(30305));
+            });
+        NodeRecord fallbackRecord = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            ip,
+            tcpPort: null,
+            udpPort: 30304,
+            configureExtras: enr => enr.SetEntry(new Ip6Entry(ip6)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(ip, 30304)), Is.True);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(ip6, 30305)), Is.True);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(ip6, 30304)), Is.False);
+            Assert.That(KademliaAdapter.HasDiscoveryEndpoint(fallbackRecord, new IPEndPoint(ip6, 30304)), Is.True);
+        }
+    }
+
     [TestCaseSource(nameof(AcceptableNodeRecordCases))]
     public void IsAcceptableNodeRecord_ShouldValidateRecord(AcceptableNodeRecordCase testCase)
     {
