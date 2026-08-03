@@ -9,12 +9,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
-using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class AccountRangeMessageSerializerTests

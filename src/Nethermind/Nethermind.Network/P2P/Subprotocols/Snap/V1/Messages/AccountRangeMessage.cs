@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Collections;
+using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.State.Snap;
 
-namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class AccountRangeMessage : SnapMessageBase
     {
-        public override int PacketType => SnapMessageCode.AccountRange;
+        public override int PacketType => Snap1MessageCode.AccountRange;
 
         /// <summary>
         /// List of consecutive accounts from the trie

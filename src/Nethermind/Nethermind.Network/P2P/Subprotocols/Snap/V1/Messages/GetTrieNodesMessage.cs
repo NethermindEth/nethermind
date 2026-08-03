@@ -3,13 +3,14 @@
 
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.State.Snap;
 
-namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetTrieNodesMessage : SnapMessageBase
     {
-        public override int PacketType => SnapMessageCode.GetTrieNodes;
+        public override int PacketType => Snap1MessageCode.GetTrieNodes;
 
         /// <summary>
         /// Root hash of the account trie to serve

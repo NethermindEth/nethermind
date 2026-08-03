@@ -30,7 +30,7 @@ using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
-using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Init.Modules;
@@ -89,15 +89,15 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<P2P.PingMessage, P2P.PingMessageSerializer>()
             .AddMessageSerializer<P2P.PongMessage, P2P.PongMessageSerializer>()
 
-            // Snap
-            .AddMessageSerializer<Snap.AccountRangeMessage, Snap.AccountRangeMessageSerializer>()
-            .AddMessageSerializer<Snap.ByteCodesMessage, Snap.ByteCodesMessageSerializer>()
-            .AddMessageSerializer<Snap.GetAccountRangeMessage, Snap.GetAccountRangeMessageSerializer>()
-            .AddMessageSerializer<Snap.GetByteCodesMessage, Snap.GetByteCodesMessageSerializer>()
-            .AddMessageSerializer<Snap.GetStorageRangeMessage, Snap.GetStorageRangesMessageSerializer>()
-            .AddMessageSerializer<Snap.GetTrieNodesMessage, Snap.GetTrieNodesMessageSerializer>()
-            .AddMessageSerializer<Snap.StorageRangeMessage, Snap.StorageRangesMessageSerializer>()
-            .AddMessageSerializer<Snap.TrieNodesMessage, Snap.TrieNodesMessageSerializer>()
+            // Snap V1
+            .AddMessageSerializer<SnapV1.AccountRangeMessage, SnapV1.AccountRangeMessageSerializer>()
+            .AddMessageSerializer<SnapV1.ByteCodesMessage, SnapV1.ByteCodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetAccountRangeMessage, SnapV1.GetAccountRangeMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetByteCodesMessage, SnapV1.GetByteCodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetStorageRangeMessage, SnapV1.GetStorageRangesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.GetTrieNodesMessage, SnapV1.GetTrieNodesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.StorageRangeMessage, SnapV1.StorageRangesMessageSerializer>()
+            .AddMessageSerializer<SnapV1.TrieNodesMessage, SnapV1.TrieNodesMessageSerializer>()
 
             // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
             // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
@@ -162,7 +162,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager>(wsm => wsm.SnapServer)
 
             // Protocol handler factories
-            .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
