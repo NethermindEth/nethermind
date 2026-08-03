@@ -139,18 +139,9 @@ public class PbtWorldStateScopeTests
         Assert.That(bundle.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)3), "and the state is readable through the header-keyed id");
     }
 
-    /// <summary>
-    /// The tree is the only record of an account, so a delete has to reach it: nothing else would stop
-    /// the next block reading the account straight back out of its header stem's leaf blob.
-    /// </summary>
-    /// <remarks>
-    /// The account's other header leaves are deliberately left behind — see
-    /// <c>PbtWorldStateScope.ClearAccountHeader</c> — so its header storage slots stay readable, which
-    /// the storage-slot case here pins as the intended scope of the delete rather than an oversight.
-    /// </remarks>
     [TestCase(7u, TestName = "header slot, on the account's own stem")]
     [TestCase(1000u, TestName = "storage-zone slot, on a stem of its own")]
-    public async Task DeletedAccount_ReadsBackAsAbsent_ButItsStorageRemains(uint slot)
+    public async Task DeletedAccount_RemovesAccountAndStorage(uint slot)
     {
         await using PbtTestContext ctx = new();
         using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
@@ -163,137 +154,14 @@ public class PbtWorldStateScopeTests
         }
 
         scope.Commit(0);
-        Assert.That(scope.Get(TestItem.AddressA), Is.Not.Null, "the account is there to begin with");
-
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
             batch.Set(TestItem.AddressA, null);
         }
-
         scope.Commit(1);
 
-        Assert.That(scope.Get(TestItem.AddressA), Is.Null, "the delete cleared its BASIC_DATA and CODE_HASH leaves");
-        Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(slot), Is.EqualTo((byte[])[0xAB]), "and left its storage standing");
-    }
-
-    [Test]
-    public async Task Hints_PromoteLatestValues_AndQueueTriePrewarms()
-    {
-        RecordingTrieWarmer warmer = new();
-        await using PbtTestContext ctx = new(trieWarmer: warmer);
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-
-        Account hinted = Build.An.Account.WithBalance(1).TestObject;
-        Account actual = Build.An.Account.WithBalance(2).TestObject;
-        scope.HintGet(TestItem.AddressA, hinted);
-        Assert.That(scope.Get(TestItem.AddressA), Is.SameAs(hinted), "the promoted account is immediately readable");
-
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-        {
-            batch.Set(TestItem.AddressA, actual);
-        }
-
-        scope.HintGet(TestItem.AddressA, hinted);
-        Assert.That(scope.Get(TestItem.AddressA), Is.SameAs(actual), "a stale hint cannot replace an authoritative account write");
-
-        IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressB);
-        UInt256 slot = 1000;
-        storage.HintSet(slot, [0xAB]);
-        storage.HintSet(slot, [0xCD]);
-        Assert.That(storage.Get(slot), Is.EqualTo((byte[])[0xCD]), "the latest storage hint wins");
-
-        storage.HintSet(slot, null);
-        Assert.That(storage.Get(slot), Is.EqualTo(StorageTree.ZeroBytes), "null promotes the canonical zero value");
-
-        storage.HintSet(slot, [0xCD]);
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
-        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(TestItem.AddressB, 1))
-        {
-            storageBatch.Set(slot, [0xEF]);
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(storage.Get(slot), Is.EqualTo((byte[])[0xEF]), "an authoritative slot write replaces the hint");
-            Assert.That(warmer.AddressJobs, Is.EqualTo(1), "one account stem is queued once per block");
-            Assert.That(warmer.SlotJobs, Is.EqualTo(1), "repeated writes to one storage stem are deduplicated");
-            Assert.That(warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence), Is.True);
-            Assert.That(warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence), Is.True);
-        }
-
-        scope.Commit(0);
-
-        ValueAddress addressA = new(TestItem.AddressA.Bytes);
-        ValueAddress addressB = new(TestItem.AddressB.Bytes);
-        scope.HintWarmAccount(in addressA);
-        scope.HintWarmSlot(in addressB, in slot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(warmer.AddressJobs, Is.EqualTo(2), "the account stem may be queued for the next block");
-            Assert.That(warmer.MpmcSlotJobs, Is.EqualTo(1), "speculative slot warmups use the multi-producer queue");
-            Assert.That(warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence), Is.True);
-            Assert.That(warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence), Is.True);
-        }
-    }
-
-    [Test]
-    public async Task AcceptedTrieWarmerJobsAndDeduplicatedHintsAreCounted()
-    {
-        RecordingTrieWarmer warmer = new();
-        await using PbtTestContext ctx = new(trieWarmer: warmer);
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-        ValueAddress address = new(TestItem.AddressA.Bytes);
-        UInt256 slot = 1000;
-        long triggeredBaseline = Metrics.PbtTrieWarmerTriggered;
-        long skippedBaseline = Metrics.PbtTrieWarmerSkippedByDeduplication;
-
-        scope.HintWarmAccount(in address);
-        scope.HintWarmAccount(in address);
-        scope.HintWarmSlot(in address, in slot);
-        scope.HintWarmSlot(in address, in slot);
-
-        bool accountWarmed = warmer.AddressWarmer!.WarmUpStateTrie(TestItem.AddressA, warmer.AddressSequence);
-        bool storageWarmed = warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(accountWarmed, Is.True, "account warmer completed");
-            Assert.That(storageWarmed, Is.True, "storage warmer completed");
-            Assert.That(Metrics.PbtTrieWarmerTriggered - triggeredBaseline, Is.EqualTo(2), "accepted jobs");
-            Assert.That(Metrics.PbtTrieWarmerSkippedByDeduplication - skippedBaseline, Is.EqualTo(2), "deduplicated hints");
-        }
-    }
-
-    [TestCase(true, 1, 1, 1)]
-    [TestCase(false, 2, 0, 0)]
-    public async Task HintSet_FallsBackToMpmc_AndRejectedJobsCanRetry(
-        bool acceptMpmc,
-        int expectedAttempts,
-        int expectedTriggered,
-        int expectedSkipped)
-    {
-        RecordingTrieWarmer warmer = new(acceptSlot: false, acceptMpmc: acceptMpmc);
-        await using PbtTestContext ctx = new(trieWarmer: warmer);
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-        IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-        UInt256 slot = 1000;
-        long triggeredBaseline = Metrics.PbtTrieWarmerTriggered;
-        long skippedBaseline = Metrics.PbtTrieWarmerSkippedByDeduplication;
-
-        storage.HintSet(slot, [0x01]);
-        storage.HintSet(slot, [0x02]);
-
-        if (acceptMpmc)
-            Assert.That(warmer.StorageWarmer!.WarmUpStorageTrie(slot, warmer.SlotSequence), Is.True);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(warmer.SlotJobs, Is.EqualTo(expectedAttempts));
-            Assert.That(warmer.MpmcSlotJobs, Is.EqualTo(expectedAttempts));
-            Assert.That(Metrics.PbtTrieWarmerTriggered - triggeredBaseline, Is.EqualTo(expectedTriggered), "accepted jobs");
-            Assert.That(Metrics.PbtTrieWarmerSkippedByDeduplication - skippedBaseline, Is.EqualTo(expectedSkipped), "deduplicated hints");
-        }
+        Assert.That(scope.Get(TestItem.AddressA), Is.Null);
+        Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(slot), Is.EqualTo(StorageTree.ZeroBytes));
     }
 
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)

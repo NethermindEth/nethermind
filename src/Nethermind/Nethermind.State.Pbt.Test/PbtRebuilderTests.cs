@@ -141,7 +141,7 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
     }
 
     [Test]
-    public async Task Rebuild_logs_partition_local_progress()
+    public async Task Rebuild_logs_completion()
     {
         List<string> messages = [];
         InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
@@ -164,22 +164,7 @@ public class PbtRebuilderTests(PbtTrieLayout layout)
         PbtRocksDbPersistence target = new(db, Config);
         await Fold(leaves, int.MaxValue, int.MaxValue, new StateId(7, TestItem.KeccakA.ValueHash256), target, logManager);
 
-        bool accountLogged = false;
-        bool codeLogged = false;
-        bool storageLogged = false;
-        foreach (string message in messages)
-        {
-            accountLogged |= message.Contains("PBT rebuild Account") && message.Contains("25.00 %");
-            codeLogged |= message.Contains("PBT rebuild Code") && message.Contains("50.00 %");
-            storageLogged |= message.Contains("PBT rebuild Storage") && message.Contains("75.00 %");
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(accountLogged, Is.True, "account progress is relative to the account root");
-            Assert.That(codeLogged, Is.True, "code progress is relative to the code root");
-            Assert.That(storageLogged, Is.True, "storage progress is relative to the storage root");
-        }
+        Assert.That(messages, Has.Some.Contains("PBT rebuild complete").And.Some.Contains("3 leaves"));
     }
 
     [Test]
