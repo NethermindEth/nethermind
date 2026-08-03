@@ -42,6 +42,41 @@ public class BootnodeNodeRecordProviderTests
         }
     }
 
+    [TestCase("192.0.2.1", "192.0.2.1", null)]
+    [TestCase("::ffff:192.0.2.1", "192.0.2.1", null)]
+    [TestCase("fd00:beef:cafe::11", null, "fd00:beef:cafe::11")]
+    [TestCase("255.255.255.255", null, null)]
+    public async Task Discovery_only_node_record_publishes_endpoint_entries_matching_external_ip_family(
+        string externalIp,
+        string? expectedIp,
+        string? expectedIp6)
+    {
+        string dataDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataDir);
+
+        using PrivateKeyGenerator generator = new();
+        using PrivateKey privateKey = generator.Generate();
+        IProtectedPrivateKey protectedPrivateKey = new ProtectedPrivateKey(privateKey, dataDir);
+        NetworkConfig networkConfig = new()
+        {
+            DiscoveryPort = 30303,
+            P2PPort = 0
+        };
+
+        NodeRecord nodeRecord = await CreateProvider(protectedPrivateKey, dataDir, networkConfig, IPAddress.Parse(externalIp)).GetCurrentAsync();
+        NodeRecord decoded = NodeRecord.FromEnrString(nodeRecord.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip), Is.EqualTo(expectedIp is null ? null : IPAddress.Parse(expectedIp)));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp), Is.Null);
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(expectedIp is null ? null : (int?)30303));
+            Assert.That(decoded.GetObj<IPAddress>(EnrContentKey.Ip6), Is.EqualTo(expectedIp6 is null ? null : IPAddress.Parse(expectedIp6)));
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Tcp6), Is.Null);
+            Assert.That(decoded.GetValue<int>(EnrContentKey.Udp6), Is.EqualTo(expectedIp6 is null ? null : (int?)30303));
+        }
+    }
+
     [Test]
     public async Task Corrupt_enr_sequence_state_does_not_block_identity_creation()
     {
