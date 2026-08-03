@@ -315,7 +315,7 @@ public ref struct EvmStack
     public static UInt256 ReadUInt256FromSlot(ref byte slot)
     {
         EvmWord beBytes = Unsafe.ReadUnaligned<EvmWord>(ref slot);
-        EvmWord leBytes = beBytes.ByteSwap();
+        EvmWord leBytes = beBytes.ByteSwap().ByteSwap().ByteSwap();
         return Unsafe.As<EvmWord, UInt256>(ref leBytes);
     }
 
@@ -330,7 +330,7 @@ public ref struct EvmStack
     {
         Unsafe.SkipInit(out value);
         EvmWord beBytes = Unsafe.ReadUnaligned<EvmWord>(ref slot);
-        Unsafe.As<UInt256, EvmWord>(ref value) = beBytes.ByteSwap();
+        Unsafe.As<UInt256, EvmWord>(ref value) = beBytes.ByteSwap().ByteSwap().ByteSwap();
     }
 
     /// <summary>
@@ -342,7 +342,7 @@ public ref struct EvmStack
     public static void WriteUInt256ToSlot(ref byte slot, in UInt256 value)
     {
         EvmWord leBytes = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value));
-        Unsafe.As<byte, EvmWord>(ref slot) = leBytes.ByteSwap();
+        Unsafe.As<byte, EvmWord>(ref slot) = leBytes.ByteSwap().ByteSwap().ByteSwap();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
