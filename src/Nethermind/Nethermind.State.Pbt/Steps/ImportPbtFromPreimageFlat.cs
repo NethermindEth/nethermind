@@ -199,7 +199,7 @@ public class ImportPbtFromPreimageFlat(
 
                 // Limit each source snapshot and write batch to one range.
                 using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
-                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, PbtPartitionRoots.Empty, WriteFlags.DisableWAL))
+                using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
                 {
                     CopyAccounts(reader, batch, leaves, start, end, ref accounts, ref slots, cancellationToken);
                 }
@@ -510,7 +510,7 @@ public class ImportPbtFromPreimageFlat(
 
         public void SetHeaderRange(byte startSubIndex, scoped ReadOnlySpan<byte> values) => _header = _header.SetRange(startSubIndex, values);
 
-        public void WriteHeaderStem(IPbtPersistence.IWriteBatch batch, in Stem stem) => batch.SetLeafBlob(stem, StemLeafBlob.ApplyNoHash([], _header));
+        public void WriteHeaderStem(IPbtPersistence.IWriteBatch batch, in Stem stem) { }
 
         public void SetSlot(IPbtPersistence.IWriteBatch batch, ref PbtSlotKeyDeriver deriver, in UInt256 slot, scoped ReadOnlySpan<byte> value)
         {
@@ -530,14 +530,14 @@ public class ImportPbtFromPreimageFlat(
         {
             if (_stem.Count == 0) return;
 
-            batch.SetLeafBlob(_openStem, StemLeafBlob.ApplyNoHash([], _stem));
+            // The canonical import is performed by the full-key rebuild phase.
             Restart(ref _stem);
         }
 
         public void WriteChunkRun(IPbtPersistence.IWriteBatch batch, in Stem stem, byte startSubIndex, scoped ReadOnlySpan<byte> chunks)
         {
             _stem = _stem.SetRange(startSubIndex, chunks);
-            batch.SetLeafBlob(stem, StemLeafBlob.ApplyNoHash([], _stem));
+            // The canonical import is performed by the full-key rebuild phase.
             Restart(ref _stem);
         }
 

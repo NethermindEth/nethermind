@@ -8,7 +8,6 @@ using Nethermind.Config;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -24,10 +23,8 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly PbtPersistenceCoordinator _coordinator;
     private readonly IPbtPersistence _persistence;
     private readonly IPbtResourcePool _resourcePool;
-    private readonly PbtStoreCache _storeCache;
     private readonly PbtSnapshotCompactor _compactor;
     private readonly ILogger _logger;
-    private readonly bool _recordDetailedMetrics;
     // Persistence is idempotent — it re-reads the head every time — so a dropped nudge costs nothing
     // and one pending signal is enough.
     private readonly Channel<bool> _workSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
@@ -53,19 +50,15 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         PbtPersistenceCoordinator coordinator,
         IPbtPersistence persistence,
         IPbtResourcePool resourcePool,
-        PbtStoreCache storeCache,
         PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
-        IMetricsConfig metricsConfig,
         ILogManager logManager)
     {
         _repository = repository;
         _coordinator = coordinator;
         _persistence = persistence;
         _resourcePool = resourcePool;
-        _storeCache = storeCache;
         _compactor = compactor;
-        _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
         _persistenceWorker = Task.Run(RunPersistenceWorker);
@@ -77,7 +70,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     {
         // the pre-genesis state is empty by definition, whatever is on disk, and is never cached:
         // there is nothing to amortise and nothing to sweep
-        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _storeCache, _recordDetailedMetrics);
+        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance);
 
         // a sweep may have released the entry between the lookup and the lease, in which case fall
         // through and assemble; a failure here must not consume an assembly attempt, or a state that
@@ -96,7 +89,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 ReportBundleMetrics(chain);
 
                 // ownership of the chain and the reader passes to the bundle
-                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _storeCache, _recordDetailedMetrics);
+                PbtReadOnlySnapshotBundle bundle = new(chain, reader);
 
                 // lease before publishing, never after: a sweep landing between the publish and the
                 // lease would release the only lease and hand back a dead bundle
@@ -150,7 +143,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         try
         {
             // ownership of the shared bundle's lease passes to the writable one
-            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _storeCache, _resourcePool, usage, _recordDetailedMetrics);
+            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _resourcePool, usage);
         }
         catch
         {
@@ -286,13 +279,13 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
         public StateId CurrentState => StateId.PreGenesis;
 
-        public PbtPartitionRoots CurrentPartitionRoots => PbtPartitionRoots.Empty;
-
-        public RefCountingMemory? GetLeafBlob(in Stem stem) => null;
-        public RefCountingMemory? GetTrieNode(in TrieNodeKey key) => null;
-        public ValueHash256? GetFullLeaf(PbtFullKey key) => null;
-        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves() => [];
-        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateFullLeaves(PbtFullKey prefix) => [];
+        public ValueHash256 CurrentRoot => default;
+        public ValueHash256? GetLeaf(PbtFullKey key) => null;
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves() => [];
+        public IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> EnumerateLeaves(PbtFullKey prefix) => [];
+        public byte[]? GetNode(PbtFullKey locator) => null;
+        public IEnumerable<KeyValuePair<PbtFullKey, byte[]>> EnumerateNodes() => [];
+        public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
 
         public void Dispose()
         {

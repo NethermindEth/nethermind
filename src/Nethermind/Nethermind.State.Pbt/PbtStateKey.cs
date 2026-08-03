@@ -37,6 +37,18 @@ internal static class PbtStateKey
         return new PbtFullKey(prefix);
     }
 
+    public static PbtFullKey OverflowCodePrefix(in ValueHash256 codeHash)
+    {
+        Span<byte> input = stackalloc byte[64];
+        input.Clear();
+        codeHash.Bytes.CopyTo(input);
+        ValueHash256 digest = Blake3Hash.Hash(input);
+        byte[] prefix = new byte[33];
+        prefix[0] = Eip8297KeyDerivation.CodeZone;
+        digest.Bytes.CopyTo(prefix.AsSpan(1));
+        return new PbtFullKey(prefix);
+    }
+
     private static byte[] Address32(Address address)
     {
         byte[] address32 = new byte[32];
