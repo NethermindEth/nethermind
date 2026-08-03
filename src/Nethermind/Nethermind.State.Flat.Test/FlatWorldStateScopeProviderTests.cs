@@ -1047,15 +1047,26 @@ public class FlatWorldStateScopeProviderTests
     private static ReadOnlyAccountChanges ReadOnlyAccount(Address address) =>
         new(address, storageChanges: [], storageReads: [(UInt256)1], balanceChanges: [], nonceChanges: [], codeChanges: []);
 
-    private static ReadOnlyAccountChanges BalanceChangedAccount(Address address) =>
-        new(address, storageChanges: [], storageReads: [], balanceChanges: [new BalanceChange(0, UInt256.One)], nonceChanges: [], codeChanges: []);
-
-    private static ReadOnlyAccountChanges StorageChangedAccount(Address address) =>
-        new(address, storageChanges: [new ReadOnlySlotChanges((UInt256)1, [new StorageChange(0, default)])], storageReads: [], balanceChanges: [], nonceChanges: [], codeChanges: []);
-
-    private static (FlatWorldStateScope Scope, RecordingTrieWarmer Warmer) CreateScopeWithRecordingWarmer()
+    public enum BalWriteKind
     {
-        RecordingTrieWarmer warmer = new(acceptSlotJob: true, acceptMpmcSlotJob: true);
+        Balance,
+        Nonce,
+        Code,
+        Storage,
+    }
+
+    private static ReadOnlyAccountChanges WrittenAccount(Address address, BalWriteKind kind = BalWriteKind.Balance) => kind switch
+    {
+        BalWriteKind.Balance => new(address, storageChanges: [], storageReads: [], balanceChanges: [new BalanceChange(0, UInt256.One)], nonceChanges: [], codeChanges: []),
+        BalWriteKind.Nonce => new(address, storageChanges: [], storageReads: [], balanceChanges: [], nonceChanges: [new NonceChange(0, 1)], codeChanges: []),
+        BalWriteKind.Code => new(address, storageChanges: [], storageReads: [], balanceChanges: [], nonceChanges: [], codeChanges: [new CodeChange(0, [0x00])]),
+        BalWriteKind.Storage => new(address, storageChanges: [new ReadOnlySlotChanges((UInt256)1, [new StorageChange(0, default)])], storageReads: [], balanceChanges: [], nonceChanges: [], codeChanges: []),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    private static FlatWorldStateScope CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer)
+    {
+        warmer = new RecordingTrieWarmer(acceptSlotJob: true, acceptMpmcSlotJob: true);
         FlatDbConfig config = new();
         ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), new ResourcePool(config), ResourcePool.Usage.MainBlockProcessing);
@@ -1069,99 +1080,114 @@ public class FlatWorldStateScopeProviderTests
             warmer,
             LimboLogs.Instance);
 
-        return (scope, warmer);
+        return scope;
     }
 
     [Test]
     public async Task HintBal_SkipsAddressWarmup_ForReadOnlyBalAccounts()
     {
-        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
 
-        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), BalanceChangedAccount(TestItem.AddressB)));
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
 
-        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressB }));
-        scope.Dispose();
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
     }
 
-    [Test]
-    public async Task HintBal_WarmsAddress_ForStorageOnlyChanges()
+    // Storage-only changes must still warm: the storage-root change rewrites the account leaf.
+    [TestCase(BalWriteKind.Balance)]
+    [TestCase(BalWriteKind.Nonce)]
+    [TestCase(BalWriteKind.Code)]
+    [TestCase(BalWriteKind.Storage)]
+    public async Task HintBal_WarmsAddress_ForEachWriteKind(BalWriteKind kind)
     {
-        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
 
-        // A storage-root change rewrites the account leaf, so storage-only changes must still warm.
-        await scope.HintBal(CreateBal(StorageChangedAccount(TestItem.AddressA)));
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, kind)));
 
-        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
-        scope.Dispose();
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
 
     [Test]
     public async Task HintBal_WithSink_StillReadsReadOnlyAccounts()
     {
-        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
         RecordingBalReaderSink sink = new();
 
-        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), BalanceChangedAccount(TestItem.AddressB)), sink);
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)), sink);
 
         Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressB }));
-        scope.Dispose();
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+    }
+
+    [Test]
+    public async Task HintBal_EmptyBal_ResetsPreviousWriteSet()
+    {
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
+        await scope.HintBal(CreateBal());
+
+        scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
 
     [Test]
     public async Task HintGet_AfterHintBal_SkipsReadOnlyAndUnlistedAccounts()
     {
-        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
 
-        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), BalanceChangedAccount(TestItem.AddressB)));
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
 
         scope.HintGet(TestItem.AddressA, null); // read-only in BAL
         scope.HintGet(TestItem.AddressC, null); // not in BAL
         scope.HintGet(TestItem.AddressB, null); // written, but already pushed by HintBal (bloom dedupe)
 
-        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressB }));
-        scope.Dispose();
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
     }
 
     [Test]
     public void HintGet_WarmsEverything_WithoutBalHint()
     {
-        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
 
         scope.HintGet(TestItem.AddressA, null);
 
-        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
-        scope.Dispose();
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
 
     [Test]
     public async Task StartWriteBatch_ResetsBalWarmupFilter()
     {
-        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         scope.StartWriteBatch(0).Dispose();
 
         scope.HintGet(TestItem.AddressA, null);
 
-        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
-        scope.Dispose();
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
 
     [Test]
     public async Task HintWarmAccount_AfterHintBal_SkipsReadOnlyAccounts()
     {
-        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        Assert.That(warmer.AddressJobPushes, Is.Empty);
-        scope.Dispose();
 
-        (FlatWorldStateScope freshScope, RecordingTrieWarmer freshWarmer) = CreateScopeWithRecordingWarmer();
-        freshScope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        Assert.That(freshWarmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
-        freshScope.Dispose();
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
+    }
+
+    [Test]
+    public void HintWarmAccount_WarmsEverything_WithoutBalHint()
+    {
+        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
 
     private sealed class RecordingBalReaderSink : IWorldStateScopeProvider.IAsyncBalReaderSink
