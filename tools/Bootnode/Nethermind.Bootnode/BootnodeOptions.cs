@@ -21,6 +21,8 @@ internal sealed class BootnodeOptions
     public required int DiscoveryIntervalMs { get; init; }
     public required string? LocalIp { get; init; }
     public required string? ExternalIp { get; init; }
+    public required string? ExternalIpV4 { get; init; }
+    public required string? ExternalIpV6 { get; init; }
     public required string[] Bootnodes { get; init; }
     public required bool UseDefaultDiscv5Bootnodes { get; init; }
     public required string LogLevel { get; init; }
