@@ -46,6 +46,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
+    // EIP-7928: with a suggested BAL the block's write set is known upfront. Trie nodes are only
+    // needed at commit for written accounts (flat rows serve execution reads), so address trie-warm
+    // hints are skipped for accounts the BAL declares read-only. Null (no BAL known: pre-Amsterdam,
+    // block building, sequential path) means the write set is unknown and every account warms.
+    private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
@@ -116,6 +122,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _hintBalCts?.Dispose();
         _hintBalCts = null;
         _hintBalTask = null;
+        _warmupWriteSet = null;
+    }
+
+    private bool NeedsStateTrieWarmup(Address address)
+    {
+        ReadOnlyBlockAccessList? bal = _warmupWriteSet;
+        return bal is null || bal.GetAccountChanges(address)?.HasStateChanges == true;
     }
 
     // Exposed for tests to observe when the wait loop is entered.
@@ -175,7 +188,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (promote) _snapshotBundle.PromoteAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
         {
-            if (_warmer.PushAddressJob(this, address, _hintSequenceId))
+            if (NeedsStateTrieWarmup(address)
+                && _warmer.PushAddressJob(this, address, _hintSequenceId))
                 Interlocked.Increment(ref _outstandingWarmups);
         }
     }
@@ -189,6 +203,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
         CancelHintBal();
+
+        // Published before the warmup task starts (and before execution workers issue HintGet)
+        // so the write-set gate is in place for the whole block.
+        _warmupWriteSet = bal;
 
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
@@ -212,7 +230,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                    // HasStateChanges first: read-only accounts neither push a trie-warm job nor
+                    // enter the dedupe bloom, keeping its false-positive rate low.
+                    if (ac.HasStateChanges
+                        && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -374,9 +395,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (IsDisposed || _pausePrewarmer) return;
         // The managed Address is materialized only after the dedupe bloom passes, so the
         // allocation happens at most once per account per block.
-        if (_snapshotBundle.ShouldQueuePrewarm(address)
-            && _warmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId))
-            Interlocked.Increment(ref _outstandingWarmups);
+        if (_snapshotBundle.ShouldQueuePrewarm(address))
+        {
+            Address managed = address.ToAddress();
+            if (NeedsStateTrieWarmup(managed)
+                && _warmer.PushAddressJob(this, managed, _hintSequenceId))
+                Interlocked.Increment(ref _outstandingWarmups);
+        }
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)

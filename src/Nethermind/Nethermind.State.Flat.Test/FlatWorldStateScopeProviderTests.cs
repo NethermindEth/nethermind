@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -1036,10 +1038,179 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(enteredWaitLoop, Is.False);
     }
 
+    private static ReadOnlyBlockAccessList CreateBal(params ReadOnlyAccountChanges[] accounts)
+    {
+        // The constructor expects address-sorted accounts (as the RLP decoder guarantees).
+        Array.Sort(accounts, static (a, b) => a.Address.Bytes.SequenceCompareTo(b.Address.Bytes));
+        return new ReadOnlyBlockAccessList(accounts, accounts.Length);
+    }
+
+    private static ReadOnlyAccountChanges ReadOnlyAccount(Address address) =>
+        new(address, storageChanges: [], storageReads: [(UInt256)1], balanceChanges: [], nonceChanges: [], codeChanges: []);
+
+    private static ReadOnlyAccountChanges BalanceChangedAccount(Address address) =>
+        new(address, storageChanges: [], storageReads: [], balanceChanges: [new BalanceChange(0, UInt256.One)], nonceChanges: [], codeChanges: []);
+
+    private static ReadOnlyAccountChanges StorageChangedAccount(Address address) =>
+        new(address, storageChanges: [new ReadOnlySlotChanges((UInt256)1, [new StorageChange(0, default)])], storageReads: [], balanceChanges: [], nonceChanges: [], codeChanges: []);
+
+    private static (FlatWorldStateScope Scope, RecordingTrieWarmer Warmer) CreateScopeWithRecordingWarmer()
+    {
+        RecordingTrieWarmer warmer = new(acceptSlotJob: true, acceptMpmcSlotJob: true);
+        FlatDbConfig config = new();
+        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), new ResourcePool(config), ResourcePool.Usage.MainBlockProcessing);
+
+        FlatWorldStateScope scope = new(
+            new StateId(0, Keccak.EmptyTreeHash),
+            bundle,
+            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
+            Substitute.For<IFlatCommitTarget>(),
+            config,
+            warmer,
+            LimboLogs.Instance);
+
+        return (scope, warmer);
+    }
+
+    [Test]
+    public async Task HintBal_SkipsAddressWarmup_ForReadOnlyBalAccounts()
+    {
+        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), BalanceChangedAccount(TestItem.AddressB)));
+
+        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressB }));
+        scope.Dispose();
+    }
+
+    [Test]
+    public async Task HintBal_WarmsAddress_ForStorageOnlyChanges()
+    {
+        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+
+        // A storage-root change rewrites the account leaf, so storage-only changes must still warm.
+        await scope.HintBal(CreateBal(StorageChangedAccount(TestItem.AddressA)));
+
+        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
+        scope.Dispose();
+    }
+
+    [Test]
+    public async Task HintBal_WithSink_StillReadsReadOnlyAccounts()
+    {
+        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+        RecordingBalReaderSink sink = new();
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), BalanceChangedAccount(TestItem.AddressB)), sink);
+
+        Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressB }));
+        scope.Dispose();
+    }
+
+    [Test]
+    public async Task HintGet_AfterHintBal_SkipsReadOnlyAndUnlistedAccounts()
+    {
+        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), BalanceChangedAccount(TestItem.AddressB)));
+
+        scope.HintGet(TestItem.AddressA, null); // read-only in BAL
+        scope.HintGet(TestItem.AddressC, null); // not in BAL
+        scope.HintGet(TestItem.AddressB, null); // written, but already pushed by HintBal (bloom dedupe)
+
+        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressB }));
+        scope.Dispose();
+    }
+
+    [Test]
+    public void HintGet_WarmsEverything_WithoutBalHint()
+    {
+        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+
+        scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
+        scope.Dispose();
+    }
+
+    [Test]
+    public async Task StartWriteBatch_ResetsBalWarmupFilter()
+    {
+        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
+        scope.StartWriteBatch(0).Dispose();
+
+        // The write set is only valid for the block it was hinted for; after commit the scope
+        // must fall back to warm-everything.
+        scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
+        scope.Dispose();
+    }
+
+    [Test]
+    public async Task HintWarmAccount_AfterHintBal_SkipsReadOnlyAccounts()
+    {
+        (FlatWorldStateScope scope, RecordingTrieWarmer warmer) = CreateScopeWithRecordingWarmer();
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
+        scope.Dispose();
+
+        (FlatWorldStateScope freshScope, RecordingTrieWarmer freshWarmer) = CreateScopeWithRecordingWarmer();
+        freshScope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        Assert.That(freshWarmer.AddressJobPushes, Is.EqualTo(new[] { TestItem.AddressA }));
+        freshScope.Dispose();
+    }
+
+    private sealed class RecordingBalReaderSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    {
+        private readonly Lock _lock = new();
+        private readonly List<Address> _accountReads = [];
+
+        public Address[] AccountReads
+        {
+            get
+            {
+                lock (_lock) return _accountReads.ToArray();
+            }
+        }
+
+        public void OnAccountRead(Address address, Account? account)
+        {
+            lock (_lock) _accountReads.Add(address);
+        }
+
+        public void OnStorageRead(in StorageCell storageCell, byte[] value) { }
+
+        public bool StillNeeded(Address address, out Account? account)
+        {
+            account = null;
+            return true;
+        }
+
+        public bool StillNeeded(in StorageCell storageCell) => true;
+    }
+
     private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
     {
+        private readonly Lock _lock = new();
+        private readonly List<Address> _addressJobPushes = [];
+
         public int SlotJobPushes { get; private set; }
         public int MpmcSlotJobPushes { get; private set; }
+
+        public Address[] AddressJobPushes
+        {
+            get
+            {
+                lock (_lock) return _addressJobPushes.ToArray();
+            }
+        }
 
         public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
         {
@@ -1053,7 +1224,16 @@ public class FlatWorldStateScopeProviderTests
             return acceptMpmcSlotJob;
         }
 
-        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+        // HintBal phase 1 pushes from parallel workers, hence the lock. Returns false so no
+        // outstanding-warmup balancing is needed on dispose.
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            lock (_lock)
+            {
+                if (path is not null) _addressJobPushes.Add(path);
+            }
+            return false;
+        }
 
         public void OnEnterScope() { }
 
