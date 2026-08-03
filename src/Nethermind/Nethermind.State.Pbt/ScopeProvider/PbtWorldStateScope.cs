@@ -232,17 +232,33 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope, ITrieW
 
         byte[]? code = account.HasCode && _pendingCode.TryGetValue(newCodeHash, out byte[]? pending) ? pending : null;
         ValueHash256? prior = Bundle.GetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey));
+        uint priorCodeSize = prior is null ? 0 : PbtKeyDerivation.ReadBasicDataCodeSize(prior.Value.Bytes);
         uint codeSize = code is not null ? (uint)code.Length
             : !account.HasCode ? 0
-            : prior is null ? 0 : PbtKeyDerivation.ReadBasicDataCodeSize(prior.Value.Bytes);
+            : priorCodeSize;
         Span<byte> basicData = stackalloc byte[ValueHash256.MemorySize];
         PbtKeyDerivation.PackBasicData(basicData, codeSize, account.Nonce, account.Balance);
         Bundle.SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), new ValueHash256(basicData));
         Bundle.SetLeaf(PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), newCodeHash);
 
-        if (code is null) return;
+        int priorHeaderChunkCount = Math.Min(
+            checked((int)((priorCodeSize + 30) / 31)),
+            PbtKeyDerivation.HeaderCodeChunks);
+        if (code is null)
+        {
+            if (!account.HasCode)
+            {
+                for (int chunkId = 0; chunkId < priorHeaderChunkCount; chunkId++)
+                    Bundle.SetLeaf(PbtStateKey.Code(address, oldCodeHash, chunkId), null);
+            }
+            return;
+        }
+
         byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
         int count = chunks.Length / PbtKeyDerivation.CodeChunkSize;
+        int headerChunkCount = Math.Min(count, PbtKeyDerivation.HeaderCodeChunks);
+        for (int chunkId = headerChunkCount; chunkId < priorHeaderChunkCount; chunkId++)
+            Bundle.SetLeaf(PbtStateKey.Code(address, oldCodeHash, chunkId), null);
         for (int chunkId = 0; chunkId < count; chunkId++)
         {
             ReadOnlySpan<byte> chunk = chunks.AsSpan(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize);

@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
@@ -71,6 +72,7 @@ public class ImportPbtFromPreimageFlat(
     internal int ClearKeyChunk { get; init; } = 10_000;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
+    private readonly ConcurrentDictionary<ValueHash256, ulong> _codeReferences = new();
 
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -109,6 +111,7 @@ public class ImportPbtFromPreimageFlat(
         try
         {
             ClearInterruptedAttempt();
+            _codeReferences.Clear();
             await CopyFlatColumns(workerCount, cancellationToken);
 
             // State is addressed by the source block header's root; the fold records its tree root beside it.
@@ -264,6 +267,12 @@ public class ImportPbtFromPreimageFlat(
             await logging;
         }
 
+        using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, default, WriteFlags.DisableWAL))
+        {
+            foreach ((ValueHash256 codeHash, ulong count) in _codeReferences)
+                batch.SetCodeReference(codeHash, count);
+        }
+
         // Batches skipped the WAL; flush before phase two reads them.
         pbtDb.Flush();
         if (_logger.IsInfo) _logger.Info($"PBT import copied {accounts:N0} accounts and {slots:N0} slots in {copying.Elapsed:hh\\:mm\\:ss}.");
@@ -308,6 +317,7 @@ public class ImportPbtFromPreimageFlat(
 
             if (code is { Length: > 0 })
             {
+                _codeReferences.AddOrUpdate(account.CodeHash.ValueHash256, 1, static (_, count) => checked(count + 1));
                 byte[] chunks = PbtKeyDerivation.ChunkifyCode(code);
                 int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
                 for (int i = 0; i < chunkCount; i++)

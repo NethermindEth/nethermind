@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -162,6 +163,33 @@ public class PbtWorldStateScopeTests
 
         Assert.That(scope.Get(TestItem.AddressA), Is.Null);
         Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(slot), Is.EqualTo(StorageTree.ZeroBytes));
+    }
+
+    [Test]
+    public async Task ReplacingCode_RemovesStaleHeaderChunks()
+    {
+        byte[] longCode = new byte[100];
+        Array.Fill(longCode, (byte)0x01);
+        byte[] shortCode = [0x02];
+        Hash256 longHash = Keccak.Compute(longCode);
+        Hash256 shortHash = Keccak.Compute(shortCode);
+        await using PbtTestContext ctx = new();
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+
+        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
+            codeWriter.Set(longHash.ValueHash256, longCode);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+            batch.Set(TestItem.AddressA, Build.An.Account.WithCode(longCode).TestObject);
+        scope.Commit(0);
+
+        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
+            codeWriter.Set(shortHash.ValueHash256, shortCode);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+            batch.Set(TestItem.AddressA, Build.An.Account.WithCode(shortCode).TestObject);
+        scope.Commit(1);
+
+        for (int chunkId = 1; chunkId < 4; chunkId++)
+            Assert.That(scope.Bundle.GetLeaf(PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Null);
     }
 
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)
