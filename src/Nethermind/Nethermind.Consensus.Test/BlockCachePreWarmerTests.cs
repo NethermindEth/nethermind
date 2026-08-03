@@ -1218,7 +1218,7 @@ public class BlockCachePreWarmerTests
         public bool Return(IReadOnlyTxProcessorSource obj)
         {
             Interlocked.Increment(ref _returned);
-            return true;
+            return false;
         }
 
         private sealed class ThrowingBuildEnv : IReadOnlyTxProcessorSource
