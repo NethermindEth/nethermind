@@ -35,6 +35,48 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
+    public void Incremental_tree_matches_oracle_after_randomized_operations()
+    {
+        Random random = new(8297);
+        PbtCanonicalTree tree = new();
+        CurrentEipReferenceTree oracle = new();
+        for (int operation = 0; operation < 500; operation++)
+        {
+            byte marker = (byte)random.Next(256);
+            byte[] key = [marker];
+            if (random.Next(4) == 0)
+            {
+                tree.Delete(new PbtFullKey(key));
+                oracle.Delete(key);
+            }
+            else
+            {
+                byte[] value = Value((byte)random.Next(256));
+                tree.Set(new PbtFullKey(key), value);
+                oracle.Insert(key, value);
+            }
+            Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), $"operation {operation}");
+        }
+    }
+
+    [Test]
+    public void Failed_prefix_batch_is_atomic()
+    {
+        PbtCanonicalStore store = new();
+        PbtFullKey original = new([0x12]);
+        store.Apply(PbtOperation.Set(original, Value(1)));
+        byte[] root = store.RootHash.Bytes.ToArray();
+        PbtMutationBatch batch = new();
+        batch.Delete(original);
+        batch.Set(new PbtFullKey([0x34]), Value(2));
+        batch.Set(new PbtFullKey([0x34, 0x56]), Value(3));
+        Assert.Throws<ArgumentException>(() => store.Apply(batch));
+        Assert.That(store.RootHash.Bytes.ToArray(), Is.EqualTo(root));
+        Span<byte> value = stackalloc byte[32];
+        Assert.That(store.TryGet(original, value), Is.True);
+    }
+
+    [Test]
     public void Full_key_validates_bounds_and_prefix_collisions()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey([]));

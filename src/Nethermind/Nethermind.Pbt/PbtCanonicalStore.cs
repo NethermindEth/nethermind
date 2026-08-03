@@ -5,54 +5,41 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-internal enum PbtOperationKind : byte
-{
-    Set,
-    Delete,
-}
+internal enum PbtOperationKind : byte { Set, Delete }
 
 internal readonly record struct PbtOperation
 {
-    private PbtOperation(PbtFullKey key, byte[]? value, PbtOperationKind kind)
-    {
-        Key = key;
-        Value = value;
-        Kind = kind;
-    }
-
+    private PbtOperation(PbtFullKey key, byte[]? value, PbtOperationKind kind) => (Key, Value, Kind) = (key, value, kind);
     public PbtFullKey Key { get; }
     public byte[]? Value { get; }
     public PbtOperationKind Kind { get; }
-
     public static PbtOperation Set(PbtFullKey key, ReadOnlySpan<byte> value)
     {
         ArgumentNullException.ThrowIfNull(key);
         if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));
-        return new PbtOperation(key, value.ToArray(), PbtOperationKind.Set);
+        return new(key, value.ToArray(), PbtOperationKind.Set);
     }
-
     public static PbtOperation Delete(PbtFullKey key)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return new PbtOperation(key, null, PbtOperationKind.Delete);
+        return new(key, null, PbtOperationKind.Delete);
     }
 }
 
 internal sealed class PbtMutationBatch
 {
     private readonly List<PbtOperation> _operations = [];
-
     public int Count => _operations.Count;
     public IReadOnlyList<PbtOperation> Operations => _operations;
-
     public void Set(PbtFullKey key, ReadOnlySpan<byte> value) => _operations.Add(PbtOperation.Set(key, value));
     public void Delete(PbtFullKey key) => _operations.Add(PbtOperation.Delete(key));
 }
 
-/// <summary>Correctness-first full-key store for a single canonical EIP-8297 root.</summary>
+/// <summary>Incremental full-key store for a single canonical EIP-8297 root.</summary>
 internal sealed class PbtCanonicalStore
 {
-    private readonly SortedDictionary<PbtFullKey, byte[]> _leaves = [];
+    private static readonly PbtNodeLocator RootLocator = new([], 0);
+    private SortedDictionary<PbtFullKey, byte[]> _leaves = [];
     private Dictionary<PbtNodeLocator, byte[]> _nodes = [];
 
     public ValueHash256 RootHash { get; private set; }
@@ -70,8 +57,10 @@ internal sealed class PbtCanonicalStore
 
     public void Apply(PbtOperation operation)
     {
-        ApplyValidated(operation);
-        RebuildNodes();
+        PbtMutationBatch batch = new();
+        if (operation.Kind == PbtOperationKind.Delete) batch.Delete(operation.Key);
+        else batch.Set(operation.Key, operation.Value!);
+        Apply(batch);
     }
 
     public void Apply(PbtMutationBatch batch)
@@ -79,20 +68,36 @@ internal sealed class PbtCanonicalStore
         ArgumentNullException.ThrowIfNull(batch);
         if (batch.Count == 0) return;
 
-        SortedDictionary<PbtFullKey, PbtOperation> finalOperations = [];
-        foreach (PbtOperation operation in batch.Operations) finalOperations[operation.Key] = operation;
-        ValidateResultingKeys(finalOperations);
-        foreach (PbtOperation operation in finalOperations.Values) ApplyUnchecked(operation);
-        RebuildNodes();
+        SortedDictionary<PbtFullKey, PbtOperation> final = [];
+        foreach (PbtOperation operation in batch.Operations) final[operation.Key] = operation;
+        ValidateResultingKeys(final);
+
+        SortedDictionary<PbtFullKey, byte[]> leaves = new(_leaves);
+        Dictionary<PbtNodeLocator, byte[]> nodes = new(_nodes);
+        ValueHash256 root = RootHash;
+        foreach (PbtOperation operation in final.Values)
+        {
+            if (operation.Kind != PbtOperationKind.Delete) continue;
+            if (!leaves.Remove(operation.Key)) continue;
+            root = Delete(nodes, RootLocator, root, operation.Key, out _);
+        }
+        foreach (PbtOperation operation in final.Values)
+        {
+            if (operation.Kind != PbtOperationKind.Set) continue;
+            leaves[operation.Key] = (byte[])operation.Value!.Clone();
+            root = Insert(nodes, RootLocator, root, operation.Key, operation.Value);
+        }
+
+        _leaves = leaves;
+        _nodes = nodes;
+        RootHash = root;
     }
 
     public IEnumerable<KeyValuePair<PbtFullKey, byte[]>> Enumerate(PbtFullKey prefix)
     {
         ArgumentNullException.ThrowIfNull(prefix);
         foreach (KeyValuePair<PbtFullKey, byte[]> entry in _leaves)
-        {
-            if (prefix.IsPrefixOf(entry.Key)) yield return new KeyValuePair<PbtFullKey, byte[]>(entry.Key, (byte[])entry.Value.Clone());
-        }
+            if (prefix.IsPrefixOf(entry.Key)) yield return new(entry.Key, (byte[])entry.Value.Clone());
     }
 
     internal bool TryGetNode(PbtNodeLocator locator, out byte[]? encoding)
@@ -106,25 +111,145 @@ internal sealed class PbtCanonicalStore
         return false;
     }
 
-    private void ApplyValidated(PbtOperation operation)
+    private static ValueHash256 Insert(Dictionary<PbtNodeLocator, byte[]> nodes, PbtNodeLocator locator,
+        ValueHash256 expectedHash, PbtFullKey key, byte[] value)
     {
-        if (operation.Kind == PbtOperationKind.Set)
+        if (expectedHash == default)
         {
-            ValidateSetKey(operation.Key, null);
+            PbtLeafNode leaf = new(key, (byte[])value.Clone());
+            Store(nodes, locator, leaf);
+            return leaf.Hash;
         }
-        ApplyUnchecked(operation);
+
+        PbtCanonicalNode current = Load(nodes, locator, expectedHash);
+        if (current is PbtLeafNode existingLeaf)
+        {
+            if (existingLeaf.Key.Equals(key))
+            {
+                PbtLeafNode replacement = new(key, (byte[])value.Clone());
+                Store(nodes, locator, replacement);
+                return replacement.Hash;
+            }
+
+            int differingBit = existingLeaf.Key.FirstDifferingBit(key, locator.BitDepth);
+            PbtBitPrefix prefix = PbtBitPrefix.FromKey(key, locator.BitDepth, differingBit - locator.BitDepth);
+            int existingDirection = existingLeaf.Key.GetBit(differingBit);
+            PbtNodeLocator existingLocator = PbtNodeLocator.FromKey(existingLeaf.Key, differingBit + 1);
+            PbtNodeLocator newLocator = PbtNodeLocator.FromKey(key, differingBit + 1);
+            nodes.Remove(locator);
+            Store(nodes, existingLocator, existingLeaf);
+            PbtLeafNode newLeaf = new(key, (byte[])value.Clone());
+            Store(nodes, newLocator, newLeaf);
+            PbtBranchNode split = existingDirection == 0
+                ? new(prefix, existingLeaf.Hash, newLeaf.Hash)
+                : new(prefix, newLeaf.Hash, existingLeaf.Hash);
+            Store(nodes, locator, split);
+            return split.Hash;
+        }
+
+        PbtBranchNode branch = (PbtBranchNode)current;
+        int matched = MatchingPrefixBits(branch.Prefix, key, locator.BitDepth);
+        if (matched < branch.Prefix.BitCount)
+        {
+            PbtBitPrefix common = PbtBitPrefix.FromKey(key, locator.BitDepth, matched);
+            int existingDirection = branch.Prefix.GetBit(matched);
+            PbtBitPrefix remaining = Slice(branch.Prefix, matched + 1);
+            PbtBranchNode relocated = new(remaining, branch.LeftHash, branch.RightHash);
+            PbtNodeLocator existingLocator = locator.Append(common, existingDirection);
+            int newDirection = key.GetBit(locator.BitDepth + matched);
+            PbtNodeLocator newLocator = PbtNodeLocator.FromKey(key, locator.BitDepth + matched + 1);
+            nodes.Remove(locator);
+            Store(nodes, existingLocator, relocated);
+            PbtLeafNode newLeaf = new(key, (byte[])value.Clone());
+            Store(nodes, newLocator, newLeaf);
+            PbtBranchNode split = newDirection == 0
+                ? new(common, newLeaf.Hash, relocated.Hash)
+                : new(common, relocated.Hash, newLeaf.Hash);
+            Store(nodes, locator, split);
+            return split.Hash;
+        }
+
+        int direction = key.GetBit(locator.BitDepth + branch.Prefix.BitCount);
+        PbtNodeLocator childLocator = locator.Append(branch.Prefix, direction);
+        ValueHash256 childHash = direction == 0 ? branch.LeftHash : branch.RightHash;
+        ValueHash256 replacementHash = Insert(nodes, childLocator, childHash, key, value);
+        PbtBranchNode replacementBranch = direction == 0
+            ? new(branch.Prefix, replacementHash, branch.RightHash)
+            : new(branch.Prefix, branch.LeftHash, replacementHash);
+        Store(nodes, locator, replacementBranch);
+        return replacementBranch.Hash;
     }
 
-    private void ApplyUnchecked(PbtOperation operation)
+    private static ValueHash256 Delete(Dictionary<PbtNodeLocator, byte[]> nodes, PbtNodeLocator locator,
+        ValueHash256 expectedHash, PbtFullKey key, out bool removed)
     {
-        if (operation.Kind == PbtOperationKind.Delete)
+        PbtCanonicalNode current = Load(nodes, locator, expectedHash);
+        if (current is PbtLeafNode leaf)
         {
-            _leaves.Remove(operation.Key);
+            removed = leaf.Key.Equals(key);
+            if (removed) nodes.Remove(locator);
+            return removed ? default : leaf.Hash;
         }
-        else
+
+        PbtBranchNode branch = (PbtBranchNode)current;
+        if (MatchingPrefixBits(branch.Prefix, key, locator.BitDepth) != branch.Prefix.BitCount)
         {
-            _leaves[operation.Key] = (byte[])operation.Value!.Clone();
+            removed = false;
+            return branch.Hash;
         }
+        int direction = key.GetBit(locator.BitDepth + branch.Prefix.BitCount);
+        PbtNodeLocator childLocator = locator.Append(branch.Prefix, direction);
+        ValueHash256 childHash = direction == 0 ? branch.LeftHash : branch.RightHash;
+        ValueHash256 replacementChild = Delete(nodes, childLocator, childHash, key, out removed);
+        if (!removed) return branch.Hash;
+        if (replacementChild != default)
+        {
+            PbtBranchNode replacement = direction == 0
+                ? new(branch.Prefix, replacementChild, branch.RightHash)
+                : new(branch.Prefix, branch.LeftHash, replacementChild);
+            Store(nodes, locator, replacement);
+            return replacement.Hash;
+        }
+
+        int siblingDirection = 1 - direction;
+        PbtNodeLocator siblingLocator = locator.Append(branch.Prefix, siblingDirection);
+        ValueHash256 siblingHash = siblingDirection == 0 ? branch.LeftHash : branch.RightHash;
+        PbtCanonicalNode sibling = Load(nodes, siblingLocator, siblingHash);
+        nodes.Remove(siblingLocator);
+        PbtCanonicalNode promoted = sibling is PbtBranchNode siblingBranch
+            ? new PbtBranchNode(PbtBitPrefix.Concat(branch.Prefix, siblingDirection, siblingBranch.Prefix), siblingBranch.LeftHash, siblingBranch.RightHash)
+            : sibling;
+        Store(nodes, locator, promoted);
+        return promoted.Hash;
+    }
+
+    private static PbtCanonicalNode Load(Dictionary<PbtNodeLocator, byte[]> nodes, PbtNodeLocator locator, ValueHash256 expectedHash)
+    {
+        if (!nodes.TryGetValue(locator, out byte[]? encoding)) throw new InvalidDataException("A referenced PBT node is missing.");
+        PbtCanonicalNode node = PbtNodeCodec.Decode(encoding);
+        if (node.Hash != expectedHash) throw new InvalidDataException("A persisted PBT node hash does not match its reference.");
+        return node;
+    }
+
+    private static void Store(Dictionary<PbtNodeLocator, byte[]> nodes, PbtNodeLocator locator, PbtCanonicalNode node) =>
+        nodes[locator] = PbtNodeCodec.Encode(node);
+
+    private static int MatchingPrefixBits(PbtBitPrefix prefix, PbtFullKey key, int keyOffset)
+    {
+        int available = key.BitLength - keyOffset;
+        int count = Math.Min(prefix.BitCount, available);
+        int i = 0;
+        while (i < count && prefix.GetBit(i) == key.GetBit(keyOffset + i)) i++;
+        return i;
+    }
+
+    private static PbtBitPrefix Slice(PbtBitPrefix prefix, int start)
+    {
+        int count = prefix.BitCount - start;
+        byte[] bytes = new byte[PbtBitPrefix.ByteCount(count)];
+        for (int i = 0; i < count; i++)
+            if (prefix.GetBit(start + i) != 0) bytes[i >> 3] |= (byte)(1 << (7 - (i & 7)));
+        return new PbtBitPrefix(bytes, count);
     }
 
     private void ValidateResultingKeys(SortedDictionary<PbtFullKey, PbtOperation> operations)
@@ -135,64 +260,11 @@ internal sealed class PbtCanonicalStore
             if (operation.Kind == PbtOperationKind.Delete) resulting.Remove(operation.Key);
             else resulting.Add(operation.Key);
         }
-
         PbtFullKey? previous = null;
         foreach (PbtFullKey key in resulting)
         {
             if (previous is not null && previous.IsPrefixOf(key)) throw new ArgumentException("Tree keys must be prefix-free.");
             previous = key;
         }
-    }
-
-    private void ValidateSetKey(PbtFullKey key, PbtFullKey? ignored)
-    {
-        foreach (PbtFullKey existing in _leaves.Keys)
-        {
-            if (!existing.Equals(key) && !existing.Equals(ignored) && (existing.IsPrefixOf(key) || key.IsPrefixOf(existing)))
-            {
-                throw new ArgumentException("Tree keys must be prefix-free.", nameof(key));
-            }
-        }
-    }
-
-    private void RebuildNodes()
-    {
-        Dictionary<PbtNodeLocator, byte[]> nodes = [];
-        if (_leaves.Count == 0)
-        {
-            _nodes = nodes;
-            RootHash = default;
-            return;
-        }
-
-        KeyValuePair<PbtFullKey, byte[]>[] entries = [.. _leaves];
-        RootHash = Build(entries, 0, entries.Length, 0, nodes);
-        _nodes = nodes;
-    }
-
-    private static ValueHash256 Build(KeyValuePair<PbtFullKey, byte[]>[] entries, int start, int end, int depth,
-        Dictionary<PbtNodeLocator, byte[]> nodes)
-    {
-        PbtFullKey representative = entries[start].Key;
-        PbtNodeLocator locator = PbtNodeLocator.FromKey(representative, depth);
-        if (end - start == 1)
-        {
-            PbtLeafNode leaf = new(representative, (byte[])entries[start].Value.Clone());
-            nodes.Add(locator, PbtNodeCodec.Encode(leaf));
-            return leaf.Hash;
-        }
-
-        int differingBit = representative.FirstDifferingBit(entries[end - 1].Key, depth);
-        if (differingBit == Math.Min(representative.BitLength, entries[end - 1].Key.BitLength))
-        {
-            throw new InvalidOperationException("Tree keys must be prefix-free.");
-        }
-        int split = start + 1;
-        while (split < end && entries[split].Key.GetBit(differingBit) == 0) split++;
-        ValueHash256 left = Build(entries, start, split, differingBit + 1, nodes);
-        ValueHash256 right = Build(entries, split, end, differingBit + 1, nodes);
-        PbtBranchNode branch = new(PbtBitPrefix.FromKey(representative, depth, differingBit - depth), left, right);
-        nodes.Add(locator, PbtNodeCodec.Encode(branch));
-        return branch.Hash;
     }
 }

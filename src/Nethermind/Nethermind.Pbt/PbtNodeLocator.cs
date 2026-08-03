@@ -62,6 +62,26 @@ internal sealed class PbtNodeLocator : IEquatable<PbtNodeLocator>
         return new PbtNodeLocator(path, bitDepth);
     }
 
+    internal PbtNodeLocator Append(PbtBitPrefix prefix, int direction)
+    {
+        if ((uint)direction > 1) throw new ArgumentOutOfRangeException(nameof(direction));
+        int depth = checked(BitDepth + prefix.BitCount + 1);
+        byte[] path = new byte[(depth + 7) >> 3];
+        _path.CopyTo(path, 0);
+        for (int i = 0; i < prefix.BitCount; i++)
+        {
+            if (prefix.GetBit(i) == 0) continue;
+            int bit = BitDepth + i;
+            path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
+        }
+        if (direction != 0)
+        {
+            int bit = depth - 1;
+            path[bit >> 3] |= (byte)(1 << (7 - (bit & 7)));
+        }
+        return new PbtNodeLocator(path, depth);
+    }
+
     public bool Equals(PbtNodeLocator? other) => other is not null && BitDepth == other.BitDepth && Path.SequenceEqual(other.Path);
     public override bool Equals(object? obj) => obj is PbtNodeLocator other && Equals(other);
     public override int GetHashCode()
