@@ -124,8 +124,10 @@ namespace Nethermind.Serialization.Rlp
             // fields, but it must still advance past them to receiptEnd — the boundary of this
             // receipt's own sequence — so the next receipt in the array decodes from the right
             // offset. For pre-fork receipts Position already equals receiptEnd, so this is a no-op.
+            // Presence of the extension marks a frame-tx receipt, matching the object decode path.
             if (decoderContext.Position < receiptEnd)
             {
+                item.TxType = TxType.FrameTx;
                 decoderContext.Position = receiptEnd;
             }
         }

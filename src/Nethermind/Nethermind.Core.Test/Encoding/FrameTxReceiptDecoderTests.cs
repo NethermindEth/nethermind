@@ -46,15 +46,12 @@ public class FrameTxReceiptDecoderTests
     {
         LogEntry unionLog = Log(0x01);
         LogEntry frameOnlyLog = Log(0x02);
-        TxReceipt frameReceipt = CreateReceipt(
+        // Union omits frameOnlyLog, so it diverges from the frame-order concatenation on purpose.
+        TxReceipt frameReceipt = CreateStorageFrameReceipt(
+            [unionLog],
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [unionLog]),
             new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [frameOnlyLog]),
             new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []));
-        frameReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
-        frameReceipt.Sender = TestItem.AddressC;
-        // Union omits frameOnlyLog, so it diverges from the frame-order concatenation on purpose.
-        frameReceipt.Logs = [unionLog];
-        frameReceipt.Bloom = new Bloom(frameReceipt.Logs);
         TxReceipt legacyReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
 
         ReceiptArrayStorageDecoder encoder = new(compactEncoding);
@@ -72,7 +69,7 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decodedFrame.TxType, Is.EqualTo(TxType.FrameTx));
         Assert.That(decodedFrame.Payer, Is.EqualTo(frameReceipt.Payer));
         AssertFrameReceiptsEqual(decodedFrame.FrameReceipts!, frameReceipt.FrameReceipts!);
-        AssertLogsEqual(decodedFrame.Logs!, frameReceipt.Logs,
+        AssertLogsEqual(decodedFrame.Logs!, frameReceipt.Logs!,
             "the stored union must stay the union, not get rebuilt from frame logs");
     }
 
@@ -87,24 +84,26 @@ public class FrameTxReceiptDecoderTests
     public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours()
     {
         LogEntry frameLog = Log(0x01);
-        TxReceipt frameReceipt = CreateReceipt(
+        TxReceipt frameReceipt = CreateStorageFrameReceipt(
+            [frameLog],
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [frameLog]),
             new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [Log(0x02)]));
-        frameReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
-        frameReceipt.Sender = TestItem.AddressC;
-        frameReceipt.Logs = [frameLog];
-        frameReceipt.Bloom = new Bloom(frameReceipt.Logs);
 
-        TxReceipt before = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
-        TxReceipt after = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
+        // Distinct sender/gas on the neighbours so realigning onto `after` is provably not `before`.
+        TxReceipt before = Build.A.Receipt.WithAllFieldsFilled
+            .WithSender(TestItem.AddressD).WithGasUsedTotal(1000).WithCalculatedBloom().TestObject;
+        TxReceipt after = Build.A.Receipt.WithAllFieldsFilled
+            .WithSender(TestItem.AddressE).WithGasUsedTotal(2000).WithCalculatedBloom().TestObject;
 
         CompactReceiptStorageDecoder decoder = new();
         byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
 
-        // Mirror ReceiptsIterator.TryGetNext: read the outer sequence, then loop DecodeStructRef.
-        // TxReceiptStructRef is a ref struct, so scalar fields are captured per index as we go.
+        // Mirror ReceiptsIterator.TryGetNext: read the outer sequence, then loop DecodeStructRef
+        // while the absolute Position stays within the content length returned by
+        // ReadSequenceLength(), exactly as ReceiptsIterator does. TxReceiptStructRef is a ref
+        // struct, so scalar fields are captured per index as we go.
         RlpReader reader = new(encoded);
-        int length = reader.ReadSequenceLength() + reader.Position;
+        int length = reader.ReadSequenceLength();
         int count = 0;
         (byte Status, ulong Gas, string Sender, LogEntry[] Logs)[] decoded = new (byte, ulong, string, LogEntry[])[3];
         while (reader.Position < length)
@@ -119,10 +118,13 @@ public class FrameTxReceiptDecoderTests
 
         Assert.That(count, Is.EqualTo(3), "every receipt must decode, including the neighbours");
 
+        Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender!.ToString()), "leading receipt sender");
+        Assert.That(decoded[0].Gas, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
+
         Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
         Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
-        Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender.ToString()), "frame sender");
-        AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs);
+        Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender!.ToString()), "frame sender");
+        AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs!);
 
         // The receipt after the frame tx must be intact, proving the reader realigned.
         Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender!.ToString()), "trailing receipt sender");
@@ -191,6 +193,19 @@ public class FrameTxReceiptDecoderTests
             Payer = TestItem.AddressA,
             FrameReceipts = frameReceipts,
         };
+
+    // Applies the storage-only fixups a frame receipt gets before it is persisted: internal success
+    // status, a recovered sender, the verbatim union Logs (which may differ from the frame-order
+    // concatenation), and the matching bloom.
+    private static TxReceipt CreateStorageFrameReceipt(LogEntry[] unionLogs, params TxFrameReceipt[] frameReceipts)
+    {
+        TxReceipt receipt = CreateReceipt(frameReceipts);
+        receipt.StatusCode = TxFrameReceipt.StatusSuccess;
+        receipt.Sender = TestItem.AddressC;
+        receipt.Logs = unionLogs;
+        receipt.Bloom = new Bloom(unionLogs);
+        return receipt;
+    }
 
     private static LogEntry Log(byte marker) =>
         new(TestItem.AddressB, [marker], [Keccak.Compute([marker])]);
