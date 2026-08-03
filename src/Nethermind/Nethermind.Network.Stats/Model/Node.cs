@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Threading;
 using FastEnumUtility;
@@ -353,6 +354,10 @@ namespace Nethermind.Stats.Model
 
         // xxx.xxx.xxx.xxx = 15
         private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');
+        private string EnodeHost => Address.Address.AddressFamily == AddressFamily.InterNetworkV6 && !Address.Address.IsIPv4MappedToIPv6
+            ? $"[{Host}]"
+            : Host;
+
         private string PaddedPort
         {
             get
@@ -392,10 +397,10 @@ namespace Nethermind.Stats.Model
             Format.Short => $"{Host}:{Port}",
             Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
             Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
-            Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
-            Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",
-            Format.WithPublicKey => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
-            _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
+            Format.WithId => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}|{ClientId}",
+            Format.ENode => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}",
+            Format.WithPublicKey => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}|{Id.Address}",
+            _ => $"enode://{Id.ToString(false)}@{EnodeHost}:{Port}"
         };
 
         public bool Equals(Node other)
