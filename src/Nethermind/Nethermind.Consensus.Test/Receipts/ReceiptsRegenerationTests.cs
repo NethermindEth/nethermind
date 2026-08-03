@@ -110,31 +110,47 @@ public class ReceiptsRegenerationTests
     // and any transaction reading it regenerates receipts that fail the root check.
     [Test]
     public void Regenerates_a_post_merge_block_whose_stored_header_lost_the_flag() =>
-        AssertRegeneratesPostMergeBlock(AlwaysPoS.Instance);
+        AssertRegeneratesPostMergeBlock(_chain, _envSource, Regenerator(AlwaysPoS.Instance));
 
     // The production failure arrived as a mainnet-shaped header with TotalDifficulty unset; this pins the real
     // switcher's TD-null derivation end to end, not only the honour-the-switcher contract AlwaysPoS covers.
     [Test]
-    public void Regenerates_a_post_merge_block_through_the_real_switcher()
+    public void Regenerates_a_post_merge_block_through_the_real_switcher() =>
+        AssertRegeneratesPostMergeBlock(_chain, _envSource, Regenerator(RealSwitcher(Substitute.For<IBlockTree>())));
+
+    // The direct-injection cases above would keep passing if a composition change left the container-resolved
+    // regenerator on the NoPoS default; this resolves it from a graph whose switcher registration is overridden
+    // the way a merge-enabled node overrides it.
+    [Test]
+    public async Task Container_resolved_regenerator_uses_the_registered_switcher()
     {
-        TestSpecProvider mergeSpecProvider = new(Berlin.Instance) { TerminalTotalDifficulty = 1 };
-        PoSSwitcher poSSwitcher = new(
-            new MergeConfig(),
-            new SyncConfig(),
-            new MemDb(),
-            Substitute.For<IBlockTree>(),
-            mergeSpecProvider,
-            new ChainSpec(),
-            LimboLogs.Instance);
-        AssertRegeneratesPostMergeBlock(poSSwitcher);
+        using RecoverReceiptsBlockchain chain = await RecoverReceiptsBlockchain.Create(builder =>
+            builder.AddSingleton<IPoSSwitcher>(ctx => RealSwitcher(ctx.Resolve<IBlockTree>())));
+
+        AssertRegeneratesPostMergeBlock(chain,
+            chain.Container.Resolve<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>>(),
+            chain.Container.Resolve<ReceiptsRegenerator>());
     }
 
-    private void AssertRegeneratesPostMergeBlock(IPoSSwitcher poSSwitcher)
+    private ReceiptsRegenerator Regenerator(IPoSSwitcher poSSwitcher) => new(
+        _envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, poSSwitcher, LimboLogs.Instance);
+
+    private static PoSSwitcher RealSwitcher(IBlockTree blockTree) => new(
+        new MergeConfig(),
+        new SyncConfig(),
+        new MemDb(),
+        blockTree,
+        new TestSpecProvider(Berlin.Instance) { TerminalTotalDifficulty = 1 },
+        new ChainSpec(),
+        LimboLogs.Instance);
+
+    private static void AssertRegeneratesPostMergeBlock(
+        BasicTestBlockchain chain,
+        IShareableOverridableEnvSource<ReceiptsRegenerationEnv> envSource,
+        ReceiptsRegenerator regenerator)
     {
-        ReceiptsRegenerator regenerator = new(
-            _envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, poSSwitcher, LimboLogs.Instance);
-        BlockHeader parent = _chain.BlockTree.Head!.Header;
-        ulong nonce = _chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.PrivateKeyA.Address);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.PrivateKeyA.Address);
         Block postMerge = Build.A.Block
             .WithParent(parent)
             .WithDifficulty(0)
@@ -145,8 +161,8 @@ public class ReceiptsRegenerationTests
 
         // Ground truth mirroring live processing: execute with the flag intact and commit the resulting receipts
         // root, which captures the logged PREVRANDAO bytes.
-        IReleaseSpec spec = _chain.SpecProvider.GetSpec(postMerge.Header);
-        using (Scope<ReceiptsRegenerationEnv> scope = _envSource.BuildAndOverride(parent.Clone()))
+        IReleaseSpec spec = chain.SpecProvider.GetSpec(postMerge.Header);
+        using (Scope<ReceiptsRegenerationEnv> scope = envSource.BuildAndOverride(parent.Clone()))
         {
             (Block _, TxReceipt[] processed) = scope.Component.BlockProcessor.ProcessOne(
                 postMerge, ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
@@ -413,10 +429,14 @@ public class ReceiptsRegenerationTests
 
     private sealed class RecoverReceiptsBlockchain : BasicTestBlockchain
     {
-        public static async Task<RecoverReceiptsBlockchain> Create()
+        public static async Task<RecoverReceiptsBlockchain> Create(Action<ContainerBuilder> configure = null)
         {
             RecoverReceiptsBlockchain chain = new();
-            await chain.Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance)));
+            await chain.Build(builder =>
+            {
+                builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+                configure?.Invoke(builder);
+            });
 
             // TestBlockchain runs no init steps or persist cycles: establish the genesis floor and prove capture
             // through its already-covered completion path (the walk itself is covered by HistoryWriterTests).
