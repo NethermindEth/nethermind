@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -208,6 +209,84 @@ public class ZeroNettyFrameMergerTests
         {
             completed?.Release();
         }
+    }
+
+    [Test]
+    public void Throws_when_continuation_frame_exceeds_remaining_packet_size()
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        // Build a valid two-frame packet and then corrupt the continuation frame's size field.
+        using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
+
+        // Locate the second frame. First frame payload = Frame.DefaultMaxFrameSize (1024), padding = 0.
+        int firstFrameLength = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
+        int secondFrameOffset = firstFrameLength;
+
+        // The second frame originally has payload size 2. Tamper with its 3-byte size
+        // field to claim 100 payload bytes, which exceeds the remaining packet size.
+        const int tamperedSecondFrameSize = 100;
+        frames.SetByte(secondFrameOffset, tamperedSecondFrameSize >> 16);
+        frames.SetByte(secondFrameOffset + 1, tamperedSecondFrameSize >> 8);
+        frames.SetByte(secondFrameOffset + 2, tamperedSecondFrameSize);
+
+        using DisposableByteBuffer firstFrame = PooledByteBufferAllocator.Default.Buffer(firstFrameLength).AsDisposable();
+        firstFrame.WriteBytes(frames, frames.ReaderIndex, firstFrameLength);
+        ZeroPacket completed = wrapper.Decode(firstFrame);
+        Assert.That(completed, Is.Null, "first frame alone should not complete a packet");
+
+        int secondFrameLength = Frame.HeaderSize + tamperedSecondFrameSize + Frame.CalculatePadding(tamperedSecondFrameSize);
+        using DisposableByteBuffer continuationFrame = PooledByteBufferAllocator.Default.Buffer(secondFrameLength).AsDisposable();
+        continuationFrame.WriteBytes(frames, secondFrameOffset, Frame.HeaderSize);
+        continuationFrame.WriteZero(tamperedSecondFrameSize);
+        continuationFrame.WriteZero(Frame.CalculatePadding(tamperedSecondFrameSize));
+
+        Assert.That(() => wrapper.Decode(continuationFrame),
+            Throws.InstanceOf<CorruptedFrameException>(),
+            "continuation frame larger than remaining packet size must be rejected");
+
+        using DisposableByteBuffer recoveryInput = BuildFrames(1).AsDisposable();
+        ZeroPacket recovered = wrapper.Decode(recoveryInput);
+        try
+        {
+            Assert.That(recovered, Is.Not.Null, "merger must accept a fresh packet after recovery from the throw");
+        }
+        finally
+        {
+            recovered?.Release();
+        }
+    }
+
+    [Test]
+    [TestCaseSource(nameof(MalformedPacketTypePayloads))]
+    public void Throws_when_packet_type_prefix_is_invalid_or_exceeds_frame_size(byte[] payloadPrefix, int frameSize)
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        int paddingSize = Frame.CalculatePadding(frameSize);
+        using DisposableByteBuffer frame = PooledByteBufferAllocator.Default.Buffer(Frame.HeaderSize + frameSize + paddingSize).AsDisposable();
+
+        frame.WriteByte(frameSize >> 16);
+        frame.WriteByte(frameSize >> 8);
+        frame.WriteByte(frameSize);
+
+        frame.WriteByte(0xc2);
+        frame.WriteByte(0x80);
+        frame.WriteByte(0x80);
+        frame.WriteZero(Frame.HeaderSize - frame.WriterIndex);
+
+        frame.WriteBytes(payloadPrefix);
+        frame.WriteZero(frameSize - payloadPrefix.Length + paddingSize);
+
+        Assert.That(() => wrapper.Decode(frame),
+            Throws.InstanceOf<CorruptedFrameException>(),
+            "malformed packet type RLP must be rejected as corrupted frame");
+    }
+
+    private static IEnumerable<TestCaseData> MalformedPacketTypePayloads()
+    {
+        yield return new TestCaseData(new byte[] { 0x85, 0x01 }, 5).SetName("Packet_type_length_exceeds_frame_size");
+        yield return new TestCaseData(new byte[] { 0xb8, 0x38 }, 5).SetName("Packet_type_integer_length_exceeds_supported_width");
     }
 
     [Test]

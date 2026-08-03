@@ -5,9 +5,11 @@ using System;
 using System.IO;
 using System.Net.Sockets;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
@@ -41,8 +43,16 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         if (SnappyEnabled)
         {
-            int uncompressedLength = Snappy.GetUncompressedLength(
-                content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, readableBytes));
+            ReadOnlySpan<byte> snappyInput = content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, readableBytes);
+            int uncompressedLength;
+            try
+            {
+                uncompressedLength = Snappy.GetUncompressedLength(snappyInput);
+            }
+            catch (InvalidDataException exception)
+            {
+                throw BuildSnappyCorruptedFrameException(_logger, content, readableBytes, exception);
+            }
 
             if (uncompressedLength > SnappyParameters.MaxSnappyLength)
             {
@@ -64,16 +74,14 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             try
             {
                 int length = Snappy.Decompress(
-                    content.Array.AsSpan(content.ArrayOffset + content.ReaderIndex, readableBytes),
+                    snappyInput,
                     output.Array.AsSpan(output.ArrayOffset + output.WriterIndex));
                 output.SetWriterIndex(output.WriterIndex + length);
             }
-            catch (InvalidDataException)
+            catch (InvalidDataException exception)
             {
                 output.SafeRelease();
-                // Data is not compressed sometimes, so we pass directly.
-                _session.ReceiveMessage(input);
-                return;
+                throw BuildSnappyCorruptedFrameException(_logger, content, readableBytes, exception);
             }
             catch (Exception)
             {
@@ -133,6 +141,17 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
     private static string GetClientId(ISession? session) =>
         session?.Node?.ToString(Node.Format.Console) ?? $"unknown {session?.RemoteHost}";
+
+    private static CorruptedFrameException BuildSnappyCorruptedFrameException(ILogger logger, IByteBuffer content, int readableBytes, InvalidDataException exception)
+    {
+        if (logger.IsDebug)
+        {
+            ReadOnlyMemory<byte> prefix = content.Array.AsMemory(content.ArrayOffset + content.ReaderIndex, Math.Min(32, readableBytes));
+            logger.Error($"Snappy decompression failed for {readableBytes} bytes: {prefix.ToHexString()}");
+        }
+
+        return new CorruptedFrameException(exception);
+    }
 
     public void EnableSnappy() => SnappyEnabled = true;
 }
