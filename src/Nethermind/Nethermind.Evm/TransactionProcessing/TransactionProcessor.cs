@@ -1344,6 +1344,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
 
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
+                Nethermind.Evm.FrameCensus.Observe(VirtualMachine.OpCodeCount);
                 VirtualMachine.FlushMetricsCounters();
                 gasAvailable = state.Gas;
 

@@ -1176,6 +1176,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         scoped in UInt256 previousCallOutputDestination)
         where TTracingInst : struct, IFlag
     {
+        FrameCensus.CountFrame();
         VmState<TGasPolicy> vmState = _currentState;
         // Obtain a reference to the execution environment for convenience.
         ExecutionEnvironment env = vmState.Env;
