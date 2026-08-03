@@ -77,7 +77,7 @@ public class ReceiptsRegenerationTests
             _chain.Container.Resolve<ILifetimeScope>(),
             [.. _chain.Container.Resolve<IEnumerable<IBlockValidationModule>>()]);
         _envSource = factory.Create(maxConcurrent: 2);
-        _regenerator = new ReceiptsRegenerator(_envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, LimboLogs.Instance);
+        _regenerator = new ReceiptsRegenerator(_envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, _chain.PoSSwitcher, LimboLogs.Instance);
     }
 
     [OneTimeTearDown]
@@ -103,11 +103,13 @@ public class ReceiptsRegenerationTests
     }
 
     // Storage does not persist the post-merge flag, so a queried block re-executes with it cleared; the regenerator
-    // must restore it or PREVRANDAO evaluates to the pre-merge difficulty — zero on every post-merge header — and
-    // any transaction reading it regenerates receipts that fail the root check.
+    // must restore it from the switcher or PREVRANDAO evaluates to the difficulty field instead of the mix hash,
+    // and any transaction reading it regenerates receipts that fail the root check.
     [Test]
     public void Regenerates_a_post_merge_block_whose_stored_header_lost_the_flag()
     {
+        ReceiptsRegenerator regenerator = new(
+            _envSource, _chain.BlockFinder, _chain.SpecProvider, _chain.EthereumEcdsa, AlwaysPoS.Instance, LimboLogs.Instance);
         BlockHeader parent = _chain.BlockTree.Head!.Header;
         ulong nonce = _chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.PrivateKeyA.Address);
         Block postMerge = Build.A.Block
@@ -133,7 +135,7 @@ public class ReceiptsRegenerationTests
         Block reloaded = new(postMerge.Header.Clone(), postMerge.Body);
         reloaded.Header.IsPostMerge = false;
 
-        Assert.That(_regenerator.TryRegenerate(reloaded, out TxReceipt[] regenerated), Is.True,
+        Assert.That(regenerator.TryRegenerate(reloaded, out TxReceipt[] regenerated), Is.True,
             "re-execution must read PREVRANDAO from the mix hash, not the zeroed difficulty");
         Assert.That(ReceiptsRootCalculator.Instance.GetReceiptsRoot(regenerated, spec, reloaded.Header.ReceiptsRoot),
             Is.EqualTo(reloaded.Header.ReceiptsRoot));
@@ -181,6 +183,7 @@ public class ReceiptsRegenerationTests
             Substitute.For<IBlockFinder>(),
             new TestSpecProvider(Frontier.Instance),
             Substitute.For<IEthereumEcdsa>(),
+            NoPoS.Instance,
             LimboLogs.Instance);
 
         Assert.That(regenerator.TryRegenerate(Build.A.Block.TestObject, out _), Is.False);
@@ -199,6 +202,7 @@ public class ReceiptsRegenerationTests
             Substitute.For<IBlockFinder>(),
             new TestSpecProvider(Frontier.Instance),
             Substitute.For<IEthereumEcdsa>(),
+            NoPoS.Instance,
             LimboLogs.Instance);
         IReceiptFinder inner = Substitute.For<IReceiptFinder>();
         inner.Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).Returns([]);

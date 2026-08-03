@@ -35,6 +35,7 @@ public sealed class ReceiptsRegenerator(
     IBlockFinder blockFinder,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
+    IPoSSwitcher poSSwitcher,
     ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<ReceiptsRegenerator>();
@@ -65,9 +66,10 @@ public sealed class ReceiptsRegenerator(
         // assigns the resolved state root into whatever header it is handed).
         BlockHeader isolatedHeader = block.Header.Clone();
         // Storage does not persist the post-merge flag and this path bypasses the recovery step that restores it;
-        // without it PREVRANDAO evaluates to the pre-merge difficulty — zero — and any transaction reading it
-        // regenerates receipts that fail the root check. Same derivation as BlockchainBridge's call header.
-        isolatedHeader.IsPostMerge = isolatedHeader.Difficulty == 0;
+        // without it PREVRANDAO evaluates to the pre-merge difficulty and any transaction reading it regenerates
+        // receipts that fail the root check. The switcher owns the classification - a difficulty heuristic would
+        // misread chains that repurpose the field, like Taiko's per-block ZK gas.
+        isolatedHeader.IsPostMerge = poSSwitcher.IsPostMerge(isolatedHeader);
         Block isolated = new(isolatedHeader, block.Body, block.BlockAccessList);
         try
         {
