@@ -22,6 +22,7 @@ namespace Nethermind.Network;
 public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 {
     private static readonly Capability SnapCapability = new(Protocol.Snap, SnapVersions.Snap1);
+    private static readonly Capability Snap2Capability = new(Protocol.Snap, SnapVersions.Snap2);
 
     private readonly ISyncConfig _syncConfig;
     private readonly ISyncModeSelector _syncModeSelector;
@@ -44,6 +45,10 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         if (serving || syncingState)
         {
             capabilities.Add(SnapCapability);
+            if (_syncConfig.Snap2Enabled)
+            {
+                capabilities.Add(Snap2Capability);
+            }
         }
     }
 

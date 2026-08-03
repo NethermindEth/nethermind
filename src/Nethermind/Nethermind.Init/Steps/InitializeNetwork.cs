@@ -129,6 +129,12 @@ public class InitializeNetwork : IStep
                 throw new InvalidConfigurationException("Sync.StaticSnapPivot requires Sync.PivotNumber and Sync.PivotHash to be set to the target (frozen) pivot block.", -1);
         }
 
+        if (_syncConfig.Snap2Enabled && !_flatStateActivationPolicy.ShouldTurnOnFlatDb())
+        {
+            if (_logger.IsWarn) _logger.Warn($"Disabling {nameof(ISyncConfig.Snap2Enabled)} - snap/2 requires the flat state backend.");
+            _syncConfig.Snap2Enabled = false;
+        }
+
         if (_networkConfig.DiagTracerEnabled)
         {
             NetworkDiagTracer.IsEnabled = true;

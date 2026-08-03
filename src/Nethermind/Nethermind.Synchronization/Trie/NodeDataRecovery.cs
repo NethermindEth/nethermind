@@ -130,7 +130,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
                 return data[0].ToArray();
             }
         }
-        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer))
+        else if (syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snapSyncPeer) && snapSyncPeer.SnapProtocolVersion < SnapVersions.Snap2)
         {
             if (_logger.IsTrace) _logger.Trace($"Fetching H {hash} P {treePath} from {syncPeer} via snap");
             PathGroup group;
