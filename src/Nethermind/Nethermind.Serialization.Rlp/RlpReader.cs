@@ -19,6 +19,9 @@ namespace Nethermind.Serialization.Rlp;
 
 public ref struct RlpReader
 {
+    private const int KeccakRlpPrefix = Rlp.EmptyByteArrayByte + Hash256.Size;
+    private const int AddressRlpPrefix = Rlp.EmptyByteArrayByte + Address.Size;
+
     private readonly Memory<byte> _memory;
     private readonly bool _isMemoryBacked;
     private bool _isNotNull;
@@ -207,26 +210,15 @@ public ref struct RlpReader
 
     public Hash256 DecodeKeccak()
     {
-        int prefix = ReadByte();
-        if (prefix != 128 + 32)
-        {
-            ThrowKeccakDecodeException(prefix);
-        }
-
+        ReadKeccakPrefix(allowNull: false);
         return DecodeKeccakPayload();
     }
 
     public Hash256? DecodeKeccakOrNull()
     {
-        int prefix = ReadByte();
-        if (prefix == 128)
+        if (!ReadKeccakPrefix(allowNull: true))
         {
             return null;
-        }
-
-        if (prefix != 128 + 32)
-        {
-            ThrowKeccakDecodeException(prefix);
         }
 
         return DecodeKeccakPayload();
@@ -234,7 +226,7 @@ public ref struct RlpReader
 
     private Hash256 DecodeKeccakPayload()
     {
-        ReadOnlySpan<byte> keccakSpan = Read(32);
+        ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
         if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
         {
             return Keccak.OfAnEmptyString;
@@ -250,18 +242,12 @@ public ref struct RlpReader
 
     public ValueHash256? DecodeValueKeccak()
     {
-        int prefix = ReadByte();
-        if (prefix == 128)
+        if (!ReadKeccakPrefix(allowNull: true))
         {
             return null;
         }
 
-        if (prefix != 128 + 32)
-        {
-            ThrowKeccakDecodeException(prefix);
-        }
-
-        ReadOnlySpan<byte> keccakSpan = Read(32);
+        ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
         if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
         {
             return Keccak.OfAnEmptyString.ValueHash256;
@@ -279,52 +265,40 @@ public ref struct RlpReader
     {
         Unsafe.SkipInit(out keccak);
 
-        int prefix = ReadByte();
-        if (prefix == 128)
+        if (!ReadKeccakPrefix(allowNull: true))
         {
             return false;
         }
 
-        if (prefix != 128 + 32)
-        {
-            ThrowKeccakDecodeException(prefix);
-        }
-
-        keccak = new ValueHash256(Read(32));
+        keccak = new ValueHash256(Read(Hash256.Size));
         return true;
     }
 
     public Hash256? DecodeZeroPrefixKeccak()
     {
         int prefix = PeekByte();
-        if (prefix == 128)
+        if (prefix == Rlp.EmptyByteArrayByte)
         {
             ReadByte();
             return null;
         }
 
         ReadOnlySpan<byte> theSpan = DecodeByteArraySpan(RlpLimit.L32);
-        Span<byte> keccakBytes = stackalloc byte[32];
+        Span<byte> keccakBytes = stackalloc byte[Hash256.Size];
         keccakBytes.Clear();
-        theSpan.CopyTo(keccakBytes[(32 - theSpan.Length)..]);
+        theSpan.CopyTo(keccakBytes[(Hash256.Size - theSpan.Length)..]);
         return new Hash256(keccakBytes);
     }
 
     public void DecodeKeccakStructRef(out Hash256StructRef keccak)
     {
-        int prefix = ReadByte();
-        if (prefix == 128)
+        if (!ReadKeccakPrefix(allowNull: true))
         {
             keccak = new Hash256StructRef(Keccak.Zero.Bytes);
         }
-        else if (prefix != 128 + 32)
-        {
-            ThrowKeccakDecodeException(prefix);
-            keccak = default;
-        }
         else
         {
-            ReadOnlySpan<byte> keccakSpan = Read(32);
+            ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
             if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
                 keccak = new Hash256StructRef(Keccak.OfAnEmptyString.Bytes);
@@ -343,21 +317,21 @@ public ref struct RlpReader
     public void DecodeZeroPrefixedKeccakStructRef(out Hash256StructRef keccak, Span<byte> buffer)
     {
         int prefix = PeekByte();
-        if (prefix == 128)
+        if (prefix == Rlp.EmptyByteArrayByte)
         {
             ReadByte();
             keccak = new Hash256StructRef(Keccak.Zero.Bytes);
         }
-        else if (prefix > 128 + 32)
+        else if (prefix > KeccakRlpPrefix)
         {
             ReadByte();
             ThrowKeccakDecodeException(prefix);
             keccak = default;
         }
-        else if (prefix == 128 + 32)
+        else if (prefix == KeccakRlpPrefix)
         {
             ReadByte();
-            ReadOnlySpan<byte> keccakSpan = Read(32);
+            ReadOnlySpan<byte> keccakSpan = Read(Hash256.Size);
             if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
                 keccak = new Hash256StructRef(Keccak.OfAnEmptyString.Bytes);
@@ -374,56 +348,40 @@ public ref struct RlpReader
         else
         {
             ReadOnlySpan<byte> theSpan = DecodeByteArraySpan(RlpLimit.L32);
-            if (theSpan.Length < 32)
+            if (theSpan.Length < Hash256.Size)
             {
-                buffer[..(32 - theSpan.Length)].Clear();
+                buffer[..(Hash256.Size - theSpan.Length)].Clear();
             }
-            theSpan.CopyTo(buffer[(32 - theSpan.Length)..]);
+            theSpan.CopyTo(buffer[(Hash256.Size - theSpan.Length)..]);
             keccak = new Hash256StructRef(buffer);
         }
     }
 
     public Address DecodeAddress()
     {
-        int prefix = ReadByte();
-        if (prefix != 128 + 20)
-        {
-            ThrowAddressDecodeException(prefix);
-        }
-
-        return new Address(Read(20));
+        ReadAddressPrefix(allowNull: false);
+        return new Address(Read(Address.Size));
     }
 
     public Address? DecodeAddressOrNull()
     {
-        int prefix = ReadByte();
-        if (prefix == 128)
+        if (!ReadAddressPrefix(allowNull: true))
         {
             return null;
         }
 
-        if (prefix != 128 + 20)
-        {
-            ThrowAddressDecodeException(prefix);
-        }
-
-        return new Address(Read(20));
+        return new Address(Read(Address.Size));
     }
 
     public void DecodeAddressStructRef(out AddressStructRef address)
     {
-        int prefix = ReadByte();
-        if (prefix == 128)
+        if (!ReadAddressPrefix(allowNull: true))
         {
             address = new AddressStructRef(Address.Zero.Bytes);
             return;
         }
-        else if (prefix != 128 + 20)
-        {
-            ThrowAddressDecodeException(prefix);
-        }
 
-        address = new AddressStructRef(Read(20));
+        address = new AddressStructRef(Read(Address.Size));
     }
 
     public UInt256 DecodeUInt256(int length = -1)
@@ -1074,6 +1032,36 @@ public ref struct RlpReader
     public readonly bool IsNextItemEmptyByteArray() => PeekByte() is Rlp.EmptyByteArrayByte;
 
     public readonly bool IsNextItemEmptyList() => PeekByte() is Rlp.EmptyListByte;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryReadFixedSizePrefix(int expectedPrefix, bool allowNull, out bool hasValue, out int prefix)
+    {
+        prefix = ReadByte();
+        hasValue = prefix == expectedPrefix;
+        return hasValue || allowNull && prefix == Rlp.EmptyByteArrayByte;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool ReadKeccakPrefix(bool allowNull)
+    {
+        if (!TryReadFixedSizePrefix(KeccakRlpPrefix, allowNull, out bool hasValue, out int prefix))
+        {
+            ThrowKeccakDecodeException(prefix);
+        }
+
+        return hasValue;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool ReadAddressPrefix(bool allowNull)
+    {
+        if (!TryReadFixedSizePrefix(AddressRlpPrefix, allowNull, out bool hasValue, out int prefix))
+        {
+            ThrowAddressDecodeException(prefix);
+        }
+
+        return hasValue;
+    }
 
     [DoesNotReturn, StackTraceHidden]
     private readonly void ThrowKeccakDecodeException(int prefix)
