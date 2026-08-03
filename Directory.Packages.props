@@ -27,6 +27,7 @@
     <PackageVersion Include="Grpc.Tools" Version="2.82.0" />
     <PackageVersion Include="JetBrains.Profiler.Api" Version="1.4.11" />
     <PackageVersion Include="KubernetesClient" Version="19.0.2" />
+    <PackageVersion Include="LightningDB" Version="0.22.0" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.10" />

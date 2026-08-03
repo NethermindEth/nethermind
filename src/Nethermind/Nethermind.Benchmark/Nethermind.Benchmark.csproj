@@ -6,11 +6,15 @@
   
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <!-- LMDB reference backend for the flat-base point-read benchmark. Benchmark-only — never
+         reference this from shipping projects. -->
+    <PackageReference Include="LightningDB" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Stats\Nethermind.Network.Stats.csproj" />
     <ProjectReference Include="..\Nethermind.State.Flat\Nethermind.State.Flat.csproj" />
   </ItemGroup>
