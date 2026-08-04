@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -141,6 +142,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.JUMPDEST:
                             exceptionType = EvmInstructions.InstructionJumpDest(this, ref stack, ref gas, ref pc);
                             break;
+                        // GAS is hot on the guest but absent from mainline's curated eth_call set.
+                        case Instruction.GAS:
+                            exceptionType = EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
+                            break;
                         default:
                             exceptionType = opcodeMethods[(int)instruction](this, ref stack, ref gas, ref pc);
                             break;
@@ -216,12 +221,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         case Instruction.POP:
                             exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref pc);
                             break;
-#if ZK_EVM
-                        // GAS is hot on the guest but absent from mainline's curated eth_call set.
-                        case Instruction.GAS:
-                            exceptionType = EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
-                            break;
-#endif
                         case Instruction.PUSH0:
                             if (!TPush0.IsActive) goto default;
                             exceptionType = EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(this, ref stack, ref gas, ref pc);
@@ -288,6 +287,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 bool outOfGas = typeof(TGasPolicy) == typeof(EthereumGasPolicy)
                     ? Unsafe.As<TGasPolicy, EthereumGasPolicy>(ref gas).OutOfGas
                     : TGasPolicy.IsOutOfGas(in gas);
+                // The two lines above and the OnAfterInstructionTrace skip below hand-inline what
+                // EthereumGasPolicy.IsOutOfGas/OnAfterInstructionTrace do today (return gas.OutOfGas;
+                // and nothing). Nothing in the type system ties them together, so assert the
+                // equivalence in debug builds - a policy edit then fails a test rather than silently
+                // producing a guest that disagrees with the host.
+                Debug.Assert(outOfGas == TGasPolicy.IsOutOfGas(in gas),
+                    "ZK_EVM out-of-gas fast path diverged from TGasPolicy.IsOutOfGas");
                 if (outOfGas)
                 {
                     OpCodeCount += opCodeCount;
@@ -313,8 +319,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // typeof folds at compile time even where the inliner gives up on the static
                 // abstract IsActive getter (see the gas-policy note above), which otherwise
                 // compiles to an out-of-line call returning false once per executed opcode.
-                if (typeof(TTracingInst) != typeof(OffFlag))
+                // == OnFlag rather than != OffFlag: both fold identically, but this fails CLOSED
+                // (a future third IFlag would lose tracing) instead of open (silently enabling it).
+                if (typeof(TTracingInst) == typeof(OnFlag))
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+                Debug.Assert(typeof(TTracingInst) == typeof(OnFlag) == TTracingInst.IsActive,
+                    "ZK_EVM tracing fast path assumes OnFlag/OffFlag are the only dispatch flags");
 #else
                 if (TTracingInst.IsActive)
                     EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));

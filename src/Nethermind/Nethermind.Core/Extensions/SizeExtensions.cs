@@ -37,8 +37,12 @@ public static class SizeExtensions
                 place++;
             }
 
-            decimal num = Math.Round((decimal)bytes / divisor, precision);
-            return string.Concat(Math.Sign(@this) * num, addSpace ? " " : "", suf[place]);
+            decimal num = Math.Sign(@this) * Math.Round((decimal)bytes / divisor, precision);
+            // decimal keeps the scale it was rounded to, so 1025 would render "1.0KiB" where the
+            // previous double math rendered "1KiB". The '#' placeholders drop trailing zeros and
+            // reproduce the old output exactly.
+            return string.Concat(num.ToString(precision > 0 ? "0." + new string('#', precision) : "0"),
+                addSpace ? " " : "", suf[place]);
         }
     }
 

@@ -80,6 +80,11 @@ public ref struct EvmStack
 
         // Without SIMD (e.g. the zkVM guest) Vector256.Create degrades to a software element loop,
         // which dominates the small-PUSH opcodes; build the word with four plain stores instead.
+        //
+        // Safety: EvmWord is Vector256<byte>, i.e. exactly WordSize (32) bytes with no references,
+        // so reinterpreting it as four ulongs is in-bounds and GC-safe, and all four are written
+        // below - nothing of the SkipInit'd storage is left undefined. Lane 3 carries the value,
+        // matching Vector256.Create(0, 0, 0, value).
         Unsafe.SkipInit(out EvmWord word);
         ref ulong parts = ref Unsafe.As<EvmWord, ulong>(ref word);
         parts = 0;

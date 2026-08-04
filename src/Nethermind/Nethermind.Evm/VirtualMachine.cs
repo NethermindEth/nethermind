@@ -96,10 +96,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
+#if ZK_EVM
     // Field, not auto-property: the dispatch loop polls this every opcode, and in the huge
     // RunByteCodeCore body the compiler stops inlining trivial getters, turning the poll into an
-    // out-of-line call per executed opcode on the zkVM guest.
+    // out-of-line call per executed opcode on the zkVM guest. Guest-only, so the public API
+    // (and its binary compatibility) is unchanged for every other build.
     public object ReturnData;
+#else
+    public object ReturnData { get; set; }
+#endif
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
