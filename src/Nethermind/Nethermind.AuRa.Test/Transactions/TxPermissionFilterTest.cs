@@ -242,9 +242,9 @@ public class TxPermissionFilterTest
 
     private static PrivateKey GetPrivateKey(int key) => new(key.ToString("X64"));
 
-    [TestCase(1, ExpectedResult = true)]
-    [TestCase(3, ExpectedResult = true)]
-    public bool allows_transactions_before_transitions(long blockNumber)
+    [TestCase(1UL, ExpectedResult = true)]
+    [TestCase(3UL, ExpectedResult = true)]
+    public bool allows_transactions_before_transitions(ulong blockNumber)
     {
         VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance,
             TestItem.AddressA,

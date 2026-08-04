@@ -97,6 +97,7 @@ public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
     [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
+    public ulong TargetGasLimit { get; set; }
 }
 
 [SszContainer]
@@ -444,4 +445,24 @@ public partial struct BlobV4EntryWire
 public partial struct GetBlobsV4ResponseWire
 {
     [SszList(128)] public BlobV4EntryWire[]? Entries { get; set; }
+}
+[SszContainer(isCollectionItself: true)]
+public partial struct SszWitnessItem
+{
+    [SszList(1048576)] public byte[]? Bytes { get; set; }
+}
+
+[SszContainer]
+public partial struct ExecutionWitnessV1Wire
+{
+    [SszList(1048576)] public SszWitnessItem[]? State { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Codes { get; set; }
+    [SszList(1048576)] public SszWitnessItem[]? Headers { get; set; }
+}
+
+[SszContainer]
+public partial struct PayloadStatusWithWitnessWire
+{
+    public PayloadStatusWire PayloadStatus { get; set; }
+    [SszList(1)] public ExecutionWitnessV1Wire[]? Witness { get; set; }
 }

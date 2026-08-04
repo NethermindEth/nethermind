@@ -215,7 +215,7 @@ public class L1OriginStoreTests
         L1Origin origin = new(123, Hash256.Zero, 456, Hash256.Zero, buildPayloadArgsId, withForcedInclusion, signature);
 
         Rlp encoded = _decoder.Encode(origin);
-        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        RlpReader ctx = new(encoded.Bytes);
         (int prefixLength, int contentLength) = ctx.ReadPrefixAndContentLength();
 
         Assert.That(contentLength, Is.EqualTo(encoded.Bytes.Length - prefixLength), "StartSequence must receive content length, not total length");

@@ -1,24 +1,30 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Lantern.Discv5.Enr;
-using Lantern.Discv5.Enr.Entries;
-using Lantern.Discv5.Enr.Identity.V4;
-using NSubstitute;
+using Autofac;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Network.Enr;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
 using System.Net;
-using ENR = Lantern.Discv5.Enr.Enr;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.Discovery.Test;
 
@@ -27,133 +33,162 @@ namespace Nethermind.Network.Discovery.Test;
 public class DiscoveryV5AppTests
 {
     private MemDb _discoveryDb = null!;
-    private MemDb _legacyDiscoveryDb = null!;
-    private IdentityVerifierV4 _identityVerifier = null!;
     private DiscoveryV5App _discoveryV5App = null!;
-
-    [OneTimeSetUp]
-    public void OneTimeSetup() => Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
+    private readonly List<IContainer> _containers = [];
 
     [SetUp]
     public void Setup()
     {
         _discoveryDb = new MemDb();
-        _legacyDiscoveryDb = new MemDb();
-        _identityVerifier = new IdentityVerifierV4();
         _discoveryV5App = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"));
     }
 
-    private DiscoveryV5App CreateDiscoveryV5App(IPAddress externalIp)
+    private DiscoveryV5App CreateDiscoveryV5App(IPAddress externalIp, Action<ContainerBuilder>? configureDiscv5Services = null)
     {
         NetworkConfig networkConfig = new()
         {
             Bootnodes = [],
             ExternalIp = externalIp.ToString()
         };
+        IProtectedPrivateKey nodeKey = new InsecureProtectedPrivateKey(TestItem.PrivateKeyF);
+        IEnode enode = new Enode(nodeKey.PublicKey, externalIp, networkConfig.P2PPort, networkConfig.DiscoveryPort);
+        IIPResolver ipResolver = new FixedIpResolver(networkConfig);
+        EthereumEcdsa ecdsa = new(0);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block head = Build.A.Block.Genesis.TestObject;
+        blockTree.Head.Returns(head);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.GetForkId(head.Header.Number, head.Header.Timestamp).Returns(new Nethermind.Network.ForkId(0, 0));
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
+        builder.RegisterInstance(networkConfig).As<INetworkConfig>();
+        builder.RegisterInstance(enode).As<IEnode>();
+        builder.RegisterInstance(ipResolver).As<IIPResolver>();
+        builder.RegisterInstance(nodeKey).Keyed<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey);
+        builder.RegisterInstance(ecdsa).As<IEthereumEcdsa>().As<IEcdsa>();
+        builder.RegisterInstance(blockTree).As<IBlockTree>();
+        builder.RegisterInstance(forkInfo).As<IForkInfo>();
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
+        builder.RegisterInstance(new CryptoRandom()).As<ICryptoRandom>();
+        builder.RegisterInstance(new NetworkStorage(_discoveryDb, LimboLogs.Instance)).Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
+        builder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();
+        builder.RegisterType<NodeRecordProvider>().As<INodeRecordProvider>().WithAttributeFiltering().SingleInstance();
+        IContainer container = builder.Build();
+        _containers.Add(container);
+
         return new DiscoveryV5App(
-            new InsecureProtectedPrivateKey(TestItem.PrivateKeyF),
-            new FixedIpResolver(networkConfig),
+            container,
+            nodeKey,
+            enode,
+            ipResolver,
             networkConfig,
             new DiscoveryConfig { },
-            _discoveryDb,
-            _legacyDiscoveryDb,
-            LimboLogs.Instance
+            new ProcessExitSource(CancellationToken.None),
+            LimboLogs.Instance,
+            configureDiscv5Services
         );
     }
 
     [TearDown]
-    public void Teardown()
+    public async Task Teardown()
     {
+        if (_discoveryV5App is not null)
+        {
+            await _discoveryV5App.DisposeAsync();
+        }
+        for (int i = 0; i < _containers.Count; i++)
+        {
+            _containers[i].Dispose();
+        }
+        _containers.Clear();
         _discoveryDb.Dispose();
-        _legacyDiscoveryDb.Dispose();
     }
 
-    private ENR CreateTestEnrBytes(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303)
-    {
-        IdentitySignerV4 signer = new(privateKey.KeyBytes);
+    private static NodeRecord CreateTestEnr(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303, int? udpPort = null, bool includeTcp = true, bool includeUdp = true, bool includeEth2 = false) =>
+        TestEnrBuilder.BuildSigned(
+            privateKey,
+            ipAddress ?? IPAddress.Loopback,
+            tcpPort: includeTcp ? port : null,
+            udpPort: includeUdp ? udpPort ?? port : null,
+            configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
 
-        ENR enr = new EnrBuilder()
-            .WithIdentityScheme(_identityVerifier, signer)
-            .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Ip, new EntryIp(ipAddress ?? IPAddress.Loopback))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(signer.PublicKey))
-            .WithEntry(EnrEntryKey.Tcp, new EntryTcp(port))
-            .WithEntry(EnrEntryKey.Udp, new EntryUdp(port))
-            .Build();
+    private static NodeRecord CreateTestIpv6Enr(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress, int udpPort, bool useUdp6 = true) =>
+        TestEnrBuilder.BuildSigned(privateKey, ipAddress, tcpPort: null, udpPort: udpPort, useUdp6: useUdp6);
 
-        return enr;
-    }
-
-    [Test]
-    public void Should_Migrate_Correctly()
-    {
-        PrivateKey testPrivateKey1 = TestItem.PrivateKeyA;
-        ENR enr1 = CreateTestEnrBytes(testPrivateKey1);
-        _legacyDiscoveryDb[enr1.NodeId] = enr1.EncodeRecord();
-
-        PrivateKey testPrivateKey2 = TestItem.PrivateKeyB;
-        ENR enr2 = CreateTestEnrBytes(testPrivateKey2);
-        _legacyDiscoveryDb[enr2.NodeId] = enr2.EncodeRecord();
-
-        List<ENR> loadedEnrs = _discoveryV5App.LoadStoredEnrs();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(loadedEnrs.Count, Is.EqualTo(2), "Should get all records");
-            Assert.That(_legacyDiscoveryDb.Count, Is.EqualTo(0), "Legacy DB should be empty");
-            Assert.That(_discoveryDb.Count, Is.EqualTo(2), "DB should contain all items migrated");
-        }
-    }
-
-    [Test]
-    public void Should_Stop_Migration_From_V4_DB()
-    {
-        NetworkNode enode1 = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 1, 1);
-        _legacyDiscoveryDb[enode1.NodeId.Bytes] = Rlp.Encode(enode1).Bytes;
-
-        NetworkNode enode2 = new(TestItem.PublicKeyB, IPAddress.Loopback.ToString(), 1, 1);
-        _legacyDiscoveryDb[enode2.NodeId.Bytes] = Rlp.Encode(enode2).Bytes;
-
-        List<ENR> loadedEnrs = _discoveryV5App.LoadStoredEnrs();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(loadedEnrs.Count, Is.EqualTo(0), "Should not load any nodes if legacy DB contains enodes");
-            Assert.That(_legacyDiscoveryDb.Count, Is.EqualTo(2), "Legacy DB should not be changed");
-            Assert.That(_discoveryDb.Count, Is.EqualTo(0), "DB should not load any records");
-        }
-    }
+    private static NodeRecord CreateEnrForAddress(Nethermind.Crypto.PrivateKey privateKey, IPAddress ipAddress) =>
+        ipAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+            ? CreateTestIpv6Enr(privateKey, ipAddress, 30303)
+            : CreateTestEnr(privateKey, ipAddress);
 
     [Test]
     public void Should_Reject_Private_Ip_Enr()
     {
-        ENR enr = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Loopback);
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Loopback);
 
-        bool result = _discoveryV5App.TryGetNodeFromEnr(enr, out Node? node);
+        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
         Assert.That(result, Is.False);
         Assert.That(node, Is.Null);
     }
 
     [Test]
-    public void Should_Accept_Private_Ip_Enr_On_Private_Deployment()
+    public async Task Should_Accept_Private_Ip_Enr_On_Private_Deployment()
     {
-        DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
-        ENR enr = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Loopback);
+        await using DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Loopback);
 
-        bool result = privateDiscoveryApp.TryGetNodeFromEnr(enr, out Node? node);
+        bool result = privateDiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
         Assert.That(node!.Host, Is.EqualTo(IPAddress.Loopback.ToString()));
     }
 
+    [TestCase("0.1.2.3")]
+    [TestCase("192.0.0.1")]
+    [TestCase("192.0.2.1")]
+    [TestCase("192.31.196.1")]
+    [TestCase("192.52.193.1")]
+    [TestCase("198.18.0.1")]
+    [TestCase("192.175.48.1")]
+    [TestCase("198.51.100.1")]
+    [TestCase("203.0.113.1")]
+    [TestCase("240.0.0.1")]
+    [TestCase("::ffff:224.0.0.1")]
+    [TestCase("64:ff9b::1")]
+    [TestCase("100::1")]
+    [TestCase("2001:db8::1")]
+    [TestCase("2002::1")]
+    [TestCase("3fff::1")]
+    public void Should_Reject_Special_Use_Ip_Enr(string ip)
+    {
+        NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, IPAddress.Parse(ip));
+
+        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
+    }
+
+    [TestCase("192.0.2.1")]
+    [TestCase("2001:db8::1")]
+    public async Task Should_Reject_Special_Use_Ip_Enr_On_Private_Deployment(string ip)
+    {
+        await using DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
+        NodeRecord enr = CreateEnrForAddress(TestItem.PrivateKeyA, IPAddress.Parse(ip));
+
+        bool result = privateDiscoveryApp.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
+    }
+
     [Test]
     public void Should_Accept_Public_Ip_Enr()
     {
-        ENR enr = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
 
-        bool result = _discoveryV5App.TryGetNodeFromEnr(enr, out Node? node);
+        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
 
         Assert.That(result, Is.True);
         Assert.That(node, Is.Not.Null);
@@ -161,47 +196,200 @@ public class DiscoveryV5AppTests
     }
 
     [Test]
-    public void TryEnqueueNewEnr_Should_Deduplicate()
+    public void Should_Reject_Consensus_Only_Enr()
     {
-        Queue<IEnr> queue = new();
-        HashSet<IEnr> seenNodes = [];
-        ENR enr = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), includeEth2: true);
+        NodeRecord decoded = NodeRecord.FromEnrString(enr.ToString());
 
-        Assert.That(DiscoveryV5App.TryEnqueueNewEnr(queue, seenNodes, enr), Is.True);
-        Assert.That(DiscoveryV5App.TryEnqueueNewEnr(queue, seenNodes, enr), Is.False);
-        Assert.That(queue.Count, Is.EqualTo(1));
+        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(decoded, out Node? node);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.HasEntry(EnrContentKey.Eth2), Is.True);
+            Assert.That(result, Is.False);
+            Assert.That(node, Is.Null);
+        }
     }
 
     [Test]
-    public void TryEnqueueNewEnr_Should_Respect_Tracked_Cap()
+    public async Task AddNodeToDiscovery_ShouldSkipNodeWithoutEnr()
     {
-        Queue<IEnr> queue = new();
-        HashSet<IEnr> seenNodes = [];
-        for (int i = 0; i < DiscoveryV5App.MaxTrackedEnrsPerWalk; i++)
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+
+        try
         {
-            seenNodes.Add(Substitute.For<IEnr>());
+            discoveryV5App.AddNodeToDiscovery(new Node(TestItem.PublicKeyA, "8.8.8.8", 30303));
+
+            kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
         }
-
-        ENR candidate = CreateTestEnrBytes(TestItem.PrivateKeyB, IPAddress.Parse("1.1.1.1"), port: 30304);
-
-        Assert.That(DiscoveryV5App.TryEnqueueNewEnr(queue, seenNodes, candidate), Is.False);
-        Assert.That(queue.Count, Is.EqualTo(0));
+        finally
+        {
+            await discoveryV5App.DisposeAsync();
+        }
     }
 
     [Test]
-    public void TryEnqueueNewEnr_Should_Respect_Pending_Cap()
+    public async Task AddNodeToDiscovery_ShouldAddValidatedEnrNode()
     {
-        Queue<IEnr> queue = new();
-        ENR existing = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
-        for (int i = 0; i < DiscoveryV5App.MaxPendingEnrsPerWalk; i++)
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 30304);
+        Node node = new(TestItem.PrivateKeyA.PublicKey, "1.1.1.1", 30303)
         {
-            queue.Enqueue(existing);
+            Enr = enr
+        };
+
+        try
+        {
+            discoveryV5App.AddNodeToDiscovery(node);
+
+            kademlia.Received(1).AddOrRefresh(Arg.Is<Node>(added =>
+                added.Id.Equals(TestItem.PrivateKeyA.PublicKey) &&
+                added.Host == "8.8.8.8" &&
+                added.Port == 30303 &&
+                added.DiscoveryPort == 30304 &&
+                added.Enr == enr));
         }
+        finally
+        {
+            await discoveryV5App.DisposeAsync();
+        }
+    }
 
-        HashSet<IEnr> seenNodes = [];
-        ENR candidate = CreateTestEnrBytes(TestItem.PrivateKeyB, IPAddress.Parse("1.1.1.1"), port: 30304);
+    [Test]
+    public async Task AddNodeToDiscovery_ShouldSkipMismatchedEnr()
+    {
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        DiscoveryV5App discoveryV5App = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterInstance(kademlia).As<IKademlia<PublicKey, Node>>());
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
+        Node node = new(TestItem.PrivateKeyB.PublicKey, "8.8.8.8", 30303)
+        {
+            Enr = enr
+        };
 
-        Assert.That(DiscoveryV5App.TryEnqueueNewEnr(queue, seenNodes, candidate), Is.False);
-        Assert.That(queue.Count, Is.EqualTo(DiscoveryV5App.MaxPendingEnrsPerWalk));
+        try
+        {
+            discoveryV5App.AddNodeToDiscovery(node);
+
+            kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
+        }
+        finally
+        {
+            await discoveryV5App.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public void Should_Use_Udp_Port_From_Enr()
+    {
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), port: 30303, udpPort: 30304);
+
+        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
+        Assert.That(node!.Port, Is.EqualTo(30303));
+        Assert.That(node.DiscoveryPort, Is.EqualTo(30304));
+    }
+
+    [Test]
+    public void Should_Reject_Tcp_Only_Enr()
+    {
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), includeTcp: true, includeUdp: false);
+
+        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Should_Accept_Ipv6_Enr(bool useUdp6)
+    {
+        NodeRecord enr = CreateTestIpv6Enr(TestItem.PrivateKeyA, IPAddress.Parse("2001:4860:4860::8888"), 9001, useUdp6);
+
+        bool result = _discoveryV5App.TryGetAcceptableNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
+        Assert.That(node!.Host, Is.EqualTo("2001:4860:4860::8888"));
+        Assert.That(node.Port, Is.Zero);
+        Assert.That(node.DiscoveryPort, Is.EqualTo(9001));
+    }
+
+    [Test]
+    public void Should_Use_Udp_Port_From_Configured_Enr_Bootnode()
+    {
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 9001, includeTcp: false);
+        NetworkConfig networkConfig = new()
+        {
+            Bootnodes = [new NetworkNode(enr.ToString())]
+        };
+        DiscoveryConfig discoveryConfig = new()
+        {
+            UseDefaultDiscv5Bootnodes = false
+        };
+
+        List<Node> bootNodes = _discoveryV5App.CreateBootNodes(networkConfig, discoveryConfig);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootNodes, Has.Count.EqualTo(1));
+            Assert.That(bootNodes[0].Port, Is.Zero);
+            Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(9001));
+            Assert.That(bootNodes[0].Enr?.ToString(), Is.EqualTo(enr.ToString()));
+        }
+    }
+
+    [Test]
+    public void Should_Use_Discovery_Port_From_Configured_Enode_Bootnode()
+    {
+        Enode enode = new(TestItem.PrivateKeyA.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, discoveryPort: 9001);
+        NetworkConfig networkConfig = new()
+        {
+            Bootnodes = [new NetworkNode(enode)]
+        };
+        DiscoveryConfig discoveryConfig = new()
+        {
+            UseDefaultDiscv5Bootnodes = false
+        };
+
+        List<Node> bootNodes = _discoveryV5App.CreateBootNodes(networkConfig, discoveryConfig);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootNodes, Has.Count.EqualTo(1));
+            Assert.That(bootNodes[0].Port, Is.EqualTo(30303));
+            Assert.That(bootNodes[0].DiscoveryPort, Is.EqualTo(9001));
+            Assert.That(bootNodes[0].Host, Is.EqualTo("8.8.8.8"));
+        }
+    }
+
+    [TestCase("8.8.8.8", true, true)]
+    [TestCase("8.8.8.8", false, false)]
+    [TestCase("127.0.0.1", true, false)]
+    [TestCase("192.168.0.1", true, false)]
+    [TestCase("169.254.0.1", true, false)]
+    [TestCase("0.0.0.0", true, true)]
+    [TestCase("::", true, true)]
+    [TestCase("255.255.255.255", true, true)]
+    public void Should_Use_Default_Discv5_Bootnodes_Unless_Disabled_Or_Address_Is_Known_Private(string externalIp, bool configured, bool expected)
+    {
+        DiscoveryConfig discoveryConfig = new()
+        {
+            UseDefaultDiscv5Bootnodes = configured
+        };
+
+        bool result = DiscoveryV5App.ShouldUseDefaultDiscv5Bootnodes(IPAddress.Parse(externalIp), discoveryConfig);
+
+        Assert.That(result, Is.EqualTo(expected));
     }
 }

@@ -70,6 +70,112 @@ public class EncodingTest
         }
     }
 
+    [Test]
+    public void Decode_collection_itself_byte_lists()
+    {
+        ByteListItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+
+        byte[] encoded = ByteListItself.Encode(original);
+        ByteListItself.Decode(encoded, out ByteListItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.Empty);
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_lists_enforces_item_limit()
+    {
+        byte[] encoded = [8, 0, 0, 0, 12, 0, 0, 0, 1, 2, 3, 4];
+
+        Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_lists_supports_class_items()
+    {
+        ByteListClassItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+
+        byte[] encoded = ByteListClassItself.Encode(original);
+        ByteListClassItself.Decode(encoded, out ByteListClassItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.Empty);
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
+    public void Encode_fixed_size_class_collection_clears_null_items()
+    {
+        StaticClassCollectionItem[] items = [new() { Value = 1 }, null!, new() { Value = 2 }];
+
+        byte[] encoded = StaticClassCollectionItem.Encode(items);
+
+        Assert.That(encoded, Is.EqualTo(new byte[]
+        {
+            1, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            2, 0, 0, 0, 0, 0, 0, 0,
+        }));
+    }
+
+    [Test]
+    public void Encode_nonnullable_static_class_null_clears_output()
+    {
+        NonNullableStaticClassContainer container = new() { Child = null! };
+        byte[] reusedBuffer = Enumerable.Repeat((byte)0xFF, sizeof(ulong)).ToArray();
+
+        NonNullableStaticClassContainer.Encode(reusedBuffer, container);
+
+        Assert.That(reusedBuffer, Is.EqualTo(new byte[sizeof(ulong)]));
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_lists_supports_list_destinations()
+    {
+        ByteListListItself[] original = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+
+        byte[] encoded = ByteListListItself.Encode(original);
+        ByteListListItself.Decode(encoded, out ByteListListItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.Empty);
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new List<byte> { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_vectors()
+    {
+        ByteVectorItself[] original = [new() { Bytes = [1, 2, 3] }, new() { Bytes = [4, 5, 6] }];
+
+        byte[] encoded = ByteVectorItself.Encode(original);
+        ByteVectorItself.Decode(encoded, out ByteVectorItself[] decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(decoded[1].Bytes, Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_vectors_rejects_wrong_item_length()
+    {
+        byte[] encoded = [1, 2, 3, 4, 5];
+
+        Assert.That(() => ByteVectorItself.Decode(encoded, out ByteVectorItself[] _), Throws.InstanceOf<InvalidDataException>());
+    }
+
     private static BitArray MakeSampleBits10()
     {
         BitArray bits = new(10);
@@ -96,6 +202,41 @@ public class EncodingTest
             Assert.That(decoded.Bits[3], Is.True);
             Assert.That(decoded.Bits[9], Is.True);
             Assert.That(decoded.Bits[1], Is.False);
+        }
+    }
+
+    [Test]
+    public void Supports_list_limits_beyond_int_range()
+    {
+        const ulong Limit = 1_099_511_627_776; // 2^40, VALIDATOR_REGISTRY_LIMIT
+        ulong[] basicItems = [1, 2, 3];
+        FixedC[] compositeItems = [new() { Fixed1 = 1, Fixed2 = 2 }, new() { Fixed1 = 3, Fixed2 = 4 }];
+
+        HugeLimitBasicList basicList = new() { Items = basicItems };
+        byte[] encoded = HugeLimitBasicList.Encode(basicList);
+        HugeLimitBasicList.Decode(encoded, out HugeLimitBasicList decodedBasic);
+        HugeLimitBasicList.Merkleize(basicList, out UInt256 basicRoot);
+
+        // Reference roots computed via the runtime ulong-limit merkleization primitives
+        Merkle.Merkleize(out UInt256 expectedBasicRoot, MemoryMarshal.AsBytes<ulong>(basicItems), Limit / 4);
+        Merkle.MixIn(ref expectedBasicRoot, basicItems.Length);
+
+        HugeLimitCompositeList compositeList = new() { Items = compositeItems };
+        HugeLimitCompositeList.Merkleize(compositeList, out UInt256 compositeRoot);
+
+        Span<UInt256> itemRoots = stackalloc UInt256[compositeItems.Length];
+        for (int i = 0; i < compositeItems.Length; i++)
+        {
+            FixedC.Merkleize(compositeItems[i], out itemRoots[i]);
+        }
+        Merkle.Merkleize(out UInt256 expectedCompositeRoot, itemRoots, Limit);
+        Merkle.MixIn(ref expectedCompositeRoot, compositeItems.Length);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedBasic.Items, Is.EqualTo(basicItems));
+            Assert.That(basicRoot, Is.EqualTo(expectedBasicRoot));
+            Assert.That(compositeRoot, Is.EqualTo(expectedCompositeRoot));
         }
     }
 

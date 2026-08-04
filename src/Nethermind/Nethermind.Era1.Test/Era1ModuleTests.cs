@@ -17,7 +17,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Core.Test.IO;
-using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm.State;
 using NSubstitute;
@@ -134,7 +133,7 @@ public class Era1ModuleTests
 
         int numOfBlocks = 12;
         int numOfTx = 2;
-        UInt256 nonce = 0;
+        ulong nonce = 0;
 
         List<Block> blocks = [];
         blocks.Add(genesis);
@@ -206,7 +205,7 @@ public class Era1ModuleTests
         Assert.That(fileReader.BlockCount, Is.EqualTo(numOfBlocks));
         byte[] buf = new byte[2];
 
-        for (int i = 0; i < fileReader.BlockCount; i++)
+        for (ulong i = 0; i < fileReader.BlockCount; i++)
         {
             long blockOffset = fileReader.BlockOffset(fileReader.First + i);
 
@@ -237,7 +236,7 @@ public class Era1ModuleTests
 
         int numOfBlocks = 16;
         int numOfTx = 1000;
-        UInt256 nonce = 0;
+        ulong nonce = 0;
         List<Block> blocks =
         [
             genesis
@@ -298,14 +297,14 @@ public class Era1ModuleTests
         }
     }
 
-    [TestCase(true, 0L, 0L, 1000L, 1001L, 9999L)]
-    [TestCase(true, 0L, 2000L, 1000L, 1001L, 2000L)]
-    [TestCase(true, 3000L, 0L, 5000L, 5001L, 9999L)]
-    [TestCase(true, 0L, 0L, 0L, null, 0L)]
-    [TestCase(false, 0L, 0L, 0L, 1L, 9999L)]
-    [TestCase(false, 0L, 0L, 2000L, 2001L, 9999L)]
+    [TestCase(true, 0UL, 0UL, 1000UL, 1001UL, 9999UL)]
+    [TestCase(true, 0UL, 2000UL, 1000UL, 1001UL, 2000UL)]
+    [TestCase(true, 3000UL, 0UL, 5000UL, 5001UL, 9999UL)]
+    [TestCase(true, 0UL, 0UL, 0UL, null, 0UL)]
+    [TestCase(false, 0UL, 0UL, 0UL, 1UL, 9999UL)]
+    [TestCase(false, 0UL, 0UL, 2000UL, 2001UL, 9999UL)]
     [CancelAfter(120_000)] // macOS ARM runners need more time for 10k-block chain
-    public async Task EraExportAndImport(bool fastSync, long start, long end, long headBlockNumber, long? expectedMinSuggestedBlock, long expectedMaxSuggestedBlock, CancellationToken cancellationToken)
+    public async Task EraExportAndImport(bool fastSync, ulong start, ulong end, ulong headBlockNumber, ulong? expectedMinSuggestedBlock, ulong expectedMaxSuggestedBlock, CancellationToken cancellationToken)
     {
         const int ChainLength = 10000;
         await using IContainer outCtx = await EraTestModule.CreateExportedEraEnvWithCompleteBlockBuilder(ChainLength, cancellationToken: cancellationToken);
@@ -341,8 +340,8 @@ public class Era1ModuleTests
             })
             .Build();
 
-        long? minSuggestedNumber = null;
-        long maxSuggestedBlock = 0;
+        ulong? minSuggestedNumber = null;
+        ulong maxSuggestedBlock = 0;
         inTree.NewBestSuggestedBlock += (sender, args) =>
         {
             minSuggestedNumber ??= args.Block.Number;

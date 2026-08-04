@@ -55,13 +55,6 @@ public abstract class NamedReleaseSpec : ReleaseSpec
     /// <inheritdoc cref="EngineApiNewPayloadVersion"/>
     public int? EngineApiPayloadBodiesByRangeVersion { get; set; }
 
-    /// <summary>
-    /// URL <c>{fork}</c> segment for the SSZ-REST Engine API surface — the lowercase fork class name
-    /// (e.g. <c>"paris"</c>). Whether the segment is actually routable is decided by the engine-API
-    /// layer's supported-fork set, not here.
-    /// </summary>
-    public string? EngineApiUrlSegment => Name?.ToLowerInvariant();
-
     protected NamedReleaseSpec(NamedReleaseSpec? parent)
     {
         Parent = parent;

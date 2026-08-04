@@ -20,10 +20,10 @@ public partial class BN254PairingCheckPrecompile : IPrecompile<BN254PairingCheck
     public static string Name => "BN254_PAIRING";
 
     /// <see href="https://eips.ethereum.org/EIPS/eip-1108" />
-    public long BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 45_000L : 100_000L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => releaseSpec.IsEip1108Enabled ? 45_000UL : 100_000UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        (releaseSpec.IsEip1108Enabled ? 34_000L : 80_000L) * (inputData.Length / BN254.PairSize);
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        (releaseSpec.IsEip1108Enabled ? 34_000UL : 80_000UL) * (ulong)(inputData.Length / BN254.PairSize);
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

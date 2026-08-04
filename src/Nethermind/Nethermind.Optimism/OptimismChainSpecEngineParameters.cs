@@ -17,7 +17,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? RegolithTimestamp { get; set; }
 
-    public long? BedrockBlockNumber { get; set; }
+    public ulong? BedrockBlockNumber { get; set; }
 
     public ulong? CanyonTimestamp { get; set; }
 
@@ -47,7 +47,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public byte[]? Create2DeployerCode { get; set; }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+    public void ApplyToReleaseSpec(ReleaseSpec spec, ulong startBlock, ulong? startTimestamp)
     {
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);
         if (CanyonTimestamp <= startTimestamp)
@@ -62,7 +62,7 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
     {
     }
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
     {
         AddIfNotNull(timestamps, GraniteTimestamp);
         AddIfNotNull(timestamps, HoloceneTimestamp);

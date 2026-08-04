@@ -34,6 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private LruKeyCache<Hash256AsKey>? _lastBlockNotificationCache;
         private LruKeyCache<Hash256AsKey> LastBlockNotificationCache => _lastBlockNotificationCache ??= new(10, "LastBlockNotificationCache");
         private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handleSlow;
+        private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handlePooledTransactionsSlow;
 
         protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex);
 
@@ -53,11 +54,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? TxPool.ShouldGossip.Instance;
             _handleSlow = HandleSlow;
+            _handlePooledTransactionsSlow = HandlePooledTransactionsSlow;
 
             EnsureGossipPolicy();
         }
 
         public void DisableTxFiltering() => _floodController.IsEnabled = false;
+
+        private protected bool IsTransactionGossipAllowed() => _floodController.IsAllowed();
+
+        private protected void ReportPooledTransactionRequest(ReadOnlySpan<Hash256> hashes) =>
+            _floodController.ReportPooledTransactionRequest(hashes);
+
+        internal long RequestedPooledTransactionHashes => _floodController.RequestedPooledTransactionHashes;
+
+        private protected void IgnorePooledTransactionResponse() => _floodController.ClearPooledTransactionRequests();
 
         public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
@@ -136,7 +147,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.Transactions:
                     if (CanReceiveTransactions)
                     {
-                        if (_floodController.IsAllowed())
+                        if (IsTransactionGossipAllowed())
                         {
                             TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
                             ReportIn(txMsg, size);
@@ -217,7 +228,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                NetworkId = (ulong)status.NetworkId,
+                NetworkId = status.NetworkId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -226,61 +237,90 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
-            Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
+            Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             NotifyProtocolInitialized(eventArgs);
         }
 
         protected void Handle(TransactionsMessage msg)
+            => TryScheduleTransactions(msg, _handleSlow);
+
+        private protected void HandlePooledTransactions(TransactionsMessage msg)
+        {
+            if (!TryScheduleTransactions(msg, _handlePooledTransactionsSlow))
+            {
+                IgnorePooledTransactionResponse();
+            }
+        }
+
+        private bool TryScheduleTransactions(TransactionsMessage msg, Func<TransactionsRequest, CancellationToken, ValueTask> handler)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), _handleSlow, "Transactions"))
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler, "Transactions"))
             {
+                foreach (Transaction tx in iList)
+                {
+                    tx.ClearPreHash();
+                }
                 iList.Dispose();
+                return false;
             }
+
+            return true;
+        }
+
+        private ValueTask HandlePooledTransactionsSlow(TransactionsRequest request, CancellationToken cancellationToken)
+        {
+            _floodController.ReportPooledTransactionsReturned(request.Transactions.AsSpan());
+            return HandleSlow(request, cancellationToken);
         }
 
         protected virtual ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
         {
             IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
             ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
+
+            int currentIdx = request.StartIndex;
+            bool isTrace = Logger.IsTrace;
+            bool isTransferred = false;
+
             try
             {
-                int startIdx = request.StartIndex;
-                bool isTrace = Logger.IsTrace;
-
-                for (int i = startIdx; i < transactionsSpan.Length; i++)
+                while (currentIdx < transactionsSpan.Length)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
-                        if (i == startIdx)
+                        if (currentIdx == request.StartIndex)
                         {
-                            // Cancelled before processing any transaction — dispose and bail out.
-                            // Rescheduling would just loop (cancelled again immediately).
-                            transactions.Dispose();
+                            // Cancelled before processing any transaction; rescheduling would just loop. Disposal handled in finally.
                             return ValueTask.CompletedTask;
                         }
 
-                        // Reschedule remaining transactions with a different start index
-                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, i), _handleSlow, "Transactions"))
+                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow, "Transactions"))
                         {
-                            transactions.Dispose();
+                            isTransferred = true;
                         }
+
                         return ValueTask.CompletedTask;
                     }
 
-                    PrepareAndSubmitTransaction(transactionsSpan[i], isTrace);
+                    PrepareAndSubmitTransaction(transactionsSpan[currentIdx], isTrace);
+                    currentIdx++;
                 }
-
-                transactions.Dispose();
             }
-            catch
+            finally
             {
-                transactions.Dispose();
-                throw;
+                if (!isTransferred)
+                {
+                    while (currentIdx < transactionsSpan.Length)
+                    {
+                        transactionsSpan[currentIdx].ClearPreHash();
+                        currentIdx++;
+                    }
+                    transactions.Dispose();
+                }
             }
-
 
             return ValueTask.CompletedTask;
         }
@@ -302,10 +342,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            (Hash256, long)[] blockHashes = newBlockHashes.BlockHashes;
+            (Hash256, ulong)[] blockHashes = newBlockHashes.BlockHashes;
             for (int i = 0; i < blockHashes.Length; i++)
             {
-                (Hash256 hash, long number) = blockHashes[i];
+                (Hash256 hash, ulong number) = blockHashes[i];
                 SyncServer.HintBlock(hash, number, this);
             }
         }
@@ -381,7 +421,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        private void HintNewBlock(Hash256 blockHash, long number)
+        private void HintNewBlock(Hash256 blockHash, ulong number)
         {
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
 

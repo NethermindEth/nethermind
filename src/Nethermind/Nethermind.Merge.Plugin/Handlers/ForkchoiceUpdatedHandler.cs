@@ -90,7 +90,7 @@ public class ForkchoiceUpdatedHandler(
     // L1-derived finality models override this to relax the bounds check while keeping
     // ancestry validation.
     protected virtual ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(
-        BlockHeader? header, long lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
+        BlockHeader? header, ulong lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
     {
         if ((header is not null && (header.Number < lowerBound || header.Number > newHeadHeader.Number))
             || IsInconsistent(header, newHeadHeader))
@@ -138,6 +138,21 @@ public class ForkchoiceUpdatedHandler(
             {
                 StartNewBeaconHeaderSync(forkchoiceState, headBlockHeader, simpleRequestStr);
                 return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            // Head not resolvable yet (e.g. no peers right after a restart): still record the forkchoice
+            // state so StartingSyncPivotUpdater can derive a fresh pivot from the finalized hash once peers
+            // appear, instead of waiting forever for an FCU with a resolvable head.
+            blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+            blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+
+            // The cache does not survive a restart, so persist the hashes like the resolved-head paths do.
+            // Safe while the finalized header is unknown: finalized blocks cannot reorg, TryUpdateSyncPivot
+            // no-ops on an unresolvable hash, and OnForkChoiceUpdated briefly reports finalized/safe as 0.
+            // A zero finalized hash must not overwrite one already persisted that a restart relies on.
+            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
+            {
+                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
             }
 
             if (_logger.IsInfo) _logger.Info($"Syncing Unknown ForkChoiceState head hash Request: {simpleRequestStr}.");
@@ -239,7 +254,7 @@ public class ForkchoiceUpdatedHandler(
         // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
         // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
         // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
-        long finalizedNumber = finalizedHeader?.Number ?? 0;
+        ulong finalizedNumber = finalizedHeader?.Number ?? 0;
 
         if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
         if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;

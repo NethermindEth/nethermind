@@ -32,7 +32,7 @@ public class FlatScopeProvider(
 
     public bool SupportsConcurrentScopes => true;
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         StateId currentState = new(baseBlock);
         SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);

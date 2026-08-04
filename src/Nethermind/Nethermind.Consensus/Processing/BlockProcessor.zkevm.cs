@@ -1,0 +1,13 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
+
+namespace Nethermind.Consensus.Processing;
+
+public partial class BlockProcessor
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts) => false;
+}

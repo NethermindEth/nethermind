@@ -12,7 +12,7 @@ namespace Nethermind.Xdc;
 
 internal class SubnetMasternodesCalculator(ISubnetSnapshotManager snapshotManager) : ISubnetMasternodesCalculator
 {
-    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
+    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(ulong blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
         if (snapshotManager.GetSnapshotByBlockNumber(blockNumber, spec) is not SubnetSnapshot previousSnapshot)
             throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");

@@ -17,10 +17,10 @@ public partial class Ripemd160Precompile : IPrecompile<Ripemd160Precompile>
 
     public static string Name => "RIPEMD160";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 600L;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => 600UL;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        120L * EvmCalculations.Div32Ceiling((ulong)inputData.Length);
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        120UL * EvmCalculations.Div32Ceiling(inputData.Length);
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 }

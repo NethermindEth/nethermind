@@ -20,18 +20,18 @@ public static class HexPrefix
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(ByteLength(path), output.Length, nameof(output));
 
+        int pathLength = path.Length;
         output[0] = (byte)(isLeaf ? 0x20 : 0x00);
-        if (path.Length % 2 != 0)
+        int pathIndex = 0;
+        if ((pathLength & 1) != 0)
         {
             output[0] += (byte)(0x10 + path[0]);
+            pathIndex = 1;
         }
 
-        for (int i = 0; i < path.Length - 1; i += 2)
+        for (int outputIndex = 1; pathIndex < pathLength; outputIndex++, pathIndex += 2)
         {
-            output[i / 2 + 1] =
-                path.Length % 2 == 0
-                    ? (byte)(16 * path[i] + path[i + 1])
-                    : (byte)(16 * path[i + 1] + path[i + 2]);
+            output[outputIndex] = (byte)(16 * path[pathIndex] + path[pathIndex + 1]);
         }
     }
 

@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Optimism.CL.P2P;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism.CL;
 
@@ -42,9 +44,9 @@ public sealed class OptimismCL : IDisposable
         // Configs
         IOptimismConfig config,
         CLChainSpecEngineParameters engineParameters,
-        IPAddress externalIp,
-        ulong chainId,
-        ulong l2GenesisTimestamp,
+        IIPResolver ipResolver,
+        ISpecProvider specProvider,
+        ChainSpec chainSpec,
         ILogManager logManager
     )
     {
@@ -54,6 +56,9 @@ public sealed class OptimismCL : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.Nodes);
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
+
+        ulong chainId = specProvider.ChainId;
+        ulong l2GenesisTimestamp = chainSpec.Genesis.Timestamp;
 
         _logger = logManager.GetClassLogger<OptimismCL>();
         _engineParameters = engineParameters;
@@ -83,7 +88,7 @@ public sealed class OptimismCL : IDisposable
             config,
             engineParameters.UnsafeBlockSigner,
             timestamper,
-            externalIp,
+            ipResolver,
             logManager);
     }
 

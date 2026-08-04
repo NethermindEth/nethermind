@@ -92,7 +92,7 @@ public static class TxParser
             type = TxType.Legacy;
         }
 
-        Rlp.ValueDecoderContext decoder = new(reader.Remainder.Span);
+        RlpReader decoder = new(reader.Remainder.Span);
         if (!decoder.IsSequenceNext())
         {
             throw new FormatException("Invalid tx data");

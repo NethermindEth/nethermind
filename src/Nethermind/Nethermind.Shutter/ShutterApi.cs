@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
@@ -19,6 +18,7 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Shutter.Config;
 
 namespace Nethermind.Shutter;
@@ -63,7 +63,7 @@ public class ShutterApi : IShutterApi
         IShutterConfig cfg,
         ShutterValidatorsInfo validatorsInfo,
         TimeSpan slotLength,
-        IPAddress ip
+        IIPResolver ipResolver
         )
     {
         _cfg = cfg;
@@ -101,7 +101,7 @@ public class ShutterApi : IShutterApi
 
         KeyValidator = new ShutterKeyValidator(_cfg, Eon, logManager);
 
-        InitP2P(ip);
+        InitP2P(ipResolver);
     }
 
     public Task StartP2P(IEnumerable<Multiaddress> bootnodeP2PAddresses, CancellationToken cancellationToken)
@@ -147,7 +147,7 @@ public class ShutterApi : IShutterApi
         TxSource.LoadTransactions(head, parentHeader, keys.Value);
     }
 
-    protected virtual void InitP2P(IPAddress ip) => P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ip);
+    protected virtual void InitP2P(IIPResolver ipResolver) => P2P = new ShutterP2P(_cfg, _logManager, _fileSystem, _keyStoreConfig, ipResolver);
 
     protected virtual IShutterEon InitEon()
         => new ShutterEon(_readOnlyBlockTree, _txProcessorSource, _abiEncoder, _cfg, _logManager);

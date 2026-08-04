@@ -7,10 +7,10 @@ namespace Nethermind.Era1.Test;
 
 public class EraStoreTests
 {
-    [TestCase(1000, 16, 32)]
-    [TestCase(1000, 16, 64)]
-    [TestCase(1000, 50, 100)]
-    public async Task SmallestAndLowestBlock_ShouldBeCorrect(int chainLength, int start, int end)
+    [TestCase(1000, 16UL, 32UL)]
+    [TestCase(1000, 16UL, 64UL)]
+    [TestCase(1000, 50UL, 100UL)]
+    public async Task SmallestAndLowestBlock_ShouldBeCorrect(int chainLength, ulong start, ulong end)
     {
         await using IContainer ctx = await EraTestModule.CreateExportedEraEnv(chainLength, start, end);
         string tmpDirectory = ctx.ResolveTempDirPath();

@@ -35,7 +35,7 @@ public class XdcStateSyncTest : StateSyncFeedTestsBase
             remote.StateTree.Commit();
 
             gapBlocks[i] = new XdcBlockHeaderBuilder()
-                .WithNumber((i + 1) * 25)
+                .WithNumber((ulong)(i + 1) * 25)
                 .WithStateRoot(remote.StateTree.RootHash)
                 .TestObject;
         }
@@ -46,7 +46,7 @@ public class XdcStateSyncTest : StateSyncFeedTestsBase
         remote.StateTree.Commit();
 
         XdcBlockHeader xdcFinalPivot = new XdcBlockHeaderBuilder()
-            .WithNumber((gapBlockCount + 1) * 25)
+            .WithNumber((ulong)(gapBlockCount + 1) * 25)
             .WithStateRoot(remote.StateTree.RootHash)
             .TestObject;
 

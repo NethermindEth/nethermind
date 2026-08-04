@@ -17,6 +17,7 @@ using System.Collections;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -49,7 +50,7 @@ public class TransactionProcessorTests
         _stateProvider.CommitTree(0);
 
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        VirtualMachine<EthereumGasPolicy> virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
@@ -60,7 +61,7 @@ public class TransactionProcessorTests
     [TestCaseSource(nameof(FeesDistributionTests))]
     public void Fees_distributed_correctly(byte basefeeSharingPct, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)
     {
-        long gasLimit = 100000;
+        ulong gasLimit = 100000;
         Address beneficiaryAddress = TestItem.AddressC;
 
         Transaction tx = Build.A.Transaction
@@ -119,7 +120,7 @@ public class TransactionProcessorTests
     [TestCase(false)]
     public void Transaction_tip_and_base_fee_handling(bool isAnchorTx)
     {
-        long gasLimit = 21000;
+        ulong gasLimit = 21000;
         UInt256 gasPrice = 20;
         UInt256 baseFee = 5;
         UInt256 tipFee = gasPrice - baseFee;

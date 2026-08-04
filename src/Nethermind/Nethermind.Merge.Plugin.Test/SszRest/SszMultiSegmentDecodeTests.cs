@@ -108,7 +108,7 @@ public class SszMultiSegmentDecodeTests
         BitConverter.TryWriteBytes(encoded.AsSpan(0, 8), startVal);
         BitConverter.TryWriteBytes(encoded.AsSpan(8, 8), countVal);
 
-        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Multi(encoded, segSize));
+        (ulong start, ulong count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Multi(encoded, segSize));
 
         Assert.That(start, Is.EqualTo((long)startVal));
         Assert.That(count, Is.EqualTo((long)countVal));

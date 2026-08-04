@@ -263,4 +263,4 @@ jobs:
             If no PR number is available, just output the report — it will appear in the
             workflow step summary.
           claude_args: |
-            --allowedTools "Bash(gh:*),Bash(sed:*),Bash(grep:*),Bash(awk:*),Bash(sort:*),Bash(wc:*),Bash(head:*),Bash(tail:*),Bash(cat:*),Bash(tar:*),Bash(find:*),Bash(date:*),Bash(mkdir:*),Bash(bash:*),Bash(sleep:*),Bash(MSYS_NO_PATHCONV:*),Read,Grep,Glob"
+            --allowedTools "Bash(gh:*),Bash(sed:*),Bash(grep:*),Bash(awk:*),Bash(sort:*),Bash(wc:*),Bash(head:*),Bash(tail:*),Bash(cat:*),Bash(tar:*),Bash(find:*),Bash(date:*),Bash(mkdir:*),Bash(bash:*),Bash(sleep:*),Bash(unzip:*),Bash(tr:*),Bash(xargs:*),Bash(base64:*),Bash(echo:*),Bash(printf:*),Bash(git branch:*),Bash(MSYS_NO_PATHCONV:*),Read,Grep,Glob"

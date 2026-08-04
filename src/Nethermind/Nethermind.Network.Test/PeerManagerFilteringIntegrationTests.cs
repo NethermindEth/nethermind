@@ -44,7 +44,7 @@ public class PeerManagerFilteringIntegrationTests
             MaxOutgoingConnectPerSec = 1000000
         };
 
-        NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+        NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         staticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
         TestNodeSource testNodeSource = new();
@@ -153,7 +153,7 @@ public class PeerManagerFilteringIntegrationTests
                 MaxOutgoingConnectPerSec = 1000000
             };
 
-            NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+            NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
             StaticNodesManager = Substitute.For<IStaticNodesManager>();
             StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
             TestNodeSource = new TestNodeSource();

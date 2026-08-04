@@ -15,7 +15,9 @@ public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate hi
 
     public (ulong Round, Hash256 Hash) GetSyncInfoKey()
     {
-        Hash256 hash = Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes);
+        KeccakRlpWriter writer = new();
+        _decoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
+        Hash256 hash = writer.GetHash();
 
         if (HighestQuorumCert is not null)
         {

@@ -35,6 +35,9 @@ internal sealed class SubnetSnapshotManager(
         new SubnetSnapshotDecoder(),
         cacheName: "XDC Subnet Snapshot cache"), ISubnetSnapshotManager
 {
+    public override Snapshot CreateInitialSnapshot(ulong number, Hash256 hash, Address[] genesisMasterNodes) =>
+        new SubnetSnapshot(number, hash, genesisMasterNodes);
+
     protected override SubnetSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         Address[] candidates = header.IsGenesis ? spec.GenesisMasterNodes : VotingContract.GetCandidatesByStake(header);

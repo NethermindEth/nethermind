@@ -20,21 +20,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
             }
 
-            NettyRlpStream rlpStream = new(byteBuffer);
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.ProtocolVersion);
-            rlpStream.Encode(message.NetworkId);
-            rlpStream.Encode(message.TotalDifficulty);
-            rlpStream.Encode(message.BestHash);
-            rlpStream.Encode(message.GenesisHash);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
+            writer.Encode(message.ProtocolVersion);
+            writer.Encode(message.NetworkId);
+            writer.Encode(message.TotalDifficulty);
+            writer.Encode(message.BestHash);
+            writer.Encode(message.GenesisHash);
             if (message.ForkId is not null)
             {
                 ForkId forkId = message.ForkId.Value;
-                rlpStream.StartSequence(forkIdContentLength);
-                rlpStream.Encode(forkId.HashBytes);
-                rlpStream.Encode(forkId.Next);
+                writer.StartSequence(forkIdContentLength);
+                writer.Encode(forkId.HashBytes);
+                writer.Encode(forkId.Next);
             }
         }
 
@@ -63,12 +63,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public StatusMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static StatusMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
+        private static StatusMessage Deserialize(ref RlpReader ctx)
         {
             StatusMessage statusMessage = new();
             ctx.ReadSequenceLength();
             statusMessage.ProtocolVersion = ctx.DecodeByte();
-            statusMessage.NetworkId = ctx.DecodeUInt256();
+            statusMessage.NetworkId = ctx.DecodeULong();
             statusMessage.TotalDifficulty = ctx.DecodeUInt256();
             statusMessage.BestHash = ctx.DecodeKeccak();
             statusMessage.GenesisHash = ctx.DecodeKeccak();

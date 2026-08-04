@@ -6,7 +6,8 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Runtime.InteropServices;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -18,9 +19,29 @@ namespace Nethermind.Core.Test
     {
         private static readonly TxDecoder TransactionDecoder = TxDecoder.Instance;
 
-        public record DecoderCase(string Name, Func<Rlp.ValueDecoderContext, dynamic> Invoke, int? Size)
+        public record DecoderCase(string Name, Func<RlpReader, dynamic> Invoke, int? Size)
         {
             public override string ToString() => Name;
+        }
+
+        [Test]
+        public void DecodeArray_rejects_more_items_than_the_limit()
+        {
+            RlpLimit limit = new(4);
+
+            byte[] atLimit = Rlp.Encode(Enumerable.Range(0, limit.Limit).Select(i => Rlp.Encode(i)).ToArray()).Bytes;
+            Assert.That(() =>
+            {
+                RlpReader reader = new(atLimit);
+                reader.DecodeArray(static (ref RlpReader c) => c.DecodeInt(), limit: limit);
+            }, Throws.Nothing);
+
+            byte[] overLimit = Rlp.Encode(Enumerable.Range(0, limit.Limit + 1).Select(i => Rlp.Encode(i)).ToArray()).Bytes;
+            Assert.That(() =>
+            {
+                RlpReader reader = new(overLimit);
+                reader.DecodeArray(static (ref RlpReader c) => c.DecodeInt(), limit: limit);
+            }, Throws.TypeOf<RlpLimitException>());
         }
 
         [Test]
@@ -66,6 +87,119 @@ namespace Nethermind.Core.Test
             Assert.That(output[..written].ToArray(), Is.EqualTo(expected));
         }
 
+        [TestCaseSource(nameof(ValueWriterByteArrayCases))]
+        public void RlpWriter_encodes_byte_spans_like_Rlp(byte[] value)
+        {
+            int length = Rlp.LengthOf(value);
+
+            byte[] buffer = new byte[length];
+            RlpWriter writer = new(buffer);
+            writer.Encode((ReadOnlySpan<byte>)value);
+
+            AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode((ReadOnlySpan<byte>)value).Bytes);
+        }
+
+        [TestCase(0UL)]
+        [TestCase(1UL)]
+        [TestCase(127UL)]
+        [TestCase(128UL)]
+        [TestCase(255UL)]
+        [TestCase(256UL)]
+        [TestCase(ulong.MaxValue)]
+        public void RlpWriter_encodes_ulong_like_Rlp(ulong value)
+        {
+            int length = Rlp.LengthOf(value);
+
+            byte[] buffer = new byte[length];
+            RlpWriter writer = new(buffer);
+            writer.Encode(value);
+
+            Span<byte> expected = stackalloc byte[9];
+            expected = Rlp.Encode(value, expected);
+            AssertValueWriterMatchesExpected(writer, buffer, expected);
+        }
+
+        [TestCaseSource(nameof(ValueWriterUInt256Cases))]
+        public void RlpWriter_encodes_uint256_like_Rlp(UInt256 value)
+        {
+            int length = Rlp.LengthOf(value);
+
+            byte[] buffer = new byte[length];
+            RlpWriter writer = new(buffer);
+            writer.Encode(in value);
+
+            AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode(in value).Bytes);
+        }
+
+        [TestCaseSource(nameof(ValueWriterHashCases))]
+        public void RlpWriter_encodes_hash_like_Rlp(Hash256? value)
+        {
+            int length = Rlp.LengthOf(value);
+
+            byte[] buffer = new byte[length];
+            RlpWriter writer = new(buffer);
+            writer.Encode(value);
+
+            AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode(value).Bytes);
+        }
+
+        [TestCaseSource(nameof(ValueWriterValueHashCases))]
+        public void RlpWriter_encodes_value_hash_like_Rlp(ValueHash256? value)
+        {
+            int length = Rlp.LengthOf(in value);
+
+            byte[] buffer = new byte[length];
+            RlpWriter writer = new(buffer);
+            writer.Encode(in value);
+
+            AssertValueWriterMatchesExpected(writer, buffer, ExpectedValueHash(value));
+        }
+
+        [TestCaseSource(nameof(ValueWriterAddressCases))]
+        public void RlpWriter_encodes_address_like_Rlp(Address? value)
+        {
+            int length = Rlp.LengthOf(value);
+
+            byte[] buffer = new byte[length];
+            RlpWriter writer = new(buffer);
+            writer.Encode(value);
+
+            AssertValueWriterMatchesExpected(writer, buffer, ExpectedAddress(value));
+        }
+
+        [TestCaseSource(nameof(ValueWriterBloomCases))]
+        public void RlpWriter_encodes_bloom_like_Rlp(Bloom? value)
+        {
+            int length = Rlp.LengthOf(value);
+
+            byte[] buffer = new byte[length];
+            RlpWriter writer = new(buffer);
+            writer.Encode(value);
+
+            AssertValueWriterMatchesExpected(writer, buffer, ExpectedBloom(value));
+        }
+
+        [TestCaseSource(nameof(ValueWriterByteArraySequenceCases))]
+        public void RlpWriter_encodes_byte_array_sequences_like_Rlp(byte[][] value)
+        {
+            int length = Rlp.LengthOf(value);
+
+            byte[] buffer = new byte[length];
+            RlpWriter writer = new(buffer);
+            writer.Encode(value);
+
+            AssertValueWriterMatchesExpected(writer, buffer, Rlp.Encode(value.Select(Rlp.Encode).ToArray()).Bytes);
+        }
+
+        [Test]
+        public void RlpWriter_extensions_encode_directly_to_custom_backend()
+        {
+            TestRlpWriteBackend writer = new();
+            writer.Encode(Bloom.Empty);
+
+            Assert.That(writer.Bytes.ToArray(), Is.EqualTo(ExpectedBloom(Bloom.Empty)));
+        }
+
         [Test]
         [Explicit("That was a regression test but now it is failing again and cannot find the reason we needed this behaviour in the first place. Sync works all fine. Leaving it here as it may resurface - make sure to add more explanation to it in such case.")]
         public void Serializing_object_int_regression()
@@ -86,7 +220,7 @@ namespace Nethermind.Core.Test
                 Assert.Ignore("Size over limit");
 
             byte[] rlp = position == 0 ? test.rlp : [.. Enumerable.Range(0, position).Select(static i => (byte)i), .. test.rlp];
-            Rlp.ValueDecoderContext context = rlp.AsRlpValueContext();
+            RlpReader context = new(rlp);
             context.Position = position;
 
             Assert.That(
@@ -108,7 +242,7 @@ namespace Nethermind.Core.Test
             bytes[0] = (byte)(0x80 + size + 1);
 
             Assert.That(
-                () => decoder.Invoke(bytes.AsRlpValueContext()),
+                () => decoder.Invoke(new RlpReader(bytes)),
                 Throws.InstanceOf<RlpException>()
             );
         }
@@ -124,7 +258,7 @@ namespace Nethermind.Core.Test
                 new byte[] { 0x83, 0x00, 0x01, 0x00 }, new byte[] { 0x84, 0x00, 0x00, 0x00, 0x01 }
             )] byte[] bytes) =>
             Assert.That(
-                () => decoder.Invoke(bytes.AsRlpValueContext()),
+                () => decoder.Invoke(new RlpReader(bytes)),
                 Throws.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>()
             );
 
@@ -157,7 +291,7 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(Rlp.LengthOf(item), Is.EqualTo(1));
                 Rlp data = Rlp.Encode(item);
-                Rlp.ValueDecoderContext rlp = new(data.Bytes);
+                RlpReader rlp = new(data.Bytes);
                 Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
 
                 item += 1;
@@ -167,7 +301,7 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(Rlp.LengthOf(item), Is.EqualTo(2));
                 Rlp data = Rlp.Encode(item);
-                Rlp.ValueDecoderContext rlp = new(data.Bytes);
+                RlpReader rlp = new(data.Bytes);
                 Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
 
                 item += 1;
@@ -177,7 +311,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Long_encode_decode([ValueSource(nameof(LongValues))] long value, [Values] bool useBuffer)
         {
-            Rlp.ValueDecoderContext context = useBuffer
+            RlpReader context = useBuffer
                 ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
@@ -189,7 +323,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void ULong_encode_decode([ValueSource(nameof(ULongValues))] ulong value, [Values] bool useBuffer)
         {
-            Rlp.ValueDecoderContext context = useBuffer
+            RlpReader context = useBuffer
                 ? new(Rlp.Encode(value, stackalloc byte[9]))
                 : new(Rlp.Encode(value).Bytes);
 
@@ -318,7 +452,7 @@ namespace Nethermind.Core.Test
         [TestCase(new byte[] { 128 }, false)]
         [TestCase(new byte[] { 1 }, true)]
         public void Decode_bool(byte[] rlp, bool expectedBool) =>
-            Assert.That(rlp.AsRlpValueContext().DecodeBool(), Is.EqualTo(expectedBool));
+            Assert.That(new RlpReader(rlp).DecodeBool(), Is.EqualTo(expectedBool));
 
         [TestCase(new byte[] { 0 })]
         [TestCase(new byte[] { 2 })]
@@ -343,7 +477,7 @@ namespace Nethermind.Core.Test
             1,0,0,0,0,0,0,0
         })]
         public void Decode_bool_invalid(byte[] rlp) =>
-            Assert.Throws<RlpException>(() => rlp.AsRlpValueContext().DecodeBool());
+            Assert.Throws<RlpException>(() => new RlpReader(rlp).DecodeBool());
 
         [Test]
         public void Long_and_big_integer_encoded_the_same(
@@ -396,63 +530,39 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void RlpContextWithSliceMemory_shouldNotCopyUnderlyingData(bool sliceValue)
-        {
-            byte[] randomBytes = new byte[100];
-            Random.Shared.NextBytes(randomBytes);
-
-            int requiredLength = Rlp.LengthOf(randomBytes) * 3;
-            RlpStream stream = new(requiredLength);
-            stream.Encode(randomBytes);
-            stream.Encode(randomBytes);
-            stream.Encode(randomBytes);
-
-            Memory<byte> memory = stream.Data.ToArray();
-            Rlp.ValueDecoderContext context = new(memory, sliceValue);
-
-            for (int i = 0; i < 3; i++)
-            {
-                Memory<byte> slice = context.DecodeByteArrayMemory();
-                MemoryMarshal.TryGetArray(slice, out ArraySegment<byte> segment);
-
-                bool isACopy = (segment.Offset == 0 && segment.Count == slice.Length);
-                Assert.That(isACopy, Is.Not.EqualTo(sliceValue));
-            }
-        }
-
         [TestCase(50)]
         [TestCase(100)]
         public void Over_limit_throws(int limit)
         {
-            RlpStream stream = Prepare100BytesStream();
+            byte[] rlp = Prepare100BytesRlp();
             RlpLimit rlpLimit = new(limit);
             if (limit < 100)
             {
-                Assert.Throws<RlpLimitException>(() => { Rlp.ValueDecoderContext ctx = new(stream.Data.ToArray()); ctx.DecodeByteArray(rlpLimit); });
+                Assert.Throws<RlpLimitException>(() => { RlpReader ctx = new(rlp); ctx.DecodeByteArray(rlpLimit); });
             }
             else
             {
-                Assert.DoesNotThrow(() => { Rlp.ValueDecoderContext ctx = new(stream.Data.ToArray()); ctx.DecodeByteArray(rlpLimit); });
+                Assert.DoesNotThrow(() => { RlpReader ctx = new(rlp); ctx.DecodeByteArray(rlpLimit); });
             }
         }
 
         [Test]
         public void Not_enough_bytes_throws()
         {
-            RlpStream stream = Prepare100BytesStream();
-            byte[] data = stream.Data.ToArray()!;
+            byte[] data = Prepare100BytesRlp();
             data[1] = 101; // tamper with length, it is more than available bytes
-            Assert.Throws<RlpLimitException>(() => { Rlp.ValueDecoderContext ctx = new(data); ctx.DecodeByteArray(); });
+            Assert.Throws<RlpLimitException>(() => { RlpReader ctx = new(data); ctx.DecodeByteArray(); });
         }
 
         [Test]
         public void Encode_stream_with_null_items_produces_empty_list()
         {
-            RlpStream stream = new(Rlp.OfEmptyList.Length);
-            TransactionDecoder.Encode(stream, (Transaction[]?)null);
-            Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
+            byte[] buffer = new byte[Rlp.OfEmptyList.Length];
+            RlpWriter writer = new(buffer);
+            TxDecoder.Instance.Encode(ref writer, (Transaction[]?)null);
+
+            Assert.That(writer.Position, Is.EqualTo(Rlp.OfEmptyList.Length));
+            Assert.That(buffer, Is.EqualTo(Rlp.OfEmptyList.Bytes));
         }
 
         [Test]
@@ -502,14 +612,14 @@ namespace Nethermind.Core.Test
 
         private static IEnumerable<DecoderCase> IntegerDecoders()
         {
-            yield return new(nameof(Rlp.ValueDecoderContext.DecodeByte), static ctx => ctx.DecodeByte(), sizeof(byte));
-            yield return new(nameof(Rlp.ValueDecoderContext.DecodeUShort), static ctx => ctx.DecodeUShort(), sizeof(ushort));
-            yield return new(nameof(Rlp.ValueDecoderContext.DecodeUInt), static ctx => ctx.DecodeUInt(), sizeof(uint));
-            yield return new(nameof(Rlp.ValueDecoderContext.DecodeInt), static ctx => ctx.DecodeInt(), sizeof(int));
-            yield return new(nameof(Rlp.ValueDecoderContext.DecodeULong), static ctx => ctx.DecodeULong(), sizeof(ulong));
-            yield return new(nameof(Rlp.ValueDecoderContext.DecodeLong), static ctx => ctx.DecodeLong(), sizeof(long));
-            yield return new(nameof(Rlp.ValueDecoderContext.DecodeUInt256), static ctx => ctx.DecodeUInt256(), 256 / 8);
-            yield return new(nameof(Rlp.ValueDecoderContext.DecodeUBigInt), static ctx => ctx.DecodeUBigInt(), null);
+            yield return new(nameof(RlpReader.DecodeByte), static ctx => ctx.DecodeByte(), sizeof(byte));
+            yield return new(nameof(RlpReader.DecodeUShort), static ctx => ctx.DecodeUShort(), sizeof(ushort));
+            yield return new(nameof(RlpReader.DecodeUInt), static ctx => ctx.DecodeUInt(), sizeof(uint));
+            yield return new(nameof(RlpReader.DecodeInt), static ctx => ctx.DecodeInt(), sizeof(int));
+            yield return new(nameof(RlpReader.DecodeULong), static ctx => ctx.DecodeULong(), sizeof(ulong));
+            yield return new(nameof(RlpReader.DecodeLong), static ctx => ctx.DecodeLong(), sizeof(long));
+            yield return new(nameof(RlpReader.DecodeUInt256), static ctx => ctx.DecodeUInt256(), 256 / 8);
+            yield return new(nameof(RlpReader.DecodeUBigInt), static ctx => ctx.DecodeUBigInt(), null);
         }
 
         private static (byte[] rlp, string expectedHex)[] IntegerTestCases() =>
@@ -530,16 +640,16 @@ namespace Nethermind.Core.Test
             ([0x8C, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF], "FFFFFFFFFFFFFFFFFFFFFFFF"),
         ];
 
-        private static RlpStream Prepare100BytesStream()
+        private static byte[] Prepare100BytesRlp()
         {
             byte[] randomBytes = new byte[100];
             Random.Shared.NextBytes(randomBytes);
 
             int requiredLength = Rlp.LengthOf(randomBytes);
-            RlpStream stream = new(requiredLength);
-            stream.Encode(randomBytes);
-            stream.Reset();
-            return stream;
+            byte[] rlp = new byte[requiredLength];
+            RlpWriter writer = new(rlp);
+            writer.Encode(randomBytes);
+            return rlp;
         }
 
         [Test]
@@ -559,11 +669,16 @@ namespace Nethermind.Core.Test
                 byte[] data = new byte[Math.Max(expected, 1)];
                 data[0] = (byte)prefix;
 
-                Rlp.ValueDecoderContext ctx = new(data);
-                Assert.That(ctx.PeekNextRlpLength(), Is.EqualTo(expected), $"ValueDecoderContext prefix {prefix}");
+                RlpReader ctx = new(data);
+                Assert.That(ctx.PeekNextRlpLength(), Is.EqualTo(expected), $"RlpReader prefix {prefix}");
 
-                ValueRlpStream vrs = new(data);
-                Assert.That(vrs.PeekNextRlpLength(), Is.EqualTo(expected), $"ValueRlpStream prefix {prefix}");
+                CappedArray<byte> cappedData = new(data);
+                RlpReader cappedReader = new(cappedData);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(cappedReader.IsNotNull, Is.True);
+                    Assert.That(cappedReader.PeekNextRlpLength(), Is.EqualTo(expected), $"RlpReader capped prefix {prefix}");
+                }
             }
         }
 
@@ -575,11 +690,12 @@ namespace Nethermind.Core.Test
         {
             byte[] data = BuildLongFormRlp(prefix, contentLength);
 
-            Rlp.ValueDecoderContext ctx = new(data);
-            Assert.That(ctx.PeekNextRlpLength(), Is.EqualTo(data.Length), $"ValueDecoderContext prefix {prefix}");
+            RlpReader ctx = new(data);
+            Assert.That(ctx.PeekNextRlpLength(), Is.EqualTo(data.Length), $"RlpReader prefix {prefix}");
 
-            ValueRlpStream vrs = new(data);
-            Assert.That(vrs.PeekNextRlpLength(), Is.EqualTo(data.Length), $"ValueRlpStream prefix {prefix}");
+            CappedArray<byte> cappedData = new(data);
+            RlpReader cappedReader = new(cappedData);
+            Assert.That(cappedReader.PeekNextRlpLength(), Is.EqualTo(data.Length), $"RlpReader capped prefix {prefix}");
         }
 
         [TestCase(0, 0, 1)]       // single byte: prefix=0, content=1
@@ -595,20 +711,21 @@ namespace Nethermind.Core.Test
             byte[] data = new byte[1 + expectedContentLen];
             data[0] = (byte)prefix;
 
-            Rlp.ValueDecoderContext ctx = new(data);
+            RlpReader ctx = new(data);
             (int pLen, int cLen) = ctx.PeekPrefixAndContentLength();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(pLen, Is.EqualTo(expectedPrefixLen), $"ValueDecoderContext prefix length for {prefix}");
-                Assert.That(cLen, Is.EqualTo(expectedContentLen), $"ValueDecoderContext content length for {prefix}");
+                Assert.That(pLen, Is.EqualTo(expectedPrefixLen), $"RlpReader prefix length for {prefix}");
+                Assert.That(cLen, Is.EqualTo(expectedContentLen), $"RlpReader content length for {prefix}");
             }
 
-            ValueRlpStream vrs = new(data);
-            (int pLen2, int cLen2) = vrs.PeekPrefixAndContentLength();
+            CappedArray<byte> cappedData = new(data);
+            RlpReader cappedReader = new(cappedData);
+            (int pLen2, int cLen2) = cappedReader.PeekPrefixAndContentLength();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(pLen2, Is.EqualTo(expectedPrefixLen), $"ValueRlpStream prefix length for {prefix}");
-                Assert.That(cLen2, Is.EqualTo(expectedContentLen), $"ValueRlpStream content length for {prefix}");
+                Assert.That(pLen2, Is.EqualTo(expectedPrefixLen), $"RlpReader capped prefix length for {prefix}");
+                Assert.That(cLen2, Is.EqualTo(expectedContentLen), $"RlpReader capped content length for {prefix}");
             }
         }
 
@@ -619,20 +736,21 @@ namespace Nethermind.Core.Test
             int lengthOfLength = prefix < 192 ? prefix - 183 : prefix - 247;
             byte[] data = BuildLongFormRlp(prefix, contentLength);
 
-            Rlp.ValueDecoderContext ctx = new(data);
+            RlpReader ctx = new(data);
             (int pLen, int cLen) = ctx.PeekPrefixAndContentLength();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(pLen, Is.EqualTo(1 + lengthOfLength), $"ValueDecoderContext prefix length for {prefix}");
-                Assert.That(cLen, Is.EqualTo(contentLength), $"ValueDecoderContext content length for {prefix}");
+                Assert.That(pLen, Is.EqualTo(1 + lengthOfLength), $"RlpReader prefix length for {prefix}");
+                Assert.That(cLen, Is.EqualTo(contentLength), $"RlpReader content length for {prefix}");
             }
 
-            ValueRlpStream vrs = new(data);
-            (int pLen2, int cLen2) = vrs.PeekPrefixAndContentLength();
+            CappedArray<byte> cappedData = new(data);
+            RlpReader cappedReader = new(cappedData);
+            (int pLen2, int cLen2) = cappedReader.PeekPrefixAndContentLength();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(pLen2, Is.EqualTo(1 + lengthOfLength), $"ValueRlpStream prefix length for {prefix}");
-                Assert.That(cLen2, Is.EqualTo(contentLength), $"ValueRlpStream content length for {prefix}");
+                Assert.That(pLen2, Is.EqualTo(1 + lengthOfLength), $"RlpReader capped prefix length for {prefix}");
+                Assert.That(cLen2, Is.EqualTo(contentLength), $"RlpReader capped content length for {prefix}");
             }
         }
 
@@ -643,7 +761,7 @@ namespace Nethermind.Core.Test
         public void PeekPrefixAndContentLength_invalid(byte[] data) =>
             Assert.Throws<RlpException>(() =>
             {
-                Rlp.ValueDecoderContext ctx = new(data);
+                RlpReader ctx = new(data);
                 ctx.PeekPrefixAndContentLength();
             });
 
@@ -691,7 +809,7 @@ namespace Nethermind.Core.Test
         {
             byte[] data = Rlp.Encode(Rlp.Encode(new byte[contentLength])).Bytes;
 
-            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            RlpReader ctx = new(data.AsSpan());
             Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
             Assert.That(ctx.Position, Is.EqualTo(prefixLength));
         }
@@ -704,20 +822,149 @@ namespace Nethermind.Core.Test
         {
             byte[] data = Rlp.Encode(new byte[contentLength]).Bytes;
 
-            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            RlpReader ctx = new(data.AsSpan());
             Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
             Assert.That(ctx.Position, Is.EqualTo(prefixLength));
         }
 
+        private static byte[] ExpectedValueHash(ValueHash256? value)
+        {
+            if (value is null)
+            {
+                return [128];
+            }
+
+            byte[] expected = new byte[Rlp.LengthOf(in value)];
+            expected[0] = 160;
+            value.Value.Bytes.CopyTo(expected.AsSpan(1));
+            return expected;
+        }
+
+        private static byte[] ExpectedAddress(Address? value)
+        {
+            if (value is null)
+            {
+                return [128];
+            }
+
+            byte[] expected = new byte[Rlp.LengthOf(value)];
+            expected[0] = 148;
+            value.Bytes.CopyTo(expected.AsSpan(1));
+            return expected;
+        }
+
+        private static byte[] ExpectedBloom(Bloom? value)
+        {
+            if (value is null)
+            {
+                return [128];
+            }
+
+            byte[] expected = new byte[Rlp.LengthOf(value)];
+            expected[0] = 185;
+            expected[1] = 1;
+            expected[2] = 0;
+            value.Bytes.CopyTo(expected.AsSpan(3));
+            return expected;
+        }
+
+        private static void AssertValueWriterMatchesExpected(RlpWriter writer, ReadOnlySpan<byte> buffer, ReadOnlySpan<byte> expected)
+        {
+            Assert.That(writer.Position, Is.EqualTo(expected.Length));
+            Assert.That(buffer[..writer.Position].ToArray(), Is.EqualTo(expected.ToArray()));
+        }
+
+        private static IEnumerable<byte[]> ValueWriterByteArrayCases()
+        {
+            yield return [];
+            yield return [0];
+            yield return [1];
+            yield return [127];
+            yield return [128];
+            yield return Enumerable.Repeat((byte)0xab, 55).ToArray();
+            yield return Enumerable.Repeat((byte)0xab, 56).ToArray();
+        }
+
+        private static IEnumerable<UInt256> ValueWriterUInt256Cases()
+        {
+            yield return UInt256.Zero;
+            yield return 127;
+            yield return 128;
+            yield return UInt256.MaxValue;
+        }
+
+        private static IEnumerable<Hash256?> ValueWriterHashCases()
+        {
+            yield return null;
+            yield return Keccak.OfAnEmptyString;
+            yield return Keccak.EmptyTreeHash;
+            yield return new Hash256(Enumerable.Range(0, Hash256.Size).Select(static i => (byte)i).ToArray());
+        }
+
+        private static IEnumerable<ValueHash256?> ValueWriterValueHashCases()
+        {
+            yield return null;
+            yield return Keccak.OfAnEmptyString.ValueHash256;
+            yield return Keccak.EmptyTreeHash.ValueHash256;
+            yield return new ValueHash256(Enumerable.Range(0, Hash256.Size).Select(static i => (byte)i).ToArray());
+        }
+
+        private static IEnumerable<Address?> ValueWriterAddressCases()
+        {
+            yield return null;
+            yield return Address.Zero;
+            yield return new Address(Enumerable.Range(0, Address.Size).Select(static i => (byte)i).ToArray());
+        }
+
+        private static IEnumerable<Bloom?> ValueWriterBloomCases()
+        {
+            yield return null;
+            yield return Bloom.Empty;
+            yield return new Bloom(Enumerable.Range(0, Bloom.ByteLength).Select(static i => (byte)i).ToArray());
+        }
+
+        private static IEnumerable<byte[][]> ValueWriterByteArraySequenceCases()
+        {
+            yield return [];
+            yield return [[1], [128], Enumerable.Repeat((byte)0xab, 56).ToArray()];
+        }
+
+        private struct TestRlpWriteBackend : IRlpWriteBackend
+        {
+            public TestRlpWriteBackend() => Bytes = [];
+
+            public List<byte> Bytes { get; }
+
+            public void WriteByte(byte byteToWrite) => Bytes.Add(byteToWrite);
+
+            public void Write(ReadOnlySpan<byte> bytesToWrite)
+            {
+                for (int i = 0; i < bytesToWrite.Length; i++)
+                {
+                    Bytes.Add(bytesToWrite[i]);
+                }
+            }
+
+            public void WriteZero(int length)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    Bytes.Add(0);
+                }
+            }
+
+        }
+
         private static void AssertItemCount(byte[] rlp, int expected)
         {
-            Rlp.ValueDecoderContext ctx = new(rlp);
+            RlpReader ctx = new(rlp);
             ctx.ReadSequenceLength();
             Assert.That(ctx.PeekNumberOfItemsRemaining(), Is.EqualTo(expected));
 
-            ValueRlpStream vrs = new(rlp);
-            vrs.ReadSequenceLength();
-            Assert.That(vrs.PeekNumberOfItemsRemaining(), Is.EqualTo(expected));
+            CappedArray<byte> cappedRlp = new(rlp);
+            RlpReader cappedReader = new(cappedRlp);
+            cappedReader.ReadSequenceLength();
+            Assert.That(cappedReader.PeekNumberOfItemsRemaining(), Is.EqualTo(expected));
         }
 
         [TestCase(184, 10)]  // long string with content < 56
@@ -735,23 +982,38 @@ namespace Nethermind.Core.Test
             // Ref structs cannot be captured in lambdas, so use try/catch instead of Assert.Throws
             try
             {
-                Rlp.ValueDecoderContext ctx = new(data);
+                RlpReader ctx = new(data);
                 ctx.PeekPrefixAndContentLength();
-                Assert.Fail("Expected RlpException from ValueDecoderContext");
+                Assert.Fail("Expected RlpException from RlpReader");
             }
             catch (RlpException) { }
 
             try
             {
-                ValueRlpStream vrs = new(data);
-                vrs.PeekPrefixAndContentLength();
-                Assert.Fail("Expected RlpException from ValueRlpStream");
+                CappedArray<byte> cappedData = new(data);
+                RlpReader cappedReader = new(cappedData);
+                cappedReader.PeekPrefixAndContentLength();
+                Assert.Fail("Expected RlpException from capped RlpReader");
             }
             catch (RlpException) { }
 
             using IMemoryOwner<byte> owner = MemoryPool<byte>.Shared.Rent(data.Length);
             data.CopyTo(owner.Memory.Span);
             Assert.Throws<RlpException>(() => new RlpItemList(owner, owner.Memory[..data.Length]));
+        }
+
+        [Test]
+        public void RlpReader_from_default_capped_array_is_null()
+        {
+            CappedArray<byte> data = default;
+            RlpReader reader = new(data);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.IsNull, Is.True);
+                Assert.That(reader.IsNotNull, Is.False);
+                Assert.That(reader.Length, Is.Zero);
+            }
         }
 
         private static byte[] BuildLongFormRlp(int prefix, int contentLength)

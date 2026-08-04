@@ -23,7 +23,7 @@ public partial class Rlp
     {
         get
         {
-            Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+            Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = Volatile.Read(ref _decodersSnapshot);
             return snapshot ?? CreateDecodersSnapshot();
         }
     }
@@ -31,7 +31,14 @@ public partial class Rlp
     private static Dictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersSnapshot()
     {
         using Lock.Scope _ = _decoderLock.EnterScope();
-        return _decodersSnapshot ??= new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+        Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+        if (snapshot is null)
+        {
+            snapshot = new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+            Volatile.Write(ref _decodersSnapshot, snapshot);
+        }
+
+        return snapshot;
     }
 
     public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)

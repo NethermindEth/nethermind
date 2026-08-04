@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.Test
             string ip = "127.0.0.1",
             int port = 3030,
             ConnectionDirection direction = ConnectionDirection.Out,
-            int head = 9999,
+            ulong head = 9999,
             string protocolVersion = "eth99"
         )
         {
@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.Test
             string ip = "127.0.0.1",
             int port = 3030,
             ConnectionDirection direction = ConnectionDirection.Out,
-            int head = 9999,
+            ulong head = 9999,
             string protocolVersion = "eth99"
         )
         {

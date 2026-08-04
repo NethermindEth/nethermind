@@ -181,3 +181,9 @@ dotnet_diagnostic.IDE0130.severity = none
 # IDE0130: Xdc test builders intentionally exposed under Nethermind.Core.Test.Builders for discoverability.
 [src/Nethermind/Nethermind.Xdc.Test/{BuildExtensions,Helpers/XdcBlockHeaderBuilder,Helpers/XdcSubnetBlockHeaderBuilder}.cs]
 dotnet_diagnostic.IDE0130.severity = none
+
+# IDE0005: These Merge.Plugin source files are also linked into Nethermind.Stateless.Executor
+# (which has ImplicitUsings enabled), where their explicit usings are flagged as redundant. The
+# usings are required in Merge.Plugin (ImplicitUsings disabled), so suppress the false positive.
+[src/Nethermind/Nethermind.Merge.Plugin/{Data/ExecutionPayload,Data/IExecutionPayloadParams,SszRest/SszBlobCell,SszRest/SszBlobCellVectorTypeConverter,SszRest/SszKzgCommitment,SszRest/SszKzgCommitmentVectorTypeConverter}.cs]
+dotnet_diagnostic.IDE0005.severity = none

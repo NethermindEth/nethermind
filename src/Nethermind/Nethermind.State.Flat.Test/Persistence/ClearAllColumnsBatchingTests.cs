@@ -40,7 +40,7 @@ public class ClearAllColumnsBatchingTests
         {
             Assert.That(storage.GetAllKeys().Any(), Is.False, "all data should be wiped");
             Assert.That(BasePersistence.ReadLayout(metadata), Is.EqualTo(FlatLayout.Flat));
-            Assert.That(BasePersistence.ReadCurrentState(metadata), Is.EqualTo(new StateId(-1, ValueKeccak.EmptyTreeHash)));
+            Assert.That(BasePersistence.ReadCurrentState(metadata), Is.EqualTo(StateId.PreGenesis));
         }
     }
 }

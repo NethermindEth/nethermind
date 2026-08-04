@@ -18,19 +18,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
-            nettyRlpStream.StartSequence(contentLength);
+            writer.StartSequence(contentLength);
             foreach (Transaction tx in message.Transactions.AsSpan())
             {
-                nettyRlpStream.Encode(tx, RlpBehaviors.InMempoolForm);
+                TxDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
             }
         }
 
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static TransactionsMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
+        private static TransactionsMessage Deserialize(ref RlpReader ctx) =>
             new(DeserializeTxs(ref ctx));
 
         public int GetLength(TransactionsMessage message, out int contentLength)
@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref Rlp.ValueDecoderContext ctx)
+        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx)
         {
             int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
             int length = ctx.PeekNumberOfItemsRemaining(checkPosition);
@@ -62,6 +62,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
             catch
             {
+                foreach (Transaction tx in result)
+                    tx.ClearPreHash();
                 result.Dispose();
                 throw;
             }

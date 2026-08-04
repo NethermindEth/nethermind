@@ -83,7 +83,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         foreach (DeletionRange range in ranges.AsSpan())
         {
             writeBatch.DeleteAccountRange(range.From, range.To);
-            writeBatch.DeleteStateTrieNodeRange(new TreePath(range.From, 64), new TreePath(range.To, 64));
+            writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
         }
     }
 
@@ -95,7 +95,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         foreach (DeletionRange range in ranges.AsSpan())
         {
             writeBatch.DeleteStorageRange(addressHash, range.From, range.To);
-            writeBatch.DeleteStorageTrieNodeRange(addressHash, new TreePath(range.From, 64), new TreePath(range.To, 64));
+            writeBatch.DeleteStorageTrieNodeRange(addressHash, range.From, range.To);
         }
     }
 
@@ -281,7 +281,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
                 return null;
             }
 
-            Rlp.ValueDecoderContext context = new(bytes);
+            RlpReader context = new(bytes);
             return _accountDecoder.Decode(ref context);
         }
 

@@ -41,7 +41,7 @@ public class EthereumStepsLoaderTests
             .. LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly),
         ];
 
-        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb)];
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb), typeof(SeedFlatHistoryGenesis)];
         steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
 
         using IContainer container = new ContainerBuilder()
@@ -59,7 +59,7 @@ public class EthereumStepsLoaderTests
     public void DoubleCheck_PluginsSteps()
     {
         CheckPlugin(new AuRaPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters()) }));
-        CheckPlugin(new OptimismPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters()) }));
+        CheckPlugin(new OptimismPlugin(new ChainSpec() { EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters()) }, new OptimismConfig() { ClEnabled = true }));
         CheckPlugin(new TaikoPlugin(new ChainSpec()));
         CheckPlugin(new AuRaMergePlugin(new ChainSpec(), new MergeConfig()));
         CheckPlugin(new SnapshotPlugin(new SnapshotConfig()));

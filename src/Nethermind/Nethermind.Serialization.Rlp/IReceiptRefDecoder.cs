@@ -8,8 +8,8 @@ namespace Nethermind.Serialization.Rlp;
 
 public interface IReceiptRefDecoder
 {
-    void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item);
-    void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none, out LogEntryStructRef current);
-    Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext);
+    void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item);
+    void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current);
+    Hash256[] DecodeTopics(RlpReader reader);
     bool CanDecodeBloom { get; }
 }

@@ -22,15 +22,17 @@ namespace Nethermind.Network.Enr
         protected abstract int GetRlpLengthOfValue();
 
         /// <summary>
-        /// Encodes the entry into an RLP stream. 
+        /// Encodes the entry into a value RLP writer.
         /// </summary>
-        public void Encode(RlpStream rlpStream)
+        public void Encode<TWriter>(ref TWriter writer)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            rlpStream.Encode(Key);
-            EncodeValue(rlpStream);
+            writer.Encode(Key);
+            EncodeValue(ref writer);
         }
 
-        protected abstract void EncodeValue(RlpStream rlpStream);
+        protected abstract void EncodeValue<TWriter>(ref TWriter writer)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct;
 
         public override int GetHashCode() => Key.GetHashCode();
     }

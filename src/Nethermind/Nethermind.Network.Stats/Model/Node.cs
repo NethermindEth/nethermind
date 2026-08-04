@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Threading;
 using FastEnumUtility;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Enr;
 
 namespace Nethermind.Stats.Model
 {
@@ -19,6 +22,10 @@ namespace Nethermind.Stats.Model
         private string _clientId;
         private string _paddedHost;
         private string _paddedPort;
+        private ulong _requestingEnrSequence;
+        private NodeRecord _enr;
+        private int? _discoveryPort;
+        private IPEndPoint _discoveryAddress;
 
         /// <summary>
         /// Node public key - same as in enode.
@@ -33,18 +40,48 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host => _host ??= Address?.Address?.MapToIPv4()?.ToString();
+        public string Host => _host ??= FormatHost(Address?.Address);
         private string _host;
 
         /// <summary>
-        /// Port part of the network node.
+        /// TCP port part of the network node.
         /// </summary>
-        public int Port { get; set; }
+        public int Port
+        {
+            get => Address.Port;
+            set => SetIPEndPoint(new IPEndPoint(Address.Address, value));
+        }
 
         /// <summary>
-        /// Network address of the node.
+        /// TCP network address of the node.
         /// </summary>
         public IPEndPoint Address { get; private set; }
+
+        /// <summary>
+        /// UDP discovery port part of the network node.
+        /// </summary>
+        public int DiscoveryPort
+        {
+            get => _discoveryPort ?? Port;
+            set
+            {
+                _discoveryPort = value;
+                _discoveryAddress = null;
+                HasDiscoveryEndpoint = true;
+            }
+        }
+
+        /// <summary>
+        /// UDP discovery address of the node.
+        /// </summary>
+        public IPEndPoint DiscoveryAddress => DiscoveryPort == Port
+            ? Address
+            : _discoveryAddress ??= new IPEndPoint(Address.Address, DiscoveryPort);
+
+        /// <summary>
+        /// Indicates whether the node can be used as a UDP discovery endpoint.
+        /// </summary>
+        public bool HasDiscoveryEndpoint { get; private set; }
 
         /// <summary>
         /// We use bootnodes to bootstrap the discovery process.
@@ -76,15 +113,156 @@ namespace Nethermind.Stats.Model
 
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
-        public string Enr { get; set; }
+        public NodeRecord Enr
+        {
+            get => _enr;
+            set
+            {
+                _enr = value;
+                if (value is not null)
+                {
+                    TryClearEnrRequest(value.EnrSequence);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Highest advertised ENR sequence currently being requested for this node; <c>0</c> means no request is active.
+        /// </summary>
+        public ulong RequestingEnrSequence => Volatile.Read(ref _requestingEnrSequence);
+
+        /// <summary>
+        /// Stores the highest advertised ENR sequence that should be fetched.
+        /// </summary>
+        /// <param name="sequence">Advertised ENR sequence to fetch.</param>
+        /// <returns><see langword="true"/> when the caller should start the refresh request.</returns>
+        public bool TryRequestEnrSequence(ulong sequence)
+        {
+            if (sequence == 0)
+            {
+                return false;
+            }
+
+            while (true)
+            {
+                ulong current = Volatile.Read(ref _requestingEnrSequence);
+                if (current >= sequence)
+                {
+                    return false;
+                }
+
+                if (Interlocked.CompareExchange(ref _requestingEnrSequence, sequence, current) == current)
+                {
+                    return current == 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clears the in-flight ENR request when no higher sequence was advertised meanwhile.
+        /// </summary>
+        /// <param name="sequence">Sequence that the completed request tried to satisfy.</param>
+        /// <returns><see langword="true"/> when the request state was cleared.</returns>
+        public bool TryClearEnrRequest(ulong sequence)
+        {
+            while (true)
+            {
+                ulong current = Volatile.Read(ref _requestingEnrSequence);
+                if (current == 0 || current > sequence)
+                {
+                    return false;
+                }
+
+                if (Interlocked.CompareExchange(ref _requestingEnrSequence, 0, current) == current)
+                {
+                    return true;
+                }
+            }
+        }
 
         public Node(NetworkNode networkNode, bool isStatic = false)
-            : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
+            : this(networkNode.NodeId, GetTcpEndpoint(networkNode), isStatic)
         {
+            if (networkNode.IsEnr)
+            {
+                Enr = networkNode.Enr;
+                if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
+                    discoveryEndpoint.Address.Equals(Address.Address))
+                {
+                    DiscoveryPort = discoveryEndpoint.Port;
+                }
+                else
+                {
+                    ClearDiscoveryEndpoint();
+                }
+            }
+            else if (networkNode.DiscoveryPort != networkNode.Port)
+            {
+                DiscoveryPort = networkNode.DiscoveryPort;
+            }
         }
+
+        /// <summary>
+        /// Tries to create an RLPx peer candidate from an Ethereum Node Record with a secp256k1 key and TCP endpoint.
+        /// </summary>
+        /// <param name="enr">The Ethereum Node Record to read.</param>
+        /// <param name="node">The node created from the record when the record contains a usable TCP endpoint.</param>
+        /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
+        public static bool TryFromEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        {
+            node = null;
+            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            if (key is null || !enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
+            {
+                return false;
+            }
+
+            node = new Node(key, tcpEndpoint)
+            {
+                Enr = enr
+            };
+
+            SetMatchingDiscoveryEndpoint(node, enr);
+            return true;
+        }
+
+        /// <summary>
+        /// Tries to create a discovery-routing node from an Ethereum Node Record with a secp256k1 key and UDP endpoint.
+        /// </summary>
+        /// <param name="enr">The Ethereum Node Record to read.</param>
+        /// <param name="node">The node created from the record when the record contains a usable UDP discovery endpoint.</param>
+        /// <returns><see langword="true"/> when a node could be created; otherwise <see langword="false"/>.</returns>
+        public static bool TryFromDiscoveryEnr(NodeRecord enr, [MaybeNullWhen(false)] out Node node)
+        {
+            node = null;
+            PublicKey key = enr.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+            if (key is null || !enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+            {
+                return false;
+            }
+
+            IPEndPoint tcpEndpoint = enr.TryGetTcpEndpoint(out IPEndPoint foundTcpEndpoint) &&
+                foundTcpEndpoint.Address.Equals(discoveryEndpoint.Address)
+                ? foundTcpEndpoint
+                : new IPEndPoint(discoveryEndpoint.Address, 0);
+
+            node = new Node(key, tcpEndpoint, discoveryEndpoint.Port)
+            {
+                Enr = enr
+            };
+            return true;
+        }
+
+        public static Node FromDiscoveryEndpoint(PublicKey id, IPEndPoint discoveryAddress)
+            => new(id, new IPEndPoint(discoveryAddress.Address, 0), discoveryAddress.Port);
 
         public Node(PublicKey id, string host, int port, bool isStatic = false)
             : this(id, GetIPEndPoint(host, port), isStatic)
+        {
+        }
+
+        public Node(PublicKey id, string host, int port, int discoveryPort, bool isStatic = false)
+            : this(id, GetIPEndPoint(host, port), discoveryPort, isStatic)
         {
         }
 
@@ -94,14 +272,19 @@ namespace Nethermind.Stats.Model
             IdHash = Keccak.Compute(Id.PrefixedBytes);
             IsStatic = isStatic;
             SetIPEndPoint(address);
+            UseDefaultDiscoveryEndpoint();
         }
+
+        public Node(PublicKey id, IPEndPoint address, int discoveryPort, bool isStatic = false)
+            : this(id, address, isStatic)
+            => DiscoveryPort = discoveryPort;
 
         private static readonly string[] _ports = CreateCommonPortStrings();
 
         private static string[] CreateCommonPortStrings()
         {
             string[] ports = new string[100];
-            for (int i = 0; ports.Length < 100; i++)
+            for (int i = 0; i < ports.Length; i++)
             {
                 ports[i] = (i + 30300).ToString().PadLeft(5, ' ');
             }
@@ -111,12 +294,62 @@ namespace Nethermind.Stats.Model
 
         private void SetIPEndPoint(IPEndPoint address)
         {
-            Port = address.Port;
             Address = address;
             _host = null;
             _paddedHost = null;
             _paddedPort = null;
+            _discoveryAddress = null;
         }
+
+        private void ClearDiscoveryEndpoint()
+        {
+            _discoveryPort = null;
+            _discoveryAddress = null;
+            HasDiscoveryEndpoint = false;
+        }
+
+        private void UseDefaultDiscoveryEndpoint()
+        {
+            _discoveryPort = null;
+            _discoveryAddress = null;
+            HasDiscoveryEndpoint = true;
+        }
+
+        private static IPEndPoint GetTcpEndpoint(NetworkNode networkNode)
+        {
+            if (!networkNode.IsEnr)
+            {
+                return GetIPEndPoint(networkNode.Host, networkNode.Port);
+            }
+
+            if (networkNode.Enr.TryGetTcpEndpoint(out IPEndPoint tcpEndpoint))
+            {
+                return tcpEndpoint;
+            }
+
+            if (networkNode.Enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint))
+            {
+                return new IPEndPoint(discoveryEndpoint.Address, 0);
+            }
+
+            throw new InvalidOperationException("ENR is missing a usable IP endpoint.");
+        }
+
+        private static void SetMatchingDiscoveryEndpoint(Node node, NodeRecord enr)
+        {
+            if (enr.TryGetDiscoveryEndpoint(out IPEndPoint discoveryEndpoint) &&
+                discoveryEndpoint.Address.Equals(node.Address.Address))
+            {
+                node.DiscoveryPort = discoveryEndpoint.Port;
+            }
+            else
+            {
+                node.ClearDiscoveryEndpoint();
+            }
+        }
+
+        private static string FormatHost(IPAddress address)
+            => address.IsIPv4MappedToIPv6 ? address.MapToIPv4().ToString() : address.ToString();
 
         // xxx.xxx.xxx.xxx = 15
         private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');

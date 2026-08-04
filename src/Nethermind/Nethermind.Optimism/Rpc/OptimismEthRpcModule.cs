@@ -56,9 +56,11 @@ public class OptimismEthRpcModule(
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
     ILogIndexConfig? logIndexConfig,
+    IReceiptConfig receiptConfig,
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
-    IEthCapabilitiesProvider capabilitiesProvider)
+    IEthCapabilitiesProvider capabilitiesProvider,
+    IBlockForRpcFactory blockForRpcFactory)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
@@ -76,9 +78,11 @@ public class OptimismEthRpcModule(
         protocolsManager,
         forkInfo,
         logIndexConfig,
+        receiptConfig,
         secondsPerSlot,
         headBlockSignal,
-        capabilitiesProvider), IOptimismEthRpcModule
+        capabilitiesProvider,
+        blockForRpcFactory), IOptimismEthRpcModule
 {
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
@@ -113,7 +117,7 @@ public class OptimismEthRpcModule(
         return ResultWrapper<ReceiptForRpc[]?>.Success(result);
     }
 
-    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
     {
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
         if (!txResult.Success(out Transaction? tx, out string? error))
@@ -255,7 +259,7 @@ public class OptimismEthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc result = new(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
+        BlockForRpc result = _blockForRpcFactory.Create(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
 
         if (returnFullTransactionObjects)
         {

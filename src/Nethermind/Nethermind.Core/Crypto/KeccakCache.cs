@@ -40,39 +40,37 @@ public static unsafe class KeccakCache
     private const int InputLengthOfAddress = Address.Size;
     private const int CacheLineSizeBytes = 64;
 
-#if ZK_EVM
-    // zkEVM: avoid NativeMemory.AlignedAlloc (can fault in some environments). Use managed pinned storage instead.
-    private static readonly byte[] ManagedBuffer;
-    private static readonly GCHandle ManagedHandle;
-#endif
+#if !ZK_EVM
     private static readonly Entry* Memory;
 
     static KeccakCache()
     {
         const nuint size = Count * Entry.Size;
 
-#if ZK_EVM
-        ManagedBuffer = GC.AllocateArray<byte>((int)size, pinned: true);
-        ManagedHandle = GCHandle.Alloc(ManagedBuffer, GCHandleType.Pinned);
-        Memory = (Entry*)ManagedHandle.AddrOfPinnedObject();
-#else
         // Aligned, so that no torn reads if fields of Entry are properly aligned.
         Memory = (Entry*)NativeMemory.AlignedAlloc(size, BitOperations.RoundUpToPowerOf2(Entry.Size));
         NativeMemory.Clear(Memory, size);
         GC.AddMemoryPressure((long)size);
-#endif
     }
+#endif
 
     [SkipLocalsInit]
     public static ValueHash256 Compute(ReadOnlySpan<byte> input)
     {
+#if ZK_EVM
+        return input.IsEmpty ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+#else
         ComputeTo(input, out ValueHash256 keccak256);
         return keccak256;
+#endif
     }
 
     [SkipLocalsInit]
     public static void ComputeTo(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
+#if ZK_EVM
+        keccak256 = input.IsEmpty ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+#else
         // Special cases jump forward as unpredicted
         if (input.Length is 0 or > Entry.MaxPayloadLength)
         {
@@ -207,6 +205,7 @@ public static unsafe class KeccakCache
 
     Uncommon:
         keccak256 = input.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+#endif
     }
 
     /// <summary>

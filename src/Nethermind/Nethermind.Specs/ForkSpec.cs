@@ -5,8 +5,8 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs;
 
-public readonly record struct ForkSpec(long? Block, ulong? Timestamp, IReleaseSpec Spec)
+public readonly record struct ForkSpec(ulong? Block, ulong? Timestamp, IReleaseSpec Spec)
 {
-    public ForkSpec(ulong timestamp, IReleaseSpec spec) : this(null, timestamp, spec) { }
-    public ForkSpec(long block, IReleaseSpec spec) : this(block, null, spec) { }
+    public static ForkSpec AtTimestamp(ulong timestamp, IReleaseSpec spec) => new(null, timestamp, spec);
+    public static ForkSpec AtBlock(ulong block, IReleaseSpec spec) => new(block, null, spec);
 }

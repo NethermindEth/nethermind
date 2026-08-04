@@ -9,8 +9,8 @@ namespace Nethermind.Specs;
 
 public class MordenSpecProvider : ForkScheduleSpecProvider
 {
-    public const long HomesteadBlockNumber = 494_000;
-    public const long SpuriousDragonBlockNumber = 1_885_000;
+    public const ulong HomesteadBlockNumber = 494_000;
+    public const ulong SpuriousDragonBlockNumber = 1_885_000;
 
     private MordenSpecProvider() : this(new ForkSchedule
     {

@@ -958,6 +958,11 @@ namespace Nethermind.Trie
                         return default;
                     }
 
+                    if (remainingKey.Length == 0)
+                    {
+                        return default;
+                    }
+
                     int nib = remainingKey[0];
                     path.AppendMut(nib);
                     TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
@@ -1067,8 +1072,8 @@ namespace Nethermind.Trie
                 {
                     ReadOnlySpan<byte> bytes = Get(address.Bytes, root);
                     if (bytes.IsEmpty) return Keccak.EmptyTreeHash;
-                    Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
-                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
+                    RlpReader valueReader = new(bytes);
+                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueReader);
                 }
 
                 rootHash = storageRoot ?? DecodeStorageRoot(rootHash, storageAddr);

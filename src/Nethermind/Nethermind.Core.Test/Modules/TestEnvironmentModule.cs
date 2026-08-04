@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Test;
 using Nethermind.TxPool;
@@ -44,7 +45,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             // These two don't use the DB provider
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
-            .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryV5Nodes, (_) => new MemDb())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
             .AddSingleton(NodeFilter.AcceptAll) // Disable inbound rate limiting for in-memory channels
 
@@ -85,12 +85,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 ISyncServer syncServer = ctx.Resolve<ISyncServer>();
                 IEnode enode = ctx.Resolve<IEnode>();
-                IWorldStateManager worldStateManager = ctx.Resolve<IWorldStateManager>();
-                ISnapSyncPeer? snapSyncPeer = null;
-                if (worldStateManager.SnapServer is not null)
-                {
-                    snapSyncPeer = new MockSnapSyncPeer(worldStateManager.SnapServer);
-                }
+                ISnapServer snapServer = ctx.Resolve<ISnapServer>();
+                ISnapSyncPeer? snapSyncPeer = snapServer.CanServe ? new MockSnapSyncPeer(snapServer) : null;
 
                 return new SyncPeerMock(blockTree, syncServer, enode.PublicKey, snapSyncPeer: snapSyncPeer);
             })
@@ -107,6 +103,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             .AddDecorator<IBlocksConfig>((_, blocksConfig) =>
             {
                 blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
+                blocksConfig.PreWarming = PreWarmMode.Block;
                 return blocksConfig;
             })
             .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = SeqlockCache<StorageCell, byte[]>.DefaultSetsBits })

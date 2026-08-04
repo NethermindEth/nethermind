@@ -18,25 +18,29 @@ namespace Nethermind.Network
     /// <summary>
     /// This class should be split into multiple sources
     /// </summary>
+    public sealed record NodesLoaderOptions(bool LoadBootnodesAsPeerCandidates = true);
+
     public class NodesLoader(
         INetworkConfig networkConfig,
         INodeStatsManager stats,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
         IEnode enode,
-        ILogManager logManager) : INodeSource
+        ILogManager logManager,
+        NodesLoaderOptions options) : INodeSource
     {
-        private readonly INetworkConfig _networkConfig = networkConfig;
-        private readonly INodeStatsManager _stats = stats;
-        private readonly INetworkStorage _peerStorage = peerStorage;
-        private readonly IEnode _enode = enode;
-        private readonly ILogger _logger = logManager.GetClassLogger<NodesLoader>();
+        private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+        private readonly INodeStatsManager _stats = stats ?? throw new ArgumentNullException(nameof(stats));
+        private readonly INetworkStorage _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+        private readonly IEnode _enode = enode ?? throw new ArgumentNullException(nameof(enode));
+        private readonly ILogger _logger = logManager?.GetClassLogger<NodesLoader>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly NodesLoaderOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
         public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
             List<Node> allPeers = [];
             LoadPeersFromDb(allPeers);
 
-            if (!_networkConfig.OnlyStaticPeers)
+            if (!_networkConfig.OnlyStaticPeers && _options.LoadBootnodesAsPeerCandidates)
             {
                 LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
                 {

@@ -17,7 +17,12 @@ namespace Nethermind.Evm.State;
 public interface IWorldStateScopeProvider
 {
     bool HasRoot(BlockHeader? baseBlock);
-    IScope BeginScope(BlockHeader? baseBlock);
+
+    /// <param name="metrics">
+    /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
+    /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.
+    /// </param>
+    IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
 
     /// <summary>
     /// Whether <see cref="BeginScope"/> may be called while another scope from this provider is
@@ -35,6 +40,15 @@ public interface IWorldStateScopeProvider
         Hash256 RootHash { get; }
 
         void UpdateRootHash();
+
+        /// <summary>
+        /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
+        /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
+        /// </summary>
+        void HintWarmAccount(in ValueAddress address) { }
+
+        /// <inheritdoc cref="HintWarmAccount"/>
+        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.
@@ -78,7 +92,7 @@ public interface IWorldStateScopeProvider
         /// That said, <see cref="WorldState"/> will always call <see cref="IStateTree.UpdateRootHash"/>
         /// first.
         /// </summary>
-        void Commit(long blockNumber);
+        void Commit(ulong blockNumber);
 
         /// <summary>
         /// Hint that the given Block Access List will be accessed during block execution.
@@ -171,13 +185,6 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index, byte[]? value);
-
-        /// <summary>
-        /// Used by JS tracer. May not work on some database layout.
-        /// </summary>
-        /// <param name="hash"></param>
-        /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
     }
 
     public interface IWorldStateWriteBatch : IDisposable

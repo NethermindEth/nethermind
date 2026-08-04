@@ -17,14 +17,14 @@ public class ReleaseSpec : IReleaseSpec
     public string Name { get; set; } = "Custom";
     public long MaximumExtraDataSize { get; set; }
     public long MaxCodeSize { get; set; }
-    public long MinGasLimit { get; set; }
-    public long MinHistoryRetentionEpochs { get; set; }
-    public long MinBalRetentionEpochs { get; set; }
-    public long GasLimitBoundDivisor { get; set; }
+    public ulong MinGasLimit { get; set; }
+    public ulong MinHistoryRetentionEpochs { get; set; }
+    public ulong MinBalRetentionEpochs { get; set; }
+    public ulong GasLimitBoundDivisor { get; set; }
     public UInt256 BlockReward { get; set; }
-    public long DifficultyBombDelay { get; set; }
-    public long DifficultyBoundDivisor { get; set; }
-    public long? FixedDifficulty { get; set; }
+    public ulong DifficultyBombDelay { get; set; }
+    public ulong DifficultyBoundDivisor { get; set; }
+    public ulong? FixedDifficulty { get; set; }
     public int MaximumUncleCount { get; set; }
     public bool IsTimeAdjustmentPostOlympic { get; set; }
     public bool IsEip2Enabled { get; set; }
@@ -66,14 +66,14 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip3541Enabled { get; set; }
     public bool ValidateChainId { get; set; }
     public bool ValidateReceipts { get; set; }
-    public long Eip1559TransitionBlock { get; set; }
+    public ulong Eip1559TransitionBlock { get; set; }
     public ulong WithdrawalTimestamp { get; set; }
     public ulong Eip4844TransitionTimestamp { get; set; }
     public Address? FeeCollector { get; set; }
     public UInt256? Eip1559BaseFeeMinValue { get; set; }
     public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
     public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
-    public long ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
+    public ulong ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
     public IBaseFeeCalculator BaseFeeCalculator { get; set; } = new DefaultBaseFeeCalculator();
     public bool IsEip1153Enabled { get; set; }
     public bool IsEip3651Enabled { get; set; }
@@ -89,6 +89,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7883Enabled { get; set; }
     public bool IsEip5656Enabled { get; set; }
     public bool IsEip6780Enabled { get; set; }
+    public bool IsEip8038Enabled { get; set; }
+    public bool IsEip8282Enabled { get; set; }
     public bool IsEip4788Enabled { get; set; }
     public bool IsEip7702Enabled { get; set; }
     public bool IsEip7823Enabled { get; set; }
@@ -102,7 +104,7 @@ public class ReleaseSpec : IReleaseSpec
     public ulong TargetBlobCount { get; set; }
     public ulong MaxBlobCount { get; set; }
     public ulong MaxBlobsPerTx => IsEip7594Enabled ? Math.Min(Eip7594Constants.MaxBlobsPerTx, MaxBlobCount) : MaxBlobCount;
-    public UInt256 BlobBaseFeeUpdateFraction { get; set; }
+    public ulong BlobBaseFeeUpdateFraction { get; set; }
     [MemberNotNullWhen(true, nameof(IsEip7251Enabled))]
     public Address? Eip7251ContractAddress { get => IsEip7251Enabled ? field : null; set; }
     [MemberNotNullWhen(true, nameof(Eip7002ContractAddress))]
@@ -118,14 +120,12 @@ public class ReleaseSpec : IReleaseSpec
     [MemberNotNullWhen(true, nameof(Eip2935ContractAddress))]
     public Address? Eip2935ContractAddress { get => IsEip2935Enabled ? field : null; set; }
     public bool IsEip7594Enabled { get; set; }
-    Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
-    Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
     public bool IsEip7939Enabled { get; set; }
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
     private SpecGasCosts? _gasCosts;
     public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);
-    public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
+    public ulong Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
         HashSet<AddressAsKey> cache =
@@ -169,6 +169,8 @@ public class ReleaseSpec : IReleaseSpec
 
     public bool IsEip7708Enabled { get; set; }
     public bool IsEip7954Enabled { get; set; }
+    public bool IsEip8246Enabled { get; set; }
+    public bool IsEip2780Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 

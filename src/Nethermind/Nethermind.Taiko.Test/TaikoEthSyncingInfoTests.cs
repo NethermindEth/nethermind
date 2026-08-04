@@ -18,7 +18,7 @@ namespace Nethermind.Taiko.Test;
 public class TaikoEthSyncingInfoTests
 {
     [TestCaseSource(nameof(GetFullInfoCases))]
-    public SyncingResult GetFullInfo_ReturnsExpected(long? suggested, long? beacon, long? head, SyncMode innerMode)
+    public SyncingResult GetFullInfo_ReturnsExpected(ulong? suggested, ulong? beacon, ulong? head, SyncMode innerMode)
     {
         IEthSyncingInfo inner = Substitute.For<IEthSyncingInfo>();
         inner.SyncMode.Returns(innerMode);
@@ -33,8 +33,8 @@ public class TaikoEthSyncingInfoTests
         // IsSyncing(), which is `false` during the very plateau this decorator exists
         // to fix. The stopwatch must run on the decorator's corrected IsSyncing().
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
-        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(500L).TestObject).TestObject);
+        blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1000UL).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(500UL).TestObject).TestObject);
 
         IEthSyncingInfo inner = Substitute.For<IEthSyncingInfo>();
         TaikoEthSyncingInfo info = new(blockTree, inner);
@@ -44,7 +44,7 @@ public class TaikoEthSyncingInfoTests
         Assert.That(info.UpdateAndGetSyncTime(), Is.GreaterThan(TimeSpan.Zero), "subsequent call while syncing: elapsed");
 
         // Head catches the beacon pivot — decorator now reports not-syncing, stopwatch stops.
-        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1000L).TestObject).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1000UL).TestObject).TestObject);
         Assert.That(info.UpdateAndGetSyncTime(), Is.EqualTo(TimeSpan.Zero), "after catch-up: stops");
         inner.DidNotReceive().UpdateAndGetSyncTime();
     }
@@ -58,12 +58,12 @@ public class TaikoEthSyncingInfoTests
         Assert.That(new TaikoEthSyncingInfo(Substitute.For<IBlockTree>(), inner).SyncMode, Is.EqualTo(SyncMode.WaitingForBlock));
     }
 
-    private static IBlockTree BlockTreeWith(long? suggested, long? beacon, long? head)
+    private static IBlockTree BlockTreeWith(ulong? suggested, ulong? beacon, ulong? head)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBestSuggestedHeader().Returns(suggested is long s ? Build.A.BlockHeader.WithNumber(s).TestObject : null);
-        blockTree.BestSuggestedBeaconHeader.Returns(beacon is long b ? Build.A.BlockHeader.WithNumber(b).TestObject : null);
-        blockTree.Head.Returns(head is long h ? Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(h).TestObject).TestObject : null);
+        blockTree.FindBestSuggestedHeader().Returns(suggested is ulong s ? Build.A.BlockHeader.WithNumber(s).TestObject : null);
+        blockTree.BestSuggestedBeaconHeader.Returns(beacon is ulong b ? Build.A.BlockHeader.WithNumber(b).TestObject : null);
+        blockTree.Head.Returns(head is ulong h ? Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(h).TestObject).TestObject : null);
         return blockTree;
     }
 
@@ -72,21 +72,21 @@ public class TaikoEthSyncingInfoTests
         // Regression: BeaconSync inserts headers via BestSuggestedBeaconHeader only, so
         // FindBestSuggestedHeader can lag (or be null) even after Head reaches the pivot.
         // Before the fix, isSyncing stuck at true once Head caught up.
-        yield return new TestCaseData((long?)null, (long?)1000L, (long?)1000L, SyncMode.None)
+        yield return new TestCaseData((ulong?)null, (ulong?)1000UL, (ulong?)1000UL, SyncMode.None)
             .Returns(SyncingResult.NotSyncing)
             .SetName("BeaconPivot_HeadCaughtUp_NotSyncing");
 
-        yield return new TestCaseData((long?)null, (long?)1000L, (long?)500L, SyncMode.FastSync)
-            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 500L, HighestBlock = 1000L, SyncMode = SyncMode.FastSync })
+        yield return new TestCaseData((ulong?)null, (ulong?)1000UL, (ulong?)500UL, SyncMode.FastSync)
+            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 500UL, HighestBlock = 1000UL, SyncMode = SyncMode.FastSync })
             .SetName("BeaconPivot_HeadBehind_Syncing");
 
-        yield return new TestCaseData((long?)null, (long?)null, (long?)null, SyncMode.None)
-            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 0L, HighestBlock = 0L, SyncMode = SyncMode.None })
+        yield return new TestCaseData((ulong?)null, (ulong?)null, (ulong?)null, SyncMode.None)
+            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 0UL, HighestBlock = 0UL, SyncMode = SyncMode.None })
             .SetName("Genesis_Syncing");
 
         // Both pointers populated — decorator must take max(suggested, beacon).
-        yield return new TestCaseData((long?)2000L, (long?)1000L, (long?)500L, SyncMode.None)
-            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 500L, HighestBlock = 2000L, SyncMode = SyncMode.None })
+        yield return new TestCaseData((ulong?)2000UL, (ulong?)1000UL, (ulong?)500UL, SyncMode.None)
+            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 500UL, HighestBlock = 2000UL, SyncMode = SyncMode.None })
             .SetName("TakesMaxOfBothPointers");
     }
 }
