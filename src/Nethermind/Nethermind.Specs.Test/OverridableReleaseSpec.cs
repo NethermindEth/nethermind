@@ -65,8 +65,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip3529Enabled { get; set; } = spec.IsEip3529Enabled;
         public bool IsEip3541Enabled { get; set; } = spec.IsEip3541Enabled;
         public bool IsEip4844Enabled { get; set; } = spec.IsEip4844Enabled;
-        public bool IsEip7951Enabled { get; set; } = spec.IsEip7951Enabled;
-        public bool IsRip7212Enabled { get; set; } = spec.IsRip7212Enabled;
+        public bool IsEip7951Enabled { get => field; set { field = value; _precompiles = null; } } = spec.IsEip7951Enabled;
+        public bool IsRip7212Enabled { get => field; set { field = value; _precompiles = null; } } = spec.IsRip7212Enabled;
         public bool IsEip7623Enabled { get; set; } = spec.IsEip7623Enabled;
         public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;
@@ -132,7 +132,15 @@ namespace Nethermind.Specs.Test
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
         public SpecGasCosts GasCosts => new(this);
-        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => BuildPrecompiles();
+
+        private FrozenSet<AddressAsKey>? _precompiles;
+
+        /// <remarks>
+        /// Memoized like the production spec: <c>IsPrecompile</c> reads it per code fetch, per
+        /// <c>CALL</c> and per cold account access, and the two flags that decide the set drop the
+        /// cache when they are overridden.
+        /// </remarks>
+        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompiles();
 
         private FrozenSet<AddressAsKey> BuildPrecompiles()
         {

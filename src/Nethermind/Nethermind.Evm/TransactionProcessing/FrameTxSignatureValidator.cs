@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
@@ -30,7 +31,7 @@ public static class FrameTxSignatureValidator
     public const string P256NotSupported = "frame transaction P256 signatures require the secp256r1 precompile";
 
     /// <summary>Address of the secp256r1 (P256VERIFY) precompile — EIP-7951 / RIP-7212.</summary>
-    public static readonly Address P256VerifyPrecompileAddress = Address.FromNumber(0x100);
+    public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 
     public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
         => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error);
