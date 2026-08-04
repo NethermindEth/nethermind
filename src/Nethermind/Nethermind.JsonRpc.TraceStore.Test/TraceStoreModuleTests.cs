@@ -39,7 +39,9 @@ public class TraceStoreModuleTests
         using IContainer container = BuildContainer(new TraceStoreConfig { Enabled = true }, builder => builder
             .AddScoped<ITraceRpcModule>(_ => Substitute.For<ITraceRpcModule>())
             .AddSingleton<IBlockFinder>(Substitute.For<IBlockFinder>())
-            .AddSingleton<IReceiptFinder>(Substitute.For<IReceiptFinder>())
+            // The production graph registers the regenerable key unconditionally (BlockTreeModule), so the test
+            // container must too — the plugin resolves the keyed read-only finder.
+            .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, Substitute.For<IReceiptFinder>())
             .AddSingleton<IJsonRpcConfig>(new JsonRpcConfig()));
 
         // TraceModuleFactory resolves ITraceRpcModule inside a nested lifetime scope; the plugin's

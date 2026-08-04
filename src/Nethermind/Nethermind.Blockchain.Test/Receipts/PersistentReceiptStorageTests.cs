@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
@@ -38,6 +39,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     private ReceiptConfig _receiptConfig = null!;
     private PersistentReceiptStorage _storage = null!;
     private ReceiptArrayStorageDecoder _decoder = null!;
+    private IStateHistoryCaptureStatus _captureStatus = null!;
 
     [SetUp]
     public void SetUp()
@@ -55,9 +57,12 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TearDown]
     public void TearDown() => _receiptsDb.Dispose();
 
-    private void CreateStorage()
+    private void CreateStorage(bool captureHealthy = true)
     {
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
+        IStateHistoryCaptureStatus captureStatus = Substitute.For<IStateHistoryCaptureStatus>();
+        captureStatus.CaptureHealthy.Returns(captureHealthy);
+        _captureStatus = captureStatus;
         _storage = new PersistentReceiptStorage(
             _receiptsDb,
             _specProvider,
@@ -65,7 +70,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _blockTree,
             _blockStore,
             _receiptConfig,
-            _decoder
+            _decoder,
+            historyCaptureStatus: captureStatus
         )
         { MigratedBlockNumber = 0 };
     }
@@ -473,6 +479,242 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(expectedMigratedBlockNumber),
             "the migration owns the pointer under parallel out-of-order inserts, so only the normal Insert path may advance it");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_skips_bodies_on_the_processing_path()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        Block block = ProcessBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.False);
+    }
+
+    // Pre-EIP-658 receipts carry a post-transaction state root that re-execution cannot reproduce.
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    public void Deriving_from_state_still_stores_pre_eip658_bodies(bool eip658Enabled, bool expectPersisted)
+    {
+        _specProvider.GenesisSpec = eip658Enabled ? Byzantium.Instance : SpuriousDragon.Instance;
+        _specProvider.NextForkSpec = _specProvider.GenesisSpec;
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        Block block = ProcessBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.EqualTo(expectPersisted));
+    }
+
+    // Migration deletes the legacy key after re-inserting, so a skipped write there would destroy the bodies.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Deriving_from_state_does_not_skip_bodies_outside_block_processing(bool viaMigration)
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        if (viaMigration)
+            ((IReceiptMigrationStore)_storage).InsertForMigration(block, receipts);
+        else
+            _storage.Insert(block, receipts);
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    // A body skipped while capture is unhealthy is lost once the block leaves the in-memory tier.
+    [TestCase(false)]
+    [TestCase(null)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_stores_bodies_without_healthy_history_capture(bool? captureHealthy)
+    {
+        _receiptConfig.DeriveFromState = true;
+        if (captureHealthy is { } health)
+        {
+            CreateStorage(captureHealthy: health);
+        }
+        else
+        {
+            _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
+            _storage = new PersistentReceiptStorage(
+                _receiptsDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
+            { MigratedBlockNumber = 0 };
+        }
+
+        Block block = ProcessBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Storing_bodies_is_the_default()
+    {
+        Block block = ProcessBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_persists_retained_bodies_when_capture_stops()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        IStateHistoryCaptureStatus captureStatus = _captureStatus;
+        Block block = ProcessBlock();
+        Assert.That(BodyIsPersisted(block), Is.False, "precondition: the body is skipped while capture is healthy");
+
+        captureStatus.CaptureDisabled += Raise.Event<Action>();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_drops_retained_bodies_once_the_watermark_covers_them()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        IStateHistoryCaptureStatus captureStatus = _captureStatus;
+        Block block = ProcessBlock();
+
+        captureStatus.WatermarkAdvanced += Raise.Event<Action<ulong>>((ulong)block.Number);
+        captureStatus.CaptureDisabled += Raise.Event<Action>();
+
+        Assert.That(BodyIsPersisted(block), Is.False);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_keeps_retaining_bodies_above_the_watermark()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        IStateHistoryCaptureStatus captureStatus = _captureStatus;
+        Block block = ProcessBlock();
+
+        captureStatus.WatermarkAdvanced += Raise.Event<Action<ulong>>((ulong)block.Number - 1);
+        captureStatus.CaptureDisabled += Raise.Event<Action>();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_stores_bodies_once_the_retention_cap_is_reached()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block InsertBlockNumber(ulong number)
+        {
+            Block block = Build.A.Block.WithNumber(number).WithTransactions(tx).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+            _storage.InsertDeferred(block, [Build.A.Receipt.WithCalculatedBloom().TestObject], _specProvider.GetSpec((ForkActivation)number));
+            return block;
+        }
+
+        Block firstRetained = InsertBlockNumber(1);
+        for (ulong number = 2; number <= PersistentReceiptStorage.MaxRetainedBodies; number++)
+        {
+            InsertBlockNumber(number);
+        }
+        Block overflow = InsertBlockNumber(PersistentReceiptStorage.MaxRetainedBodies + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BodyIsPersisted(overflow), Is.True, "at the cap the body must write through");
+            Assert.That(BodyIsPersisted(firstRetained), Is.False, "below the cap the skip must keep applying");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_stores_bodies_once_the_retention_byte_cap_is_reached()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+
+        // One shared array: the estimate counts it per block, so the test never holds that much.
+        const int LogDataBytes = 8 * 1024 * 1024;
+        int blocksToSaturate = (int)(PersistentReceiptStorage.MaxRetainedBytes / LogDataBytes);
+        Assert.That(blocksToSaturate, Is.LessThan(PersistentReceiptStorage.MaxRetainedBodies),
+            "precondition: the byte cap must bind before the block cap on log-heavy blocks");
+
+        LogEntry heavyLog = new(TestItem.AddressA, new byte[LogDataBytes], [TestItem.KeccakA]);
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block InsertHeavyBlock(ulong number)
+        {
+            Block block = Build.A.Block.WithNumber(number).WithTransactions(tx).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+            _storage.InsertDeferred(block, [Build.A.Receipt.WithLogs(heavyLog).WithCalculatedBloom().TestObject],
+                _specProvider.GetSpec((ForkActivation)number));
+            return block;
+        }
+
+        Block firstRetained = InsertHeavyBlock(1);
+        for (ulong number = 2; number <= (ulong)blocksToSaturate; number++)
+        {
+            InsertHeavyBlock(number);
+        }
+
+        Assert.That(_storage.RetainedBytes, Is.GreaterThanOrEqualTo(PersistentReceiptStorage.MaxRetainedBytes),
+            "precondition: retention must be saturated by bytes at this point");
+
+        Block overflow = InsertHeavyBlock((ulong)blocksToSaturate + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BodyIsPersisted(overflow), Is.True, "at the byte cap the body must write through");
+            Assert.That(BodyIsPersisted(firstRetained), Is.False, "below the cap the skip must keep applying");
+        }
+    }
+
+    // A removal that drops a body without subtracting its bytes latches the skip off once the drift exceeds the cap.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Removing_receipts_keeps_the_retained_byte_count_in_step()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        IStateHistoryCaptureStatus captureStatus = _captureStatus;
+
+        Block block = ProcessBlock();
+        Assert.That(_storage.RetainedBytes, Is.GreaterThan(0), "precondition: the skipped body is retained");
+
+        _storage.RemoveReceipts(block);
+        long afterRemoval = _storage.RetainedBytes;
+
+        captureStatus.CaptureDisabled += Raise.Event<Action>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterRemoval, Is.Zero, "removal must subtract the body's bytes");
+            Assert.That(_storage.RetainedBodyCount, Is.Zero);
+            Assert.That(BodyIsPersisted(block), Is.False, "a removed body must not be resurrected by the disable flush");
+        }
+    }
+
+    // The disable flush may drain between the health check that skipped the write and the retention add.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Deriving_from_state_persists_a_body_skipped_concurrently_with_the_disable()
+    {
+        _receiptConfig.DeriveFromState = true;
+        CreateStorage();
+        _captureStatus.CaptureHealthy.Returns(true, false);
+
+        Block block = ProcessBlock();
+
+        Assert.That(BodyIsPersisted(block), Is.True);
+    }
+
+    private Block ProcessBlock()
+    {
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        _storage.InsertDeferred(block, receipts, _specProvider.GetSpec((ForkActivation)block.Header.Number));
+        return block;
+    }
+
+    // A fresh instance has an empty receipts cache, so this reads through to the column.
+    private bool BodyIsPersisted(Block block)
+    {
+        CreateStorage();
+        return _storage.HasBlock(block.Number, block.Hash!);
     }
 
     private (Block block, TxReceipt[] receipts) PrepareBlock(Block? block = null, bool isFinalized = false, ulong? headNumber = null)
