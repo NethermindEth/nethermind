@@ -15,7 +15,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
             new();
-        // Bags are plain HashSets mutated from concurrent subscribe/unsubscribe/close; guard every access by locking the bag instance.
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
 

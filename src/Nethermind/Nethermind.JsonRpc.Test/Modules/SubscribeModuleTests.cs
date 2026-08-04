@@ -1234,7 +1234,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         [Test]
         [Repeat(20)]
-        public async Task Concurrent_add_and_client_close_do_not_corrupt_the_bag()
+        public async Task Concurrent_add_unsubscribe_and_client_close_do_not_corrupt_the_bag()
         {
             ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
             factory
@@ -1257,12 +1257,24 @@ namespace Nethermind.JsonRpc.Test.Modules
                 catch (Exception e) { failures.Enqueue(e); }
             });
 
+            ConcurrentQueue<string> subscriptionIds = new();
             List<Task> tasks = [];
             for (int i = 0; i < adders; i++)
             {
                 tasks.Add(Run(() =>
                 {
-                    for (int j = 0; j < perAdder; j++) manager.AddSubscription(client, "test");
+                    for (int j = 0; j < perAdder; j++) subscriptionIds.Enqueue(manager.AddSubscription(client, "test"));
+                }));
+            }
+            // Racing the unsubscribe path against the concurrent adds.
+            for (int i = 0; i < 4; i++)
+            {
+                tasks.Add(Run(() =>
+                {
+                    for (int j = 0; j < perAdder; j++)
+                    {
+                        if (subscriptionIds.TryDequeue(out string? subscriptionId)) manager.RemoveSubscription(client, subscriptionId);
+                    }
                 }));
             }
             // Racing the enumerate-and-dispose path against the concurrent adds.
