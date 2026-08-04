@@ -792,7 +792,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_reject_unsolicited_pooled_response_before_sampling_validation()
+    public void should_ignore_unsolicited_pooled_response_before_sampling_validation()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -808,14 +808,14 @@ public class Eth72ProtocolHandlerTests
 
         Assert.That(
             () => HandleZeroMessage(response, Eth66MessageCode.PooledTransactions),
-            Throws.TypeOf<SubprotocolException>());
+            Throws.Nothing);
 
         _transactionPool.DidNotReceive().ValidateTxForBlobSampling(Arg.Any<Transaction>());
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
     [Test]
-    public void should_reject_duplicate_pooled_response_before_sampling_validation()
+    public void should_ignore_duplicate_pooled_response_before_sampling_validation()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -832,7 +832,7 @@ public class Eth72ProtocolHandlerTests
 
         Assert.That(
             () => HandleZeroMessage(duplicateResponse, Eth66MessageCode.PooledTransactions),
-            Throws.TypeOf<SubprotocolException>());
+            Throws.Nothing);
 
         _transactionPool.DidNotReceive().ValidateTxForBlobSampling(Arg.Any<Transaction>());
     }

@@ -86,7 +86,7 @@ namespace Nethermind.Consensus.Test
 
         private sealed class LegacyGasLimitCalculator : IGasLimitCalculator
         {
-            public ulong GetGasLimit(BlockHeader parentHeader) => 42;
+            public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit = null) => 42;
         }
     }
 }

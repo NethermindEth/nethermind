@@ -310,7 +310,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_allow_nonce_gap_blob_tx_when_blob_pool_has_capacity([Values(true, false)] bool isBlob)
+        public void should_allow_nonce_gap_only_for_non_blob_tx_when_pool_has_capacity([Values(true, false)] bool isBlob)
         {
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -332,7 +332,9 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Assert.That(_txPool.SubmitTx(firstTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.SubmitTx(nonceGapTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(
+                _txPool.SubmitTx(nonceGapTx, TxHandlingOptions.None),
+                Is.EqualTo(isBlob ? AcceptTxResult.NonceGap : AcceptTxResult.Accepted));
         }
 
         [Test]
@@ -1163,7 +1165,7 @@ namespace Nethermind.TxPool.Test
                 {
                     yield return MakeTestCase("V0 should be evicted in Osaka", 0, mode, TestAction.AddV0, TestAction.Fork);
                     yield return MakeTestCase("Take only V0 ones before Osaka", 2, mode, TestAction.AddV0, TestAction.AddV0, TestAction.AddV1);
-                    yield return MakeTestCase("Evict old proof but keep later sparse txs", 1, mode, TestAction.AddV0, TestAction.AddV0, TestAction.Fork, TestAction.AddV1);
+                    yield return MakeTestCase("Evict old proof and later sparse txs", 0, mode, TestAction.AddV0, TestAction.AddV0, TestAction.Fork, TestAction.AddV1);
                     yield return MakeTestCase("Replace with new proof", 1, mode, TestAction.AddV0, TestAction.Fork, TestAction.ResetNonce, TestAction.AddV1);
                     yield return MakeTestCase("Ignore V1 before Osaka, no gaps", 0, mode, TestAction.AddV1);
                 }
@@ -1568,7 +1570,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_allow_removed_blob_transaction_after_forgetting_rejected_hash()
+        public void should_keep_removed_blob_transaction_known_after_forgetting_rejected_hash()
         {
             _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
@@ -1586,11 +1588,11 @@ namespace Nethermind.TxPool.Test
 
             _txPool.ForgetRejectedBlobTransaction(tx.Hash!);
 
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
         }
 
         [Test]
-        public void ready_blob_snapshot_should_exclude_sender_whose_first_nonce_is_in_the_future()
+        public void should_reject_blob_sender_whose_first_nonce_is_in_the_future()
         {
             _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
@@ -1604,12 +1606,8 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
 
-            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-
-            Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(), Contains.Key((AddressAsKey)TestItem.AddressA));
-            Assert.That(
-                _txPool.GetPendingLightBlobTransactionsBySender(filterToReadyTx: true),
-                Does.Not.ContainKey((AddressAsKey)TestItem.AddressA));
+            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceGap));
+            Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(), Does.Not.ContainKey((AddressAsKey)TestItem.AddressA));
         }
 
         [Test]

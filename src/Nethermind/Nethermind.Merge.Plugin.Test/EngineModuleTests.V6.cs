@@ -887,8 +887,8 @@ public partial class EngineModuleTests
         entries[0] = new BlobCellsAndProofs
         {
             Available = true,
-            BlobCells = [ArrayPool<byte>.Shared.Rent(CkzgLib.Ckzg.BytesPerCell)],
-            Proofs = [ArrayPool<byte>.Shared.Rent(CkzgLib.Ckzg.BytesPerProof)]
+            BlobCells = [new byte[CkzgLib.Ckzg.BytesPerCell]],
+            Proofs = [new byte[CkzgLib.Ckzg.BytesPerProof]]
         };
         BlobsV4DirectResponse response = new(entries, 1);
 

@@ -89,7 +89,7 @@ public class LightTxDecoderTests
     }
 
     [Test]
-    public void should_preserve_legacy_sparse_size_api()
+    public void should_preserve_sparse_pool_public_api()
     {
         Type[] constructorParameters =
         [
@@ -105,8 +105,7 @@ public class LightTxDecoderTests
             Assert.That(typeof(LightTransaction).GetConstructor(constructorParameters), Is.Not.Null);
             Assert.That(typeof(ITxPool).GetMethod(nameof(ITxPool.TryMergeBlobCells), [typeof(Hash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
             Assert.That(typeof(BlobTxDistinctSortedPool).GetMethod(nameof(BlobTxDistinctSortedPool.TryMergeCells), [typeof(ValueHash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
-            Assert.That(lightTx.GetSparseBlobNetworkSize(), Is.EqualTo(lightTx.GetConsensusEncodingSize()));
-            Assert.That(fullTx.TryCalculateSparseBlobNetworkSize(), Is.EqualTo(fullTx.GetLength(shouldCountBlobs: false)));
+            Assert.That(lightTx.GetConsensusEncodingSize(), Is.EqualTo(fullTx.GetLength(shouldCountBlobs: false)));
         }
     }
 

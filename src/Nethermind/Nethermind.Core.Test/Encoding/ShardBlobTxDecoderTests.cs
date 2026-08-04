@@ -27,12 +27,74 @@ public partial class ShardBlobTxDecoderTests
     [SetUp]
     public static Task SetUp() => KzgPolynomialCommitments.InitializeAsync();
 
+    [Test]
+    public void V1_sparse_wrapper_without_cells_is_not_proof_valid()
+    {
+        ShardBlobNetworkWrapper wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BlobCellsHelper.ValidateCells(wrapper), Is.False);
+            Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.False);
+        }
+    }
+
+    [Test]
+    public void V1_length_validation_rejects_null_commitments_and_proofs()
+    {
+        ShardBlobNetworkWrapper wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
+        wrapper.Commitments[0] = null!;
+
+        Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
+
+        wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
+        wrapper.Proofs[0] = null!;
+
+        Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
+    }
+
+    [Test]
+    public void Select_flattened_cells_rejects_non_subset_mask()
+    {
+        byte[][] selected = BlobCellsHelper.SelectFlattenedCells(
+            [new byte[Ckzg.BytesPerCell]],
+            new BlobCellMask(UInt128.One),
+            new BlobCellMask(UInt128.One << 1),
+            blobCount: 1);
+
+        Assert.That(selected, Is.Empty);
+    }
+
+    [Test]
+    public void Select_proofs_rejects_invalid_blob_index()
+    {
+        ShardBlobNetworkWrapper wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
+
+        Assert.That(BlobCellsHelper.SelectProofs(wrapper, blobIndex: 1, BlobCellMask.Full), Is.Empty);
+    }
+
     public static IEnumerable<(Transaction, string)> TestCaseSource() =>
         TxDecoderTests.TestCaseSource().Select(static tos => (Build.A.Transaction.From(tos.Item1)
             .WithChainId(TestBlockchainIds.ChainId)
             .WithShardBlobTxTypeAndFields(2, false)
             .SignedAndResolved()
             .TestObject, tos.Item2));
+
+    private static ShardBlobNetworkWrapper CreateV1SparseWrapperWithoutCells(int blobCount)
+    {
+        byte[][] commitments = new byte[blobCount][];
+        byte[][] proofs = new byte[blobCount * Ckzg.CellsPerExtBlob][];
+        for (int i = 0; i < blobCount; i++)
+        {
+            commitments[i] = new byte[Ckzg.BytesPerCommitment];
+            for (int cellIndex = 0; cellIndex < Ckzg.CellsPerExtBlob; cellIndex++)
+            {
+                proofs[i * Ckzg.CellsPerExtBlob + cellIndex] = new byte[Ckzg.BytesPerProof];
+            }
+        }
+
+        return new ShardBlobNetworkWrapper([], commitments, proofs, ProofVersion.V1);
+    }
 
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)

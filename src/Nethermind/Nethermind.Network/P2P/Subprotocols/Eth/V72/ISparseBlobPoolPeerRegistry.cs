@@ -44,7 +44,7 @@ public interface ISparseBlobPoolPeerRegistry
     bool RecordCells(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask cellMask, byte[][] cells);
     bool TryApplyRecordedCells(Hash256 hash);
     bool TryAcquireCellServeWork(int work);
-    void RefundCellServeWork(int work) { }
+    void RefundCellServeWork(int work);
     void ReleaseCellServeWork();
     void Clear(Hash256 hash);
 }

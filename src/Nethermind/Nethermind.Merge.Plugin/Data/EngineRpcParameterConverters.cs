@@ -110,6 +110,7 @@ internal sealed class BlobCellBitArrayConverter : JsonConverter<BitArray>
         }
 
         Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
+        bytes.Clear();
         for (int i = 0; i < value.Length; i++)
         {
             if (value.Get(i))

@@ -104,17 +104,4 @@ public class PayloadAttributesValidateTests
         }
     }
 
-    [Test]
-    public void Parent_aware_gas_limit_preserves_legacy_override()
-    {
-        PayloadAttributes attributes = new LegacyPayloadAttributes();
-        ManualGasLimitCalculator calculator = new() { GasLimit = 1 };
-
-        Assert.That(attributes.GetGasLimit(Build.A.BlockHeader.TestObject, calculator), Is.EqualTo(42));
-    }
-
-    private sealed class LegacyPayloadAttributes : PayloadAttributes
-    {
-        public override ulong? GetGasLimit() => 42;
-    }
 }

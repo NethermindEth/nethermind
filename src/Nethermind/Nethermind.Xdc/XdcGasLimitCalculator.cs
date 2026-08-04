@@ -12,9 +12,7 @@ internal class XdcGasLimitCalculator(ISpecProvider specProvider, IBlocksConfig b
 {
     private readonly TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(specProvider, blocksConfig);
 
-    public ulong GetGasLimit(BlockHeader parentHeader) => GetGasLimit(parentHeader, null);
-
-    public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit) =>
+    public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit = null) =>
         specProvider.GetXdcSpec(parentHeader.Number + 1).IsDynamicGasLimitBlock
             ? targetAdjustedGasLimitCalculator.GetGasLimit(parentHeader, targetGasLimit)
             : blocksConfig.TargetBlockGasLimit ?? XdcConstants.DefaultTargetGasLimit;

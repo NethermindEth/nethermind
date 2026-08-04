@@ -160,6 +160,7 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
         }
 
         Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
+        bytes.Clear();
         for (int i = 0; i < BlobCellMask.CellCount; i++)
         {
             if (bitarray.Get(i))

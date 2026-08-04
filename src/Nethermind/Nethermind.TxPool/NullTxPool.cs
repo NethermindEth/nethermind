@@ -50,6 +50,8 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
+        public AcceptTxResult ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
+
         public void ForgetRejectedBlobTransaction(Hash256 hash) { }
 
         public bool RemoveTransaction(Hash256? hash) => false;
@@ -99,6 +101,14 @@ namespace Nethermind.TxPool
             return false;
         }
 
+        public bool TryGetPendingBlobCellMetadata(Hash256 hash, out BlobCellMask availableMask, out int blobCount, out int materializationWork)
+        {
+            availableMask = default;
+            blobCount = 0;
+            materializationWork = 0;
+            return false;
+        }
+
         public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)
         {
             availableMask = default;
@@ -115,6 +125,8 @@ namespace Nethermind.TxPool
         }
 
         public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => false;
+
+        public BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) => BlobCellMergeResult.TransactionUnavailable;
 
         public ulong GetLatestPendingNonce(Address address) => 0;
 

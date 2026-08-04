@@ -29,14 +29,9 @@ public static class BlobCellsHelper
             return wrapper.Cells is null && wrapper.CellMask.IsEmpty;
         }
 
-        if (wrapper.Cells is null)
+        if (wrapper.Cells is null || wrapper.CellMask.IsEmpty)
         {
-            return wrapper.CellMask.IsEmpty;
-        }
-
-        if (wrapper.CellMask.IsEmpty)
-        {
-            return wrapper.Cells.Length == 0;
+            return false;
         }
 
         int blobCount = wrapper.Commitments.Length;
@@ -302,6 +297,15 @@ public static class BlobCellsHelper
     {
         int sourceCellsPerBlob = sourceMask.Count;
         int selectedCellsPerBlob = selectedMask.Count;
+        if (blobCount < 0
+            || selectedMask.Except(sourceMask) != BlobCellMask.Empty
+            || sourceCellsPerBlob != 0 && blobCount > int.MaxValue / sourceCellsPerBlob
+            || selectedCellsPerBlob != 0 && blobCount > int.MaxValue / selectedCellsPerBlob
+            || flattenedCells.Length < blobCount * sourceCellsPerBlob)
+        {
+            return [];
+        }
+
         byte[][] cells = new byte[blobCount * selectedCellsPerBlob][];
         for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
         {
@@ -327,6 +331,13 @@ public static class BlobCellsHelper
     /// </summary>
     public static byte[][] SelectProofs(ShardBlobNetworkWrapper wrapper, int blobIndex, BlobCellMask requestedMask)
     {
+        if (blobIndex < 0
+            || blobIndex >= wrapper.Commitments.Length
+            || wrapper.Proofs.Length < (blobIndex + 1) * Ckzg.CellsPerExtBlob)
+        {
+            return [];
+        }
+
         BlobCellMask availableMask = wrapper.GetAvailableCellMask() & requestedMask;
         byte[][] proofs = new byte[availableMask.Count][];
         int i = 0;

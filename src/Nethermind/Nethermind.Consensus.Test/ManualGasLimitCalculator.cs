@@ -9,8 +9,6 @@ namespace Nethermind.Consensus.Test
     {
         public ulong GasLimit { get; set; }
 
-        public ulong GetGasLimit(BlockHeader parentHeader) => GasLimit;
-
-        public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit) => GetGasLimit(parentHeader);
+        public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit = null) => GasLimit;
     }
 }

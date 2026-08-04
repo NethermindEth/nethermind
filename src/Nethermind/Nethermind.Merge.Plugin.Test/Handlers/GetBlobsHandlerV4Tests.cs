@@ -9,7 +9,6 @@ using System.Reflection;
 using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
@@ -130,13 +129,6 @@ public class GetBlobsHandlerV4Tests
     [Test]
     public void Public_api_should_preserve_legacy_constructors()
     {
-        Type[] responseParameters =
-        [
-            typeof(ArrayPoolList<byte[]?>),
-            typeof(ArrayPoolList<ReadOnlyMemory<byte[]>>),
-            typeof(BlobCellsAndProofs?[]),
-            typeof(int)
-        ];
         ConstructorInfo custodyConstructor = typeof(EngineRpcModule).GetConstructors()
             .Single(static constructor => constructor.GetParameters().Any(static parameter => parameter.ParameterType == typeof(IBlobCustodyTracker)));
         Type[] legacyEngineParameters = custodyConstructor.GetParameters()
@@ -147,7 +139,6 @@ public class GetBlobsHandlerV4Tests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(typeof(GetBlobsHandlerV4).GetConstructor([typeof(ITxPool)]), Is.Not.Null);
-            Assert.That(typeof(BlobsV4DirectResponse).GetConstructor(responseParameters), Is.Not.Null);
             Assert.That(typeof(EngineRpcModule).GetConstructor(legacyEngineParameters), Is.Not.Null);
         }
     }

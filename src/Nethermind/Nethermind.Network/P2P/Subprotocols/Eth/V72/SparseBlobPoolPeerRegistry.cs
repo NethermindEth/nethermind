@@ -63,7 +63,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     private readonly Lock _accountingLock = new();
     private readonly Lock _transactionOrderLock = new();
     private readonly Lock _cellServeLock = new();
-    private readonly SemaphoreSlim _cellServeConcurrency = new(MaxConcurrentCellServeOperations);
+    private readonly SemaphoreSlim _cellServeConcurrency = new(MaxConcurrentCellServeOperations, MaxConcurrentCellServeOperations);
     private readonly Dictionary<PublicKey, PeerUsage> _peerUsage = [];
     private readonly TimeSpan _maxAdmissionDelay;
     private readonly TimeSpan _cellRequestTimeout;
@@ -128,6 +128,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         _maintenanceTimer.Start();
         _blobCustodyTracker.CustodyChanged += OnCustodyChanged;
         _custodyMask = _blobCustodyTracker.CurrentMask;
+        _txPool.NewPending += OnPendingTransactionAdded;
         _txPool.RemovedPending += OnPendingTransactionRemoved;
         _txPool.EvictedPending += OnPendingTransactionRemoved;
     }
@@ -140,6 +141,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
 
         _blobCustodyTracker.CustodyChanged -= OnCustodyChanged;
+        _txPool.NewPending -= OnPendingTransactionAdded;
         _txPool.RemovedPending -= OnPendingTransactionRemoved;
         _txPool.EvictedPending -= OnPendingTransactionRemoved;
         _maintenanceTimer.Elapsed -= OnMaintenanceElapsed;
@@ -228,8 +230,17 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         }
     }
 
+    private void OnPendingTransactionAdded(object? sender, TxEventArgs e)
+    {
+        if (e.Transaction.SupportsBlobs && e.Transaction.Hash is not null)
+        {
+            TryApplyRecordedCells(e.Transaction.Hash);
+        }
+    }
+
     public void AddPeer(ISparseBlobPoolPeer peer)
     {
+        bool removeCurrentPeerResources = false;
         lock (_peerLifecycleLock)
         {
             if (_peers.TryGetValue(peer.Id, out ISparseBlobPoolPeer? current))
@@ -241,23 +252,30 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                 ((ICollection<KeyValuePair<PublicKey, ISparseBlobPoolPeer>>)_peers)
                     .Remove(new KeyValuePair<PublicKey, ISparseBlobPoolPeer>(peer.Id, current));
-                RemovePeerResources(peer.Id);
+                removeCurrentPeerResources = true;
             }
 
             _peers[peer.Id] = peer;
+        }
+
+        if (removeCurrentPeerResources)
+        {
+            RemovePeerResources(peer.Id);
         }
     }
 
     public void RemovePeer(ISparseBlobPoolPeer peer)
     {
+        bool removed;
         lock (_peerLifecycleLock)
         {
-            bool removed = ((ICollection<KeyValuePair<PublicKey, ISparseBlobPoolPeer>>)_peers)
+            removed = ((ICollection<KeyValuePair<PublicKey, ISparseBlobPoolPeer>>)_peers)
                 .Remove(new KeyValuePair<PublicKey, ISparseBlobPoolPeer>(peer.Id, peer));
-            if (removed)
-            {
-                RemovePeerResources(peer.Id);
-            }
+        }
+
+        if (removed)
+        {
+            RemovePeerResources(peer.Id);
         }
     }
 
@@ -461,14 +479,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return BlobCellMask.Empty;
         }
 
-        int candidateCount = 0;
-        for (int i = 0; i < BlobCellMask.CellCount; i++)
-        {
-            if ((candidates & (UInt128.One << i)) != 0)
-            {
-                candidateCount++;
-            }
-        }
+        int candidateCount = new BlobCellMask(candidates).Count;
 
         Hash256 sampleHash = ComputeSamplingHash(hash, domain: 1);
         uint sample = BinaryPrimitives.ReadUInt32BigEndian(sampleHash.Bytes[..sizeof(uint)]);
@@ -1247,7 +1258,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             if (overlap == requestMask)
             {
                 coveringCount++;
-                if (RandomNumberGenerator.GetInt32(coveringCount) == 0)
+                if (Random.Shared.Next(coveringCount) == 0)
                 {
                     coveringPeer = peer;
                 }
@@ -1255,7 +1266,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             else
             {
                 partialCount++;
-                if (RandomNumberGenerator.GetInt32(partialCount) == 0)
+                if (Random.Shared.Next(partialCount) == 0)
                 {
                     partialPeer = peer;
                     partialMask = overlap;

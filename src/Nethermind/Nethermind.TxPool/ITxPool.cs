@@ -65,11 +65,11 @@ namespace Nethermind.TxPool
         /// Validates a sparse blob transaction before sampler cell retrieval without inserting it
         /// or performing KZG cell-proof verification.
         /// </summary>
-        AcceptTxResult ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
+        AcceptTxResult ValidateTxForBlobSampling(Transaction tx);
         /// <summary>
         /// Allows a rejected sparse blob transaction to be retried with a different sidecar proof tuple.
         /// </summary>
-        void ForgetRejectedBlobTransaction(Hash256 hash) { }
+        void ForgetRejectedBlobTransaction(Hash256 hash);
         bool RemoveTransaction(Hash256? hash);
         Transaction? GetBestTx();
         IEnumerable<Transaction> GetBestTxOfEachSender();
@@ -88,11 +88,7 @@ namespace Nethermind.TxPool
         /// Gets the cell availability mask of a pending blob transaction without materializing blobs or cells.
         /// </summary>
         /// <returns><c>true</c> when the transaction is present in the blob pool.</returns>
-        bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask)
-        {
-            availableMask = default;
-            return false;
-        }
+        bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask);
 
         /// <summary>
         /// Gets blob-cell serving metadata without materializing blob payloads or touching persistent storage.
@@ -102,13 +98,7 @@ namespace Nethermind.TxPool
             Hash256 hash,
             out BlobCellMask availableMask,
             out int blobCount,
-            out int materializationWork)
-        {
-            availableMask = default;
-            blobCount = 0;
-            materializationWork = 0;
-            return false;
-        }
+            out int materializationWork);
 
         /// <summary>
         /// Gets locally available cells for a pending blob transaction.
@@ -118,12 +108,7 @@ namespace Nethermind.TxPool
             Hash256 hash,
             BlobCellMask requestedMask,
             out BlobCellMask availableMask,
-            [NotNullWhen(true)] out byte[][]? cells)
-        {
-            availableMask = default;
-            cells = default;
-            return false;
-        }
+            [NotNullWhen(true)] out byte[][]? cells);
 
         /// <summary>
         /// Gets locally available cells and V1 proofs for a blob versioned hash.
@@ -134,13 +119,7 @@ namespace Nethermind.TxPool
             BlobCellMask requestedMask,
             out BlobCellMask availableMask,
             [NotNullWhen(true)] out byte[][]? cells,
-            [NotNullWhen(true)] out byte[][]? proofs)
-        {
-            availableMask = default;
-            cells = default;
-            proofs = default;
-            return false;
-        }
+            [NotNullWhen(true)] out byte[][]? proofs);
 
         /// <summary>
         /// Verifies and merges newly received cells into a pending sparse blob transaction.
@@ -150,10 +129,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Verifies and merges newly received cells and reports why the merge was rejected.
         /// </summary>
-        BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells)
-            => TryMergeBlobCells(hash, cellMask, cells)
-                ? BlobCellMergeResult.Accepted
-                : BlobCellMergeResult.TransactionUnavailable;
+        BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells);
         ulong GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

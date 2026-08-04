@@ -69,6 +69,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         try
         {
             Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
+            bytes.Clear();
             for (int i = 0; i < BlobCellMask.CellCount; i++)
             {
                 if (custodyColumns.Get(i))

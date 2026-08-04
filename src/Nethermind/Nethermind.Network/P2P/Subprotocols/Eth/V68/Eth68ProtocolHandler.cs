@@ -43,6 +43,7 @@ public class Eth68ProtocolHandler(ISession session,
     : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     private const int MaxPooledTransactionHashesPerRequest = 256;
+    private const int BlobTransactionSizeEstimateTolerance = 8;
 
     protected readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     protected readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
@@ -412,7 +413,7 @@ public class Eth68ProtocolHandler(ISession session,
     {
         int actualSize = tx.GetLength();
         return tx.SupportsBlobs
-            ? Math.Abs(actualSize - announcedSize) <= 8
+            ? Math.Abs(actualSize - announcedSize) <= BlobTransactionSizeEstimateTolerance
             : actualSize == announcedSize;
     }
 

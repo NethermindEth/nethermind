@@ -876,9 +876,7 @@ namespace Nethermind.TxPool
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
                 updateTx(transactions, tx, null, lastElement);
-                // Only cascade later blob eviction when proof-version compatibility invalidates
-                // the whole nonce chain. Sparse blob entries may intentionally keep nonce gaps.
-                evictNextTxs |= tx.SupportsBlobs && allowLaterPoolReentrance;
+                evictNextTxs |= tx.SupportsBlobs;
             }
         }
 
@@ -908,7 +906,7 @@ namespace Nethermind.TxPool
 
                 if (tx is null)
                 {
-                    shouldBeDumped = transactions.Min?.SupportsBlobs != true;
+                    shouldBeDumped = true;
                 }
                 else if (balance < tx.ValueRef)
                 {
@@ -1037,7 +1035,7 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(Hash256? hash) => hash is not null && _hashCache.Get(hash);
 
-        public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.Delete(hash);
+        public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;

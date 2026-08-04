@@ -596,37 +596,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         int failedWriteAttempts = 0;
         while (true)
         {
-            long token;
-            Transaction? transaction;
-            UInt256 persistenceTimestamp;
-            using (McsLock.Disposable lockRelease = Lock.Acquire())
-            {
-                if (!_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? current)
-                    || !ReferenceEquals(current, state))
-                {
-                    return;
-                }
-
-                token = current.Token;
-                transaction = current.Transaction;
-                persistenceTimestamp = current.Timestamp;
-            }
-
+            long token = 0;
             try
             {
-                lock (state.StorageLock)
-                {
-                    if (transaction is null)
-                    {
-                        _blobTxStorage.Delete(hash, persistenceTimestamp);
-                    }
-                    else
-                    {
-                        _blobTxStorage.Add(transaction);
-                    }
-                }
-
-                failedWriteAttempts = 0;
                 using McsLock.Disposable lockRelease = Lock.Acquire();
                 if (!_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? current)
                     || !ReferenceEquals(current, state))
@@ -634,6 +606,27 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                     return;
                 }
 
+                token = current.Token;
+                lock (state.StorageLock)
+                {
+                    if (!_pendingBlobUpdates.TryGetValue(hash, out current)
+                        || !ReferenceEquals(current, state)
+                        || current.Token != token)
+                    {
+                        continue;
+                    }
+
+                    if (current.Transaction is null)
+                    {
+                        _blobTxStorage.Delete(hash, current.Timestamp);
+                    }
+                    else
+                    {
+                        _blobTxStorage.Add(current.Transaction);
+                    }
+                }
+
+                failedWriteAttempts = 0;
                 if (current.Token == token)
                 {
                     _pendingBlobUpdates.Remove(hash);

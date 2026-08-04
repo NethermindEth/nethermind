@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,15 +72,15 @@ public class Eth72ProtocolHandler(
     private static readonly TimeSpan PendingCellStateTtl = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RequestToAnnouncementWarmup = TimeSpan.FromSeconds(60);
     private readonly int _providerProbabilityPercent = txPoolConfig.SparseBlobProviderProbabilityPercent;
-    private readonly ConcurrentDictionary<ValueHash256, CellRequestState> _pendingCellRequests = new();
-    private readonly ConcurrentDictionary<ValueHash256, CellRequestState> _sentCellRequests = new();
-    private readonly ConcurrentDictionary<long, SentCellRequest> _sentCellRequestIds = new();
+    private readonly Dictionary<ValueHash256, CellRequestState> _pendingCellRequests = [];
+    private readonly Dictionary<ValueHash256, CellRequestState> _sentCellRequests = [];
+    private readonly Dictionary<long, SentCellRequest> _sentCellRequestIds = [];
     private readonly ClockCache<long, HashSet<ValueHash256>> _sentPooledTransactionRequests = new(MaxSentCellRequests, lockPartition: 1);
     private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
     private readonly ClockCache<ValueHash256, BlobCellMask> _announcedBlobTransactionMasks = new(MemoryAllowance.TxHashCacheSize, lockPartition: 1);
     private readonly ClockCache<ValueHash256, DateTimeOffset> _partialCellResponseBackoff = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
-    private readonly ConcurrentQueue<CellStateKey> _pendingCellRequestOrder = new();
-    private readonly ConcurrentQueue<CellStateKey> _sentCellRequestOrder = new();
+    private readonly Queue<CellStateKey> _pendingCellRequestOrder = new();
+    private readonly Queue<CellStateKey> _sentCellRequestOrder = new();
     private readonly Lock _cellStateLock = new();
     private readonly int _maxCellsPerTransaction = GetMaxCellsPerTransaction(specProvider);
     private readonly int _cellServeTokenCapacity = GetMaxCellsPerTransaction(specProvider) * CellServeBurstMultiplier;
@@ -146,10 +145,18 @@ public class Eth72ProtocolHandler(
                 {
                     PooledTransactionsMessage66 pooledTransactions = Deserialize<PooledTransactionsMessage66>(message.Content);
                     ReportIn(pooledTransactions, size);
-                    if (!TryClaimPooledTransactionRequest(pooledTransactions))
+                    PooledTransactionResponseClaimResult claimResult = TryClaimPooledTransactionRequest(pooledTransactions);
+                    if (claimResult == PooledTransactionResponseClaimResult.Uncorrelated)
                     {
                         pooledTransactions.Dispose();
-                        throw new SubprotocolException($"Unrequested, duplicate, or mismatched {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId}.");
+                        ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId} ignored", size);
+                        return true;
+                    }
+
+                    if (claimResult == PooledTransactionResponseClaimResult.Mismatched)
+                    {
+                        pooledTransactions.Dispose();
+                        throw new SubprotocolException($"Mismatched {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId}.");
                     }
 
                     Handle(pooledTransactions.EthMessage);
@@ -464,24 +471,29 @@ public class Eth72ProtocolHandler(
         Send(message);
     }
 
-    private bool TryClaimPooledTransactionRequest(PooledTransactionsMessage66 response)
+    private PooledTransactionResponseClaimResult TryClaimPooledTransactionRequest(PooledTransactionsMessage66 response)
     {
         if (!_sentPooledTransactionRequests.Delete(response.RequestId, out HashSet<ValueHash256>? requestedHashes))
         {
-            return false;
+            return PooledTransactionResponseClaimResult.Uncorrelated;
         }
 
         ReadOnlySpan<Transaction> transactions = response.EthMessage.Transactions.AsSpan();
+        HashSet<ValueHash256> seen = new(transactions.Length);
         for (int i = 0; i < transactions.Length; i++)
         {
             Hash256? hash = transactions[i].Hash;
-            if (hash is null || !requestedHashes.Remove(hash.ValueHash256))
+            if (hash is null || !requestedHashes.Contains(hash.ValueHash256))
             {
-                return false;
+                return PooledTransactionResponseClaimResult.Mismatched;
             }
+
+            seen.Add(hash.ValueHash256);
         }
 
-        return true;
+        return seen.Count <= requestedHashes.Count
+            ? PooledTransactionResponseClaimResult.Claimed
+            : PooledTransactionResponseClaimResult.Mismatched;
     }
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
@@ -816,8 +828,6 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        _sparseBlobPoolPeerRegistry.TryApplyRecordedCells(tx.Hash);
-
         TryRequestPendingCells(tx.Hash);
     }
 
@@ -893,8 +903,12 @@ public class Eth72ProtocolHandler(
             if (availableCells.Length % cellsPerBlob != 0
                 || hasMetadata && availableCells.Length != blobCount * cellsPerBlob)
             {
-                throw new SubprotocolException(
-                    $"Wrong format of local blob cells for {hash}. Expected {blobCount * cellsPerBlob} flattened cells, got {availableCells.Length}.");
+                if (Logger.IsWarn)
+                {
+                    Logger.Warn($"Wrong format of local blob cells for {hash}. Expected {blobCount * cellsPerBlob} flattened cells, got {availableCells.Length}.");
+                }
+
+                return false;
             }
 
             cells = availableCells;
@@ -1062,7 +1076,7 @@ public class Eth72ProtocolHandler(
     {
         lock (_cellStateLock)
         {
-            if (!_sentCellRequestIds.TryRemove(requestId, out sentRequest))
+            if (!_sentCellRequestIds.Remove(requestId, out sentRequest))
             {
                 return CellRequestClaimResult.Unrequested;
             }
@@ -1247,12 +1261,12 @@ public class Eth72ProtocolHandler(
     private void RemoveSentCellRequest(ValueHash256 hash, long requestId)
     {
         RemoveActiveSentCellRequest(hash);
-        _sentCellRequestIds.TryRemove(requestId, out _);
+        _sentCellRequestIds.Remove(requestId);
     }
 
     private bool RemoveActiveSentCellRequest(ValueHash256 hash)
     {
-        if (!_sentCellRequests.TryRemove(hash, out CellRequestState state))
+        if (!_sentCellRequests.Remove(hash, out CellRequestState state))
         {
             return false;
         }
@@ -1264,7 +1278,7 @@ public class Eth72ProtocolHandler(
 
     private void RemovePendingCellRequestLocked(ValueHash256 hash)
     {
-        if (_pendingCellRequests.TryRemove(hash, out CellRequestState state))
+        if (_pendingCellRequests.Remove(hash, out CellRequestState state))
         {
             _pendingCellRequestCount--;
             _pendingCellRequestWork -= state.Mask.Count;
@@ -1275,13 +1289,16 @@ public class Eth72ProtocolHandler(
     {
         List<SentCellRequest>? expiredSentRequests = null;
         List<(ValueHash256 Hash, BlobCellMask Mask)>? dueAnnouncementRestores = null;
+        List<ValueHash256>? expiredPendingKeys = null;
+        List<ValueHash256>? expiredSentKeys = null;
+        List<long>? expiredCorrelationKeys = null;
         lock (_cellStateLock)
         {
             foreach (KeyValuePair<ValueHash256, CellRequestState> entry in _pendingCellRequests)
             {
                 if (entry.Value.ExpiresAt <= now)
                 {
-                    RemovePendingCellRequestLocked(entry.Key);
+                    (expiredPendingKeys ??= []).Add(entry.Key);
                 }
                 else if (entry.Value.RestoreAnnouncement
                     && entry.Value.RetryAt is { } retryAt
@@ -1301,7 +1318,7 @@ public class Eth72ProtocolHandler(
                         (expiredSentRequests ??= []).Add(request);
                     }
 
-                    RemoveActiveSentCellRequest(entry.Key);
+                    (expiredSentKeys ??= []).Add(entry.Key);
                 }
             }
 
@@ -1309,7 +1326,31 @@ public class Eth72ProtocolHandler(
             {
                 if (entry.Value.CorrelationExpiresAt <= now)
                 {
-                    _sentCellRequestIds.TryRemove(entry.Key, out _);
+                    (expiredCorrelationKeys ??= []).Add(entry.Key);
+                }
+            }
+
+            if (expiredPendingKeys is not null)
+            {
+                for (int i = 0; i < expiredPendingKeys.Count; i++)
+                {
+                    RemovePendingCellRequestLocked(expiredPendingKeys[i]);
+                }
+            }
+
+            if (expiredSentKeys is not null)
+            {
+                for (int i = 0; i < expiredSentKeys.Count; i++)
+                {
+                    RemoveActiveSentCellRequest(expiredSentKeys[i]);
+                }
+            }
+
+            if (expiredCorrelationKeys is not null)
+            {
+                for (int i = 0; i < expiredCorrelationKeys.Count; i++)
+                {
+                    _sentCellRequestIds.Remove(expiredCorrelationKeys[i]);
                 }
             }
 
@@ -1636,6 +1677,13 @@ public class Eth72ProtocolHandler(
         Stale,
         Expired,
         Unrequested
+    }
+
+    private enum PooledTransactionResponseClaimResult
+    {
+        Claimed,
+        Uncorrelated,
+        Mismatched
     }
 
     private sealed class ClaimedCellsResponse(CellsMessage72 message, SentCellRequest request) : IDisposable

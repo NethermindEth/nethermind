@@ -23,8 +23,8 @@ public interface IBlobProofsBuilder
 
     byte[][] ComputeHashes(ShardBlobNetworkWrapper wrapper)
     {
-        byte[][] hashes = new byte[wrapper.Blobs.Length][];
-        for (int i = 0; i < wrapper.Blobs.Length; i++)
+        byte[][] hashes = new byte[wrapper.Commitments.Length][];
+        for (int i = 0; i < wrapper.Commitments.Length; i++)
         {
             hashes[i] = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
             KzgPolynomialCommitments.TryComputeCommitmentHashV1(wrapper.Commitments[i], hashes[i]);

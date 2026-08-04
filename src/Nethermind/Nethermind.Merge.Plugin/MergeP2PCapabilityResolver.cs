@@ -93,7 +93,7 @@ public class MergeP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         }
     }
 
-    private bool IsEip7594Enabled() => _specProvider is null || _specProvider.GetCurrentHeadSpec().IsEip7594Enabled;
+    private bool IsEip7594Enabled() => _specProvider?.GetCurrentHeadSpec().IsEip7594Enabled ?? false;
 
     public void Dispose()
     {

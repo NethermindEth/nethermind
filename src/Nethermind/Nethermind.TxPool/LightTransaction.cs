@@ -126,6 +126,4 @@ public class LightTransaction : Transaction
     public override ProofVersion? GetProofVersion() => ProofVersion;
 
     public int GetConsensusEncodingSize() => _consensusEncodingSize;
-
-    public int GetSparseBlobNetworkSize() => _consensusEncodingSize;
 }
