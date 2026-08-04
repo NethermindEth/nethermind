@@ -738,6 +738,22 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _metrics.IncrementStateSkippedWrites(skipped);
     }
 
+    /// <summary>
+    /// Records an account state that was applied directly to the backend scope (bulk BAL apply),
+    /// so block-level change tracking (<see cref="ChangedAddresses"/>) stays accurate.
+    /// </summary>
+    /// <remarks>
+    /// Stored with <c>Before == After</c>: the value is already in the tree, so a later
+    /// <see cref="FlushToTree"/> must skip it — flushing would clobber the batch-reconciled
+    /// storage root with the stale one carried by <paramref name="account"/>.
+    /// </remarks>
+    internal void TrackBulkAppliedState(AddressAsKey key, Account? account)
+    {
+        ref ChangeTrace change = ref GetOrAddBlockChange(key, out _);
+        change = new ChangeTrace(account, account);
+        _needsStateRootUpdate = true;
+    }
+
     public bool WarmUp(Address address)
         => GetState(address) is not null;
 

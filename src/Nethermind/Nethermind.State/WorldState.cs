@@ -28,7 +28,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public sealed class WorldState : IWorldState
+    public sealed partial class WorldState : IWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;

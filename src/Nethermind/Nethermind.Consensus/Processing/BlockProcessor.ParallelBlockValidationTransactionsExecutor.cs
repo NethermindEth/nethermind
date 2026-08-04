@@ -164,7 +164,7 @@ public partial class BlockProcessor
                                 if (i == 0)
                                 {
                                     state.balManager.WaitForBalWarmup();
-                                    BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                    state.balManager.ApplyBlockStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                     state.self.OnBalRootReady();
                                     return state;
                                 }

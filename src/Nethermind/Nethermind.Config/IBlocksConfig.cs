@@ -80,6 +80,12 @@ public interface IBlocksConfig : IConfig
         HiddenFromDocs = true)]
     bool ParallelBalStateRootShadow { get; set; }
 
+    [ConfigItem(
+        Description = "On the parallel Block Level Access List path, apply the BAL's post-block values through the backend's bulk write batch (journal-bypassing, per-account parallel) instead of replaying them through the journaled world-state operations. Experimental; enable only after the shadow-mode soak (`ParallelBalStateRootShadow`) is clean.",
+        DefaultValue = "false",
+        HiddenFromDocs = true)]
+    bool ParallelBalBulkApply { get; set; }
+
     byte[] GetExtraDataBytes();
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]

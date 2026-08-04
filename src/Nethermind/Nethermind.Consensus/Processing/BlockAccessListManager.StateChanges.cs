@@ -33,6 +33,38 @@ public partial class BlockAccessListManager
     /// is written. Storage <em>reads</em> (slots that appear in <c>StorageReads</c> only) are
     /// not applied — they describe what the block <em>observed</em>, not what it changed.
     /// </remarks>
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Dispatches to <see cref="IBalBulkWorldState.BulkApplyBal"/> when
+    /// <c>Blocks.ParallelBalBulkApply</c> is enabled and the backend supports it — the
+    /// journal-bypassing, per-account-parallel path. The bulk path skips
+    /// <see cref="IWorldState.Commit(IReleaseSpec)"/>: the journal is empty by the bulk applier's
+    /// precondition (this is the block's first mutation of the main state), and code/storage
+    /// writes go straight through the scope.
+    /// </remarks>
+    public void ApplyBlockStateChanges(ReadOnlyBlockAccessList bal, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
+    {
+        if (blocksConfig.ParallelBalBulkApply && stateProvider is IBalBulkWorldState bulkWorldState)
+        {
+            using (MetricsTimer<BalApplyTimeSink> _ = new())
+            {
+                bulkWorldState.BulkApplyBal(bal, spec);
+            }
+
+            using (MetricsTimer<BalStateRootTimeSink> _ = new())
+            {
+                if (shouldComputeStateRoot)
+                {
+                    stateProvider.RecalculateStateRoot();
+                }
+            }
+
+            return;
+        }
+
+        ApplyStateChanges(bal, stateProvider, spec, shouldComputeStateRoot);
+    }
+
     public static void ApplyStateChanges(ReadOnlyBlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
         using (MetricsTimer<BalApplyTimeSink> _ = new())
