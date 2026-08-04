@@ -46,7 +46,7 @@ internal sealed class FrameTxSignatureFilter(
             : null;
         if (!FrameTxSignatureValidator.Validate(tx, ecdsa, p256Precompile, spec, out string? error))
         {
-            Metrics.PendingTransactionsMalformed++;
+            Metrics.PendingTransactionsFrameTxSignatureInvalid++;
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, {error}.");
             return AcceptTxResult.Invalid.WithMessage(error!);
         }
