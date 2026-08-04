@@ -15,6 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
             new();
+        // Bags are plain HashSets mutated from concurrent subscribe/unsubscribe/close; guard every access by locking the bag instance.
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
 
@@ -54,8 +55,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 },
                 (k, b) =>
                 {
-                    // The bag is a plain HashSet; concurrent subscribe/unsubscribe/close on the same client
-                    // can otherwise mutate it from multiple threads at once. Lock on the bag for every access.
                     lock (b)
                     {
                         b.Add(subscription);
@@ -123,21 +122,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void DisposeAndRemoveFromDictionary(HashSet<Subscription> subscriptionsBag)
         {
-            Subscription[] subscriptions;
             lock (subscriptionsBag)
             {
-                subscriptions = [.. subscriptionsBag];
-            }
-
-            foreach (Subscription subscriptionInBag in subscriptions)
-            {
-                if (_subscriptions.TryRemove(subscriptionInBag.Id, out Subscription subscription)
-                   && subscription is not null)
+                foreach (Subscription subscriptionInBag in subscriptionsBag)
                 {
-                    subscription.Dispose();
-                    if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from dictionary _subscriptions.");
+                    if (_subscriptions.TryRemove(subscriptionInBag.Id, out Subscription subscription)
+                       && subscription is not null)
+                    {
+                        subscription.Dispose();
+                        if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from dictionary _subscriptions.");
+                    }
+                    else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionInBag.Id} from dictionary _subscriptions.");
                 }
-                else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionInBag.Id} from dictionary _subscriptions.");
             }
         }
     }
