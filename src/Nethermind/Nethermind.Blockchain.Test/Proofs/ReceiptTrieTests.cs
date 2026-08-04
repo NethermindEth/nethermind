@@ -64,7 +64,7 @@ public class ReceiptTrieTests
         const int receiptCount = 100;
         IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.MuirGlacierBlockNumber, null));
         TxReceipt[] receipts = new TxReceipt[receiptCount];
-        for (int i = 0; i < receiptCount; i++)
+        for (uint i = 0; i < receiptCount; i++)
         {
             receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal(1000 + i).TestObject;
         }

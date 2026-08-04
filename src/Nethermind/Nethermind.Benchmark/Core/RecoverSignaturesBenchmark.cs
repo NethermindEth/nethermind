@@ -110,9 +110,9 @@ namespace Nethermind.Benchmarks.Core
                             PrivateKey authority = _privateKeys[i + y + _privateKeys.Length / 2];
                             return CreateAuthorizationTuple(
                             authority,
-                            (ulong)rnd.NextInt64(),
+                            rnd.NextUInt64(),
                             Address.Zero,
-                            (ulong)rnd.NextInt64());
+                            rnd.NextUInt64());
                         }).ToArray()
                         )
                         .SignedAndResolved(signer)

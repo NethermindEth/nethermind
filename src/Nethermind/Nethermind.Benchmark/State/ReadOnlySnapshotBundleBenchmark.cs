@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
@@ -51,11 +52,23 @@ public class ReadOnlySnapshotBundleBenchmark
     private const int SnapshotCount = 8;
     private const int ArraySize = 32;
 
+    // false: bundle over mutable (ConcurrentDictionary) snapshots. true: over sorted (SortedSnapshotContent)
+    // snapshots — the compacted form most bundle snapshots have in production, and where the dictionary load
+    // factor affects lookups.
+    [Params(false, true)]
+    public bool SortedContent;
+
     [GlobalSetup]
     public void Setup()
     {
-        FlatDbConfig config = new();
+        FlatDbConfig config = new() { CompactionOffset = 0 };
         ResourcePool resourcePool = new(config);
+        // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
+        // repository itself does not use the arena managers, so the persisted tier can stay unwired.
+        SnapshotCompactor compactor = new(
+            config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
+            resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, NullLogManager.Instance),
+            NullLogManager.Instance);
         List<FlatSnapshot> allSnapshots = new(SnapshotCount);
         StateId currentStateId = new(0, Keccak.EmptyTreeHash);
 
@@ -66,14 +79,13 @@ public class ReadOnlySnapshotBundleBenchmark
         // Track storage account ranges per snapshot for hit distribution
         List<(int AddressStart, int StorageCount, int SlotsPerAccount)> storageRanges = [];
 
-        for (int block = 0; block < SnapshotCount; block++)
+        for (ulong block = 0; block < SnapshotCount; block++)
         {
             int multiplier = block < 6 ? 16 : 1;
             int accountCount = 1000 * multiplier;
             int storageAccountCount = 20 * multiplier;
             int slotsPerStorageAccount = 100 * multiplier;
 
-            // Build ReadOnlySnapshotBundle from previously captured snapshots
             SnapshotPooledList prevSnapshots = new(allSnapshots.Count);
             foreach (FlatSnapshot s in allSnapshots)
             {
@@ -81,8 +93,10 @@ public class ReadOnlySnapshotBundleBenchmark
                 prevSnapshots.Add(s);
             }
 
+            // Build ReadOnlySnapshotBundle from previously captured snapshots
             ReadOnlySnapshotBundle readOnly = new(
-                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+                prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+                PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
                 readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -154,16 +168,25 @@ public class ReadOnlySnapshotBundleBenchmark
                 maxSlotsPerStorageAccount = slotsPerStorageAccount;
         }
 
-        // Build final ReadOnlySnapshotBundle with all 8 snapshots
         SnapshotPooledList finalSnapshots = new(allSnapshots.Count);
         foreach (FlatSnapshot s in allSnapshots)
         {
-            s.TryAcquire();
-            finalSnapshots.Add(s);
+            if (SortedContent)
+            {
+                s.TryAcquire();
+                finalSnapshots.Add(compactor.CompactSnapshotBundle(new SnapshotPooledList(1) { s }));
+            }
+            else
+            {
+                s.TryAcquire();
+                finalSnapshots.Add(s);
+            }
         }
 
+        // Build final ReadOnlySnapshotBundle with all 8 snapshots
         _bundle = new ReadOnlySnapshotBundle(
-            finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
+            finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty());
 
         // --- Hit arrays ---
         _hitAccounts = new Address[ArraySize];

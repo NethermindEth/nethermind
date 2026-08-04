@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -114,6 +115,41 @@ public class LogFinderTests
         Assert.That(indexes, Is.EqualTo([0, 1, 0, 1, 2]));
     }
 
+    [Test]
+    [NonParallelizable]
+    public void Unenumerated_parallel_getLogs_does_not_leak_parallel_slot()
+    {
+        SetUp(allowReceiptIterator: true, chainLength: Environment.ProcessorCount + 2);
+
+        bool before = LogFinder.IsParallelScanSlotHeld;
+
+        _ = _logFinder.FindLogs(AllBlockFilter().Build());
+
+        Assert.That(LogFinder.IsParallelScanSlotHeld, Is.EqualTo(before), "building an unenumerated parallel getLogs result must not acquire the process-wide parallel slot");
+    }
+
+    // Everything the receipt path lets escape must survive the PLINQ wrapping: several partitions faulting at
+    // once arrive as one AggregateException, and the RPC layer maps the bare types onto error codes. A
+    // single-block range takes the sequential path and cannot cover this.
+    [TestCase(typeof(ResourceNotFoundException))]
+    [TestCase(typeof(ConcurrencyLimitReachedException))]
+    [MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
+    public void throw_unwrapped_exception_on_the_parallel_path(Type exceptionType)
+    {
+        int chainLength = Math.Max(64, Environment.ProcessorCount + 2);
+        SetUp(allowReceiptIterator: true, chainLength: chainLength);
+
+        ThrowingReceiptFinder throwing = new(exceptionType);
+        LogFinder logFinder = new(_blockTree, throwing, _receiptStorage, LimboLogs.Instance,
+            _receiptsRecovery, new ReceiptConfig { DeriveFromState = true });
+
+        Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
+            Throws.TypeOf(exceptionType));
+        Assert.That(throwing.SawParallelScanSlotHeld, Is.True,
+            "the scan must have taken the parallel path, or this test cannot cover the AggregateException unwrap");
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void throw_exception_when_receipts_are_missing()
     {
@@ -178,23 +214,23 @@ public class LogFinderTests
     {
         get
         {
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, new long[] { 1, 1, 4 }).SetName("filter_by_topic_A");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_any_then_topic_B");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, new long[] { 4 }).SetName("filter_by_any_A_any");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, new long[] { 4 }).SetName("filter_by_B_any_E");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, new long[] { 1, 1, 4, 4 }).SetName("filter_by_topic_A_or_B");
-            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, new long[] { 1, 4 }).SetName("filter_by_A_or_B_then_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, new ulong[] { 1ul, 1ul, 4ul }).SetName("filter_by_topic_A");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, new ulong[] { 1ul, 4ul }).SetName("filter_by_any_then_topic_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, new ulong[] { 4ul }).SetName("filter_by_any_A_any");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, new ulong[] { 4ul }).SetName("filter_by_B_any_E");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, new ulong[] { 1ul, 1ul, 4ul, 4ul }).SetName("filter_by_topic_A_or_B");
+            yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, new ulong[] { 1ul, 4ul }).SetName("filter_by_A_or_B_then_B");
         }
     }
 
     [TestCaseSource(nameof(FilterByTopicsTestsData))]
-    public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, long[] expectedBlockNumbers)
+    public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, ulong[] expectedBlockNumbers)
     {
         LogFilter logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
 
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
-        long[] blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
+        ulong[] blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
         Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
     }
 
@@ -278,67 +314,67 @@ public class LogFinderTests
     }
 
     [TestCase("Empty index",
-        1, 2,
+        1UL, 2UL,
         null, null,
         null, null
     )]
     [TestCase("No intersection, left",
-        1, 2,
+        1UL, 2UL,
         4, 6,
         null, null
     )]
     [TestCase("No intersection, adjacent left",
-        1, 3,
+        1UL, 3UL,
         4, 6,
         null, null
     )]
     [TestCase("1 block intersection, left",
-        1, 4,
+        1UL, 4UL,
         4, 6,
         4, 4
     )]
     [TestCase("Partial intersection, left",
-        1, 5,
+        1UL, 5UL,
         4, 6,
         4, 5
     )]
     [TestCase("Full containment, border right",
-        1, 6,
+        1UL, 6UL,
         4, 6,
         4, 6
     )]
     [TestCase("Full containment",
-        1, 9,
+        1UL, 9UL,
         4, 6,
         4, 6
     )]
     [TestCase("Full containment, border left",
-        4, 9,
+        4UL, 9UL,
         4, 6,
         4, 6
     )]
     [TestCase("Partial intersection, right",
-        5, 9,
+        5UL, 9UL,
         4, 6,
         5, 6
     )]
     [TestCase("1 block intersection, right",
-        6, 9,
+        6UL, 9UL,
         4, 6,
         6, 6
     )]
     [TestCase("No intersection, adjacent right",
-        7, 9,
+        7UL, 9UL,
         4, 6,
         null, null
     )]
     [TestCase("No intersection, right",
-        8, 9,
+        8UL, 9UL,
         4, 6,
         null, null
     )]
     public void query_intersected_range_from_log_index(string name,
-        int from, int to,
+        ulong from, ulong to,
         int? indexFrom, int? indexTo,
         int? exFrom, int? exTo
     )
@@ -388,6 +424,27 @@ public class LogFinderTests
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
+
+    // NSubstitute cannot stub a method with a ref-struct out parameter, so the throwing finder is hand-rolled.
+    private sealed class ThrowingReceiptFinder(Type exceptionType) : IReceiptFinder
+    {
+        public bool SawParallelScanSlotHeld { get; private set; }
+
+        public Hash256? FindBlockHash(Hash256 txHash) => null;
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => throw Create();
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => throw Create();
+        public bool CanGetReceiptsByHash(ulong blockNumber) => true;
+
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        {
+            // Recorded from inside a worker: proves the enumeration really went through the PLINQ path rather than
+            // silently degrading to sequential (where the bare exception propagates without any unwrap).
+            SawParallelScanSlotHeld |= LogFinder.IsParallelScanSlotHeld;
+            throw Create();
+        }
+
+        private Exception Create() => (Exception)Activator.CreateInstance(exceptionType, "receipts path failure")!;
+    }
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
         new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);

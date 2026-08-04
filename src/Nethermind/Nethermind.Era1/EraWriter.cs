@@ -15,13 +15,13 @@ public class EraWriter : IDisposable
 {
     public const int MaxEra1Size = 8192;
 
-    private long _startNumber;
+    private ulong _startNumber;
     private bool _firstBlock = true;
     private long _totalWritten;
     private readonly ArrayPoolList<long> _entryIndexes;
 
-    private readonly HeaderDecoder _headerDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
+    private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
+    private readonly IRlpDecoder<BlockBody> _blockBodyDecoder = Rlp.GetDecoderOrThrow<BlockBody>();
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
 
     private readonly E2StoreWriter _e2StoreWriter;
@@ -102,7 +102,7 @@ public class EraWriter : IDisposable
         int length = 16 + _entryIndexes.Count * 8;
         using ArrayPoolList<byte> blockIndex = new(length, length);
         Span<byte> blockIndexSpan = blockIndex.AsSpan();
-        WriteInt64(blockIndexSpan, 0, _startNumber);
+        WriteUInt64(blockIndexSpan, 0, _startNumber);
 
         //era1:= Version | block-tuple ... | other-entries ... | Accumulator | BlockIndex
         //block-index := starting-number | index | index | index... | count
@@ -126,6 +126,8 @@ public class EraWriter : IDisposable
     }
 
     private static void WriteInt64(Span<byte> destination, int off, long value) => BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, 8), value);
+
+    private static void WriteUInt64(Span<byte> destination, int off, ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(destination.Slice(off, 8), value);
 
     private Task<int> WriteVersion() => _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
 

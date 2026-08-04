@@ -25,7 +25,7 @@ public class GethLikeTxDirectStreamingTracerTests : VirtualMachineTestsBase
     [TestCase(true, TestName = "Refund is rolled back when the clearing frame reverts")]
     public void Streams_journaled_refund_counter(bool clearingFrameReverts)
     {
-        long sClearRefund = Spec.GasCosts.SClearRefund;
+        ulong sClearRefund = Spec.GasCosts.SClearRefund;
 
         List<StructLog> logs = ExecuteAndStream(clearingFrameReverts);
 

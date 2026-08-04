@@ -23,7 +23,7 @@ public sealed class ZeroTotalDifficultyStrategy : ITotalDifficultyStrategy
 
 public sealed class FixedTotalDifficultyStrategy(
     ITotalDifficultyStrategy strategy,
-    long fixesBlockNumber,
+    ulong fixesBlockNumber,
     UInt256 toTotalDifficulty
 ) : ITotalDifficultyStrategy
 {

@@ -3,7 +3,7 @@
 
 using System.Diagnostics;
 using Collections.Pooled;
-using Nethermind.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Kademlia;
 
@@ -41,7 +41,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         ILookupAlgo<TNode, TKadKey> lookupAlgo,
         INodeHealthTracker<TNode> nodeHealthTracker,
         KademliaConfig<TNode> config,
-        ILogManager? logManager = null,
+        ILoggerFactory loggerFactory,
         TimeProvider? timeProvider = null)
     {
         _keyOperator = keyOperator;
@@ -49,7 +49,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         _routingTable = routingTable;
         _lookupAlgo = lookupAlgo;
         _nodeHealthTracker = nodeHealthTracker;
-        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<Kademlia<TKey, TNode, TKadKey>>();
+        _logger = loggerFactory.CreateLogger<Kademlia<TKey, TNode, TKadKey>>();
 
         _currentNodeId = config.CurrentNodeId;
         _currentNodeIdAsHash = _keyOperator.GetNodeHash(_currentNodeId);
@@ -122,7 +122,7 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error("Bootstrap iteration failed.", e);
+                _logger.LogError(e, "Bootstrap iteration failed.");
             }
 
             await Task.Delay(_refreshInterval, token);
@@ -152,14 +152,11 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Bootnode ping failed for {node}: {e}");
+                if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Bootnode ping failed for {node}: {e}");
             }
         });
 
-        if (_logger.IsDebug)
-        {
-            _logger.Debug($"Online bootnodes: {onlineBootNodes}");
-        }
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Online bootnodes: {onlineBootNodes}");
 
         TKey currentNodeIdAsKey = _keyOperator.GetKey(_currentNodeId);
         await LookupNodesClosest(currentNodeIdAsKey, token);
@@ -180,11 +177,8 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
 
         PruneLastBucketRefreshTicks(activeBucketPrefixes);
 
-        if (_logger.IsDebug)
-        {
-            _logger.Debug($"Bootstrap completed. Took {sw.Elapsed}.");
-            _routingTable.LogDebugInfo();
-        }
+        if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Bootstrap completed. Took {sw.Elapsed}.");
+        if (_logger.IsEnabled(LogLevel.Debug)) _routingTable.LogDebugInfo();
     }
 
     private bool ShouldRefreshBucket(TKadKey prefix, int bucketCount)

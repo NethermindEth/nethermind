@@ -1,14 +1,23 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
+using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
@@ -143,5 +152,341 @@ internal class MineModuleTests
         int penaltyCount = header.Penalties!.Length / Address.Size;
 
         Assert.That(validatorCount, Is.EqualTo(spec.MaxMasternodes));
+    }
+
+    [Test]
+    public async Task TestStartProposesFirstBlockWhileSyncingAtGenesis()
+    {
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true);
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+        Assert.That(blockchain.XdcContext.CurrentRound, Is.EqualTo(1UL));
+        Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address == leader));
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
+
+        int blocksProposed = 0;
+        TaskCompletionSource blockProduced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        blockchain.ConsensusModule.BlockProduced += (_, _) =>
+        {
+            blocksProposed++;
+            blockProduced.TrySetResult();
+        };
+
+        blockchain.StartHotStuffModule();
+
+        Task finished = await Task.WhenAny(blockProduced.Task, Task.Delay(10_000));
+        if (finished != blockProduced.Task)
+            Assert.Fail("Timed out waiting for first block proposal at genesis bootstrap");
+
+        Assert.That(blocksProposed, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task TestStartArmsTimeoutTimerForNonLeaderAtGenesisBootstrap()
+    {
+        // Pins the behavior change from requiring the round-1 leader to only requiring a bootstrap
+        // chain: a non-leader signer must still arm the timeout timer so it can time out and vote
+        // for round 2 if the leader never proposes.
+        ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton(timeoutTimer));
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+        Assert.That(blockchain.XdcContext.CurrentRound, Is.EqualTo(1UL));
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address != leader));
+
+        blockchain.StartHotStuffModule();
+
+        timeoutTimer.Received(1).Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
+    }
+
+    [Test]
+    public async Task TestNewRoundKeepsArmingTimeoutTimerWhileStuckAtGenesis()
+    {
+        // Regression for the bootstrap-liveness gap: previously OnNewRound bailed on !IsSynced(),
+        // so a round-1 timeout certificate advancing the round past 1 would stop the timer from ever
+        // being rearmed, stalling forever at round 2 even though the chain never left genesis.
+        ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton(timeoutTimer));
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address != leader));
+
+        blockchain.StartHotStuffModule();
+        timeoutTimer.ClearReceivedCalls();
+
+        // Simulates a round-1 timeout certificate forming and advancing the round, without any block
+        // ever having been produced (tree.Head is still genesis).
+        blockchain.XdcContext.SetNewRound(2);
+
+        timeoutTimer.Received(1).Reset(Arg.Any<TimeSpan>());
+    }
+
+    [Test]
+    public async Task TestNewRoundDoesNotArmTimeoutTimerWhileSyncingAnExistingChainFromGenesis()
+    {
+        // Regression for the too-broad exemption, covering the genesis-QC guard: once HighestQC has
+        // advanced past genesis the node is on a real chain and must not be mistaken for a bootstrap
+        // node - it hasn't validated the rounds it would be timing out for.
+        ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton(timeoutTimer));
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address != leader));
+
+        blockchain.StartHotStuffModule();
+        timeoutTimer.ClearReceivedCalls();
+
+        blockchain.XdcContext.HighestQC = new QuorumCertificate(new BlockRoundInfo(TestItem.KeccakA, 500, 500), [], 0);
+        blockchain.XdcContext.SetNewRound(2);
+
+        timeoutTimer.DidNotReceive().Reset(Arg.Any<TimeSpan>());
+    }
+
+    [Test]
+    public async Task TestNewRoundDoesNotArmTimeoutTimerOncePeersAnnounceBlocksBeyondGenesis()
+    {
+        // A peer's SyncInfo advances the round before HighestQC leaves genesis, because CommitCertificate
+        // throws on the not-yet-synced block it points at. An announced header beyond genesis is the
+        // earlier signal that there is a real chain here, so it alone must disqualify bootstrap.
+        ITimeoutTimer timeoutTimer = Substitute.For<ITimeoutTimer>();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton(timeoutTimer));
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader genesis = (XdcBlockHeader)tree.Head!.Header;
+        blockchain.StartHotStuffModule();
+        timeoutTimer.ClearReceivedCalls();
+
+        // Enough blocks to exceed MaxSyncDistanceForConsensus, so the node is unambiguously behind and
+        // IsSynced() is false - otherwise the sync tolerance alone would let the round through.
+        Hash256 parentHash = genesis.Hash!;
+        for (ulong number = genesis.Number + 1; number <= genesis.Number + XdcConstants.MaxSyncDistanceForConsensus + 1; number++)
+        {
+            XdcBlockHeader announced = Build.A.XdcBlockHeader().WithNumber(number).WithParentHash(parentHash)
+                .WithGeneratedExtraConsensusData().TestObject;
+            tree.SuggestBlock(new Block(announced), BlockTreeSuggestOptions.None);
+            parentHash = announced.Hash!;
+        }
+
+        Assert.That(tree.Head!.Number, Is.EqualTo(genesis.Number), "the announced blocks must stay unprocessed");
+        // Asserting bestSuggested rather than isSyncing: isSyncing is also true when bestSuggested is 0,
+        // so it would still hold if the suggestions above had silently not taken.
+        Assert.That(tree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus).bestSuggested,
+            Is.GreaterThan(genesis.Number + XdcConstants.MaxSyncDistanceForConsensus));
+        Assert.That(blockchain.XdcContext.HighestQC.ProposedBlockInfo.Hash, Is.EqualTo(genesis.Hash),
+            "HighestQC must still be the genesis QC, otherwise this exercises the same path as the SyncInfo test");
+
+        blockchain.XdcContext.SetNewRound(2);
+
+        timeoutTimer.DidNotReceive().Reset(Arg.Any<TimeSpan>());
+    }
+
+    [Test]
+    public async Task TestSameRoundRestartDuringMineWaitStillProposes()
+    {
+        using XdcTestBlockchain blockchain = await CreateChainWithClockSignal();
+        (XdcBlockHeader head, ulong round, ProposalTracker tracker) = await StartLeaderRoundTaskInMineWait(blockchain);
+
+        // Simulates the new-head trigger racing with QC formation: a same-round restart while the
+        // proposer is parked in the mine-period wait must not permanently consume the round.
+        blockchain.ConsensusModule.StartRoundTask(head, round);
+
+        try
+        {
+            await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail("No block was proposed after a same-round restart during the mine-period wait");
+        }
+        Assert.That(tracker.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task TestStaleRoundTriggerDoesNotCancelCurrentRoundProposal()
+    {
+        using XdcTestBlockchain blockchain = await CreateChainWithClockSignal();
+        (XdcBlockHeader head, ulong round, ProposalTracker tracker) = await StartLeaderRoundTaskInMineWait(blockchain);
+
+        // Simulates a stale trigger (racy CurrentRound read or out-of-order round events): an older
+        // round must not cancel the in-flight proposal task for the current round.
+        blockchain.ConsensusModule.StartRoundTask(head, round - 1);
+
+        try
+        {
+            await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail("No block was proposed after a stale-round trigger during the mine-period wait");
+        }
+    }
+
+    [Test]
+    public async Task TestHigherRoundCancelsInFlightBuildButSameRoundDoesNot()
+    {
+        GatedBlockProducer gatedProducer = new();
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true,
+            configurer: builder => builder.AddSingleton<IBlockProducer>(gatedProducer));
+
+        XdcBlockHeader head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        ulong round = blockchain.XdcContext.CurrentRound;
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, round);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, round, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address == leader));
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
+
+        // As round-1 leader at genesis bootstrap, Start() launches the round task which parks in the gated build.
+        blockchain.StartHotStuffModule();
+        await gatedProducer.BuildStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // Cancellation happens synchronously inside StartRoundTask, so the assertions are race-free.
+        blockchain.ConsensusModule.StartRoundTask(head, round);
+        Assert.That(gatedProducer.ObservedToken.IsCancellationRequested, Is.False,
+            "A same-round restart must not cancel the in-flight proposal build");
+
+        blockchain.ConsensusModule.StartRoundTask(head, round + 1);
+        Assert.That(gatedProducer.ObservedToken.IsCancellationRequested, Is.True,
+            "An advance to a higher round must cancel the obsolete proposal build");
+    }
+
+    /// <summary>
+    /// Block producer stub whose build parks until its cancellation token fires, exposing the token
+    /// so tests can assert which triggers cancel an in-flight build.
+    /// </summary>
+    private sealed class GatedBlockProducer : IBlockProducer
+    {
+        public TaskCompletionSource BuildStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationToken ObservedToken { get; private set; }
+
+        public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes,
+            IBlockProducer.Flags flags, CancellationToken cancellationToken)
+        {
+            ObservedToken = cancellationToken;
+            BuildStarted.TrySetResult();
+            TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using CancellationTokenRegistration registration = cancellationToken.Register(() => cancelled.TrySetResult());
+            await cancelled.Task;
+            return null;
+        }
+    }
+
+    private static Task<XdcTestBlockchain> CreateChainWithClockSignal() =>
+        XdcTestBlockchain.Create(useHotStuffModule: true, configurer: builder =>
+            builder.AddSingleton<ITimestamper>(ctx => new ClockQueryingTimestamper(ctx.Resolve<ManualTimestamper>())));
+
+    /// <summary>
+    /// Makes this node the leader for the current round and starts a round task, returning once the
+    /// task has reached the mine-period wait (the clock is frozen at the head timestamp, so the wait
+    /// is a full <c>MinePeriod</c>), giving the test a window to fire a racing trigger.
+    /// </summary>
+    /// <remarks>
+    /// The wait is detected via <see cref="ClockQueryingTimestamper"/>: the proposer's only clock
+    /// read is the one computing the mine-period wait, so observing it means the round task is at
+    /// the wait — no sleep-based synchronization needed.
+    /// </remarks>
+    private static async Task<(XdcBlockHeader Head, ulong Round, ProposalTracker Tracker)> StartLeaderRoundTaskInMineWait(XdcTestBlockchain blockchain)
+    {
+        ClockQueryingTimestamper clock = (ClockQueryingTimestamper)blockchain.Container.Resolve<ITimestamper>();
+        XdcBlockHeader head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
+        ulong round = blockchain.XdcContext.CurrentRound;
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, round);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, round, spec);
+        blockchain.Signer.SetSigner(blockchain.MasterNodeCandidates.First(k => k.Address == leader));
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)head.Timestamp).UtcDateTime);
+
+        ProposalTracker tracker = new();
+        blockchain.ConsensusModule.BlockProduced += tracker.OnBlockProduced;
+
+        Task mineWaitReached = clock.WaitForNextQuery();
+        blockchain.StartHotStuffModule();
+        blockchain.ConsensusModule.StartRoundTask(head, round);
+        await mineWaitReached.WaitAsync(TimeSpan.FromSeconds(10));
+        return (head, round, tracker);
+    }
+
+    private sealed class ProposalTracker
+    {
+        private int _count;
+        public TaskCompletionSource FirstProposal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Count => Volatile.Read(ref _count);
+        public void OnBlockProduced(object? sender, BlockEventArgs e)
+        {
+            Interlocked.Increment(ref _count);
+            FirstProposal.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Delegates to the wrapped <see cref="ManualTimestamper"/> while signalling every clock read,
+    /// letting tests await the moment a component observes the time instead of sleeping.
+    /// </summary>
+    private sealed class ClockQueryingTimestamper(ManualTimestamper inner) : ITimestamper
+    {
+        private volatile TaskCompletionSource _nextQuery = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public DateTime UtcNow
+        {
+            get
+            {
+                _nextQuery.TrySetResult();
+                return inner.UtcNow;
+            }
+        }
+
+        public Task WaitForNextQuery()
+        {
+            _nextQuery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            return _nextQuery.Task;
+        }
+    }
+
+    [Test]
+    public async Task TestStartDoesNotProposeFirstBlockWhenNotLeaderWhileSyncingAtGenesis()
+    {
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true);
+        XdcBlockTree tree = (XdcBlockTree)blockchain.BlockTree;
+
+        XdcBlockHeader head = (XdcBlockHeader)tree.Head!.Header;
+        Assert.That(tree.IsSyncing().isSyncing, Is.True);
+
+        IXdcReleaseSpec spec = blockchain.SpecProvider.GetXdcSpec(head, blockchain.XdcContext.CurrentRound);
+        Address leader = blockchain.ConsensusModule.GetLeaderAddress(head, blockchain.XdcContext.CurrentRound, spec);
+        PrivateKey nonLeader = blockchain.MasterNodeCandidates.First(k => k.Address != leader);
+        blockchain.Signer.SetSigner(nonLeader);
+        blockchain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
+
+        int blocksProposed = 0;
+        blockchain.ConsensusModule.BlockProduced += (_, _) => blocksProposed++;
+
+        blockchain.StartHotStuffModule();
+
+        await Task.Delay(500);
+
+        Assert.That(blocksProposed, Is.EqualTo(0));
     }
 }

@@ -69,9 +69,50 @@ public class DiscoveryMessageSerializerTests
             Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(message.FarAddress));
             Assert.That(deserializedMessage.DestinationAddress, Is.EqualTo(message.DestinationAddress));
             Assert.That(deserializedMessage.SourceAddress, Is.EqualTo(message.SourceAddress));
+            Assert.That(deserializedMessage.SourceTcpPort, Is.EqualTo(message.SourceTcpPort));
+            Assert.That(deserializedMessage.DestinationTcpPort, Is.EqualTo(message.DestinationTcpPort));
             Assert.That(deserializedMessage.Version, Is.EqualTo(message.Version));
 
             Assert.That(expectedPingMdc, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void PingMessage_Serializes_Endpoint_Ports_In_Discv4_Order()
+    {
+        IPEndPoint source = new(IPAddress.Parse("10.0.0.5"), 30304);
+        IPEndPoint destination = new(IPAddress.Parse("192.168.1.2"), 30306);
+        PingMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, source, destination,
+                new byte[32], sourceTcpPort: 30303, destinationTcpPort: 0)
+            { FarAddress = destination };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        byte[] packet = data.ReadAllBytesAsArray();
+        RlpReader ctx = new(packet.AsSpan(98));
+        ctx.ReadSequenceLength();
+        Assert.That(ctx.DecodeInt(), Is.EqualTo(message.Version));
+
+        int sourceEnd = ctx.ReadSequenceLength() + ctx.Position;
+        byte[] sourceIp = ctx.DecodeByteArraySpan().ToArray();
+        int sourceUdpPort = ctx.DecodeInt();
+        int sourceTcpPort = ctx.DecodeInt();
+        ctx.Check(sourceEnd);
+
+        int destinationEnd = ctx.ReadSequenceLength() + ctx.Position;
+        byte[] destinationIp = ctx.DecodeByteArraySpan().ToArray();
+        int destinationUdpPort = ctx.DecodeInt();
+        int destinationTcpPort = ctx.DecodeInt();
+        ctx.Check(destinationEnd);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sourceIp, Is.EqualTo(new byte[] { 10, 0, 0, 5 }));
+            Assert.That(sourceUdpPort, Is.EqualTo(source.Port));
+            Assert.That(sourceTcpPort, Is.EqualTo(message.SourceTcpPort));
+            Assert.That(destinationIp, Is.EqualTo(new byte[] { 192, 168, 1, 2 }));
+            Assert.That(destinationUdpPort, Is.EqualTo(destination.Port));
+            Assert.That(destinationTcpPort, Is.EqualTo(message.DestinationTcpPort));
         }
     }
 
@@ -132,6 +173,53 @@ public class DiscoveryMessageSerializerTests
         using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(pingMsg).AsDisposable();
         pingMsg = _messageSerializationService.Deserialize<PingMsg>(serialized);
         Assert.That(pingMsg.EnrSequence, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Pong_with_enr_there_and_back()
+    {
+        PongMsg pongMsg = new(
+            new IPEndPoint(TestItem.IPEndPointA.Address, 30303),
+            long.MaxValue,
+            TestItem.KeccakA.ValueHash256,
+            3);
+        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(pongMsg).AsDisposable();
+        pongMsg = _messageSerializationService.Deserialize<PongMsg>(serialized);
+        Assert.That(pongMsg.EnrSequence, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Pong_with_enr_and_future_trailing_value_deserializes()
+    {
+        byte[] ip = TestItem.IPEndPointA.Address.GetAddressBytes();
+        const int port = 30303;
+        const ulong enrSequence = 3;
+        const string futureValue = "future";
+        ValueHash256? pingMdc = TestItem.KeccakA.ValueHash256;
+        int addressLength = Rlp.LengthOf(ip) + 2 * Rlp.LengthOf(port);
+        int contentLength =
+            Rlp.LengthOfSequence(addressLength) +
+            Rlp.LengthOf(in pingMdc) +
+            Rlp.LengthOf(long.MaxValue) +
+            Rlp.LengthOf(enrSequence) +
+            Rlp.LengthOf(futureValue);
+
+        byte[] data = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(data);
+        writer.StartSequence(contentLength);
+        writer.StartSequence(addressLength);
+        writer.Encode(ip);
+        writer.Encode(port);
+        writer.Encode(port);
+        writer.Encode(in pingMdc);
+        writer.Encode(long.MaxValue);
+        writer.Encode(enrSequence);
+        writer.Encode(futureValue);
+
+        PongMsg pongMsg = _messageSerializationService.Deserialize<PongMsg>(
+            SignAndWrapDiscoveryPacket((byte)MsgType.Pong, data));
+
+        Assert.That(pongMsg.EnrSequence, Is.EqualTo(enrSequence));
     }
 
     [Test]
@@ -253,9 +341,9 @@ public class DiscoveryMessageSerializerTests
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
                 new[]
                 {
-                    new Node(TestItem.PublicKeyA, "192.168.1.2", 1),
-                    new Node(TestItem.PublicKeyB, "192.168.1.3", 2),
-                    new Node(TestItem.PublicKeyC, "192.168.1.4", 3)
+                    new Node(TestItem.PublicKeyA, "192.168.1.2", 1, 11),
+                    new Node(TestItem.PublicKeyB, "192.168.1.3", 2, 12),
+                    new Node(TestItem.PublicKeyC, "192.168.1.4", 3, 13)
                 })
             {
                 FarAddress = _farAddress
@@ -274,9 +362,64 @@ public class DiscoveryMessageSerializerTests
             {
                 Assert.That(deserializedMessage.Nodes[i].Host, Is.EqualTo(message.Nodes[i].Host));
                 Assert.That(deserializedMessage.Nodes[i].Port, Is.EqualTo(message.Nodes[i].Port));
+                Assert.That(deserializedMessage.Nodes[i].DiscoveryPort, Is.EqualTo(message.Nodes[i].DiscoveryPort));
                 Assert.That(deserializedMessage.Nodes[i].IdHash, Is.EqualTo(message.Nodes[i].IdHash));
                 Assert.That(deserializedMessage.Nodes[i], Is.EqualTo(message.Nodes[i]));
             }
+        }
+    }
+
+    [Test]
+    public void NeighborsMessage_Serializes_Node_Ports_In_Discv4_Order()
+    {
+        Node node = new(TestItem.PublicKeyA, "192.168.1.2", 30303, 30304);
+        NeighborsMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new[] { node })
+            {
+                FarAddress = _farAddress
+            };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        byte[] packet = data.ReadAllBytesAsArray();
+        RlpReader ctx = new(packet.AsSpan(98));
+        ctx.ReadSequenceLength();
+        int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
+        int nodeEnd = ctx.ReadSequenceLength() + ctx.Position;
+        byte[] encodedIp = ctx.DecodeByteArraySpan().ToArray();
+        int firstPort = ctx.DecodeInt();
+        int secondPort = ctx.DecodeInt();
+        ReadOnlySpan<byte> encodedId = ctx.DecodeByteArraySpan();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encodedIp, Is.EqualTo(new byte[] { 192, 168, 1, 2 }));
+            Assert.That(firstPort, Is.EqualTo(node.DiscoveryPort));
+            Assert.That(secondPort, Is.EqualTo(node.Port));
+            Assert.That(encodedId.SequenceEqual(node.Id.Bytes), Is.True);
+            Assert.That(ctx.Position, Is.EqualTo(nodeEnd));
+            Assert.That(ctx.Position, Is.EqualTo(nodesEnd));
+        }
+    }
+
+    [Test]
+    public void NeighborsMessage_PreservesUnknownTcpPort()
+    {
+        Node discoveryOnlyNode = Node.FromDiscoveryEndpoint(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Parse("192.168.1.2"), 30304));
+        NeighborsMsg message =
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new[] { discoveryOnlyNode })
+            {
+                FarAddress = _farAddress
+            };
+
+        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
+        NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserializedMessage.Nodes, Has.Count.EqualTo(1));
+            Assert.That(discoveryOnlyNode.Port, Is.Zero);
+            Assert.That(deserializedMessage.Nodes[0].Port, Is.Zero);
+            Assert.That(deserializedMessage.Nodes[0].DiscoveryPort, Is.EqualTo(30304));
         }
     }
 

@@ -106,6 +106,22 @@ public class MessageDictionaryTests
     }
 
     [Test]
+    public void Test_Send_MessageDisposing_OnOldRequest()
+    {
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
+
+        _testMessageDictionary.Send(request);
+
+        // Simulate a request timed out
+        request.CompletionSource.TrySetException(new TimeoutException());
+
+        IOwnedReadOnlyList<BlockHeader> response = Substitute.For<IOwnedReadOnlyList<BlockHeader>>();
+        _testMessageDictionary.Handle(111, response, 100);
+
+        response.Received().Dispose();
+    }
+
+    [Test]
     public void Handle_disposes_tuple_disposable_component_on_unmatched_request()
     {
         MessageDictionary<Eth66Message<GetBlockHeadersMessage>, (IDisposable, long)> dictionary = new(RecordingProtocolHandler.Create<Eth66Message<GetBlockHeadersMessage>>());

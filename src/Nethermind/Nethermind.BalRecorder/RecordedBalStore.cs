@@ -30,7 +30,7 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
             if (_logger.IsDebug) _logger.Debug($"BAL slot for block {block.Number} already filled; skipping.");
     }
 
-    public ReadOnlyBlockAccessList? Get(long blockNumber)
+    public ReadOnlyBlockAccessList? Get(ulong blockNumber)
     {
         ReadState state = new() { Logger = _logger, BlockNumber = blockNumber };
         _store.TryRead(blockNumber, static (data, s) =>
@@ -45,6 +45,6 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
     {
         public ReadOnlyBlockAccessList? Value;
         public ILogger Logger;
-        public long BlockNumber;
+        public ulong BlockNumber;
     }
 }

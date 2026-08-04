@@ -3,9 +3,11 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Xdc;
 
@@ -20,6 +22,8 @@ internal sealed class XdcBlockProducerFactory(
     ISigner signer,
     ITimeoutTimer timeoutTimer,
     ITimestamper timestamper,
+    IBlockProcessingQueue processingQueue,
+    IStateReader stateReader,
     ILogManager logManager)
     : IBlockProducerFactory, IBlockProducerRunnerFactory
 {
@@ -36,5 +40,7 @@ internal sealed class XdcBlockProducerFactory(
         signer,
         timeoutTimer,
         timestamper,
+        processingQueue,
+        stateReader,
         logManager);
 }

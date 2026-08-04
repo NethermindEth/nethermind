@@ -1,0 +1,26 @@
+[
+  {
+    "run": "EveryBlocks(11)",
+    "test": {
+      "description": "WETH decimals() returns the constant 18 (0x12)"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_call",
+      "params": [
+        {
+          "to": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          // decimals()
+          "data": "0x313ce567"
+        },
+        "{{Hex(Recent.Number)}}"
+      ],
+      "id": "{{Request.Number}}"
+    },
+    "response": {
+      "id": "{{Request.Number}}",
+      "jsonrpc": "2.0",
+      "result": "0x0000000000000000000000000000000000000000000000000000000000000012"
+    }
+  }
+]

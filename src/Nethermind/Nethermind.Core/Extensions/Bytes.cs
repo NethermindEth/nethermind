@@ -148,11 +148,10 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 0) return ZeroByteSpan;
-
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
-            // Keep one or it will be interpreted as null
-            return nonZeroIndex < 0 ? bytes[^1..] : bytes[nonZeroIndex..];
+            // Keep one zero byte or it will be interpreted as null; return the shared constant
+            // instead of aliasing the source.
+            return nonZeroIndex < 0 ? ZeroByteSpan : bytes[nonZeroIndex..];
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
@@ -1041,7 +1040,7 @@ namespace Nethermind.Core.Extensions
 
         private static bool TryDecodeFromUtf16(ReadOnlySpan<char> chars, Span<byte> writeToSpan, int oddMod)
         {
-            if (oddMod == 0 && BitConverter.IsLittleEndian)
+            if (oddMod == 0)
             {
                 if (Avx512BW.IsSupported && chars.Length >= Vector512<ushort>.Count * 2)
                 {

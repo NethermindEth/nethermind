@@ -88,12 +88,29 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
 
     protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        transaction.Nonce = decoderContext.DecodeUInt256();
+        transaction.Nonce = DecodeNonce(ref decoderContext);
         DecodeGasPrice(transaction, ref decoderContext);
-        transaction.GasLimit = decoderContext.DecodePositiveLong();
+        transaction.GasLimit = decoderContext.DecodeULong();
         transaction.To = decoderContext.DecodeAddress();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
+    }
+
+    private static ulong DecodeNonce(ref RlpReader decoderContext)
+    {
+        if (decoderContext.PeekPrefixAndContentLength().ContentLength <= sizeof(ulong))
+        {
+            return decoderContext.DecodeULong();
+        }
+
+        int position = decoderContext.Position;
+        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
+        if (nonceBytes[0] == 0)
+        {
+            RlpHelpers.ThrowNonCanonicalInteger(position);
+        }
+
+        return ulong.MaxValue;
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
@@ -131,7 +148,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         + Rlp.LengthOf(transaction.GasPrice)
         + Rlp.LengthOf(transaction.GasLimit)
         + Rlp.LengthOf(transaction.To)
-        + Rlp.LengthOf(in transaction.ValueRef)
+        + Rlp.LengthOf(transaction.ValueRef)
         + Rlp.LengthOf(transaction.Data);
 
     protected virtual int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)

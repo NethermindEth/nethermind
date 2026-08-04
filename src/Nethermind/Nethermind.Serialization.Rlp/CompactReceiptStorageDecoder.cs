@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.Sender = decoderContext.DecodeAddress();
-            txReceipt.GasUsedTotal = decoderContext.DecodePositiveLong();
+            txReceipt.GasUsedTotal = decoderContext.DecodeULong();
 
             int sequenceLength = decoderContext.ReadSequenceLength();
             int lastCheck = sequenceLength + decoderContext.Position;
@@ -100,7 +100,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             decoderContext.DecodeAddressStructRef(out item.Sender);
-            item.GasUsedTotal = decoderContext.DecodePositiveLong();
+            item.GasUsedTotal = decoderContext.DecodeULong();
 
             (int PrefixLength, int ContentLength) =
                 decoderContext.PeekPrefixAndContentLength();

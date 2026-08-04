@@ -79,7 +79,7 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
-            _decodersSnapshot = null;
+            Volatile.Write(ref _decodersSnapshot, null);
             RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
@@ -88,7 +88,7 @@ namespace Nethermind.Serialization.Rlp
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder[key] = decoder;
-            _decodersSnapshot = null;
+            Volatile.Write(ref _decodersSnapshot, null);
         }
 
         public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false);
@@ -107,6 +107,9 @@ namespace Nethermind.Serialization.Rlp
 
         public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
 
+        public static IRlpDecoder<T> GetDecoderOrThrow<T>(string key = RlpDecoderKey.Default) =>
+            GetDecoder<T>(key) ?? throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             IRlpDecoder<T>? rlpDecoder = GetDecoder<T>();
@@ -121,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
             try
             {
                 int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
-                int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
+                int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
                 decoderContext.GuardLimit(length, limit);
                 result = new(length);
                 for (int i = 0; i < length; i++)
@@ -278,6 +281,20 @@ namespace Nethermind.Serialization.Rlp
         {
             < 0 => Encode(new BigInteger(value), 8),
             0L => OfZero,
+            < 0x80 => new((byte)value),
+            < 0x100 => new([129, (byte)value]),
+            < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
+            < 0x100_0000 => new([131, (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000 => new([132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000 => new([133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x1_0000_0000_0000 => new([134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            < 0x100_0000_0000_0000 => new([135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+            _ => new([136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value]),
+        };
+
+        public static Rlp Encode(ulong value) => value switch
+        {
+            0UL => OfZero,
             < 0x80 => new((byte)value),
             < 0x100 => new([129, (byte)value]),
             < 0x1_0000 => new([130, (byte)(value >> 8), (byte)value]),
@@ -870,11 +887,17 @@ namespace Nethermind.Serialization.Rlp
         [StackTraceHidden]
         private static void ThrowCountOverLimit(uint count, int bytesLeft, RlpLimit limit)
         {
-            string message = string.IsNullOrEmpty(limit.CollectionExpression)
-                ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
-                : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
-            _logger.DebugError($"{message}; {new StackTrace()}");
-            throw new RlpLimitException(message);
+            if (_logger.IsTrace)
+            {
+                string message = string.IsNullOrEmpty(limit.CollectionExpression)
+                    ? $"Collection count of {count} is over limit {limit.Limit} or {bytesLeft} bytes left"
+                    : $"Collection count {limit.CollectionExpression} of {count} is over limit {limit.Limit} or {bytesLeft} bytes left";
+                _logger.Error($"{message}; {new StackTrace()}");
+
+                throw new RlpLimitException(message);
+            }
+
+            throw new RlpLimitException("An RLP limit exceeded");
         }
 
         [DoesNotReturn]

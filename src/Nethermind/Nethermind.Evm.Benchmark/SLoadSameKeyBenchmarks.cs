@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Benchmark;
 public class SLoadSameKeyBenchmarks
 {
     private const int CodeSize = 24576;
-    private const long TxGas = 16_777_216;
+    private const ulong TxGas = 16_777_216;
 
     // Self-referential storage key/value for the PreSet=true variant: SLOAD(K) == K.
     private static readonly UInt256 SelfKey = UInt256.Parse("0x6F1D2C3B4A59687766554433221100FFEEDDCCBBAA99887766554433221100FF");
@@ -120,7 +120,7 @@ public class SLoadSameKeyBenchmarks
     public void ExecuteSameKeyLoop()
     {
         VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromLong(TxGas),
+            EthereumGasPolicy.FromULong(TxGas),
             ExecutionType.TRANSACTION,
             _environment,
             new StackAccessTracker(),

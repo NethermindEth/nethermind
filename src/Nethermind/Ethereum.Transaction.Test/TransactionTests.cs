@@ -58,9 +58,9 @@ public class TransactionTests
         {
             BlockNumber = Bytes.FromHexString(testJson.BlockNumber).ToUInt256(),
             Data = Bytes.FromHexString(transactionJson.Data),
-            GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUInt256(),
+            GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToULongFromBigEndianByteArrayWithoutLeadingZeros(),
             GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUInt256(),
-            Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUInt256(),
+            Nonce = Bytes.FromHexString(transactionJson.Nonce).ToULongFromBigEndianByteArrayWithoutLeadingZeros(),
             R = Bytes.FromHexString(transactionJson.R).ToUInt256(),
             S = Bytes.FromHexString(transactionJson.S).ToUInt256(),
             V = Bytes.FromHexString(transactionJson.V)[0],
@@ -99,7 +99,7 @@ public class TransactionTests
             {
                 Assert.That(transaction.Value, Is.EqualTo(validTest.Value), "value");
                 Assert.That(transaction.Data.AsArray(), Is.EqualTo(validTest.Data), "data");
-                Assert.That(transaction.GasLimit, Is.EqualTo(validTest.GasLimit.ToInt64(null)), "gasLimit");
+                Assert.That(transaction.GasLimit, Is.EqualTo(validTest.GasLimit), "gasLimit");
                 Assert.That(transaction.GasPrice, Is.EqualTo(validTest.GasPrice), "gasPrice");
                 Assert.That(transaction.Nonce, Is.EqualTo(validTest.Nonce), "nonce");
                 Assert.That(transaction.To, Is.EqualTo(validTest.To), "to");
@@ -154,9 +154,9 @@ public class TransactionTests
     {
         public Address Sender { get; set; }
         public UInt256 BlockNumber { get; set; }
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
-        public UInt256 GasLimit { get; set; }
+        public ulong GasLimit { get; set; }
         public Address To { get; set; }
         public UInt256 Value { get; set; }
         public byte V { get; set; }

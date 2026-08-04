@@ -38,16 +38,16 @@ namespace Nethermind.Serialization.Rlp
             if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
             {
                 txReceipt.StatusCode = firstItem[0];
-                txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
+                txReceipt.GasUsedTotal = ctx.DecodeULong();
             }
             else if (firstItem.Length is >= 1 and <= 4)
             {
-                txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
+                txReceipt.GasUsedTotal = firstItem.ToULong();
             }
             else
             {
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-                txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
+                txReceipt.GasUsedTotal = ctx.DecodeULong();
             }
 
             if (!skipBloom)
@@ -56,7 +56,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
-            int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
+            int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck, LogsRlpLimit.Limit + 1);
             ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)

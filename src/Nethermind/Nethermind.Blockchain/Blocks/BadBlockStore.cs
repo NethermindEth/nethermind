@@ -12,9 +12,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
+public class BadBlockStore(IDb blockDb, long maxSize, IHeaderDecoder? headerDecoder = null) : IBadBlockStore
 {
-    private readonly BlockDecoder _blockDecoder = new();
+    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
@@ -37,7 +37,7 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
 
     private void TruncateToMaxSize()
     {
-        int toDelete = (int)(blockDb.GatherMetric().Size - maxSize!);
+        int toDelete = (int)(blockDb.EstimatedCount - maxSize);
         if (toDelete > 0)
         {
             foreach (Block blockToDelete in GetAll().Take(toDelete))
@@ -47,5 +47,5 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
         }
     }
 
-    private void Delete(long blockNumber, Hash256 blockHash) => blockDb.Delete(blockNumber, blockHash);
+    private void Delete(ulong blockNumber, Hash256 blockHash) => blockDb.Delete(blockNumber, blockHash);
 }

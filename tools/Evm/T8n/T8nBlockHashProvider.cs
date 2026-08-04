@@ -10,11 +10,11 @@ using Nethermind.Evm;
 
 namespace Evm.T8n;
 
-public class T8nBlockHashProvider(Dictionary<long, Hash256> blockHashes) : IBlockhashProvider
+public class T8nBlockHashProvider(Dictionary<ulong, Hash256> blockHashes) : IBlockhashProvider
 {
-    public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec? spec)
+    public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec? spec)
     {
-        long current = currentBlock.Number;
+        ulong current = currentBlock.Number;
         if (number >= current || number < current - Math.Min(current, BlockhashProvider.MaxDepth))
             return null;
 

@@ -255,8 +255,8 @@ internal static class GetPayloadDirectResponseWriter
         HexWriter.WriteUlongHexString(writer, value.GetValueOrDefault());
     }
 
-    private static void WriteLongHexString(IBufferWriter<byte> writer, long value) =>
-        HexWriter.WriteUlongHexString(writer, (ulong)value);
+    private static void WriteLongHexString(IBufferWriter<byte> writer, ulong value) =>
+        HexWriter.WriteUlongHexString(writer, value);
 
     private static void WriteHexString(IBufferWriter<byte> writer, ReadOnlySpan<byte> data, bool chunked) =>
         HexWriter.WriteHexString(writer, data, chunked);

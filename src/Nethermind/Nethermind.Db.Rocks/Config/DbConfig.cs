@@ -9,7 +9,7 @@ public class DbConfig : IDbConfig
 {
     public static DbConfig Default = new();
 
-    public ulong SharedBlockCacheSize { get; set; } = (ulong)256.MiB;
+    public ulong SharedBlockCacheSize { get; set; } = 256UL.MiB;
     public bool SkipMemoryHintSetting { get; set; } = false;
 
     public bool WriteAheadLogSync { get; set; } = false;
@@ -19,7 +19,7 @@ public class DbConfig : IDbConfig
 
     public int? MaxOpenFiles { get; set; }
     public bool? SkipCheckingSstFileSizesOnDbOpen { get; set; }
-    public ulong? ReadAheadSize { get; set; } = (ulong)256.KiB;
+    public ulong? ReadAheadSize { get; set; } = 256UL.KiB;
 
     public string RocksDbOptions { get; set; } =
 
@@ -114,7 +114,9 @@ public class DbConfig : IDbConfig
     public string? ReceiptsTransactionsDbAdditionalRocksDbOptions { get; set; }
 
     public string ReceiptsBlocksDbRocksDbOptions { get; set; } =
-        "compaction_pri=kOldestLargestSeqFirst;";
+        "compaction_pri=kOldestLargestSeqFirst;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=4;";
     public string? ReceiptsBlocksDbAdditionalRocksDbOptions { get; set; }
 
     public string BlocksDbRocksDbOptions { get; set; } =
@@ -134,7 +136,7 @@ public class DbConfig : IDbConfig
         "";
     public string? HeadersDbAdditionalRocksDbOptions { get; set; } = "";
 
-    public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB;
+    public ulong? BlockNumbersDbRowCacheSize { get; set; } = 16UL.MiB;
     public string BlockNumbersDbRocksDbOptions { get; set; } =
         "write_buffer_size=8000000;" +
         "max_bytes_for_level_base=16000000;" +
@@ -159,7 +161,7 @@ public class DbConfig : IDbConfig
         "write_buffer_size=4000000;";
     public string? PendingTxsDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB;
+    public ulong? CodeDbRowCacheSize { get; set; } = 16UL.MiB;
     public string CodeDbRocksDbOptions { get; set; } =
         "write_buffer_size=16000000;" +
         "block_based_table_factory.block_cache=16000000;" +
@@ -178,7 +180,7 @@ public class DbConfig : IDbConfig
         "max_bytes_for_level_base=16000000;";
     public string? MetadataDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB;
+    public ulong StateDbWriteBufferSize { get; set; } = 64UL.MB;
     public ulong StateDbWriteBufferNumber { get; set; } = 4;
     public bool? StateDbVerifyChecksum { get; set; } = true;
     public ulong? StateDbRowCacheSize { get; set; }
@@ -264,8 +266,8 @@ public class DbConfig : IDbConfig
         // slight adjustment to block size, for potentially better db size.
         "block_based_table_factory.block_size=64000;";
 
-    public ulong StateDbLargeMemoryWriteBufferSize { get; set; } = (ulong)128.MiB;
-    public ulong StateDbArchiveModeWriteBufferSize { get; set; } = (ulong)256.MiB;
+    public ulong StateDbLargeMemoryWriteBufferSize { get; set; } = 128UL.MiB;
+    public ulong StateDbArchiveModeWriteBufferSize { get; set; } = 256UL.MiB;
 
     public string? StateDbAdditionalRocksDbOptions { get; set; }
 
@@ -410,6 +412,28 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
+    // History columns (archival queries). As-of-block reads are iterator floor-seeks, which don't consult the point
+    // bloom filter, so optimize_filters_for_hits drops the last-level bloom — its memory cost is linear in key count
+    // and prohibitive on a full archive. A large write buffer cuts flushes during the from-genesis replay.
+    // LZ4 over the Snappy default: benchmarked on history-shaped data at the same on-disk size but ~1.5x the seek
+    // throughput and ~25% less compaction time (matching the flat Account/Storage columns' choice).
+    const string FlatHistoryCommonOptions =
+        "compression=kLZ4Compression;" +
+        "optimize_filters_for_hits=true;" +
+        "write_buffer_size=256000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
+    public string FlatHistoryDbRocksDbOptions { get; set; } = FlatHistoryCommonOptions;
+    public string? FlatHistoryDbAdditionalRocksDbOptions { get; set; }
+
+    // The replay-sized write buffers matter only for the two bulky value columns.
+    public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
+    public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
+
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
+
+    public string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; } = "";
+    public string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }
 }

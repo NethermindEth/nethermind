@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareParityBlockTrace(Uri uri1, Uri uri2, long blockNumber)
+        public async Task CompareParityBlockTrace(Uri uri1, Uri uri2, ulong blockNumber)
         {
             using IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>> receipt1Source = GetSource<IEnumerable<ParityTxTraceFromStore>>(uri1);
             using IConsensusDataSource<IEnumerable<ParityTxTraceFromStore>> receipt2Source = GetSource<IEnumerable<ParityTxTraceFromStore>>(uri2);

@@ -28,6 +28,24 @@ public static class TestChunkFilter
     }
 
     /// <summary>
+    /// Filters items into the chunk described by an explicit spec such as "2of8",
+    /// independently of the TEST_CHUNK environment variable.
+    /// </summary>
+    /// <param name="chunk">Chunk spec in "NofM" format; null or empty disables filtering.</param>
+    public static IEnumerable<T> FilterByChunk<T>(IEnumerable<T> tests, string? chunk)
+    {
+        (int Index, int Total)? chunkConfig = ParseChunk(chunk);
+
+        if (chunkConfig is null)
+        {
+            return tests;
+        }
+
+        (int chunkIndex, int totalChunks) = chunkConfig.Value;
+        return FilterByChunkIterator(tests, chunkIndex, totalChunks);
+    }
+
+    /// <summary>
     /// True when <paramref name="stableTestName"/> belongs to the currently
     /// selected chunk, or when no chunk is configured. Hash is deterministic
     /// across processes (unlike <see cref="string.GetHashCode()"/>).
@@ -64,23 +82,24 @@ public static class TestChunkFilter
         }
     }
 
-    private static (int Index, int Total)? GetChunkConfig()
-    {
-        string? chunkEnv = Environment.GetEnvironmentVariable("TEST_CHUNK");
+    private static (int Index, int Total)? GetChunkConfig() =>
+        ParseChunk(Environment.GetEnvironmentVariable("TEST_CHUNK"));
 
-        if (string.IsNullOrEmpty(chunkEnv))
+    private static (int Index, int Total)? ParseChunk(string? chunk)
+    {
+        if (string.IsNullOrEmpty(chunk))
         {
             return null;
         }
 
-        string[] parts = chunkEnv.Split("of");
+        string[] parts = chunk.Split("of");
 
         if (parts.Length != 2 ||
             !int.TryParse(parts[0], out int index) ||
             !int.TryParse(parts[1], out int total) ||
             index < 1 || index > total || total < 1)
         {
-            throw new ArgumentException($"Invalid TEST_CHUNK format: '{chunkEnv}'. Expected format: '1of3', '2of5', etc.");
+            throw new ArgumentException($"Invalid chunk format: '{chunk}'. Expected format: '1of3', '2of5', etc.");
         }
 
         return (index, total);

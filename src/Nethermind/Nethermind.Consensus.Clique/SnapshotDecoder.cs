@@ -16,11 +16,11 @@ namespace Nethermind.Consensus.Clique
             decoderContext.ReadSequenceLength();
 
             // Block number
-            long number = (long)decoderContext.DecodeUInt256();
+            ulong number = (ulong)decoderContext.DecodeUInt256();
             // Hash
             Hash256 hash = decoderContext.DecodeKeccak();
             // Signers
-            SortedList<Address, long> signers = DecodeSigners(ref decoderContext);
+            SortedList<Address, ulong> signers = DecodeSigners(ref decoderContext);
             // Votes
             List<Vote> votes = DecodeVotes(ref decoderContext);
             // Tally
@@ -65,16 +65,16 @@ namespace Nethermind.Consensus.Clique
             return (contentLength, signersLength, votesLength, tallyLength);
         }
 
-        private static SortedList<Address, long> DecodeSigners(ref RlpReader decoderContext)
+        private static SortedList<Address, ulong> DecodeSigners(ref RlpReader decoderContext)
         {
             decoderContext.ReadSequenceLength();
             int length = decoderContext.DecodePositiveInt();
             decoderContext.GuardLimit(length);
-            SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>());
+            SortedList<Address, ulong> signers = new(GenericComparer.GetOptimized<Address>());
             for (int i = 0; i < length; i++)
             {
                 Address signer = decoderContext.DecodeAddress();
-                long signedAt = (long)decoderContext.DecodeUInt256();
+                ulong signedAt = (ulong)decoderContext.DecodeUInt256();
                 signers.Add(signer, signedAt);
             }
 
@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.Clique
             for (int i = 0; i < length; i++)
             {
                 Address signer = decoderContext.DecodeAddress();
-                long block = (long)decoderContext.DecodeUInt256();
+                ulong block = (ulong)decoderContext.DecodeUInt256();
                 Address address = decoderContext.DecodeAddress();
                 bool authorize = decoderContext.DecodeBool();
                 Vote vote = new(signer, block, address, authorize);
@@ -117,12 +117,12 @@ namespace Nethermind.Consensus.Clique
             return tally;
         }
 
-        private static int GetSignersContentLength(SortedList<Address, long> signers)
+        private static int GetSignersContentLength(SortedList<Address, ulong> signers)
         {
             int signerCount = signers.Count;
             int contentLength = Rlp.LengthOf(signerCount);
             int i = 0;
-            foreach ((Address address, long signedAt) in signers)
+            foreach ((Address address, ulong signedAt) in signers)
             {
                 contentLength += Rlp.LengthOf(address);
                 contentLength += Rlp.LengthOf((UInt256)signedAt);
@@ -131,13 +131,13 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private static void EncodeSigners<TWriter>(ref TWriter writer, SortedList<Address, long> signers, int contentLength)
+        private static void EncodeSigners<TWriter>(ref TWriter writer, SortedList<Address, ulong> signers, int contentLength)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             writer.StartSequence(contentLength);
             int signerCount = signers.Count;
             writer.Encode(signerCount);
-            foreach ((Address address, long signedAt) in signers)
+            foreach ((Address address, ulong signedAt) in signers)
             {
                 writer.Encode(address);
                 writer.Encode(signedAt);

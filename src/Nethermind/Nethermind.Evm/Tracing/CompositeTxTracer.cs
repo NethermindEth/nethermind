@@ -24,6 +24,7 @@ public class CompositeTxTracer : ITxTracer
         for (int index = 0; index < txTracers.Count; index++)
         {
             ITxTracer t = txTracers[index];
+            IsCancelable |= t.IsCancelable;
             IsTracingState |= t.IsTracingState;
             IsTracingReceipt |= t.IsTracingReceipt;
             IsTracingActions |= t.IsTracingActions;
@@ -39,6 +40,21 @@ public class CompositeTxTracer : ITxTracer
             IsTracingAccess |= t.IsTracingAccess;
             IsTracingFees |= t.IsTracingFees;
             IsTracingLogs |= t.IsTracingLogs;
+        }
+    }
+
+    public bool IsCancelable { get; }
+
+    public bool IsCancelled
+    {
+        get
+        {
+            for (int index = 0; index < _txTracers.Count; index++)
+            {
+                if (_txTracers[index].IsCancelled) return true;
+            }
+
+            return false;
         }
     }
 
@@ -154,7 +170,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -178,7 +194,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -215,18 +231,6 @@ public class CompositeTxTracer : ITxTracer
     }
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-    {
-        for (int index = 0; index < _txTracers.Count; index++)
-        {
-            ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions)
-            {
-                innerTracer.ReportStackPush(stackItem);
-            }
-        }
-    }
-
-    public void ReportStackPush(in ZeroPaddedSpan stackItem)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -287,18 +291,6 @@ public class CompositeTxTracer : ITxTracer
     }
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-    {
-        for (int index = 0; index < _txTracers.Count; index++)
-        {
-            ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions)
-            {
-                innerTracer.ReportMemoryChange(offset, data);
-            }
-        }
-    }
-
-    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -394,7 +386,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -406,7 +398,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -430,7 +422,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+    public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -442,7 +434,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -478,7 +470,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -502,7 +494,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportExtraGasPressure(long extraGasPressure)
+    public void ReportExtraGasPressure(ulong extraGasPressure)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

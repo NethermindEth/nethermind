@@ -9,7 +9,7 @@ namespace Nethermind.Consensus.Ethash
 {
     public interface IEthash
     {
-        void HintRange(Guid guid, long start, long end);
+        void HintRange(Guid guid, ulong start, ulong end);
         bool Validate(BlockHeader header);
         (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null); // TODO: for now only with cache
     }

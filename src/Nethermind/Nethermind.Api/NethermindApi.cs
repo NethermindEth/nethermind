@@ -20,7 +20,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
@@ -29,7 +28,6 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.Consensus.Processing.CensorshipDetector;
 
 namespace Nethermind.Api
 {
@@ -51,14 +49,12 @@ namespace Nethermind.Api
         private Dependencies _dependencies = dependencies;
 
         public IBlobTxStorage BlobTxStorage => Context.Resolve<IBlobTxStorage>();
-        public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner BlockProducerRunner { get; set; } = new NoBlockProducerRunner();
         public IBlockTree BlockTree => Context.Resolve<IBlockTree>();
         public IConfigProvider ConfigProvider => _dependencies.ConfigProvider;
         public IDbProvider DbProvider => Context.Resolve<IDbProvider>();
-        public ISigner? EngineSigner { get; set; }
-        public ISignerStore? EngineSignerStore { get; set; }
+        public ISigner EngineSigner => Context.Resolve<ISigner>();
         public IEthereumEcdsa EthereumEcdsa => Context.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem => Context.Resolve<IFileSystem>();
         public IEngineRequestsTracker EngineRequestsTracker => Context.Resolve<IEngineRequestsTracker>();
@@ -68,9 +64,7 @@ namespace Nethermind.Api
 
         public IIPResolver IpResolver => Context.Resolve<IIPResolver>();
         public EthereumJsonSerializer EthereumJsonSerializer => _dependencies.JsonSerializer;
-        public IKeyStore? KeyStore { get; set; }
         public ILogManager LogManager => _dependencies.LogManager;
-        public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IProtocolsManager? ProtocolsManager => Context.Resolve<IProtocolsManager>();
         public IReceiptFinder ReceiptFinder => Context.Resolve<IReceiptFinder>();
         public IRpcModuleProvider? RpcModuleProvider => Context.Resolve<IRpcModuleProvider>();
@@ -90,16 +84,8 @@ namespace Nethermind.Api
         public ITxValidator? HeadTxValidator => Context.ResolveOptionalKeyed<ITxValidator>(ITxValidator.HeadTxValidatorKey);
 
         public IBackgroundTaskScheduler BackgroundTaskScheduler => Context.Resolve<IBackgroundTaskScheduler>();
-        public ICensorshipDetector CensorshipDetector { get; set; } = new NoopCensorshipDetector();
-        public IWallet? Wallet { get; set; }
+        public IWallet Wallet => Context.Resolve<IWallet>();
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
-
-        public IProtectedPrivateKey? NodeKey { get; set; }
-
-        /// <summary>
-        /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>.
-        /// </summary>
-        public IProtectedPrivateKey? OriginalSignerKey { get; set; }
 
         public ChainSpec ChainSpec => _dependencies.ChainSpec;
         public IDisposableStack DisposeStack => Context.Resolve<IDisposableStack>();

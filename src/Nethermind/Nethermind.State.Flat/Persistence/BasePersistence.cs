@@ -49,14 +49,14 @@ public static class BasePersistence
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
         return bytes is null || bytes.Length == 0
-            ? new StateId(-1, ValueKeccak.EmptyTreeHash)
-            : new StateId(BinaryPrimitives.ReadInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
+            ? new StateId(ulong.MaxValue, ValueKeccak.EmptyTreeHash)
+            : new StateId(BinaryPrimitives.ReadUInt64BigEndian(bytes), new ValueHash256(bytes[8..]));
     }
 
     internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
     {
         Span<byte> bytes = stackalloc byte[8 + 32];
-        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
+        BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
     }
@@ -216,12 +216,13 @@ public static class BasePersistence
     internal static void CreateStorageRange(
         ReadOnlySpan<byte> accountPath,
         Span<byte> firstKey,
-        Span<byte> lastKey)
+        Span<byte> lastKey,
+        int prefixPortion)
     {
-        accountPath[..StoragePrefixPortion].CopyTo(firstKey);
-        accountPath[..StoragePrefixPortion].CopyTo(lastKey);
-        firstKey[StoragePrefixPortion..].Clear();
-        lastKey[StoragePrefixPortion..].Fill(0xff);
+        accountPath[..prefixPortion].CopyTo(firstKey);
+        accountPath[..prefixPortion].CopyTo(lastKey);
+        firstKey[prefixPortion..].Clear();
+        lastKey[prefixPortion..].Fill(0xff);
     }
 
     /// <summary>
@@ -329,8 +330,8 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
     }
 
     public struct ToHashedWriteBatch<TWriteBatch>(
@@ -515,10 +516,10 @@ public static class BasePersistence
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             _flatWriter.DeleteStorageRange(addressHash, fromPath, toPath);
 
-        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath) =>
-            _trieWriteBatch.DeleteStateTrieNodeRange(fromPath, toPath);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
+            _trieWriteBatch.DeleteStateTrieNodeRange(from, to);
 
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath) =>
-            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, fromPath, toPath);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
+            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, from, to);
     }
 }

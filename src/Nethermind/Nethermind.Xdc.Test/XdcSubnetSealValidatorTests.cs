@@ -16,8 +16,8 @@ namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]
 public class XdcSubnetSealValidatorTests
 {
-    private const int Epoch = 900;
-    private const int Gap = 450;
+    private const ulong Epoch = 900;
+    private const ulong Gap = 450;
 
     [Test]
     public void EpochSwitch_PenaltiesInSnapshotButNotInHeader_HeaderIsStillValid()
@@ -26,7 +26,7 @@ public class XdcSubnetSealValidatorTests
         Address[] candidates = [Address.FromNumber(1)];
         Address[] penalties = [Address.FromNumber(2)];
         ISubnetMasternodesCalculator calculator = Substitute.For<ISubnetMasternodesCalculator>();
-        calculator.CalculateNextEpochMasternodes(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>()).Returns((candidates, penalties));
+        calculator.CalculateNextEpochMasternodes(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>()).Returns((candidates, penalties));
         XdcSubnetSealValidator validator = CreateValidator(specProvider, calculator, CreateEpochSwitchManager(true));
         XdcSubnetBlockHeader parent = BuildParentHeader(899);
         XdcSubnetBlockHeader header = BuildSubnetHeader(parent, 900, 110,
@@ -186,8 +186,8 @@ public class XdcSubnetSealValidatorTests
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.EpochLength.Returns(Epoch);
         releaseSpec.Gap.Returns(Gap);
-        releaseSpec.MinePeriod.Returns(10);
-        releaseSpec.GasLimitBoundDivisor.Returns(1024);
+        releaseSpec.MinePeriod.Returns(10UL);
+        releaseSpec.GasLimitBoundDivisor.Returns(1024UL);
         releaseSpec.When(x => x.ApplyV2Config(Arg.Any<ulong>())).Do(_ => { });
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -215,7 +215,7 @@ public class XdcSubnetSealValidatorTests
             epochSwitchManager ?? CreateEpochSwitchManager(),
             specProvider);
 
-    private static XdcSubnetBlockHeader BuildParentHeader(long number)
+    private static XdcSubnetBlockHeader BuildParentHeader(ulong number)
     {
         XdcSubnetBlockHeaderBuilder b = Build.A.XdcSubnetBlockHeader();
         b.WithNumber(number);
@@ -229,7 +229,7 @@ public class XdcSubnetSealValidatorTests
 
     private static XdcSubnetBlockHeader BuildSubnetHeader(
         BlockHeader parent,
-        long number,
+        ulong number,
         ulong timestamp,
         Action<XdcSubnetBlockHeaderBuilder>? configure = null)
     {

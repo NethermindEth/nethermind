@@ -98,6 +98,7 @@ public class Startup : IStartup
 
         services.Configure<KestrelServerOptions>(options =>
         {
+            options.AddServerHeader = false;
             options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
             options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
 

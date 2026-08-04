@@ -32,12 +32,12 @@ public sealed class RetrospectiveExecutionTracer
     private readonly OpcodeCounter _counter;
     private readonly ILogger _logger;
     private readonly int _maxDegreeOfParallelism;
-    private readonly ConcurrentQueue<long> _skippedBlocks = new();
+    private readonly ConcurrentQueue<ulong> _skippedBlocks = new();
 
     /// <summary>
     /// Gets the block numbers that were skipped due to unavailable state.
     /// </summary>
-    public IReadOnlyCollection<long> SkippedBlocks => _skippedBlocks;
+    public IReadOnlyCollection<ulong> SkippedBlocks => _skippedBlocks;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="RetrospectiveExecutionTracer"/> class.
@@ -91,7 +91,7 @@ public sealed class RetrospectiveExecutionTracer
         }
 
         // Generate block numbers without int cast to avoid overflow for large ranges
-        IEnumerable<long> blockNumbers = GenerateBlockNumbers(range);
+        IEnumerable<ulong> blockNumbers = GenerateBlockNumbers(range);
 
         // Configure parallel processing options
         ParallelOptions parallelOptions = new()
@@ -108,9 +108,9 @@ public sealed class RetrospectiveExecutionTracer
         }).ConfigureAwait(false);
     }
 
-    private static IEnumerable<long> GenerateBlockNumbers(BlockRange range)
+    private static IEnumerable<ulong> GenerateBlockNumbers(BlockRange range)
     {
-        for (long i = range.StartBlock; i <= range.EndBlock; i++)
+        for (ulong i = range.StartBlock; i <= range.EndBlock; i++)
         {
             yield return i;
         }
@@ -125,7 +125,7 @@ public sealed class RetrospectiveExecutionTracer
     /// <param name="blockNumber">The block number to process.</param>
     /// <param name="progress">The progress tracker.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    private void ProcessBlockSync(long blockNumber, TracingProgress progress, CancellationToken cancellationToken)
+    private void ProcessBlockSync(ulong blockNumber, TracingProgress progress, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 

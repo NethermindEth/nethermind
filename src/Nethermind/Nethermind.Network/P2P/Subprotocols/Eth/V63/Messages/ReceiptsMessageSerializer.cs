@@ -14,6 +14,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
+        private const ulong NoBlockSeenYet = ulong.MaxValue;
+
         private static readonly RlpLimit ReceiptsRlpLimit = RlpLimit.For<ReceiptsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
         private static readonly RlpLimit BlockReceiptsRlpLimit = RlpLimit.For<TxReceipt[]>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
@@ -37,8 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
 
-            // Track the last ‐ seen block number & its RLP behavior
-            long lastBlockNumber = -1;
+            ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
             foreach (TxReceipt?[]? txReceipts in message.TxReceipts.AsSpan())
@@ -147,8 +148,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
             int contentLength = 0;
 
-            // Track the last‐seen block number and its spec
-            long lastBlockNumber = -1;
+            ulong lastBlockNumber = NoBlockSeenYet;
             RlpBehaviors behaviors = RlpBehaviors.None;
 
             for (int i = 0; i < txReceipts.Length; i++)

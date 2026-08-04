@@ -85,7 +85,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Sets the block number up to which receipts will be migrated to (Nethermind specific).")]
-    Task<ResultWrapper<bool>> debug_migrateReceipts(long from, long to);
+    Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to);
 
     [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
     Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
@@ -119,7 +119,8 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 
-    [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
+    [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks",
+        IsSharable = true)]
     ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 

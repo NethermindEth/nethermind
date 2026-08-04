@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -81,6 +82,24 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        /// <summary>
+        /// Encodes a non-null <paramref name="account"/> into a freshly allocated <see cref="byte"/> array.
+        /// </summary>
+        /// <remarks>
+        /// Computes the content length once and reuses it for both sizing the buffer and writing the
+        /// sequence header, avoiding the double <see cref="GetContentLength"/> pass that the generic
+        /// <see cref="RlpDecoder{T}.EncodeAsBytes"/> incurs. The buffer is allocated uninitialized
+        /// because encoding fills it completely.
+        /// </remarks>
+        public byte[] EncodeAsBytes(Account account)
+        {
+            int contentLength = GetContentLength(account);
+            byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(contentLength));
+            RlpWriter writer = new(bytes);
+            Encode(account, ref writer, contentLength);
+            return bytes;
+        }
+
         public int GetLength(Account[] accounts)
         {
             int length = 0;
@@ -147,7 +166,7 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            UInt256 nonce = decoderContext.DecodeUInt256();
+            ulong nonce = decoderContext.DecodeULong();
             UInt256 balance = decoderContext.DecodeUInt256();
             Hash256 storageRoot = DecodeStorageRoot(ref decoderContext);
             Hash256 codeHash = DecodeCodeHash(ref decoderContext);
@@ -232,7 +251,7 @@ namespace Nethermind.Serialization.Rlp
                 return false;
             }
 
-            UInt256 nonce = decoderContext.DecodeUInt256();
+            ulong nonce = decoderContext.DecodeULong();
             UInt256 balance = decoderContext.DecodeUInt256();
             ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
             ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);

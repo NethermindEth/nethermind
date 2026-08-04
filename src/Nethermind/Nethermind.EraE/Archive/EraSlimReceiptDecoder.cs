@@ -64,7 +64,7 @@ internal sealed class EraSlimReceiptDecoder
                     $"Invalid slim receipt status encoding length: {statusBytes.Length}");
         }
 
-        receipt.GasUsedTotal = ctx.DecodePositiveLong();
+        receipt.GasUsedTotal = ctx.DecodeULong();
 
         int logsLength = ctx.ReadSequenceLength();
         int logsEnd = ctx.Position + logsLength;

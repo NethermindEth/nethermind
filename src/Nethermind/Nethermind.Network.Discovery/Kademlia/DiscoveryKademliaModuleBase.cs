@@ -4,9 +4,12 @@
 using Autofac;
 using Autofac.Core;
 using Autofac.Features.AttributeFilters;
+using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
+using Nethermind.Logging;
+using Nethermind.Logging.Microsoft;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Kademlia;
@@ -19,6 +22,7 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
 
         builder
             .AddModule(new KademliaModule<PublicKey, Node, Hash256>())
+            .AddSingleton<ILoggerFactory, ILogManager>(static logManager => new NethermindLoggerFactory(logManager))
             .AddSingleton<IKademliaDistance<Hash256>>(Hash256KademliaDistance.Instance)
             .AddSingleton<IKeyOperator<PublicKey, Node, Hash256>, PublicKeyKeyOperator>()
             .AddSingleton<KademliaConfig<Node>, IDiscoveryConfig>((discoveryConfig) => DiscoveryKademliaConfigFactory.Create(currentNode, bootNodes, discoveryConfig));

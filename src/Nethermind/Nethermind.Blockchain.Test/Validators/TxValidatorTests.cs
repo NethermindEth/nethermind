@@ -579,11 +579,12 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip7825Constants.DefaultTxGasLimitCap)));
+            Assert.That(result.IsIntrinsicGasError, Is.False);
         }
     }
 
     [Test]
-    public void IsWellFormed_Eip8037FloorGasExceedingRegularCap_ReturnsFalse()
+    public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse()
     {
         byte[] data = new byte[262_000];
         Array.Fill(data, (byte)0xff);
@@ -600,6 +601,7 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+            Assert.That(result.IsIntrinsicGasError, Is.True);
         }
     }
 

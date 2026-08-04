@@ -55,7 +55,7 @@ internal static class XdcTestHelper
 
     public static SyncInfo BuildSyncInfo(PrivateKey key, ulong round, ulong gap)
     {
-        BlockRoundInfo roundInfo = new(Hash256.Zero, round, (long)round);
+        BlockRoundInfo roundInfo = new(Hash256.Zero, round, round);
         QuorumCertificate qc = CreateQc(roundInfo, gap, [key]);
         Timeout timeout = BuildSignedTimeout(key, round, gap);
         TimeoutCertificate tc = new(round, [timeout.Signature!], gap);

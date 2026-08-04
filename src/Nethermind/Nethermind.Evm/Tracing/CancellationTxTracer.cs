@@ -197,7 +197,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -215,7 +215,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -243,15 +243,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     }
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
-        {
-            innerTracer.ReportStackPush(stackItem);
-        }
-    }
-
-    public void ReportStackPush(in ZeroPaddedSpan stackItem)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -297,15 +288,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     }
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
-        {
-            innerTracer.ReportMemoryChange(offset, data);
-        }
-    }
-
-    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -377,7 +359,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
@@ -386,7 +368,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
@@ -404,7 +386,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+    public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
@@ -413,7 +395,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
@@ -440,7 +422,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -458,7 +440,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportExtraGasPressure(long extraGasPressure)
+    public void ReportExtraGasPressure(ulong extraGasPressure)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingRefunds)

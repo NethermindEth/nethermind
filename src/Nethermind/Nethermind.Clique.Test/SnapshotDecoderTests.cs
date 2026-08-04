@@ -24,7 +24,7 @@ namespace Nethermind.Clique.Test
             SnapshotDecoder decoder = new();
             // Prepare snapshot
             Hash256 hash = new("0xa33ea6f6c0f1c80a6c7af308a30cb7a7affa4d0d51e6639b739727af0518b50e");
-            long number = 3305206L;
+            ulong number = 3305206UL;
             Address candidate = new("0xbe1085bc3e0812f3df63deced87e29b3bc2db524");
             Snapshot expected = GenerateSnapshot(hash, number, candidate);
             // Encode snapshot
@@ -56,19 +56,19 @@ namespace Nethermind.Clique.Test
             }
         }
 
-        private Snapshot GenerateSnapshot(Hash256 hash, long number, Address candidate)
+        private Snapshot GenerateSnapshot(Hash256 hash, ulong number, Address candidate)
         {
-            SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>())
+            SortedList<Address, ulong> signers = new(GenericComparer.GetOptimized<Address>())
             {
-                { _signer1, number - 2 },
-                { _signer2, number - 1 },
-                { _signer3, number - 3 }
+                { _signer1, number - 2UL },
+                { _signer2, number - 1UL },
+                { _signer3, number - 3UL }
             };
             List<Vote> votes =
             [
-                new Vote(_signer1, number - 2, candidate, true),
-                new Vote(_signer3, number - 3, candidate, true),
-                new Vote(_signer3, number - 6, _signer2, false),
+                new Vote(_signer1, number - 2UL, candidate, true),
+                new Vote(_signer3, number - 3UL, candidate, true),
+                new Vote(_signer3, number - 6UL, _signer2, false),
             ];
             Dictionary<Address, Tally> tally = new()
             {

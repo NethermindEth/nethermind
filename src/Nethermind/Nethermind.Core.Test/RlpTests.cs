@@ -25,6 +25,26 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void DecodeArray_rejects_more_items_than_the_limit()
+        {
+            RlpLimit limit = new(4);
+
+            byte[] atLimit = Rlp.Encode(Enumerable.Range(0, limit.Limit).Select(i => Rlp.Encode(i)).ToArray()).Bytes;
+            Assert.That(() =>
+            {
+                RlpReader reader = new(atLimit);
+                reader.DecodeArray(static (ref RlpReader c) => c.DecodeInt(), limit: limit);
+            }, Throws.Nothing);
+
+            byte[] overLimit = Rlp.Encode(Enumerable.Range(0, limit.Limit + 1).Select(i => Rlp.Encode(i)).ToArray()).Bytes;
+            Assert.That(() =>
+            {
+                RlpReader reader = new(overLimit);
+                reader.DecodeArray(static (ref RlpReader c) => c.DecodeInt(), limit: limit);
+            }, Throws.TypeOf<RlpLimitException>());
+        }
+
+        [Test]
         public void Serializing_sequences()
         {
             Rlp output = Rlp.Encode(

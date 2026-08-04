@@ -12,130 +12,117 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class Eip8037BlockGasInclusionCheckTests
 {
-    private const long CostPerStateByte = 1530;
-    private const long GasNewAccount = 120; // EIP-8037 GAS_NEW_ACCOUNT
-    private const long IntrinsicNewAccountState = GasNewAccount * CostPerStateByte;
-    private const long BaseIntrinsicRegular = 21_000;
-    private const long CreateIntrinsicRegular = 53_000;
-    private const long SStoreStateGas = 64 * CostPerStateByte; // GasCostOf.SSetState
+    private const ulong CostPerStateByte = 1530;
+    private const ulong GasNewAccount = 120; // EIP-8037 GAS_NEW_ACCOUNT
+    private const ulong IntrinsicNewAccountState = GasNewAccount * CostPerStateByte;
+    private const ulong BaseIntrinsicExecution = 21_000;
+    private const ulong CreateIntrinsicExecution = 53_000;
+    private const ulong SStoreStateGas = 64 * CostPerStateByte; // GasCostOf.SSetState
 
-    [TestCase(0L, Eip8037BlockGasInclusionCheck.Outcome.Ok, TestName = "Boundary_state_exact_fit_accepts")]
-    [TestCase(1L, Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded, TestName = "Boundary_state_exceeded_by_one_rejects_on_state_dimension")]
-    public void Boundary_state(long delta, Eip8037BlockGasInclusionCheck.Outcome expected)
+    [TestCase(0UL, Eip8037BlockGasInclusionCheck.Outcome.Ok, TestName = "Boundary_state_exact_fit_accepts")]
+    [TestCase(1UL, Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded, TestName = "Boundary_state_exceeded_by_one_rejects_on_state_dimension")]
+    public void Boundary_state(ulong delta, Eip8037BlockGasInclusionCheck.Outcome expected)
     {
-        // tx1: 50 cold SSTOREs in regular cap budget. Reproduces the spec test
-        // setup: tx1_state = num_sstores * sstore_state_gas; tx1_gas = cap + tx1_state.
+        // tx1: 50 cold SSTOREs within the execution cap; tx1_gas = cap + tx1_state (spec test setup).
         const int numSstores = 50;
-        long tx1State = numSstores * SStoreStateGas;
-        long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + tx1State + 100_000;
+        ulong tx1State = numSstores * SStoreStateGas;
+        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + tx1State + 100_000;
 
-        long cumR_afterTx1 = BaseIntrinsicRegular + 5_000;
-        long cumS_afterTx1 = tx1State;
+        ulong cumE_afterTx1 = BaseIntrinsicExecution + 5_000;
+        ulong cumS_afterTx1 = tx1State;
 
-        long stateAvailable = blockGasLimit - cumS_afterTx1;
-        long tx2Gas = BaseIntrinsicRegular + stateAvailable + delta;
+        ulong stateAvailable = blockGasLimit - cumS_afterTx1;
+        // EIP-8037: the state dimension reserves the full tx.gas (no intrinsic subtraction).
+        ulong tx2Gas = stateAvailable + delta;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            blockGasLimit, cumR_afterTx1, cumS_afterTx1, tx2Gas, BaseIntrinsicRegular, intrinsicState: 0);
+            blockGasLimit, cumE_afterTx1, cumS_afterTx1, tx2Gas);
 
         Assert.That(outcome, Is.EqualTo(expected));
     }
 
-    // Creation tx: tx.gas > regular_available but (tx.gas - intrinsic.state) fits.
+    // Regression (spec test creation_tx_execution_check_uses_full_tx_gas): the execution check
+    // reserves FULL tx.gas, rejecting even when tx.gas - intrinsic.state would have fit.
     [Test]
-    public void Creation_tx_regular_check_subtracts_intrinsic_state_accepts()
+    public void Creation_tx_execution_check_uses_full_tx_gas_rejects()
     {
-        long intrinsicState = IntrinsicNewAccountState;
-        long intrinsicRegular = CreateIntrinsicRegular;
-        long intrinsicTotal = intrinsicRegular + intrinsicState;
+        ulong intrinsicState = IntrinsicNewAccountState;
+        ulong intrinsicExecution = CreateIntrinsicExecution;
+        ulong intrinsicTotal = intrinsicExecution + intrinsicState;
 
-        // Filler consumed full cap. Remaining regular = intrinsic_regular + 1.
-        long remainingRegular = intrinsicRegular + 1;
-        long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + remainingRegular;
-        long cumR_afterFiller = blockGasLimit - remainingRegular;
-        long cumS_afterFiller = 0;
+        // Filler consumed full cap. Remaining execution = intrinsic_execution + 1.
+        ulong remainingExecution = intrinsicExecution + 1;
+        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + remainingExecution;
+        ulong cumE_afterFiller = blockGasLimit - remainingExecution;
+        ulong cumS_afterFiller = 0;
 
-        // Creation tx: tx.gas = intrinsic_total. Raw tx.gas > remaining_regular
-        // but tx.gas - intrinsic_state = intrinsic_regular <= remaining_regular.
-        long createTxGas = intrinsicTotal;
+        ulong createTxGas = intrinsicTotal;
 
-        Assert.That(createTxGas, Is.GreaterThan(remainingRegular),
-            "old formula must reject -> proves new formula behaves differently");
-        Assert.That(createTxGas - intrinsicState, Is.LessThanOrEqualTo(remainingRegular),
-            "new formula must accept");
+        Assert.That(createTxGas, Is.GreaterThan(remainingExecution),
+            "full tx.gas must exceed remaining execution so the strict check rejects");
+        Assert.That(createTxGas - intrinsicState, Is.LessThanOrEqualTo(remainingExecution),
+            "a formula subtracting intrinsic.state would have wrongly accepted");
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            blockGasLimit, cumR_afterFiller, cumS_afterFiller, createTxGas, intrinsicRegular, intrinsicState);
+            blockGasLimit, cumE_afterFiller, cumS_afterFiller, createTxGas);
 
-        Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
+        Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.ExecutionDimensionExceeded));
     }
 
-    // Single tx state contribution > block_gas_limit -> reject.
+    // Single tx whose full gas exceeds the block gas limit in the state dimension -> reject.
     [Test]
     public void Single_tx_state_check_exceeds_block_limit_rejects()
     {
-        long intrinsicRegular = BaseIntrinsicRegular;
-        long intrinsicState = 0; // plain CALL, not creation
-
-        long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100;
-        // tx.gas - intrinsic.regular > block_gas_limit
-        long txGas = blockGasLimit + intrinsicRegular + 1;
+        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100;
+        // One over state_available; execution still fits because of the EIP-7825 cap.
+        ulong txGas = blockGasLimit + 1;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            blockGasLimit, 0, 0, txGas, intrinsicRegular, intrinsicState);
+            blockGasLimit, 0, 0, txGas);
 
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded));
     }
 
-    // Creation tx state > remaining state while regular fits -> reject on state.
+    // Regression: the state check reserves the FULL tx.gas (no intrinsic.execution subtraction).
+    // Mirrors the spec test creation_tx_state_check_exceeded.
     [Test]
-    public void Creation_tx_state_check_exceeded_rejects_on_state_dimension()
+    public void Creation_tx_state_check_uses_full_tx_gas_rejects_on_state_dimension()
     {
-        long createIntrinsicState = IntrinsicNewAccountState;
-        long createIntrinsicRegular = CreateIntrinsicRegular;
-
         const int numSstores = 50;
-        long tx1State = numSstores * SStoreStateGas;
-        long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + tx1State + 100_000;
+        ulong tx1State = numSstores * SStoreStateGas;
+        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + tx1State + 100_000;
 
-        long cumR_afterTx1 = BaseIntrinsicRegular + 5_000;
-        long cumS_afterTx1 = tx1State;
-        long stateAvailable = blockGasLimit - cumS_afterTx1;
+        ulong cumE_afterTx1 = BaseIntrinsicExecution + 5_000;
+        ulong cumS_afterTx1 = tx1State;
+        ulong stateAvailable = blockGasLimit - cumS_afterTx1;
 
-        // tx2 (creation): state contribution = state_available + 1 -> reject
-        long createTxGas = createIntrinsicRegular + stateAvailable + 1;
+        // tx2 (creation): full tx.gas = state_available + 1 -> reject on the state dimension.
+        ulong createTxGas = stateAvailable + 1;
 
-        // Regular dimension check must pass so rejection is pinned to state.
-        long regularAvailable = blockGasLimit - cumR_afterTx1;
-        long worstCaseRegular = System.Math.Min(Eip7825Constants.DefaultTxGasLimitCap, createTxGas - createIntrinsicState);
-        Assert.That(worstCaseRegular, Is.LessThanOrEqualTo(regularAvailable),
-            "regular check must pass so rejection is pinned to state dimension");
+        // Execution dimension check must pass so rejection is pinned to state.
+        ulong executionAvailable = blockGasLimit - cumE_afterTx1;
+        ulong worstCaseExecution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, createTxGas);
+        Assert.That(worstCaseExecution, Is.LessThanOrEqualTo(executionAvailable),
+            "execution check must pass so rejection is pinned to state dimension");
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            blockGasLimit, cumR_afterTx1, cumS_afterTx1, createTxGas, createIntrinsicRegular, createIntrinsicState);
+            blockGasLimit, cumE_afterTx1, cumS_afterTx1, createTxGas);
 
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded));
     }
 
-    // EIP-7825 cap: regular worst-case clamped at TX_MAX_GAS_LIMIT regardless of (tx.gas - intrinsic.state).
+    // EIP-7825 cap: the execution worst-case is clamped to TX_MAX_GAS_LIMIT regardless of tx.gas,
+    // so a huge tx.gas passes the execution dimension but is rejected on the (uncapped) state one.
     [Test]
-    public void Regular_check_caps_worst_case_at_tx_max_gas_limit()
+    public void Execution_check_caps_worst_case_at_tx_max_gas_limit()
     {
-        long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100; // tiny headroom
-        long intrinsicRegular = BaseIntrinsicRegular;
-        long intrinsicState = 0;
+        ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100; // tiny headroom
 
-        // Pick tx.gas so that (tx.gas - intrinsic.state) >> TX_MAX_GAS_LIMIT but the cap
-        // brings worst-case regular back down to TX_MAX_GAS_LIMIT, which fits exactly.
-        long txGas = Eip7825Constants.DefaultTxGasLimitCap * 10;
-        long cumR = 0;
-        long cumS = 0;
+        ulong txGas = Eip7825Constants.DefaultTxGasLimitCap * 10;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            blockGasLimit, cumR, cumS, txGas, intrinsicRegular, intrinsicState);
+            blockGasLimit, 0, 0, txGas);
 
-        // Regular passes due to cap. State worst-case = txGas - intrinsicRegular which
-        // is enormous and exceeds blockGasLimit -> state dimension rejects.
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded));
     }
 
@@ -144,74 +131,25 @@ public class Eip8037BlockGasInclusionCheckTests
     {
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
             blockGasLimit: 30_000_000,
-            cumulativeBlockRegular: 0,
+            cumulativeBlockExecution: 0,
             cumulativeBlockState: 0,
-            txGas: 21_000,
-            intrinsicRegular: 21_000,
-            intrinsicState: 0);
+            txGas: 21_000);
 
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
     }
 
-    [Test]
-    public void Regular_worst_case_is_clamped_when_intrinsic_state_exceeds_tx_gas()
-    {
-        Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            blockGasLimit: 30_000_000,
-            cumulativeBlockRegular: 0,
-            cumulativeBlockState: 0,
-            txGas: 10,
-            intrinsicRegular: 5,
-            intrinsicState: 20);
-
-        Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
-    }
-
-    [Test]
-    public void Calculate_block_regular_gas_keeps_valid_transcripts_non_negative()
-    {
-        Random random = new(8037);
-        for (int i = 0; i < 2_000; i++)
-        {
-            long intrinsicRegular = random.Next(21_000, 500_000);
-            long initialRegular = random.Next(0, 5_000_000);
-            long spentRegular = random.Next(0, (int)Math.Min(initialRegular, int.MaxValue)) + (initialRegular > int.MaxValue ? random.Next(0, 2) : 0);
-            if (spentRegular > initialRegular)
-            {
-                spentRegular = initialRegular;
-            }
-
-            long stateGasSpill = random.Next(0, (int)Math.Min(spentRegular, int.MaxValue));
-            long stateGasSpillReclassified = random.Next(0, (int)Math.Min(stateGasSpill, int.MaxValue));
-            long remainingRegular = initialRegular - spentRegular;
-            long floorGas = random.Next(21_000, 200_000);
-
-            long executionRegularGasUsed = initialRegular - remainingRegular - stateGasSpill + stateGasSpillReclassified;
-            long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-                intrinsicRegular,
-                initialRegular,
-                remainingRegular,
-                stateGasSpill,
-                stateGasSpillReclassified,
-                floorGas);
-
-            Assert.That(executionRegularGasUsed, Is.GreaterThanOrEqualTo(0L));
-            Assert.That(blockRegularGas, Is.EqualTo(Math.Max(intrinsicRegular + executionRegularGasUsed, floorGas)));
-        }
-    }
-
-    [TestCase(300L, 100L, TestName = "Calculate_block_regular_gas_floor_clamps_low_regular_gas")]
-    [TestCase(0L, 0L, TestName = "Calculate_block_regular_gas_allows_negative_execution_intermediate")]
-    public void Calculate_block_regular_gas_clamps_to_floor(long initialRegular, long remainingRegular)
-    {
-        long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-            intrinsicRegularGas: 21_000,
-            initialRegularGas: initialRegular,
-            remainingRegularGas: remainingRegular,
-            stateGasSpill: 200,
-            stateGasSpillReclassified: 0,
-            floorGas: 53_000);
-
-        Assert.That(blockRegularGas, Is.EqualTo(53_000));
-    }
+    [TestCase(379_970UL, 281_520UL, 0UL, 98_450UL, TestName = "Calculate_block_execution_gas_subtracts_state_component")]
+    [TestCase(133_379UL, 97_920UL, 0UL, 35_459UL, TestName = "Calculate_block_execution_gas_subtracts_smaller_state_component")]
+    [TestCase(12_625UL, 1_566_720UL, 0UL, 0UL, TestName = "Calculate_block_execution_gas_never_negative")]
+    [TestCase(100_000UL, 60_000UL, 30_000UL, 40_000UL, TestName = "Calculate_block_execution_gas_uses_execution_gas_above_calldata_floor")]
+    [TestCase(100_000UL, 60_000UL, 50_000UL, 50_000UL, TestName = "Calculate_block_execution_gas_applies_calldata_floor_after_state_subtraction")]
+    [TestCase(12_625UL, 1_566_720UL, 21_000UL, 21_000UL, TestName = "Calculate_block_execution_gas_applies_calldata_floor_when_state_gas_dominates")]
+    public void Calculate_block_execution_gas(
+        ulong preRefundGas,
+        ulong blockStateGas,
+        ulong calldataFloor,
+        ulong expected)
+        => Assert.That(
+            Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, blockStateGas, calldataFloor),
+            Is.EqualTo(expected));
 }

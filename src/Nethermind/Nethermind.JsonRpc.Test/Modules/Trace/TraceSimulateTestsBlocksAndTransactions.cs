@@ -28,7 +28,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
         Assert.That(blockResult.Traces.Select(static c => c.BlockNumber), Is.Not.Null.And.Not.Empty);
 
     [TestCaseSource(typeof(EthRpcSimulateTestsBase), nameof(EthRpcSimulateTestsBase.GasCapSimulateCases))]
-    public async Task Test_trace_simulate_respects_gas_cap(long gasCap, long? requestGas, bool expectCapped)
+    public async Task Test_trace_simulate_respects_gas_cap(ulong gasCap, ulong? requestGas, bool expectCapped)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         chain.Container.Resolve<IJsonRpcConfig>().GasCap = gasCap;

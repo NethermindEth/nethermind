@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -49,7 +50,7 @@ namespace Nethermind.Synchronization.Reporting
 
             BeaconHeaders.SetFormat((progress) =>
             {
-                long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
+                ulong numHeadersToDownload = _pivot.PivotNumber.SaturatingSub(_pivot.PivotDestinationNumber) + 1;
                 string skipSectionStr = progress.SkippedPerSecond != -1
                     ? $"skipped {progress.SkippedPerSecond,ProgressLogger.SpeedPaddingLength:N0} Blk/s | "
                     : "";
@@ -251,7 +252,9 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            if (FullSyncBlocksDownloaded.TargetValue - FullSyncBlocksDownloaded.CurrentValue < 32)
+            // Guard against ulong wrap when CurrentValue transiently exceeds TargetValue near
+            // sync completion; the intent is "suppress logs within 32 blocks of target".
+            if (FullSyncBlocksDownloaded.CurrentValue + 32 > FullSyncBlocksDownloaded.TargetValue)
             {
                 return;
             }

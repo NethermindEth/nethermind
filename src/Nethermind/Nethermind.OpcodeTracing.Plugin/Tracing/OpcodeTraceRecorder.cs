@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
@@ -18,28 +20,28 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 /// </summary>
 public sealed class OpcodeTraceRecorder(
     IOpcodeTracingConfig config,
-    OpcodeCounter counter,
-    TraceOutputWriter outputWriter,
     IReadOnlyTxProcessingEnvFactory txProcessingEnvFactory,
-    string sessionId,
+    IBlockTree blockTree,
+    ISpecProvider specProvider,
+    IEthereumEcdsa ethereumEcdsa,
+    ISyncModeSelector syncModeSelector,
     ILogManager logManager) : IDisposable, IAsyncDisposable
 {
-    private readonly IOpcodeTracingConfig _config = config ?? throw new ArgumentNullException(nameof(config));
-    private readonly ILogger _logger = logManager?.GetClassLogger<OpcodeTraceRecorder>() ?? throw new ArgumentNullException(nameof(logManager));
-    private readonly OpcodeCounter _counter = counter ?? throw new ArgumentNullException(nameof(counter));
-    private readonly TraceOutputWriter _outputWriter = outputWriter ?? throw new ArgumentNullException(nameof(outputWriter));
-    private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory = txProcessingEnvFactory ?? throw new ArgumentNullException(nameof(txProcessingEnvFactory));
-    private readonly string _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
+    private readonly IOpcodeTracingConfig _config = config;
+    private readonly IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory = txProcessingEnvFactory;
+    private readonly ILogger _logger = logManager.GetClassLogger<OpcodeTraceRecorder>();
+    private readonly OpcodeCounter _counter = new();
+    private readonly TraceOutputWriter _outputWriter = new(logManager);
+    private readonly string _sessionId = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
 
     private TraceConfiguration? _traceConfig;
     private OpcodeBlockTracer? _blockTracer;
-    private ITracerBag? _attachedTracerBag;
     private RealTimeTracer? _realTimeTracer;
     private TracingProgress? _progress;
     private Stopwatch? _stopwatch;
     private CancellationTokenSource? _cts;
     private Task? _tracingTask;
-    private long _lastProcessedBlock;
+    private ulong _lastProcessedBlock;
     private bool _isComplete;
     private ISyncModeSelector? _syncModeSelector;
     private bool _syncModeWarningLogged;
@@ -49,17 +51,15 @@ public sealed class OpcodeTraceRecorder(
     /// <summary>
     /// Prepares the tracer for operation by validating configuration and initializing resources.
     /// </summary>
-    /// <param name="api">The Nethermind API.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public Task PrepareAsync(INethermindApi api, CancellationToken cancellationToken = default)
+    /// <exception cref="InvalidOperationException">Thrown when the tracing configuration is invalid; this aborts node startup by design.</exception>
+    public Task PrepareAsync(CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(api);
-
         try
         {
             // Get current chain tip
-            long currentChainTip = api.BlockTree?.Head?.Number ?? 0;
+            ulong currentChainTip = blockTree.Head?.Number ?? 0UL;
 
             // Parse mode for validation
             TracingMode mode = TracingMode.RealTime;
@@ -98,14 +98,14 @@ public sealed class OpcodeTraceRecorder(
             }
 
             // Validate output directory
-            if (!DirectoryHelper.ValidateWritable(_traceConfig.OutputDirectory, api.LogManager))
+            if (!DirectoryHelper.ValidateWritable(_traceConfig.OutputDirectory, logManager))
             {
                 throw new InvalidOperationException($"Output directory is not writable: {_traceConfig.OutputDirectory}");
             }
 
             // Initialize progress tracker
             _progress = new TracingProgress(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
-            _lastProcessedBlock = _traceConfig.EffectiveStartBlock - 1;
+            _lastProcessedBlock = _traceConfig.EffectiveStartBlock.SaturatingSub(1);
 
             if (_logger.IsInfo)
             {
@@ -125,59 +125,33 @@ public sealed class OpcodeTraceRecorder(
     }
 
     /// <summary>
-    /// Attaches the tracer to the block processing pipeline for real-time mode.
+    /// Attaches the tracer to the block processing pipeline for real-time mode and returns the live block tracer
+    /// to be contributed to the main processor.
     /// </summary>
-    /// <param name="api">The Nethermind API.</param>
-    public void Attach(INethermindApi api)
+    /// <returns>The RealTime block tracer.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when called before <see cref="PrepareAsync"/> succeeded, or when attachment fails.</exception>
+    public IBlockTracer AttachRealTime()
     {
-        ArgumentNullException.ThrowIfNull(api);
-
         if (_traceConfig is null)
         {
-            if (_logger.IsWarn)
-            {
-                _logger.Warn("Cannot attach tracer: configuration not prepared");
-            }
-            return;
-        }
-
-        if (_traceConfig.Mode != TracingMode.RealTime)
-        {
-            if (_logger.IsDebug)
-            {
-                _logger.Debug("Skipping tracer attachment: not in RealTime mode");
-            }
-            return;
-        }
-
-        IMainProcessingContext? processingContext = api.MainProcessingContext;
-        if (processingContext is null)
-        {
-            if (_logger.IsWarn)
-            {
-                _logger.Warn("Cannot attach tracer: processing context not available");
-            }
-            return;
+            throw new InvalidOperationException($"{nameof(AttachRealTime)} called before {nameof(PrepareAsync)} succeeded.");
         }
 
         try
         {
             // Check and log sync state - RealTime mode only captures blocks processed through the EVM
-            _syncModeSelector = api.SyncModeSelector;
-            if (_syncModeSelector is not null)
-            {
-                LogSyncStateWarning(_syncModeSelector.Current);
-                _syncModeSelector.Changed += OnSyncModeChanged;
-            }
+            _syncModeSelector = syncModeSelector;
+            LogSyncStateWarning(syncModeSelector.Current);
+            syncModeSelector.Changed += OnSyncModeChanged;
 
             // For RealTime mode with Blocks parameter, recalculate range based on current chain tip
             // This ensures we trace the NEXT N blocks from when the tracer attaches, not from init time
-            long effectiveStart = _traceConfig.EffectiveStartBlock;
-            long effectiveEnd = _traceConfig.EffectiveEndBlock;
+            ulong effectiveStart = _traceConfig.EffectiveStartBlock;
+            ulong effectiveEnd = _traceConfig.EffectiveEndBlock;
 
             if (_config.RecentBlocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
             {
-                long currentTip = api.BlockTree?.Head?.Number ?? 0;
+                ulong currentTip = blockTree.Head?.Number ?? 0UL;
                 effectiveStart = currentTip + 1;
                 effectiveEnd = currentTip + _config.RecentBlocks.Value;
 
@@ -202,11 +176,9 @@ public sealed class OpcodeTraceRecorder(
                 _traceConfig.OutputDirectory,
                 _sessionId,
                 OnBlockCompletedRealTime,
-                api.LogManager);
+                logManager);
 
             _blockTracer = new OpcodeBlockTracer(_realTimeTracer.OnBlockCompleted);
-            _attachedTracerBag = processingContext.BlockchainProcessor.Tracers;
-            _attachedTracerBag.Add(_blockTracer);
 
             _stopwatch = Stopwatch.StartNew();
 
@@ -214,6 +186,8 @@ public sealed class OpcodeTraceRecorder(
             {
                 _logger.Info($"Opcode tracing attached to block processor (RealTime mode, session={_sessionId})");
             }
+
+            return _blockTracer;
         }
         catch (Exception ex)
         {
@@ -286,12 +260,9 @@ public sealed class OpcodeTraceRecorder(
     /// <summary>
     /// Executes retrospective tracing asynchronously.
     /// </summary>
-    /// <param name="api">The Nethermind API.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public Task ExecuteTracingAsync(INethermindApi api)
+    public Task ExecuteTracingAsync()
     {
-        ArgumentNullException.ThrowIfNull(api);
-
         if (_traceConfig is null || _progress is null)
         {
             if (_logger.IsError)
@@ -315,32 +286,22 @@ public sealed class OpcodeTraceRecorder(
 
         _tracingTask = Task.Run(async () =>
         {
-            long[]? skippedBlocks = null;
+            ulong[]? skippedBlocks = null;
 
             try
             {
-                IBlockTree? blockTree = api.BlockTree;
-                if (blockTree is null)
-                {
-                    if (_logger.IsError)
-                    {
-                        _logger.Error("BlockTree is not available");
-                    }
-                    return;
-                }
-
                 BlockRange range = new(_traceConfig.EffectiveStartBlock, _traceConfig.EffectiveEndBlock);
 
                 if (_traceConfig.Mode == TracingMode.RetrospectiveExecution)
                 {
                     RetrospectiveExecutionTracer executionTracer = new(
                         blockTree,
-                        api.SpecProvider!,
+                        specProvider,
                         _txProcessingEnvFactory,
-                        api.EthereumEcdsa!,
+                        ethereumEcdsa,
                         _counter,
                         _traceConfig.MaxDegreeOfParallelism,
-                        api.LogManager);
+                        logManager);
 
                     if (_logger.IsInfo)
                     {
@@ -349,7 +310,7 @@ public sealed class OpcodeTraceRecorder(
 
                     await executionTracer.TraceBlockRangeAsync(range, _progress, _cts.Token).ConfigureAwait(false);
 
-                    long[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
+                    ulong[] skippedSnapshot = [.. executionTracer.SkippedBlocks];
                     if (skippedSnapshot.Length > 0)
                     {
                         Array.Sort(skippedSnapshot);
@@ -363,7 +324,7 @@ public sealed class OpcodeTraceRecorder(
                 else
                 {
                     // Use RetrospectiveTracer for static bytecode analysis
-                    RetrospectiveTracer tracer = new(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, api.LogManager);
+                    RetrospectiveTracer tracer = new(blockTree, _counter, _traceConfig.MaxDegreeOfParallelism, logManager);
 
                     if (_logger.IsInfo)
                     {
@@ -406,7 +367,7 @@ public sealed class OpcodeTraceRecorder(
         return _tracingTask;
     }
 
-    private void OnBlockCompletedRealTime(long blockNumber)
+    private void OnBlockCompletedRealTime(ulong blockNumber)
     {
         _lastProcessedBlock = blockNumber;
         _progress?.UpdateProgress(blockNumber);
@@ -424,7 +385,7 @@ public sealed class OpcodeTraceRecorder(
         }
     }
 
-    private async Task WriteOutputAsync(long[]? skippedBlocks = null)
+    private async Task WriteOutputAsync(ulong[]? skippedBlocks = null)
     {
         if (_traceConfig is null)
         {
@@ -476,19 +437,10 @@ public sealed class OpcodeTraceRecorder(
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     /// <summary>
-    /// Asynchronously disposes of the tracer resources.
+    /// Asynchronously disposes of the tracer resources. Idempotent: each resource is released once and nulled out.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        // Detach the block tracer from the blockchain processor so it stops receiving events and
-        // can be garbage-collected along with the recorder.
-        if (_attachedTracerBag is not null && _blockTracer is not null)
-        {
-            _attachedTracerBag.Remove(_blockTracer);
-            _attachedTracerBag = null;
-            _blockTracer = null;
-        }
-
         // Unsubscribe from sync mode changes
         if (_syncModeSelector is not null)
         {

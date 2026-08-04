@@ -2,7 +2,6 @@
 
 testing_buildBlockV1/build-block-empty-transactions (nethermind)
 testing_buildBlockV1/build-block-with-transactions (nethermind)
-eth_capabilities/get-capabilities (nethermind)
 
 # graphql
 

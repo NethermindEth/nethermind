@@ -51,7 +51,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry
@@ -85,7 +85,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _ => "Error"
     };
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
         if (_traceEntry is null) return;
 
@@ -188,21 +188,21 @@ public class StateTestTxTracer : ITxTracer, IDisposable
 
     public void ReportStorageRead(in StorageCell storageCell) => throw new NotImplementedException();
 
-    public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
+    public void ReportAction(ulong gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
 
     public void ReportActionError(EvmExceptionType exceptionType) => throw new NotSupportedException();
 
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new NotSupportedException();
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new NotSupportedException();
 
     public void ReportBlockHash(Hash256 blockHash) => throw new NotImplementedException();
 
     public void ReportByteCode(ReadOnlyMemory<byte> byteCode) => throw new NotSupportedException();
 
-    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
     }
 
@@ -212,7 +212,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
 
     public void ReportRefund(long refund) => _traceEntry.Refund = (int)refund;
 
-    public void ReportExtraGasPressure(long extraGasPressure) => throw new NotImplementedException();
+    public void ReportExtraGasPressure(ulong extraGasPressure) => throw new NotImplementedException();
 
     public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => throw new NotImplementedException();
 
