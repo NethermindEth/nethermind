@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade.Find;
 
@@ -21,13 +22,14 @@ namespace Nethermind.Facade.Find;
 /// </summary>
 public class IndexedLogFinder(
     IBlockFinder blockFinder,
-    IReceiptFinder receiptFinder,
+    [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     IReceiptStorage receiptStorage,
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
     ILogIndexStorage logIndexStorage,
-    int minBlocksToUseIndex = 32)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery)
+    int minBlocksToUseIndex = 32,
+    IReceiptConfig? receiptConfig = null)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
 

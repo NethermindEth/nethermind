@@ -62,11 +62,11 @@ namespace Nethermind.Core
         // receipts root or block hashes. They are surfaced solely in the diagnostic
         // JSON dump (BlockTraceDumper) to aid investigation of EIP-7778/EIP-8037
         // gas-accounting issues.
-        /// <summary>EIP-7778 pre-refund gas used by block-level gas accounting (regular dim).</summary>
+        /// <summary>EIP-7778 pre-refund gas used by block-level gas accounting (execution dim).</summary>
         public ulong BlockGasUsed { get; set; }
         /// <summary>EIP-8037 state-dim gas (storage / state-mutating ops) used by block accounting.</summary>
         public ulong StorageGasUsed { get; set; }
-        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas).</summary>
+        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas). Not the EIP-8037 execution-dimension block-accounting figure — see <see cref="BlockGasUsed"/>.</summary>
         public ulong ExecutionGasUsed { get; set; }
         /// <summary>Effective gas price after EIP-1559 baseFee adjustment - computed at receipt-build time.</summary>
         public UInt256 EffectiveGasPrice { get; set; }
