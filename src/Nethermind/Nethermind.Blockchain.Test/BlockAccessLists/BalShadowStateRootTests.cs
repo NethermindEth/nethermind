@@ -9,7 +9,6 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
@@ -119,7 +118,11 @@ public class BalShadowStateRootTests
             genesisSetup: static stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
             canonicalRootOverride: TestItem.KeccakF);
 
-        Assert.That(result.MismatchDelta, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.MismatchDelta, Is.EqualTo(1));
+            Assert.That(result.ComparisonsDelta, Is.EqualTo(1), "a mismatch still counts as a completed comparison");
+        }
     }
 
     [Test]
@@ -135,6 +138,7 @@ public class BalShadowStateRootTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.MismatchDelta, Is.Zero);
+            Assert.That(result.ComparisonsDelta, Is.Zero, "no comparison may be counted when the flag is off");
             Assert.That(result.Errors, Is.Empty);
             Assert.That(countingFactory.CreateCalls, Is.Zero, "the shadow env must not even be created when the flag is off");
         }
@@ -151,6 +155,8 @@ public class BalShadowStateRootTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.MismatchDelta, Is.Zero);
+            Assert.That(result.ComparisonsDelta, Is.Zero, "a failed attempt must not count as a comparison");
+            Assert.That(result.FailuresDelta, Is.EqualTo(1), "the failure must be observable in metrics, not just the log");
             Assert.That(result.Errors, Has.One.Contains("shadow state root computation failed"));
         }
     }
@@ -177,7 +183,7 @@ public class BalShadowStateRootTests
         Assert.That(result.MismatchDelta, Is.EqualTo(1), "the corrupt BAL must surface as a mismatch report, not a crash");
     }
 
-    private sealed record ShadowRunResult(long MismatchDelta, List<string> Errors);
+    private sealed record ShadowRunResult(long MismatchDelta, long ComparisonsDelta, long FailuresDelta, List<string> Errors);
 
     /// <summary>Captures error log lines including exception details, so scenario asserts can
     /// prove the shadow actually ran instead of silently swallowing a failure.</summary>
@@ -213,6 +219,7 @@ public class BalShadowStateRootTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Errors, Is.Empty, "the shadow run must complete without errors");
+            Assert.That(result.ComparisonsDelta, Is.EqualTo(1), "the shadow must actually compute and compare a root");
             Assert.That(result.MismatchDelta, Is.Zero, "shadow root must match the canonical BAL-applied root");
         }
     }
@@ -279,8 +286,14 @@ public class BalShadowStateRootTests
         block.Header.StateRoot = canonicalRootOverride ?? stateProvider.StateRoot;
 
         long mismatchesBefore = Evm.Metrics.BalShadowRootMismatches;
+        long comparisonsBefore = Evm.Metrics.BalShadowRootComparisons;
+        long failuresBefore = Evm.Metrics.BalShadowRootFailures;
         Assert.DoesNotThrow(() => balManager.RunShadowStateRootComparison(block));
-        return new ShadowRunResult(Evm.Metrics.BalShadowRootMismatches - mismatchesBefore, capturingLogger.Errors);
+        return new ShadowRunResult(
+            Evm.Metrics.BalShadowRootMismatches - mismatchesBefore,
+            Evm.Metrics.BalShadowRootComparisons - comparisonsBefore,
+            Evm.Metrics.BalShadowRootFailures - failuresBefore,
+            capturingLogger.Errors);
     }
 
     private static (TrieStore trieStore, IDb codeDb) CreateSharedStore()

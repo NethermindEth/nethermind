@@ -104,6 +104,24 @@ public class BalPostStateTests
         Assert.That(post, Is.EqualTo(new Account(7, 1, Keccak.EmptyTreeHash, CodeHash)));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Null_code_change_counts_as_no_code(bool eip158)
+    {
+        // CodeChange.CodeHash is the zero hash for null code; Compute must normalize it to
+        // Keccak.OfAnEmptyString so the EIP-158 empty check still fires on a swept account.
+        Account parent = new(0, 100);
+        ReadOnlyAccountChanges changes = Changes(
+            balanceChanges: [new BalanceChange(1, UInt256.Zero)],
+            codeChanges: [new CodeChange(1, null!)]);
+
+        Account? post = BalPostState.Compute(parent, changes, Spec(eip158));
+
+        Assert.That(post, eip158
+            ? Is.Null
+            : Is.EqualTo(new Account(0, UInt256.Zero, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString)));
+    }
+
     [Test]
     public void Balance_only_change_keeps_parent_storage_root()
     {

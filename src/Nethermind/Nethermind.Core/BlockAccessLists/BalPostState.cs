@@ -39,7 +39,12 @@ public static class BalPostState
 
         UInt256 balance = hasBalanceChange ? changes.BalanceChanges[^1].Value : parent?.Balance ?? UInt256.Zero;
         ulong nonce = hasNonceChange ? changes.NonceChanges[^1].Value : parent?.Nonce ?? 0;
-        Hash256 codeHash = hasCodeChange ? new Hash256(changes.CodeChanges[^1].CodeHash) : parent?.CodeHash ?? Keccak.OfAnEmptyString;
+        // CodeChange.CodeHash is the zero hash (not Keccak.OfAnEmptyString) when Code is null;
+        // normalize so null and empty code agree on "no code" — otherwise a null-code change would
+        // dodge the EIP-158 empty check below and diverge from the canonical InsertCode path.
+        Hash256 codeHash = hasCodeChange
+            ? changes.CodeChanges[^1].Code is null ? Keccak.OfAnEmptyString : new Hash256(changes.CodeChanges[^1].CodeHash)
+            : parent?.CodeHash ?? Keccak.OfAnEmptyString;
 
         // EIP-158: a touched, totally empty account (zero nonce, zero balance, no code) must be
         // absent from the post-block state.

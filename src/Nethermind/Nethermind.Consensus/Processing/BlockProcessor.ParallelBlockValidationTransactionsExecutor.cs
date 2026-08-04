@@ -38,10 +38,13 @@ public partial class BlockProcessor
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
 
-        // BalRootReadyLagTime tracking: Stopwatch timestamps of "all tx workers finished" and
-        // "BAL apply produced the root", captured per block only when detailed metrics are on.
-        private long _balRemainingTxWorkers;
-        private long _balWorkersDrainedAt;
+        // BalRootReadyLagTime tracking: per-tx completion Stopwatch timestamps (each slot is written
+        // by exactly one worker, so the stores are contention-free; the drain point is their max,
+        // taken after the parallel loop joins) plus the timestamp of "BAL apply produced the root".
+        // ExecutionMetricsFlag is a compile-time switch (NO_EXEC_METRICS), so in default builds this
+        // always runs; the per-tx cost is a single plain store.
+        private long[] _balTxFinishedAt = [];
+        private long _balTrackingStartAt;
         private long _balRootReadyAt;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -133,7 +136,7 @@ public partial class BlockProcessor
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
-            ResetBalRootLagTracking(len);
+            ResetBalRootLagTracking();
 
             try
             {
@@ -207,7 +210,7 @@ public partial class BlockProcessor
                                     throw;
                                 }
 
-                                state.self.OnBalTxWorkerFinished();
+                                state.self.OnBalTxWorkerFinished(txIndex);
                                 return state;
                             }
                             finally
@@ -242,7 +245,7 @@ public partial class BlockProcessor
                 }
 
                 incrementalValidation.GetResult();
-                ReportBalRootReadyLag();
+                ReportBalRootReadyLag(len);
                 return CombineReceipts(receiptsTracers, len);
             }
             finally
@@ -255,22 +258,18 @@ public partial class BlockProcessor
             }
         }
 
-        private void ResetBalRootLagTracking(int txCount)
+        private void ResetBalRootLagTracking()
         {
             if (!ExecutionMetricsFlag.IsActive) return;
             Volatile.Write(ref _balRootReadyAt, 0);
-            Volatile.Write(ref _balRemainingTxWorkers, txCount);
             // With no tx workers the drain point is the start of the parallel loop.
-            Volatile.Write(ref _balWorkersDrainedAt, txCount == 0 ? Stopwatch.GetTimestamp() : 0);
+            _balTrackingStartAt = Stopwatch.GetTimestamp();
         }
 
-        private void OnBalTxWorkerFinished()
+        private void OnBalTxWorkerFinished(int txIndex)
         {
             if (!ExecutionMetricsFlag.IsActive) return;
-            if (Interlocked.Decrement(ref _balRemainingTxWorkers) == 0)
-            {
-                Volatile.Write(ref _balWorkersDrainedAt, Stopwatch.GetTimestamp());
-            }
+            _balTxFinishedAt[txIndex] = Stopwatch.GetTimestamp();
         }
 
         private void OnBalRootReady()
@@ -279,12 +278,20 @@ public partial class BlockProcessor
             Volatile.Write(ref _balRootReadyAt, Stopwatch.GetTimestamp());
         }
 
-        private void ReportBalRootReadyLag()
+        private void ReportBalRootReadyLag(int txCount)
         {
             if (!ExecutionMetricsFlag.IsActive) return;
             long rootReadyAt = Volatile.Read(ref _balRootReadyAt);
-            long workersDrainedAt = Volatile.Read(ref _balWorkersDrainedAt);
-            if (rootReadyAt == 0 || workersDrainedAt == 0) return;
+            if (rootReadyAt == 0) return;
+            // Only reached when every tx worker completed, so all txCount slots carry this block's
+            // timestamps; the parallel-loop join ordered those stores before these reads.
+            long workersDrainedAt = _balTrackingStartAt;
+            long[] txFinishedAt = _balTxFinishedAt;
+            for (int i = 0; i < txCount; i++)
+            {
+                if (txFinishedAt[i] > workersDrainedAt) workersDrainedAt = txFinishedAt[i];
+            }
+
             Metrics.IncrementBalRootReadyLagTime(
                 rootReadyAt > workersDrainedAt ? Stopwatch.GetElapsedTime(workersDrainedAt, rootReadyAt).Ticks : 0);
         }
@@ -305,6 +312,7 @@ public partial class BlockProcessor
             Array.Resize(ref _gasResultPool, newLength);
             Array.Resize(ref _txExecutionOrder, newLength);
             Array.Resize(ref _txExecutionSortKeys, newLength);
+            Array.Resize(ref _balTxFinishedAt, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
                 _receiptsTracerPool[i] = new BlockReceiptsTracer(true);

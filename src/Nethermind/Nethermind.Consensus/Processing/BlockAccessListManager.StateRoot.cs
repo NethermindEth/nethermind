@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -26,16 +27,36 @@ namespace Nethermind.Consensus.Processing;
 public partial class BlockAccessListManager
 {
     private IReadOnlyTxProcessorSource? _shadowRootEnv;
+    // Serializes background shadow runs: _shadowRootEnv is a single reusable env, and back-to-back
+    // blocks could otherwise overlap on it.
+    private readonly Lock _shadowRootLock = new();
 
     /// <summary>
-    /// When shadow mode is enabled on the parallel BAL path, recomputes the state root from the
-    /// suggested BAL on a parent-state env and compares it with <see cref="Block.StateRoot"/>.
+    /// When shadow mode is enabled on the parallel BAL path, queues a background recomputation of
+    /// the state root from the suggested BAL on a parent-state env, compared with
+    /// <see cref="Block.StateRoot"/>.
     /// </summary>
     /// <remarks>
-    /// Never throws: mismatches bump <c>Metrics.BalShadowRootMismatches</c> and log an error;
-    /// unexpected failures are logged and swallowed so the canonical pipeline is unaffected.
-    /// Internal for tests.
+    /// Runs off the block-processing thread so a shadow-enabled node does not add state-root and GC
+    /// work to <c>newPayload</c> latency — the same nodes report the <c>BalApplyTime</c> /
+    /// <c>BalStateRootTime</c> / <c>BalRootReadyLagTime</c> baselines this PR introduces. The gates
+    /// and the parent root are captured synchronously; the queued work never throws.
     /// </remarks>
+    private void QueueShadowStateRootComparison(Block block)
+    {
+        if (!blocksConfig.ParallelBalStateRootShadow || !ParallelExecutionEnabled)
+        {
+            return;
+        }
+
+        Hash256? parentStateRoot = _parentStateRoot;
+        ThreadPool.UnsafeQueueUserWorkItem(
+            static state => state.self.RunShadowStateRootComparisonCore(state.block, state.parentStateRoot),
+            (self: this, block, parentStateRoot),
+            preferLocal: false);
+    }
+
+    /// <summary>Synchronous shadow comparison for the current block; internal for tests.</summary>
     internal void RunShadowStateRootComparison(Block block)
     {
         if (!blocksConfig.ParallelBalStateRootShadow || !ParallelExecutionEnabled)
@@ -43,8 +64,18 @@ public partial class BlockAccessListManager
             return;
         }
 
+        RunShadowStateRootComparisonCore(block, _parentStateRoot);
+    }
+
+    /// <summary>
+    /// Never throws: completed comparisons bump <c>Metrics.BalShadowRootComparisons</c> (the soak's
+    /// positive signal — "0 mismatches" is meaningless while this stays 0), mismatches bump
+    /// <c>Metrics.BalShadowRootMismatches</c>, and unexpected failures bump
+    /// <c>Metrics.BalShadowRootFailures</c> and are swallowed so the canonical pipeline is unaffected.
+    /// </summary>
+    private void RunShadowStateRootComparisonCore(Block block, Hash256? parentStateRoot)
+    {
         ReadOnlyBlockAccessList? bal = block.BlockAccessList;
-        Hash256? parentStateRoot = _parentStateRoot;
         Hash256? canonicalRoot = block.StateRoot;
         if (bal is null || parentStateRoot is null || canonicalRoot is null)
         {
@@ -59,21 +90,33 @@ public partial class BlockAccessListManager
 
         try
         {
-            _shadowRootEnv ??= readOnlyTxProcessingEnvFactory.Create();
-            using IReadOnlyTxProcessingScope scope = _shadowRootEnv.Build(CreateParentStateHeader(block, parentStateRoot));
-            Hash256 shadowRoot = ComputeShadowStateRoot(bal, scope.WorldState, specProvider.GetSpec(block.Header));
+            Hash256 shadowRoot;
+            lock (_shadowRootLock)
+            {
+                _shadowRootEnv ??= readOnlyTxProcessingEnvFactory.Create();
+                using IReadOnlyTxProcessingScope scope = _shadowRootEnv.Build(CreateParentStateHeader(block, parentStateRoot));
+                shadowRoot = ComputeShadowStateRoot(bal, scope.WorldState, specProvider.GetSpec(block.Header));
+            }
+
+            Evm.Metrics.IncrementBalShadowRootComparisons();
             if (shadowRoot != canonicalRoot)
             {
-                Evm.Metrics.IncrementBalShadowRootMismatches();
-                if (_logger.IsError) _logger.Error($"BAL shadow state root mismatch for block {block.Number} ({block.Hash}): shadow {shadowRoot}, canonical {canonicalRoot}.");
+                long mismatches = Evm.Metrics.IncrementBalShadowRootMismatches();
+                if (ShouldLogShadowIssue(mismatches) && _logger.IsError) _logger.Error($"BAL shadow state root mismatch for block {block.Number} ({block.Hash}): shadow {shadowRoot}, canonical {canonicalRoot}.");
             }
         }
         catch (Exception ex)
         {
             // Shadow mode is diagnostics only: report and continue, never fail the block.
-            if (_logger.IsError) _logger.Error($"BAL shadow state root computation failed for block {block.Number} ({block.Hash}).", ex);
+            long failures = Evm.Metrics.IncrementBalShadowRootFailures();
+            if (ShouldLogShadowIssue(failures) && _logger.IsError) _logger.Error($"BAL shadow state root computation failed for block {block.Number} ({block.Hash}).", ex);
         }
     }
+
+    /// <summary>First occurrences always log, then sampled — the counters carry the totals, and a
+    /// sustained per-block issue (e.g. peer-fed blocks with bogus header roots) must not flood the
+    /// error log.</summary>
+    private static bool ShouldLogShadowIssue(long count) => count <= 10 || (count & 127) == 0;
 
     /// <summary>
     /// Bulk-applies the BAL's post-block values (account fields via <see cref="BalPostState"/>,

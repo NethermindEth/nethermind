@@ -374,7 +374,7 @@ public class Metrics
         Interlocked.Add(ref IsBlockProcessingThread ? ref _mainBalStateRootTime.Value : ref _otherBalStateRootTime.Value, ticks);
     }
 
-    [Description("Wall-clock time from the last parallel BAL validation worker finishing to the BAL-applied state root being ready; 0 when the root was ready first (ticks).")]
+    [Description("Wall-clock time from the last parallel transaction execution worker finishing to the BAL-applied state root being ready; 0 when the root was ready first (ticks).")]
     public static long BalRootReadyLagTime => _mainBalRootReadyLagTime.Value + _otherBalRootReadyLagTime.Value;
     private static CacheLinePaddedLong _mainBalRootReadyLagTime;
     private static CacheLinePaddedLong _otherBalRootReadyLagTime;
@@ -385,11 +385,23 @@ public class Metrics
         Interlocked.Add(ref IsBlockProcessingThread ? ref _mainBalRootReadyLagTime.Value : ref _otherBalRootReadyLagTime.Value, ticks);
     }
 
+    private static long _balShadowRootComparisons;
+    [CounterMetric]
+    [Description("Number of blocks where the shadow BAL-applied state root was actually computed and compared against the canonical post-block state root.")]
+    public static long BalShadowRootComparisons => _balShadowRootComparisons;
+    internal static long IncrementBalShadowRootComparisons() => Interlocked.Increment(ref _balShadowRootComparisons);
+
     private static long _balShadowRootMismatches;
     [CounterMetric]
     [Description("Number of blocks where the shadow BAL-applied state root diverged from the canonical post-block state root.")]
     public static long BalShadowRootMismatches => _balShadowRootMismatches;
-    internal static void IncrementBalShadowRootMismatches() => Interlocked.Increment(ref _balShadowRootMismatches);
+    internal static long IncrementBalShadowRootMismatches() => Interlocked.Increment(ref _balShadowRootMismatches);
+
+    private static long _balShadowRootFailures;
+    [CounterMetric]
+    [Description("Number of shadow BAL state-root attempts that failed with an exception before producing a comparison.")]
+    public static long BalShadowRootFailures => _balShadowRootFailures;
+    internal static long IncrementBalShadowRootFailures() => Interlocked.Increment(ref _balShadowRootFailures);
 
     [GaugeMetric]
     [Description("The number of tasks currently scheduled in the background.")]
