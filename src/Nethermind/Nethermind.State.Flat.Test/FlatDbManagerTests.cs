@@ -223,7 +223,8 @@ public class FlatDbManagerTests
         await using FlatDbManager manager = CreateManager();
         manager.AddSnapshot(snapshot, transientResource);
 
-        _resourcePool.Received(1).ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+        // The final lease release returns the resource to the pool it was checked out from.
+        Assert.That(realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing), Is.SameAs(transientResource));
         _snapshotRepository.DidNotReceive().SetLastCommittedStateId(Arg.Any<StateId>());
     }
 
