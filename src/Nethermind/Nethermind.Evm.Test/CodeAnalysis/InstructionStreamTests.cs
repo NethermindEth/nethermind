@@ -466,6 +466,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static IEnumerable<TestCaseData> FusedConstOutputCases()
     {
         yield return FusedConstOutputCase("Add", Instruction.ADD, FusedOpcode.Add, 37, 19);
+        yield return FusedConstOutputCase("AddPush32MaxValue", Instruction.ADD, FusedOpcode.Add, UInt256.One, UInt256.MaxValue);
         yield return FusedConstOutputCase("Sub", Instruction.SUB, FusedOpcode.Sub, 17, 43);
         yield return FusedConstOutputCase("Mul", Instruction.MUL, FusedOpcode.Mul, 11, 13);
         yield return FusedConstOutputCase("Div", Instruction.DIV, FusedOpcode.Div, 7, 91);
@@ -478,6 +479,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return FusedConstOutputCase("SGt", Instruction.SGT, FusedOpcode.SGt, 23, 79);
         yield return FusedConstOutputCase("Shl255", Instruction.SHL, FusedOpcode.Shl, UInt256.One, 255);
         yield return FusedConstOutputCase("Shl256", Instruction.SHL, FusedOpcode.Shl, UInt256.One, 256, new byte[] { 0, 1, 0 });
+        yield return FusedConstOutputCase("ShlHighLimbAmount", Instruction.SHL, FusedOpcode.Shl, UInt256.One, UInt256.One << 64);
         yield return FusedConstOutputCase("Shr255", Instruction.SHR, FusedOpcode.Shr, UInt256.One << 255, 255);
         yield return FusedConstOutputCase("Shr256", Instruction.SHR, FusedOpcode.Shr, UInt256.One << 255, 256, new byte[] { 0, 1, 0 });
     }
