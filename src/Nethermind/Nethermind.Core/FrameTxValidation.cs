@@ -38,6 +38,8 @@ public static class FrameTxValidation
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
+    public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
+    public const string MalformedNonceKeySet = "malformed nonce key set";
 
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {

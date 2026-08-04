@@ -1380,25 +1380,29 @@ public class FrameTxProcessorTests
             "the legacy key owes no first-use surcharge");
     }
 
-    // EIP-8250 L174/L269: a payment approve's effects — payer and nonce consumption — are journaled outside the EIP-8141 atomic-batch snapshot, so an approval taken before a batch survives that batch unrolling.
+    // EIP-8250 "Nonce consumption": approval effects are journaled outside the atomic-batch snapshot,
+    // so a payment approval taken inside a batch survives the batch unrolling and the transaction still
+    // has a payer. The pre-8250 envelope keeps EIP-8141's unroll (see the sibling test above).
     [Test]
-    public void Execute_AtomicBatch_KeyedPaymentApprovalBeforeFailedBatch_SurvivesTheUnroll()
+    public void Execute_AtomicBatch_KeyedPaymentApprovalInsideFailedBatch_SurvivesTheUnroll()
     {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
+        DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
         UInt256[] keys = [1, 7];
 
         Transaction tx = FrameTx(nonce: 0,
-            SelfVerifyFrame(),
-            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Recipient),
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag), target: Observer),
             Frame(TxFrame.ModeSender, target: Recipient));
         tx.NonceKeys = keys;
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True, "the payer approved before the batch survives its unroll");
+        Assert.That(result.TransactionExecuted, Is.True, "the payer recorded inside the batch survives the unroll");
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(_stateProvider.GetBalance(Observer), Is.LessThan(1.Ether), "the sponsor is charged");
             Assert.That(_stateProvider.GetNonce(Sender), Is.Zero, "a keyed transaction leaves the account nonce alone");
             foreach (UInt256 key in keys)
             {
@@ -1418,19 +1422,25 @@ public class FrameTxProcessorTests
         _stateProvider.CommitTree(0);
         UInt256[] keys = [1, 7];
 
+        Transaction firstUse = SelfSignedSelfVerifyTx(nonce: 0, keys);
+        FrameTxValidation.TryCalculateGasBudget(firstUse, Spec, out ulong firstUseIntrinsic, out _, out _);
         CallOutputTracer firstUseTracer = new();
-        Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 0, keys), tracer: firstUseTracer).TransactionExecuted, Is.True);
+        Assert.That(Process(firstUse, tracer: firstUseTracer).TransactionExecuted, Is.True);
         foreach (UInt256 key in keys)
         {
             Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
                 Is.EqualTo(UInt256.One));
         }
-
-        CallOutputTracer reuseTracer = new();
-        Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 1, keys), tracer: reuseTracer).TransactionExecuted, Is.True);
-        Assert.That(firstUseTracer.GasSpent - reuseTracer.GasSpent,
+        Assert.That((long)firstUseTracer.GasSpent - (long)firstUseIntrinsic,
             Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas),
             "the default-code approval owes the surcharge the APPROVE opcode charges");
+
+        Transaction reuse = SelfSignedSelfVerifyTx(nonce: 1, keys);
+        FrameTxValidation.TryCalculateGasBudget(reuse, Spec, out _, out ulong reuseFloor, out _);
+        CallOutputTracer reuseTracer = new();
+        Assert.That(Process(reuse, tracer: reuseTracer).TransactionExecuted, Is.True);
+        Assert.That(reuseTracer.GasSpent, Is.EqualTo(reuseFloor),
+            "a reused key adds no frame gas, so the transaction owes only its floor");
     }
 
     /// <summary>A codeless-sender self-verify transaction carrying the canonical-hash signature default code requires at index 0.</summary>
