@@ -539,6 +539,48 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         };
     }
 
+    private static IEnumerable<TestCaseData> FixedGasPairOpCodeCountCases()
+    {
+        yield return FixedGasPairOpCodeCountCase(
+            "PopPopSuccess",
+            [(byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP],
+            FusedOpcode.PopPop,
+            5);
+        yield return FixedGasPairOpCodeCountCase(
+            "PopPopFirstOperationUnderflow",
+            [(byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP],
+            FusedOpcode.PopPop,
+            1);
+        yield return FixedGasPairOpCodeCountCase(
+            "PopPopSecondOperationUnderflow",
+            [(byte)Instruction.PUSH0, (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP],
+            FusedOpcode.PopPop,
+            3);
+        yield return FixedGasPairOpCodeCountCase(
+            "SwapPopSuccess",
+            [(byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.SWAP1, (byte)Instruction.POP, (byte)Instruction.STOP],
+            FusedOpcode.SwapPop,
+            5);
+        yield return FixedGasPairOpCodeCountCase(
+            "SwapPopFirstOperationUnderflow",
+            [(byte)Instruction.PUSH0, (byte)Instruction.SWAP1, (byte)Instruction.POP, (byte)Instruction.STOP],
+            FusedOpcode.SwapPop,
+            2);
+        yield return FixedGasPairOpCodeCountCase(
+            "AndIsZeroSuccess",
+            [(byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.SWAP1, (byte)Instruction.AND, (byte)Instruction.ISZERO, (byte)Instruction.STOP],
+            FusedOpcode.AndIsZero,
+            6);
+        yield return FixedGasPairOpCodeCountCase(
+            "AndIsZeroFirstOperationUnderflow",
+            [(byte)Instruction.PUSH0, (byte)Instruction.JUMPDEST, (byte)Instruction.AND, (byte)Instruction.ISZERO, (byte)Instruction.STOP],
+            FusedOpcode.AndIsZero,
+            3);
+    }
+
+    private static TestCaseData FixedGasPairOpCodeCountCase(string name, byte[] code, byte expectedFusedOpcode, int expectedOpCodeCount)
+        => new(code, expectedFusedOpcode, expectedOpCodeCount) { TestName = name };
+
     private static byte[] BuildSwapPopCode(int swapDepth, bool succeeds)
     {
         List<byte> code = [];
@@ -655,6 +697,27 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
+    [TestCaseSource(nameof(FixedGasPairOpCodeCountCases))]
+    public void StreamInterpreter_FusedFixedGasPair_OpCodeCountMatchesByteCodeLoop(byte[] code, byte expectedFusedOpcode, int expectedOpCodeCount)
+    {
+        AssertFusedOpcode(code, expectedFusedOpcode);
+
+        RunWithInterpreter(code, useStream: false);
+        int byteCodeOpCodeCount = Machine.OpCodeCount;
+
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        RunWithInterpreter(code, useStream: true);
+        int streamOpCodeCount = Machine.OpCodeCount;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(byteCodeOpCodeCount, Is.EqualTo(expectedOpCodeCount), "the bytecode loop precondition must count exactly the completed operations");
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), "the stream interpreter did not engage for the opcode-count differential");
+            Assert.That(streamOpCodeCount, Is.EqualTo(byteCodeOpCodeCount), "the fused pair must count exactly the operations the bytecode loop completed");
+        }
+    }
+
     [TestCaseSource(nameof(FusedPairCancellationCases))]
     public void StreamInterpreter_FusedPair_PreservesCancellationCadence(Instruction first, Instruction second, int stackDepth, bool shouldCancel, byte expectedFusedOpcode)
     {
@@ -662,12 +725,12 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         AssertFusedOpcode(code, expectedFusedOpcode);
 
         PollingCancellationTracer byteCodeTracer = new();
-        AssertCancellationOutcome(code, useStream: false, shouldCancel, byteCodeTracer);
+        int byteCodeOpCodeCount = AssertCancellationOutcome(code, useStream: false, shouldCancel, byteCodeTracer);
 
         Setup();
         long framesBefore = StreamInterpreter.FramesExecuted;
         PollingCancellationTracer streamTracer = new();
-        AssertCancellationOutcome(code, useStream: true, shouldCancel, streamTracer);
+        int streamOpCodeCount = AssertCancellationOutcome(code, useStream: true, shouldCancel, streamTracer);
 
         using (Assert.EnterMultipleScope())
         {
@@ -677,6 +740,10 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
                 "the stream interpreter did not engage — this cancellation regression proved nothing");
             Assert.That(streamTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1),
                 "the fused pair must preserve the bytecode loop's cancellation-poll ordering");
+            Assert.That(byteCodeOpCodeCount, Is.EqualTo(shouldCancel ? 0 : 1024),
+                "the bytecode loop must publish completed operations unless cancellation interrupts the frame");
+            Assert.That(streamOpCodeCount, Is.EqualTo(byteCodeOpCodeCount),
+                "the stream must retain the bytecode loop's externally visible cancellation count");
         }
     }
 
@@ -707,12 +774,14 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         return code;
     }
 
-    private void AssertCancellationOutcome(byte[] code, bool useStream, bool shouldCancel, Evm.Tracing.ITxTracer tracer)
+    private int AssertCancellationOutcome(byte[] code, bool useStream, bool shouldCancel, Evm.Tracing.ITxTracer tracer)
     {
         if (shouldCancel)
             Assert.Throws<OperationCanceledException>(() => RunWithInterpreter(code, useStream, tracer: tracer));
         else
             Assert.DoesNotThrow(() => RunWithInterpreter(code, useStream, tracer: tracer));
+
+        return Machine.OpCodeCount;
     }
 
     private static void AssertFusedOpcode(byte[] code, byte expectedFusedOpcode)

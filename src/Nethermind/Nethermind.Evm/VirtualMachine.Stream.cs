@@ -164,30 +164,42 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.PopPop:
-                            if (TCancelable.IsActive
-                                && stack.Head >= 1
-                                && ((opCodeCount - 1) & CancellationCheckMask) == 0
-                                && _txTracer.IsCancelled)
-                                ThrowStreamOperationCanceledException();
+                            opCodeCount--;
+                            if (stack.Head >= 1)
+                            {
+                                if (TCancelable.IsActive
+                                    && (opCodeCount & CancellationCheckMask) == 0
+                                    && _txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                                opCodeCount++;
+                            }
                             exceptionType = EvmInstructions.FusedPopPopCore(ref stack);
                             break;
                         case (Instruction)FusedOpcode.SwapPop:
                         {
                             int depth = (int)entry.Operand;
-                            if (TCancelable.IsActive
-                                && stack.Head >= depth
-                                && ((opCodeCount - 1) & CancellationCheckMask) == 0
-                                && _txTracer.IsCancelled)
-                                ThrowStreamOperationCanceledException();
+                            opCodeCount--;
+                            if (stack.Head >= depth)
+                            {
+                                if (TCancelable.IsActive
+                                    && (opCodeCount & CancellationCheckMask) == 0
+                                    && _txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                                opCodeCount++;
+                            }
                             exceptionType = stack.SwapPop(depth);
                             break;
                         }
                         case (Instruction)FusedOpcode.AndIsZero:
-                            if (TCancelable.IsActive
-                                && stack.Head >= 2
-                                && ((opCodeCount - 1) & CancellationCheckMask) == 0
-                                && _txTracer.IsCancelled)
-                                ThrowStreamOperationCanceledException();
+                            opCodeCount--;
+                            if (stack.Head >= 2)
+                            {
+                                if (TCancelable.IsActive
+                                    && (opCodeCount & CancellationCheckMask) == 0
+                                    && _txTracer.IsCancelled)
+                                    ThrowStreamOperationCanceledException();
+                                opCodeCount++;
+                            }
                             exceptionType = stack.AndIsZero();
                             break;
                         case Instruction.ADD:
