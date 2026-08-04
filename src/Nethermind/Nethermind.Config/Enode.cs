@@ -26,6 +26,9 @@ namespace Nethermind.Config
 
         public Enode(string enodeString)
         {
+            ArgumentException GetInvalidEnodeException() =>
+                new($"Invalid enode value '{enodeString}'");
+
             ArgumentException GetDnsException(string hostName, Exception? innerException = null) =>
                 new($"{hostName} is not a proper IP address nor it can be resolved by DNS.", innerException);
 
@@ -34,7 +37,7 @@ namespace Nethermind.Config
 
             if (!IsEnode(enodeString, out Uri? parsed))
             {
-                throw new ArgumentException($"Invalid enode value '{enodeString}'");
+                throw GetInvalidEnodeException();
             }
 
             _nodeKey = new PublicKey(parsed.UserInfo);
@@ -47,7 +50,7 @@ namespace Nethermind.Config
 
             if (parsed.AbsolutePath is not "/" || parsed.Fragment.Length > 0)
             {
-                throw GetPortException(host);
+                throw GetInvalidEnodeException();
             }
 
             Port = parsed.Port;
