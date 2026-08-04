@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Xdc.RLP;
@@ -120,6 +121,62 @@ internal class XdcBlockTreeTests
 
         Block disconnected = XdcBlock(2UL, Keccak.Compute("other"));
         Assert.That(blockTree.SuggestBlock(disconnected), Is.EqualTo(AddBlockResult.UnknownParent));
+    }
+
+    [TestCase(5UL, false, true)] // higher round from a remote (non-self-mined) block overrides an equal-TD self-mined head
+    [TestCase(1UL, false, false)] // same round from a remote block does not override - self-mined tie-break still applies
+    [TestCase(1UL, true, true)] // same round, also self-mined, overrides (unchanged proposal-race behavior)
+    [TestCase(0UL, true, false)] // lower round does not override, even if self-mined
+    public void IsSameTdButPreferred_BreaksEqualTdTieByRoundThenSelfMined(ulong candidateRound, bool candidateSelfMined, bool expectedOverride)
+    {
+        XdcBlockHeader head = XdcHeaderWithRound(1UL, Keccak.Zero, round: 1, selfMined: true);
+        head.TotalDifficulty = 2;
+        XdcBlockHeader candidate = XdcHeaderWithRound(1UL, Keccak.Zero, round: candidateRound, selfMined: candidateSelfMined, nonce: 1UL);
+        candidate.TotalDifficulty = head.TotalDifficulty;
+
+        Assert.That(XdcBlockTree.IsSameTdButPreferred(candidate, head), Is.EqualTo(expectedOverride));
+    }
+
+    [Test]
+    public void IsSameTdButPreferred_DifferentTotalDifficulty_NeverOverrides()
+    {
+        XdcBlockHeader head = XdcHeaderWithRound(1UL, Keccak.Zero, round: 1, selfMined: false);
+        XdcBlockHeader candidate = XdcHeaderWithRound(1UL, Keccak.Zero, round: 5, selfMined: true, nonce: 1UL);
+        head.TotalDifficulty = 2;
+        candidate.TotalDifficulty = 3;
+
+        Assert.That(XdcBlockTree.IsSameTdButPreferred(candidate, head), Is.False);
+    }
+
+    [Test]
+    public void IsSameTdButPreferred_MissingConsensusData_NeverOverrides()
+    {
+        XdcBlockHeader head = XdcHeaderWithRound(1UL, Keccak.Zero, round: 1, selfMined: false);
+        head.TotalDifficulty = 2;
+        XdcBlockHeader candidate = Build.A.XdcBlockHeader().WithNumber(1UL).TestObject;
+        candidate.TotalDifficulty = head.TotalDifficulty;
+
+        Assert.That(XdcBlockTree.IsSameTdButPreferred(candidate, head), Is.False);
+    }
+
+    private static XdcBlockHeader XdcHeaderWithRound(ulong number, Hash256 parentHash, ulong round, bool selfMined, ulong nonce = 0)
+    {
+        XdcBlockHeader header = new(
+            parentHash,
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.One,
+            number,
+            XdcConstants.DefaultTargetGasLimit,
+            1_700_000_000,
+            [],
+            isSelfMined: selfMined)
+        {
+            Nonce = nonce
+        };
+        header.ExtraConsensusData = new ExtraFieldsV2(round, null!);
+        header.Hash = header.CalculateHash().ToHash256();
+        return header;
     }
 
     private static Block XdcBlock(ulong number, Hash256 parentHash, ulong nonce = 0)

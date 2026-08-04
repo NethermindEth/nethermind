@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 

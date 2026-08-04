@@ -104,6 +104,37 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(result.TransactionExecuted, Is.False);
     }
 
+    [TestCase(ulong.MaxValue - 1, true)]
+    [TestCase(ulong.MaxValue, false)]
+    public void Can_process_contract_creation_at_nonce_overflow_boundary(ulong nonce, bool executed)
+    {
+        // EIP-2681 rejects only a transaction nonce of 2^64-1, so 2^64-2 remains usable for contract creation.
+        _stateProvider.SetNonce(TestItem.AddressA, nonce);
+
+        ulong gasLimit = 100000ul;
+        Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled)
+            .WithCode(Prepare.EvmCode.Op(Instruction.STOP).Done)
+            .WithNonce(nonce)
+            .WithGasLimit(gasLimit)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(10 * gasLimit).TestObject;
+
+        TransactionResult result = Execute(tx, block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(executed));
+            if (executed)
+            {
+                Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(ulong.MaxValue));
+            }
+            else
+            {
+                Assert.That(result, Is.EqualTo(TransactionResult.NonceOverflow));
+            }
+        }
+    }
+
     [Test]
     public void Can_handle_quick_fail_on_missing_sender()
     {

@@ -83,18 +83,11 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
-        bool isZeroBalanceChange = before == after;
-        if (address == Address.SystemUser && isZeroBalanceChange)
-        {
-            return;
-        }
-
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        // Don't add zero balance transfers, but DO add empty account changes — EELS/pyspec
-        // include touched-but-unchanged accounts (e.g. EIP-1559 zero-tip coinbase credits) in
-        // the suggested BAL, so dropping them on our side would diverge from the BAL hash.
-        if (isZeroBalanceChange)
+        // Don't add zero balance transfers, but DO add empty account changes: EIP-7928 includes
+        // touched-but-unchanged accounts in the suggested BAL, so dropping them diverges from the hash.
+        if (before == after)
         {
             return;
         }

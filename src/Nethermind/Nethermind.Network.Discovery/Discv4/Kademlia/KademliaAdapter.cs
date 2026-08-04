@@ -20,7 +20,7 @@ using NonBlocking;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 
-public sealed class KademliaAdapter(
+public class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
@@ -261,7 +261,7 @@ public sealed class KademliaAdapter(
         return response.HasResponse ? response.Value : null;
     }
 
-    private Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
+    protected virtual Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
         => advertisedSequence is { } sequence
             ? base.RefreshRemoteRecordIfNewer(node, sequence, token)
             : Task.CompletedTask;

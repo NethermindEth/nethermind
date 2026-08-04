@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -511,6 +512,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         return ex switch
         {
+            // Must precede the ArgumentException arm: ResourceNotFoundException derives from it, and answering
+            // "invalid params" (or a generic internal error) for history the node does not hold reads as a
+            // retry-forever signal to indexers. EIP-4444 defines the accurate code.
+            ResourceNotFoundException or TargetInvocationException { InnerException: ResourceNotFoundException } =>
+                GetErrorResponse(methodName, ErrorCodes.PrunedHistoryUnavailable,
+                    ErrorMessages.PrunedHistoryUnavailable, GetExceptionText(ex), in request.IdRef, returnAction),
+
             TargetParameterCountException or ArgumentException =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, ex.ToString(), in request.IdRef, returnAction),
 
