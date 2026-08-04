@@ -57,6 +57,19 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Fuses <c>POP; POP</c>; its single <c>Head &lt; 2</c> check preserves sequential execution's exact underflow condition.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedPopPopCore(ref EvmStack stack)
+    {
+        if (stack.Head < 2)
+            return EvmExceptionType.StackUnderflow;
+
+        stack.Head -= 2;
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
     /// Fused <c>PUSH const; bitwise-op</c> over the stack-representation pool: one vector load per
     /// operand, no limb conversion.
     /// </summary>

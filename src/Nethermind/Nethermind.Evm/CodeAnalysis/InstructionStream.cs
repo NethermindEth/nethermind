@@ -25,9 +25,9 @@ internal enum StreamOpKind : byte
 }
 
 /// <summary>
-/// Virtual opcodes for fused PUSH+op pairs, placed in byte values the EVM does not define
-/// (0x0C..0x0F and 0x21..0x2F gaps). The fingerprint gate keeps new forks (which might define
-/// one of these) off the stream until reviewed.
+/// Virtual opcodes for fused instruction sequences use undefined EVM byte values: the 0x0C..0x0F
+/// and 0x21..0x2F gaps, plus <c>PopPop</c> at currently undefined 0x4D above SLOTNUM. The fingerprint
+/// gate keeps new forks (which might define one of these) off the stream until reviewed.
 /// </summary>
 internal static class FusedOpcode
 {
@@ -48,6 +48,7 @@ internal static class FusedOpcode
     public const byte Xor = 0x2B;
     public const byte Shl = 0x2C;
     public const byte Shr = 0x2D;
+    public const byte PopPop = 0x4D;
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
 
@@ -189,6 +190,17 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
+                    && instruction == Instruction.POP
+                    && TryTakePrecedingPop(ops, out StreamOp pop))
+                {
+                    blockGas[openBlock] += cost;
+                    pcToEntry[pc] = InvalidEntry;
+                    StreamOpKind fusedKind = pop.Kind == StreamOpKind.BlockFirst
+                        ? StreamOpKind.FusedBlockFirst
+                        : StreamOpKind.FusedInBlock;
+                    ops[^1] = new StreamOp(FusedOpcode.PopPop, fusedKind, pop.Pc, pop.BlockIndex, (byte)(pop.Advance + size), 0);
+                }
+                else if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
                     && TryTakePrecedingPush(ops, out StreamOp push))
                 {
@@ -330,6 +342,21 @@ internal sealed class InstructionStream
             return false;
 
         push = last;
+        return true;
+    }
+
+    private static bool TryTakePrecedingPop(List<StreamOp> ops, out StreamOp pop)
+    {
+        pop = default;
+        if (ops.Count == 0)
+            return false;
+
+        StreamOp last = ops[^1];
+        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock)
+            || last.Opcode != (byte)Instruction.POP)
+            return false;
+
+        pop = last;
         return true;
     }
 

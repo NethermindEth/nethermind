@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
 
@@ -179,6 +180,34 @@ public class InstructionStreamTests
     public void TryBuild_EmptyCode_ReturnsNull()
         => Assert.That(InstructionStream.TryBuild(ReadOnlySpan<byte>.Empty), Is.Null);
 
+    [Test]
+    public void TryBuild_AdjacentPops_FusesGasAndPcMap()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1, 0x2A,
+            (byte)Instruction.POP,
+            (byte)Instruction.POP,
+            (byte)Instruction.STOP,
+        ];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(GasCostOf.VeryLow + 2 * GasCostOf.Base), "both POP costs stay in the precharged block");
+            Assert.That(stream.Ops, Has.Length.EqualTo(3));
+            Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.PopPop));
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock));
+            Assert.That(stream.Ops[1].Pc, Is.EqualTo(2));
+            Assert.That(stream.Ops[1].Advance, Is.EqualTo(2));
+            Assert.That(stream.PcToEntry[2], Is.EqualTo(1), "the first POP remains an entry start");
+            Assert.That(stream.PcToEntry[3], Is.EqualTo(InstructionStream.InvalidEntry), "nothing can land on the second POP");
+            Assert.That(stream.PcToEntry[4], Is.EqualTo(2), "the boundary after the pair stays reachable");
+        }
+    }
+
     [TestCase(Instruction.ADD, GasCostOf.VeryLow, TestName = "Add")]
     [TestCase(Instruction.MUL, GasCostOf.Low, TestName = "Mul")]
     [TestCase(Instruction.SDIV, GasCostOf.Low, TestName = "SDiv")]
@@ -296,6 +325,13 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         .PushData(32).PushData(0).Op(Instruction.RETURN)
         .Done;
 
+    private static readonly byte[] PopPopWithSurvivingValue = Prepare.EvmCode
+        .PushData(42).PushData(17).PushData(19)
+        .Op(Instruction.POP).Op(Instruction.POP)
+        .PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.RETURN)
+        .Done;
+
     private static readonly byte[] FullStackStaticJump = BuildFullStackJump(Instruction.JUMP);
     private static readonly byte[] FullStackStaticJumpI = BuildFullStackJump(Instruction.JUMPI);
 
@@ -364,6 +400,56 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(BuildOutOfGasMidBlock()) { TestName = "OutOfGasInsideMeteredBlock" };
     }
 
+    private static IEnumerable<TestCaseData> FusedConstOutputCases()
+    {
+        yield return FusedConstOutputCase("Add", Instruction.ADD, FusedOpcode.Add, 37, 19);
+        yield return FusedConstOutputCase("Sub", Instruction.SUB, FusedOpcode.Sub, 17, 43);
+        yield return FusedConstOutputCase("Mul", Instruction.MUL, FusedOpcode.Mul, 11, 13);
+        yield return FusedConstOutputCase("Div", Instruction.DIV, FusedOpcode.Div, 7, 91);
+        yield return FusedConstOutputCase("SDiv", Instruction.SDIV, FusedOpcode.SDiv, 7, 91);
+        yield return FusedConstOutputCase("Mod", Instruction.MOD, FusedOpcode.Mod, 11, 97);
+        yield return FusedConstOutputCase("SMod", Instruction.SMOD, FusedOpcode.SMod, 11, 97);
+        yield return FusedConstOutputCase("Lt", Instruction.LT, FusedOpcode.Lt, 79, 23);
+        yield return FusedConstOutputCase("Gt", Instruction.GT, FusedOpcode.Gt, 23, 79);
+        yield return FusedConstOutputCase("SLt", Instruction.SLT, FusedOpcode.SLt, 79, 23);
+        yield return FusedConstOutputCase("SGt", Instruction.SGT, FusedOpcode.SGt, 23, 79);
+        yield return FusedConstOutputCase("Shl255", Instruction.SHL, FusedOpcode.Shl, UInt256.One, 255);
+        yield return FusedConstOutputCase("Shl256", Instruction.SHL, FusedOpcode.Shl, UInt256.One, 256, new byte[] { 0, 1, 0 });
+        yield return FusedConstOutputCase("Shr255", Instruction.SHR, FusedOpcode.Shr, UInt256.One << 255, 255);
+        yield return FusedConstOutputCase("Shr256", Instruction.SHR, FusedOpcode.Shr, UInt256.One << 255, 256, new byte[] { 0, 1, 0 });
+    }
+
+    private static TestCaseData FusedConstOutputCase(string name, Instruction instruction, byte fusedOpcode, UInt256 stackValue, UInt256 constant, byte[]? encodedConstant = null)
+    {
+        Prepare code = Prepare.EvmCode.PushData(stackValue);
+        if (encodedConstant is null)
+            code.PushData(constant);
+        else
+            code.PushData(encodedConstant);
+
+        byte[] bytecode = code
+            .Op(instruction)
+            .PushData(0).Op(Instruction.MSTORE)
+            .PushData(32).PushData(0).Op(Instruction.RETURN)
+            .Done;
+
+        return new TestCaseData(bytecode, fusedOpcode) { TestName = name };
+    }
+
+    private static IEnumerable<TestCaseData> PopPopCases()
+    {
+        yield return new TestCaseData(PopPopWithSurvivingValue, (byte)Evm.StatusCode.Success, WordWithLowByte(42)) { TestName = "SuccessReturnsSurvivingValue" };
+        yield return new TestCaseData(new byte[] { (byte)Instruction.POP, (byte)Instruction.POP, (byte)Instruction.STOP }, (byte)Evm.StatusCode.Failure, Array.Empty<byte>()) { TestName = "UnderflowAtDepthZero" };
+        yield return new TestCaseData(Prepare.EvmCode.PushData(1).Op(Instruction.POP).Op(Instruction.POP).Op(Instruction.STOP).Done, (byte)Evm.StatusCode.Failure, Array.Empty<byte>()) { TestName = "UnderflowAtDepthOne" };
+    }
+
+    private static byte[] WordWithLowByte(byte value)
+    {
+        byte[] word = new byte[32];
+        word[^1] = value;
+        return word;
+    }
+
     [Test]
     public void Activation_IsShanghaiOrLater_SoStreamEngages() =>
         Assert.That(
@@ -394,6 +480,60 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas must match to the unit");
             Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
         }
+    }
+
+    [TestCaseSource(nameof(FusedConstOutputCases))]
+    public void StreamInterpreter_FusedConstOps_ReturnedOutputMatchesByteCodeLoop(byte[] code, byte expectedFusedOpcode)
+    {
+        AssertFusedOpcode(code, expectedFusedOpcode);
+        AssertStreamMatchesByteCodeLoop(code);
+    }
+
+    [TestCaseSource(nameof(PopPopCases))]
+    public void StreamInterpreter_FusedPopPop_MatchesByteCodeLoop(byte[] code, byte expectedStatus, byte[] expectedOutput)
+    {
+        AssertFusedOpcode(code, FusedOpcode.PopPop);
+        ReceiptCaptureTracer streamed = AssertStreamMatchesByteCodeLoop(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamed.StatusCode, Is.EqualTo(expectedStatus), "the fused pair must preserve the expected success or underflow status");
+            Assert.That(streamed.Output, Is.EqualTo(expectedOutput), "the fused pair must preserve the surviving stack value or empty failure output");
+        }
+    }
+
+    private static void AssertFusedOpcode(byte[] code, byte expectedFusedOpcode)
+    {
+        InstructionStream? stream = InstructionStream.TryBuild(code);
+        Assert.That(stream, Is.Not.Null, "test bytecode must build a stream");
+
+        foreach (StreamOp entry in stream!.Ops)
+        {
+            if (entry.Opcode == expectedFusedOpcode)
+                return;
+        }
+
+        Assert.Fail($"expected fused opcode 0x{expectedFusedOpcode:X2} was not emitted");
+    }
+
+    private ReceiptCaptureTracer AssertStreamMatchesByteCodeLoop(byte[] code)
+    {
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore),
+                "the stream interpreter did not engage â€” this differential proved nothing");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "success/failure must match");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas must match to the unit");
+            Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
+        }
+
+        return streamed;
     }
 
     // Guards that the executor's in-block switch covers exactly the TryGetInBlockCost set:
