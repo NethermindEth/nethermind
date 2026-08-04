@@ -632,9 +632,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         InvalidateFrontCache();
         _changes.Clear();
-        _committedThisRound.Clear();
-        _nullAccountReads.Clear();
-        _intraTxCache.Clear();
+        _committedThisRound.ClearAndTrim();
+        _nullAccountReads.ClearAndTrim();
+        _intraTxCache.ClearAndTrim();
 
         codeFlushTask.GetAwaiter().GetResult();
 
@@ -879,9 +879,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _blockChanges.Clear();
             _codeBatch?.Clear();
         }
-        _intraTxCache.Clear();
-        _committedThisRound.Clear();
-        _nullAccountReads.Clear();
+        _intraTxCache.ClearAndTrim();
+        _committedThisRound.ClearAndTrim();
+        _nullAccountReads.ClearAndTrim();
         InvalidateFrontCache();
         _changes.Clear();
         _needsStateRootUpdate = false;
@@ -915,17 +915,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         [DoesNotReturn, StackTraceHidden]
         static Account ThrowNullAccount(Address address)
             => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
-    }
-
-    private enum ChangeType
-    {
-        Null = 0,
-        JustCache,
-        Touch,
-        Update,
-        New,
-        Delete,
-        RecreateEmpty,
     }
 
     private readonly struct Change(Address address, Account? account, ChangeType type, int prevIdx)
