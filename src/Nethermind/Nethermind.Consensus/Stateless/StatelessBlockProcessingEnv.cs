@@ -35,7 +35,17 @@ public class StatelessBlockProcessingEnv(
     // still reads through the world state, so witness-completeness checks keep firing. The
     // process-wide StaticCodeCache.Instance must not be used here: it would leak code across
     // blocks and mask deliberately missing witness code (negative validation tests).
-    private readonly StaticCodeCache _codeCache = new();
+    private readonly StaticCodeCache _codeCache = new(CodeCacheCapacity);
+
+#if ZK_EVM
+    // A single block touches at most a few hundred distinct code hashes, while the node-wide
+    // MemoryAllowance.CodeCacheSize rounds up to 8192 entries - roughly 0.4 MB allocated and zeroed
+    // per block inside the zkVM, which the bump allocator never reclaims. Overflowing this cache is
+    // free of correctness consequences: the entry is simply re-read and re-analysed.
+    private const int CodeCacheCapacity = 512;
+#else
+    private static readonly int CodeCacheCapacity = MemoryAllowance.CodeCacheSize;
+#endif
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
