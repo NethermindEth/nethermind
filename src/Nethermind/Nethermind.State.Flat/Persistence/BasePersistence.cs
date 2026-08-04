@@ -216,12 +216,13 @@ public static class BasePersistence
     internal static void CreateStorageRange(
         ReadOnlySpan<byte> accountPath,
         Span<byte> firstKey,
-        Span<byte> lastKey)
+        Span<byte> lastKey,
+        int prefixPortion)
     {
-        accountPath[..StoragePrefixPortion].CopyTo(firstKey);
-        accountPath[..StoragePrefixPortion].CopyTo(lastKey);
-        firstKey[StoragePrefixPortion..].Clear();
-        lastKey[StoragePrefixPortion..].Fill(0xff);
+        accountPath[..prefixPortion].CopyTo(firstKey);
+        accountPath[..prefixPortion].CopyTo(lastKey);
+        firstKey[prefixPortion..].Clear();
+        lastKey[prefixPortion..].Fill(0xff);
     }
 
     /// <summary>

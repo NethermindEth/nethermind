@@ -48,7 +48,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance + balanceChange;
-        _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
+        {
+            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
     }
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
@@ -60,7 +63,10 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         res = currentlyExists ?? res;
 
         UInt256 newBalance = oldBalance + balanceChange;
-        _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
+        {
+            _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
+        }
 
         return res;
     }
@@ -151,6 +157,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         oldBalance = 0;
 
+        // Intentionally not gated on read suppression: system transactions debit Address.SystemUser
+        // as their sender, and that zero touch must stay out of BALs.
         if (address == Address.SystemUser && balanceChange.IsZero)
         {
             return;
@@ -200,6 +208,9 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             _generatingBlockAccessList.AddAccountRead(address);
         }
     }
+
+    private bool ShouldSuppressSystemUserZeroBalanceChange(Address address, in UInt256 balanceChange)
+        => _systemAccountReadSuppressionDepth != 0 && address == Address.SystemUser && balanceChange.IsZero;
 
     /// <summary>Records the account read (honoring SystemUser suppression) and returns its change entry in one probe.</summary>
     private AccountChangesAtIndex? RecordReadAndGetChanges(Address address)

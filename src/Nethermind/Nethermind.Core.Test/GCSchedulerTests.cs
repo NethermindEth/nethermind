@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Memory;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -67,6 +69,19 @@ public class GCSchedulerTests
 
         _scheduler.SweepIfAllocationBudgetExceeded();
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
+    }
+
+    [Test]
+    public void Sweep_WhenAllocationBudgetExceeded_DoesNotTrimNativeHeap()
+    {
+        MallocHelper mallocHelper = Substitute.For<MallocHelper>();
+        GCScheduler scheduler = new(sustainedSweepEnabled: false, mallocHelper);
+        scheduler.SweepBaselineAllocatedBytes =
+            GC.GetTotalAllocatedBytes(precise: false) - GCScheduler.SustainedSweepAllocationBytes - 1;
+
+        scheduler.SweepIfAllocationBudgetExceeded();
+
+        mallocHelper.DidNotReceive().MallocTrim(Arg.Any<uint>());
     }
 
     private long ArmBudget()

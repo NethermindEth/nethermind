@@ -30,6 +30,8 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
+    private const int MinTransactionsForReactiveWarming = 3;
+
     private readonly int _concurrencyLevel;
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
     private readonly int _speculativeConcurrencyLevel;
@@ -57,7 +59,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private Task _speculativeTask = Task.CompletedTask;
     private long _speculativeGeneration = long.MinValue;
 
-    // Written only by the loop thread and read after it is joined, so the marker and its tx-hash set need no further sync.
+    // Non-null writes come only from the speculative loop; every other writer nulls it after joining that loop,
+    // which is what makes the marker and its shared tx-hash set safe to read without further sync.
     private WarmMarker? _warmMarker;
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
@@ -104,25 +107,30 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
-        if (_preBlockCaches is null || !ShouldPreWarm(spec)) return Task.CompletedTask;
-
+        // Join ahead of the gate: the session's spec comes from a synthetic next-block header, so it can enable warming
+        // for a spec this block disables (a fork boundary), and no pass may run into execution.
         CancelAndJoinSpeculative();
 
+        if (_preBlockCaches is null) return Task.CompletedTask;
+
+        // A spec that disables warming still needs the clear-or-retain decision below: joining stops a session from
+        // writing further, but its entries describe the head it warmed, which need not be this block's parent.
+        bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
         if (TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? speculativelyWarmed))
         {
+            // Handoff taken: the caches already hold this parent's state, so keep RLP caching on for execution.
             _nodeStorageCache.Enabled = true;
         }
         else
         {
-            CacheType result = _preBlockCaches.ClearCaches();
+            _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
+            // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
+            if (skipReactiveWarming) return Task.CompletedTask;
             _nodeStorageCache.Enabled = true;
-            if (result != default)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
-            }
         }
 
+        if (skipReactiveWarming) return Task.CompletedTask;
         return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, _systemAccessLists);
     }
 
@@ -493,12 +501,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out ISet<Hash256>? warmedTxHashes)
     {
-        WarmMarker? marker = Volatile.Read(ref _warmMarker);
+        WarmMarker? marker = Interlocked.Exchange(ref _warmMarker, null);
         // ReferenceEquals on the per-fork spec singleton: a mismatch only disables the handoff, never a correctness issue.
         if (marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec))
         {
             warmedTxHashes = marker.WarmedTxHashes;
-            Volatile.Write(ref _warmMarker, null);
             return true;
         }
 
@@ -510,6 +517,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         => !_parallelExecutionEnabled
         || !spec.BlockLevelAccessListsEnabled
         || IsBalReadWarmingEnabled(spec);
+
+    // Tiny blocks normally don't justify reactive warming overhead. BAL read warming is cheap
+    // and remains useful regardless of transaction count.
+    private bool ShouldSkipReactiveWarming(Block block, IReleaseSpec spec)
+        => block.Transactions.Length < MinTransactionsForReactiveWarming
+        && !(IsBalReadWarmingEnabled(spec) && block.BlockAccessList is not null);
 
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;

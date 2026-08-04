@@ -82,8 +82,9 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [Test]
-    public void Test_CanSaveToStorage()
+    [TestCase(1)]
+    [TestCase(TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)]
+    public void Test_CanSaveToStorage(int estimatedEntries)
     {
         using Context ctx = new(useFlat);
 
@@ -96,7 +97,7 @@ public class ScopeProviderTests(bool useFlat)
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
 
-                using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                using IWorldStateScopeProvider.IStorageWriteBatch storageSet = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, estimatedEntries);
                 storageSet.Set(1, [1, 2, 3]);
             }
 

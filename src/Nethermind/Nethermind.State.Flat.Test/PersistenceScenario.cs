@@ -50,22 +50,17 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
     public static IEnumerable<TestConfiguration> TestConfigs()
     {
-        yield return new TestConfiguration(new FlatDbConfig()
+        foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
-            Enabled = true,
-            Layout = FlatLayout.Flat
-        }, "Flat");
-        yield return new TestConfiguration(new FlatDbConfig()
-        {
-            Enabled = true,
-            Layout = FlatLayout.FlatInTrie
-        }, "FlatInTrie");
-        yield return new TestConfiguration(new FlatDbConfig()
-        {
-            Enabled = true,
-            Layout = FlatLayout.PreimageFlat
-        }, "PreimageFlat");
+            yield return new TestConfiguration(new FlatDbConfig()
+            {
+                Enabled = true,
+                Layout = layout
+            }, layout.ToString());
+        }
     }
+
+    private static bool IsPreimage(FlatLayout layout) => layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat;
 
     [SetUp]
     public void Setup()
@@ -310,7 +305,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestRawOperations()
     {
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat) Assert.Ignore("Preimage mode does not support raw operation");
+        if (IsPreimage(configuration.FlatDbConfig.Layout)) Assert.Ignore("Preimage mode does not support raw operation");
 
         Account acc = TestItem.GenerateIndexedAccount(0);
         Hash256 addrHash = new(TestItem.AddressA.ToAccountPath.Bytes);
@@ -876,8 +871,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestStorageIterator_EnumeratesAccountStorage()
     {
-        // PreimageFlat uses raw address, others use hashed address paths
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        // Preimage layouts use raw address, others use hashed address paths
+        if (IsPreimage(configuration.FlatDbConfig.Layout))
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write account with storage
@@ -913,7 +908,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestStorageIterator_NoStorage_ReturnsEmpty()
     {
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        if (IsPreimage(configuration.FlatDbConfig.Layout))
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write account without storage
@@ -943,7 +938,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     [Test]
     public void TestStorageIterator_IsolatesAccountStorage()
     {
-        if (configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat)
+        if (IsPreimage(configuration.FlatDbConfig.Layout))
             Assert.Ignore("Preimage mode uses raw address format which differs from hashed mode");
 
         // Write storage for two accounts
@@ -985,8 +980,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
 
-        // PreimageFlat layout should return true, others false
-        bool expected = configuration.FlatDbConfig.Layout == FlatLayout.PreimageFlat;
+        // Preimage layouts should return true, others false
+        bool expected = IsPreimage(configuration.FlatDbConfig.Layout);
         Assert.That(reader.IsPreimageMode, Is.EqualTo(expected));
     }
 }
