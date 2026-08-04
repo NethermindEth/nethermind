@@ -596,6 +596,92 @@ public class RewardTests
         }
     }
 
+    // Regression test: CalculateRewards must always recalculate, even when the header already
+    // carries a ProcessedRewards from a previous processing pass (e.g. a block reprocessed after
+    // a reorg). A previous version short-circuited on a non-null ProcessedRewards and returned the
+    // cached BlockRewards, which also skipped IMintedRecordContract.UpdateAccounting.
+    [Test]
+    public void CalculateRewards_CalledTwiceOnSameHeader_RecalculatesInsteadOfReturningCachedProcessedRewards()
+    {
+        const ulong epochLength = 4;
+        const ulong checkpointNumber = 2 * epochLength;
+
+        Address[] masternodes = [Address.FromNumber(1), Address.FromNumber(2)];
+        Address foundationWalletAddr = Address.FromNumber(0x68);
+        Address blockSignerContract = Address.FromNumber(0x89);
+
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>())
+            .Returns(ci => ((XdcBlockHeader)ci.Args()[0]!).Number % epochLength == 0);
+
+        IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcSpec.EpochLength.Returns(epochLength);
+        xdcSpec.FoundationWallet.Returns(foundationWalletAddr);
+        xdcSpec.BlockSignerContract.Returns(blockSignerContract);
+        xdcSpec.SwitchBlock.Returns(0UL);
+        xdcSpec.MergeSignRange.Returns(1UL);
+        xdcSpec.IsTipUpgradeRewardEnabled.Returns(true);
+        xdcSpec.MaxProtectorNodes.Returns(0);
+        xdcSpec.MaxObserverNodes.Returns(0);
+        xdcSpec.MasternodeReward.Returns((UInt256)100);
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
+
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        XdcBlockHeader[] blockHeaders = new XdcBlockHeader[checkpointNumber + 1];
+        for (ulong i = 0; i <= checkpointNumber; i++)
+        {
+            XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader()
+                .WithNumber(i)
+                .WithValidators(masternodes);
+            if (i == 0)
+                builder.WithExtraData(XdcTestHelper.BuildV1ExtraData(masternodes));
+            else
+                builder.WithExtraConsensusData(new ExtraFieldsV2(i, Build.A.QuorumCertificate().TestObject));
+            blockHeaders[i] = builder.TestObject;
+        }
+
+        tree.FindHeader(Arg.Any<Hash256>(), Arg.Any<ulong?>())
+            .Returns(ci => blockHeaders[(int)ci.ArgAt<ulong?>(1)!]);
+
+        IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
+        ISigningTxCache signingTxCache = Substitute.For<ISigningTxCache>();
+        signingTxCache.GetSigningTransactions(Arg.Any<Hash256>(), Arg.Any<ulong>(), Arg.Any<IXdcReleaseSpec>())
+            .Returns([]);
+        IMintedRecordContract mintedRecordContract = Substitute.For<IMintedRecordContract>();
+
+        XdcRewardCalculator rewardCalculator = new(
+            epochSwitchManager,
+            specProvider,
+            tree,
+            votingContract,
+            mintedRecordContract,
+            signingTxCache,
+            CreateXdcTransactionProcessor(specProvider, votingContract));
+
+        XdcBlockHeader checkpointHeader = blockHeaders[checkpointNumber];
+        Block block = new(checkpointHeader);
+
+        BlockReward[] rewardsFirstPass = rewardCalculator.CalculateRewards(block);
+
+        Assert.That(rewardsFirstPass, Is.Empty);
+        mintedRecordContract.Received(1).UpdateAccounting(
+            Arg.Any<ITransactionProcessor>(), checkpointHeader, xdcSpec, Arg.Any<UInt256>(), Arg.Any<UInt256>());
+        mintedRecordContract.ClearReceivedCalls();
+
+        // Simulate a stale cached result left over from an earlier processing pass.
+        checkpointHeader.ProcessedRewards = new XdcProcessedRewards(
+            [new BlockReward(foundationWalletAddr, (UInt256)999)],
+            XdcEpochRewards.Empty);
+
+        BlockReward[] rewardsSecondPass = rewardCalculator.CalculateRewards(block);
+
+        Assert.That(rewardsSecondPass, Is.Empty, "the stale cached reward must not be returned - CalculateRewards must always recalculate");
+        mintedRecordContract.Received(1).UpdateAccounting(
+            Arg.Any<ITransactionProcessor>(), checkpointHeader, xdcSpec, Arg.Any<UInt256>(), Arg.Any<UInt256>());
+    }
+
     [Test]
     public void RewardCalculator_CalculateRewardsForSignersAndHolders_MatchesExpectedValues()
     {

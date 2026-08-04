@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -21,6 +22,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -31,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IOverridableEnv<ITracer> tracerEnv,
         IBlockchainBridge blockchainBridge,
         IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         ISpecProvider specProvider,
         IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
@@ -153,7 +155,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+            using CancellationTokenSource timeout = jsonRpcConfig.BuildTimeoutCancellationToken();
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 

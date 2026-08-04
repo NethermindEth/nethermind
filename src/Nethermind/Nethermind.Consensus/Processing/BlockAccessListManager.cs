@@ -135,6 +135,7 @@ public partial class BlockAccessListManager(
 
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
+            && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope
@@ -224,7 +225,7 @@ public partial class BlockAccessListManager(
     public void SpendGas(ulong gas)
     {
         CheckInitialized();
-        _gasRemaining -= gas;
+        _gasRemaining = _gasRemaining.Value.SaturatingSub(gas);
     }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)

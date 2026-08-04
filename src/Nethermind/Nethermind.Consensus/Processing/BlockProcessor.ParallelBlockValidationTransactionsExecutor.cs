@@ -68,13 +68,11 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
-            // Block-building has no suggested BAL to compare against — we are producing it
-            // here. ValidateBlockAccessList would early-return on `BlockAccessList is null`
-            // anyway, but skipping the call avoids the NextTransaction → Validate dance and
-            // makes the building intent explicit on this hot path.
-            bool shouldValidateBal = shouldValidate && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock);
+            bool shouldValidateBal = shouldValidate
+                && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock)
+                && !processingOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            ulong totalRegularGas = 0;
+            ulong totalExecutionGas = 0;
             ulong totalStateGas = 0;
 
             balManager.NextTransaction();
@@ -85,11 +83,11 @@ public partial class BlockProcessor
                 Transaction currentTx = block.Transactions[i];
                 if (shouldValidate)
                 {
-                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas);
+                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalExecutionGas, totalStateGas);
                 }
 
                 ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner);
-                totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
+                totalExecutionGas = receiptsTracer.CumulativeExecutionGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)

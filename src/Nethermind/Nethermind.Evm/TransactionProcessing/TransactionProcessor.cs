@@ -11,7 +11,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Validation;
@@ -103,7 +102,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         protected readonly ILogManager _logManager;
         private readonly bool _parallel;
-        private ulong _blockCumulativeRegularGas;
+        private ulong _blockCumulativeExecutionGas;
         private ulong _blockCumulativeStateGas;
 
         protected TransactionProcessorBase(
@@ -137,7 +136,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
-            _blockCumulativeRegularGas = 0;
+            _blockCumulativeExecutionGas = 0;
             _blockCumulativeStateGas = 0;
             VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
         }
@@ -274,7 +273,7 @@ namespace Nethermind.Evm.TransactionProcessing
             preloadedDelegationAddress = null;
             if (!IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)) return false;
 
-            preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(tx.To!, followDelegation: true, spec, out preloadedDelegationAddress);
+            preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(tx.To!, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
             return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress);
         }
 
@@ -304,49 +303,65 @@ namespace Nethermind.Evm.TransactionProcessing
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
             long delegationRefunds = 0;
-            long delegationAuthBaseRefunds = 0;
+            TGasPolicy executionIntrinsicGasStandard = intrinsicGas.Standard;
             TransactionResult result;
-            if (!(result = Validate8037DelegationRefundBounds(tx, spec, in gasAvailable))) return result;
+            TGasPolicy prePreparationGas = gasAvailable;
+            // The flag defers the halt to ExecuteEvmCall after the entire preparation phase is rolled back.
+            bool topFrameOutOfGas = false;
+            Snapshot preExecutionSnapshot = Snapshot.Empty;
+            bool hasPreExecutionSnapshot = false;
 
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
             {
-                delegationRefunds = ProcessDelegations(tx, spec, accessTracker, out delegationAuthBaseRefunds);
+                if (spec.IsEip8037Enabled)
+                {
+                    preExecutionSnapshot = WorldState.TakeSnapshot();
+                    hasPreExecutionSnapshot = true;
+                }
+
+                if (!ProcessDelegations(tx, spec, accessTracker, ref gasAvailable, ref executionIntrinsicGasStandard, out delegationRefunds))
+                {
+                    if (spec.IsEip8037Enabled)
+                    {
+                        topFrameOutOfGas = true;
+                    }
+                    else
+                    {
+                        return TransactionResult.GasLimitBelowIntrinsicGas;
+                    }
+                }
             }
 
-            if (!(result = Apply8037DelegationRefunds(tx, spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds, ref delegationAuthBaseRefunds))) return result;
-
-            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, out ExecutionEnvironment e))) return result;
+            bool loadRecipient = !topFrameOutOfGas;
+            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, loadRecipient, ref gasAvailable, ref topFrameOutOfGas, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
-            // EIP-8037 top-frame charges. At most one applies: a delegated recipient has code and is
-            // therefore never a dead account, hence the if/else-if.
-            bool recipientIsDelegated = spec.IsEip8037Enabled && spec.IsEip7702Enabled && tx.To is not null
-                && _codeInfoRepository.TryGetDelegation(tx.To, spec, out _);
-
-            // The flag defers the halt to ExecuteEvmCall so the value transfer rolls back and the
-            // sender forfeits all gas; merely draining the gas would let a zero-cost frame succeed.
-            bool topFrameOutOfGas = false;
-
             // A new (dead) recipient — including an empty precompile — pays NEW_ACCOUNT state gas.
-            if (spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
+            if (!topFrameOutOfGas && spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && WorldState.IsDeadAccount(tx.To))
             {
                 topFrameOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
             }
-            // EIP-8037: the delegation target costs one flat cold account access (its sole charge —
-            // it is only pre-warmed for the frame). Read post-authorization, so same-tx installs count.
-            else if (spec.IsEip8037Enabled && !tx.IsContractCreation && recipientIsDelegated)
+
+            if (topFrameOutOfGas && spec.IsEip8037Enabled)
             {
-                ulong delegationCold = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
-                topFrameOutOfGas = !TGasPolicy.UpdateGas(ref gasAvailable, delegationCold);
+                if (hasPreExecutionSnapshot)
+                {
+                    WorldState.Restore(preExecutionSnapshot);
+                }
+
+                gasAvailable = prePreparationGas;
+                executionIntrinsicGasStandard = intrinsicGas.Standard;
             }
 
-            int statusCode = !tracer.IsTracingInstructions ?
-                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
-                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out spentGas);
+            IntrinsicGas<TGasPolicy> executionIntrinsicGas = new(executionIntrinsicGasStandard, intrinsicGas.FloorGas);
 
-            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, blobBaseFee, statusCode);
+            int statusCode = !tracer.IsTracingInstructions ?
+                ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
+                ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out spentGas);
+
+            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, in opcodeGasPrice, blobBaseFee, statusCode);
 
             // EIP-8037+EIP-7708: process destroy list after PayFees so burn logs include
             // the priority fee in the destroyed account's balance.
@@ -440,18 +455,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
             }
 
+            if (isTracingActions)
+            {
+                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+            }
+
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && hasValueTransfer && !senderIsRecipient && !newAccountOutOfGas)
             {
                 LogEntry transferLog = TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value);
                 logs = [transferLog];
                 if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
-            }
-
-            // Keep tracer event order aligned with VirtualMachine.ExecuteCall.
-            if (isTracingActions)
-            {
-                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
             }
 
             TransactionSubstate substate = new(
@@ -480,7 +494,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ReportSimpleTransferAccess(tx, spec, tracer, recipient);
             }
 
-            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, blobBaseFee, statusCode);
+            UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, in opcodeGasPrice, blobBaseFee, statusCode);
             return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, recipient, in substate, spentGas, statusCode);
         }
 
@@ -510,7 +524,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void WarmUpTxAccesses(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker, Address recipient)
+        private void WarmUpTxAccesses(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker, Address recipient, bool warmUpRecipient = true)
         {
             if (!spec.UseHotAndColdStorage) return;
 
@@ -520,7 +534,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.AddCoinbaseToTxAccessList)
                 accessTracker.WarmUp(VirtualMachine.BlockExecutionContext.Header.GasBeneficiary!);
 
-            accessTracker.WarmUp(recipient);
+            if (warmUpRecipient)
+                accessTracker.WarmUp(recipient);
             accessTracker.WarmUp(tx.SenderAddress!);
         }
 
@@ -534,6 +549,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in TransactionSubstate substate,
             in GasConsumed spentGas,
             in UInt256 premiumPerGas,
+            in UInt256 effectiveGasPrice,
             in UInt256 blobBaseFee,
             int statusCode)
         {
@@ -541,9 +557,9 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (spec.IsEip8037Enabled)
                 {
-                    _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
+                    _blockCumulativeExecutionGas += spentGas.EffectiveBlockGas;
                     _blockCumulativeStateGas += spentGas.BlockStateGas;
-                    header.GasUsed = TGasPolicy.CombineBlockGas(_blockCumulativeRegularGas, _blockCumulativeStateGas);
+                    header.GasUsed = TGasPolicy.CombineBlockGas(_blockCumulativeExecutionGas, _blockCumulativeStateGas);
                 }
                 else
                 {
@@ -551,7 +567,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
         }
 
         [SkipLocalsInit]
@@ -640,110 +656,33 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private TransactionResult Apply8037DelegationRefunds(
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private bool ProcessDelegations(
             Transaction tx,
             IReleaseSpec spec,
-            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            in StackAccessTracker accessTracker,
             ref TGasPolicy gasAvailable,
-            ref long delegationRefunds,
-            ref long delegationAuthBaseRefunds)
-        {
-            if (spec.IsEip8037Enabled && (delegationRefunds > 0 || delegationAuthBaseRefunds > 0))
-            {
-                TGasPolicy intrinsicGasStandard = intrinsicGas.Standard;
-                long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-                long newAccountStateCost = TGasPolicy.GetNewAccountStateCost();
-                long perAuthBaseStateCost = TGasPolicy.GetPerAuthBaseStateCost();
-                bool refundWithinBounds = TryCalculate8037DelegationRefund(
-                    newAccountStateCost,
-                    perAuthBaseStateCost,
-                    delegationRefunds,
-                    delegationAuthBaseRefunds,
-                    out long stateGasRefund);
-                Debug.Assert(refundWithinBounds, "Authorization refunds are bounded before delegation processing.");
-                if (!refundWithinBounds)
-                {
-                    TraceLogInvalidTx(tx, "AUTHORIZATION_REFUND_OVERFLOW");
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("authorization refund gas overflow");
-                }
-
-                long refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
-                TGasPolicy.RefundStateGas(ref gasAvailable, stateGasRefund, refundFloor, trackSpillRefund: false);
-                // delegationRefunds is intentionally NOT zeroed: it flows on to Refund as codeInsertRefunds
-                // for the regular ACCOUNT_WRITE refund; the state-dimension refund was applied just above.
-                delegationAuthBaseRefunds = 0;
-            }
-
-            return TransactionResult.Ok;
-        }
-
-        private TransactionResult Validate8037DelegationRefundBounds(Transaction tx, IReleaseSpec spec, in TGasPolicy gasAvailable)
-        {
-            if (!spec.IsEip8037Enabled || !tx.HasAuthorizationList)
-            {
-                return TransactionResult.Ok;
-            }
-
-            long newAccountStateCost = TGasPolicy.GetNewAccountStateCost();
-            long perAuthBaseStateCost = TGasPolicy.GetPerAuthBaseStateCost();
-            long maxRefunds = tx.AuthorizationList.Length;
-            if (!TryCalculate8037DelegationRefund(
-                    newAccountStateCost,
-                    perAuthBaseStateCost,
-                    maxRefunds,
-                    maxRefunds,
-                    out _))
-            {
-                TraceLogInvalidTx(tx, "AUTHORIZATION_REFUND_OVERFLOW");
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("authorization refund gas overflow");
-            }
-
-            return TransactionResult.Ok;
-        }
-
-        private static bool TryCalculate8037DelegationRefund(
-            long newAccountStateCost,
-            long perAuthBaseStateCost,
-            long delegationRefunds,
-            long delegationAuthBaseRefunds,
-            out long stateGasRefund)
-        {
-            stateGasRefund = 0;
-            if (newAccountStateCost < 0 ||
-                perAuthBaseStateCost < 0 ||
-                delegationRefunds < 0 ||
-                delegationAuthBaseRefunds < 0)
-            {
-                return false;
-            }
-
-            if ((delegationRefunds != 0 && newAccountStateCost > long.MaxValue / delegationRefunds) ||
-                (delegationAuthBaseRefunds != 0 && perAuthBaseStateCost > long.MaxValue / delegationAuthBaseRefunds))
-            {
-                return false;
-            }
-
-            long newAccountStateRefund = newAccountStateCost * delegationRefunds;
-            long authBaseStateRefund = perAuthBaseStateCost * delegationAuthBaseRefunds;
-            if (newAccountStateRefund > long.MaxValue - authBaseStateRefund)
-            {
-                return false;
-            }
-
-            stateGasRefund = newAccountStateRefund + authBaseStateRefund;
-            return true;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private long ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker, out long authBaseRefunds)
+            ref TGasPolicy executionIntrinsicGasStandard,
+            out long codeInsertRefunds)
         {
             Debug.Assert(spec.IsEip7702Enabled && tx.HasAuthorizationList);
 
-            long refunds = 0;
-            authBaseRefunds = 0;
+            codeInsertRefunds = 0;
+            long preAuthorizationStateGasUsed = TGasPolicy.GetStateGasUsed(in gasAvailable);
             // Tracks each authority's delegation status as of tx start, so AUTH_BASE refills can tell
             // a pre-existing delegation from one installed earlier in the same tx.
             Dictionary<Address, bool>? delegatedBeforeTx = null;
+            HashSet<Address>? delegationSetFor = spec.IsEip8037Enabled ? [] : null;
+            HashSet<Address>? writtenAccounts = null;
+            if (spec.IsEip8037Enabled)
+            {
+                writtenAccounts = new HashSet<Address>(Address.EqualityComparer) { tx.SenderAddress! };
+                if (!tx.ValueRef.IsZero && tx.To is not null)
+                {
+                    writtenAccounts.Add(tx.To);
+                }
+            }
+
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
@@ -752,12 +691,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
-                    // An invalid authorization touches no state, so its worst-case intrinsic charges are refunded.
-                    if (spec.IsEip8037Enabled)
-                    {
-                        refunds++;
-                        authBaseRefunds++;
-                    }
                 }
                 else
                 {
@@ -771,33 +704,57 @@ namespace Nethermind.Evm.TransactionProcessing
                         delegatedBeforeTx[authority] = delegatedBefore;
                     }
 
+                    if (spec.IsEip8037Enabled)
+                    {
+                        if (!accountExists && !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost()))
+                        {
+                            return false;
+                        }
+
+                        if (writtenAccounts!.Add(authority))
+                        {
+                            ulong accountWriteGas = spec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : 0;
+                            if (accountWriteGas != 0 && !TGasPolicy.UpdateGas(ref gasAvailable, accountWriteGas))
+                            {
+                                return false;
+                            }
+                        }
+
+                        if (!clearsDelegation)
+                        {
+                            if (!delegatedBefore && delegationSetFor!.Add(authority)
+                                && !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetPerAuthBaseStateCost()))
+                            {
+                                return false;
+                            }
+                        }
+                    }
+
                     if (!accountExists)
                     {
                         WorldState.CreateAccount(authority, 0, 1);
                     }
                     else
                     {
-                        refunds++;
-                        WorldState.IncrementNonce(authority);
-                    }
+                        if (!spec.IsEip8037Enabled)
+                        {
+                            codeInsertRefunds++;
+                        }
 
-                    // AUTH_BASE refill: clearing always refills, twice when installed earlier in THIS tx;
-                    // setting refills when the slot holds a delegation now or at tx start.
-                    if (clearsDelegation)
-                    {
-                        authBaseRefunds++;
-                        if (hasDelegation && !delegatedBefore) authBaseRefunds++;
-                    }
-                    else if (hasDelegation || delegatedBefore)
-                    {
-                        authBaseRefunds++;
+                        WorldState.IncrementNonce(authority);
                     }
 
                     _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, spec);
                 }
             }
 
-            return refunds;
+            if (spec.IsEip8037Enabled)
+            {
+                long authorizationStateGasUsed = TGasPolicy.GetStateGasUsed(in gasAvailable) - preAuthorizationStateGasUsed;
+                TGasPolicy.FoldTopFrameStateGas(ref gasAvailable, ref executionIntrinsicGasStandard, authorizationStateGasUsed);
+            }
+
+            return true;
         }
 
         private enum AuthorizationTupleResult
@@ -903,15 +860,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.SenderNotSpecified;
             }
 
-            if (validate && tx.Nonce >= ulong.MaxValue - 1)
+            // EIP-2681 rejects the transaction nonce that would overflow the sender nonce after inclusion.
+            if (validate && tx.Nonce == ulong.MaxValue)
             {
-                // we are here if nonce is at least (ulong.MaxValue - 1). If tx is contract creation,
-                // it is max possible value. Otherwise, (ulong.MaxValue - 1) is allowed, but ulong.MaxValue not.
-                if (tx.IsContractCreation || tx.Nonce == ulong.MaxValue)
-                {
-                    TraceLogInvalidTx(tx, "NONCE_OVERFLOW");
-                    return TransactionResult.NonceOverflow;
-                }
+                TraceLogInvalidTx(tx, "NONCE_OVERFLOW");
+                return TransactionResult.NonceOverflow;
             }
 
             if (tx.IsAboveInitCode(spec))
@@ -937,11 +890,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            if (spec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong regular, out ulong floor))
+            if (spec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
             {
-                TraceLogInvalidTx(tx, $"TX_INTRINSIC_GAS_EXCEEDS_CAP regular={regular} floor={floor} > {Eip7825Constants.DefaultTxGasLimitCap}");
+                TraceLogInvalidTx(tx, $"TX_INTRINSIC_GAS_EXCEEDS_CAP execution={execution} floor={floor} > {Eip7825Constants.DefaultTxGasLimitCap}");
                 return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
-                    TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap));
+                    TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
             }
 
             TGasPolicy standard = intrinsicGas.Standard;
@@ -987,7 +940,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         return TransactionResult.BlockGasLimitExceeded;
                     }
 
-                    // Per-block EIP-8037 inclusion depends on cumulative regular/state gas,
+                    // Per-block EIP-8037 inclusion depends on cumulative execution/state gas,
                     // so block validation performs the 2D check in BlockAccessListManager
                     // where those accumulators are available. Direct Execute/BuildUp/estimator
                     // callers can only validate the tx-local allowance here.
@@ -1219,15 +1172,23 @@ namespace Nethermind.Evm.TransactionProcessing
             in StackAccessTracker accessTracker,
             CodeInfo? preloadedCodeInfo,
             Address? preloadedDelegationAddress,
+            bool loadRecipient,
+            ref TGasPolicy gasAvailable,
+            ref bool topFrameOutOfGas,
             out ExecutionEnvironment env)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
             CodeInfo? codeInfo;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data : default;
+            WarmUpTxAccesses(tx, spec, in accessTracker, recipient, warmUpRecipient: loadRecipient);
             if (tx.IsContractCreation)
             {
                 codeInfo = CodeInfoFactory.CreateCodeInfo(tx.Data);
+            }
+            else if (!loadRecipient)
+            {
+                codeInfo = CodeInfo.Empty;
             }
             else
             {
@@ -1239,15 +1200,42 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, spec, out delegationAddress);
+                    codeInfo = codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out delegationAddress);
                 }
 
-                //We assume eip-7702 must be active if it is a delegation
                 if (delegationAddress is not null)
-                    accessTracker.WarmUp(delegationAddress);
-            }
+                {
+                    if (spec.IsEip8037Enabled)
+                    {
+                        // EIP-8037: load delegated-recipient target code only after the
+                        // target's normal EIP-2929 warm/cold account-access charge succeeds.
+                        topFrameOutOfGas = !TGasPolicy.ConsumeAccountAccessGas(
+                            ref gasAvailable,
+                            spec,
+                            in accessTracker,
+                            isTracingAccess: false,
+                            delegationAddress);
 
-            WarmUpTxAccesses(tx, spec, in accessTracker, recipient);
+                        if (topFrameOutOfGas)
+                        {
+                            codeInfo = CodeInfo.Empty;
+                        }
+                        else
+                        {
+                            // EIP-7928: decorator fast-path skips world-state reads; record explicitly.
+                            WorldState.AddAccountRead(delegationAddress);
+
+                            codeInfo = spec.IsPrecompile(delegationAddress)
+                                ? CodeInfo.Empty
+                                : codeInfoRepository.GetCachedCodeInfo(delegationAddress, followDelegation: false, spec, out _);
+                        }
+                    }
+                    else
+                    {
+                        accessTracker.WarmUp(delegationAddress);
+                    }
+                }
+            }
 
             env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
@@ -1290,9 +1278,8 @@ namespace Nethermind.Evm.TransactionProcessing
             Snapshot snapshot = WorldState.TakeSnapshot();
             ulong floorGasLong = TGasPolicy.GetRemainingGas(gas.FloorGas);
 
-            // EIP-8037: a successful create to a pre-existing (alive) account refunds the intrinsic
-            // NEW_ACCOUNT state gas — no new account leaf is materialised.
             bool createdTargetAlive = tx.IsContractCreation && !WorldState.IsDeadAccount(env.ExecutingAccount);
+            bool topLevelCreateStateGasCharged = tx.IsContractCreation && !createdTargetAlive;
 
             if (topFrameOutOfGas)
             {
@@ -1341,6 +1328,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
             using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
+                if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.ConsumeCreateStateGas(ref state.Gas))
+                {
+                    gasAvailable = state.Gas;
+                    TGasPolicy.SetOutOfGas(ref gasAvailable);
+                    WorldState.Restore(snapshot);
+                    TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;
+                    gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in createStateOogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
+                    goto Complete;
+                }
+
                 substate = !TTracingInst.IsActive
                     ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
                     : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
@@ -1405,7 +1402,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir, createdTargetAlive);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
@@ -1417,10 +1414,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy intrinsicGasStandard = gas.Standard;
             if (spec.IsEip8037Enabled)
             {
-                // Use postIntrinsicStateReservoir captured before EVM execution so any
-                // EIP-7702 auth refund applied via Apply8037DelegationRefunds is preserved
-                // (otherwise the sender pays AccountCreationCost per refunded auth even
-                // though no account was created).
+                // Preserve the top-frame authorization state gas folded into the execution baseline.
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
             }
             else
@@ -1459,7 +1453,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in TGasPolicy intrinsicGasStandard,
             ulong floorGas,
             long postIntrinsicStateReservoir,
-            ulong codeInsertRegularRefund = 0)
+            ulong codeInsertExecutionRefund = 0)
         {
             long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
             long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
@@ -1480,7 +1474,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
-            return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertRegularRefund);
+            return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, codeInsertExecutionRefund);
         }
 
         protected virtual GasConsumed RefundOnFail(
@@ -1499,7 +1493,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ulong spentGas = Math.Max(preRefundGas, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
             Debug.Assert(blockStateGas >= 0, $"EIP-8037 fail-path invariant violated: negative block state gas ({blockStateGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas);
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
@@ -1526,10 +1520,13 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             TGasPolicy.SetOutOfGas(ref gasAfterCollision);
-            ulong spentGas = Math.Max(TGasPolicy.GetPreRefundGas(in gasAfterCollision, tx.GasLimit), floorGas);
+            ulong preRefundGas = TGasPolicy.GetPreRefundGas(in gasAfterCollision, tx.GasLimit);
+            ulong spentGas = Math.Max(preRefundGas, floorGas);
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterCollision);
+            Debug.Assert(blockStateGas >= 0, $"EIP-8037 collision-path invariant violated: negative block state gas ({blockStateGas}).");
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
-            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, spentGas, blockStateGas);
+            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
         protected virtual GasConsumed RefundOnTopLevelHalt(
@@ -1540,7 +1537,7 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 gasPrice,
             in TGasPolicy intrinsicGasStandard,
             ulong floorGas,
-            ulong codeInsertRegularRefund = 0)
+            ulong codeInsertExecutionRefund = 0)
         {
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
@@ -1551,19 +1548,16 @@ namespace Nethermind.Evm.TransactionProcessing
             // tx_gas_used_before_refund = tx.gas - gas_left - state_gas_left. The halt burns anything
             // left in gas_left (including refunded spill), so only the reservoir goes unspent here.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
-            // The regular gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
+            // The execution gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
             // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
-            ulong regularRefund = CalculateClaimableRefund(preRefundGas, codeInsertRegularRefund, spec);
-            ulong spentGas = Math.Max(preRefundGas - regularRefund, floorGas);
-            // Spilled state gas burns in gas_left as regular gas; the state dimension keeps
+            ulong executionRefund = CalculateClaimableRefund(preRefundGas, codeInsertExecutionRefund, spec);
+            ulong spentGas = Math.Max(preRefundGas - executionRefund, floorGas);
+            // Spilled state gas burns in gas_left as execution gas; the state dimension keeps
             // only the post-reset intrinsic remainder.
             long effectiveStateGas = TGasPolicy.GetStateGasUsed(in gas);
-            // Block regular gas = before_refund - state (tx_regular_gas); refunds and the calldata
-            // floor adjust only the sender charge, never this dimension.
             Debug.Assert(tx.IsSystem() || (ulong)effectiveStateGas <= preRefundGas,
                 $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
-            // System txs are exempt from the assert above; saturate so their unused block gas cannot wrap.
-            ulong blockGas = preRefundGas.SaturatingSub((ulong)effectiveStateGas);
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
         }
@@ -1585,14 +1579,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
-            if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Length, in unspentGas, out ulong regularDepositCost, out long stateDepositCost))
+            if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Length, in unspentGas, out ulong executionDepositCost, out long stateDepositCost))
                 return false;
 
             if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                 return false;
 
             // Copy the bytes so it's not live memory that will be used in another tx.
-            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, regularDepositCost, stateDepositCost, substate.Output.ToArray());
+            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, executionDepositCost, stateDepositCost, substate.Output.ToArray());
         }
 
         private bool TryChargeCodeDeposit(
@@ -1600,20 +1594,20 @@ namespace Nethermind.Evm.TransactionProcessing
             Address codeOwner,
             in StackAccessTracker accessedItems,
             ref TGasPolicy unspentGas,
-            ulong regularDepositCost,
+            ulong executionDepositCost,
             long stateDepositCost,
             byte[] code)
         {
             ulong remainingGas = TGasPolicy.GetRemainingGas(in unspentGas);
             ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in unspentGas, stateDepositCost);
-            bool hasEnoughGas = remainingGas >= regularDepositCost
-                && remainingGas - regularDepositCost >= stateSpill;
+            bool hasEnoughGas = remainingGas >= executionDepositCost
+                && remainingGas - executionDepositCost >= stateSpill;
 
             if (!hasEnoughGas)
                 return !spec.ChargeForTopLevelCreate;
 
             TGasPolicy gasAfterCodeDeposit = unspentGas;
-            if (!TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost))
+            if (!TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost))
                 return false;
 
             _codeInfoRepository.InsertCode(code, codeOwner, spec);
@@ -1638,7 +1632,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
         }
 
-        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode)
         {
             UInt256 fees = premiumPerGas * spentGas;
 
@@ -1650,7 +1644,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }
 
-            UInt256 eip1559Fees = !tx.IsFree() ? header.BaseFeePerGas * spentGas : UInt256.Zero;
+            // Cap collected base fee at the effective price paid — a no-op for validated blocks; prevents fee-collector minting in validation-off eth_simulateV1 where maxFeePerGas < baseFee.
+            UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
+            UInt256 eip1559Fees = !tx.IsFree() ? effectiveBaseFee * spentGas : UInt256.Zero;
             UInt256 collectedFees = spec.IsEip1559Enabled ? eip1559Fees : UInt256.Zero;
 
             if (tx.SupportsBlobs && spec.IsEip4844FeeCollectorEnabled)
@@ -1685,34 +1681,31 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir, bool createdTargetAlive = false)
+            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir, bool topLevelCreateStateGasCharged = false)
         {
             TGasPolicy gasAfterExecution = unspentGas;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            // EIP-8037: refund the top-level create's NEW_ACCOUNT state gas on revert or when the target
-            // already existed; exceptional halts refund it via CompleteEip8037Halt instead.
-            if (spec.IsEip8037Enabled && (substate.ShouldRevert || (!substate.IsError && createdTargetAlive)))
+            // EIP-8037: refund a charged top-level CREATE state cost on REVERT. Exceptional halts
+            // refund reverted execution state in CompleteEip8037Halt.
+            if (spec.IsEip8037Enabled && substate.ShouldRevert && topLevelCreateStateGasCharged)
             {
-                long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
-                if (refundedTopLevelCreateStateGas > 0)
+                long topLevelCreateStateGas = tx.IsContractCreation ? TGasPolicy.GetCreateStateCost() : 0;
+                if (topLevelCreateStateGas > 0)
                 {
-                    stateGasFloor -= refundedTopLevelCreateStateGas;
-                    TGasPolicy.RefundStateGas(ref gasAfterExecution, refundedTopLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
+                    TGasPolicy.RefundStateGas(ref gasAfterExecution, topLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
                 }
             }
 
-            ulong codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
+            ulong codeInsertExecutionRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
             ulong floorGasLong = TGasPolicy.GetRemainingGas(floorGas);
 
             if (substate.IsError && spec.IsEip8037Enabled)
             {
-                // Use postIntrinsicStateReservoir captured before EVM execution so any
-                // EIP-7702 auth refund applied via Apply8037DelegationRefunds is preserved
-                // through the halt-reset.
-                return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir, codeInsertRegularRefund);
+                // Preserve the top-frame authorization state gas folded into the execution baseline.
+                return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir, codeInsertExecutionRefund);
             }
 
-            (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertRegularRefund);
+            (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);
             (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
 
             ulong operationGas = refund >= 0 ? spentGas - (ulong)refund : spentGas + (ulong)(-refund);
@@ -1753,13 +1746,13 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec,
             in TransactionSubstate substate,
             in TGasPolicy gasAfterExecution,
-            ulong codeInsertRegularRefund)
+            ulong codeInsertExecutionRefund)
         {
             ulong spentGas = substate.IsError
                 ? tx.GasLimit
                 : TGasPolicy.GetPreRefundGas(in gasAfterExecution, tx.GasLimit);
 
-            long totalToRefund = (long)codeInsertRegularRefund;
+            long totalToRefund = (long)codeInsertExecutionRefund;
             if (!substate.IsError && !substate.ShouldRevert)
                 totalToRefund += substate.Refund + (substate.DestroyList?.Count ?? 0) * (long)spec.GasCosts.DestroyRefund;
 
@@ -1781,7 +1774,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
             Debug.Assert(blockStateGas >= 0, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(preRefundGas, (ulong)blockStateGas);
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
 
             return (blockGas, blockStateGas);
         }

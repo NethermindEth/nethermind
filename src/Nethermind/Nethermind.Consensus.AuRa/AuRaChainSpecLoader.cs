@@ -11,6 +11,10 @@ namespace Nethermind.Consensus.AuRa;
 /// ChainSpec post-processor for AuRa: upgrades <c>Genesis.Header</c> to <see cref="AuRaBlockHeader"/>
 /// and stamps the step + signature parsed from <c>genesis.seal.authorityRound</c>.
 /// </summary>
+/// <remarks>
+/// A zero terminal total difficulty marks genesis as post-merge, so its header keeps the standard
+/// mixHash + nonce seal even when the chain spec contains a placeholder AuRa seal.
+/// </remarks>
 public static class AuRaChainSpecLoader
 {
     private static readonly EthereumJsonSerializer _jsonSerializer = new();
@@ -18,6 +22,7 @@ public static class AuRaChainSpecLoader
     public static void ProcessChainSpec(ChainSpec chainSpec)
     {
         if (chainSpec.Genesis is null
+            || IsPostMergeGenesis(chainSpec)
             || chainSpec.CustomSeal?.TryGetValue("authorityRound", out JsonElement sealJson) is not true)
         {
             return;
@@ -31,6 +36,14 @@ public static class AuRaChainSpecLoader
         upgraded.AuRaSignature = seal.Signature;
 
         chainSpec.Genesis = chainSpec.Genesis.WithReplacedHeader(upgraded);
+    }
+
+    private static bool IsPostMergeGenesis(ChainSpec chainSpec)
+    {
+        if (chainSpec.Genesis is null || chainSpec.Parameters?.TerminalTotalDifficulty?.IsZero != true) return false;
+
+        chainSpec.Genesis.Header.IsPostMerge = true;
+        return true;
     }
 
     private sealed class AuRaGenesisSealJson

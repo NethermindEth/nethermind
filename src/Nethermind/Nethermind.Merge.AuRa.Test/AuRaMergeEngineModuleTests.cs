@@ -72,33 +72,33 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         => base.processing_block_should_serialize_valid_responses(blockHash, latestValidHash, payloadId);
 
     [TestCase(
-        "0x6a48eec80d3637d43c48957ef7248cd5d674fb21a71815dd929c95394b7d625a",
-        "0x20b06a2d847a9aec7dd557e884e9944fec06783c45cf74ad1b77e9aca9817253",
-        "0x9292b2b53d9dfc6f3b1f23d1ed2fdfef79b1be03a121d2b5191ea8bdcca71f5e",
-        "0xe98c1541c6165f4a",
+        "0xaa40d26a94de2ef75063d911a3f94eb655594e6219c670630762eb793683046c",
+        "0x715332eb67484c964f3ab6e7c7b417cb35966dda287d9fb7ce2ef724d57e44b4",
+        "0x3339423f06da988f138510ebd9dba1834d114181e1bfa459c8881dfe184a82b2",
+        "0xebdb403215eb509f",
         _auraWithdrawalContractAddress)]
     public override async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId, string? customWithdrawalContractAddress)
         => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, customWithdrawalContractAddress);
 
-    [TestCase("0x5b65f4f07c872ab1fa6a49dee5860c6a256381a5f7f948c2cb165cf5c53a5f11", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x30e58be6d5689f6aa9064c9ec4245d0505319fdaa4b0905bbb0bac789a8d232b", false, false)]
+    [TestCase("0x680ef2e7a94340086df97695296abbecd4ebbe531fc1b76befbc16beadf1a38e", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x034ce8e962c2a85501f6ce88e7ab97884103b47d5c8afe1b33eb31d03fdbc403", false, false)]
     public override async Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline)
         => await NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
 
     [TestCase(
-        "0x863a34d4ab2b5cbd686c638e2c35f8357ecabbecc36d5f3ad094393ea7401611",
+        "0x0b3f269183f353cca80bd3b31001a377e773782cc9577cb37e4581c98b76bddc",
         "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f",
-        "0xe64b6695a04ba31b0aa6e70c518b1e18661375ae642af9022ab0395fb774b62f",
-        "0xa3b2b8d01a6afbde0a0030e74837333956f7d73ed060d4efa773cee308fd6078",
+        "0xae38a7762690e50ef3138c25e58b3f1cd6b41e7a6385c37fce6c8246d666dbf3",
+        "0x423e51b670b1d00c6504c88a2b59158beeebcfffe088bc9d4dfb427f8f19d10a",
         _auraWithdrawalContractAddress,
         TestName = "NewPayloadV5_rejects_invalid_BAL_after_processing_AuRa_expanded")]
-    [TestCase("0x863a34d4ab2b5cbd686c638e2c35f8357ecabbecc36d5f3ad094393ea7401611", "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f", "0xe64b6695a04ba31b0aa6e70c518b1e18661375ae642af9022ab0395fb774b62f", "0xa3b2b8d01a6afbde0a0030e74837333956f7d73ed060d4efa773cee308fd6078", _auraWithdrawalContractAddress, TestName = "NewPayloadV5_rejects_invalid_BAL_after_processing_AuRa_inline")]
+    [TestCase("0x0b3f269183f353cca80bd3b31001a377e773782cc9577cb37e4581c98b76bddc", "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f", "0xae38a7762690e50ef3138c25e58b3f1cd6b41e7a6385c37fce6c8246d666dbf3", "0x423e51b670b1d00c6504c88a2b59158beeebcfffe088bc9d4dfb427f8f19d10a", _auraWithdrawalContractAddress, TestName = "NewPayloadV5_rejects_invalid_BAL_after_processing_AuRa_inline")]
     public override Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? customWithdrawalContractAddress)
         => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, customWithdrawalContractAddress);
 
-    [TestCase("0xf5a73d9eba949d1b4a95b58a0004c97c1b0c67928446f70346390f5e5dc76b56", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.IncorrectChange)]
-    [TestCase("0xef2f3ffe8ae0a8f60c244a198af6bd5be3178e3d3b431be62b800e2b9bebcebf", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.MissingChange)]
-    [TestCase("0xcb9cfe11e8e07b1f64560f6a3c97b3aca6e62ca35f9a39bea499f4f18423257b", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.SurplusChange)]
-    [TestCase("0x782be526a797b52c6013c261503e4d800b14d9df9cefb1ad33965c7d6842ac2b", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.SurplusReads)]
+    [TestCase("0x016151d1fff163105711f8ca72d1bacebb95dd7c954a92fd74250e1ecf1781a1", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x034ce8e962c2a85501f6ce88e7ab97884103b47d5c8afe1b33eb31d03fdbc403", false, false, BalErrorKind.IncorrectChange)]
+    [TestCase("0x74fcb3673f51700251c542deb4e8e2e402117dd668ecdd13b9c8a8f729760a7a", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x034ce8e962c2a85501f6ce88e7ab97884103b47d5c8afe1b33eb31d03fdbc403", false, false, BalErrorKind.MissingChange)]
+    [TestCase("0x4de1ae194b538cb649049db578f1a6a5747d46da156e47c4a3d28399e7545b6a", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x034ce8e962c2a85501f6ce88e7ab97884103b47d5c8afe1b33eb31d03fdbc403", false, false, BalErrorKind.SurplusChange)]
+    [TestCase("0x50555732397d70931000d47f6b504b44187b2a5e5bef90655e424cf70bb7cf64", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x034ce8e962c2a85501f6ce88e7ab97884103b47d5c8afe1b33eb31d03fdbc403", false, false, BalErrorKind.SurplusReads)]
     public override Task NewPayloadV5_rejects_invalid_BAL_early(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline, BalErrorKind errorKind) =>
         NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, GetExpectedBalError(errorKind), errorKind, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
 

@@ -18,7 +18,7 @@ namespace Nethermind.Evm.Test;
 /// End-to-end regression tests for EIP-8037 state-gas spill-refund accounting.
 /// </summary>
 /// <remarks>
-/// Each scenario pins the expected (spentGas, blockRegularGas, blockStateGas) triple for a
+/// Each scenario pins the expected (spentGas, blockExecutionGas, blockStateGas) triple for a
 /// cross-frame refund, spill-rollback, or halt shape not covered by the fixture suite.
 /// </remarks>
 [TestFixture]
@@ -47,7 +47,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         ContractDef[] Contracts,
         bool ExpectedSuccess,
         ulong ExpectedSpentGas,
-        ulong ExpectedBlockRegularGas,
+        ulong ExpectedBlockExecutionGas,
         long ExpectedBlockStateGas,
         bool IsCreate = false,
         byte[]? TxData = null,
@@ -82,7 +82,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             1_000_000,
             Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
             [],
-            ExpectedSuccess: true, ExpectedSpentGas: 125_926, ExpectedBlockRegularGas: 28_006, ExpectedBlockStateGas: 97_920);
+            ExpectedSuccess: true, ExpectedSpentGas: 125_926, ExpectedBlockExecutionGas: 28_006, ExpectedBlockStateGas: 97_920);
 
         // Set + clear in the same frame: the refund LIFO-refills gas_left, not the reservoir.
         yield return new Scenario(
@@ -93,7 +93,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 .PushData(0).PushData(0).Op(Instruction.SSTORE)
                 .Op(Instruction.STOP).Done,
             [],
-            ExpectedSuccess: true, ExpectedSpentGas: 22_490, ExpectedBlockRegularGas: 28_112, ExpectedBlockStateGas: 0);
+            ExpectedSuccess: true, ExpectedSpentGas: 22_490, ExpectedBlockExecutionGas: 28_112, ExpectedBlockStateGas: 0);
 
         // Tx gas above the EIP-7825 cap seeds the reservoir (R0 > 0): the SSTORE state charge
         // is reservoir-funded, no spill.
@@ -102,7 +102,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             20_000_000,
             Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
             [],
-            ExpectedSuccess: true, ExpectedSpentGas: 125_926, ExpectedBlockRegularGas: 28_006, ExpectedBlockStateGas: 97_920);
+            ExpectedSuccess: true, ExpectedSpentGas: 125_926, ExpectedBlockExecutionGas: 28_006, ExpectedBlockStateGas: 97_920);
 
         // R0 sized below one STORAGE_SET: the charge drains the reservoir and spills the rest.
         yield return new Scenario(
@@ -110,7 +110,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             16_842_216,
             Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
             [],
-            ExpectedSuccess: true, ExpectedSpentGas: 125_926, ExpectedBlockRegularGas: 28_006, ExpectedBlockStateGas: 97_920);
+            ExpectedSuccess: true, ExpectedSpentGas: 125_926, ExpectedBlockExecutionGas: 28_006, ExpectedBlockStateGas: 97_920);
 
         // Child halt then top-level halt with R0 > 0: the initial reservoir survives both
         // halts and is refunded (spent = gasLimit - R0).
@@ -126,7 +126,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 20_000_000,
                 aCode,
                 [new ContractDef(P, 0, pCode)],
-                ExpectedSuccess: false, ExpectedSpentGas: 16_777_216, ExpectedBlockRegularGas: 16_777_216, ExpectedBlockStateGas: 0);
+                ExpectedSuccess: false, ExpectedSpentGas: 16_777_216, ExpectedBlockExecutionGas: 16_777_216, ExpectedBlockStateGas: 0);
         }
 
         // Cross-frame refund advance fully discharged against the setter's usage: A sets a
@@ -147,7 +147,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 3_000_000,
                 BranchOnCallValue(aMain, aClear),
                 [new ContractDef(M, 1_000_000_000_000_000_000, mCode)],
-                ExpectedSuccess: true, ExpectedSpentGas: 31_432, ExpectedBlockRegularGas: 39_289, ExpectedBlockStateGas: 0);
+                ExpectedSuccess: true, ExpectedSpentGas: 31_432, ExpectedBlockExecutionGas: 39_289, ExpectedBlockStateGas: 0);
         }
 
         // As above, but the top level REVERTs after the advance was discharged.
@@ -167,7 +167,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 3_000_000,
                 BranchOnCallValue(aMain, aClear),
                 [new ContractDef(M, 1_000_000_000_000_000_000, mCode)],
-                ExpectedSuccess: false, ExpectedSpentGas: 39_295, ExpectedBlockRegularGas: 39_295, ExpectedBlockStateGas: 0);
+                ExpectedSuccess: false, ExpectedSpentGas: 39_295, ExpectedBlockExecutionGas: 39_295, ExpectedBlockStateGas: 0);
         }
 
         // Spill from a reverted grandchild rides through the child's exceptional halt; the old
@@ -187,7 +187,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                     new ContractDef(P, 0, pCode),
                     new ContractDef(X, 0, SstoreSetThenRevert()),
                 ],
-                ExpectedSuccess: true, ExpectedSpentGas: 818_023, ExpectedBlockRegularGas: 818_023, ExpectedBlockStateGas: 0);
+                ExpectedSuccess: true, ExpectedSpentGas: 818_023, ExpectedBlockExecutionGas: 818_023, ExpectedBlockStateGas: 0);
         }
 
         // Double-marking trace from the PR #12369 review: M imports spill from reverted X, gets
@@ -213,7 +213,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                     new ContractDef(M, 0, mCode),
                     new ContractDef(X, 0, SstoreSetThenRevert()),
                 ],
-                ExpectedSuccess: true, ExpectedSpentGas: 1_218_023, ExpectedBlockRegularGas: 1_218_023, ExpectedBlockStateGas: 0);
+                ExpectedSuccess: true, ExpectedSpentGas: 1_218_023, ExpectedBlockExecutionGas: 1_218_023, ExpectedBlockStateGas: 0);
 
             // Same shape ending in a top-level halt: the block split keeps the intrinsic state.
             byte[] aHaltCode = Prepare.EvmCode
@@ -228,11 +228,11 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                     new ContractDef(M, 0, mCode),
                     new ContractDef(X, 0, SstoreSetThenRevert()),
                 ],
-                ExpectedSuccess: false, ExpectedSpentGas: 3_000_000, ExpectedBlockRegularGas: 2_781_210, ExpectedBlockStateGas: 218_790,
+                ExpectedSuccess: false, ExpectedSpentGas: 3_000_000, ExpectedBlockExecutionGas: 2_781_210, ExpectedBlockStateGas: 218_790,
                 WithAuthorization: true);
         }
 
-        // Child-halt spill then top-level halt: burned spill stays regular; block state gas
+        // Child-halt spill then top-level halt: burned spill stays execution; block state gas
         // keeps the full intrinsic state.
         {
             byte[] pCode = Prepare.EvmCode
@@ -246,7 +246,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 3_000_000,
                 aCode,
                 [new ContractDef(P, 0, pCode)],
-                ExpectedSuccess: false, ExpectedSpentGas: 3_000_000, ExpectedBlockRegularGas: 2_781_210, ExpectedBlockStateGas: 218_790,
+                ExpectedSuccess: false, ExpectedSpentGas: 3_000_000, ExpectedBlockExecutionGas: 2_781_210, ExpectedBlockStateGas: 218_790,
                 WithAuthorization: true);
         }
 
@@ -279,7 +279,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                     new ContractDef(M, 1_000_000_000_000_000_000, mCode),
                     new ContractDef(X, 0, SstoreSetThenRevert()),
                 ],
-                ExpectedSuccess: true, ExpectedSpentGas: 1_518_023, ExpectedBlockRegularGas: 1_518_023, ExpectedBlockStateGas: 0);
+                ExpectedSuccess: true, ExpectedSpentGas: 1_518_023, ExpectedBlockExecutionGas: 1_518_023, ExpectedBlockStateGas: 0);
 
             byte[] aHaltCode = Prepare.EvmCode
                 .Call(P, 1_500_000).Op(Instruction.POP)
@@ -293,7 +293,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                     new ContractDef(M, 1_000_000_000_000_000_000, mCode),
                     new ContractDef(X, 0, SstoreSetThenRevert()),
                 ],
-                ExpectedSuccess: false, ExpectedSpentGas: 3_000_000, ExpectedBlockRegularGas: 2_781_210, ExpectedBlockStateGas: 218_790,
+                ExpectedSuccess: false, ExpectedSpentGas: 3_000_000, ExpectedBlockExecutionGas: 2_781_210, ExpectedBlockStateGas: 218_790,
                 WithAuthorization: true);
         }
 
@@ -315,11 +315,11 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 3_000_000,
                 BranchOnCallValue(aMain, aClear),
                 [new ContractDef(M, 1, mCode)],
-                ExpectedSuccess: true, ExpectedSpentGas: 248_141, ExpectedBlockRegularGas: 52_301, ExpectedBlockStateGas: 195_840);
+                ExpectedSuccess: true, ExpectedSpentGas: 248_141, ExpectedBlockExecutionGas: 52_301, ExpectedBlockStateGas: 195_840);
         }
 
-        // Inner CREATE spill then top-level OOG in a create tx: the tx-level create-state
-        // refund nets block state gas to zero.
+        // Top-level and inner CREATE state charges spill from gas_left. On the top-level OOG,
+        // the rollback refills and then burns that gas as execution while block state stays zero.
         {
             byte[] childInitCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
             byte[] initCode = Prepare.EvmCode
@@ -333,7 +333,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 300_000,
                 [],
                 [],
-                ExpectedSuccess: false, ExpectedSpentGas: 116_400, ExpectedBlockRegularGas: 116_400, ExpectedBlockStateGas: 0,
+                ExpectedSuccess: false, ExpectedSpentGas: 300_000, ExpectedBlockExecutionGas: 300_000, ExpectedBlockStateGas: 0,
                 IsCreate: true,
                 TxData: initCode);
         }
@@ -355,7 +355,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 2_000_000,
                 aCode,
                 [],
-                ExpectedSuccess: true, ExpectedSpentGas: 1_788_428, ExpectedBlockRegularGas: 1_788_428, ExpectedBlockStateGas: 0);
+                ExpectedSuccess: true, ExpectedSpentGas: 1_788_428, ExpectedBlockExecutionGas: 1_788_428, ExpectedBlockStateGas: 0);
         }
     }
 
@@ -407,7 +407,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(scenario.ExpectedSuccess ? StatusCode.Success : StatusCode.Failure), "status");
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(scenario.ExpectedSpentGas), "spent gas");
-            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(scenario.ExpectedBlockRegularGas), "block regular gas");
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(scenario.ExpectedBlockExecutionGas), "block execution gas");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(scenario.ExpectedBlockStateGas), "block state gas");
         }
     }

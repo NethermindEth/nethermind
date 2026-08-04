@@ -10,9 +10,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing;
@@ -113,22 +111,22 @@ public sealed class MempoolStatePrewarmer : IDisposable
         ulong timestamp = Math.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(number, timestamp));
 
-        BlockHeader header = new(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            parent.GasBeneficiary ?? Address.Zero,
-            UInt256.Zero,
-            number,
-            parent.GasLimit,
-            timestamp,
-            [])
-        {
-            MixHash = parent.MixHash,
-            BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec),
-            ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot,
-        };
+        return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec), spec);
+    }
 
-        return new NextBlockContext(header, spec);
+    /// <summary>
+    /// Builds the synthetic "next block" header for warming.
+    /// </summary>
+    private static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec)
+    {
+        BlockHeader header = parent.CreateSimulatedChild(timestamp);
+        // Resolve the actual coinbase: on Clique, Beneficiary is a vote target, not the sealer.
+        header.Beneficiary = parent.GasBeneficiary ?? Address.Zero;
+        header.MixHash = parent.MixHash;
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+        header.ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot;
+
+        return header;
     }
 
     private Block? BuildDeltaBlock(BlockHeader parent, NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender)

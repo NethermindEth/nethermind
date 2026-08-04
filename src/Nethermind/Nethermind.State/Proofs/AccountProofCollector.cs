@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,6 +31,7 @@ namespace Nethermind.State.Proofs
 
         private readonly List<byte[]> _accountProofItems = [];
         private readonly List<byte[]>[] _storageProofItems;
+        private readonly CancellationToken _cancellationToken;
 
         private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
 
@@ -90,8 +92,9 @@ namespace Nethermind.State.Proofs
         public AccountProofCollector(Address? address, IEnumerable<UInt256> storageKeys)
             : this(address, storageKeys.Select(ToKey).ToArray()) { }
 
-        public AccountProofCollector(Address? address, IReadOnlyCollection<UInt256> storageKeys)
+        public AccountProofCollector(Address? address, IReadOnlyCollection<UInt256> storageKeys, CancellationToken cancellationToken = default)
         {
+            _cancellationToken = cancellationToken;
             _accountProof = new AccountProof
             {
                 StorageProofs = new StorageProof[storageKeys.Count],
@@ -142,6 +145,8 @@ namespace Nethermind.State.Proofs
 
         public bool ShouldVisit(in TreePathContextWithStorage ctx, in ValueHash256 nextNode)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             if (ctx.Storage is null)
             {
                 // Account trie: follow the path leading to our target account. Once we've reached

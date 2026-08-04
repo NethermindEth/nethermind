@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Ssz;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution.IO;
 using Spectre.Console;
@@ -36,22 +37,22 @@ internal static class InputGenerator
             if (block is null || witness is null || chainId is null)
                 return 1;
 
-            StatelessInput<SszExecutionPayloadV3> input = new()
-            {
-                NewPayloadRequest = NewPayloadRequest<SszExecutionPayloadV3>.From(block),
-                Witness = ExecutionWitness.From(witness),
-                ChainConfig = new()
-                {
-                    ChainId = chainId.Value,
-                    ActiveFork = ForkConfig.From(block.Header, GetSpecProvider(chainId.Value))
-                },
-                PublicKeys = RecoverPublicKeys(block.Transactions, chainId.Value)
-            };
+            ISpecProvider specProvider = GetSpecProvider(chainId.Value);
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-            byte[] encoded = StatelessInput<SszExecutionPayloadV3>.Encode(input);
+            if (!ProtocolForkExtensions.TryGetByName(spec.Name, out ProtocolFork fork))
+            {
+                AnsiConsole.MarkupLine($"[red]Unsupported fork {spec.Name}: the stateless input schema requires a Cancun or later block[/]");
+                return 1;
+            }
+
+            byte[] encoded = fork == ProtocolFork.Amsterdam
+                ? EncodeInput<SszExecutionPayloadV4>(block, witness, chainId.Value, specProvider)
+                : EncodeInput<SszExecutionPayloadV3>(block, witness, chainId.Value, specProvider);
+
             data = new byte[encoded.Length + sizeof(ushort)];
 
-            BinaryPrimitives.WriteUInt16BigEndian(data, 0);
+            BinaryPrimitives.WriteUInt16BigEndian(data, fork.ToRevision1SchemaId());
 
             Buffer.BlockCopy(encoded, 0, data, sizeof(ushort), encoded.Length);
         }
@@ -69,6 +70,24 @@ internal static class InputGenerator
         AnsiConsole.MarkupLine($"[green]✓[/] Saved to [dim]{Path.GetDirectoryName(path)}{Path.DirectorySeparatorChar}[/]{fileName}");
 
         return 0;
+    }
+
+    private static byte[] EncodeInput<TExecutionPayload>(Block block, Witness witness, ulong chainId, ISpecProvider specProvider)
+        where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
+    {
+        StatelessInput<TExecutionPayload> input = new()
+        {
+            NewPayloadRequest = NewPayloadRequest<TExecutionPayload>.From(block),
+            Witness = ExecutionWitness.From(witness),
+            ChainConfig = new()
+            {
+                ChainId = chainId,
+                ActiveFork = ForkConfig.From(block.Header, specProvider)
+            },
+            PublicKeys = RecoverPublicKeys(block.Transactions, chainId)
+        };
+
+        return StatelessInput<TExecutionPayload>.Encode(input);
     }
 
     private static async Task<(Block?, Witness?, ulong? chainId)> FetchData(string blockParam, Uri host, CancellationToken cancellationToken)

@@ -306,6 +306,35 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
+        public void Decodes_too_large_transaction_nonce_as_max_nonce_sentinel()
+        {
+            byte[] txBytes = BuildLegacyTxWithNonce([0x01, 0, 0, 0, 0, 0, 0, 0, 0]);
+            RlpReader decoderContext = new(txBytes);
+
+            Transaction transaction = _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(transaction.Nonce, Is.EqualTo(ulong.MaxValue));
+                Assert.That(transaction.Hash, Is.EqualTo(Keccak.Compute(txBytes)));
+            }
+        }
+
+        [TestCaseSource(nameof(NonCanonicalNonceTestCases))]
+        public void Rejects_non_canonical_transaction_nonce(byte[] nonceBytes)
+        {
+            byte[] txBytes = BuildLegacyTxWithNonce(nonceBytes);
+
+            void Decode()
+            {
+                RlpReader decoderContext = new(txBytes);
+                _txDecoder.DecodeGuardNotNull(ref decoderContext, RlpBehaviors.AllowUnsigned);
+            }
+
+            Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("Non-canonical integer"));
+        }
+
+        [Test]
         public void Rejects_trailing_bytes_for_skip_typed_wrapping_transactions()
         {
             Transaction tx = BuildTypedTransaction();
@@ -468,6 +497,13 @@ namespace Nethermind.Core.Test.Encoding
             );
         }
 
+        private static IEnumerable<TestCaseData> NonCanonicalNonceTestCases()
+        {
+            yield return new TestCaseData(new byte[] { 0 }).SetName("Zero byte nonce");
+            yield return new TestCaseData(new byte[] { 0, 1 }).SetName("Leading zero nonce");
+            yield return new TestCaseData(new byte[] { 0, 1, 0, 0, 0, 0, 0, 0, 0 }).SetName("Oversized nonce with leading zero");
+        }
+
         private static byte[] BuildSetCodeTxBytes(int authCount) => _txDecoder.Encode(new Transaction
         {
             Type = TxType.SetCode,
@@ -482,6 +518,35 @@ namespace Nethermind.Core.Test.Encoding
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA)
             .TestObject;
+
+        private static byte[] BuildLegacyTxWithNonce(ReadOnlySpan<byte> nonceBytes)
+        {
+            int nonceRlpLength = GetByteStringRlpLength(nonceBytes);
+            int payloadLength = nonceRlpLength + 8;
+            byte[] txBytes = new byte[1 + payloadLength];
+            txBytes[0] = (byte)(Rlp.EmptyListByte + payloadLength);
+
+            int position = 1;
+            EncodeByteString(txBytes, ref position, nonceBytes);
+            txBytes.AsSpan(position).Fill(Rlp.EmptyByteArrayByte);
+            return txBytes;
+        }
+
+        private static int GetByteStringRlpLength(ReadOnlySpan<byte> bytes) =>
+            bytes.Length == 1 && bytes[0] < Rlp.EmptyByteArrayByte ? 1 : 1 + bytes.Length;
+
+        private static void EncodeByteString(byte[] output, ref int position, ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length == 1 && bytes[0] < Rlp.EmptyByteArrayByte)
+            {
+                output[position++] = bytes[0];
+                return;
+            }
+
+            output[position++] = bytes.Length == 0 ? Rlp.EmptyByteArrayByte : (byte)(Rlp.EmptyByteArrayByte + bytes.Length);
+            bytes.CopyTo(output.AsSpan(position));
+            position += bytes.Length;
+        }
 
         private static byte[] AppendTrailingByte(byte[] encoded)
         {

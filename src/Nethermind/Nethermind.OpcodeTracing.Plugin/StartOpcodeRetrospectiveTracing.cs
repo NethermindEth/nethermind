@@ -11,7 +11,7 @@ namespace Nethermind.OpcodeTracing.Plugin;
 /// Kicks off retrospective opcode tracing (historical block analysis). Registered only when the configured
 /// tracing mode is Retrospective or RetrospectiveExecution.
 /// </summary>
-[RunnerStepDependencies(typeof(InitializeBlockchain))]
+[RunnerStepDependencies(typeof(ReviewBlockTree))]
 public class StartOpcodeRetrospectiveTracing(OpcodeTraceRecorder recorder) : IStep
 {
     // true so an invalid tracing config (PrepareAsync throws) aborts startup instead of being swallowed.

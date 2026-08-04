@@ -344,6 +344,22 @@ public class JsonRpcServiceTests
         adminRpcModule.Received(1).admin_peers(false);
     }
 
+    // Receipt RPCs surface "neither stored nor reproducible" as ResourceNotFoundException; only eth_getLogs has a
+    // module-level catch, so every other receipt method depends on this central mapping. Without it the exception
+    // would hit the ArgumentException arm (it derives from it) and answer "invalid params".
+    [Test]
+    public void Resource_not_found_maps_to_pruned_history_unavailable()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getBlockReceipts(Arg.Any<BlockParameter>())
+            .ThrowsForAnyArgs(new ResourceNotFoundException("receipts are neither stored nor reproducible"));
+
+        JsonRpcResponse response = TestRequest(ethRpcModule, "eth_getBlockReceipts", "0x1b4");
+
+        Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
+        Assert.That(((JsonRpcErrorResponse)response).Error?.Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+    }
+
     [Test]
     public void Case_sensitivity_test()
     {
