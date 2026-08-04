@@ -40,13 +40,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     public NativeCallTracer(
         Transaction? tx,
-        IReleaseSpec spec,
+        IReleaseSpec? spec,
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
         _gasLimit = tx!.GasLimit;
         _txHash = tx.Hash;
-        _isEip8037Enabled = spec.IsEip8037Enabled;
+        _isEip8037Enabled = spec?.IsEip8037Enabled ?? false;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -223,9 +223,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         if (!_isEip8037Enabled) return;
 
-        firstCallFrame.RegularGasUsed = gasSpent.EffectiveBlockGas;
-        firstCallFrame.StateGasUsed = gasSpent.BlockStateGas;
-        firstCallFrame.GasRefund = gasSpent.GasRefund;
+        firstCallFrame.Eip8037Gas = new TwoDimensionalGas(gasSpent.EffectiveBlockGas, gasSpent.BlockStateGas, gasSpent.GasRefund);
     }
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)

@@ -638,8 +638,10 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(frame!.Logs, Is.Null, "logs must be cleared on a failed CREATE frame even when _error is null");
     }
 
-    [Test]
-    public void Test_CallTrace_Amsterdam_TopFrame_IncludesTwoDimensionalGas()
+    // Drives an Amsterdam (EIP-8037) top-level CALL through the tracer, optionally with one sub-call,
+    // and returns the built trace. GasConsumed is chosen so the non-floor invariant holds:
+    // regularGasUsed + stateGasUsed == gasUsed + gasRefund (25000 + 5000 == 21000 + 9000).
+    private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8037Enabled.Returns(true);
@@ -647,47 +649,50 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(null));
 
         tracer.ReportAction(100000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
-        tracer.ReportActionEnd(40000, ReadOnlyMemory<byte>.Empty);
-        // regularGasUsed + stateGasUsed == gasUsed + gasRefund (25000 + 5000 == 21000 + 9000)
+        if (withSubFrame)
+        {
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+            tracer.ReportActionEnd(30000, ReadOnlyMemory<byte>.Empty);
+        }
+        tracer.ReportActionEnd(withSubFrame ? 10000ul : 40000ul, ReadOnlyMemory<byte>.Empty);
         tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000, 25000, 5000, 30000, 9000), [], []);
 
-        using GethLikeTxTrace trace = tracer.BuildResult();
-        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
-        Assert.That(frame.RegularGasUsed, Is.EqualTo(25000ul));
-        Assert.That(frame.StateGasUsed, Is.EqualTo(5000ul));
-        Assert.That(frame.GasRefund, Is.EqualTo(9000ul));
+        return tracer.BuildResult();
+    }
 
+    [Test]
+    public void Test_CallTrace_Amsterdam_TopFrame_IncludesTwoDimensionalGas()
+    {
+        using GethLikeTxTrace trace = TraceAmsterdamTopCall(withSubFrame: false);
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
         string json = JsonSerializer.Serialize(trace.CustomTracerResult.Value, SerializerOptions);
-        Assert.That(json, Does.Contain("""
-          "regularGasUsed": "0x61a8",
-          "stateGasUsed": "0x1388",
-          "gasRefund": "0x2328",
-        """.ReplaceLineEndings("\n")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Eip8037Gas, Is.EqualTo(new TwoDimensionalGas(25000, 5000, 9000)));
+            Assert.That(json, Does.Contain("""
+              "regularGasUsed": "0x61a8",
+              "stateGasUsed": "0x1388",
+              "gasRefund": "0x2328",
+            """.ReplaceLineEndings("\n")));
+        }
     }
 
     [Test]
     public void Test_CallTrace_Amsterdam_SubFrames_OmitTwoDimensionalGas()
     {
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip8037Enabled.Returns(true);
-        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
-        using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(null));
-
-        tracer.ReportAction(100000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
-        tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
-        tracer.ReportActionEnd(30000, ReadOnlyMemory<byte>.Empty);
-        tracer.ReportActionEnd(10000, ReadOnlyMemory<byte>.Empty);
-        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000, 25000, 5000, 30000, 9000), [], []);
-
-        using GethLikeTxTrace trace = tracer.BuildResult();
+        using GethLikeTxTrace trace = TraceAmsterdamTopCall(withSubFrame: true);
         NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
-        Assert.That(frame.RegularGasUsed, Is.Not.Null, "top frame carries the two-dimensional gas");
-        Assert.That(frame.Calls, Has.Count.EqualTo(1));
-        Assert.That(frame.Calls[0].RegularGasUsed, Is.Null, "sub-frames must omit the two-dimensional gas");
-
         string json = JsonSerializer.Serialize(trace.CustomTracerResult.Value, SerializerOptions);
-        // The three fields appear exactly once, on the top frame.
-        Assert.That(json.Split("regularGasUsed").Length - 1, Is.EqualTo(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Eip8037Gas, Is.Not.Null, "top frame carries the two-dimensional gas");
+            Assert.That(frame.Calls, Has.Count.EqualTo(1));
+            Assert.That(frame.Calls[0].Eip8037Gas, Is.Null, "sub-frames must omit the two-dimensional gas");
+            // The three fields appear exactly once, on the top frame.
+            Assert.That(json.Split("regularGasUsed").Length - 1, Is.EqualTo(1));
+        }
     }
 
 

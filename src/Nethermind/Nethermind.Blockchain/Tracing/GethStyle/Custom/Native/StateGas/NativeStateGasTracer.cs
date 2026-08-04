@@ -11,14 +11,24 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 // stateGasTracer exposes the EIP-8037 two-dimensional gas summary per transaction. The values are the
 // ones already computed for block-level gas accounting (carried on GasConsumed); the tracer only reads
 // and formats them, without re-deriving anything from opcode-level data.
-public sealed class NativeStateGasTracer(Transaction tx, IReleaseSpec spec, GethTraceOptions options)
-    : GethLikeNativeTxTracer(options)
+public sealed class NativeStateGasTracer : GethLikeNativeTxTracer
 {
     public const string StateGasTracer = "stateGasTracer";
 
-    private readonly Hash256? _txHash = tx.Hash;
-    private readonly bool _isEip8037Enabled = spec.IsEip8037Enabled;
+    private readonly Hash256? _txHash;
+    private readonly bool _isEip8037Enabled;
     private StateGasTrace? _result;
+
+    public NativeStateGasTracer(Transaction tx, IReleaseSpec? spec, GethTraceOptions options) : base(options)
+    {
+        _txHash = tx.Hash;
+        _isEip8037Enabled = spec?.IsEip8037Enabled ?? false;
+        // Terminal-only tracer: it reads only the per-transaction GasConsumed result, so switch off the
+        // opcode-level callbacks the base type enables from GethTraceOptions defaults (storage reads on
+        // every SLOAD/SSTORE/TLOAD/TSTORE, stack snapshots) that this tracer never consumes.
+        IsTracingOpLevelStorage = false;
+        IsTracingStack = false;
+    }
 
     // No opcode-level data is needed; only the terminal per-transaction result.
     public override bool IsTracingInstructions => false;
