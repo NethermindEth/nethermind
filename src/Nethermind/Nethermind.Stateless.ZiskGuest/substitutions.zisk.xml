@@ -1,0 +1,28 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+  SPDX-License-Identifier: LGPL-3.0-only
+
+  ILLink.Substitutions for the ZisK guest build (passed to bflat via -\-substitution).
+
+  NOTE: the universal floating-point-elimination substitutions (thread-pool,
+  formatting, Double/Single conversions, primitive widening, timezone math,
+  reflection constant readers, ...) now live inside bflat itself
+  (zisk.substitutions.xml, applied automatically for -\-libc zisk). This file
+  only carries decisions specific to THIS guest.
+-->
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <!-- Convert.ChangeType is the string-to-typed-value chokepoint of
+         Nethermind's config binder (ConfigSourceHelper) - the only ChangeType
+         caller in the closure. The guest constructs its config objects directly
+         and never binds from strings, yet reachability of these two overloads
+         compiles the whole IConvertible conversion matrix. Throwing bodies keep
+         the failure loud if a string-bound config path ever appears. This is a
+         guest policy (ChangeType is legitimate on the target for non-float
+         conversions), so it stays here rather than in the bflat built-in set. -->
+    <type fullname="System.Convert">
+      <method signature="System.Object ChangeType(System.Object,System.Type)" body="remove" />
+      <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
+    </type>
+  </assembly>
+</linker>
