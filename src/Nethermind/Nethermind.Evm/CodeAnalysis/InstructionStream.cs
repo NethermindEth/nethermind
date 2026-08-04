@@ -26,8 +26,9 @@ internal enum StreamOpKind : byte
 
 /// <summary>
 /// Virtual opcodes for fused instruction sequences use undefined EVM byte values: the 0x0C..0x0F
-/// and 0x21..0x2F gaps, plus <c>PopPop</c> at currently undefined 0x4D above SLOTNUM. The fingerprint
-/// gate keeps new forks (which might define one of these) off the stream until reviewed.
+/// and 0x21..0x2F gaps, plus <c>AndIsZero</c>, <c>PopPop</c>, and <c>SwapPop</c> in the currently
+/// undefined 0x4C..0x4E range above SLOTNUM. The fingerprint gate keeps new forks (which might define
+/// one of these) off the stream until reviewed.
 /// </summary>
 internal static class FusedOpcode
 {
@@ -48,7 +49,9 @@ internal static class FusedOpcode
     public const byte Xor = 0x2B;
     public const byte Shl = 0x2C;
     public const byte Shr = 0x2D;
+    public const byte AndIsZero = 0x4C;
     public const byte PopPop = 0x4D;
+    public const byte SwapPop = 0x4E;
     public const byte StaticJump = 0x2E;
     public const byte StaticJumpI = 0x2F;
 
@@ -190,15 +193,14 @@ internal sealed class InstructionStream
             else if (GetInBlockCost(instruction) is ulong cost && cost != NotInBlock && pc + immediates < code.Length)
             {
                 if (openBlock >= 0
-                    && instruction == Instruction.POP
-                    && TryTakePrecedingPop(ops, out StreamOp pop))
+                    && TryTakePrecedingFixedGasPair(ops, instruction, out byte pairOpcode, out ulong pairOperand, out StreamOp first))
                 {
                     blockGas[openBlock] += cost;
                     pcToEntry[pc] = InvalidEntry;
-                    StreamOpKind fusedKind = pop.Kind == StreamOpKind.BlockFirst
+                    StreamOpKind fusedKind = first.Kind == StreamOpKind.BlockFirst
                         ? StreamOpKind.FusedBlockFirst
                         : StreamOpKind.FusedInBlock;
-                    ops[^1] = new StreamOp(FusedOpcode.PopPop, fusedKind, pop.Pc, pop.BlockIndex, (byte)(pop.Advance + size), 0);
+                    ops[^1] = new StreamOp(pairOpcode, fusedKind, first.Pc, first.BlockIndex, (byte)(first.Advance + size), pairOperand);
                 }
                 else if (openBlock >= 0
                     && FusedOpcode.TryMap(instruction, out byte fusedOpcode)
@@ -345,18 +347,45 @@ internal sealed class InstructionStream
         return true;
     }
 
-    private static bool TryTakePrecedingPop(List<StreamOp> ops, out StreamOp pop)
+    private static bool TryTakePrecedingFixedGasPair(List<StreamOp> ops, Instruction second, out byte fusedOpcode, out ulong operand, out StreamOp first)
     {
-        pop = default;
+        fusedOpcode = 0;
+        operand = 0;
+        first = default;
         if (ops.Count == 0)
             return false;
 
         StreamOp last = ops[^1];
-        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock)
-            || last.Opcode != (byte)Instruction.POP)
+        if (last.Kind is not (StreamOpKind.BlockFirst or StreamOpKind.InBlock))
             return false;
 
-        pop = last;
+        Instruction firstInstruction = (Instruction)last.Opcode;
+        if (second == Instruction.POP)
+        {
+            if (firstInstruction == Instruction.POP)
+            {
+                fusedOpcode = FusedOpcode.PopPop;
+            }
+            else if (firstInstruction is >= Instruction.SWAP1 and <= Instruction.SWAP8)
+            {
+                fusedOpcode = FusedOpcode.SwapPop;
+                operand = (ulong)(firstInstruction - Instruction.SWAP1 + 2);
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else if (firstInstruction == Instruction.AND && second == Instruction.ISZERO)
+        {
+            fusedOpcode = FusedOpcode.AndIsZero;
+        }
+        else
+        {
+            return false;
+        }
+
+        first = last;
         return true;
     }
 

@@ -171,6 +171,25 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                 ThrowStreamOperationCanceledException();
                             exceptionType = EvmInstructions.FusedPopPopCore(ref stack);
                             break;
+                        case (Instruction)FusedOpcode.SwapPop:
+                        {
+                            int depth = (int)entry.Operand;
+                            if (TCancelable.IsActive
+                                && stack.Head >= depth
+                                && ((opCodeCount - 1) & CancellationCheckMask) == 0
+                                && _txTracer.IsCancelled)
+                                ThrowStreamOperationCanceledException();
+                            exceptionType = stack.SwapPop(depth);
+                            break;
+                        }
+                        case (Instruction)FusedOpcode.AndIsZero:
+                            if (TCancelable.IsActive
+                                && stack.Head >= 2
+                                && ((opCodeCount - 1) & CancellationCheckMask) == 0
+                                && _txTracer.IsCancelled)
+                                ThrowStreamOperationCanceledException();
+                            exceptionType = stack.AndIsZero();
+                            break;
                         case Instruction.ADD:
                             exceptionType = EvmInstructions.Math2ParamCore<EvmInstructions.OpAdd, OffFlag>(ref stack);
                             break;

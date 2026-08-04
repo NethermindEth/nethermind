@@ -208,6 +208,69 @@ public class InstructionStreamTests
         }
     }
 
+    [TestCaseSource(nameof(FixedGasPairAnalyzerCases))]
+    public void TryBuild_FixedGasPair_FusesGasAndPcMap(Instruction first, Instruction second, byte expectedOpcode, ulong expectedOperand, bool hasPrefix)
+    {
+        byte[] code = hasPrefix
+            ? [(byte)Instruction.PUSH0, (byte)first, (byte)second, (byte)Instruction.STOP]
+            : [(byte)first, (byte)second, (byte)Instruction.STOP];
+        int pairPc = hasPrefix ? 1 : 0;
+        int pairEntry = hasPrefix ? 1 : 0;
+        ulong pairGas = second == Instruction.POP
+            ? GasCostOf.VeryLow + GasCostOf.Base
+            : 2 * GasCostOf.VeryLow;
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+        StreamOp pair = stream.Ops[pairEntry];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.BlockGas, Has.Length.EqualTo(1));
+            Assert.That(stream.BlockGas[0], Is.EqualTo(pairGas + (hasPrefix ? GasCostOf.Base : 0)),
+                "both fixed-gas operations remain in their precharged block");
+            Assert.That(pair.Opcode, Is.EqualTo(expectedOpcode));
+            Assert.That(pair.Operand, Is.EqualTo(expectedOperand));
+            Assert.That(pair.Kind, Is.EqualTo(hasPrefix ? StreamOpKind.FusedInBlock : StreamOpKind.FusedBlockFirst));
+            Assert.That(pair.Pc, Is.EqualTo(pairPc));
+            Assert.That(pair.BlockIndex, Is.EqualTo(0));
+            Assert.That(pair.Advance, Is.EqualTo(2));
+            Assert.That(stream.PcToEntry[pairPc], Is.EqualTo(pairEntry), "the first operation remains an entry start");
+            Assert.That(stream.PcToEntry[pairPc + 1], Is.EqualTo(InstructionStream.InvalidEntry), "nothing can land on the fused second operation");
+            Assert.That(stream.PcToEntry[pairPc + 2], Is.EqualTo(pairEntry + 1), "the boundary after the pair stays reachable");
+            Assert.That(stream.Ops[pairEntry + 1].Kind, Is.EqualTo(StreamOpKind.Boundary));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> FixedGasPairAnalyzerCases()
+    {
+        yield return FixedGasPairAnalyzerCase("Swap1BlockFirst", Instruction.SWAP1, Instruction.POP, FusedOpcode.SwapPop, 2, hasPrefix: false);
+        yield return FixedGasPairAnalyzerCase("Swap1InBlock", Instruction.SWAP1, Instruction.POP, FusedOpcode.SwapPop, 2, hasPrefix: true);
+        yield return FixedGasPairAnalyzerCase("Swap3BlockFirst", Instruction.SWAP3, Instruction.POP, FusedOpcode.SwapPop, 4, hasPrefix: false);
+        yield return FixedGasPairAnalyzerCase("Swap3InBlock", Instruction.SWAP3, Instruction.POP, FusedOpcode.SwapPop, 4, hasPrefix: true);
+        yield return FixedGasPairAnalyzerCase("Swap8BlockFirst", Instruction.SWAP8, Instruction.POP, FusedOpcode.SwapPop, 9, hasPrefix: false);
+        yield return FixedGasPairAnalyzerCase("Swap8InBlock", Instruction.SWAP8, Instruction.POP, FusedOpcode.SwapPop, 9, hasPrefix: true);
+        yield return FixedGasPairAnalyzerCase("AndIsZeroBlockFirst", Instruction.AND, Instruction.ISZERO, FusedOpcode.AndIsZero, 0, hasPrefix: false);
+        yield return FixedGasPairAnalyzerCase("AndIsZeroInBlock", Instruction.AND, Instruction.ISZERO, FusedOpcode.AndIsZero, 0, hasPrefix: true);
+    }
+
+    private static TestCaseData FixedGasPairAnalyzerCase(string name, Instruction first, Instruction second, byte expectedOpcode, ulong expectedOperand, bool hasPrefix)
+        => new(first, second, expectedOpcode, expectedOperand, hasPrefix) { TestName = name };
+
+    [Test]
+    public void TryBuild_AndIsZero_DoesNotConsumePrecedingFusedConstAnd()
+    {
+        byte[] code = [(byte)Instruction.PUSH1, 0x00, (byte)Instruction.AND, (byte)Instruction.ISZERO, (byte)Instruction.STOP];
+
+        InstructionStream stream = InstructionStream.TryBuild(code)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo(FusedOpcode.And), "precondition: the preceding PUSH1; AND is already fused");
+            Assert.That(stream.Ops[1].Opcode, Is.EqualTo((byte)Instruction.ISZERO), "a fixed-gas pair cannot consume an already-fused entry");
+            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.InBlock));
+        }
+    }
+
     [TestCase(Instruction.ADD, GasCostOf.VeryLow, TestName = "Add")]
     [TestCase(Instruction.MUL, GasCostOf.Low, TestName = "Mul")]
     [TestCase(Instruction.SDIV, GasCostOf.Low, TestName = "SDiv")]
@@ -443,6 +506,83 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         yield return new TestCaseData(Prepare.EvmCode.PushData(1).Op(Instruction.POP).Op(Instruction.POP).Op(Instruction.STOP).Done, (byte)Evm.StatusCode.Failure, Array.Empty<byte>()) { TestName = "UnderflowAtDepthOne" };
     }
 
+    private static IEnumerable<TestCaseData> FixedGasPairCases()
+    {
+        for (int swapDepth = 1; swapDepth <= 8; swapDepth++)
+        {
+            byte expectedTop = (byte)(swapDepth + 1);
+            yield return new TestCaseData(BuildSwapPopCode(swapDepth, succeeds: true), FusedOpcode.SwapPop, (byte)Evm.StatusCode.Success, WordWithLowByte(expectedTop))
+            {
+                TestName = $"Swap{swapDepth}PopSuccess",
+            };
+            yield return new TestCaseData(BuildSwapPopCode(swapDepth, succeeds: false), FusedOpcode.SwapPop, (byte)Evm.StatusCode.Failure, Array.Empty<byte>())
+            {
+                TestName = $"Swap{swapDepth}PopUnderflow",
+            };
+        }
+
+        yield return new TestCaseData(BuildAndIsZeroCode(0xF0, 0x0F), FusedOpcode.AndIsZero, (byte)Evm.StatusCode.Success, WordWithLowByte(1))
+        {
+            TestName = "AndIsZeroConjunctionIsZero",
+        };
+        yield return new TestCaseData(BuildAndIsZeroCode(0xF0, 0x30), FusedOpcode.AndIsZero, (byte)Evm.StatusCode.Success, WordWithLowByte(0))
+        {
+            TestName = "AndIsZeroConjunctionIsNonZero",
+        };
+        yield return new TestCaseData(new byte[] { (byte)Instruction.AND, (byte)Instruction.ISZERO, (byte)Instruction.STOP }, FusedOpcode.AndIsZero, (byte)Evm.StatusCode.Failure, Array.Empty<byte>())
+        {
+            TestName = "AndIsZeroUnderflowAtDepthZero",
+        };
+        yield return new TestCaseData(new byte[] { (byte)Instruction.PUSH0, (byte)Instruction.JUMPDEST, (byte)Instruction.AND, (byte)Instruction.ISZERO, (byte)Instruction.STOP }, FusedOpcode.AndIsZero, (byte)Evm.StatusCode.Failure, Array.Empty<byte>())
+        {
+            TestName = "AndIsZeroUnderflowAtDepthOne",
+        };
+    }
+
+    private static byte[] BuildSwapPopCode(int swapDepth, bool succeeds)
+    {
+        List<byte> code = [];
+        int stackDepth = succeeds ? swapDepth + 1 : swapDepth;
+        for (int value = 1; value <= stackDepth; value++)
+        {
+            code.Add((byte)Instruction.PUSH1);
+            code.Add((byte)value);
+        }
+
+        code.Add((byte)((byte)Instruction.SWAP1 + swapDepth - 1));
+        code.Add((byte)Instruction.POP);
+        if (!succeeds)
+        {
+            code.Add((byte)Instruction.STOP);
+            return code.ToArray();
+        }
+
+        if (swapDepth > 1)
+            code.Add((byte)((byte)Instruction.SWAP1 + swapDepth - 2));
+        code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.MSTORE);
+        code.Add((byte)Instruction.PUSH1);
+        code.Add(32);
+        code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.RETURN);
+        return code.ToArray();
+    }
+
+    private static byte[] BuildAndIsZeroCode(byte first, byte second)
+        =>
+        [
+            (byte)Instruction.PUSH1, first,
+            (byte)Instruction.PUSH1, second,
+            (byte)Instruction.SWAP1,
+            (byte)Instruction.AND,
+            (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 32,
+            (byte)Instruction.PUSH0,
+            (byte)Instruction.RETURN,
+        ];
+
     private static byte[] WordWithLowByte(byte value)
     {
         byte[] word = new byte[32];
@@ -502,13 +642,24 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(0, false, TestName = "DepthZeroUnderflowsBeforeSkippedCancellationPoll")]
-    [TestCase(1, true, TestName = "DepthOnePollsBeforeSecondPopUnderflow")]
-    [TestCase(1023, true, TestName = "FullStackPollsAtFusedSecondPopBoundary")]
-    public void StreamInterpreter_FusedPopPop_PreservesCancellationCadence(int stackDepth, bool shouldCancel)
+    [TestCaseSource(nameof(FixedGasPairCases))]
+    public void StreamInterpreter_FusedFixedGasPair_MatchesByteCodeLoop(byte[] code, byte expectedFusedOpcode, byte expectedStatus, byte[] expectedOutput)
     {
-        byte[] code = BuildPopPopAtCancellationBoundary(stackDepth);
-        AssertFusedOpcode(code, FusedOpcode.PopPop);
+        AssertFusedOpcode(code, expectedFusedOpcode);
+        ReceiptCaptureTracer streamed = AssertStreamMatchesByteCodeLoop(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamed.StatusCode, Is.EqualTo(expectedStatus), "the fused pair must preserve the expected success or underflow status");
+            Assert.That(streamed.Output, Is.EqualTo(expectedOutput), "the fused pair must preserve the expected stack result");
+        }
+    }
+
+    [TestCaseSource(nameof(FusedPairCancellationCases))]
+    public void StreamInterpreter_FusedPair_PreservesCancellationCadence(Instruction first, Instruction second, int stackDepth, bool shouldCancel, byte expectedFusedOpcode)
+    {
+        byte[] code = BuildFusedPairAtCancellationBoundary(first, second, stackDepth);
+        AssertFusedOpcode(code, expectedFusedOpcode);
 
         PollingCancellationTracer byteCodeTracer = new();
         AssertCancellationOutcome(code, useStream: false, shouldCancel, byteCodeTracer);
@@ -529,15 +680,29 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
-    private static byte[] BuildPopPopAtCancellationBoundary(int stackDepth)
+    private static IEnumerable<TestCaseData> FusedPairCancellationCases()
+    {
+        yield return FusedPairCancellationCase("PopPopDepthZeroUnderflowsBeforeSkippedPoll", Instruction.POP, Instruction.POP, 0, shouldCancel: false, expectedFusedOpcode: FusedOpcode.PopPop);
+        yield return FusedPairCancellationCase("PopPopDepthOnePollsBeforeSecondUnderflow", Instruction.POP, Instruction.POP, 1, shouldCancel: true, expectedFusedOpcode: FusedOpcode.PopPop);
+        yield return FusedPairCancellationCase("PopPopFullStackPollsAtSecondBoundary", Instruction.POP, Instruction.POP, 1023, shouldCancel: true, expectedFusedOpcode: FusedOpcode.PopPop);
+        yield return FusedPairCancellationCase("Swap8PopUnderflowWinsBeforeSkippedPoll", Instruction.SWAP8, Instruction.POP, 8, shouldCancel: false, expectedFusedOpcode: FusedOpcode.SwapPop);
+        yield return FusedPairCancellationCase("Swap8PopPollsBeforeSecondPop", Instruction.SWAP8, Instruction.POP, 9, shouldCancel: true, expectedFusedOpcode: FusedOpcode.SwapPop);
+        yield return FusedPairCancellationCase("AndIsZeroDepthOneUnderflowWinsBeforeSkippedPoll", Instruction.AND, Instruction.ISZERO, 1, shouldCancel: false, expectedFusedOpcode: FusedOpcode.AndIsZero);
+        yield return FusedPairCancellationCase("AndIsZeroPollsBeforeSecondOperation", Instruction.AND, Instruction.ISZERO, 2, shouldCancel: true, expectedFusedOpcode: FusedOpcode.AndIsZero);
+    }
+
+    private static TestCaseData FusedPairCancellationCase(string name, Instruction first, Instruction second, int stackDepth, bool shouldCancel, byte expectedFusedOpcode)
+        => new(first, second, stackDepth, shouldCancel, expectedFusedOpcode) { TestName = name };
+
+    private static byte[] BuildFusedPairAtCancellationBoundary(Instruction first, Instruction second, int stackDepth)
     {
         const int instructionsBeforePair = 1023;
         byte[] code = new byte[instructionsBeforePair + 3];
         int jumpDestCount = instructionsBeforePair - stackDepth;
         code.AsSpan(0, jumpDestCount).Fill((byte)Instruction.JUMPDEST);
         code.AsSpan(jumpDestCount, stackDepth).Fill((byte)Instruction.PUSH0);
-        code[instructionsBeforePair] = (byte)Instruction.POP;
-        code[instructionsBeforePair + 1] = (byte)Instruction.POP;
+        code[instructionsBeforePair] = (byte)first;
+        code[instructionsBeforePair + 1] = (byte)second;
         code[instructionsBeforePair + 2] = (byte)Instruction.STOP;
         return code;
     }
