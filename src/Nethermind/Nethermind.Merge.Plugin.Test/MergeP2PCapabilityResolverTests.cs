@@ -21,7 +21,7 @@ public class MergeP2PCapabilityResolverTests
     [TestCase(true, false, false, true, TestName = "Transition finished (post-merge restart): advertised")]
     [TestCase(false, true, false, true, TestName = "Live merge: terminal block reached before transition finished: advertised")]
     [TestCase(true, true, false, true, TestName = "Both: advertised")]
-    [TestCase(true, false, true, true, TestName = "Blob support: eth72 advertised")]
+    [TestCase(true, false, true, true, TestName = "Blob support without fork spec: eth72 not advertised")]
     public void Resolve_advertises_post_merge_eth_capabilities_once_post_merge(
         bool transitionFinished,
         bool hasReachedTerminalBlock,
@@ -37,10 +37,13 @@ public class MergeP2PCapabilityResolverTests
         HashSet<Capability> capabilities = [];
         resolver.Resolve(capabilities);
 
-        Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 69)), Is.EqualTo(expected));
-        Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 70)), Is.EqualTo(expected));
-        Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 71)), Is.EqualTo(expected));
-        Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 72)), Is.EqualTo(expected && blobsEnabled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 69)), Is.EqualTo(expected));
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 70)), Is.EqualTo(expected));
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 71)), Is.EqualTo(expected));
+            Assert.That(capabilities, Does.Not.Contain(new Capability(Protocol.Eth, 72)));
+        }
     }
 
     [Test]

@@ -26,14 +26,14 @@ public class EngineRpcParameterConvertersTests
     }
 
     [Test]
-    public void Blob_hash_converter_rejects_count_above_protocol_maximum()
+    public void Blob_hash_converter_bounds_count_above_protocol_maximum()
     {
         string json = BuildHashArray(GetBlobsV4Limits.MaxBlobVersionedHashes + 1, Hash256.Size);
         JsonSerializerOptions options = CreateOptions(new BlobVersionedHashesV4Converter());
 
-        Assert.That(
-            () => JsonSerializer.Deserialize<byte[][]>(json, options),
-            Throws.TypeOf<JsonException>());
+        byte[][]? hashes = JsonSerializer.Deserialize<byte[][]>(json, options);
+
+        Assert.That(hashes, Has.Length.EqualTo(GetBlobsV4Limits.MaxBlobVersionedHashes + 1));
     }
 
     [TestCase(Hash256.Size - 1)]

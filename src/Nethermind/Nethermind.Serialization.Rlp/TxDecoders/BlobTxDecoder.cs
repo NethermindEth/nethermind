@@ -88,7 +88,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
             if (networkWrapper.Blobs.Length == 0 && !rlpBehaviors.HasFlag(RlpBehaviors.Storage))
             {
-                writer.EncodeEmptyByteArray();
+                writer.WriteByte(Rlp.EmptyListByte);
             }
             else
             {
@@ -174,10 +174,10 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         int contentLength = base.GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         return rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
-            ? GetShardBlobNetworkWrapperLength(transaction, contentLength)
+            ? GetShardBlobNetworkWrapperLength(transaction, contentLength, rlpBehaviors)
             : contentLength;
 
-        int GetShardBlobNetworkWrapperLength(Transaction transaction, int txContentLength)
+        static int GetShardBlobNetworkWrapperLength(Transaction transaction, int txContentLength, RlpBehaviors rlpBehaviors)
         {
             ShardBlobNetworkWrapper networkWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
             return Rlp.LengthOfSequence(txContentLength)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Reflection;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -10,16 +11,24 @@ namespace Nethermind.Core.Test;
 public class TransactionTests
 {
     [Test]
-    public void CopyTo_should_preserve_legacy_CLR_signature_and_expose_explicit_hash_control()
+    public void CopyTo_should_preserve_legacy_hash_behavior_and_expose_explicit_hash_control()
     {
         MethodInfo? legacyCopy = typeof(Transaction).GetMethod(nameof(Transaction.CopyTo), [typeof(Transaction)]);
         MethodInfo? explicitCopy = typeof(Transaction).GetMethod(nameof(Transaction.CopyTo), [typeof(Transaction), typeof(bool)]);
+        Transaction source = new() { Hash = TestItem.KeccakA };
+        Transaction legacyDestination = new() { Hash = TestItem.KeccakB };
+        Transaction hashPreservingDestination = new();
+
+        source.CopyTo(legacyDestination);
+        source.CopyTo(hashPreservingDestination, copyHash: true);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(legacyCopy, Is.Not.Null);
             Assert.That(explicitCopy, Is.Not.Null);
             Assert.That(explicitCopy?.GetParameters()[1].HasDefaultValue, Is.False);
+            Assert.That(legacyDestination.Hash, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(hashPreservingDestination.Hash, Is.EqualTo(source.Hash));
         }
     }
 

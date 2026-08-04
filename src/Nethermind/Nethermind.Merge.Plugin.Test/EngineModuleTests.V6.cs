@@ -831,7 +831,7 @@ public partial class EngineModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JsonNode.Parse(tooManyHashesResponse)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(JsonNode.Parse(tooManyHashesResponse)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(MergeErrorCodes.TooLargeRequest));
             Assert.That(JsonNode.Parse(oversizedMaskResponse)?["error"]?["code"]?.GetValue<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
         }
     }

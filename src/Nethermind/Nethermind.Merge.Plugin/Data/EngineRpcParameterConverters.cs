@@ -41,7 +41,10 @@ internal sealed class BlobVersionedHashesV4Converter : JsonConverter<byte[][]>
 
             if (hashes.Count == GetBlobsV4Limits.MaxBlobVersionedHashes)
             {
-                throw new JsonException($"Blob versioned hash count must not exceed {GetBlobsV4Limits.MaxBlobVersionedHashes}.");
+                // Preserve one overflow sentinel so the handler can return the Engine API error without retaining attacker-sized input.
+                hashes.Add([]);
+                SkipRemainingArray(ref reader);
+                return hashes.ToArray();
             }
 
             if (!HasExactHexLength(ref reader, Hash256.Size))
@@ -81,6 +84,18 @@ internal sealed class BlobVersionedHashesV4Converter : JsonConverter<byte[][]>
 
         long encodedLength = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
         return encodedLength == 2L + (2L * byteLength);
+    }
+
+    private static void SkipRemainingArray(ref Utf8JsonReader reader)
+    {
+        while (reader.TokenType != JsonTokenType.EndArray)
+        {
+            reader.Skip();
+            if (!reader.Read())
+            {
+                throw new JsonException("Unterminated blob versioned hash array.");
+            }
+        }
     }
 }
 

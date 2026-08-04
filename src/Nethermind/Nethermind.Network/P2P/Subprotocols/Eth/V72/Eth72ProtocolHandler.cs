@@ -75,7 +75,7 @@ public class Eth72ProtocolHandler(
     private readonly Dictionary<ValueHash256, CellRequestState> _pendingCellRequests = [];
     private readonly Dictionary<ValueHash256, CellRequestState> _sentCellRequests = [];
     private readonly Dictionary<long, SentCellRequest> _sentCellRequestIds = [];
-    private readonly ClockCache<long, HashSet<ValueHash256>> _sentPooledTransactionRequests = new(MaxSentCellRequests, lockPartition: 1);
+    private readonly ClockCache<long, ValueHash256[]> _sentPooledTransactionRequests = new(MaxSentCellRequests, lockPartition: 1);
     private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
     private readonly ClockCache<ValueHash256, BlobCellMask> _announcedBlobTransactionMasks = new(MemoryAllowance.TxHashCacheSize, lockPartition: 1);
     private readonly ClockCache<ValueHash256, DateTimeOffset> _partialCellResponseBackoff = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
@@ -86,7 +86,7 @@ public class Eth72ProtocolHandler(
     private readonly int _cellServeTokenCapacity = GetMaxCellsPerTransaction(specProvider) * CellServeBurstMultiplier;
     private static readonly byte[] EmptyCellMaskBytes = BlobCellMask.Empty.ToBytes();
     private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker;
-    private readonly ISparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = sparseBlobPoolPeerRegistry ?? throw new ArgumentNullException(nameof(sparseBlobPoolPeerRegistry));
+    private readonly ISparseBlobPoolPeerRegistry _sparseBlobPoolPeerRegistry = EnsureNotNull(sparseBlobPoolPeerRegistry, nameof(sparseBlobPoolPeerRegistry));
     private DateTimeOffset _requestRatioWarmupEndsAt;
     private Func<ClaimedCellsResponse, CancellationToken, ValueTask>? _handleCells;
     private long _cellStateRevision;
@@ -126,9 +126,17 @@ public class Eth72ProtocolHandler(
             case Eth72MessageCode.NewPooledTransactionHashes:
                 if (CanReceiveTransactions)
                 {
-                    using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message.Content);
-                    ReportIn(newPooledTxHashesMsg, size);
-                    Handle(newPooledTxHashesMsg);
+                    if (IsTransactionGossipAllowed())
+                    {
+                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message.Content);
+                        ReportIn(newPooledTxHashesMsg, size);
+                        Handle(newPooledTxHashesMsg);
+                    }
+                    else
+                    {
+                        const string txFlooding = $"Ignoring {nameof(NewPooledTransactionHashesMessage72)} because of transaction flooding.";
+                        ReportIn(txFlooding, size);
+                    }
                 }
                 else
                 {
@@ -143,26 +151,31 @@ public class Eth72ProtocolHandler(
             case Eth66MessageCode.PooledTransactions:
                 if (CanReceiveTransactions)
                 {
-                    PooledTransactionsMessage66 pooledTransactions = Deserialize<PooledTransactionsMessage66>(message.Content);
-                    ReportIn(pooledTransactions, size);
-                    PooledTransactionResponseClaimResult claimResult = TryClaimPooledTransactionRequest(pooledTransactions);
-                    if (claimResult == PooledTransactionResponseClaimResult.Uncorrelated)
+                    if (!TryPeekRequestId(message.Content, out long requestId))
                     {
-                        pooledTransactions.Dispose();
-                        ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId} ignored", size);
+                        throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage66)}.");
+                    }
+
+                    if (!TryClaimPooledTransactionRequest(requestId, out ValueHash256[] requestedHashes))
+                    {
+                        ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage66)} response ID {requestId} ignored", size);
                         return true;
                     }
 
-                    if (claimResult == PooledTransactionResponseClaimResult.Mismatched)
+                    PooledTransactionsMessage66 pooledTransactions = Deserialize<PooledTransactionsMessage66>(message.Content);
+                    ReportIn(pooledTransactions, size);
+                    if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), requestedHashes))
                     {
                         pooledTransactions.Dispose();
+                        IgnorePooledTransactionResponse();
                         throw new SubprotocolException($"Mismatched {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId}.");
                     }
 
-                    Handle(pooledTransactions.EthMessage);
+                    HandlePooledTransactions(pooledTransactions.EthMessage);
                 }
                 else
                 {
+                    IgnorePooledTransactionResponse();
                     const string ignored = $"{nameof(PooledTransactionsMessage66)} ignored, syncing";
                     ReportIn(ignored, size);
                 }
@@ -386,6 +399,11 @@ public class Eth72ProtocolHandler(
             Hash256 hash = msg.Hashes[i];
             TxType txType = (TxType)msg.Types[i];
             int txSize = msg.Sizes[i];
+            if (!CanRequestPooledTransaction(txType) || txSize <= 0)
+            {
+                continue;
+            }
+
             long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
             if (txSize > maxTxSize)
             {
@@ -448,55 +466,59 @@ public class Eth72ProtocolHandler(
     private async Task<PooledTransactionsMessage66> Handle(GetPooledTransactionsMessage66 getPooledTransactions, CancellationToken cancellationToken)
     {
         using GetPooledTransactionsMessage66 message = getPooledTransactions;
-        using PooledTransactionsMessage65 pooledTransactions = await FulfillPooledTransactionsRequest(message.EthMessage, cancellationToken);
-        ArrayPoolList<Transaction> txs = new(pooledTransactions.Transactions.Count);
-        foreach (Transaction tx in pooledTransactions.Transactions.AsSpan())
-        {
-            txs.Add(ElideBlobPayload(tx));
-        }
-
-        return new PooledTransactionsMessage66(message.RequestId, new PooledTransactionsMessage65(txs));
+        PooledTransactionsMessage65 pooledTransactions = await FulfillPooledTransactionsRequest(message.EthMessage, cancellationToken);
+        return new PooledTransactionsMessage66(message.RequestId, pooledTransactions);
     }
 
     private void SendPooledTransactionsRequest(IOwnedReadOnlyList<Hash256> hashes)
     {
         GetPooledTransactionsMessage66 message = GetPooledTransactionsMessage66.New(hashes);
-        HashSet<ValueHash256> requestedHashes = new(hashes.Count);
-        foreach (Hash256 hash in hashes.AsSpan())
+        ValueHash256[] requestedHashes = new ValueHash256[hashes.Count];
+        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
+        for (int i = 0; i < hashesSpan.Length; i++)
         {
-            requestedHashes.Add(hash.ValueHash256);
+            requestedHashes[i] = hashesSpan[i].ValueHash256;
         }
 
         _sentPooledTransactionRequests.Set(message.RequestId, requestedHashes);
+        ReportPooledTransactionRequest(hashesSpan);
         Send(message);
     }
 
-    private PooledTransactionResponseClaimResult TryClaimPooledTransactionRequest(PooledTransactionsMessage66 response)
-    {
-        if (!_sentPooledTransactionRequests.Delete(response.RequestId, out HashSet<ValueHash256>? requestedHashes))
-        {
-            return PooledTransactionResponseClaimResult.Uncorrelated;
-        }
+    private bool TryClaimPooledTransactionRequest(long requestId, out ValueHash256[] requestedHashes)
+        => _sentPooledTransactionRequests.Delete(requestId, out requestedHashes!);
 
-        ReadOnlySpan<Transaction> transactions = response.EthMessage.Transactions.AsSpan();
-        HashSet<ValueHash256> seen = new(transactions.Length);
+    private static bool MatchesPooledTransactionRequest(ReadOnlySpan<Transaction> transactions, ReadOnlySpan<ValueHash256> requestedHashes)
+    {
+        int requestedIndex = 0;
         for (int i = 0; i < transactions.Length; i++)
         {
             Hash256? hash = transactions[i].Hash;
-            if (hash is null || !requestedHashes.Contains(hash.ValueHash256))
+            if (hash is null)
             {
-                return PooledTransactionResponseClaimResult.Mismatched;
+                return false;
             }
 
-            seen.Add(hash.ValueHash256);
+            while (requestedIndex < requestedHashes.Length
+                && requestedHashes[requestedIndex] != hash.ValueHash256)
+            {
+                requestedIndex++;
+            }
+
+            if (requestedIndex == requestedHashes.Length)
+            {
+                return false;
+            }
+
+            requestedIndex++;
         }
 
-        return seen.Count <= requestedHashes.Count
-            ? PooledTransactionResponseClaimResult.Claimed
-            : PooledTransactionResponseClaimResult.Mismatched;
+        return true;
     }
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
+
+    protected override Transaction PreparePooledTransactionForResponse(Transaction tx) => ElideBlobPayload(tx);
 
     public override void HandleMessage(PooledTransactionRequestMessage message)
     {
@@ -1479,6 +1501,11 @@ public class Eth72ProtocolHandler(
 
     private bool ValidateAnnouncedPooledTransaction(Transaction tx)
     {
+        if (!CanRequestPooledTransaction(tx.Type))
+        {
+            return false;
+        }
+
         if (TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape)
             && (!MatchesAnnouncedTransactionSize(tx, txShape.Size) || tx.Type != txShape.Type))
         {
@@ -1629,16 +1656,74 @@ public class Eth72ProtocolHandler(
 
     private static int GetAnnouncementSize(Transaction tx)
     {
-        if (tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() > 0)
+        if (!tx.SupportsBlobs)
         {
-            return lightTx.GetConsensusEncodingSize();
+            return tx.GetLength();
         }
 
-        return tx.GetLength(shouldCountBlobs: false);
+        int consensusEncodingSize = tx is LightTransaction lightTx
+            ? lightTx.GetConsensusEncodingSize()
+            : tx.GetLength(shouldCountBlobs: false);
+        if (consensusEncodingSize <= 0)
+        {
+            return 0;
+        }
+
+        if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+        {
+            return GetElidedBlobNetworkSize(
+                consensusEncodingSize,
+                wrapper.Version,
+                Rlp.LengthOf(wrapper.Commitments),
+                Rlp.LengthOf(wrapper.Proofs));
+        }
+
+        if (tx is LightTransaction { ProofVersion: { } proofVersion }
+            && tx.BlobVersionedHashes is { Length: > 0 } blobVersionedHashes)
+        {
+            int blobCount = blobVersionedHashes.Length;
+            int proofCount = proofVersion switch
+            {
+                ProofVersion.V0 => blobCount,
+                ProofVersion.V1 => checked(blobCount * BlobCellMask.CellCount),
+                _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {proofVersion}")
+            };
+            int commitmentsLength = GetFixedByteArrayListLength(blobCount, CkzgLib.Ckzg.BytesPerCommitment);
+            int proofsLength = GetFixedByteArrayListLength(proofCount, CkzgLib.Ckzg.BytesPerProof);
+            return GetElidedBlobNetworkSize(consensusEncodingSize, proofVersion, commitmentsLength, proofsLength);
+        }
+
+        return 0;
     }
 
+    // Devp2p specifies consensus size, while sparse-v2 geth announces its elided wrapper estimate.
+    // https://github.com/healthykim/go-ethereum/blob/fdce1ff22f2c2bde0e6a8d1921168f4b7036781f/eth/protocols/eth/broadcast.go#L140-L143
     protected override bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize)
-        => tx.GetLength(shouldCountBlobs: false) == announcedSize;
+        => MatchesAnnouncedSize(tx, announcedSize)
+        || tx.SupportsBlobs && tx.GetLength(shouldCountBlobs: false) == announcedSize;
+
+    private static int GetElidedBlobNetworkSize(
+        int consensusEncodingSize,
+        ProofVersion proofVersion,
+        int commitmentsLength,
+        int proofsLength)
+    {
+        int contentLength = checked(
+            consensusEncodingSize - sizeof(byte)
+            + (proofVersion switch
+            {
+                ProofVersion.V0 => 0,
+                ProofVersion.V1 => Rlp.LengthOf((byte)ProofVersion.V1),
+                _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {proofVersion}")
+            })
+            + Rlp.LengthOfSequence(0)
+            + commitmentsLength
+            + proofsLength);
+        return checked(sizeof(byte) + Rlp.LengthOfSequence(contentLength));
+    }
+
+    private static int GetFixedByteArrayListLength(int count, int itemLength)
+        => Rlp.LengthOfSequence(checked(count * Rlp.LengthOfByteString(itemLength, firstByte: 0)));
 
     private static Transaction ElideBlobPayload(Transaction tx)
     {
@@ -1648,7 +1733,7 @@ public class Eth72ProtocolHandler(
         }
 
         Transaction clone = new();
-        tx.CopyTo(clone);
+        tx.CopyTo(clone, copyHash: true);
         clone.NetworkWrapper = wrapper with { Blobs = [] };
         clone.ClearLengthCache();
         return clone;
@@ -1679,13 +1764,6 @@ public class Eth72ProtocolHandler(
         Unrequested
     }
 
-    private enum PooledTransactionResponseClaimResult
-    {
-        Claimed,
-        Uncorrelated,
-        Mismatched
-    }
-
     private sealed class ClaimedCellsResponse(CellsMessage72 message, SentCellRequest request) : IDisposable
     {
         private CellsMessage72? _message = message;
@@ -1694,5 +1772,11 @@ public class Eth72ProtocolHandler(
         public SentCellRequest Request { get; } = request;
 
         public void Dispose() => Interlocked.Exchange(ref _message, null)?.Dispose();
+    }
+
+    private static T EnsureNotNull<T>(T? value, string paramName) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(value, paramName);
+        return value;
     }
 }

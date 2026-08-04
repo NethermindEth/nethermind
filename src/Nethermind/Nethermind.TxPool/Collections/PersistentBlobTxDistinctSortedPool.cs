@@ -80,12 +80,39 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         if (base.InsertCore(hash, new LightTransaction(fullBlobTx), groupKey))
         {
             _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
-            _blobTxStorage.Add(fullBlobTx);
-            if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate)
-                && pendingUpdate.WriterActive)
+            if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate))
             {
-                TrackBlobUpdateNonLocked(fullBlobTx);
+                if (pendingUpdate.WriterActive)
+                {
+                    TrackBlobUpdateNonLocked(fullBlobTx);
+                }
+                else
+                {
+                    TrackBlobUpdateNonLocked(fullBlobTx);
+                    try
+                    {
+                        foreach (UInt256 timestamp in pendingUpdate.DeleteTimestamps)
+                        {
+                            _blobTxStorage.Delete(hash, timestamp);
+                        }
+
+                        _blobTxStorage.Add(fullBlobTx);
+                        _pendingBlobUpdates.Remove(hash);
+                    }
+                    catch
+                    {
+                        DateTimeOffset retryAt = DateTimeOffset.UtcNow;
+                        pendingUpdate.NextRetryAt = retryAt;
+                        ScheduleBlobUpdateRetry(retryAt);
+                        throw;
+                    }
+                }
             }
+            else
+            {
+                _blobTxStorage.Add(fullBlobTx);
+            }
+
             return true;
         }
 
@@ -497,37 +524,33 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         if (base.Remove(hash, out tx))
         {
             _unpersistableBlobUpdates.Remove(hash);
-            PendingBlobUpdate? activeUpdate = null;
+            bool hasPendingUpdate = false;
+            DateTimeOffset? retryAt = null;
             if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate))
             {
+                hasPendingUpdate = true;
                 pendingUpdate.Token = ++_nextBlobUpdateToken;
                 pendingUpdate.Transaction = null;
-                if (pendingUpdate.WriterActive)
+                pendingUpdate.Timestamp = tx?.Timestamp ?? pendingUpdate.Timestamp;
+                pendingUpdate.DeleteTimestamps.Add(pendingUpdate.Timestamp);
+                pendingUpdate.RetryCount = 0;
+                if (!pendingUpdate.WriterActive)
                 {
-                    activeUpdate = pendingUpdate;
-                }
-                else
-                {
-                    _pendingBlobUpdates.Remove(hash);
+                    retryAt = DateTimeOffset.UtcNow;
+                    pendingUpdate.NextRetryAt = retryAt;
                 }
             }
 
-            if (tx is not null)
+            if (tx is not null && !hasPendingUpdate)
             {
-                if (activeUpdate is null)
-                {
-                    _blobTxStorage.Delete(hash, tx.Timestamp);
-                }
-                else
-                {
-                    lock (activeUpdate.StorageLock)
-                    {
-                        _blobTxStorage.Delete(hash, tx.Timestamp);
-                    }
-                }
+                _blobTxStorage.Delete(hash, tx.Timestamp);
             }
 
             _blobTxCache.Delete(hash);
+            if (retryAt is { } pendingRetryAt)
+            {
+                ScheduleBlobUpdateRetry(pendingRetryAt);
+            }
 
             return true;
         }
@@ -596,10 +619,11 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         int failedWriteAttempts = 0;
         while (true)
         {
-            long token = 0;
-            try
+            long token;
+            Transaction? transaction;
+            UInt256[] deleteTimestamps;
+            using (McsLock.Disposable lockRelease = Lock.Acquire())
             {
-                using McsLock.Disposable lockRelease = Lock.Acquire();
                 if (!_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? current)
                     || !ReferenceEquals(current, state))
                 {
@@ -607,26 +631,30 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 }
 
                 token = current.Token;
-                lock (state.StorageLock)
-                {
-                    if (!_pendingBlobUpdates.TryGetValue(hash, out current)
-                        || !ReferenceEquals(current, state)
-                        || current.Token != token)
-                    {
-                        continue;
-                    }
+                transaction = current.Transaction;
+                deleteTimestamps = [.. current.DeleteTimestamps];
+            }
 
-                    if (current.Transaction is null)
-                    {
-                        _blobTxStorage.Delete(hash, current.Timestamp);
-                    }
-                    else
-                    {
-                        _blobTxStorage.Add(current.Transaction);
-                    }
+            try
+            {
+                for (int i = 0; i < deleteTimestamps.Length; i++)
+                {
+                    _blobTxStorage.Delete(hash, deleteTimestamps[i]);
+                }
+
+                if (transaction is not null)
+                {
+                    _blobTxStorage.Add(transaction);
                 }
 
                 failedWriteAttempts = 0;
+                using McsLock.Disposable lockRelease = Lock.Acquire();
+                if (!_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? current)
+                    || !ReferenceEquals(current, state))
+                {
+                    return;
+                }
+
                 if (current.Token == token)
                 {
                     _pendingBlobUpdates.Remove(hash);
@@ -760,7 +788,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         Transaction snapshot = new();
-        blobTx.CopyTo(snapshot);
+        blobTx.CopyTo(snapshot, copyHash: true);
         long token = ++_nextBlobUpdateToken;
         if (_pendingBlobUpdates.TryGetValue(blobTx.Hash!, out PendingBlobUpdate? pendingUpdate))
         {
@@ -811,8 +839,8 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         public long Token { get; set; } = token;
         public Transaction? Transaction { get; set; } = transaction;
         public UInt256 Timestamp { get; set; } = timestamp;
+        public HashSet<UInt256> DeleteTimestamps { get; } = [];
         public bool WriterActive { get; set; }
-        public object StorageLock { get; } = new();
         public int RetryCount { get; set; }
         public DateTimeOffset? NextRetryAt { get; set; }
     }

@@ -74,19 +74,7 @@ public class Eth68ProtocolHandlerTests
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
-        _handler = new Eth68ProtocolHandler(
-            _session,
-            _svc,
-            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
-            _syncManager,
-            RunImmediatelyScheduler.Instance,
-            _transactionPool,
-            _gossipPolicy,
-            new ForkInfo(_specProvider, _syncManager),
-            LimboLogs.Instance,
-            Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>(),
-            _txGossipPolicy);
+        _handler = CreateHandler(Substitute.For<ITxPoolConfig>());
         _handler.Init();
     }
 
@@ -171,6 +159,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Should_accept_full_blob_tx_with_announced_network_size()
     {
+        RecreateHandlerWithBlobSupport();
         Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)tx.Type },
@@ -192,6 +181,7 @@ public class Eth68ProtocolHandlerTests
     [TestCase(9, true)]
     public void Should_tolerate_geth_blob_size_estimate(int sizeDifference, bool shouldDisconnect)
     {
+        RecreateHandlerWithBlobSupport();
         Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)tx.Type },
@@ -227,6 +217,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void should_disconnect_if_pooled_transactions_response_contains_sparse_blob_tx()
     {
+        RecreateHandlerWithBlobSupport();
         Transaction sparseTx = BuildSparseBlobTransaction();
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)sparseTx.Type },
@@ -620,7 +611,7 @@ public class Eth68ProtocolHandlerTests
     {
         Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
         Transaction sparseTx = new();
-        tx.CopyTo(sparseTx);
+        tx.CopyTo(sparseTx, copyHash: true);
         sparseTx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with { Blobs = [] };
         sparseTx.ClearLengthCache();
         return sparseTx;
@@ -632,6 +623,30 @@ public class Eth68ProtocolHandlerTests
         getBlockHeadersPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
     }
+
+    private void RecreateHandlerWithBlobSupport()
+    {
+        _handler.Dispose();
+        ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
+        txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
+        _handler = CreateHandler(txPoolConfig);
+        _handler.Init();
+    }
+
+    private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig) =>
+        new(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            RunImmediatelyScheduler.Instance,
+            _transactionPool,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager),
+            LimboLogs.Instance,
+            txPoolConfig,
+            Substitute.For<ISpecProvider>(),
+            _txGossipPolicy);
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {

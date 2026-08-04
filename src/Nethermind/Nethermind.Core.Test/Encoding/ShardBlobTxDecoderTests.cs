@@ -217,7 +217,7 @@ public partial class ShardBlobTxDecoderTests
 
     [TestCase(ProofVersion.V0)]
     [TestCase(ProofVersion.V1)]
-    public void Mempool_form_encodes_elided_blob_payload_as_rlp_nil(ProofVersion version)
+    public void Mempool_form_encodes_elided_blob_payload_as_empty_rlp_list(ProofVersion version)
     {
         Transaction tx = BuildMempoolTransactionWithWrapperCounts(0, 1, 1, version);
         Rlp encoded = _txDecoder.Encode(tx, RlpBehaviors.InMempoolForm);
@@ -232,7 +232,7 @@ public partial class ShardBlobTxDecoderTests
             Assert.That(wireReader.ReadByte(), Is.EqualTo((byte)ProofVersion.V1));
         }
 
-        Assert.That(wireReader.IsNextItemEmptyByteArray(), Is.True);
+        Assert.That(wireReader.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
 
         RlpReader decoderContext = new(encoded.Bytes);
         Transaction? decoded = _txDecoder.Decode(ref decoderContext, RlpBehaviors.InMempoolForm);

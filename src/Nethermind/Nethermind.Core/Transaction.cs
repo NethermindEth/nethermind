@@ -329,10 +329,10 @@ namespace Nethermind.Core
         }
 
         /// <summary>
-        /// Copies this transaction to <paramref name="tx"/>, including its cached hash.
+        /// Copies this transaction to <paramref name="tx"/> without its cached hash.
         /// </summary>
         /// <param name="tx">The destination transaction.</param>
-        public void CopyTo(Transaction tx) => CopyTo(tx, copyHash: true);
+        public void CopyTo(Transaction tx) => CopyTo(tx, copyHash: false);
 
         /// <summary>
         /// Copies this transaction to <paramref name="tx"/> and optionally copies its cached hash.
@@ -341,7 +341,11 @@ namespace Nethermind.Core
         /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
         public void CopyTo(Transaction tx, bool copyHash)
         {
-            tx.Hash = copyHash ? Hash : null;
+            if (copyHash)
+            {
+                tx.Hash = Hash;
+            }
+
             tx.ChainId = ChainId;
             tx.Type = Type;
             tx.IsAnchorTx = IsAnchorTx;

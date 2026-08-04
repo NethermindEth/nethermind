@@ -1764,7 +1764,7 @@ namespace Nethermind.TxPool.Test
             Array.Fill(emptyBlobs, []);
 
             Transaction sparseBlobTx = new();
-            fullBlobTx.CopyTo(sparseBlobTx);
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
             sparseBlobTx.NetworkWrapper = fullWrapper with
             {
                 Blobs = [],
@@ -1880,7 +1880,7 @@ namespace Nethermind.TxPool.Test
             }
 
             Transaction sparseBlobTx = new();
-            fullBlobTx.CopyTo(sparseBlobTx);
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
             sparseBlobTx.NetworkWrapper = fullWrapper with
             {
                 Blobs = emptyBlobs,
@@ -1982,7 +1982,7 @@ namespace Nethermind.TxPool.Test
             mergeCells[0][0] ^= 0x01;
 
             Transaction sparseBlobTx = new();
-            fullBlobTx.CopyTo(sparseBlobTx);
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
             sparseBlobTx.NetworkWrapper = fullWrapper with
             {
                 Blobs = [[]],
@@ -2035,7 +2035,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells), Is.True);
 
             Transaction sparseBlobTx = new();
-            fullBlobTx.CopyTo(sparseBlobTx);
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
             byte[][] emptyBlobs = new byte[blobCount][];
             Array.Fill(emptyBlobs, []);
             sparseBlobTx.NetworkWrapper = fullWrapper with
@@ -2077,6 +2077,55 @@ namespace Nethermind.TxPool.Test
                 Assert.That(reconstructed.Cells, Is.Null);
                 Assert.That(blob, Is.EqualTo(fullWrapper.Blobs[0]));
                 Assert.That(proofs, Has.Length.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs, Is.EqualTo(recomputed.Proofs[..Ckzg.CellsPerExtBlob]));
+            }
+        }
+
+        [Test]
+        public void should_not_reconstruct_full_blob_after_sixty_three_verified_cells(
+            [Values(true, false)] bool isPersistentStorage)
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig
+                {
+                    BlobsSupport = isPersistentStorage ? BlobsSupportMode.Storage : BlobsSupportMode.InMemory,
+                    BlobCacheSize = 1,
+                    Size = 10
+                },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0UL)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            int[] cellIndices = new int[BlobCellsHelper.RequiredCellsForRecovery - 1];
+            for (int i = 0; i < cellIndices.Length; i++)
+            {
+                cellIndices[i] = i;
+            }
+
+            BlobCellMask cellMask = BlobCellMask.FromIndices(cellIndices);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, cellMask, out byte[][] cells), Is.True);
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = [[]],
+                CellMask = cellMask,
+                Cells = cells,
+            };
+
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction storedTx), Is.True);
+            ShardBlobNetworkWrapper storedWrapper = (ShardBlobNetworkWrapper)storedTx.NetworkWrapper!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storedWrapper.HasFullBlobs(), Is.False);
+                Assert.That(storedWrapper.CellMask.Count, Is.EqualTo(BlobCellsHelper.RequiredCellsForRecovery - 1));
+                Assert.That(storedWrapper.Cells, Has.Length.EqualTo(BlobCellsHelper.RequiredCellsForRecovery - 1));
             }
         }
 
@@ -2101,7 +2150,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells), Is.True);
 
             Transaction sparseBlobTx = new();
-            fullBlobTx.CopyTo(sparseBlobTx);
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
             sparseBlobTx.NetworkWrapper = fullWrapper;
             ConvertToSparseBlobTransaction(sparseBlobTx, initialMask);
 
@@ -2168,8 +2217,10 @@ namespace Nethermind.TxPool.Test
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
             try
             {
+                Task<BlobCellMergeResult> secondUpdate = RunOnDedicatedThread(() =>
+                    blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, secondUpdateMask, secondUpdateCells));
                 Assert.That(
-                    await RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, secondUpdateMask, secondUpdateCells)),
+                    await secondUpdate.WaitAsync(TimeSpan.FromSeconds(5)),
                     Is.EqualTo(BlobCellMergeResult.Accepted));
             }
             finally
@@ -2213,10 +2264,13 @@ namespace Nethermind.TxPool.Test
             try
             {
                 Transaction cacheEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
-                Assert.That(blobPool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
-                Assert.That(blobPool.TryGetValue(sparseTx.Hash!.ValueHash256, out Transaction latestTx), Is.True);
+                Task<bool> insert = RunOnDedicatedThread(() => blobPool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _));
+                Assert.That(await insert.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+                Transaction latestTx = null;
+                Task<bool> lookup = RunOnDedicatedThread(() => blobPool.TryGetValue(sparseTx.Hash!.ValueHash256, out latestTx));
+                Assert.That(await lookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
                 Assert.That(
-                    ((ShardBlobNetworkWrapper)latestTx.NetworkWrapper!).CellMask,
+                    ((ShardBlobNetworkWrapper)latestTx!.NetworkWrapper!).CellMask,
                     Is.EqualTo(initialMask | updateMask));
             }
             finally
@@ -2358,7 +2412,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_serialize_removal_after_in_flight_sparse_blob_update()
+        public async Task should_converge_removal_during_in_flight_sparse_blob_update()
         {
             TxPoolConfig txPoolConfig = new()
             {
@@ -2384,9 +2438,10 @@ namespace Nethermind.TxPool.Test
             Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
             Task<bool> removal = RunOnDedicatedThread(() => blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256));
+            bool removed;
             try
             {
-                Assert.That(storage.WaitForDelete(TimeSpan.FromMilliseconds(200)), Is.False);
+                removed = await removal.WaitAsync(TimeSpan.FromSeconds(5));
             }
             finally
             {
@@ -2394,7 +2449,6 @@ namespace Nethermind.TxPool.Test
             }
 
             BlobCellMergeResult updated = await update;
-            bool removed = await removal;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(updated, Is.EqualTo(BlobCellMergeResult.Accepted));
@@ -2405,6 +2459,103 @@ namespace Nethermind.TxPool.Test
                     fullBlobTx.SenderAddress!,
                     fullBlobTx.Timestamp,
                     out _), Is.False);
+            }
+        }
+
+        [TestCase(false, false, false)]
+        [TestCase(true, false, false)]
+        [TestCase(true, true, false)]
+        [TestCase(true, true, true)]
+        public async Task should_apply_pending_removal_before_same_hash_reinsertion(
+            bool changeTimestamp,
+            bool failReinsertion,
+            bool removeAfterFailedReinsertion)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using BlockingBlobTxStorage storage = new(failedDeleteCount: failReinsertion ? 3 : 2);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
+            UInt256 removedTimestamp = fullBlobTx.Timestamp;
+            Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
+
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() =>
+                blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
+            Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            Task<bool> removal = RunOnDedicatedThread(() => blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256));
+            try
+            {
+                Assert.That(await removal.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            }
+            finally
+            {
+                storage.ReleaseFirstUpdate();
+            }
+
+            Assert.That(await update, Is.EqualTo(BlobCellMergeResult.Accepted));
+            if (changeTimestamp)
+            {
+                fullBlobTx.Timestamp = removedTimestamp + 1;
+            }
+
+            if (failReinsertion)
+            {
+                Assert.That(
+                    () => blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _),
+                    Throws.TypeOf<InvalidOperationException>());
+                if (removeAfterFailedReinsertion)
+                {
+                    Assert.That(blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256), Is.True);
+                }
+            }
+            else
+            {
+                Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                    storage.WaitForSuccessfulDeletes(removeAfterFailedReinsertion ? 2 : 1, TimeSpan.FromSeconds(5)),
+                    Is.True);
+                if (failReinsertion && !removeAfterFailedReinsertion)
+                {
+                    Assert.That(SpinWait.SpinUntil(
+                        () => storage.TryGet(
+                            fullBlobTx.Hash!.ValueHash256,
+                            fullBlobTx.SenderAddress!,
+                            fullBlobTx.Timestamp,
+                            out _),
+                        TimeSpan.FromSeconds(5)), Is.True);
+                }
+
+                Assert.That(storage.TryGet(
+                    fullBlobTx.Hash!.ValueHash256,
+                    fullBlobTx.SenderAddress!,
+                    fullBlobTx.Timestamp,
+                    out _), Is.EqualTo(!removeAfterFailedReinsertion));
+                if (changeTimestamp)
+                {
+                    Assert.That(storage.TryGet(
+                        fullBlobTx.Hash!.ValueHash256,
+                        fullBlobTx.SenderAddress!,
+                        removedTimestamp,
+                        out _), Is.False);
+                }
             }
         }
 
@@ -2511,8 +2662,7 @@ namespace Nethermind.TxPool.Test
                 blobPool.TryGetValue(cacheEvictor.Hash!.ValueHash256, out _));
             try
             {
-                Assert.That(concurrentLookup.Wait(TimeSpan.FromSeconds(2)), Is.True);
-                Assert.That(await concurrentLookup, Is.True);
+                Assert.That(await concurrentLookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
             }
             finally
             {
@@ -2715,7 +2865,7 @@ namespace Nethermind.TxPool.Test
             }
 
             Transaction sparseBlobTx = new();
-            fullBlobTx.CopyTo(sparseBlobTx);
+            fullBlobTx.CopyTo(sparseBlobTx, copyHash: true);
             sparseBlobTx.NetworkWrapper = fullWrapper with
             {
                 Blobs = emptyBlobs,
@@ -2920,7 +3070,18 @@ namespace Nethermind.TxPool.Test
 
             public void BlockNextUpdate() => Volatile.Write(ref _blockNextUpdate, 1);
 
-            public bool WaitForBlockedUpdate(TimeSpan timeout) => _updateEntered.Task.Wait(timeout);
+            public bool WaitForBlockedUpdate(TimeSpan timeout)
+            {
+                try
+                {
+                    _updateEntered.Task.WaitAsync(timeout).GetAwaiter().GetResult();
+                    return true;
+                }
+                catch (TimeoutException)
+                {
+                    return false;
+                }
+            }
 
             public void ReleaseBlockedUpdate() => _releaseUpdate.TrySetResult();
 
@@ -2929,7 +3090,11 @@ namespace Nethermind.TxPool.Test
                 if (Interlocked.Exchange(ref _blockNextUpdate, 0) != 0)
                 {
                     _updateEntered.TrySetResult();
-                    if (!_releaseUpdate.Task.Wait(TimeSpan.FromSeconds(10)))
+                    try
+                    {
+                        _releaseUpdate.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+                    }
+                    catch (TimeoutException)
                     {
                         throw new TimeoutException("Timed out waiting to release the sparse blob update callback.");
                     }
@@ -2939,7 +3104,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private sealed class BlockingBlobTxStorage(int failedUpdateCount = 0) : IBlobTxStorage, IDisposable
+        private sealed class BlockingBlobTxStorage(int failedUpdateCount = 0, int failedDeleteCount = 0) : IBlobTxStorage, IDisposable
         {
             private readonly BlobTxStorage _inner = new();
             private readonly ManualResetEventSlim _firstUpdateEntered = new();
@@ -2947,6 +3112,8 @@ namespace Nethermind.TxPool.Test
             private readonly ManualResetEventSlim _deleteEntered = new();
             private readonly ManualResetEventSlim _successfulUpdate = new();
             private int _remainingUpdateFailures = failedUpdateCount;
+            private int _remainingDeleteFailures = failedDeleteCount;
+            private int _successfulDeleteCount;
             private int _addCount;
 
             public bool WaitForFirstUpdate(TimeSpan timeout) => _firstUpdateEntered.Wait(timeout);
@@ -2954,6 +3121,9 @@ namespace Nethermind.TxPool.Test
             public void ReleaseFirstUpdate() => _releaseFirstUpdate.Set();
 
             public bool WaitForDelete(TimeSpan timeout) => _deleteEntered.Wait(timeout);
+
+            public bool WaitForSuccessfulDeletes(int count, TimeSpan timeout) =>
+                SpinWait.SpinUntil(() => Volatile.Read(ref _successfulDeleteCount) >= count, timeout);
 
             public bool WaitForSuccessfulUpdate(TimeSpan timeout) => _successfulUpdate.Wait(timeout);
 
@@ -2993,7 +3163,13 @@ namespace Nethermind.TxPool.Test
             public void Delete(in ValueHash256 hash, in UInt256 timestamp)
             {
                 _deleteEntered.Set();
+                if (Interlocked.Decrement(ref _remainingDeleteFailures) >= 0)
+                {
+                    throw new InvalidOperationException("Transient sparse blob delete failure.");
+                }
+
                 _inner.Delete(hash, timestamp);
+                Interlocked.Increment(ref _successfulDeleteCount);
             }
 
             public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions)

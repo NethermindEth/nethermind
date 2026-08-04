@@ -43,6 +43,7 @@ public class Eth68ProtocolHandler(ISession session,
     : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     private const int MaxPooledTransactionHashesPerRequest = 256;
+    // Limit blob size-estimate compatibility to RLP prefix-width differences.
     private const int BlobTransactionSizeEstimateTolerance = 8;
 
     protected readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
@@ -256,7 +257,7 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private bool CanRequestPooledTransaction(TxType txType) => txType switch
+    private protected bool CanRequestPooledTransaction(TxType txType) => txType switch
     {
         TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.SetCode => true,
         TxType.Blob => _blobSupportEnabled,
