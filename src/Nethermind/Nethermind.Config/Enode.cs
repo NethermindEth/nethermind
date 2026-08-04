@@ -58,14 +58,17 @@ namespace Nethermind.Config
             {
                 DiscoveryPort = Port;
             }
-            else if (parsed.Query.StartsWith(DiscoveryPortQuery, StringComparison.Ordinal) &&
-                     ushort.TryParse(parsed.Query[DiscoveryPortQuery.Length..], out ushort discoveryPort))
+            else if (!parsed.Query.StartsWith(DiscoveryPortQuery, StringComparison.Ordinal))
             {
-                DiscoveryPort = discoveryPort;
+                throw GetInvalidEnodeException();
+            }
+            else if (!ushort.TryParse(parsed.Query[DiscoveryPortQuery.Length..], out ushort discoveryPort))
+            {
+                throw GetPortException(host);
             }
             else
             {
-                throw GetPortException(host);
+                DiscoveryPort = discoveryPort;
             }
 
             try
@@ -107,7 +110,7 @@ namespace Nethermind.Config
         public int DiscoveryPort { get; }
         public string Info => DiscoveryPort == Port
             ? $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}"
-            : $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}?discport={DiscoveryPort}";
+            : $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}{DiscoveryPortQuery}{DiscoveryPort}";
 
         public override string ToString() => Info;
 
