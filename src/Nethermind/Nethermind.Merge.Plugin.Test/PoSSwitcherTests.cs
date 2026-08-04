@@ -69,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 Assert.That(chainSpec.Parameters.TerminalTotalDifficulty?.IsZero, Is.True);
                 Assert.That(specProvider.TerminalTotalDifficulty?.IsZero, Is.True);
-                Assert.That(specProvider.MergeBlockNumber, Is.Null);
+                Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(0));
                 Assert.That(isTerminal, Is.False);
                 Assert.That(isPostMerge, Is.True);
                 Assert.That(genesis.Header.IsPostMerge, Is.True);

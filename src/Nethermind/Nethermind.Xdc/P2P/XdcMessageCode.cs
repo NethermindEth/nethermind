@@ -8,6 +8,4 @@ public static class XdcMessageCode
     public const int VoteMsg = 0xe0;
     public const int TimeoutMsg = 0xe1;
     public const int SyncInfoMsg = 0xe2;
-
-    public static bool IsXdcMessage(int packetType) => packetType is >= VoteMsg and <= SyncInfoMsg;
 }

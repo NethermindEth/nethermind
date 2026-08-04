@@ -27,6 +27,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private readonly bool _trieless;
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
@@ -46,6 +47,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private Task? _hintBalTask;
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
+
+    // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
+    internal bool Trieless => _trieless;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -87,6 +91,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
+        _trieless = snapshotBundle.IsHistorical;
     }
 
     public void Dispose()
@@ -137,7 +142,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
-    public void UpdateRootHash() => _stateTree.UpdateRootHash();
+
+    public void UpdateRootHash()
+    {
+        if (!_trieless) _stateTree.UpdateRootHash();
+    }
 
     public Account? Get(Address address)
     {
@@ -145,7 +154,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         HintGet(address, account, promote: !isInCurrentSnapshot);
 
-        if (_configuration.VerifyWithTrie)
+        // A trie-less (history-backed) scope has no trie to verify against — the reader throws on trie-node access,
+        // and a historical value verified against the current trie would be wrong anyway.
+        if (_configuration.VerifyWithTrie && !_trieless)
         {
             Account? accTrie = _stateTree.Get(address);
             if (accTrie != account)
@@ -194,7 +205,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
-                Parallel.For(0, accountCount, parallelOptions, (i) =>
+                void WarmAccount(int i)
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
@@ -208,9 +219,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
 
-                    Account? account = sink is null && storageChangeCount == 0
-                        ? null
-                        : _snapshotBundle.GetAccount(address);
+                    Account? account = _snapshotBundle.GetAccount(address);
 
                     if (sink is not null && sink.StillNeeded(address, out _))
                         sink.OnAccountRead(address, account);
@@ -245,7 +254,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         accounts[i] = account;
                         selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
                     }
-                });
+                }
+
+                // The shared ThreadPool is saturated by the parallel EVM executor
+                // during newPayload, so Parallel.For here gets starved exactly when
+                // warmup matters. The dedicated reader pool is idle at that point.
+                if (_warmReadPool is not null)
+                {
+                    WarmReadPool pool = _warmReadPool.Value;
+                    int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, accountCount / 64));
+                    pool.Run(accountCount, workers, WarmAccount, token);
+                }
+                else
+                {
+                    Parallel.For(0, accountCount, parallelOptions, WarmAccount);
+                }
 
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
@@ -430,7 +453,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        _stateTree.Commit();
+        if (!_trieless) _stateTree.Commit();
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
@@ -448,7 +471,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             else
             {
                 newSnapshot?.Dispose();
-                cachedResource?.Dispose();
+                cachedResource?.ReleaseLease();
             }
         }
 
@@ -519,10 +542,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 OnAccountUpdated = null;
 
-                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                // The per-account flat writes above already carry intra-block state for subsequent txs; only a
+                // normal scope additionally bulk-applies the dirty accounts into the state trie.
+                if (!scope._trieless)
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                    {
+                        stateSetter.Set(kv.Key, kv.Value);
+                    }
                 }
             }
             finally

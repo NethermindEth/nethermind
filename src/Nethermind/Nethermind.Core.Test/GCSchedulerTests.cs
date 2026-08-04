@@ -3,6 +3,8 @@
 
 using System;
 using System.Runtime;
+using Nethermind.Core.Memory;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -80,6 +82,19 @@ public class GCSchedulerTests
 
         Assert.That(_scheduler.SweepBaselineAllocatedBytes, Is.GreaterThan(armed));
         Assert.That(GCSettings.LatencyMode, Is.EqualTo(entryMode));
+    }
+
+    [Test]
+    public void Sweep_WhenAllocationBudgetExceeded_DoesNotTrimNativeHeap()
+    {
+        MallocHelper mallocHelper = Substitute.For<MallocHelper>();
+        GCScheduler scheduler = new(sustainedSweepEnabled: false, mallocHelper);
+        scheduler.SweepBaselineAllocatedBytes =
+            GC.GetTotalAllocatedBytes(precise: false) - GCScheduler.SustainedSweepAllocationBytes - 1;
+
+        scheduler.SweepIfAllocationBudgetExceeded();
+
+        mallocHelper.DidNotReceive().MallocTrim(Arg.Any<uint>());
     }
 
     private long ArmBudget()

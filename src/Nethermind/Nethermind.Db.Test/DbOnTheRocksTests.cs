@@ -238,7 +238,7 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Corrupted_exception_on_open_would_create_marker()
+        public void Corrupted_exception_on_open_writes_marker_and_shuts_down()
         {
             IDbConfig config = new DbConfig();
 
@@ -247,12 +247,14 @@ namespace Nethermind.Db.Test
             fileSystem.File.Returns(file);
 
             bool exceptionThrown = false;
+            bool didShutDown = false;
             try
             {
                 _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
                     _rocksdbConfigFactory,
                     LimboLogs.Instance,
-                    fileSystem: fileSystem);
+                    fileSystem: fileSystem,
+                    onFatalShutdown: () => didShutDown = true);
             }
             catch (RocksDbSharpException)
             {
@@ -260,7 +262,44 @@ namespace Nethermind.Db.Test
             }
 
             Assert.That(exceptionThrown, Is.True);
+            // Genuine "Corruption:" writes the marker (schedules repair on restart) and shuts down.
             file.Received().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+            Assert.That(didShutDown, Is.True);
+        }
+
+        // An "IO error" (fd exhaustion, full disk, permissions) is not on-disk corruption, so it
+        // must NOT write the marker (that would run the lossy repair on a healthy DB on restart),
+        // but it must still fast-shut down so partial writes aren't built upon.
+        [TestCase("IO error: While open a file for random read: /db/000123.sst: Too many open files")]
+        [TestCase("IO error: No space left on device")]
+        [TestCase("IO error: While fsync: /db/000123.sst: Permission denied")]
+        public void Io_error_on_open_shuts_down_without_writing_marker(string exceptionMessage)
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            bool exceptionThrown = false;
+            bool didShutDown = false;
+            try
+            {
+                _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
+                    _rocksdbConfigFactory,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem,
+                    openExceptionMessage: exceptionMessage,
+                    onFatalShutdown: () => didShutDown = true);
+            }
+            catch (RocksDbSharpException)
+            {
+                exceptionThrown = true;
+            }
+
+            Assert.That(exceptionThrown, Is.True);
+            file.DidNotReceive().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+            Assert.That(didShutDown, Is.True);
         }
 
         [Test]
@@ -538,6 +577,105 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Full_enumerations_can_be_repeated_across_batches()
+        {
+            (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
+            IEnumerable<KeyValuePair<byte[], byte[]?>> all = _db.GetAll(ordered: true);
+            IEnumerable<byte[]> keys = _db.GetAllKeys(ordered: true);
+            IEnumerable<byte[]> values = _db.GetAllValues(ordered: true);
+
+            _ = all.Take(1).Single();
+            _ = keys.Take(1).Single();
+            _ = values.Take(1).Single();
+
+            KeyValuePair<byte[], byte[]?>[] firstAll = all.ToArray();
+            KeyValuePair<byte[], byte[]?>[] secondAll = all.ToArray();
+            byte[][] firstKeys = keys.ToArray();
+            byte[][] secondKeys = keys.ToArray();
+            byte[][] firstValues = values.ToArray();
+            byte[][] secondValues = values.ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstAll.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+                Assert.That(firstAll.Select(static item => item.Value), Is.EqualTo(expectedValues));
+                Assert.That(secondAll.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+                Assert.That(secondAll.Select(static item => item.Value), Is.EqualTo(expectedValues));
+                Assert.That(firstKeys, Is.EqualTo(expectedKeys));
+                Assert.That(secondKeys, Is.EqualTo(expectedKeys));
+                Assert.That(firstValues, Is.EqualTo(expectedValues));
+                Assert.That(secondValues, Is.EqualTo(expectedValues));
+            }
+        }
+
+        [Test]
+        public void Full_enumerations_resume_after_deleted_boundary()
+        {
+            (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
+            int boundaryIndex = DbOnTheRocks.FullEnumerationBatchSize - 1;
+
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAll(ordered: true).Select(static item => item.Key),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedKeys[boundaryIndex + 1]);
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAllKeys(ordered: true),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedKeys[boundaryIndex + 1]);
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAllValues(ordered: true),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedValues[boundaryIndex + 1]);
+        }
+
+        private (byte[][] Keys, byte[][] Values) SeedFullEnumerationBatches()
+        {
+            int count = DbOnTheRocks.FullEnumerationBatchSize + 1;
+            byte[][] keys = new byte[count][];
+            byte[][] values = new byte[count][];
+
+            using IWriteBatch batch = _db.StartWriteBatch();
+            for (int i = 0; i < count; i++)
+            {
+                keys[i] = i.ToBigEndianByteArray();
+                values[i] = (i + count).ToBigEndianByteArray();
+                batch.Set(keys[i], values[i]);
+            }
+
+            return (keys, values);
+        }
+
+        private void AssertResumesAfterDeletedBoundary(
+            IEnumerable<byte[]> items,
+            byte[] boundaryKey,
+            byte[] boundaryValue,
+            byte[] expectedNext)
+        {
+            using IEnumerator<byte[]> enumerator = items.GetEnumerator();
+            for (int i = 0; i < DbOnTheRocks.FullEnumerationBatchSize; i++)
+            {
+                if (!enumerator.MoveNext())
+                {
+                    Assert.Fail($"Enumeration stopped at item {i} before reaching the batch boundary.");
+                }
+            }
+
+            _db.Remove(boundaryKey);
+            try
+            {
+                Assert.That(enumerator.MoveNext(), Is.True);
+                Assert.That(enumerator.Current, Is.EqualTo(expectedNext));
+            }
+            finally
+            {
+                _db.Set(boundaryKey, boundaryValue);
+            }
+        }
+
+        [Test]
         public void IteratorWorks()
         {
             Assert.That(_db, Is.AssignableTo<ISortedKeyValueStore>());
@@ -657,9 +795,15 @@ namespace Nethermind.Db.Test
         ILogManager logManager,
         IList<string>? columnFamilies = null,
         RocksDbSharp.Native? rocksDbNative = null,
-        IFileSystem? fileSystem = null
+        IFileSystem? fileSystem = null,
+        string openExceptionMessage = "Corruption: test corruption",
+        Action? onFatalShutdown = null
         ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
     {
-        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException("Corruption: test corruption");
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException(openExceptionMessage);
+
+        // The open path throws from the base constructor, so the caller never gets a reference to
+        // observe FatalShutdown on; report it through the injected callback instead of exiting.
+        protected override void FatalShutdown() => onFatalShutdown?.Invoke();
     }
 }
