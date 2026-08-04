@@ -8,9 +8,14 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 
-// stateGasTracer exposes the EIP-8037 two-dimensional gas summary per transaction. The values are the
-// ones already computed for block-level gas accounting (carried on GasConsumed); the tracer only reads
-// and formats them, without re-deriving anything from opcode-level data.
+/// <summary>
+/// The <c>stateGasTracer</c> native tracer: exposes the EIP-8037 two-dimensional gas summary per transaction.
+/// </summary>
+/// <remarks>
+/// The reported values are the ones already computed for block-level gas accounting (carried on
+/// <see cref="GasConsumed"/>); the tracer only reads and formats them, without re-deriving anything from
+/// opcode-level data.
+/// </remarks>
 public sealed class NativeStateGasTracer : GethLikeNativeTxTracer
 {
     public const string StateGasTracer = "stateGasTracer";

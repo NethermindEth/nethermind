@@ -39,6 +39,14 @@ public static class GethLikeNativeTracerFactory
     public static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate) =>
         _tracers.Add(tracerName, (options, block, transaction, worldState, _) => tracerDelegate(options, block, transaction, worldState));
 
+    /// <summary>
+    /// Back-compatible overload preserved for external callers. Prefer the spec-aware overload.
+    /// </summary>
+    /// <remarks>
+    /// Built-in spec-dependent tracers (callTracer, stateGasTracer) fall back to their pre-fork behavior
+    /// when created without a release spec — they cannot emit the EIP-8037 fields. Internal callers must
+    /// use the <see cref="IReleaseSpec"/> overload so Amsterdam+ output stays conformant.
+    /// </remarks>
     public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState) =>
         CreateTracer(options, block, transaction, worldState, releaseSpec: null);
 

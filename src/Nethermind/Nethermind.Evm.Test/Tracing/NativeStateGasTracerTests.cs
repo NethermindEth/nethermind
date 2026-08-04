@@ -26,7 +26,19 @@ public class NativeStateGasTracerTests
         tracer.MarkAsSuccess(TestItem.AddressA, in gasSpent, [], []);
 
         using GethLikeTxTrace trace = tracer.BuildResult();
-        return JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions);
+
+        // The enclosing custom-trace converter serializes numbers as raw decimals; reproduce that ambient
+        // state so this test actually exercises StateGasTraceConverter's hex-quantity override.
+        NumberConversion previous = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = NumberConversion.Raw;
+        try
+        {
+            return JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = previous;
+        }
     }
 
     [Test]

@@ -40,7 +40,7 @@ public class NativeStateGasTracerE2ETests : VirtualMachineTestsBase
         (Block block, Transaction tx) = PrepareTx(Activation, 1_000_000, code, value: 0);
         IReleaseSpec spec = SpecProvider.GetSpec(Activation);
 
-        NativeStateGasTracer tracer = new(tx, spec, GethTraceOptions.Default);
+        using NativeStateGasTracer tracer = new(tx, spec, GethTraceOptions.Default);
         _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
@@ -48,7 +48,7 @@ public class NativeStateGasTracerE2ETests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.StateGasUsed, Is.GreaterThan(0), "a fresh-slot SSTORE must record state gas");
-            Assert.That(result.GasRefund, Is.GreaterThan(0), "clearing an originally-nonzero slot must record an EIP-3529 refund");
+            Assert.That(result.GasRefund, Is.GreaterThan(0), "resetting a slot to its original value must record an EIP-3529 refund");
             // Non-floor invariant (this small-calldata tx never hits the calldata floor).
             Assert.That(result.RegularGasUsed + result.StateGasUsed, Is.EqualTo(result.GasUsed + result.GasRefund),
                 "regularGasUsed + stateGasUsed == gasUsed + gasRefund");

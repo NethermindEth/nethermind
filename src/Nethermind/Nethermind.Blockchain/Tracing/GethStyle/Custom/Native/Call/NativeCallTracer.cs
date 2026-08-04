@@ -216,9 +216,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    // EIP-8037: the two-dimensional gas breakdown is a per-transaction property, so it is attached only
-    // to the top-level frame and only for Amsterdam+ blocks. The gross regular/state contributions and
-    // the applied refund are read from the transaction's GasConsumed result (same values as stateGasTracer).
+    /// <summary>
+    /// Attaches the EIP-8037 two-dimensional gas breakdown to the top-level frame for Amsterdam+ blocks.
+    /// </summary>
+    /// <remarks>
+    /// It is a per-transaction property, so it lives only on the top frame. The gross regular/state
+    /// contributions and the applied refund are read from the transaction's <see cref="GasConsumed"/>
+    /// result (the same values the stateGasTracer reports).
+    /// </remarks>
     private void ApplyTwoDimensionalGas(NativeCallTracerCallFrame firstCallFrame, in GasConsumed gasSpent)
     {
         if (!_isEip8037Enabled) return;
