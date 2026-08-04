@@ -502,6 +502,54 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(0, false, TestName = "DepthZeroUnderflowsBeforeSkippedCancellationPoll")]
+    [TestCase(1, true, TestName = "DepthOnePollsBeforeSecondPopUnderflow")]
+    [TestCase(1023, true, TestName = "FullStackPollsAtFusedSecondPopBoundary")]
+    public void StreamInterpreter_FusedPopPop_PreservesCancellationCadence(int stackDepth, bool shouldCancel)
+    {
+        byte[] code = BuildPopPopAtCancellationBoundary(stackDepth);
+        AssertFusedOpcode(code, FusedOpcode.PopPop);
+
+        PollingCancellationTracer byteCodeTracer = new();
+        AssertCancellationOutcome(code, useStream: false, shouldCancel, byteCodeTracer);
+
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        PollingCancellationTracer streamTracer = new();
+        AssertCancellationOutcome(code, useStream: true, shouldCancel, streamTracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(byteCodeTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1),
+                "the bytecode loop must poll before the second POP only after the first succeeds");
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore),
+                "the stream interpreter did not engage — this cancellation regression proved nothing");
+            Assert.That(streamTracer.CancellationPollCount, Is.EqualTo(shouldCancel ? 2 : 1),
+                "the fused pair must preserve the bytecode loop's cancellation-poll ordering");
+        }
+    }
+
+    private static byte[] BuildPopPopAtCancellationBoundary(int stackDepth)
+    {
+        const int instructionsBeforePair = 1023;
+        byte[] code = new byte[instructionsBeforePair + 3];
+        int jumpDestCount = instructionsBeforePair - stackDepth;
+        code.AsSpan(0, jumpDestCount).Fill((byte)Instruction.JUMPDEST);
+        code.AsSpan(jumpDestCount, stackDepth).Fill((byte)Instruction.PUSH0);
+        code[instructionsBeforePair] = (byte)Instruction.POP;
+        code[instructionsBeforePair + 1] = (byte)Instruction.POP;
+        code[instructionsBeforePair + 2] = (byte)Instruction.STOP;
+        return code;
+    }
+
+    private void AssertCancellationOutcome(byte[] code, bool useStream, bool shouldCancel, Evm.Tracing.ITxTracer tracer)
+    {
+        if (shouldCancel)
+            Assert.Throws<OperationCanceledException>(() => RunWithInterpreter(code, useStream, tracer: tracer));
+        else
+            Assert.DoesNotThrow(() => RunWithInterpreter(code, useStream, tracer: tracer));
+    }
+
     private static void AssertFusedOpcode(byte[] code, byte expectedFusedOpcode)
     {
         InstructionStream? stream = InstructionStream.TryBuild(code);
@@ -602,7 +650,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         }
     }
 
-    private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream, ulong gasLimit = 8_000_000)
+    private ReceiptCaptureTracer RunWithInterpreter(byte[] code, bool useStream, ulong gasLimit = 8_000_000, Evm.Tracing.ITxTracer? tracer = null)
     {
         TestState.CreateAccount(CalleeAddress, 1000000);
         TestState.InsertCode(CalleeAddress, CalleeCode, Spec);
@@ -631,9 +679,9 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
                     Assert.Fail("the stream did not build within the timeout");
             }
 
-            ReceiptCaptureTracer tracer = new();
-            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-            return tracer;
+            ReceiptCaptureTracer receiptTracer = new();
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer ?? receiptTracer);
+            return receiptTracer;
         }
         finally
         {
@@ -641,6 +689,15 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             StreamInterpreter.BuildThreshold = thresholdBefore;
             StreamInterpreter.ForceAllContexts = forceBefore;
         }
+    }
+
+    private sealed class PollingCancellationTracer : Evm.Tracing.TxTracer, Evm.Tracing.ITxTracer
+    {
+        private int _cancellationPollCount;
+
+        public int CancellationPollCount => _cancellationPollCount;
+        public bool IsCancelable => true;
+        public bool IsCancelled => _cancellationPollCount++ > 0;
     }
 
     private sealed class ReceiptCaptureTracer : Evm.Tracing.TxTracer

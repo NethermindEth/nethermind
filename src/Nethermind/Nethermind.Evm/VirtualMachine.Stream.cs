@@ -164,6 +164,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             exceptionType = EvmInstructions.FusedConstShiftCore<EvmInstructions.OpShr>(ref stack, in constants[(int)entry.Operand]);
                             break;
                         case (Instruction)FusedOpcode.PopPop:
+                            if (TCancelable.IsActive
+                                && stack.Head >= 1
+                                && ((opCodeCount - 1) & CancellationCheckMask) == 0
+                                && _txTracer.IsCancelled)
+                                ThrowStreamOperationCanceledException();
                             exceptionType = EvmInstructions.FusedPopPopCore(ref stack);
                             break;
                         case Instruction.ADD:
