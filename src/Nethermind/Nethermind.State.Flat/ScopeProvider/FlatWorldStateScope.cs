@@ -227,8 +227,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (ac.HasStateChanges && _snapshotBundle.ShouldQueuePrewarm(address))
-                        QueueStateTrieWarmup(address, snapshot);
+                    if (ac.HasStateChanges
+                        && _snapshotBundle.ShouldQueuePrewarm(address)
+                        && _warmer.PushAddressJob(this, address, snapshot))
+                        Interlocked.Increment(ref _outstandingWarmups);
 
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
