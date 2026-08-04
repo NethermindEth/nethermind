@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -29,6 +30,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly HistoryStore _accountHistory;
     private readonly HistoryStore _storageHistory;
     private readonly StorageClearStore _storageClears;
+    private readonly ChangesetSidecarStore? _changesetSidecar;
     private readonly HistoryAvailability _availability;
     private readonly bool _rlpWrapSlots;
     private readonly bool _enabled;
@@ -40,6 +42,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private int _consecutiveCaptureFailures;
     // Config cannot prove the hook is wired (a patricia backend constructs this writer but never invokes it).
     private volatile bool _captureProven;
+
+    // Resolved once at construction, then fixed for the process lifetime: upgrade-only, never derived from config
+    // alone on every write. A windowed-configured node declares itself v3 from its very first capture, before any
+    // floor exists (so the format key protects it immediately). But config can legally change between restarts —
+    // if this instead recomputed "windowed = config wants it" fresh on every call, a node started once with a
+    // window (stamping v3, publishing a floor, pruning rows) and then restarted with HistoryRetentionBlocks
+    // reverted to 0 would have its very next captured block silently restamp the DB back to v2, even though the
+    // floor key and the already-pruned gaps are still on disk. Latching from persisted state as well as config
+    // closes that: once a DB has ever been windowed, it stays declared windowed regardless of later config.
+    private readonly byte _formatVersion;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
     {
@@ -55,7 +67,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory), logger);
         _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory), logger);
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
+        _changesetSidecar = config.HistoryChangesetSidecarEnabled
+            ? new ChangesetSidecarStore(history.GetColumnDb(FlatHistoryColumns.ChangesetSidecar))
+            : null;
         _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        bool alreadyWindowedOnDisk = _availability.StampedFormatVersion == HistoryAvailability.WindowedFormatVersion;
+        _formatVersion = config.HistoryRetentionBlocks > 0 || alreadyWindowedOnDisk
+            ? HistoryAvailability.WindowedFormatVersion
+            : HistoryAvailability.FormatVersion;
         if (_enabled)
         {
             _availability.VerifyFormat();
@@ -166,7 +185,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         if (connected)
         {
             // Durable (throwing WAL-sync) before the caller persists the flat state and prunes the sources.
-            _availability.PublishWatermark(target);
+            _availability.PublishWatermark(target, _formatVersion);
             _history.SyncWal();
             Metrics.FlatHistoryWatermark = (long)target;
 
@@ -224,7 +243,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
         {
             HistoryColumnBatches columns = new(batch);
-            HistoryAvailability.MarkBlock(columns.AvailableBlocks, 0, genesisStateRoot);
+            HistoryAvailability.MarkBlock(columns.AvailableBlocks, 0, genesisStateRoot, _formatVersion);
 
             Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
             foreach (KeyValuePair<Address, Account> allocation in allocations)
@@ -235,7 +254,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         // The genesis floor a later walk connects to. Deliberately not proof of health: the nodes that reach the
         // seed (history enabled mid-life) are exactly the ones whose first walk fails.
-        _availability.PublishWatermark(0);
+        _availability.PublishWatermark(0, _formatVersion);
         _history.SyncWal();
     }
 
@@ -244,7 +263,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
         HistoryColumnBatches columns = new(batch);
-        HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot);
+        HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion);
 
         Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
@@ -268,6 +287,60 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             (Address addr, UInt256 slot) = change.Key.Key;
             RecordStorage(block, addr.ToAccountPath, slot, change.Value, storageKey, storageValue, in columns);
         }
+
+        if (_changesetSidecar is not null)
+        {
+            RecordChangesetSidecarChunk(block, snapshot, batch);
+        }
+    }
+
+    /// <summary>
+    /// Writes the block's changeset into the sidecar as a single chunk, grouped by address (BAL-shaped). Splitting
+    /// a block's changeset across multiple chunks when it is too large for one wire message is a 39-2 concern —
+    /// this establishes the store/codec shape and chunk-index contract, not the splitting policy.
+    /// </summary>
+    private void RecordChangesetSidecarChunk(ulong block, Snapshot snapshot, IColumnsWriteBatch<FlatHistoryColumns> batch)
+    {
+        Dictionary<Address, List<ChangesetSlotEntry>> storageByAddress = new();
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> change in snapshot.Storages)
+        {
+            (Address address, UInt256 slot) = change.Key.Key;
+            if (!storageByAddress.TryGetValue(address, out List<ChangesetSlotEntry>? slots))
+            {
+                slots = [];
+                storageByAddress[address] = slots;
+            }
+
+            byte[] value = change.Value is SlotValue slotValue ? slotValue.AsReadOnlySpan.WithoutLeadingZeros().ToArray() : [];
+            slots.Add(new ChangesetSlotEntry(slot, value));
+        }
+
+        List<ChangesetAccountEntry> entries = new(snapshot.Accounts.Count + storageByAddress.Count);
+        foreach (KeyValuePair<HashedKey<Address>, Account?> change in snapshot.Accounts)
+        {
+            Address address = change.Key.Key;
+            byte[] accountValue;
+            if (change.Value is Account account)
+            {
+                using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+                accountValue = ((ReadOnlySpan<byte>)rlp).ToArray();
+            }
+            else
+            {
+                accountValue = [];
+            }
+
+            storageByAddress.Remove(address, out List<ChangesetSlotEntry>? storageChanges);
+            entries.Add(new ChangesetAccountEntry(address, AccountChanged: true, accountValue, storageChanges ?? []));
+        }
+
+        foreach (KeyValuePair<Address, List<ChangesetSlotEntry>> remaining in storageByAddress)
+        {
+            entries.Add(new ChangesetAccountEntry(remaining.Key, AccountChanged: false, ReadOnlyMemory<byte>.Empty, remaining.Value));
+        }
+
+        byte[] payload = ChangesetChunkCodec.Encode(entries);
+        _changesetSidecar!.RecordChunk(block, chunkIndex: 0, payload, batch.GetColumnBatch(FlatHistoryColumns.ChangesetSidecar));
     }
 
     /// <summary>
@@ -282,7 +355,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
         HistoryColumnBatches columns = new(batch);
-        HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot);
+        HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion);
 
         Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];

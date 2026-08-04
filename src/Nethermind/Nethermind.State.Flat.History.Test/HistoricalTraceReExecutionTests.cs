@@ -102,7 +102,8 @@ public class HistoricalTraceReExecutionTests
             _historyReader,
             _trieNodeCache,
             _resourcePool,
-            enableDetailedMetrics: false);
+            enableDetailedMetrics: false,
+            new HistoryScopeGate());
         using FlatScopeProvider scopeProvider = CreateScopeProvider(manager);
         WorldState worldState = new(scopeProvider, LimboLogs.Instance);
 

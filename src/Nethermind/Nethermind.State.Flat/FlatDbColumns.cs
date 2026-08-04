@@ -20,4 +20,12 @@ public enum FlatHistoryColumns
     StorageHistory,
     AvailableBlocks,
     StorageClears,
+
+    /// <summary>
+    /// Purpose-built, append-only, block-major feed for replication/import (39-2 devp2p serving, 39-3 backfill
+    /// import) — deliberately separate from the key-major AccountHistory/StorageHistory read-path store, which v2
+    /// dropped this shape from on purpose (see <c>HistoryAvailability.FormatVersion</c>'s doc comment). Its
+    /// retention and lifecycle are independent of the read-path window's floor.
+    /// </summary>
+    ChangesetSidecar,
 }

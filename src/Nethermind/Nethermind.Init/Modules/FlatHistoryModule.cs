@@ -23,6 +23,9 @@ public class FlatHistoryModule : Module
             .AddColumnDatabase<FlatHistoryColumns>(DbNames.FlatHistory)
             .AddSingleton<HistoryReader>()
             .AddSingleton<HistoryWriter>()
+            .AddSingleton<HistoryScopeGate>()
+            .AddSingleton<IBackfillInterlock>(NullBackfillInterlock.Instance)
+            .AddSingleton<HistoryWindowPruner>()
             .Bind<IFlatPersistenceCaptureHook, HistoryWriter>()
             .Bind<IStateHistoryCaptureStatus, HistoryWriter>()
             .AddDecorator<IFlatDbManager>((ctx, inner) => new HistoricalFlatDbManager(
@@ -31,6 +34,8 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<HistoryReader>(),
                 ctx.Resolve<ITrieNodeCache>(),
                 ctx.Resolve<IResourcePool>(),
-                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
-            .AddStep(typeof(SeedFlatHistoryGenesis));
+                ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
+                ctx.Resolve<HistoryScopeGate>()))
+            .AddStep(typeof(SeedFlatHistoryGenesis))
+            .AddStep(typeof(StartHistoryWindowPruner));
 }

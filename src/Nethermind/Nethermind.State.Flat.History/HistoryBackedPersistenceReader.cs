@@ -15,9 +15,10 @@ namespace Nethermind.State.Flat.History;
 /// members throw — a historical trie traversal must fail loudly as unsupported, not silently produce a wrong proof
 /// or an empty state walk.
 /// </summary>
-internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block) : IPersistence.IPersistenceReader
+internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block, HistoryScopeGate scopeGate) : IPersistence.IPersistenceReader
 {
     private readonly StorageClearsScopeCache _clearsCache = new();
+    private readonly int _scopeEpoch = scopeGate.EnterScope();
 
     public StateId CurrentState => block;
 
@@ -56,7 +57,7 @@ internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader
     private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
         new($"Historical state for block {block.BlockNumber} is unavailable", null, TreePath.Empty, block.StateRoot.ToCommitment(), inner);
 
-    public void Dispose() { }
+    public void Dispose() => scopeGate.ExitScope(_scopeEpoch);
 
     public bool IsPreimageMode => false;
 

@@ -48,10 +48,15 @@ public sealed class HistoryReader
     public bool HasHistoryForBlock(ulong block) => _availability.IsCovered(block);
 
     /// <summary>
-    /// Whether <paramref name="state"/> can be served from history: it is at or below the contiguous watermark and its
-    /// state root matches the captured root at that height, so a non-canonical block hash is rejected (EIP-1898).
+    /// Whether <paramref name="state"/> can be served from history: it is at or below the contiguous watermark, at or
+    /// above the retention floor, and its state root matches the captured root at that height, so a non-canonical
+    /// block hash is rejected (EIP-1898).
     /// </summary>
     public bool IsAvailable(in StateId state) => _availability.Matches(state.BlockNumber, state.StateRoot);
+
+    /// <summary>Whether <paramref name="block"/> is covered by the watermark but has been pruned below the
+    /// retention floor — distinct from "never captured" so a caller can fail loudly instead of reporting absence.</summary>
+    public bool IsPrunedBelowFloor(ulong block) => _availability.IsCovered(block) && _availability.IsBelowGlobalFloor(block);
 
     /// <summary>
     /// Resolves the account as of <paramref name="block"/>. Returns <c>false</c> when the account did not exist at

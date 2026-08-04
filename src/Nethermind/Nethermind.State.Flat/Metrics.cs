@@ -308,4 +308,18 @@ public static class Metrics
     [GaugeMetric]
     [Description("1 when history capture has self-disabled (permanent gap, reorged capture, or repeated write failures); as-of reads above the watermark are refused until the flatHistory DB is resynced")]
     public static long FlatHistoryCaptureDisabled { get; set; }
+
+    [GaugeMetric]
+    [Description("Lowest block still answerable from flat history (the retention floor); 0 when no window is configured or none has been pruned yet")]
+    public static long FlatHistoryFloor { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of rows deleted by the history window pruner")]
+    public static long FlatHistoryPrunedRows { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of history window pruner passes that yielded at their wall-clock budget and left work for the next pass")]
+    public static long FlatHistoryPrunePassesYielded { get; set; }
 }

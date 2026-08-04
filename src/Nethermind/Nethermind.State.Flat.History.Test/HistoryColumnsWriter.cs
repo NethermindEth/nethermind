@@ -87,10 +87,18 @@ internal static class HistoryColumnsWriter
     public static void MarkBlock(IColumnsDb<FlatHistoryColumns> columns, ulong block, in ValueHash256 stateRoot)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
-        HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, stateRoot);
+        HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, stateRoot, HistoryAvailability.FormatVersion);
     }
 
     /// <summary>Publishes the contiguous watermark (and stamps the format version), gating reads at or below it.</summary>
     public static void SetWatermark(IColumnsDb<FlatHistoryColumns> columns, ulong watermark) =>
-        new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(watermark);
+        new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(watermark, HistoryAvailability.FormatVersion);
+
+    /// <summary>Publishes the retention floor (and stamps the windowed format version), gating reads below it.</summary>
+    public static void SetGlobalFloor(IColumnsDb<FlatHistoryColumns> columns, ulong floor) =>
+        new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishGlobalFloor(floor);
+
+    /// <summary>Reads the raw stamped format byte directly, for regression tests on format-version stamping.</summary>
+    public static byte? GetStampedFormatVersion(IColumnsDb<FlatHistoryColumns> columns) =>
+        new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).StampedFormatVersion;
 }

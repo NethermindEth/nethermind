@@ -578,6 +578,39 @@ public class HistoryWriterTests
         }
     }
 
+    // A windowed writer must declare itself v3 from its very first capture and stay there: if MarkBlock instead
+    // wrote the plain FormatVersion on every captured block, the very first capture after a floor publish would
+    // silently downgrade the stamp back to 2, and an older floor-unaware binary reading a pruned DB would pass
+    // VerifyFormat and serve absent instead of erroring for every pruned height.
+    [Test]
+    public void Windowed_writer_stamps_windowed_format_version_and_it_survives_further_captures()
+    {
+        HistoryWriter windowed = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 100 }, LimboLogs.Instance);
+        windowed.SeedGenesis([], StateAt(0).StateRoot);
+
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)3),
+            "precondition: a windowed writer's seed must stamp the windowed format version");
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        windowed.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
+        windowed.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)3),
+            "further captures on a windowed writer must never regress the stamp back to the plain format version");
+    }
+
+    [Test]
+    public void Unwindowed_writer_stamps_the_plain_format_version()
+    {
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        _writer.SeedGenesis([], StateAt(0).StateRoot);
+        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)2),
+            "a writer with no window configured must retain today's shipped format version unchanged");
+    }
+
     [Test]
     public void Seeded_genesis_allocations_read_at_every_height()
     {

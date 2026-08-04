@@ -25,6 +25,18 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
 
+    [ConfigItem(Description = "Bounded rolling-window retention for flat history, in blocks below the watermark. 0 disables windowing: history is retained unbounded from genesis/pivot, today's shipped behavior.", DefaultValue = "0")]
+    ulong HistoryRetentionBlocks { get; set; }
+
+    [ConfigItem(Description = "How many blocks the watermark must advance since the last floor publish before the history window pruner re-evaluates and advances the floor. Only consulted when HistoryRetentionBlocks is set.", DefaultValue = "1024")]
+    ulong HistoryPruneIntervalBlocks { get; set; }
+
+    [ConfigItem(Description = "Per-pass wall-clock budget, in seconds, for the history window pruner's incremental scan-and-delete. A pass yields at the budget and resumes from its persisted cursor on the next pass rather than running unbounded.", DefaultValue = "5")]
+    int HistoryPrunePassBudgetSeconds { get; set; }
+
+    [ConfigItem(Description = "Also capture each finalized block's changeset into the block-major changesets sidecar column (separate from the key-major history read-path columns), for future devp2p serving and concurrent backfill import. Off by default; when off the capture path does no extra work.", DefaultValue = "false")]
+    bool HistoryChangesetSidecarEnabled { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

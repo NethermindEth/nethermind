@@ -16,12 +16,14 @@ public sealed class HistoricalFlatDbManager(
     HistoryReader historyReader,
     ITrieNodeCache trieNodeCache,
     IResourcePool resourcePool,
-    bool enableDetailedMetrics) : IFlatDbManager
+    bool enableDetailedMetrics,
+    HistoryScopeGate scopeGate) : IFlatDbManager
 {
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
     {
-        if (!IsBelowBarrier(baseBlock))
+        if (!IsBelowBarrier(baseBlock, out bool prunedBelowFloor))
         {
+            ThrowIfPrunedBelowFloor(baseBlock, prunedBelowFloor);
             return inner.GatherSnapshotBundle(baseBlock, usage);
         }
 
@@ -36,32 +38,60 @@ public sealed class HistoricalFlatDbManager(
         return new SnapshotBundle(BuildHistoricalBundle(baseBlock), trieNodeCache, resourcePool, usage);
     }
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-        IsBelowBarrier(baseBlock)
-            ? BuildHistoricalBundle(baseBlock)
-            : inner.GatherReadOnlySnapshotBundle(baseBlock);
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+    {
+        if (IsBelowBarrier(baseBlock, out bool prunedBelowFloor)) return BuildHistoricalBundle(baseBlock);
+
+        ThrowIfPrunedBelowFloor(baseBlock, prunedBelowFloor);
+        return inner.GatherReadOnlySnapshotBundle(baseBlock);
+    }
 
     public bool HasStateForBlock(in StateId stateId) =>
-        IsBelowBarrier(stateId) || inner.HasStateForBlock(stateId);
+        IsBelowBarrier(stateId, out _) || inner.HasStateForBlock(stateId);
 
     public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) =>
         inner.AddSnapshot(snapshot, transientResource);
 
-    private bool IsBelowBarrier(in StateId baseBlock)
+    /// <summary>
+    /// Distinguishes "servable from history" (true) from two different false outcomes: covered-but-pruned
+    /// (<paramref name="prunedBelowFloor"/> true — must fail loudly, never fall through) versus genuinely not
+    /// history's concern (root mismatch / history disabled / above the barrier — existing fallthrough to
+    /// <paramref name="inner"/> is correct as before).
+    /// </summary>
+    private bool IsBelowBarrier(in StateId baseBlock, out bool prunedBelowFloor)
     {
+        prunedBelowFloor = false;
         StateId persisted = persistenceManager.GetCurrentPersistedStateId();
-        return persisted != StateId.PreGenesis
-            && baseBlock.BlockNumber < persisted.BlockNumber
-            && historyReader.IsAvailable(baseBlock);
+        if (persisted == StateId.PreGenesis || baseBlock.BlockNumber >= persisted.BlockNumber) return false;
+
+        if (historyReader.IsAvailable(baseBlock)) return true;
+
+        prunedBelowFloor = historyReader.IsPrunedBelowFloor(baseBlock.BlockNumber);
+        return false;
+    }
+
+    /// <summary>
+    /// A block covered by the watermark but pruned below the retention floor must never fall through to
+    /// <paramref name="inner"/> — inner's tiers only reach back to the finalization barrier, and answering "no
+    /// state here" for a query this old risks reading as "account/slot does not exist" upstream (e.g.
+    /// eth_getBalance returning a false zero) instead of the deliberate "unavailable" this represents.
+    /// </summary>
+    private static void ThrowIfPrunedBelowFloor(in StateId baseBlock, bool prunedBelowFloor)
+    {
+        if (prunedBelowFloor)
+        {
+            throw new StateUnavailableException(
+                $"Historical state for block {baseBlock.BlockNumber} has been pruned below the flat history retention floor.");
+        }
     }
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values
     // only and throws on trie traversal / iteration, so post-block state-root recomputation must not walk it.
     private ReadOnlySnapshotBundle BuildHistoricalBundle(in StateId baseBlock) =>
         new(new SnapshotPooledList(0),
-            new HistoryBackedPersistenceReader(historyReader, baseBlock),
+            new HistoryBackedPersistenceReader(historyReader, baseBlock, scopeGate),
             enableDetailedMetrics,
             PersistedSnapshotStack.Empty(enableDetailedMetrics),
             isHistorical: true);

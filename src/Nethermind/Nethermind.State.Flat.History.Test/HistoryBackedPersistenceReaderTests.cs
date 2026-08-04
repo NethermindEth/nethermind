@@ -114,5 +114,5 @@ public class HistoryBackedPersistenceReaderTests
     }
 
     private HistoryBackedPersistenceReader Reader(ulong block) =>
-        new(new HistoryReader(_db, _historyColumns, LimboLogs.Instance), new StateId(block, Keccak.EmptyTreeHash));
+        new(new HistoryReader(_db, _historyColumns, LimboLogs.Instance), new StateId(block, Keccak.EmptyTreeHash), new HistoryScopeGate());
 }

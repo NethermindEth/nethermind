@@ -359,13 +359,65 @@ public class FlatDbManagerTests
         }
     }
 
+    // A block covered by the watermark but pruned below the retention floor must never fall through to the inner
+    // (non-history) manager, whose tiers only reach the finalization barrier — answering "no state here" that far
+    // back risks being read upstream as "account/slot does not exist" (e.g. a false zero balance) instead of the
+    // deliberate unavailable this represents.
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_pruned_below_floor_throws_instead_of_falling_through()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishGlobalFloor(10);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        Assert.That(() => manager.GatherReadOnlySnapshotBundle(CreateStateId(5, rootByte: 5)),
+            Throws.TypeOf<StateUnavailableException>());
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_at_or_above_floor_still_serves_history()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishGlobalFloor(10);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(CreateStateId(10, rootByte: 10));
+
+        Assert.That(bundle, Is.Not.Null);
+    }
+
+    // HasStateForBlock is a plain existence query, not a read-serving path — a pruned block genuinely has no state
+    // available, which is a true "false", not the silent-wrong-answer risk GatherReadOnlySnapshotBundle guards
+    // against. It must not throw.
+    [Test]
+    public async Task HasStateForBlock_pruned_below_floor_reports_false_without_throwing()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishGlobalFloor(10);
+        _snapshotRepository.HasState(Arg.Any<StateId>()).Returns(false);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        Assert.That(() => manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Throws.Nothing);
+        Assert.That(manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Is.False);
+    }
+
     private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
         inner,
         _persistenceManager,
         _historyReader,
         _trieNodeCache,
         _resourcePool,
-        enableDetailedMetrics: false);
+        enableDetailedMetrics: false,
+        new HistoryScopeGate());
 
     private void RecordHistoryWindow()
     {
@@ -390,11 +442,11 @@ public class FlatDbManagerTests
             IWriteBatch available = batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks);
             for (ulong block = fromInclusive; block < toExclusive; block++)
             {
-                HistoryAvailability.MarkBlock(available, block, stateAt(block).StateRoot);
+                HistoryAvailability.MarkBlock(available, block, stateAt(block).StateRoot, HistoryAvailability.FormatVersion);
             }
         }
 
-        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(toExclusive - 1);
+        new HistoryAvailability(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(toExclusive - 1, HistoryAvailability.FormatVersion);
     }
 
     private void RecordAccount(ulong block, Account? account)
