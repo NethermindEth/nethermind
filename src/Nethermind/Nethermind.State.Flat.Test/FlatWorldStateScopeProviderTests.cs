@@ -1064,29 +1064,17 @@ public class FlatWorldStateScopeProviderTests
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
-    private static FlatWorldStateScope CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer)
+    private static TestContext CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer)
     {
         warmer = new RecordingTrieWarmer(acceptSlotJob: true, acceptMpmcSlotJob: true);
-        FlatDbConfig config = new();
-        ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
-        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), new ResourcePool(config), ResourcePool.Usage.MainBlockProcessing);
-
-        FlatWorldStateScope scope = new(
-            new StateId(0, Keccak.EmptyTreeHash),
-            bundle,
-            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
-            Substitute.For<IFlatCommitTarget>(),
-            config,
-            warmer,
-            LimboLogs.Instance);
-
-        return scope;
+        return new TestContext(trieWarmer: warmer);
     }
 
     [Test]
     public async Task HintBal_SkipsAddressWarmup_ForReadOnlyBalAccounts()
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
 
@@ -1100,7 +1088,8 @@ public class FlatWorldStateScopeProviderTests
     [TestCase(BalWriteKind.Storage)]
     public async Task HintBal_WarmsAddress_ForEachWriteKind(BalWriteKind kind)
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
 
         await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, kind)));
 
@@ -1110,7 +1099,8 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public async Task HintBal_WithSink_StillReadsReadOnlyAccounts()
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
         RecordingBalReaderSink sink = new();
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)), sink);
@@ -1122,7 +1112,8 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public async Task HintBal_EmptyBal_ResetsPreviousWriteSet()
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         await scope.HintBal(CreateBal());
@@ -1135,7 +1126,8 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public async Task HintGet_AfterHintBal_SkipsReadOnlyAndUnlistedAccounts()
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
 
@@ -1149,7 +1141,8 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void HintGet_WarmsEverything_WithoutBalHint()
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
 
         scope.HintGet(TestItem.AddressA, null);
 
@@ -1159,7 +1152,8 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public async Task StartWriteBatch_ResetsBalWarmupFilter()
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         scope.StartWriteBatch(0).Dispose();
@@ -1172,7 +1166,8 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public async Task HintWarmAccount_AfterHintBal_SkipsReadOnlyAccounts()
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
@@ -1183,7 +1178,8 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void HintWarmAccount_WarmsEverything_WithoutBalHint()
     {
-        using FlatWorldStateScope scope = CreateScopeWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
 
         scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
 
