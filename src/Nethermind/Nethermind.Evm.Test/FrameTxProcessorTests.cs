@@ -920,6 +920,80 @@ public class FrameTxProcessorTests
         return (ulong)new UInt256(_stateProvider.Get(new StorageCell(Observer, 0)), isBigEndian: true);
     }
 
+    // EIP-8250 "Nonce consumption": approval effects are journaled outside the atomic-batch snapshot,
+    // so a payment approval taken inside a batch survives the batch unrolling and the transaction still
+    // has a payer. The pre-8250 envelope keeps EIP-8141's unroll (see the sibling test above).
+    [Test]
+    public void Execute_AtomicBatch_KeyedPaymentApprovalInsideFailedBatch_SurvivesTheUnroll()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
+        DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        UInt256[] keys = [1, 7];
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag), target: Observer),
+            Frame(TxFrame.ModeSender, target: Recipient));
+        tx.NonceKeys = keys;
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True, "the payer recorded inside the batch survives the unroll");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Observer), Is.LessThan(1.Ether), "the sponsor is charged");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.Zero, "a keyed transaction leaves the account nonce alone");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo(UInt256.One), "the nonce set stays consumed");
+            }
+        }
+    }
+
+    // The default code approves without running APPROVE, so the same first-use surcharge has to be
+    // charged there or a codeless sender grows NONCE_MANAGER state for free.
+    [Test]
+    public void Execute_KeyedNonce_DefaultCodeApproval_ChargesFirstUse()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        UInt256[] keys = [1, 7];
+
+        CallOutputTracer firstUseTracer = new();
+        Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 0, keys), tracer: firstUseTracer).TransactionExecuted, Is.True);
+        foreach (UInt256 key in keys)
+        {
+            Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Is.EqualTo(UInt256.One));
+        }
+
+        CallOutputTracer reuseTracer = new();
+        Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 1, keys), tracer: reuseTracer).TransactionExecuted, Is.True);
+        Assert.That(firstUseTracer.GasSpent - reuseTracer.GasSpent,
+            Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas),
+            "the default-code approval owes the surcharge the APPROVE opcode charges");
+    }
+
+    /// <summary>A codeless-sender self-verify transaction carrying the canonical-hash signature default code requires at index 0.</summary>
+    private static Transaction SelfSignedSelfVerifyTx(ulong nonce, UInt256[]? nonceKeys = null)
+    {
+        Transaction tx = FrameTx(nonce, SelfVerifyFrame());
+        tx.NonceKeys = nonceKeys;
+        // compute_sig_hash commits to the signature entries (bytes of empty-msg entries elided),
+        // so the entry must be present when the hash is computed and signed.
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyA, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
+        return tx;
+    }
+
     // An unchecked increment wraps the account nonce to zero, making every prior transaction from
     // that sender replayable. The EIP-8250 envelope is already refused a sequence at the ceiling
     // during stateful validity, so only the pre-8250 envelope reaches payment approval here.

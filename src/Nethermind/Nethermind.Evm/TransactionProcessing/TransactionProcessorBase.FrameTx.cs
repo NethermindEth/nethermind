@@ -48,9 +48,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
-        if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) || tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
+        }
+
+        if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
         }
 
         ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
@@ -288,15 +293,29 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                             frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.GasUsed, []);
                         }
                     }
-                    // EIP-8141 (ethereum/EIPs#11955): a failed batch unrolls ALL effects of any APPROVE
-                    // it contained. Restore reverts the payer debit and sender nonce (world state); the
-                    // approval context (payer, sender_approved) and refund counter are not world state,
-                    // so roll them back to their pre-batch values too. Without this, the payer field
-                    // would survive a reverted charge and the terminal gate would refund uncollected
-                    // funds. If the payer was only set inside the batch, it is now unset again and the
-                    // gate below rejects the transaction.
-                    frameContext.Payer = batchStartPayer;
-                    frameContext.SenderApproved = batchStartSenderApproved;
+                    // EIP-8250 "Nonce consumption": nonce consumption, max-cost collection and payer
+                    // recording are journaled outside the atomic-batch snapshot and MUST NOT be reverted
+                    // by restoring it, so a payment approval taken inside the batch is re-applied over
+                    // the restore. Under the pre-8250 envelope EIP-8141 (ethereum/EIPs#11955) still
+                    // unrolls ALL effects of any APPROVE the batch contained: Restore reverts the payer
+                    // debit and sender nonce, and the approval context, which is not world state, is
+                    // rolled back to its pre-batch value so the payer never survives a reverted charge.
+                    // A payer left insolvent by the restore cannot be charged either way, so it falls
+                    // back to the unroll and the gate below rejects the transaction.
+                    if (frameContext.NonceKeys is { } batchNonceKeys
+                        && batchStartPayer is null
+                        && frameContext.Payer is { } batchPayer
+                        && WorldState.GetBalance(batchPayer) >= frameContext.MaxCost)
+                    {
+                        WorldState.SubtractFromBalance(batchPayer, frameContext.MaxCost, spec);
+                        KeyedNonceManager.ConsumeNonceSet(WorldState, frameContext.Sender, batchNonceKeys, frameContext.Nonce);
+                    }
+                    else
+                    {
+                        frameContext.Payer = batchStartPayer;
+                        frameContext.SenderApproved = batchStartSenderApproved;
+                    }
+
                     refundCounter = batchStartRefund;
 
                     int terminal = i;
