@@ -67,4 +67,31 @@ public class ReceiptsRecoveryTests
         Assert.That(result, Is.EqualTo(ReceiptsRecoveryResult.NeedReinsert));
         Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
     }
+
+    // Recovery re-derives a non-success status from the log count, which holds pre-EIP-8141: a failed
+    // transaction has no logs. A frame transaction breaks it — its status is derived from the frame
+    // statuses, so it can fail while carrying the logs of the frames that succeeded. Without the
+    // exemption a node serving this receipt from the database reports success where the node that
+    // executed the block reports failure.
+    [Test]
+    public void TryRecover_should_keep_a_failed_frame_transaction_status_with_logs()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, default, default)],
+            FrameSignatures = [],
+        };
+        tx.Hash = tx.CalculateHash();
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
+        receipt.TxType = TxType.FrameTx;
+        receipt.StatusCode = TxFrameReceipt.StatusFailure;
+        receipt.Logs = [new LogEntry(TestItem.AddressB, [1], [])];
+
+        _receiptsRecovery.TryRecover(block, [receipt]);
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure));
+    }
 }
