@@ -13,12 +13,11 @@ namespace Nethermind.Merge.Plugin.Data;
 /// Combines the standard <see cref="PayloadStatusV1"/> fields with an optional
 /// <see cref="Witness"/> that is populated when <see cref="Status"/> is
 /// <see cref="PayloadStatus.Valid"/>.
-/// <seealso href="https://github.com/ethereum/execution-apis/pull/773"/>
+/// <seealso href="https://github.com/ethereum/execution-apis/pull/557"/>
+/// <seealso href="https://github.com/ethereum/execution-apis/pull/793"/>
 /// </summary>
 public class NewPayloadWithWitnessV1Result : IDisposable
 {
-    private Witness? _executionWitness;
-
     public string Status { get; set; } = PayloadStatus.Invalid;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -30,11 +29,7 @@ public class NewPayloadWithWitnessV1Result : IDisposable
     [JsonPropertyName("witness")]
     [JsonConverter(typeof(RlpExecutionWitnessJsonConverter))]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Witness? ExecutionWitness
-    {
-        get => Status == PayloadStatus.Valid ? _executionWitness : null;
-        set => _executionWitness = value;
-    }
+    public Witness? ExecutionWitness { get; set; }
 
     public static NewPayloadWithWitnessV1Result FromPayloadStatus(PayloadStatusV1 status, Witness? witness = null) =>
         new()
@@ -45,5 +40,5 @@ public class NewPayloadWithWitnessV1Result : IDisposable
             ExecutionWitness = witness
         };
 
-    public void Dispose() => _executionWitness?.Dispose();
+    public void Dispose() => ExecutionWitness?.Dispose();
 }

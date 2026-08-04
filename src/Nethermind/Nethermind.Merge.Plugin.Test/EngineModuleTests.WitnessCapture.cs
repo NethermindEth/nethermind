@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -21,9 +20,9 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -43,80 +42,6 @@ public partial class EngineModuleTests
         Keys = new ArrayPoolList<byte[]>(0),
         Headers = new ArrayPoolList<byte[]>(0),
     };
-
-    [Test]
-    public void NewPayloadWithWitness_json_rpc_response_uses_rlp_witness()
-    {
-        Witness witness = new()
-        {
-            Headers = new ArrayPoolList<byte[]>(1) { new byte[] { 0xC2, 0x01, 0x02 } },
-            Codes = new ArrayPoolList<byte[]>(1) { new byte[] { 0x60, 0x00 } },
-            State = new ArrayPoolList<byte[]>(1) { new byte[] { 0xDE, 0xAD } },
-            Keys = new ArrayPoolList<byte[]>(1) { new byte[] { 0x03 } },
-        };
-        NewPayloadWithWitnessV1Result result = NewPayloadWithWitnessV1Result.FromPayloadStatus(
-            new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
-            witness);
-
-        using JsonDocument response = SerializeJsonRpcResult(result);
-        JsonElement resultJson = response.RootElement.GetProperty("result");
-
-        Assert.That(resultJson.TryGetProperty("executionWitness", out _), Is.False);
-        Assert.That(resultJson.TryGetProperty("witness", out JsonElement witnessJson), Is.True);
-        Assert.That(witnessJson.GetString(), Is.EqualTo("0xccc3c20102c3826000c382dead"));
-
-        RlpReader reader = new(Bytes.FromHexString(witnessJson.GetString()!));
-        int witnessLength = reader.ReadSequenceLength();
-        int witnessEnd = reader.Position + witnessLength;
-        int headersLength = reader.ReadSequenceLength();
-        int headersEnd = reader.Position + headersLength;
-        Assert.That(reader.IsSequenceNext(), Is.True, "headers must be nested raw RLP values");
-        int headerLength = reader.PeekNextRlpLength();
-        Assert.That(reader.Read(headerLength).ToArray(), Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
-        reader.Check(headersEnd);
-
-        byte[][] codes = reader.DecodeByteArrays();
-        byte[][] state = reader.DecodeByteArrays();
-        reader.Check(witnessEnd);
-        reader.CheckEnd();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(codes, Is.EqualTo(new[] { new byte[] { 0x60, 0x00 } }));
-            Assert.That(state, Is.EqualTo(new[] { new byte[] { 0xDE, 0xAD } }));
-        }
-    }
-
-    [TestCase(PayloadStatus.Valid)]
-    [TestCase(PayloadStatus.Invalid)]
-    [TestCase(PayloadStatus.Syncing)]
-    [TestCase(PayloadStatus.Accepted)]
-    public void NewPayloadWithWitness_json_rpc_response_omits_witness_unless_valid_and_present(string status)
-    {
-        Witness? witness = status == PayloadStatus.Valid ? null : MakeStubWitness();
-        NewPayloadWithWitnessV1Result result = NewPayloadWithWitnessV1Result.FromPayloadStatus(
-            new PayloadStatusV1 { Status = status },
-            witness);
-
-        using JsonDocument response = SerializeJsonRpcResult(result);
-        JsonElement resultJson = response.RootElement.GetProperty("result");
-
-        Assert.That(resultJson.TryGetProperty("witness", out _), Is.False);
-    }
-
-    private static JsonDocument SerializeJsonRpcResult(NewPayloadWithWitnessV1Result result)
-    {
-        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions)
-        {
-            TypeInfoResolver = EngineApiJsonContext.Default
-        };
-        ArrayBufferWriter<byte> output = new();
-        using JsonRpcSuccessResponse response = new() { Result = result };
-
-        JsonRpcResponseWriter.Write(output, response, options);
-
-        return JsonDocument.Parse(output.WrittenMemory);
-    }
 
     private sealed class WitnessHandlerBuilder
     {
@@ -564,6 +489,52 @@ public partial class EngineModuleTests
         Assert.That(w2, Is.Not.Null);
         Assert.That(w1, Is.Not.SameAs(w2),
             "each block produces its own Witness instance; shared reference indicates a tracking bug");
+    }
+
+    [Test]
+    public async Task E2E_witness_is_serialized_as_an_rlp_data_string()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+
+        string response = await RpcTest.TestSerializedRequest(
+            chain.EngineRpcModule,
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5),
+            payload, Array.Empty<Hash256>(), TestItem.KeccakE, requests ?? []);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement result = document.RootElement.GetProperty("result");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.TryGetProperty("executionWitness", out _), Is.False,
+                "JSON uses witness DATA only");
+        }
+
+        RlpReader reader = new(Nethermind.Core.Extensions.Bytes.FromHexString(result.GetProperty("witness").GetString()!));
+        reader.ReadSequenceLength();
+        int headersLength = reader.ReadSequenceLength();
+        int headersEnd = reader.Position + headersLength;
+
+        HeaderDecoder headerDecoder = new();
+        BlockHeader? lastHeader = null;
+        while (reader.Position < headersEnd)
+            lastHeader = headerDecoder.Decode(ref reader);
+
+        int headersPosition = reader.Position;
+        byte[][] codes = reader.DecodeByteArrays();
+        byte[][] state = reader.DecodeByteArrays();
+        reader.CheckEnd();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headersPosition, Is.EqualTo(headersEnd));
+            Assert.That(codes.All(static code => code.Length > 0), Is.True);
+            Assert.That(state, Is.Not.Empty);
+            Assert.That(state.All(static node => node.Length > 0), Is.True);
+            Assert.That(lastHeader?.Number, Is.EqualTo(payload.BlockNumber - 1));
+        }
     }
 
     [Test]
