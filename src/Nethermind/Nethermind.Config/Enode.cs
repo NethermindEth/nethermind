@@ -13,6 +13,7 @@ namespace Nethermind.Config
 {
     public class Enode : IEnode
     {
+        private const string DiscoveryPortQuery = "?discport=";
         private readonly PublicKey _nodeKey;
 
         public Enode(PublicKey nodeKey, IPAddress hostIp, int port, int? discoveryPort = null)
@@ -37,9 +38,14 @@ namespace Nethermind.Config
             }
 
             _nodeKey = new PublicKey(parsed.UserInfo);
-            string host = TrimIpV6Brackets(parsed.Host);
+            string host = parsed.DnsSafeHost;
 
             if (parsed.Port == -1)
+            {
+                throw GetPortException(host);
+            }
+
+            if (parsed.AbsolutePath is not "/" || parsed.Fragment.Length > 0)
             {
                 throw GetPortException(host);
             }
@@ -49,8 +55,8 @@ namespace Nethermind.Config
             {
                 DiscoveryPort = Port;
             }
-            else if (parsed.Query.StartsWith("?discport=", StringComparison.Ordinal) &&
-                     int.TryParse(parsed.Query["?discport=".Length..], out int discoveryPort))
+            else if (parsed.Query.StartsWith(DiscoveryPortQuery, StringComparison.Ordinal) &&
+                     ushort.TryParse(parsed.Query[DiscoveryPortQuery.Length..], out ushort discoveryPort))
             {
                 DiscoveryPort = discoveryPort;
             }
@@ -88,7 +94,7 @@ namespace Nethermind.Config
                 }
             }
 
-            return mappedIpv4 ?? (hostAddresses.Length == 0 ? null : hostAddresses[0]);
+            return mappedIpv4 ?? (hostAddresses.Length > 0 ? hostAddresses[0] : null);
         }
 
         public PublicKey PublicKey => _nodeKey;
@@ -113,10 +119,5 @@ namespace Nethermind.Config
 
         public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
             Uri.TryCreate(enodeString, new UriCreationOptions(), out parsed) && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase);
-
-        private static string TrimIpV6Brackets(string host) =>
-            host.Length > 1 && host[0] == '[' && host[^1] == ']'
-                ? host[1..^1]
-                : host;
     }
 }
