@@ -19,7 +19,15 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             ulong gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? ulong.MaxValue, _configuredGasLimit);
-            if (tx.GasLimit > gasLimit)
+
+            // A frame transaction's GasLimit is only the sum of its frame gas limits, so gating on it alone would
+            // admit transactions whose reservation can never fit in a block.
+            ulong txGasBudget = tx.SupportsFrames
+                    && FrameTxValidation.TryCalculateGasBudget(tx, chainHeadInfoProvider.SpecProvider.GetCurrentHeadSpec(), out _, out _, out ulong frameTxMaxGas)
+                ? frameTxMaxGas
+                : tx.GasLimit;
+
+            if (txGasBudget > gasLimit)
             {
                 Metrics.PendingTransactionsGasLimitTooHigh++;
 
@@ -31,7 +39,7 @@ namespace Nethermind.TxPool.Filters
                 bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
                 return isNotLocal ?
                     AcceptTxResult.GasLimitExceeded :
-                    AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {tx.GasLimit}");
+                    AcceptTxResult.GasLimitExceeded.WithMessage($"Gas limit: {gasLimit}, gas limit of rejected tx: {txGasBudget}");
             }
 
             return AcceptTxResult.Accepted;
