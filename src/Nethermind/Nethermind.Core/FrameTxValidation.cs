@@ -211,13 +211,13 @@ public static class FrameTxValidation
 
                 byte scope = frame.AllowedApproveScope;
                 bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
-                if ((scope & TxFrame.ApprovePayment) != 0 && (approvesExecution || senderApproved)
-                    && CanApprove(frame, transaction.SenderAddress, senderHasCode))
+                bool canApprove = CanApprove(frame, transaction.SenderAddress, senderHasCode);
+                if ((scope & TxFrame.ApprovePayment) != 0 && (approvesExecution || senderApproved) && canApprove)
                 {
                     break;
                 }
 
-                senderApproved |= approvesExecution;
+                senderApproved |= approvesExecution && canApprove;
             }
         }
 
@@ -236,12 +236,16 @@ public static class FrameTxValidation
 
     /// <summary>
     /// Whether <paramref name="frame"/> can reach an <c>APPROVE</c> at all: a frame resolving to a
-    /// codeless sender runs the EIP-8141 default code, which approves only in <c>VERIFY</c> mode.
+    /// codeless target runs the EIP-8141 default code, which approves only in <c>VERIFY</c> mode.
     /// </summary>
+    /// <remarks>
+    /// Outside <c>VERIFY</c> only a code-bearing target approves, and the sender is the only target
+    /// whose code is known here. A third-party target is attacker-chosen, so assuming it has code
+    /// would end the walk at a frame that provably cannot set a payer.
+    /// </remarks>
     private static bool CanApprove(TxFrame frame, Address? sender, bool senderHasCode) =>
         frame.Mode == TxFrame.ModeVerify
-        || senderHasCode
-        || (frame.Target is not null && frame.Target != sender);
+        || (senderHasCode && (frame.Target is null || frame.Target == sender));
 
     /// <summary>
     /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.

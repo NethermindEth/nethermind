@@ -235,6 +235,27 @@ public class FrameTxValidationTests
         ];
         yield return Work("DefaultFrameOnACodelessSender_KeepsWalking", defaultApprovalFrames, [], 3_101_000);
         yield return Work("DefaultFrameOnAContractSender_EndsThePrefix", defaultApprovalFrames, [], 1_000, senderHasCode: true);
+
+        // The sender is the only target whose code is known here, so an approval by a third party
+        // cannot be assumed: the target is attacker-chosen and may be codeless, in which case
+        // default code runs, nothing approves, and the frames behind it would go unbudgeted.
+        yield return Work("DefaultFrameOnAThirdPartyTarget_KeepsWalking",
+            [
+                Frame(flags: TxFrame.ApproveExecutionAndPayment, target: TestItem.AddressB, gasLimit: 1_000),
+                Frame(gasLimit: 3_000_000),
+                SelfVerifyFrame(),
+            ],
+            [], 3_101_000, senderHasCode: true);
+
+        // An execution approval by a frame that cannot reach APPROVE never happens, so it must not
+        // let the payment-only frame behind it end the walk either.
+        yield return Work("ExecutionApprovalThatCannotHappen_DoesNotEnableThePaymentBreak",
+            [
+                Frame(flags: TxFrame.ApproveExecution, gasLimit: 1_000),
+                Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressB, gasLimit: 1_000),
+                Frame(gasLimit: 20_000_000),
+            ],
+            [], 20_002_000);
     }
 
     [TestCaseSource(nameof(ValidationWorkCases))]
