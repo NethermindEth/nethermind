@@ -6,6 +6,18 @@ ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
 GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
+# Overridable so a local bflat/ziskemu build can be dropped in without editing
+# the recipe. The bflat image must be one that carries the built-in zisk
+# substitutions (see substitutions.zisk.xml) and understands the ISA gates below.
+BFLAT_IMAGE ?= maximmenshikov/bflat-riscv64-zk-11-x16
+ZISK_IMAGE ?= nethermindeth/zisk:1.0.0-alpha@sha256:bad3982b10861adb452c90906ce8e93907ae6095205c89c1377a960c767b4e7a
+# Fail the build here rather than in the emulator. ziskemu converts the WHOLE
+# .text to ROM before executing anything, so a single F/D, compressed or atomic
+# instruction - reachable or not - rejects the guest with an opaque
+# "invalid riscv_instruction" panic. The IL-level error-on-float is the weakest
+# of the four (it sees conv.r8/ldc.r8, but not a ceq over two float64s); the
+# binary one is the exact check.
+ISA_GATES ?= --error-on-float --error-on-float-binary --error-on-compressed --error-on-atomic
 BFLAT_REFS := \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
@@ -44,14 +56,16 @@ build: dotnet-build
 		-w $(SRC_DIR) \
 		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-		nethermindeth/bflat-riscv64:b2958814fb0cdde50eaed280043706467f6d6a4a \
+		$(BFLAT_IMAGE) \
 		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
 		--no-pie \
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
+		--substitution $(SRC_DIR)/substitutions.zisk.xml \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.bflat.manifest \
+		$(ISA_GATES) \
 		$(SRC_DIR)/Program.cs
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program.patched $(GUEST_DIR)/bin/nethermind && \
@@ -60,7 +74,7 @@ build: dotnet-build
 run:
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
-		nethermindeth/zisk:1.0.0-alpha@sha256:bad3982b10861adb452c90906ce8e93907ae6095205c89c1377a960c767b4e7a \
+		$(ZISK_IMAGE) \
 		ziskemu -e /n/nethermind -i /n/$(INPUT)
 
 build-run: build run
