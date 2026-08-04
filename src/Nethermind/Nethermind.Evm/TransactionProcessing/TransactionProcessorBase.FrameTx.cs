@@ -587,12 +587,23 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
             }
 
-            // The default code approves without running EVM code, so it owes the surcharge APPROVE charges.
-            if ((allowedScope & TxFrame.ApprovePayment) != 0 && frameContext.NonceKeys is { } nonceKeys)
+            // The default code approves without running EVM code, so it owes the surcharge APPROVE
+            // charges — but only where APPROVE would charge it. The opcode reaches the surcharge
+            // only past a null payer, a prior execution approval and a solvent payer, and
+            // ApplyApproval discards the approval for those same reasons, so charging ahead of them
+            // would bill the frame for a consumption that never happens.
+            if ((allowedScope & TxFrame.ApprovePayment) != 0
+                && frameContext.Payer is null
+                && ((allowedScope & TxFrame.ApproveExecution) != 0 || frameContext.SenderApproved)
+                && WorldState.GetBalance(resolvedTarget) >= frameContext.MaxCost
+                && frameContext.NonceKeys is { } nonceKeys)
             {
                 ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
                 if (surcharge > frame.GasLimit)
                 {
+                    // An error frame reports its whole gas limit on the EVM path; halting for free
+                    // here would price the same failure differently.
+                    gasUsed = frame.GasLimit;
                     return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
                 }
 

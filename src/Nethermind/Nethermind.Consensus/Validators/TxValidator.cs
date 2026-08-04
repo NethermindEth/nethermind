@@ -216,12 +216,12 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 
         if (!releaseSpec.IsEip8250Enabled)
         {
-            return "keyed nonces are not enabled";
+            return FrameTxValidation.KeyedNoncesNotEnabled;
         }
 
         return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
             ? ValidationResult.Success
-            : "malformed nonce key set";
+            : FrameTxValidation.MalformedNonceKeySet;
     }
 }
 
