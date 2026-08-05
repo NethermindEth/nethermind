@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,7 +63,9 @@ public class BloomFilterTests
     [Test]
     public void Add_ConcurrentWithMightContain_ShouldWork()
     {
-        using Bloom bloom = NewBloom(capacity: 10000);
+        // Sized well above the 30k added keys: a saturated filter's false-positive rate
+        // would mask a single lost write, defeating the postcondition below.
+        using Bloom bloom = NewBloom(capacity: 100_000);
         const int iterationsPerThread = 10000;
 
         Task[] writerTasks = Enumerable.Range(0, 3).Select(threadId => Task.Run(() =>
@@ -87,15 +90,18 @@ public class BloomFilterTests
 
         // A bloom filter never reports false negatives, so every added hash must be
         // found afterwards - a miss means a write was lost to a concurrent-access race.
+        List<ulong> lost = [];
         for (int threadId = 0; threadId < 3; threadId++)
         {
             ulong hash = (ulong)(threadId * 1000000);
             for (int i = 0; i < iterationsPerThread; i++)
             {
-                Assert.That(bloom.MightContain(hash), Is.True, $"hash {hash} was lost during concurrent add");
+                if (!bloom.MightContain(hash)) lost.Add(hash);
                 hash++;
             }
         }
+
+        Assert.That(lost, Is.Empty, "hashes lost during concurrent add");
     }
 
     [Test]

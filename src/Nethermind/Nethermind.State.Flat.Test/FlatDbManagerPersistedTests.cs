@@ -22,6 +22,8 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class FlatDbManagerPersistedTests
 {
+    private static readonly TimeSpan DisposeWaitLimit = TimeSpan.FromSeconds(10);
+
     private string _testDir = null!;
     private ResourcePool _pool = null!;
     private IProcessExitSource _processExitSource = null!;
@@ -94,7 +96,7 @@ public class FlatDbManagerPersistedTests
     }
 
     [Test]
-    public async Task DisposeAsync_CompletesPromptlyAndIsIdempotent()
+    public void DisposeAsync_CompletesPromptlyAndIsIdempotent()
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
@@ -118,11 +120,11 @@ public class FlatDbManagerPersistedTests
             LimboLogs.Instance,
             enableDetailedMetrics: false);
 
-        // A hang here means the worker-channel drain deadlocked; the timeout turns that
-        // into a fast failure instead of stalling the test host.
-        await manager.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        // WaitAsync bounds only the wait, not the drain itself: a wedged worker-channel
+        // drain surfaces as a fast TimeoutException here instead of stalling the test host.
+        Assert.DoesNotThrowAsync(async () => await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit));
 
         // Repeated disposal must be a no-op - completing an already-completed channel throws.
-        await manager.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.DoesNotThrowAsync(async () => await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit));
     }
 }

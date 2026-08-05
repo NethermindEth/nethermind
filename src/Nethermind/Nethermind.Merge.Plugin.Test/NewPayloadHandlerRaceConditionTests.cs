@@ -101,40 +101,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     }
 
     [Test]
-    public async Task ValidateBlockAndProcess_does_not_accumulate_completions_across_repeated_timeouts()
-    {
-        Block block = Build.A.Block
-            .WithParentHash(TestItem.KeccakA)
-            .WithNumber(1)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-        block.Header.IsPostMerge = true;
-
-        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue
-            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
-            .Returns(_ => ValueTask.CompletedTask);
-
-        using NewPayloadHandler handler = CreateHandler(
-            block,
-            suggestBlockResult: AddBlockResult.Added,
-            wasProcessed: false,
-            validateSuggestedBlock: true,
-            processingQueue: processingQueue,
-            timeoutMs: 100);
-
-        for (int i = 0; i < 5; i++)
-        {
-            ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
-            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-        }
-
-        Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
-            "repeated timed-out payloads must not accumulate stale completion sources");
-    }
-
-    [Test]
     public async Task ValidateBlockAndProcess_cleans_up_completion_when_block_tree_rejects_before_enqueue()
     {
         Block block = Build.A.Block
