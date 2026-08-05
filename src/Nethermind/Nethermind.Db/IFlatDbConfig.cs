@@ -37,6 +37,15 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Also capture each finalized block's changeset into the block-major changesets sidecar column (separate from the key-major history read-path columns), for future devp2p serving and concurrent backfill import. Off by default; when off the capture path does no extra work.", DefaultValue = "false")]
     bool HistoryChangesetSidecarEnabled { get; set; }
 
+    [ConfigItem(Description = "Number of disjoint address-hash-prefix shards the concurrent backfill importer partitions writes into. Each shard buffers and sorts its own rows before writing, so worker count and write ordering scale with this independently of the source feed's block-major order.", DefaultValue = "16")]
+    int HistoryImportShardCount { get; set; }
+
+    [ConfigItem(Description = "Blocks per import batch: the concurrent backfill importer flushes all shard buffers and durably advances its resume pointer after this many blocks, so a crash mid-backfill loses at most one batch of already-buffered (not yet written) rows.", DefaultValue = "1000")]
+    ulong HistoryImportBatchBlocks { get; set; }
+
+    [ConfigItem(Description = "Per-shard sort-buffer budget, in row entries, for the concurrent backfill importer. A shard spills (sorts and writes early, then starts a fresh buffer) once it reaches this many buffered rows, rather than growing unboundedly within a batch.", DefaultValue = "65536")]
+    int HistoryImportShardBufferBudgetEntries { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

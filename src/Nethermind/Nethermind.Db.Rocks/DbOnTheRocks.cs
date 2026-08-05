@@ -1476,6 +1476,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public virtual void Compact() => _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
 
+    public virtual void CompactRange(ReadOnlySpan<byte> fromKeyInclusive, ReadOnlySpan<byte> toKeyExclusive) =>
+        _db.CompactRange(fromKeyInclusive.ToArray(), toKeyExclusive.ToArray());
+
     public virtual void SyncWal()
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);

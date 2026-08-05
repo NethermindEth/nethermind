@@ -102,8 +102,12 @@ internal sealed class HistoryStore
         return value.Length;
     }
 
+    /// <summary>The on-disk row-key layout (<c>[flatKey | ~block BE]</c>), exposed so any writer of this same
+    /// column — forward capture through <see cref="RecordChange"/>, or a bulk importer building sorted rows
+    /// ahead of a batch write — derives the identical bytes from one owner, rather than each caller reimplementing
+    /// the descending-suffix encoding.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteHistoryKey(Span<byte> destination, scoped ReadOnlySpan<byte> flatKey, ulong block)
+    internal static void WriteHistoryKey(Span<byte> destination, scoped ReadOnlySpan<byte> flatKey, ulong block)
     {
         flatKey.CopyTo(destination[..flatKey.Length]);
         BinaryPrimitives.WriteUInt64BigEndian(destination[flatKey.Length..], ~block);

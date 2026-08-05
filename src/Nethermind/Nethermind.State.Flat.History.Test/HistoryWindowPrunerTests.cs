@@ -126,6 +126,59 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
+    public void RunOnePass_WhileABeginBackfillScopeIsOpen_IsANoOp()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        IDisposable backfillScope = pruner.BeginBackfill();
+
+        // Deterministic, single-threaded: this is the real gate (BeginBackfill/EndBackfill), not the external
+        // IBackfillInterlock the sibling test above exercises — proving the pruner's own admission check, not
+        // just the advisory flag, blocks a pass for as long as the scope is open.
+        pruner.RunOnePass(CancellationToken.None);
+
+        Span<byte> buffer = stackalloc byte[256];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.IsPrunedBelowFloor(0), Is.False, "a pass must not publish a floor while a BeginBackfill scope is open");
+            Assert.That(_accountHistory.TryGetAt(5, AccountKey(), buffer), Is.GreaterThan(0), "a pass must not delete any row while a BeginBackfill scope is open");
+        }
+
+        backfillScope.Dispose();
+        pruner.RunOnePass(CancellationToken.None);
+
+        Assert.That(_reader.IsPrunedBelowFloor(0), Is.True, "once the scope is disposed, a subsequent pass must proceed normally");
+
+        pruner.Dispose();
+    }
+
+    [Test]
+    public void BeginBackfill_DisposedTwice_ReleasesTheGateOnlyOnce()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
+
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        IDisposable firstScope = pruner.BeginBackfill();
+        IDisposable secondScope = pruner.BeginBackfill();
+
+        firstScope.Dispose();
+        firstScope.Dispose(); // double-dispose must not release the gate an extra time
+
+        pruner.RunOnePass(CancellationToken.None);
+        Assert.That(_reader.IsPrunedBelowFloor(0), Is.False, "the second, still-open scope must still block a pass after the first scope's double-dispose");
+
+        secondScope.Dispose();
+        pruner.RunOnePass(CancellationToken.None);
+        Assert.That(_reader.IsPrunedBelowFloor(0), Is.True, "once every scope is disposed, a pass must proceed normally");
+
+        pruner.Dispose();
+    }
+
+    [Test]
     public void RunOnePass_WithAnExhaustedBudget_YieldsMidColumnAndResumesFromCursorOnTheNextPass()
     {
         HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 0, new Account(0, 0));

@@ -14,6 +14,9 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong HistoryPruneIntervalBlocks { get; set; } = 1024;
     public int HistoryPrunePassBudgetSeconds { get; set; } = 5;
     public bool HistoryChangesetSidecarEnabled { get; set; } = false;
+    public int HistoryImportShardCount { get; set; } = 16;
+    public ulong HistoryImportBatchBlocks { get; set; } = 1000;
+    public int HistoryImportShardBufferBudgetEntries { get; set; } = 65536;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;

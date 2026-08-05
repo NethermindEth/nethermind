@@ -78,10 +78,18 @@ public static class ChangesetChunkCodec
         return buffer;
     }
 
+    // The smallest an encoded entry/slot can legally be (all variable-length fields empty) — a declared count
+    // that could not possibly fit in the remaining payload at this minimum is corrupt or hostile, and must be
+    // rejected before it drives an allocation, never after (an attacker-controlled length prefix must not be
+    // able to request an unbounded List<T> capacity and crash the process with OutOfMemoryException).
+    private const int MinEncodedAccountEntrySize = Address.Size + 1 + sizeof(ushort) + sizeof(int);
+    private const int MinEncodedSlotEntrySize = UInt256Length + sizeof(ushort);
+
     public static List<ChangesetAccountEntry> Decode(ReadOnlySpan<byte> payload)
     {
         int entryCount = BinaryPrimitives.ReadInt32BigEndian(payload);
         payload = payload[sizeof(int)..];
+        ValidateDeclaredCount(entryCount, payload.Length, MinEncodedAccountEntrySize, "account entry");
 
         List<ChangesetAccountEntry> entries = new(entryCount);
         for (int i = 0; i < entryCount; i++)
@@ -97,6 +105,7 @@ public static class ChangesetChunkCodec
 
             int storageCount = BinaryPrimitives.ReadInt32BigEndian(payload);
             payload = payload[sizeof(int)..];
+            ValidateDeclaredCount(storageCount, payload.Length, MinEncodedSlotEntrySize, "storage slot entry");
             List<ChangesetSlotEntry> storageChanges = new(storageCount);
             for (int j = 0; j < storageCount; j++)
             {
@@ -113,5 +122,14 @@ public static class ChangesetChunkCodec
         }
 
         return entries;
+    }
+
+    private static void ValidateDeclaredCount(int declaredCount, int remainingPayloadLength, int minEntrySize, string entryKind)
+    {
+        if (declaredCount < 0 || declaredCount > remainingPayloadLength / minEntrySize)
+        {
+            throw new InvalidOperationException(
+                $"Changeset chunk payload declares {declaredCount} {entryKind} entries, which cannot fit in the {remainingPayloadLength} remaining bytes — the payload is corrupt or hostile.");
+        }
     }
 }
