@@ -103,6 +103,8 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
+            CancelHintBal();
+
             // Legacy trie-store path: no trie warmer, so HintBal only does work when a sink is given.
             if (sink is null) return Task.CompletedTask;
 
@@ -112,7 +114,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             // Copy the span into a pooled array so the Parallel.For body can capture it.
             ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
-            CancelHintBal();
             _hintBalCts = new CancellationTokenSource();
             CancellationToken token = _hintBalCts.Token;
 
@@ -194,7 +195,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 {
                     accountChanges.Dispose();
                 }
-            }, token);
+            });
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
