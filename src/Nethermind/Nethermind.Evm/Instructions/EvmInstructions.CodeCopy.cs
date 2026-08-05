@@ -31,8 +31,27 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
-            goto StackUnderflow;
+            return EvmExceptionType.StackUnderflow;
 
+        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in a, in b, in result, source);
+    }
+
+    /// <summary>
+    /// Copy-to-memory core with operands already popped, for instructions whose stack layout
+    /// differs from the CODECOPY/CALLDATACOPY order.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType DataCopyCore<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref TGasPolicy gas,
+        in UInt256 a,
+        in UInt256 b,
+        in UInt256 result,
+        scoped ReadOnlySpan<byte> source)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
         if (outOfGas) goto OutOfGas;
@@ -55,8 +74,6 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     }
 
     /// <summary>

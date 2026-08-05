@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -62,11 +63,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         {
             _worldState.AddAccountRead(codeSource);
             _worldState.RecordAccountAccess(codeSource);
-#if ZK_EVM
-            return _localPrecompileArray[codeSource.PrecompileIndexOrNegative()];
-#else
-            return _localPrecompiles[codeSource];
-#endif
+            return PrecompileCodeInfo(codeSource);
         }
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
@@ -81,6 +78,17 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         return codeInfo;
     }
+
+    public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(codeSource) ? PrecompileCodeInfo(codeSource).Precompile : null;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private CodeInfo PrecompileCodeInfo(Address codeSource) =>
+#if ZK_EVM
+        _localPrecompileArray[codeSource.PrecompileIndexOrNegative()];
+#else
+        _localPrecompiles[codeSource];
+#endif
 
     private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
     {
