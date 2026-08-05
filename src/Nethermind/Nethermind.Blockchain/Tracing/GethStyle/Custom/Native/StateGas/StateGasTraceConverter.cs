@@ -12,8 +12,7 @@ public class StateGasTraceConverter : JsonConverter<StateGasTrace>
 {
     public override void Write(Utf8JsonWriter writer, StateGasTrace value, JsonSerializerOptions options)
     {
-        // The enclosing custom-trace converter serializes numbers as raw decimals; the execution-apis
-        // schema requires hex quantities, so force hex for the duration of this object.
+        // The enclosing custom-trace converter forces Raw; the execution-apis schema needs hex quantities.
         NumberConversion previousValue = ForcedNumberConversion.Value;
         try
         {

@@ -11,12 +11,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
 
-/// <summary>
-/// End-to-end coverage for the stateGasTracer: runs a real EIP-8037 (Amsterdam) transaction through the
-/// <see cref="TransactionProcessing.TransactionProcessor"/> so the actual field selection
-/// (<c>EffectiveBlockGas</c>/<c>BlockStateGas</c>) and the <c>GasConsumed.GasRefund</c> plumbing are
-/// exercised — not just the struct-to-JSON mapping the unit tests cover.
-/// </summary>
+// End-to-end: runs a real Amsterdam transaction through TransactionProcessor so GasConsumed's field
+// selection and GasRefund plumbing are exercised, not just the struct-to-JSON mapping.
 [TestFixture]
 public class NativeStateGasTracerE2ETests : VirtualMachineTestsBase
 {
@@ -27,8 +23,6 @@ public class NativeStateGasTracerE2ETests : VirtualMachineTestsBase
     public void State_creating_sstore_with_clear_records_state_gas_and_refund()
     {
         // slot 0: 0 -> 1 kept (fresh => state gas); slot 1: 0 -> 1 -> 0 (reset to original => EIP-3529 refund).
-        // A fresh SSTORE spills ~98k of state gas from gas_left when the reservoir is 0, so the gas limit
-        // must be well above the naive 21k + SSTORE estimate.
         byte[] code = Prepare.EvmCode
             .PushData(1).PushData(0).Op(Instruction.SSTORE)
             .PushData(1).PushData(1).Op(Instruction.SSTORE)
@@ -48,7 +42,6 @@ public class NativeStateGasTracerE2ETests : VirtualMachineTestsBase
         {
             Assert.That(result.StateGasUsed, Is.GreaterThan(0), "a fresh-slot SSTORE must record state gas");
             Assert.That(result.GasRefund, Is.GreaterThan(0), "resetting a slot to its original value must record an EIP-3529 refund");
-            // Non-floor invariant (this small-calldata tx never hits the calldata floor).
             Assert.That(result.RegularGasUsed + result.StateGasUsed, Is.EqualTo(result.GasUsed + result.GasRefund),
                 "regularGasUsed + stateGasUsed == gasUsed + gasRefund");
         }

@@ -3,8 +3,5 @@
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 
-/// <summary>
-/// EIP-8037 two-dimensional gas breakdown attached to the top-level <c>callTracer</c> frame for
-/// Amsterdam+ blocks. Kept as a single value so the three fields are always written together.
-/// </summary>
+// EIP-8037 two-dimensional gas fields written together on the top-level callTracer frame.
 public readonly record struct TwoDimensionalGas(ulong RegularGasUsed, ulong StateGasUsed, ulong GasRefund);

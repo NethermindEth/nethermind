@@ -26,10 +26,7 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public ulong GasUsed { get; set; }
 
-    /// <summary>
-    /// EIP-8037 two-dimensional gas breakdown, set only on the top-level frame for Amsterdam+ blocks.
-    /// </summary>
-    /// <remarks>Null on sub-frames and before the fork, so it is omitted from the output.</remarks>
+    // EIP-8037 two-dimensional gas; set on the top frame for Amsterdam+, null (omitted) otherwise.
     public TwoDimensionalGas? Eip8037Gas { get; set; }
 
     public Address? To { get; set; }

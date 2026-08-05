@@ -24,7 +24,7 @@ public class GethLikeNativeTracerFactoryTests
     {
         GethTraceOptions options = new() { Tracer = Native4ByteTracer.FourByteTracer };
 
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, null!);
+        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
         Assert.That(nativeTracer is Native4ByteTracer, Is.True);
     }
@@ -41,23 +41,11 @@ public class GethLikeNativeTracerFactoryTests
     }
 
     [Test]
-    public void CreateTracer_BackCompatFourArgOverload_CreatesTracer()
-    {
-        // The spec-less overload is preserved for external callers; a spec-dependent tracer must still
-        // construct (it falls back to pre-fork behavior).
-        GethTraceOptions options = new() { Tracer = NativeStateGasTracer.StateGasTracer };
-
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!);
-
-        Assert.That(nativeTracer is NativeStateGasTracer, Is.True);
-    }
-
-    [Test]
     public void CreateTracer_NativeTracerDoesNotExist()
     {
         GethTraceOptions options = new() { Tracer = "nonExistentTracer" };
 
-        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, null!));
+        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>()));
     }
 
     [Test]

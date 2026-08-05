@@ -6,17 +6,9 @@ using System.Text.Json.Serialization;
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 
 /// <summary>
-/// Output of the <c>stateGasTracer</c> named tracer: the per-transaction two-dimensional gas summary
-/// introduced by EIP-8037, matching the execution-apis <c>StateGasTrace</c> schema.
+/// Output of the <c>stateGasTracer</c> (execution-apis <c>StateGasTrace</c> schema). Satisfies
+/// <c>regularGasUsed + stateGasUsed == gasUsed + gasRefund</c> except when the EIP-7623 calldata floor binds.
 /// </summary>
-/// <remarks>
-/// The fields satisfy <c>regularGasUsed + stateGasUsed == gasUsed + gasRefund</c>, except when the
-/// calldata floor (EIP-7623) binds. <see cref="RegularGasUsed"/> mirrors the block-accounting regular
-/// dimension, <c>max(preRefundGas - stateGasUsed, floor)</c>, so in the floor case it is itself clamped
-/// to the floor and the invariant above no longer holds — consumers reconciling the two dimensions must
-/// treat the floor case specially. Before the Amsterdam fork <see cref="StateGasUsed"/> is zero and
-/// <see cref="RegularGasUsed"/> is the full pre-refund gas used.
-/// </remarks>
 [JsonConverter(typeof(StateGasTraceConverter))]
 public class StateGasTrace
 {

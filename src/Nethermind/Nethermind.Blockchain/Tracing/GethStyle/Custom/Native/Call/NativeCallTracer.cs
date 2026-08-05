@@ -40,13 +40,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     public NativeCallTracer(
         Transaction? tx,
-        IReleaseSpec? spec,
+        IReleaseSpec spec,
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
         _gasLimit = tx!.GasLimit;
         _txHash = tx.Hash;
-        _isEip8037Enabled = spec?.IsEip8037Enabled ?? false;
+        _isEip8037Enabled = spec.IsEip8037Enabled;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -216,14 +216,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    /// <summary>
-    /// Attaches the EIP-8037 two-dimensional gas breakdown to the top-level frame for Amsterdam+ blocks.
-    /// </summary>
-    /// <remarks>
-    /// It is a per-transaction property, so it lives only on the top frame. The gross regular/state
-    /// contributions and the applied refund are read from the transaction's <see cref="GasConsumed"/>
-    /// result (the same values the stateGasTracer reports).
-    /// </remarks>
     private void ApplyTwoDimensionalGas(NativeCallTracerCallFrame firstCallFrame, in GasConsumed gasSpent)
     {
         if (!_isEip8037Enabled) return;

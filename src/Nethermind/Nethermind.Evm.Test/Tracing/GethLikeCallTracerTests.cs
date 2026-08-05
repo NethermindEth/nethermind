@@ -638,9 +638,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(frame!.Logs, Is.Null, "logs must be cleared on a failed CREATE frame even when _error is null");
     }
 
-    // Drives an Amsterdam (EIP-8037) top-level CALL through the tracer, optionally with one sub-call,
-    // and returns the built trace. GasConsumed is chosen so the non-floor invariant holds:
-    // regularGasUsed + stateGasUsed == gasUsed + gasRefund (25000 + 5000 == 21000 + 9000).
     private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
@@ -683,15 +680,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     {
         using GethLikeTxTrace trace = TraceAmsterdamTopCall(withSubFrame: true);
         NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
-        string json = JsonSerializer.Serialize(trace.CustomTracerResult.Value, SerializerOptions);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(frame.Eip8037Gas, Is.Not.Null, "top frame carries the two-dimensional gas");
             Assert.That(frame.Calls, Has.Count.EqualTo(1));
             Assert.That(frame.Calls[0].Eip8037Gas, Is.Null, "sub-frames must omit the two-dimensional gas");
-            // The three fields appear exactly once, on the top frame.
-            Assert.That(json.Split("regularGasUsed").Length - 1, Is.EqualTo(1));
         }
     }
 

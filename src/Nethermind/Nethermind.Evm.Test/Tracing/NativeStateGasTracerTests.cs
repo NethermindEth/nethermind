@@ -27,8 +27,7 @@ public class NativeStateGasTracerTests
 
         using GethLikeTxTrace trace = tracer.BuildResult();
 
-        // The enclosing custom-trace converter serializes numbers as raw decimals; reproduce that ambient
-        // state so this test actually exercises StateGasTraceConverter's hex-quantity override.
+        // Reproduce the enclosing custom-trace converter's ambient Raw setting so the converter's hex override is exercised.
         NumberConversion previous = ForcedNumberConversion.Value;
         ForcedNumberConversion.Value = NumberConversion.Raw;
         try
@@ -44,7 +43,6 @@ public class NativeStateGasTracerTests
     [Test]
     public void Post_fork_reports_two_dimensional_gas_as_hex_quantities()
     {
-        // regularGasUsed + stateGasUsed == gasUsed + gasRefund (25000 + 5000 == 21000 + 9000)
         GasConsumed gasSpent = new(SpentGas: 21000, OperationGas: 21000, BlockGas: 25000, BlockStateGas: 5000, MaxUsedGas: 30000, GasRefund: 9000);
 
         string trace = Trace(eip8037Enabled: true, in gasSpent);

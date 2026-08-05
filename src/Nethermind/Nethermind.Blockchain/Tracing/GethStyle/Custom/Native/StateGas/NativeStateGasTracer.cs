@@ -8,14 +8,6 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 
-/// <summary>
-/// The <c>stateGasTracer</c> native tracer: exposes the EIP-8037 two-dimensional gas summary per transaction.
-/// </summary>
-/// <remarks>
-/// The reported values are the ones already computed for block-level gas accounting (carried on
-/// <see cref="GasConsumed"/>); the tracer only reads and formats them, without re-deriving anything from
-/// opcode-level data.
-/// </remarks>
 public sealed class NativeStateGasTracer : GethLikeNativeTxTracer
 {
     public const string StateGasTracer = "stateGasTracer";
@@ -24,18 +16,15 @@ public sealed class NativeStateGasTracer : GethLikeNativeTxTracer
     private readonly bool _isEip8037Enabled;
     private StateGasTrace? _result;
 
-    public NativeStateGasTracer(Transaction tx, IReleaseSpec? spec, GethTraceOptions options) : base(options)
+    public NativeStateGasTracer(Transaction tx, IReleaseSpec spec, GethTraceOptions options) : base(options)
     {
         _txHash = tx.Hash;
-        _isEip8037Enabled = spec?.IsEip8037Enabled ?? false;
-        // Terminal-only tracer: it reads only the per-transaction GasConsumed result, so switch off the
-        // opcode-level callbacks the base type enables from GethTraceOptions defaults (storage reads on
-        // every SLOAD/SSTORE/TLOAD/TSTORE, stack snapshots) that this tracer never consumes.
+        _isEip8037Enabled = spec.IsEip8037Enabled;
+        // Terminal-only: reads only the final GasConsumed, so skip the per-opcode storage/stack callbacks.
         IsTracingOpLevelStorage = false;
         IsTracingStack = false;
     }
 
-    // No opcode-level data is needed; only the terminal per-transaction result.
     public override bool IsTracingInstructions => false;
 
     protected override GethLikeTxTrace CreateTrace() => new();
@@ -64,7 +53,6 @@ public sealed class NativeStateGasTracer : GethLikeNativeTxTracer
         _result = new StateGasTrace
         {
             GasUsed = gasSpent.SpentGas,
-            // Post-fork the gross regular gas is the block contribution; pre-fork it is the full pre-refund gas.
             RegularGasUsed = _isEip8037Enabled ? gasSpent.EffectiveBlockGas : gasSpent.EffectiveMaxUsedGas,
             StateGasUsed = _isEip8037Enabled ? gasSpent.BlockStateGas : 0,
             GasRefund = gasSpent.GasRefund,
