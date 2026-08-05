@@ -71,12 +71,17 @@ on:
         default: ""
       tool_config:
         description: >-
-          Tool-specific config as JSON. flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30,"deep_check":false,"label":"","extra_args":""}.
-          ethcallchaos: {"ref":"","corpus_db":"","rate":50,"parallel":8,"duration":300,"leaderboard_top":50,"api_port":5000} (empty ref = pinned commit default).
-          jsonbench: {"ref":"","mode":"","benchmark_config":"","compare_config":"config/compare/defaults.yaml","rps":"","duration":"","vus":"","concurrency":5,"timeout":30,"validate_schema":false,"html_report":true,"fail_on_diff":false,"max_fail_rate_pct":1,"deep_check":false,"extra_args":""}. deep_check (benchmark mode): after the timed load, replay every workload request once and store raw responses as deep-check-<client>.jsonl in the artifact; diff them across single-client runs offline with scripts/rpc-bench/deep-check-compare.py to catch wrong/partial/malformed results that k6 checks (has-a-response only) miss.
-          jsonbench benchmark_config: a curated workload — realistic-mix-head | ethcall-contracts-head | new-state-methods-head (bare name or repo-relative path); empty = a generated read mix. Its client list is rewritten to the node(s) here; rps/vus/duration override the workload when set (else the config's own values apply). Benchmarks report from k6's summary.json (no Prometheus).
-          jsonbench-sweep: {"clients":"nethermind geth reth","rps_list":"100 250 500","snapshot_block":"25490000","state_layout":"flat","benchmark_config":"config/benchmark/ethcallchaos-percategory-validated.yaml","ref":"","duration":"60s","iso_configs":"","iso_duration":"20s"}. Cross-client sweep run SEQUENTIALLY (one node up at a time). clients accepts ctype@image variants (e.g. nethermind@nethermindeth/nethermind:master) for same-client version A/B; iso_configs (space-separated single-scenario configs) runs each scenario isolated, empty = mixed only; benchmark_config is the mixed workload; ref/duration = json-bench commit + mixed load duration (empty ref = pinned default). In sweep mode the top-level single-client inputs (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by these tool_config keys.
-          Leave empty for defaults.
+          Tool config as JSON — empty is fine for defaults. Common recipes:
+          (1) cross-client sweep: {"clients":"nethermind reth","rps_list":"50 100","duration":"60s"} —
+          clients take an optional @image (nethermind@nethermindeth/nethermind:master reth@ghcr.io/paradigmxyz/reth:v2.2.0), run one at a time;
+          (2) PRIVATE corpus sweep (latency + response parity on every eth-call-corpus*.jsonl.gz found on the runner; call contents never reach logs/artifacts — see README "Private eth_call corpus"):
+          {"eth_call_corpus":true,"clients":"nethermind reth","rps_list":"10 100","duration":"120s"} — first client is the parity baseline;
+          (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
+          (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
+          (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
+          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/extra_args.
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file).
+          In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
       node_config:
@@ -128,6 +133,7 @@ jobs:
       health_timeout: ${{ steps.resolve.outputs.health_timeout }}
       node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
       node_memory: ${{ steps.resolve.outputs.node_memory }}
+      eth_call_corpus: ${{ steps.resolve.outputs.eth_call_corpus }}
       tool_config: ${{ steps.resolve.outputs.tool_config }}
     steps:
       - name: Resolve configuration
@@ -209,6 +215,23 @@ jobs:
             echo "tool_config is not valid JSON: ${tool_config}"
             exit 1
           fi
+          if ! echo "${tool_config}" | jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "tool_config must be a JSON object."
+            exit 1
+          fi
+          # Private eth_call corpus mode (jsonbench/jsonbench-sweep benchmark only): call contents
+          # stay on the runner; the artifact carries aggregate summaries and parity counts only.
+          eth_call_corpus="$(echo "${tool_config}" | jq -r 'if .eth_call_corpus == true then "true" else "false" end')"
+          if [[ "${eth_call_corpus}" == "true" ]]; then
+            case "${benchmark_tool}" in
+              jsonbench|jsonbench-sweep) ;;
+              *) echo "eth_call_corpus requires benchmark_tool=jsonbench or jsonbench-sweep."; exit 1;;
+            esac
+            if [[ "${comparison}" == "true" ]]; then
+              echo "eth_call_corpus is benchmark-only; leave reference_client=none (a corpus sweep compares its clients itself)."
+              exit 1
+            fi
+          fi
           [[ -z "${node_config}" ]] && node_config="{}"
           if ! echo "${node_config}" | jq -e . >/dev/null 2>&1; then
             echo "node_config is not valid JSON: ${node_config}"
@@ -280,6 +303,8 @@ jobs:
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
           jsonrpc_modules="$(nc '.jsonrpc_modules')"
           [[ -z "${jsonrpc_modules}" ]] && jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
+          # Corpus runs only ever issue eth_call — serve the minimal module set.
+          [[ "${eth_call_corpus}" == "true" ]] && jsonrpc_modules="Eth"
           health_min="$(nc '.health_timeout_minutes')"; [[ -z "${health_min}" ]] && health_min="30"
           node_cpuset="$(nc '.cpuset')"
           node_memory="$(nc '.memory')"
@@ -401,6 +426,7 @@ jobs:
             echo "health_timeout=${health_timeout}"
             echo "node_cpuset=${node_cpuset}"
             echo "node_memory=${node_memory}"
+            echo "eth_call_corpus=${eth_call_corpus}"
             echo "tool_config<<TOOLCFG"
             echo "${tool_config}"
             echo "TOOLCFG"
@@ -506,6 +532,8 @@ jobs:
           LAYOUT_FLAGS: ${{ needs.resolve.outputs.layout_flags }}
           ADDITIONAL_FLAGS: ${{ needs.resolve.outputs.additional_flags }}
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
+          # Same raised cap as corpus sweep cells, so both dispatch modes agree (empty = script default).
+          RPC_GAS_CAP: ${{ needs.resolve.outputs.eth_call_corpus == 'true' && '1000000000000' || '' }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           NODE_CPUSET: ${{ needs.resolve.outputs.node_cpuset }}
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
@@ -590,6 +618,7 @@ jobs:
           jb_to="$(get '.timeout')";                     [[ -n "${jb_to}" ]] && export JB_TIMEOUT="${jb_to}"
           export JB_VALIDATE_SCHEMA="$(getb '.validate_schema')"
           export JB_DEEP_CHECK="$(getb '.deep_check')"
+          export JB_ETH_CALL_CORPUS="$(getb '.eth_call_corpus')"
           jb_html="$(getb '.html_report')";              [[ -n "${jb_html}" ]] && export JB_HTML_REPORT="${jb_html}"
           export JB_FAIL_ON_DIFF="$(getb '.fail_on_diff')"
           # getb: '// empty' would swallow an explicit 0 (jq treats it as truthy-false).
@@ -649,6 +678,11 @@ jobs:
           set -euo pipefail
           cfg="${TOOL_CONFIG}"; [[ -z "${cfg}" ]] && cfg='{}'
           get() { echo "${cfg}" | jq -r "$1 // empty"; }
+          # For booleans '// empty' would swallow an explicit false — test null instead.
+          getb() { echo "${cfg}" | jq -r "$1 | if . == null then \"\" else tostring end"; }
+          export JB_ETH_CALL_CORPUS="$(getb '.eth_call_corpus')"
+          corpus_dir="$(get '.corpus_dir')";               [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
+          corpus_glob="$(get '.corpus_glob')";             [[ -n "${corpus_glob}" ]] && export CORPUS_GLOB="${corpus_glob}"
           export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind geth reth"
           export RPS_LIST="$(get '.rps_list')";            [[ -z "${RPS_LIST}" ]] && export RPS_LIST="100 250 500"
           export SNAPSHOT_BLOCK="$(get '.snapshot_block')";[[ -z "${SNAPSHOT_BLOCK}" ]] && export SNAPSHOT_BLOCK="25490000"
@@ -687,6 +721,8 @@ jobs:
         env:
           CLIENT: ${{ needs.resolve.outputs.client }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          # Corpus runs print match COUNTS only — log lines could quote private call data.
+          ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
         shell: bash
         run: |
           set -euo pipefail
@@ -711,21 +747,21 @@ jobs:
           exception_found="false"
           if [[ -s "${exc_matches}" ]]; then
             exception_found="true"
-            echo "::warning::Exception lines detected in node log (first 40):"
-            head -n 40 "${exc_matches}" || true
+            echo "::warning::Exception lines detected in node log ($(wc -l < "${exc_matches}" | tr -d ' ') line(s))"
+            [[ "${ETH_CALL_CORPUS}" != "true" ]] && { head -n 40 "${exc_matches}" || true; }
           fi
 
           invalid_block_found="false"
           if grep -qEi "invalid[[:space:]_-]*block" "${clean}"; then
             invalid_block_found="true"
-            echo "::warning::Invalid block lines detected in node log (first 40):"
-            grep -Ein "invalid[[:space:]_-]*block" "${clean}" | head -n 40 || true
+            echo "::warning::Invalid block lines detected in node log"
+            [[ "${ETH_CALL_CORPUS}" != "true" ]] && { grep -Ein "invalid[[:space:]_-]*block" "${clean}" | head -n 40 || true; }
           fi
 
           for pattern in "Unhandled" "Fatal" "ERROR"; do
             if grep -qi "${pattern}" "${clean}"; then
-              echo "::warning::Severe log pattern '${pattern}' detected in node log (first 10):"
-              grep -in "${pattern}" "${clean}" | head -n 10 || true
+              echo "::warning::Severe log pattern '${pattern}' detected in node log ($(grep -ci "${pattern}" "${clean}") line(s))"
+              [[ "${ETH_CALL_CORPUS}" != "true" ]] && { grep -in "${pattern}" "${clean}" | head -n 10 || true; }
             fi
           done
 
@@ -777,7 +813,7 @@ jobs:
           done
 
       - name: Upload benchmark results
-        if: always()
+        if: always() && needs.resolve.outputs.eth_call_corpus != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
@@ -792,6 +828,24 @@ jobs:
             ${{ runner.temp }}/rpcbench-state/sweep/
           retention-days: 30
           if-no-files-found: warn
+
+      # Corpus runs publish an allowlist-staged artifact instead: sanitized aggregate summaries,
+      # counts-only parity reports, and our own generated markdown — never node logs, raw tool
+      # output, or per-call files.
+      - name: Stage private corpus results
+        id: stage-corpus-results
+        if: always() && needs.resolve.outputs.eth_call_corpus == 'true'
+        shell: bash
+        run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
+
+      - name: Upload private corpus results
+        if: always() && needs.resolve.outputs.eth_call_corpus == 'true' && steps.stage-corpus-results.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
+          path: ${{ runner.temp }}/rpcbench-corpus-results/
+          retention-days: 30
+          if-no-files-found: error
 
       - name: Upload dotTrace snapshot
         if: always() && needs.resolve.outputs.dottrace == 'true'

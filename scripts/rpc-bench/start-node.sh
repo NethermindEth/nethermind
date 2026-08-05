@@ -289,7 +289,7 @@ fi
 # node_args are passed as the container command.
 
 # 4) Start the node.
-docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Starting $CLIENT container '$CONTAINER_NAME'..."
 log "  node args: ${node_args[*]}"
 # ${arr[@]+...} keeps the empty-array expansion safe under set -u on bash < 4.4.

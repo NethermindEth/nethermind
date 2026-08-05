@@ -41,6 +41,12 @@ JB_HTML_REPORT="${JB_HTML_REPORT:-true}"
 # Deep-check: after the timed load, replay each request once and store raw responses
 # (deep-check-<label>.jsonl) for offline cross-client diffing (k6 checks only verify presence). Off; benchmark only.
 JB_DEEP_CHECK="${JB_DEEP_CHECK:-false}"
+# Private eth_call corpus (benchmark only): replace the workload's calls with a runner-side
+# JSONL(.gz) corpus of {"method":"eth_call","params":[...]} records. Call contents stay on this
+# machine: raw tool output goes to VM scratch instead of the job log, per-call outputs are not
+# copied to OUT_DIR, and only a sanitized aggregate summary.json is published.
+JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
+JB_ETH_CALL_CORPUS_FILE="${JB_ETH_CALL_CORPUS_FILE:-/mnt/sda/expb-data/rpc-bench/eth-call-corpus.jsonl.gz}"
 # Response differences are reported (and warned about) by default; opt in to
 # failing the step on any diff once the method set is curated for the clients.
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
@@ -60,6 +66,17 @@ case "$JB_MODE" in
     ;;
   *) die "unknown JB_MODE '$JB_MODE' (expected benchmark | compare)" ;;
 esac
+case "$JB_ETH_CALL_CORPUS" in
+  true|false) ;;
+  *) die "JB_ETH_CALL_CORPUS must be true or false" ;;
+esac
+if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+  [[ "$JB_MODE" == "benchmark" ]] || die "eth_call corpus is supported only in benchmark mode"
+  [[ -f "$JB_ETH_CALL_CORPUS_FILE" ]] || die "eth_call corpus file not found: $JB_ETH_CALL_CORPUS_FILE"
+  # Both would write raw request/response content into OUT_DIR — keep the artifact aggregate-only.
+  JB_DEEP_CHECK="false"
+  JB_HTML_REPORT="false"
+fi
 
 mkdir -p "$OUT_DIR"
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")"
@@ -224,6 +241,36 @@ PY
   bench_cfg="/io/benchmark.yaml"
 fi
 
+if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+  # Convert the corpus into a JSON-array fixture inside the checkout (json-bench's JSONL reader
+  # has a ~64 KiB scanner token limit; real eth_call records exceed it) and make it the only call.
+  python3 -c 'import yaml' 2>/dev/null \
+    || python3 -m pip install --user pyyaml 2>/dev/null \
+    || python3 -m pip install --user --break-system-packages pyyaml \
+    || die "PyYAML is required to prepare the eth_call corpus workload and could not be installed"
+  corpus_fixture="$work/src/rpc-calls/runner-eth-call-corpus.json"
+  mkdir -p "$work/src/rpc-calls"
+  log "Preparing eth_call corpus fixture from $(basename "$JB_ETH_CALL_CORPUS_FILE") (contents stay on this machine)..."
+  python3 "$HERE/prepare-eth-call-corpus.py" "$JB_ETH_CALL_CORPUS_FILE" "$corpus_fixture" \
+    || die "failed to convert the eth_call corpus (see converter error above — it names line numbers, not contents)"
+  python3 - "$work/io/benchmark.yaml" <<'PY'
+import sys, yaml
+
+path = sys.argv[1]
+with open(path) as f:
+    cfg = yaml.safe_load(f) or {}
+cfg["calls"] = [{
+    "name": "eth_call corpus",
+    "file": "./rpc-calls/runner-eth-call-corpus.json",
+    "file_type": "json",
+    "weight": 1,
+    "thresholds": ["p(99)<600000"],
+}]
+with open(path, "w") as f:
+    yaml.safe_dump(cfg, f, sort_keys=False, default_flow_style=False)
+PY
+fi
+
 # The runner image executes as a non-root user (uid 1001) — open up the io
 # mount so it can write outputs there (scratch-only, wiped next run).
 chmod -R a+rwX "$work/io"
@@ -241,7 +288,7 @@ docker_common=(
   -v "$work/io:/io"
 )
 # A stale same-name container from a hard-interrupted run would fail docker run.
-docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 # Run the selected mode.
 tool_failed=0
@@ -270,14 +317,29 @@ else
   html=()
   [[ "$JB_HTML_REPORT" == "true" ]] && html=(--html-report)
   log "json-bench benchmark (config: ${JB_BENCHMARK_CONFIG:-<generated default>}, summary.json metrics)..."
-  docker run "${docker_common[@]}" "$image_tag" \
-    benchmark \
-    --config "$bench_cfg" \
-    --clients /io/clients.yaml \
-    --output /io/out \
-    ${html[@]+"${html[@]}"} \
-    ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log" \
-    || tool_failed=1
+  if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+    # Tool output may echo call contents — keep it in VM scratch (wiped next run), not the job log.
+    docker run "${docker_common[@]}" "$image_tag" \
+      benchmark \
+      --config "$bench_cfg" \
+      --clients /io/clients.yaml \
+      --output /io/out \
+      ${extra_args_arr[@]+"${extra_args_arr[@]}"} > "$work/jsonbench-tool.log" 2>&1 \
+      || tool_failed=1
+    rm -f "$corpus_fixture"
+    if [[ "$tool_failed" == "1" ]]; then
+      die "json-bench exited non-zero — $(wc -l < "$work/jsonbench-tool.log" | tr -d ' ') tool log lines retained on the runner at $work/jsonbench-tool.log"
+    fi
+  else
+    docker run "${docker_common[@]}" "$image_tag" \
+      benchmark \
+      --config "$bench_cfg" \
+      --clients /io/clients.yaml \
+      --output /io/out \
+      ${html[@]+"${html[@]}"} \
+      ${extra_args_arr[@]+"${extra_args_arr[@]}"} 2>&1 | tee "$OUT_DIR/jsonbench.log" \
+      || tool_failed=1
+  fi
 fi
 
 # Deep-check capture: replay each request once after the timed load (won't perturb k6),
@@ -332,7 +394,14 @@ fi
 # Collect outputs and build a markdown summary.
 as_root chown -R "$(id -u):$(id -g)" "$work/io" 2>/dev/null || true
 if [[ -d "$work/io/out" ]]; then
-  cp -r "$work/io/out/." "$OUT_DIR/" 2>/dev/null || true
+  if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+    # Publish only a sanitized fixed-schema aggregate; per-call k6 output stays in scratch.
+    rm -f "$OUT_DIR/summary.json"
+    python3 "$HERE/corpus_results.py" sanitize "$work/io/out/summary.json" "$OUT_DIR/summary.json" \
+      || die "corpus run produced no valid aggregate summary — raw output retained on the runner under $work/io/out"
+  else
+    cp -r "$work/io/out/." "$OUT_DIR/" 2>/dev/null || true
+  fi
 fi
 cp "$clients_yaml" "$OUT_DIR/clients.yaml" 2>/dev/null || true
 
@@ -464,7 +533,9 @@ PY
     fi
     html_note=""
     [[ "$JB_HTML_REPORT" == "true" && -s "$OUT_DIR/report.html" ]] && html_note=" / \`report.html\`"
-    if [[ -s "$perf_md" || -s "$OUT_DIR/results.csv" ]]; then
+    if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+      echo "Private corpus cell: aggregate-only \`summary.json\` in the artifact; raw tool output stays on the runner."
+    elif [[ -s "$perf_md" || -s "$OUT_DIR/results.csv" ]]; then
       echo "Full results: \`summary.json\` / \`results.json\` / \`results.csv\`${html_note} in the artifact."
     else
       echo "**NO RESULTS** — json-bench wrote neither \`summary.json\` nor \`results.csv\` (see \`jsonbench.log\` in the artifact)."
