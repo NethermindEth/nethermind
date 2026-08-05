@@ -15,12 +15,8 @@ public class SimulateBlockValidationTransactionsExecutor(
     SimulateRequestState simulateState)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    // Apply only the simulate blobBaseFee override here; EIP-3607 relaxation for state-overridden
-    // contract senders is handled by the SkipSenderCodeCheck execution-policy flag on the tx processors
-    // (both the main adapter and the EIP-7928 BAL path), so the spec keeps its concrete runtime type and
-    // chain-specific interfaces (ITaikoReleaseSpec/IXdcReleaseSpec) survive. Forward the incoming
-    // PrevRandao and BlobBaseFee verbatim rather than re-deriving them from the header — a BlockProcessor
-    // subclass (e.g. XdcBlockProcessor) may have supplied non-default values. The override still wins.
+    // Apply the simulate blobBaseFee override; forward the incoming PrevRandao and BlobBaseFee verbatim
+    // rather than re-deriving them (a BlockProcessor subclass may have set non-default values).
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
         baseTransactionExecutor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
             blockExecutionContext.Header,

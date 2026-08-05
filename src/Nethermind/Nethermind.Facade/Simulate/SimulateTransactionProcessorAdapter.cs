@@ -27,8 +27,6 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         }
         transaction.Hash = transaction.CalculateHash();
 
-        // SkipSenderCodeCheck relaxes EIP-3607 so a state-overridden contract can be the sender (mirrors the
-        // BAL path, which gets the same flag via BlockAccessListTxExecutionOptions).
         ExecutionOptions options = (simulateRequestState.Validate ? ExecutionOptions.Commit : ExecutionOptions.SkipValidationAndCommit) | ExecutionOptions.SkipSenderCodeCheck;
         TransactionResult result = transactionProcessor.Process(transaction, txTracer, options);
 
