@@ -5,6 +5,7 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.Proofs;
 
@@ -17,17 +18,15 @@ public class SimulateBlockValidationTransactionsExecutor(
 {
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
-        if (simulateState.BlobBaseFeeOverride is null)
-        {
-            baseTransactionExecutor.SetBlockExecutionContext(in blockExecutionContext);
-            return;
-        }
+        // Relax EIP-3607 on the block execution context so a state-overridden contract can be the tx
+        // sender. Done here (not at the spec-provider level) so it reaches both the main tx processor and
+        // the EIP-7928 BAL manager — ParallelBlockValidationTransactionsExecutor sets this context on both —
+        // while BlockProcessor still receives the unwrapped spec, preserving chain-specific spec interfaces.
+        IReleaseSpec spec = blockExecutionContext.Spec.WithoutEip3607();
 
-        baseTransactionExecutor.SetBlockExecutionContext(
-            new BlockExecutionContext(blockExecutionContext.Header,
-                blockExecutionContext.Spec,
-                simulateState.BlobBaseFeeOverride.Value)
-        );
+        baseTransactionExecutor.SetBlockExecutionContext(simulateState.BlobBaseFeeOverride is null
+            ? new BlockExecutionContext(blockExecutionContext.Header, spec)
+            : new BlockExecutionContext(blockExecutionContext.Header, spec, simulateState.BlobBaseFeeOverride.Value));
     }
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
