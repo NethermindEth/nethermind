@@ -53,9 +53,12 @@ jobs:
           - ubuntu-24.04-arm
         project:
           - Nethermind.Abi.Test
+          - Nethermind.Analyzers.Test
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test
+          - Nethermind.BalRecorder.Test
           - Nethermind.Blockchain.Test
+          - Nethermind.CensorshipDetector.Plugin.Test
           - Nethermind.Clique.Test
           - Nethermind.Config.Test
           - Nethermind.Consensus.Test
@@ -83,15 +86,19 @@ jobs:
           - Nethermind.Network.Dns.Test
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
+          - Nethermind.OpcodeTracing.Plugin.Test
           - Nethermind.Optimism.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Serialization.SszGenerator.Test
           - Nethermind.Shutter.Test
           - Nethermind.Sockets.Test
           - Nethermind.Specs.Test
+          - Nethermind.State.Flat.History.Test
           - Nethermind.State.Flat.Test
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
+          - Nethermind.StateDiffsWriter.Test
           - Nethermind.Synchronization.Test
           - Nethermind.Taiko.Test
           - Nethermind.Trie.Test
