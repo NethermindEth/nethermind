@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
@@ -51,12 +52,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
     [TestCaseSource(nameof(TransferLogCases))]
     public void ValueTransfer_WithLog_AddsLogsToCorrectFrames(TransferLogScenario scenario)
     {
-        (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, scenario.RecipientCode, value: TopValue);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(scenario.Config));
-
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-
-        using GethLikeTxTrace trace = tracer.BuildResult();
+        using GethLikeTxTrace trace = TraceValueTransfer(scenario.RecipientCode, scenario.Config);
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
         NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
@@ -80,17 +76,10 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, 0);
         TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Revert(0, 0).Done, Spec);
 
-        byte[] recipientCode = Code.ForwardValue(TestItem.AddressC);
-        (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, recipientCode, value: TopValue);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
-
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-
-        using GethLikeTxTrace trace = tracer.BuildResult();
+        using GethLikeTxTrace trace = TraceValueTransfer(Code.ForwardValue(TestItem.AddressC));
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
-        Assert.That(topFrame.Calls, Has.Count.EqualTo(1));
-        NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
+        NativeCallTracerCallFrame childFrame = topFrame.Calls.AssertSingle();
 
         NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
         using (Assert.EnterMultipleScope())
@@ -108,19 +97,11 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         TestState.InsertCode(TestItem.AddressC, Code.ForwardValueAndRevert(TestItem.AddressD), Spec);
         TestState.CreateAccount(TestItem.AddressD, 0);
 
-        byte[] recipientCode = Code.ForwardValue(TestItem.AddressC);
-        (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, recipientCode, value: TopValue);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
-
-        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-
-        using GethLikeTxTrace trace = tracer.BuildResult();
+        using GethLikeTxTrace trace = TraceValueTransfer(Code.ForwardValue(TestItem.AddressC));
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
-        Assert.That(topFrame.Calls, Has.Count.EqualTo(1));
-        NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
-        Assert.That(childFrame.Calls, Has.Count.EqualTo(1));
-        NativeCallTracerCallFrame grandchildFrame = childFrame.Calls[0];
+        NativeCallTracerCallFrame childFrame = topFrame.Calls.AssertSingle();
+        NativeCallTracerCallFrame grandchildFrame = childFrame.Calls.AssertSingle();
 
         NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
         using (Assert.EnterMultipleScope())
@@ -131,6 +112,14 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
             Assert.That(grandchildFrame.Error, Is.Null, "descendant call itself succeeded");
             Assert.That(grandchildFrame.Logs, Is.Null, "log on a successful frame under a reverted ancestor must also be cleared");
         }
+    }
+
+    private GethLikeTxTrace TraceValueTransfer(byte[]? recipientCode, string? config = WithLog)
+    {
+        (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, recipientCode, value: TopValue);
+        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(config));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return tracer.BuildResult();
     }
 
     private static IEnumerable<TestCaseData> TransferLogCases()
