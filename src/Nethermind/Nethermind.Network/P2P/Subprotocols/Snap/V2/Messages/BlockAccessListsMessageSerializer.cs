@@ -29,9 +29,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
             IByteArrayList blockAccessLists = message.BlockAccessLists;
             for (int i = 0; i < blockAccessLists.Count; i++)
             {
-                ReadOnlySpan<byte> entry = blockAccessLists[i];
-                writer.Encode(entry.IsEmpty ? null : new Rlp(entry.ToArray()));
+                WriteBlockAccessListEntry(ref writer, blockAccessLists[i]);
             }
+        }
+
+        private static void WriteBlockAccessListEntry<TWriter>(ref TWriter writer, ReadOnlySpan<byte> entry)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
+        {
+            if (entry.IsEmpty)
+                writer.WriteByte(Rlp.EmptyByteArrayByte);
+            else
+                writer.Write(entry);
         }
 
         public BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
@@ -42,10 +50,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 
             try
             {
-                ctx.ReadSequenceLength();
+                int sequenceLength = ctx.ReadSequenceLength();
+                int checkPosition = ctx.Position + sequenceLength;
                 long requestId = ctx.DecodeLong();
 
                 blockAccessLists = DecodeBlockAccessLists(ref ctx);
+                ctx.Check(checkPosition);
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPosition));
                 return new BlockAccessListsMessage(new ByteArrayListAdapter(blockAccessLists)) { RequestId = requestId };
             }
