@@ -78,8 +78,10 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         private const string LeadingZeroRootHex = "0x0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+        private const string LeadingZeroByteRootHex = "0x009ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
 
         [TestCase(LeadingZeroRootHex, LeadingZeroRootHex)]
+        [TestCase(LeadingZeroByteRootHex, LeadingZeroByteRootHex)]
         [TestCase(null, "0x0000000000000000000000000000000000000000000000000000000000000000")]
         public void Serializes_root_as_full_width_data(string? rootHex, string expectedRoot)
         {
