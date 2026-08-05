@@ -469,8 +469,17 @@ public sealed class SnapshotBundle : IDisposable
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
 
-    internal void PromoteAccount(Address address, Account? account) =>
-        _changedAccounts.TryAdd(address, account);
+    internal void PromoteAccount(Address address, Account? account)
+    {
+        // TryAdd takes the bucket lock before it can discover the key is already there, and a hot
+        // account is promoted on every read. ContainsKey is lock-free, so pre-checking keeps the
+        // repeat promotions - the overwhelming majority - off the lock entirely.
+        HashedKey<Address> key = new(address);
+        if (!_changedAccounts.ContainsKey(key))
+        {
+            _changedAccounts.TryAdd(key, account);
+        }
+    }
 
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {
