@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.EthStats.Configs;
@@ -27,7 +26,7 @@ public class EthStatsPluginTests
         builder.RegisterModule(new EthStatsPlugin(new EthStatsConfig()).Module);
         using IContainer container = builder.Build();
 
-        Assert.That(container.Resolve<IEnumerable<StepInfo>>().Select(static s => s.StepType),
-            Does.Contain(typeof(EthStatsStep)));
+        Assert.That(container.Resolve<IEnumerable<StepInfo>>(),
+            Has.Some.Matches<StepInfo>(static s => s.StepType == typeof(EthStatsStep)));
     }
 }

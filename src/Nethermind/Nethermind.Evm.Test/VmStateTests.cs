@@ -224,23 +224,21 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Can_dispose_without_init()
-        {
-            VmStateScope scope = CreateEvmStateScope();
-
-            // Dispose must accept a state whose stacks were never initialized.
-            Assert.DoesNotThrow(scope.Dispose);
-        }
+        public void Can_dispose_without_init() =>
+            Assert.DoesNotThrow(static () =>
+            {
+                // Dispose must accept a state whose stacks were never initialized.
+                using VmStateScope _ = CreateEvmStateScope();
+            });
 
         [Test]
-        public void Can_dispose_after_init()
-        {
-            VmStateScope scope = CreateEvmStateScope();
-            scope.VmState.InitializeStacks(default, out EvmStack _);
-
-            // Dispose must return the initialized stacks to the pool without an error.
-            Assert.DoesNotThrow(scope.Dispose);
-        }
+        public void Can_dispose_after_init() =>
+            Assert.DoesNotThrow(static () =>
+            {
+                // Dispose must return the initialized stacks to the pool without an error.
+                using VmStateScope scope = CreateEvmStateScope();
+                scope.VmState.InitializeStacks(default, out EvmStack _);
+            });
 
         private static VmStateScope CreateEvmStateScope(VmState<EthereumGasPolicy> parentVmState = null) =>
             new(parentVmState is null

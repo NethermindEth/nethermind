@@ -133,10 +133,13 @@ namespace Nethermind.Store.Test
             CappedArray<byte> rlp = node.RlpEncode(null, ref emptyPath);
             node.ResolveKey(null, ref emptyPath);
 
+            byte[] rlpBytes = rlp.ToArray();
             MemDb memDb = new();
-            memDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, node.Keccak)] = rlp.ToArray();
+            memDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, node.Keccak)] = rlpBytes;
 
-            return (TestTrieStoreFactory.Build(memDb, NullLogManager.Instance).GetTrieStore(null), rlp.ToArray());
+            // The oracle is an independent copy. A write into the stored buffer must fail
+            // the compare, not silently update the expectation.
+            return (TestTrieStoreFactory.Build(memDb, NullLogManager.Instance).GetTrieStore(null), [.. rlpBytes]);
         }
     }
 }
