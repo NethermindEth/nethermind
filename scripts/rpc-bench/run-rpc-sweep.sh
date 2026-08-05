@@ -102,6 +102,12 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     echo "::error::no corpus files matching '$CORPUS_GLOB' under $CORPUS_DIR"; exit 1
   fi
   echo "Corpus scenarios: $(for f in "${CORPORA[@]}"; do printf '%s ' "$(corpus_label "$f")"; done)"
+  # Fail on an unreadable/oversized corpus in seconds, before any node starts or cell runs.
+  for corpus in "${CORPORA[@]}"; do
+    if ! python3 "$here/corpus_parity.py" validate --corpus "$corpus"; then
+      echo "::error::corpus $(corpus_label "$corpus") failed validation — fix the file before sweeping"; exit 1
+    fi
+  done
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
 fi
 

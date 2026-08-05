@@ -84,6 +84,21 @@ def load_corpus(path: str | Path) -> list[list]:
     return params
 
 
+def _node_identity(url: str) -> tuple[int, int]:
+    """Return (head block number, chain id); raises a content-free error when unreadable."""
+    identity = []
+    for method in ("eth_blockNumber", "eth_chainId"):
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": []}).encode()
+        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                envelope = json.loads(response.read(1 << 20))
+            identity.append(int(envelope["result"], 16))
+        except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
+            raise CorpusParityError(f"cannot read {method} from the node") from None
+    return identity[0], identity[1]
+
+
 def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
     """POST one eth_call; return (category, result_hex). category is None on success."""
     body = json.dumps(
@@ -94,6 +109,17 @@ def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
     try:
         with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as error:
+        # Some clients/proxies answer JSON-RPC errors with a non-200 status — that is a
+        # response, not a transport failure. The body is parsed but never stored.
+        try:
+            raw = error.read(MAX_RESPONSE_BYTES + 1)
+            envelope = json.loads(raw)
+        except (OSError, ValueError):
+            return "transport_failure", ""
+        if isinstance(envelope, dict) and "error" in envelope and envelope.get("id") in (index, None):
+            return "rpc_error", ""
+        return "transport_failure", ""
     except (urllib.error.URLError, OSError, ValueError):
         return "transport_failure", ""
     if len(raw) > MAX_RESPONSE_BYTES:
@@ -124,6 +150,7 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     Transport/invalid responses still abort: they indicate node trouble, not call content.
     """
     params_list = load_corpus(corpus)
+    head, chain_id = _node_identity(rpc_url)
     results: list[str] = []
     failures: dict[str, int] = {}
     error_count = 0
@@ -144,8 +171,8 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     state = Path(state_path)
     state.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(state, "wt", encoding="utf-8") as output:
-        json.dump({"total": len(results), "results": results}, output)
-    print(f"baseline captured: {len(results)} outcomes ({error_count} rpc_error)")
+        json.dump({"total": len(results), "head": head, "chain_id": chain_id, "results": results}, output)
+    print(f"baseline captured: {len(results)} outcomes ({error_count} rpc_error) at head {head}")
     if error_count:
         error_indexes = [str(i) for i, r in enumerate(results, start=1) if r == ERROR_MARKER]
         print(f"baseline rpc_error indexes (first {min(len(error_indexes), 40)}): {' '.join(error_indexes[:40])}")
@@ -159,11 +186,20 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         with gzip.open(state_path, "rt", encoding="utf-8") as source:
             state = json.load(source)
         baseline_results = state["results"]
+        baseline_head, baseline_chain = state["head"], state["chain_id"]
     except (OSError, json.JSONDecodeError, KeyError, TypeError):
         raise CorpusParityError("baseline state is missing or unreadable") from None
     if not isinstance(baseline_results, list) or len(baseline_results) != len(params_list):
         raise CorpusParityError(
             f"baseline state has {len(baseline_results)} results but the corpus has {len(params_list)}"
+        )
+    # A snapshot at a different head/chain would mismatch on every record — report it as the
+    # fixture problem it is, not as client divergence.
+    head, chain_id = _node_identity(rpc_url)
+    if (head, chain_id) != (baseline_head, baseline_chain):
+        raise CorpusParityError(
+            f"node identity mismatch: baseline head={baseline_head} chain={baseline_chain} "
+            f"vs candidate head={head} chain={chain_id} — align the snapshots before comparing"
         )
 
     report = {field: 0 for field in PARITY_COUNTER_FIELDS}
@@ -235,6 +271,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    validate_parser = subparsers.add_parser("validate", help="check a corpus is loadable; prints the record count only")
+    validate_parser.add_argument("--corpus", required=True)
+
     baseline_parser = subparsers.add_parser("baseline", help="replay the corpus and store baseline responses")
     baseline_parser.add_argument("--corpus", required=True)
     baseline_parser.add_argument("--rpc-url", required=True)
@@ -250,6 +289,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     arguments = parser.parse_args(argv)
     try:
+        if arguments.command == "validate":
+            print(f"corpus OK: {len(load_corpus(arguments.corpus))} records")
+            return 0
         if arguments.command == "baseline":
             baseline(arguments.corpus, arguments.rpc_url, arguments.state)
             return 0
