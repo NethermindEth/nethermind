@@ -111,6 +111,19 @@ public class FrameTxProcessorTests
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
     }
 
+    // The spec reserves max(standard_gas_limit, calldata_floor_gas) rather than invalidating.
+    [Test]
+    public void Execute_FramesReserveLessGasThanTheCalldataFloor_StillExecutes()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        byte[] frameData = new byte[40_000];
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 0, UInt256.Zero, frameData));
+
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+    }
+
     [Test]
     public void Execute_SelfVerifyApprovesExecutionAndPayment_ChargesPayerAndIncrementsNonce()
     {
