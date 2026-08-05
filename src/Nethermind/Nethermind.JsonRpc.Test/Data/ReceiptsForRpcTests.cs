@@ -78,6 +78,31 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [Test]
+        public void Serializes_root_as_full_width_data()
+        {
+            // The first hex digit is zero. A receipt root is DATA per EIP-1474. All 64 digits must survive.
+            const string leadingZeroRootHex = "0x0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.PostTransactionState = new Hash256(leadingZeroRootHex);
+
+            string serialized = SerializeReceipt(receipt);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(leadingZeroRootHex));
+        }
+
+        [Test]
+        public void Serializes_null_root_as_full_width_zero()
+        {
+            TxReceipt receipt = CreateDiagnosticReceipt();
+
+            string serialized = SerializeReceipt(receipt);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo($"0x{new string('0', 64)}"));
+        }
+
+        [Test]
         public void Error_field_is_not_serialized()
         {
             Hash256 txHash = Keccak.OfAnEmptyString;
