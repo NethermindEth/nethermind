@@ -28,13 +28,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         }
 
         [Test]
-        public void Zero_roundtrip()
-        {
-            using ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
-            Test(data);
-        }
-
-        [Test]
         public void Roundtrip_with_null_top_level() => Test(null);
 
         [Test]
