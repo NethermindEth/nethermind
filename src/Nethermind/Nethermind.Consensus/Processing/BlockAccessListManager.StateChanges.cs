@@ -37,10 +37,11 @@ public partial class BlockAccessListManager
     /// <remarks>
     /// Dispatches to <see cref="IBalBulkWorldState.BulkApplyBal"/> when
     /// <c>Blocks.ParallelBalBulkApply</c> is enabled and the backend supports it — the
-    /// journal-bypassing, per-account-parallel path. The bulk path skips
-    /// <see cref="IWorldState.Commit(IReleaseSpec)"/>: the journal is empty by the bulk applier's
-    /// precondition (this is the block's first mutation of the main state), and code/storage
-    /// writes go straight through the scope.
+    /// journal-bypassing, per-account-parallel path. Any journal writes made before the BAL apply
+    /// (e.g. AuRa post-merge preprocessing materialising system accounts on the main state) are
+    /// committed first, so the bulk batch reads correct parents through the scope and a later
+    /// <c>FlushToTree</c> cannot overwrite the bulk-applied values with stale journal entries;
+    /// on the common PoS path the journal is empty and that commit is a no-op.
     /// </remarks>
     public void ApplyBlockStateChanges(ReadOnlyBlockAccessList bal, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
@@ -48,6 +49,7 @@ public partial class BlockAccessListManager
         {
             using (MetricsTimer<BalApplyTimeSink> _ = new())
             {
+                stateProvider.Commit(spec);
                 bulkWorldState.BulkApplyBal(bal, spec);
             }
 

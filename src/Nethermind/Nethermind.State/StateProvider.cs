@@ -738,6 +738,18 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             _metrics.IncrementStateSkippedWrites(skipped);
     }
 
+    /// <summary>Whether any block-level change is still waiting to be flushed to the tree
+    /// (<c>Before != After</c>). Read-through traces (<c>Before == After</c>) don't count.</summary>
+    internal bool HasPendingBlockChanges()
+    {
+        foreach (ChangeTrace change in _blockChanges.Values)
+        {
+            if (change.Before != change.After) return true;
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Records an account state that was applied directly to the backend scope (bulk BAL apply),
     /// so block-level change tracking (<see cref="ChangedAddresses"/>) stays accurate.

@@ -31,8 +31,11 @@ public sealed partial class WorldState : IBalBulkWorldState
     public void BulkApplyBal(ReadOnlyBlockAccessList bal, IReleaseSpec spec)
     {
         GuardInScope();
-        Debug.Assert(_stateProvider.ChangedAccountCount == 0,
-            "BulkApplyBal must be the block's first mutation of this world state — pending journal entries would flush stale values over the bulk-applied ones.");
+        // Read-through traces (Before == After) are expected — pre-block validation reads populate
+        // them; only unflushed WRITES violate the precondition, as a later FlushToTree would clobber
+        // the bulk-applied values with the stale journal entries.
+        Debug.Assert(!_stateProvider.HasPendingBlockChanges(),
+            "BulkApplyBal must not run with unflushed journal writes — a later FlushToTree would overwrite the bulk-applied values.");
 
         IWorldStateScopeProvider.IScope scope = _currentScope!;
         using ArrayPoolList<(IWorldStateScopeProvider.IStorageWriteBatch Batch, ReadOnlyAccountChanges Changes)> storageBatches = new(bal.ItemCount);

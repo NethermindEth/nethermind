@@ -13,7 +13,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -186,6 +185,43 @@ public class BalBulkApplyTests(bool useFlat)
     }
 
     [Test]
+    public void Bulk_apply_preserves_pending_pre_block_writes()
+    {
+        // Mirrors AuRa post-merge preprocessing: system accounts are materialised on the MAIN
+        // state (journaled, uncommitted) before the BAL apply runs. The bulk path must flush them
+        // first — both so they survive (when not in the BAL) and so BAL parents read correctly.
+        Action<IWorldState> genesisSetup = static stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100);
+        Action<IWorldState> preBlockWrites = static stateProvider =>
+        {
+            stateProvider.CreateAccount(TestItem.AddressD, 5); // not in the BAL — must survive the bulk apply
+            stateProvider.CreateAccount(ContractAddress, 1);   // in the BAL — the BAL's final values win
+        };
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(1, 150))
+                .TestObject)
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(ContractAddress)
+                .WithNonceChanges(new NonceChange(1, 1))
+                .WithStorageChanges(1, new StorageChange(1, 0x2Au))
+                .TestObject)
+            .TestObject;
+
+        Hash256 journaledRoot = Apply(genesisSetup, bal, useBulk: false, out ArrayPoolList<AddressAsKey>? journaledChanges, preBlockWrites);
+        Hash256 bulkRoot = Apply(genesisSetup, bal, useBulk: true, out ArrayPoolList<AddressAsKey>? bulkChanges, preBlockWrites);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bulkRoot, Is.EqualTo(journaledRoot));
+            Assert.That(AsSet(bulkChanges), Is.EquivalentTo(AsSet(journaledChanges)));
+        }
+
+        journaledChanges?.Dispose();
+        bulkChanges?.Dispose();
+    }
+
+    [Test]
     public void Manager_dispatches_to_bulk_apply_when_configured()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
@@ -222,15 +258,20 @@ public class BalBulkApplyTests(bool useFlat)
         Action<IWorldState>? genesisSetup,
         ReadOnlyBlockAccessList bal,
         bool useBulk,
-        out ArrayPoolList<AddressAsKey>? accountChanges)
+        out ArrayPoolList<AddressAsKey>? accountChanges,
+        Action<IWorldState>? preBlockWrites = null)
     {
         using Context ctx = new(useFlat);
         IWorldState worldState = new WorldState(ctx.ScopeProvider, LimboLogs.Instance);
         Hash256 parentRoot = CommitGenesis(worldState, genesisSetup);
 
         using IDisposable scope = worldState.BeginScope(ParentHeader(parentRoot));
+        preBlockWrites?.Invoke(worldState);
         if (useBulk)
         {
+            // Mirrors BlockAccessListManager.ApplyBlockStateChanges: pending journal writes are
+            // committed before the bulk batch bypasses the journal.
+            worldState.Commit(Amsterdam.Instance);
             ((IBalBulkWorldState)worldState).BulkApplyBal(bal, Amsterdam.Instance);
             worldState.RecalculateStateRoot();
         }
