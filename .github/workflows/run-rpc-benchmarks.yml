@@ -89,7 +89,7 @@ on:
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
           All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir.
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -700,6 +700,7 @@ jobs:
           getb() { echo "${cfg}" | jq -r "$1 | if . == null then \"\" else tostring end"; }
           export JB_ETH_CALL_CORPUS="$(getb '.eth_call_corpus')"
           corpus_dir="$(get '.corpus_dir')";               [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
+          corpus_glob="$(get '.corpus_glob')";             [[ -n "${corpus_glob}" ]] && export CORPUS_GLOB="${corpus_glob}"
           export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind geth reth"
           export RPS_LIST="$(get '.rps_list')";            [[ -z "${RPS_LIST}" ]] && export RPS_LIST="100 250 500"
           export SNAPSHOT_BLOCK="$(get '.snapshot_block')";[[ -z "${SNAPSHOT_BLOCK}" ]] && export SNAPSHOT_BLOCK="25490000"
