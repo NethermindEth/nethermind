@@ -55,6 +55,17 @@ namespace Nethermind.Core
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public bool SupportsFrames => Type.SupportsFrames();
+
+        /// <summary>
+        /// EIP-8141: whether this transaction is blob-carrying for pool routing and blob-gas accounting —
+        /// a type-3 (EIP-4844) blob tx or a blob-carrying frame tx (type 6 with versioned hashes).
+        /// </summary>
+        /// <remarks>
+        /// Instance-level gate distinct from the type-level <see cref="SupportsBlobs"/>, which networking
+        /// and decode paths key on. Mirrors the accounting predicate used in block validation and the blob
+        /// gas calculator so a blob-carrying frame tx counts towards the block blob budget like a type-3 tx.
+        /// </remarks>
+        public bool CarriesBlobs => BlobVersionedHashes is { Length: > 0 };
         public ulong GasLimit { get; set; }
         private ulong _spentGas;
         private ulong _blockGasUsed;

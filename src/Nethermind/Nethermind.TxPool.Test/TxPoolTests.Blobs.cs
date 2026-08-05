@@ -1410,5 +1410,108 @@ namespace Nethermind.TxPool.Test
                 Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
             }
         }
+
+        // EIP-8141: a blob-carrying frame tx (type 6 with versioned hashes) is routed to the blob pool,
+        // mirroring type-3 routing, so it is subject to blob-pool rules. A plain frame tx and a type-3
+        // blob tx must route unchanged.
+        [Test]
+        public void blob_carrying_frame_tx_is_routed_to_blob_pool()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameBlobTx, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+            }
+        }
+
+        [Test]
+        public void non_blob_frame_tx_is_routed_to_normal_pool()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 0);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+            }
+        }
+
+        [Test]
+        public void type3_blob_tx_routing_is_unchanged_alongside_frame_txs()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction type3Tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(1, spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(0)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(type3Tx, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+            }
+        }
+
+        private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
+
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount)
+        {
+            byte[][] versionedHashes = null;
+            if (blobCount > 0)
+            {
+                versionedHashes = new byte[blobCount][];
+                for (int i = 0; i < blobCount; i++)
+                {
+                    byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+                    hash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+                    hash[1] = (byte)i;
+                    versionedHashes[i] = hash;
+                }
+            }
+
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Nonce = nonce,
+                GasLimit = 1_000_000,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1.GWei,
+                MaxFeePerBlobGas = blobCount > 0 ? 1.GWei : UInt256.Zero,
+                Frames =
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+                ],
+                FrameSignatures = [],
+                BlobVersionedHashes = versionedHashes,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
     }
 }
