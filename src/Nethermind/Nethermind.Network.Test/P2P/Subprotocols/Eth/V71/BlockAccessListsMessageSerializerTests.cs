@@ -146,7 +146,7 @@ public class GetBlockAccessListsMessageSerializerTests
                 })),
                 "e364e1a00000000000000000000000000000000000000000000000000000000000000000")
             .SetName("Roundtrip_single_hash");
-        // The hashes are Keccak.Zero, keccak("A"), and keccak("B").
+        // The last two 32-byte literals in the expectation are keccak("A") and keccak("B").
         yield return new TestCaseData(
                 new Func<GetBlockAccessListsMessage>(() => new GetBlockAccessListsMessage(101, new ArrayPoolList<Hash256>(3)
                 {

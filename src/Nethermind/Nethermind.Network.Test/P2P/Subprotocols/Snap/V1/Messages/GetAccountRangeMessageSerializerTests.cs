@@ -15,7 +15,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         {
             GetAccountRangeMessage msg = new()
             {
-                RequestId = 1111,
+                RequestId = SnapSerializerGoldens.RequestId1111,
                 AccountRange = new(Keccak.OfAnEmptyString, SnapSerializerGoldens.RangeStart, SnapSerializerGoldens.RangeLimit),
                 ResponseBytes = 10
             };
@@ -24,12 +24,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] bytes = serializer.Serialize(msg);
             GetAccountRangeMessage deserializedMsg = serializer.Deserialize(bytes);
 
-            Assert.That(deserializedMsg.RequestId, Is.EqualTo(msg.RequestId));
-            Assert.That(deserializedMsg.PacketType, Is.EqualTo(msg.PacketType));
-            Assert.That(deserializedMsg.AccountRange.RootHash, Is.EqualTo(msg.AccountRange.RootHash));
-            Assert.That(deserializedMsg.AccountRange.StartingHash, Is.EqualTo(msg.AccountRange.StartingHash));
-            Assert.That(deserializedMsg.AccountRange.LimitHash, Is.EqualTo(msg.AccountRange.LimitHash));
-            Assert.That(deserializedMsg.ResponseBytes, Is.EqualTo(msg.ResponseBytes));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserializedMsg.RequestId, Is.EqualTo(msg.RequestId));
+                Assert.That(deserializedMsg.PacketType, Is.EqualTo(msg.PacketType));
+                Assert.That(deserializedMsg.AccountRange.RootHash, Is.EqualTo(msg.AccountRange.RootHash));
+                Assert.That(deserializedMsg.AccountRange.StartingHash, Is.EqualTo(msg.AccountRange.StartingHash));
+                Assert.That(deserializedMsg.AccountRange.LimitHash, Is.EqualTo(msg.AccountRange.LimitHash));
+                Assert.That(deserializedMsg.ResponseBytes, Is.EqualTo(msg.ResponseBytes));
+            }
 
             // The message encodes as [requestId, rootHash, startingHash, limitHash, responseBytes].
             SerializerTester.TestZero(serializer, msg,
@@ -54,8 +57,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] bytes = serializer.Serialize(msg);
             GetAccountRangeMessage deserializedMsg = serializer.Deserialize(bytes);
 
-            Assert.That(deserializedMsg.AccountRange.LimitHash, Is.EqualTo(Keccak.MaxValue));
-            Assert.That(deserializedMsg.ResponseBytes, Is.EqualTo(1000_000));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deserializedMsg.AccountRange.LimitHash, Is.EqualTo(Keccak.MaxValue));
+                Assert.That(deserializedMsg.ResponseBytes, Is.EqualTo(1000_000));
+            }
 
             // A null limit hash goes on the wire as Keccak.MaxValue; response bytes 0 as 1000000.
             SerializerTester.TestZero(serializer, msg,

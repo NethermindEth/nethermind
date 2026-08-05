@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         {
             GetStorageRangeMessage msg = new()
             {
-                RequestId = 1111,
+                RequestId = SnapSerializerGoldens.RequestId1111,
                 StorageRange = new()
                 {
                     RootHash = Keccak.OfAnEmptyString,

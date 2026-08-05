@@ -9,9 +9,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages;
 /// Shared inputs and hand-derived RLP fragments for the snap serializer goldens.
 /// </summary>
 /// <remarks>
-/// Each golden fragment and its input come from one hex constant, so the
-/// expectation cannot drift from the input. The values are verified with an
-/// independent encoder (pyrlp + pycryptodome keccak).
+/// The range fragments and their <see cref="Hash256"/> inputs come from one hex
+/// constant each, so those expectations cannot drift from the inputs.
+/// <see cref="EmptyStringKeccakRlp"/> is a deliberately independent literal: the
+/// tests feed <c>Keccak.OfAnEmptyString</c>, so the fragment also pins keccak("").
+/// The values are verified with an independent encoder (pyrlp + pycryptodome keccak).
 /// </remarks>
 internal static class SnapSerializerGoldens
 {
@@ -19,7 +21,10 @@ internal static class SnapSerializerGoldens
     private const string RangeStartHex = "15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
     private const string RangeLimitHex = "20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
-    /// <summary>Request id 1111 as an RLP item: 0x82 length prefix + 0x0457.</summary>
+    /// <summary>The request id the golden request tests use.</summary>
+    public const long RequestId1111 = 1111;
+
+    /// <summary><see cref="RequestId1111"/> as an RLP item: 0x82 length prefix + 0x0457.</summary>
     public const string RequestId1111Rlp = "820457";
 
     /// <summary>keccak("") as an RLP item: 0xa0 + 32 bytes.</summary>
