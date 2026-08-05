@@ -5,7 +5,6 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
 using NUnit.Framework;
