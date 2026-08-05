@@ -87,7 +87,6 @@ public partial class BlockAccessListManager
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
         private readonly CodeInfoRepositoryFactory _codeInfoRepositoryFactory;
-        private readonly ExecutionOptions _additionalTxExecutionOptions;
 
         public ParallelTxProcessorWithWorldStateManager(
             IBlockhashProvider blockHashProvider,
@@ -98,8 +97,7 @@ public partial class BlockAccessListManager
             PreBlockCaches? preBlockCaches,
             IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory,
             ITransactionProcessorFactory txProcessorFactory,
-            CodeInfoRepositoryFactory codeInfoRepositoryFactory,
-            ExecutionOptions additionalTxExecutionOptions = ExecutionOptions.None)
+            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
         {
             _blockHashProvider = blockHashProvider;
             _specProvider = specProvider;
@@ -107,7 +105,6 @@ public partial class BlockAccessListManager
             _logManager = logManager;
             _txProcessorFactory = txProcessorFactory;
             _codeInfoRepositoryFactory = codeInfoRepositoryFactory;
-            _additionalTxExecutionOptions = additionalTxExecutionOptions;
             _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
@@ -233,7 +230,7 @@ public partial class BlockAccessListManager
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _codeInfoRepositoryFactory, _additionalTxExecutionOptions);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _codeInfoRepositoryFactory);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -341,10 +338,9 @@ public partial class BlockAccessListManager
             IWorldState stateProvider,
             ILogManager logManager,
             ITransactionProcessorFactory txProcessorFactory,
-            CodeInfoRepositoryFactory codeInfoRepositoryFactory,
-            ExecutionOptions additionalTxExecutionOptions = ExecutionOptions.None)
+            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory, additionalTxExecutionOptions);
+            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -387,8 +383,7 @@ public partial class BlockAccessListManager
             IWorldState stateProvider,
             ILogManager logManager,
             ITransactionProcessorFactory txProcessorFactory,
-            CodeInfoRepositoryFactory codeInfoRepositoryFactory,
-            ExecutionOptions additionalTxExecutionOptions = ExecutionOptions.None)
+            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -401,7 +396,7 @@ public partial class BlockAccessListManager
             WorldState = new TracedAccessWorldState(worldState, parallel);
             ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(WorldState);
             TxProcessor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
-            TxProcessorAdapter = new(TxProcessor, additionalTxExecutionOptions);
+            TxProcessorAdapter = new(TxProcessor);
         }
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)

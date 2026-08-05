@@ -39,12 +39,6 @@ public enum ExecutionOptions
     BuildUp = 16,
 
     /// <summary>
-    /// Skip the EIP-3607 sender-has-code check, letting a contract address act as the transaction sender
-    /// (used by eth_simulateV1 for state-overridden contract senders).
-    /// </summary>
-    SkipSenderCodeCheck = 32,
-
-    /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
     SkipValidationAndCommit = Commit | SkipValidation,

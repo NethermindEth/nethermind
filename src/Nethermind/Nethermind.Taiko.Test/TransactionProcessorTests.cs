@@ -91,7 +91,7 @@ public class TransactionProcessorTests
     [Test]
     public void Contract_sender_executes_and_pays_fees_when_sender_code_check_skipped()
     {
-        // Relaxing EIP-3607 via the SkipSenderCodeCheck flag (not by wrapping the spec) keeps the concrete
+        // Relaxing EIP-3607 via the context's SkipSenderCodeCheck (not by wrapping the spec) keeps the concrete
         // ITaikoReleaseSpec, so PayFees can still cast it; the old spec-wrapping threw InvalidCastException here.
         _spec.IsEip3607Enabled = true;
         _stateProvider!.InsertCode(TestItem.AddressA, Bytes.FromHexString("0x600060"), _spec);
@@ -109,10 +109,11 @@ public class TransactionProcessorTests
             .WithExtraData(new byte[32])
             .WithBeneficiary(TestItem.AddressC).WithGasLimit(gasLimit).TestObject;
 
-        _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        BlockExecutionContext context = BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
+            block.Header, _specProvider.GetSpec(block.Header), default, UInt256.Zero, skipSenderCodeCheck: true);
+        _transactionProcessor!.SetBlockExecutionContext(context);
 
-        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance,
-            ExecutionOptions.Commit | ExecutionOptions.SkipSenderCodeCheck);
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
 
         Assert.That(result.TransactionExecuted, Is.True);
     }

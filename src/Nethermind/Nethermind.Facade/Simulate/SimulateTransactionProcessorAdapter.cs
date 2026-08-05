@@ -27,8 +27,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         }
         transaction.Hash = transaction.CalculateHash();
 
-        ExecutionOptions options = (simulateRequestState.Validate ? ExecutionOptions.Commit : ExecutionOptions.SkipValidationAndCommit) | ExecutionOptions.SkipSenderCodeCheck;
-        TransactionResult result = transactionProcessor.Process(transaction, txTracer, options);
+        TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
 
         // Keep track of gas left
         ulong blockGasUsed = transaction.BlockGasUsed;

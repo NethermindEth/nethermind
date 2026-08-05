@@ -21,6 +21,13 @@ public readonly struct BlockExecutionContext
     public readonly ValueHash256 PrevRandao;
     public readonly bool IsGenesis;
 
+    /// <summary>
+    /// When set, EIP-3607 (reject transactions from senders with deployed code) is not enforced for this
+    /// block's transactions. Used by eth_simulateV1 to allow state-overridden contract addresses as senders
+    /// without wrapping the spec, keeping its concrete runtime type for chain-specific tx processors.
+    /// </summary>
+    public readonly bool SkipSenderCodeCheck;
+
     public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec)
         : this(blockHeader, spec, GetBlobBaseFee(blockHeader, spec), GetDefaultPrevRandao(blockHeader)) { }
 
@@ -37,14 +44,16 @@ public readonly struct BlockExecutionContext
         BlockHeader blockHeader,
         IReleaseSpec spec,
         in ValueHash256 prevRandao,
-        in UInt256 blobBaseFee)
-        => new(blockHeader, spec, blobBaseFee, prevRandao);
+        in UInt256 blobBaseFee,
+        bool skipSenderCodeCheck = false)
+        => new(blockHeader, spec, blobBaseFee, prevRandao, skipSenderCodeCheck);
 
     private BlockExecutionContext(
         BlockHeader blockHeader,
         IReleaseSpec spec,
         in UInt256 blobBaseFee,
-        in ValueHash256 prevRandao)
+        in ValueHash256 prevRandao,
+        bool skipSenderCodeCheck = false)
     {
         Header = blockHeader;
         Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
@@ -54,6 +63,7 @@ public readonly struct BlockExecutionContext
         Spec = spec;
         PrevRandao = prevRandao;
         IsGenesis = blockHeader.IsGenesis;
+        SkipSenderCodeCheck = skipSenderCodeCheck;
     }
 
     private static ValueHash256 GetDefaultPrevRandao(BlockHeader blockHeader) => blockHeader.IsPostMerge

@@ -15,14 +15,17 @@ public class SimulateBlockValidationTransactionsExecutor(
     SimulateRequestState simulateState)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    // Apply the simulate blobBaseFee override; forward the incoming PrevRandao and BlobBaseFee verbatim
-    // rather than re-deriving them (a BlockProcessor subclass may have set non-default values).
+    // Relax EIP-3607 via skipSenderCodeCheck (set on the context so it reaches both the main tx processor and
+    // the EIP-7928 BAL processors, which share it) and apply the simulate blobBaseFee override. Forward the
+    // incoming PrevRandao and BlobBaseFee verbatim rather than re-deriving them (a BlockProcessor subclass
+    // may have set non-default values).
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
         baseTransactionExecutor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
             blockExecutionContext.Header,
             blockExecutionContext.Spec,
             blockExecutionContext.PrevRandao,
-            simulateState.BlobBaseFeeOverride ?? blockExecutionContext.BlobBaseFee.ToUInt256()));
+            simulateState.BlobBaseFeeOverride ?? blockExecutionContext.BlobBaseFee.ToUInt256(),
+            skipSenderCodeCheck: true));
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)

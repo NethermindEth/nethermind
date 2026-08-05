@@ -62,8 +62,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
-            // Relax EIP-3607 on the EIP-7928 BAL path too, so a state-overridden contract can be the sender.
-            .AddSingleton(new BlockAccessListTxExecutionOptions(ExecutionOptions.SkipSenderCodeCheck))
             .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<SimulateRequestState>()

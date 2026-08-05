@@ -6,11 +6,11 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class ExecuteTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, ExecutionOptions additionalOptions = ExecutionOptions.None)
+    public class ExecuteTransactionProcessorAdapter(ITransactionProcessor transactionProcessor)
         : ITransactionProcessorAdapter
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-            transactionProcessor.Process(transaction, txTracer, ExecutionOptions.Commit | additionalOptions);
+            transactionProcessor.Execute(transaction, txTracer);
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
