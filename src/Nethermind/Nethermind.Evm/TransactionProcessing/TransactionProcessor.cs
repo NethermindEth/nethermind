@@ -71,6 +71,9 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         internal static bool ForceSimpleTransferDisabled;
 
+        // Relax EIP-3607 (contract sender) for eth_simulateV1 state-overridden senders.
+        public bool SkipSenderCodeCheck { get; set; }
+
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
             // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
@@ -1022,7 +1025,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
             if (validate
-                && !VirtualMachine.BlockExecutionContext.SkipSenderCodeCheck
+                && !SkipSenderCodeCheck
                 && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
