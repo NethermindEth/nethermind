@@ -1150,7 +1150,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public async Task StartWriteBatch_ResetsBalWarmupFilter()
+    public async Task StartWriteBatch_KeepsBalWarmupFilter()
     {
         using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
         FlatWorldStateScope scope = ctx.Scope;
@@ -1160,7 +1160,25 @@ public class FlatWorldStateScopeProviderTests
 
         scope.HintGet(TestItem.AddressA, null);
 
-        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
+    }
+
+    [Test]
+    public async Task HintBal_SecondBal_ReplacesPreviousWriteSet()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        // paused so the first BAL's warmup doesn't bloom-mark AddressA and mask the assert
+        scope._pausePrewarmer = true;
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA)));
+        scope._pausePrewarmer = false;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressB)));
+
+        scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
     }
 
     [Test]

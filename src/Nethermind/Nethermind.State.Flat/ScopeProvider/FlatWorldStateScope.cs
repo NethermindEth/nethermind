@@ -118,7 +118,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _hintBalCts?.Dispose();
         _hintBalCts = null;
         _hintBalTask = null;
-        _warmupWriteSet = null;
     }
 
     private bool NeedsStateTrieWarmup(Address address)
@@ -198,12 +197,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CancelHintBal();
 
         int accountCount = bal.AccountChanges.Count;
+        _warmupWriteSet = accountCount == 0 ? null : bal;
         if (accountCount == 0) return Task.CompletedTask;
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
-
-        _warmupWriteSet = bal;
 
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
@@ -293,7 +291,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 accountChanges.Dispose();
             }
-        }, token);
+        });
     }
 
     private void RunSinkSlotReads(
