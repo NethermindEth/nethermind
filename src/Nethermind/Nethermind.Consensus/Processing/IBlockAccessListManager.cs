@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
@@ -53,6 +54,16 @@ public interface IBlockAccessListManager
         => new(GetTxProcessor(balIndex), this, balIndex);
 
     void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
+
+    /// <summary>
+    /// The parallel path's canonical state transition: applies the suggested BAL's post-block
+    /// values onto <paramref name="stateProvider"/>. Default: the journaled replay
+    /// (<see cref="BlockAccessListManager.ApplyStateChanges"/>); implementations may dispatch to a
+    /// bulk applier.
+    /// </summary>
+    void ApplyBlockStateChanges(ReadOnlyBlockAccessList bal, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
+        => BlockAccessListManager.ApplyStateChanges(bal, stateProvider, spec, shouldComputeStateRoot);
+
     void SetBlockAccessList(Block block);
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);

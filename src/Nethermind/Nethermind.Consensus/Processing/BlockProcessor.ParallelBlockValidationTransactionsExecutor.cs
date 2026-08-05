@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,6 +37,15 @@ public partial class BlockProcessor
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
+
+        // BalRootReadyLagTime tracking: per-tx completion Stopwatch timestamps (each slot is written
+        // by exactly one worker, so the stores are contention-free; the drain point is their max,
+        // taken after the parallel loop joins) plus the timestamp of "BAL apply produced the root".
+        // ExecutionMetricsFlag is a compile-time switch (NO_EXEC_METRICS), so in default builds this
+        // always runs; the per-tx cost is a single plain store.
+        private long[] _balTxFinishedAt = [];
+        private long _balTrackingStartAt;
+        private long _balRootReadyAt;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -126,6 +136,7 @@ public partial class BlockProcessor
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+            ResetBalRootLagTracking();
 
             try
             {
@@ -140,7 +151,7 @@ public partial class BlockProcessor
                         len + 1,
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
-                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
+                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner, self: this),
                         static (i, state) =>
                         {
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
@@ -153,7 +164,8 @@ public partial class BlockProcessor
                                 if (i == 0)
                                 {
                                     state.balManager.WaitForBalWarmup();
-                                    BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                    state.balManager.ApplyBlockStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                    state.self.OnBalRootReady();
                                     return state;
                                 }
 
@@ -198,6 +210,7 @@ public partial class BlockProcessor
                                     throw;
                                 }
 
+                                state.self.OnBalTxWorkerFinished(txIndex);
                                 return state;
                             }
                             finally
@@ -232,6 +245,7 @@ public partial class BlockProcessor
                 }
 
                 incrementalValidation.GetResult();
+                ReportBalRootReadyLag(len);
                 return CombineReceipts(receiptsTracers, len);
             }
             finally
@@ -242,6 +256,44 @@ public partial class BlockProcessor
                 // consistent on success.
                 HarvestPerTxReceiptsIntoOuter(receiptsTracers, len, outerReceiptsTracer);
             }
+        }
+
+        private void ResetBalRootLagTracking()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            Volatile.Write(ref _balRootReadyAt, 0);
+            // With no tx workers the drain point is the start of the parallel loop.
+            _balTrackingStartAt = Stopwatch.GetTimestamp();
+        }
+
+        private void OnBalTxWorkerFinished(int txIndex)
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            _balTxFinishedAt[txIndex] = Stopwatch.GetTimestamp();
+        }
+
+        private void OnBalRootReady()
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            Volatile.Write(ref _balRootReadyAt, Stopwatch.GetTimestamp());
+        }
+
+        private void ReportBalRootReadyLag(int txCount)
+        {
+            if (!ExecutionMetricsFlag.IsActive) return;
+            long rootReadyAt = Volatile.Read(ref _balRootReadyAt);
+            if (rootReadyAt == 0) return;
+            // Only reached when every tx worker completed, so all txCount slots carry this block's
+            // timestamps; the parallel-loop join ordered those stores before these reads.
+            long workersDrainedAt = _balTrackingStartAt;
+            long[] txFinishedAt = _balTxFinishedAt;
+            for (int i = 0; i < txCount; i++)
+            {
+                if (txFinishedAt[i] > workersDrainedAt) workersDrainedAt = txFinishedAt[i];
+            }
+
+            Metrics.IncrementBalRootReadyLagTime(
+                rootReadyAt > workersDrainedAt ? Stopwatch.GetElapsedTime(workersDrainedAt, rootReadyAt).Ticks : 0);
         }
 
         private void EnsureParallelBuffers(int length)
@@ -260,6 +312,7 @@ public partial class BlockProcessor
             Array.Resize(ref _gasResultPool, newLength);
             Array.Resize(ref _txExecutionOrder, newLength);
             Array.Resize(ref _txExecutionSortKeys, newLength);
+            Array.Resize(ref _balTxFinishedAt, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
                 _receiptsTracerPool[i] = new BlockReceiptsTracer(true);
