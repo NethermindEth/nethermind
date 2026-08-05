@@ -101,8 +101,8 @@ public class McsLockTests
     [Test]
     public void ReacquireAfterReleaseSucceeds()
     {
-        // Run on a worker so a broken release surfaces as a fast, explicit failure
-        // instead of the second Acquire deadlocking the test host.
+        // Run on a worker thread. A broken release then causes a fast, explicit
+        // failure instead of a deadlocked test host.
         Task reacquisitions = Task.Run(() =>
         {
             for (int i = 0; i < 3; i++)

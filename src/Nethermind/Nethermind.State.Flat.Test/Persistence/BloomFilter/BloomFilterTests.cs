@@ -63,8 +63,8 @@ public class BloomFilterTests
     [Test]
     public void Add_ConcurrentWithMightContain_ShouldWork()
     {
-        // Sized well above the 30k added keys: a saturated filter's false-positive rate
-        // would mask a single lost write, defeating the postcondition below.
+        // The capacity is far above the 30k added keys. A saturated filter's
+        // false-positive rate masks a single lost write and defeats the check below.
         using Bloom bloom = NewBloom(capacity: 100_000);
         const int iterationsPerThread = 10000;
 
@@ -88,8 +88,8 @@ public class BloomFilterTests
 
         Task.WaitAll(writerTasks.Concat(readerTasks).ToArray());
 
-        // A bloom filter never reports false negatives, so every added hash must be
-        // found afterwards - a miss means a write was lost to a concurrent-access race.
+        // A bloom filter never returns a false negative. Every added hash must be found
+        // afterwards. A miss means a concurrent-access race lost a write.
         List<ulong> lost = [];
         for (int threadId = 0; threadId < 3; threadId++)
         {

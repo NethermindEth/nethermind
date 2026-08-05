@@ -28,21 +28,21 @@ namespace Nethermind.Network.Test.P2P
             {
                 ILogManager logManager = Substitute.For<ILogManager>();
                 logManager.GetClassLogger<DisconnectsAnalyzer>().Returns(new ILogger(_logger));
-                // The default 10s interval keeps the first flush far away, so reports recorded
-                // before TriggerFlushes cannot straddle a flush boundary.
+                // The constructor arms the flush timer at 10 s. Reports recorded before
+                // TriggerFlushes() shortens the interval cannot race a flush.
                 DisconnectsAnalyzer = new DisconnectsAnalyzer(logManager);
             }
 
             public void TriggerFlushes() => DisconnectsAnalyzer.WithIntervalOverride(10);
 
-            public void ShouldEventuallyReport(string pattern, int times = 1) =>
-                Assert.That(PollUntil(() => _logger.CountMatches(pattern) >= times), Is.True,
-                    () => $"expected {times} flush report(s) matching '{pattern}'; got: {_logger.Dump()}");
+            public void ShouldEventuallyReport(string pattern) =>
+                Assert.That(PollUntil(() => _logger.CountMatches(pattern) >= 1), Is.True,
+                    () => $"expected a flush report matching '{pattern}'; got: {_logger.Dump()}");
 
             public void ShouldStayAt(string pattern, int times)
             {
-                // The analyzer double-buffers its counters, so a lost clear resurfaces stale
-                // categories in every other flush; watch a few more flushes to rule that out.
+                // The analyzer double-buffers its counters. A lost clear makes a stale
+                // category appear again in every other flush. Watch more flushes to detect that.
                 int flushesSeen = _logger.FlushCount;
                 Assert.That(PollUntil(() => _logger.FlushCount >= flushesSeen + 4), Is.True,
                     "flush timer stopped ticking");
@@ -70,9 +70,9 @@ namespace Nethermind.Network.Test.P2P
 
                 public int FlushCount => _flushes.Count;
 
-                // Assertions match the report's column format (Type PadRight(8), Reason
-                // PadRight(24), count PadLeft(4)); a format change in DisconnectsAnalyzer
-                // surfaces here as a wait timeout.
+                // Assertions match the report's column format: Type PadRight(8), Reason
+                // PadRight(24), count PadLeft(4). A format change in DisconnectsAnalyzer
+                // causes a wait timeout here.
                 public int CountMatches(string pattern)
                 {
                     int count = 0;
@@ -141,9 +141,9 @@ namespace Nethermind.Network.Test.P2P
             ctx.TriggerFlushes();
             ctx.ShouldEventuallyReport(@"Local\s+TooManyPeers\s+1\b");
 
-            // No second report is issued (it could race the flush's enumerate-then-clear
-            // window): a lost clear is observable on its own, because the stale count
-            // resurfaces in later flushes - the category must appear exactly once.
+            // Do not send a second report: it can race the flush's enumerate-then-clear
+            // window. A lost clear is visible on its own, because the stale count appears
+            // again in later flushes. The category must appear exactly one time.
             ctx.ShouldStayAt(@"Local\s+TooManyPeers\s+1\b", times: 1);
         }
     }
