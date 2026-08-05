@@ -42,11 +42,23 @@ public class BlockBodiesMessageSerializerTests
             Value = 10000
         };
 
+        // A null body encodes as the bare empty list.
+        yield return new TestCaseData(
+            new BlockBody[] { null },
+            "c1c0")
+            .SetName(nameof(Should_encode_to_expected_wire_bytes) + "_null_body");
+
         // A body without withdrawals encodes as the two-item list [transactions, uncles].
         yield return new TestCaseData(
             new BlockBody[] { new(new[] { tx }, [], null) },
             "e8e7e5e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102c0")
             .SetName(nameof(Should_encode_to_expected_wire_bytes) + "_body_without_withdrawals");
+
+        // Empty withdrawals encode as a third empty list. The two-item form means no withdrawals.
+        yield return new TestCaseData(
+            new BlockBody[] { new(new[] { tx }, [], []) },
+            "e9e8e5e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102c0c0")
+            .SetName(nameof(Should_encode_to_expected_wire_bytes) + "_body_with_empty_withdrawals");
 
         // A withdrawal encodes as [index, validatorIndex, address, amount] (EIP-4895).
         // The three numeric fields hold distinct values, so a field transposition changes the bytes.

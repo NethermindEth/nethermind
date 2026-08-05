@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
@@ -113,7 +114,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void To_string()
         {
             using StatusMessage statusMessage = new();
-            Assert.That(statusMessage.ToString(), Does.StartWith("eth."));
+            Assert.That(statusMessage.ToString(), Does.StartWith($"{Protocol.Eth}."));
         }
     }
 }
