@@ -217,10 +217,9 @@ public static unsafe partial class EvmInstructions
         if (param.u0 == 0x04)
         {
             if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
-            // Spec stack order after signatureIndex/param: length, dataOffset, memOffset.
-            // EIP8141-ISSUE: this is the reverse of the CALLDATACOPY operand order — likely a spec
-            // oversight worth pinning with an explicit stack table; implemented as written.
-            if (!stack.PopUInt256(out UInt256 length, out UInt256 dataOffset, out UInt256 memOffset))
+            // Spec stack order after signatureIndex/param: memOffset, dataOffset, length —
+            // matching CALLDATACOPY/CODECOPY/RETURNDATACOPY and the sibling FRAMEDATACOPY (ethereum/EIPs#12042).
+            if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length))
                 return EvmExceptionType.StackUnderflow;
             return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
         }
