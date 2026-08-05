@@ -98,7 +98,8 @@ on:
           dotTrace profiling of the client. sampling/tracing snapshots are post-processed to XML
           reports; timeline captures a UI-only snapshot (Reporter cannot convert it). Line-by-line
           is not offered - it needs PDBs the docker images do not carry. 'true' is a legacy alias
-          for sampling.
+          for sampling. Any enabled mode also collects a dotnet-trace EventPipe .nettrace
+          (gc/contention/threading/exception events) alongside, shipped in the same artifact.
         required: false
         type: choice
         options:
@@ -831,11 +832,12 @@ jobs:
 
           dottrace_flag=""
           if [[ "${DOTTRACE}" == "true" ]]; then
-            dottrace_flag="--dottrace"
-            # Only pass the mode when non-default so pinned expb versions without
-            # --dottrace-mode keep working for plain sampling runs.
+            # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
+            # always rides along with dotTrace - different channel, adds the GC/lock story
+            # the CPU profile cannot show. Requires expb with --dotnet-trace support.
+            dottrace_flag="--dottrace --dotnet-trace"
             if [[ -n "${DOTTRACE_MODE:-}" && "${DOTTRACE_MODE}" != "sampling" ]]; then
-              dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE}"
+              dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE} --dotnet-trace"
             fi
           fi
 
@@ -1102,7 +1104,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
             echo "No dottrace output directories found for this run."
             exit 0
@@ -1937,11 +1939,12 @@ jobs:
 
           dottrace_flag=""
           if [[ "${DOTTRACE}" == "true" ]]; then
-            dottrace_flag="--dottrace"
-            # Only pass the mode when non-default so pinned expb versions without
-            # --dottrace-mode keep working for plain sampling runs.
+            # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
+            # always rides along with dotTrace - different channel, adds the GC/lock story
+            # the CPU profile cannot show. Requires expb with --dotnet-trace support.
+            dottrace_flag="--dottrace --dotnet-trace"
             if [[ -n "${DOTTRACE_MODE:-}" && "${DOTTRACE_MODE}" != "sampling" ]]; then
-              dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE}"
+              dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE} --dotnet-trace"
             fi
           fi
 
@@ -2191,7 +2194,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
             echo "No dottrace output directories found for this run."
             exit 0
