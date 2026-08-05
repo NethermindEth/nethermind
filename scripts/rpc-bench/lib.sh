@@ -65,7 +65,7 @@ reap_stale_containers() {
     if [[ -n "$ids" ]]; then
       log "Reaping stale container(s) matching '${prefix}*'..."
       # shellcheck disable=SC2086
-      docker rm -f $ids >/dev/null 2>&1 || true
+      docker rm -fv $ids >/dev/null 2>&1 || true
     fi
   done
 }
@@ -82,7 +82,7 @@ rpc_post() {
 # Block until the node answers eth_blockNumber with a non-genesis head, or fail
 # (dies early with logs if the container exits). $1=url, $2=timeout s (def 1800), $3=container.
 wait_for_rpc() {
-  local url="$1" timeout="${2:-1800}" container="${3:-}" elapsed=0 interval=5 resp head
+  local url="$1" timeout="${2:-1800}" container="${3:-}" elapsed=0 interval=5 resp head head_digits
   log "Waiting for JSON-RPC at $url (timeout ${timeout}s)..."
   while true; do
     if [[ -n "$container" ]] && ! docker ps --format '{{.Names}}' | grep -qx "$container"; then
@@ -92,13 +92,14 @@ wait_for_rpc() {
     fi
     resp="$(rpc_post "$url" '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null || true)"
     head="$(printf '%s' "$resp" | jq -r '.result // empty' 2>/dev/null || true)"
-    if [[ -n "$head" && "$head" != "null" ]]; then
-      if [[ "$((16#${head#0x}))" -eq 0 ]]; then
+    if [[ "$head" =~ ^0x[0-9a-fA-F]{1,15}$ ]]; then
+      head_digits="${head#0x}"
+      if [[ "$((16#$head_digits))" -eq 0 ]]; then
         # A snapshot-backed node must report its snapshot head immediately; 0x0
         # means the datadir is wrong/empty and a fresh DB was initialized.
         die "node reports head block 0 — datadir mismatch (snapshot not picked up); refusing to benchmark genesis"
       fi
-      log "JSON-RPC is up. Head block: $((16#${head#0x})) ($head)"
+      log "JSON-RPC is up. Head block: $((16#$head_digits)) ($head)"
       return 0
     fi
     sleep "$interval"
