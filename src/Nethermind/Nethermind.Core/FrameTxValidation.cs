@@ -171,6 +171,12 @@ public static class FrameTxValidation
             return false;
         }
 
+        // EIP8141: the per-transaction blob-count limit (EIP-7594) and the versioned-hash-version
+        // check that EELS #3047 validate_frame_transaction applies to blob-carrying frame txs are not
+        // enforced here yet — deferred with the rest of the EIP-7594 slice. A blob-carrying frame tx
+        // is still bounded by the block-level MaxBlobGasPerBlock check in BlockValidator, so it cannot
+        // over-fill a block; the gap is only that a single tx may carry more blobs than EELS allows.
+
         return true;
     }
 
