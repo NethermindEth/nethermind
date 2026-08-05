@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -544,29 +545,46 @@ public class FrameTxProcessorTests
         Assert.That(_stateProvider.GetBalance(sponsor), Is.LessThan(1.Ether), "the sponsor paid for it");
     }
 
-    [Test]
-    public void Execute_AtomicBatch_PaymentApprovalInsideFailedBatch_UnrollsPayerAndInvalidatesTransaction()
+    [TestCaseSource(nameof(AtomicBatchApprovalScopeCases))]
+    public void IsWellFormed_ApprovalScopeOnAtomicBatchFrame_IsStaticallyRejected(TxFrame[] frames, string? expectedError)
     {
-        // ethereum/EIPs#11955: a failed batch unrolls ALL effects of an APPROVE it contained. The
-        // payer debit and sender nonce are reverted by Restore, and the payer/sender_approved context
-        // is rolled back to its pre-batch value too, so the payer never survives an uncollected charge.
-        // Payment was only approved inside the batch, so after the unroll payer == None and the
-        // terminal payer gate rejects the whole transaction — the sponsor is not charged.
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
-        DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
-        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        // ethereum/EIPs#12109: approval scope on a frame belonging to an atomic batch (the flagged
+        // frame, a mid-batch frame, or the batch's non-flagged terminating frame) is now a static
+        // validation failure — it replaces the old runtime batch-unroll of the approval context.
+        Transaction tx = FrameTx(nonce: 0, frames);
 
-        Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag), target: Observer),
-            Frame(TxFrame.ModeSender, target: Recipient));
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, out string? error);
 
-        TransactionResult result = Process(tx);
+        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+        Assert.That(error, Is.EqualTo(expectedError));
+    }
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged when the batch unrolls its payment approval");
-        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "the sender nonce is not consumed");
+    private static IEnumerable<TestCaseData> AtomicBatchApprovalScopeCases()
+    {
+        // Payment approval on the flagged batch frame itself.
+        yield return new TestCaseData(
+            new[] { SelfVerifyFrame(), Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag)), Frame(TxFrame.ModeSender) },
+            FrameTxValidation.ApprovalScopeInAtomicBatch).SetName("IsWellFormed_PaymentApprovalOnBatchFrame_Rejected");
+
+        // Approval on a mid-batch frame (a batch spanning two flagged frames).
+        yield return new TestCaseData(
+            new[] { SelfVerifyFrame(), Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag), Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag)), Frame(TxFrame.ModeSender) },
+            FrameTxValidation.ApprovalScopeInAtomicBatch).SetName("IsWellFormed_ApprovalOnMiddleBatchFrame_Rejected");
+
+        // Approval on the batch's non-flagged terminating frame (belongs to the batch via its predecessor).
+        yield return new TestCaseData(
+            new[] { SelfVerifyFrame(), Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag), Frame(TxFrame.ModeSender, flags: TxFrame.ApprovePayment) },
+            FrameTxValidation.ApprovalScopeInAtomicBatch).SetName("IsWellFormed_ApprovalOnTerminatingFrame_Rejected");
+
+        // Execution approval (not just payment) is equally rejected; target null resolves to the sender.
+        yield return new TestCaseData(
+            new[] { SelfVerifyFrame(), Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApproveExecution | TxFrame.AtomicBatchFlag)), Frame(TxFrame.ModeSender) },
+            FrameTxValidation.ApprovalScopeInAtomicBatch).SetName("IsWellFormed_ExecutionApprovalOnBatchFrame_Rejected");
+
+        // A batch carrying no approval scope on any of its frames stays valid.
+        yield return new TestCaseData(
+            new[] { SelfVerifyFrame(), Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag), Frame(TxFrame.ModeSender) },
+            null).SetName("IsWellFormed_BatchWithoutApprovalScope_Valid");
     }
 
     [Test]

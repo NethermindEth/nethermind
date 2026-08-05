@@ -135,8 +135,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Snapshot batchStartSnapshot = default;
         StackAccessTracker batchTracker = default;
         int batchStartIndex = 0;
-        Address? batchStartPayer = null;
-        bool batchStartSenderApproved = false;
         long batchStartRefund = 0;
 
         for (int i = 0; i < frames.Length; i++)
@@ -152,8 +150,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
                 batchStartIndex = i;
-                batchStartPayer = frameContext.Payer;
-                batchStartSenderApproved = frameContext.SenderApproved;
                 batchStartRefund = refundCounter;
             }
 
@@ -256,15 +252,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                             frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.GasUsed, []);
                         }
                     }
-                    // EIP-8141 (ethereum/EIPs#11955): a failed batch unrolls ALL effects of any APPROVE
-                    // it contained. Restore reverts the payer debit and sender nonce (world state); the
-                    // approval context (payer, sender_approved) and refund counter are not world state,
-                    // so roll them back to their pre-batch values too. Without this, the payer field
-                    // would survive a reverted charge and the terminal gate would refund uncollected
-                    // funds. If the payer was only set inside the batch, it is now unset again and the
-                    // gate below rejects the transaction.
-                    frameContext.Payer = batchStartPayer;
-                    frameContext.SenderApproved = batchStartSenderApproved;
+                    // A batch frame's successful EIP-3529 refunds are discarded with its state, so the
+                    // refund counter rolls back to its pre-batch value. The approval context (payer,
+                    // sender_approved) needs no rollback: ethereum/EIPs#12109 statically forbids approval
+                    // scope on batch frames (FrameTxValidation), so no in-batch frame can have set it.
                     refundCounter = batchStartRefund;
 
                     int terminal = i;
