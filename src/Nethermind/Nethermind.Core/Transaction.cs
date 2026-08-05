@@ -221,6 +221,12 @@ namespace Nethermind.Core
         /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
         /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
         public UInt256[]? NonceKeys { get; set; }
+        /// Recent-root references declared by a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8272
+        /// </summary>
+        /// <remarks><see langword="null"/> for an envelope that predates EIP-8272, which is a different
+        /// signing payload from one carrying an empty reference list.</remarks>
+        public RecentRootReference[]? RecentRootReferences { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
@@ -342,6 +348,7 @@ namespace Nethermind.Core
                 obj.Frames = default;
                 obj.FrameSignatures = default;
                 obj.NonceKeys = default;
+                obj.RecentRootReferences = default;
 
                 return true;
             }
@@ -377,6 +384,7 @@ namespace Nethermind.Core
             tx.Frames = Frames;
             tx.FrameSignatures = FrameSignatures;
             tx.NonceKeys = NonceKeys;
+            tx.RecentRootReferences = RecentRootReferences;
         }
 
         public virtual ProofVersion? GetProofVersion() =>
