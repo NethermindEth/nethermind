@@ -101,100 +101,37 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV1_EventHandler_Cleanup_Should_Prevent_Memory_Leaks()
+    public async Task ValidateBlockAndProcess_does_not_accumulate_completions_across_repeated_timeouts()
     {
-        // This test verifies that event handlers are properly cleaned up
-        // even when exceptions occur during processing
-
-        using MergeTestBlockchain chain = await CreateBlockchain(mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 100 // Short timeout to trigger timeout scenarios
-        });
-
-        // Create an invalid block that will cause processing to fail or timeout
-        Block invalidBlock = Build.A.Block
-            .WithNumber(999999) // Very high number to trigger validation failures
-            .WithParentHash(TestItem.KeccakA) // Non-existent parent
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .TestObject;
-
-        ExecutionPayload invalidPayload = ExecutionPayload.Create(invalidBlock);
-
-        // Process multiple invalid payloads that will fail or timeout
-        for (int i = 0; i < 5; i++)
-        {
-            try
-            {
-                ResultWrapper<PayloadStatusV1> result = await chain.EngineRpcModule.engine_newPayloadV1(invalidPayload);
-                // Even if processing fails, it should not throw exceptions due to event handler issues
-            }
-            catch (Exception ex)
-            {
-                // We expect some processing failures, but not event handler related exceptions
-                Assert.That(ex, Is.Not.TypeOf<InvalidOperationException>(), "Event handler race conditions should be fixed");
-                Assert.That(ex, Is.Not.TypeOf<ObjectDisposedException>(), "Event handler cleanup should be proper");
-            }
-        }
-
-        // After processing, event handlers should be properly cleaned up
-        // This is a conceptual test - the main verification is that no exceptions are thrown
-        // In the actual implementation, the fix ensures event handlers are always unsubscribed
-        // in the finally block using Interlocked.CompareExchange to prevent double unsubscription
-
-        // If we reach here without exceptions, the event handler cleanup is working correctly
-        Assert.Pass("Event handlers were properly cleaned up without race condition exceptions");
-    }
-
-    [Test]
-    public async Task NewPayloadV1_TaskCompletionSource_TrySet_Should_Not_Throw_On_Double_Completion()
-    {
-        // This test specifically targets the TrySetResult/TrySetException fix
-        // where the original code used SetResult/SetException which would throw if already completed
-
-        using MergeTestBlockchain chain = await CreateBlockchain(mergeConfig: new MergeConfig()
-        {
-            NewPayloadBlockProcessingTimeout = 1000
-        });
-
-        // Create a block that will trigger event processing
         Block block = Build.A.Block
+            .WithParentHash(TestItem.KeccakA)
             .WithNumber(1)
-            .WithParent(chain.BlockTree.Head!)
             .WithDifficulty(0)
             .WithNonce(0)
-            .WithExtraData(new byte[32])
             .TestObject;
+        block.Header.IsPostMerge = true;
 
-        ExecutionPayload payload = ExecutionPayload.Create(block);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ => ValueTask.CompletedTask);
 
-        List<Task> concurrentTasks = [];
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 100);
 
-        // Launch multiple concurrent operations that might try to complete the same task
         for (int i = 0; i < 5; i++)
         {
-            concurrentTasks.Add(Task.Run(async () =>
-            {
-                try
-                {
-                    await chain.EngineRpcModule.engine_newPayloadV1(payload);
-                }
-                catch (OperationCanceledException)
-                {
-                    // This is expected due to cancellation
-                }
-                catch (InvalidOperationException ex) when (ex.Message.Contains("already completed"))
-                {
-                    // This should NOT happen with the fix - TrySetResult/TrySetException prevent this
-                    Assert.Fail($"TaskCompletionSource double completion exception: {ex.Message}");
-                }
-            }));
+            ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
         }
 
-        await Task.WhenAll(concurrentTasks);
-
-        // If we reach here, the TrySetResult/TrySetException fix is working correctly
-        Assert.Pass("TaskCompletionSource race condition handling works correctly");
+        Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0),
+            "repeated timed-out payloads must not accumulate stale completion sources");
     }
 
     [Test]
