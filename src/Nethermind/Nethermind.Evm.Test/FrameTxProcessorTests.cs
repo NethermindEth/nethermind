@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -36,6 +37,7 @@ namespace Nethermind.Evm.Test;
 public class FrameTxProcessorTests
 {
     private ISpecProvider _specProvider;
+    private OverridableReleaseSpec _spec;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private IDisposable _worldStateCloser;
@@ -49,7 +51,10 @@ public class FrameTxProcessorTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        // The prototype fork carries EIP-8141 only; the later frame-transaction EIPs are switched on
+        // here so a test can turn one back off and assert the fork gate rather than the feature.
+        _spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true, IsEip8272Enabled = true };
+        _specProvider = new TestSpecProvider(_spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -726,12 +731,13 @@ public class FrameTxProcessorTests
         }
     }
 
-    private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
+    private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null, ulong? slotNumber = null)
     {
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(baseFeePerGas)
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
+            .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
         return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
     }
@@ -757,6 +763,70 @@ public class FrameTxProcessorTests
     private static byte[] ApproveCode(byte scope) =>
         // APPROVE stack order (top to bottom): offset, length, scope.
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    // EIP-8272: a declared reference is only satisfied by the commitment the predeploy actually holds
+    // for that slot, so an uncommitted or out-of-window reference invalidates the transaction. The
+    // committed case also proves the reference's intrinsic gas is charged, since the transaction pays
+    // more than the same transaction declaring nothing.
+    [TestCase(1_000UL, false, true, TestName = "a committed reference inside the window executes")]
+    [TestCase(1_001UL, false, false, TestName = "a reference to the current slot is not yet referenceable")]
+    [TestCase(9_193UL, false, false, TestName = "a reference older than the usable window has been overwritten")]
+    [TestCase(1_000UL, true, false, TestName = "a reference to a different root at a committed slot fails")]
+    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, bool expectedExecuted)
+    {
+        const ulong HeadSlot = 1_001;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
+            RecentRootStore.EntryHash(sourceId, committedSlot, root).Bytes.WithoutLeadingZeros().ToArray());
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot,
+            declareOtherRoot ? TestItem.KeccakC.ValueHash256 : root)];
+
+        CallOutputTracer referencingTracer = new();
+        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: HeadSlot);
+
+        Assert.That(referencing.TransactionExecuted, Is.EqualTo(expectedExecuted));
+        if (!expectedExecuted)
+        {
+            // Pinned to the reference check specifically: every other rejection in the outer loop also
+            // leaves TransactionExecuted false, so the weaker assertion would survive an unrelated break.
+            Assert.That(referencing.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(referencing.ErrorDescription, Does.Contain("recent root reference"));
+            return;
+        }
+
+        CallOutputTracer plainTracer = new();
+        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: HeadSlot);
+
+        Assert.That(unreferencing.TransactionExecuted, Is.True);
+        Assert.That(referencingTracer.GasSpent, Is.GreaterThan(plainTracer.GasSpent),
+            "the reference's calldata and prepaid accesses must be charged");
+    }
+
+    // An empty reference list is a different envelope from an absent one and still occupies a byte on
+    // the wire, so it is priced: EIP-8272 short-circuits the per-reference term at zero references, not
+    // the calldata term over `rlp(recent_root_references)`.
+    [Test]
+    public void Execute_EmptyRecentRootReferenceList_IsPricedAsTheBytesItAdds()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        Transaction empty = FrameTx(nonce: 0, SelfVerifyFrame());
+        empty.RecentRootReferences = [];
+        CallOutputTracer emptyTracer = new();
+        CallOutputTracer absentTracer = new();
+
+        Assert.That(Process(empty, tracer: emptyTracer).TransactionExecuted, Is.True);
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: absentTracer).TransactionExecuted, Is.True);
+
+        // rlp([]) is the single non-zero byte 0xc0, which is TxDataNonZeroMultiplier tokens.
+        Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent,
+            Is.EqualTo((long)(Spec.GasCosts.TxDataNonZeroMultiplier * GasCostOf.TxDataZero)));
+    }
 
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
