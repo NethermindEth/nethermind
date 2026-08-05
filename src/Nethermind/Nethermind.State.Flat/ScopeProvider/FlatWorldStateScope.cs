@@ -27,6 +27,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private readonly bool _trieless;
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
@@ -45,7 +46,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
+    private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
+
+    // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
+    internal bool Trieless => _trieless;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -87,6 +93,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
+        _trieless = snapshotBundle.IsHistorical;
     }
 
     public void Dispose()
@@ -113,6 +120,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _hintBalTask = null;
     }
 
+    private bool NeedsStateTrieWarmup(Address address)
+    {
+        ReadOnlyBlockAccessList? bal = _warmupWriteSet;
+        return bal is null || bal.GetAccountChanges(address)?.HasStateChanges == true;
+    }
+
+    private void QueueStateTrieWarmup(Address address, int sequenceId)
+    {
+        if (NeedsStateTrieWarmup(address)
+            && _warmer.PushAddressJob(this, address, sequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
     // Exposed for tests to observe when the wait loop is entered.
     internal Action? OnWaitingForWarmups;
 
@@ -137,7 +157,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
-    public void UpdateRootHash() => _stateTree.UpdateRootHash();
+
+    public void UpdateRootHash()
+    {
+        if (!_trieless) _stateTree.UpdateRootHash();
+    }
 
     public Account? Get(Address address)
     {
@@ -145,7 +169,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         HintGet(address, account, promote: !isInCurrentSnapshot);
 
-        if (_configuration.VerifyWithTrie)
+        // A trie-less (history-backed) scope has no trie to verify against — the reader throws on trie-node access,
+        // and a historical value verified against the current trie would be wrong anyway.
+        if (_configuration.VerifyWithTrie && !_trieless)
         {
             Account? accTrie = _stateTree.Get(address);
             if (accTrie != account)
@@ -163,21 +189,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (promote) _snapshotBundle.PromoteAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
-        {
-            if (_warmer.PushAddressJob(this, address, _hintSequenceId))
-                Interlocked.Increment(ref _outstandingWarmups);
-        }
+            QueueStateTrieWarmup(address, _hintSequenceId);
     }
 
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
+        CancelHintBal();
+
         int accountCount = bal.AccountChanges.Count;
+        _warmupWriteSet = accountCount == 0 ? null : bal;
         if (accountCount == 0) return Task.CompletedTask;
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
-
-        CancelHintBal();
 
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
@@ -201,7 +225,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                    if (ac.HasStateChanges
+                        && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -266,7 +291,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 accountChanges.Dispose();
             }
-        }, token);
+        });
     }
 
     private void RunSinkSlotReads(
@@ -363,9 +388,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (IsDisposed || _pausePrewarmer) return;
         // The managed Address is materialized only after the dedupe bloom passes, so the
         // allocation happens at most once per account per block.
-        if (_snapshotBundle.ShouldQueuePrewarm(address)
-            && _warmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId))
-            Interlocked.Increment(ref _outstandingWarmups);
+        if (_snapshotBundle.ShouldQueuePrewarm(address))
+            QueueStateTrieWarmup(address.ToAddress(), _hintSequenceId);
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
@@ -442,7 +466,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        _stateTree.Commit();
+        if (!_trieless) _stateTree.Commit();
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
@@ -460,7 +484,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             else
             {
                 newSnapshot?.Dispose();
-                cachedResource?.Dispose();
+                cachedResource?.ReleaseLease();
             }
         }
 
@@ -531,10 +555,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 OnAccountUpdated = null;
 
-                using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                // The per-account flat writes above already carry intra-block state for subsequent txs; only a
+                // normal scope additionally bulk-applies the dirty accounts into the state trie.
+                if (!scope._trieless)
                 {
-                    stateSetter.Set(kv.Key, kv.Value);
+                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                    {
+                        stateSetter.Set(kv.Key, kv.Value);
+                    }
                 }
             }
             finally
