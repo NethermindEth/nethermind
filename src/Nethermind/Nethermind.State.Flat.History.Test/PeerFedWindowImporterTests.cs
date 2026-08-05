@@ -37,7 +37,7 @@ public class PeerFedWindowImporterTests
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _writer = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
-        _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
         _pruner = new HistoryWindowPruner(
             _writer, _historyColumns,
             new FlatDbConfig { HistoryEnabled = true },
