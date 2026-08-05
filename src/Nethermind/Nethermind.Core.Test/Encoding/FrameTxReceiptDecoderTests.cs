@@ -99,13 +99,13 @@ public class FrameTxReceiptDecoderTests
         RlpReader reader = new(encoded);
         int length = reader.ReadSequenceLength();
         int count = 0;
-        (byte Status, ulong Gas, string Sender, LogEntry[] Logs)[] decoded = new (byte, ulong, string, LogEntry[])[3];
+        (byte Status, ulong Gas, string Sender, TxType Type, LogEntry[] Logs)[] decoded = new (byte, ulong, string, TxType, LogEntry[])[3];
         while (reader.Position < length)
         {
             decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef current);
             if (count < decoded.Length)
             {
-                decoded[count] = (current.StatusCode, current.GasUsedTotal, current.Sender.ToString(), DecodeLogs(current.LogsRlp));
+                decoded[count] = (current.StatusCode, current.GasUsedTotal, current.Sender.ToString(), current.TxType, DecodeLogs(current.LogsRlp));
             }
             count++;
         }
@@ -114,15 +114,18 @@ public class FrameTxReceiptDecoderTests
 
         Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender!.ToString()), "leading receipt sender");
         Assert.That(decoded[0].Gas, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
+        Assert.That(decoded[0].Type, Is.EqualTo(TxType.Legacy), "a receipt without the extension must not be labelled FrameTx");
 
         Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
         Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
         Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender!.ToString()), "frame sender");
+        Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the extension's presence identifies a frame-tx receipt");
         AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs!);
 
         // The receipt after the frame tx must be intact, proving the reader realigned.
         Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender!.ToString()), "trailing receipt sender");
         Assert.That(decoded[2].Gas, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
+        Assert.That(decoded[2].Type, Is.EqualTo(TxType.Legacy));
     }
 
     private static LogEntry[] DecodeLogs(scoped ReadOnlySpan<byte> logsRlp)
