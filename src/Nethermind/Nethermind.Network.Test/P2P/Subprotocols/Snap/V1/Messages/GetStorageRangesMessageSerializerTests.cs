@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         {
             GetStorageRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 1111,
                 StorageRange = new()
                 {
                     RootHash = Keccak.OfAnEmptyString,
@@ -56,7 +56,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             GetStorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            // The message encodes as [requestId, rootHash, accountPaths, startingHash, limitHash, responseBytes].
+            SerializerTester.TestZero(serializer, msg,
+                "f86a" + "820457" +
+                "a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" +
+                "c0" +
+                "a015d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" +
+                "a020d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" +
+                "8203e8");
         }
 
         [Test]
