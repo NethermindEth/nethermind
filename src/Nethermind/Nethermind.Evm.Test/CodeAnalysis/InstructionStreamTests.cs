@@ -50,6 +50,33 @@ public class InstructionStreamTests
     }
 
     [Test]
+    public void TryBuild_MaxSizeTypicalContract_StaysWithinRetainedCap()
+    {
+        // A max EIP-170 (24 KiB) contract of typical output must stay within the retained-size cap.
+        const int maxCodeSize = 24 * 1024;
+        byte[] block =
+        [
+            (byte)Instruction.PUSH1, 0x07, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH1, 0x03, (byte)Instruction.MUL,
+            (byte)Instruction.PUSH1, 0x02, (byte)Instruction.MUL,
+            (byte)Instruction.PUSH1, 0x05, (byte)Instruction.SWAP1, (byte)Instruction.SUB,
+            (byte)Instruction.DUP1, (byte)Instruction.POP,
+        ];
+        List<byte> code = new(maxCodeSize);
+        while (code.Count + block.Length < maxCodeSize)
+        {
+            code.AddRange(block);
+        }
+        code.Add((byte)Instruction.STOP);
+
+        InstructionStream stream = InstructionStream.TryBuild(code.ToArray())!;
+
+        Assert.That(stream, Is.Not.Null, "a max-size typical-output contract should build a retained stream");
+        Assert.That(stream.RetainedBytes, Is.LessThanOrEqualTo(StreamInterpreter.MaxStreamRetainedBytes),
+            $"a {code.Count}-byte contract retained {stream.RetainedBytes} bytes, over the {StreamInterpreter.MaxStreamRetainedBytes}-byte cap");
+    }
+
+    [Test]
     public void TryBuild_Jumpdest_GetsItsOwnSoloBlock()
     {
         byte[] code =

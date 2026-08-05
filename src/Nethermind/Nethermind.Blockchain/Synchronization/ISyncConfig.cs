@@ -169,7 +169,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Max trie paths per group accepted in snap GetTrieNodes messages. Raise if peers send slightly larger groups (e.g. Geth trienodeHealThrottle sends 1025).", DefaultValue = "1024", HiddenFromDocs = true)]
     int SnapServingMaxPathsPerGroup { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Whether to enable the experimental `snap/2` protocol. When enabled, the node advertises and serves `snap/2` in addition to `snap/1` (while snap serving is enabled) and heals state from block access lists instead of trie nodes. The account and storage range messages are unchanged in `snap/2`.", DefaultValue = "false", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Whether to enable the experimental `snap/2` protocol. Advertised alongside `snap/1`.", DefaultValue = "false", HiddenFromDocs = true)]
     bool Snap2Enabled { get; set; }
 
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]

@@ -14,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
+namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class AccountRangeMessageSerializerTests

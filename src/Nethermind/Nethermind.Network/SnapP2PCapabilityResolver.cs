@@ -12,7 +12,7 @@ using Nethermind.Synchronization.ParallelSync;
 namespace Nethermind.Network;
 
 /// <summary>
-/// Advertises snap/1 while the node serves snap data or still needs to snap-sync its own state.
+/// Advertises snap (and snap/2 when enabled) while the node serves snap data or still needs to snap-sync its own state.
 /// </summary>
 /// <remarks>
 /// Replaces the former <c>SnapCapabilitySwitcher</c>: instead of adding the capability on start and removing it
@@ -21,8 +21,8 @@ namespace Nethermind.Network;
 /// </remarks>
 public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 {
-    private static readonly Capability SnapCapability = new(Protocol.Snap, 1);
-    private static readonly Capability Snap2Capability = new(Protocol.Snap, 2);
+    private static readonly Capability SnapCapability = new(Protocol.Snap, SnapVersions.Snap1);
+    private static readonly Capability Snap2Capability = new(Protocol.Snap, SnapVersions.Snap2);
 
     private readonly ISyncConfig _syncConfig;
     private readonly ISyncModeSelector _syncModeSelector;
@@ -54,7 +54,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {
-        // snap/1's contribution only tracks the sync mode while we snap-sync our own state and are not also
+        // The snap contribution only tracks the sync mode while we snap-sync our own state and are not also
         // serving snap; in every other configuration it is constant, so the rebuild is pointless.
         if (_syncConfig.SnapServingEnabled == true || !_syncConfig.SnapSync) return;
 
@@ -62,7 +62,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         bool isSyncing = (e.Current & SyncMode.Full) == 0;
         if (wasSyncing == isSyncing) return;
 
-        if (_logger.IsDebug) _logger.Debug($"State sync {(isSyncing ? "in progress" : "finished")}; snap/1 advertisement {(isSyncing ? "enabled" : "disabled")}");
+        if (_logger.IsDebug) _logger.Debug($"State sync {(isSyncing ? "in progress" : "finished")}; snap advertisement {(isSyncing ? "enabled" : "disabled")}");
         Changed?.Invoke();
     }
 
