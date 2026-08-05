@@ -88,32 +88,37 @@ public sealed class SnapServer(
             byteLimit = HardResponseByteLimit;
 
         long currentByteCount = 0;
-        using DeferredRlpItemList.Builder builder = new(blockHashes.Count);
-        DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
-
-        foreach (ValueHash256 blockHash in blockHashes)
+        ArrayPoolList<byte[]> result = new(blockHashes.Count);
+        try
         {
-            if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
-
-            Hash256 hash = blockHash.ToCommitment();
-            BlockHeader? header = blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            using MemoryManager<byte>? balRlp = header?.BlockAccessListHash is null
-                ? null
-                : blockAccessListStore.GetRlp(header.Number, hash);
-
-            if (balRlp is null)
+            foreach (ValueHash256 blockHash in blockHashes)
             {
-                writer.WriteValue([]);
-                currentByteCount += 1;
-                continue;
+                if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested) break;
+
+                Hash256 hash = blockHash.ToCommitment();
+                BlockHeader? header = blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                using MemoryManager<byte>? balRlp = header?.BlockAccessListHash is null
+                    ? null
+                    : blockAccessListStore.GetRlp(header.Number, hash);
+
+                ReadOnlySpan<byte> span = balRlp is null ? default : balRlp.Memory.Span;
+                if (span.IsEmpty)
+                {
+                    result.Add([]);
+                    currentByteCount += 1;
+                    continue;
+                }
+
+                result.Add(span.ToArray());
+                currentByteCount += span.Length;
             }
 
-            ReadOnlySpan<byte> span = balRlp.Memory.Span;
-            writer.WriteValue(span);
-            currentByteCount += span.Length;
+            return new ByteArrayListAdapter(result);
         }
-
-        writer.Dispose();
-        return new RlpByteArrayList(builder.ToRlpItemList());
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
     }
 }

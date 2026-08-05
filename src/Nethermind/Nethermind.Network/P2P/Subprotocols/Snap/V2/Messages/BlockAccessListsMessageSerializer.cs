@@ -1,47 +1,98 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
-using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 {
     public class BlockAccessListsMessageSerializer : IZeroMessageSerializer<BlockAccessListsMessage>
     {
+        private const int UnavailableEntryLength = 1;
+
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockAccessListsMessage>(
+            SnapMessageLimits.MaxRequestHashes, nameof(BlockAccessListsMessage.BlockAccessLists));
+
         public void Serialize(IByteBuffer byteBuffer, BlockAccessListsMessage message)
         {
-            int listLength = Rlp.LengthOfByteArrayList(message.BlockAccessLists);
-            int contentLength = Rlp.LengthOf(message.RequestId) + listLength;
+            int entriesContentLength = GetEntriesContentLength(message.BlockAccessLists);
+            int contentLength = Rlp.LengthOf(message.RequestId) + Rlp.LengthOfSequence(entriesContentLength);
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
+
             ByteBufferRlpWriter writer = new(byteBuffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
-            writer.WriteByteArrayList(message.BlockAccessLists);
+            writer.StartSequence(entriesContentLength);
+
+            IByteArrayList blockAccessLists = message.BlockAccessLists;
+            for (int i = 0; i < blockAccessLists.Count; i++)
+            {
+                ReadOnlySpan<byte> entry = blockAccessLists[i];
+                writer.Encode(entry.IsEmpty ? null : new Rlp(entry.ToArray()));
+            }
         }
 
         public BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
-            RlpByteArrayList? list = null;
+            RlpReader ctx = new(byteBuffer.AsSpan());
+            int startPosition = ctx.Position;
+            ArrayPoolList<byte[]>? blockAccessLists = null;
 
             try
             {
                 ctx.ReadSequenceLength();
                 long requestId = ctx.DecodeLong();
 
-                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
-                memoryOwner = null;
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
-
-                return new BlockAccessListsMessage(list) { RequestId = requestId };
+                blockAccessLists = DecodeBlockAccessLists(ref ctx);
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPosition));
+                return new BlockAccessListsMessage(new ByteArrayListAdapter(blockAccessLists)) { RequestId = requestId };
             }
             catch
             {
-                list?.Dispose();
-                memoryOwner?.Dispose();
+                blockAccessLists?.Dispose();
+                throw;
+            }
+        }
+
+        private static int GetEntriesContentLength(IByteArrayList blockAccessLists)
+        {
+            int contentLength = 0;
+            for (int i = 0; i < blockAccessLists.Count; i++)
+            {
+                ReadOnlySpan<byte> entry = blockAccessLists[i];
+                contentLength += entry.IsEmpty ? UnavailableEntryLength : entry.Length;
+            }
+
+            return contentLength;
+        }
+
+        private static ArrayPoolList<byte[]> DecodeBlockAccessLists(ref RlpReader ctx)
+        {
+            int contentLength = ctx.ReadSequenceLength();
+            int checkPosition = ctx.Position + contentLength;
+            int entryCount = ctx.PeekNumberOfItemsRemaining(checkPosition, SnapMessageLimits.MaxRequestHashes + 1);
+            Rlp.GuardLimit(entryCount, contentLength, RlpLimit);
+            ArrayPoolList<byte[]> blockAccessLists = new(entryCount);
+
+            try
+            {
+                while (ctx.Position < checkPosition)
+                {
+                    int length = ctx.PeekNextRlpLength();
+                    ReadOnlySpan<byte> entry = ctx.Read(length);
+                    blockAccessLists.Add(length == UnavailableEntryLength && entry[0] == Rlp.EmptyByteArrayByte
+                        ? []
+                        : entry.ToArray());
+                }
+
+                ctx.Check(checkPosition);
+                return blockAccessLists;
+            }
+            catch
+            {
+                blockAccessLists.Dispose();
                 throw;
             }
         }
