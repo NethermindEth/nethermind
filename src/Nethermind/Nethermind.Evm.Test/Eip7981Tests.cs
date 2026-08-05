@@ -154,11 +154,11 @@ public class Eip7981Tests
             .AddStorage(UInt256.Zero)
             .AddStorage(UInt256.One)
             .Build();
-        Transaction transaction = new() { To = Address.Zero, Data = new byte[145], AccessList = accessList };
+        Transaction transaction = new() { To = Address.Zero, Data = new byte[115], AccessList = accessList };
 
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
         Assert.That(cost.Standard, Is.EqualTo(cost.FloorGas));
-        Assert.That(cost.MinimalGas, Is.EqualTo(29_656UL));
+        Assert.That(cost.MinimalGas, Is.EqualTo(27_736UL));
     }
 }
