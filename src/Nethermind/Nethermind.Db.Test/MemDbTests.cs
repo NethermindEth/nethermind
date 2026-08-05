@@ -31,9 +31,13 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new(10, 10);
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
-            Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1, 2, 3 }));
-            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
-            Assert.That(result[0].Value, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            byte[]? direct = memDb.Get(TestItem.KeccakA);
+            KeyValuePair<byte[], byte[]>[] batch = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(direct, Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(batch[0].Value, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            }
         }
 
         [Test]
