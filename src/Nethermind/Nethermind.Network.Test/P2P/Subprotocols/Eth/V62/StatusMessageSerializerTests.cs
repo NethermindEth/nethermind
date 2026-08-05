@@ -113,7 +113,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void To_string()
         {
             using StatusMessage statusMessage = new();
-            _ = statusMessage.ToString();
+            Assert.That(statusMessage.ToString(), Does.StartWith("eth."));
         }
     }
 }

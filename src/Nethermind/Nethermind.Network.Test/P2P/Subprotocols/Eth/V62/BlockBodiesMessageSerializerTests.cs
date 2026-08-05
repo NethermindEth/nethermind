@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -19,6 +20,45 @@ public class BlockBodiesMessageSerializerTests
     public void Should_pass_roundtrip(BlockBody[] bodies) => SerializerTester.TestZero(
         new BlockBodiesMessageSerializer(),
         new BlockBodiesMessage(bodies));
+
+    [TestCaseSource(nameof(GetEncodingCases))]
+    public void Should_encode_to_expected_wire_bytes(BlockBody[] bodies, string expected) => SerializerTester.TestZero(
+        new BlockBodiesMessageSerializer(),
+        new BlockBodiesMessage(bodies),
+        expected);
+
+    private static IEnumerable<TestCaseData> GetEncodingCases()
+    {
+        // The transaction encoding is a known constant: explicit fields and a fixed
+        // signature, identical to the TransactionsMessageSerializerTests golden.
+        Transaction tx = new()
+        {
+            Data = new byte[] { 1, 2, 3 },
+            GasLimit = 10,
+            GasPrice = 100,
+            Nonce = 1000,
+            Signature = new Signature(1, 2, 27),
+            To = TestItem.AddressA,
+            Value = 10000
+        };
+
+        // A body without withdrawals encodes as the two-item list [transactions, uncles].
+        yield return new TestCaseData(
+            new BlockBody[] { new(new[] { tx }, [], null) },
+            "e8e7e5e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102c0")
+            .SetName(nameof(Should_encode_to_expected_wire_bytes) + "_body_without_withdrawals");
+
+        // A withdrawal encodes as [index, validatorIndex, address, amount] (EIP-4895).
+        // The three numeric fields hold distinct values, so a field transposition changes the bytes.
+        yield return new TestCaseData(
+            new BlockBody[]
+            {
+                new(new[] { tx }, [],
+                    new[] { Build.A.Withdrawal.WithIndex(1).WithValidatorIndex(2).WithAmount(3).WithRecipient(TestItem.AddressA).TestObject })
+            },
+            "f843f841e5e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102c0d9d8010294b7705ae4c6f81b66cdb323c65f4e8133690fc09903")
+            .SetName(nameof(Should_encode_to_expected_wire_bytes) + "_body_with_withdrawal");
+    }
 
     [TestCaseSource(nameof(GetBlockBodyValues))]
     public void Should_not_contain_network_form_tx_wrapper(BlockBody[] bodies)
