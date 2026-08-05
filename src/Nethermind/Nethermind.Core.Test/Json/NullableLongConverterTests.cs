@@ -24,7 +24,7 @@ public class NullableLongConverterTests : ConverterTestBase<long?>
 
     [TestCase(10485760L, "\"0xa00000\"")]
     [TestCase(0L, "\"0x0\"")]
-    public void Writes_correct_hex(long value, string expectedJson) =>
+    public void Serializes_as_hex_quantity(long value, string expectedJson) =>
         TestConverter((long?)value, expectedJson, converter, static (a, b) => a.Equals(b));
 
     [TestCase("\"0xa00000\"", 10485760L)]
