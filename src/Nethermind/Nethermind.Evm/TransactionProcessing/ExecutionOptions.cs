@@ -39,6 +39,17 @@ public enum ExecutionOptions
     BuildUp = 16,
 
     /// <summary>
+    /// Skip the EIP-3607 sender-has-code check, letting a contract address act as the transaction sender.
+    /// </summary>
+    /// <remarks>
+    /// Used by <c>eth_simulateV1</c> for state-overridden contract senders. Carried as an execution-policy
+    /// flag rather than by wrapping the release spec, so the spec's concrete runtime type (and any
+    /// chain-specific interfaces such as <c>ITaikoReleaseSpec</c>/<c>IXdcReleaseSpec</c>) survives on the
+    /// tx-processor path.
+    /// </remarks>
+    SkipSenderCodeCheck = 32,
+
+    /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
     SkipValidationAndCommit = Commit | SkipValidation,

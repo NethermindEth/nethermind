@@ -5,7 +5,6 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.Proofs;
 
@@ -16,24 +15,18 @@ public class SimulateBlockValidationTransactionsExecutor(
     SimulateRequestState simulateState)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-    {
-        // Relax EIP-3607 on the block execution context so a state-overridden contract can be the tx
-        // sender. Done here (not at the spec-provider level) so it reaches both the main tx processor and
-        // the EIP-7928 BAL manager — ParallelBlockValidationTransactionsExecutor sets this context on both —
-        // while BlockProcessor still receives the unwrapped spec, preserving chain-specific spec interfaces.
-        IReleaseSpec spec = blockExecutionContext.Spec.WithoutEip3607();
-
-        // This is now the single context-rebuild funnel for the simulate scope, so relax nothing but the spec:
-        // forward the incoming PrevRandao and BlobBaseFee verbatim rather than re-deriving them from the header.
-        // A BlockProcessor subclass (e.g. XdcBlockProcessor) may have supplied non-default values that the
-        // default derivation would otherwise discard. A blobBaseFee block override still takes precedence.
+    // Apply only the simulate blobBaseFee override here; EIP-3607 relaxation for state-overridden
+    // contract senders is handled by the SkipSenderCodeCheck execution-policy flag on the tx processors
+    // (both the main adapter and the EIP-7928 BAL path), so the spec keeps its concrete runtime type and
+    // chain-specific interfaces (ITaikoReleaseSpec/IXdcReleaseSpec) survive. Forward the incoming
+    // PrevRandao and BlobBaseFee verbatim rather than re-deriving them from the header — a BlockProcessor
+    // subclass (e.g. XdcBlockProcessor) may have supplied non-default values. The override still wins.
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
         baseTransactionExecutor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
             blockExecutionContext.Header,
-            spec,
+            blockExecutionContext.Spec,
             blockExecutionContext.PrevRandao,
             simulateState.BlobBaseFeeOverride ?? blockExecutionContext.BlobBaseFee.ToUInt256()));
-    }
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)

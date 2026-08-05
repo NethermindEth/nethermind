@@ -51,7 +51,8 @@ public partial class BlockAccessListManager(
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
     ITransactionProcessorFactory? transactionProcessorFactory = null,
-    IExecutionRequestsProcessorFactory? executionRequestsProcessorFactory = null)
+    IExecutionRequestsProcessorFactory? executionRequestsProcessorFactory = null,
+    BlockAccessListTxExecutionOptions? txExecutionOptions = null)
     : IBlockAccessListManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
@@ -60,10 +61,12 @@ public partial class BlockAccessListManager(
     private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory));
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory,
+            (txExecutionOptions ?? BlockAccessListTxExecutionOptions.None).AdditionalOptions));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory));
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory,
+            (txExecutionOptions ?? BlockAccessListTxExecutionOptions.None).AdditionalOptions));
     private const int GasValidationChunkSize = 8;
     private ulong? _gasRemaining;
     private bool _isBuilding;

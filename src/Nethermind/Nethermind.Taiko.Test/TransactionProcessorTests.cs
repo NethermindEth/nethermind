@@ -88,6 +88,37 @@ public class TransactionProcessorTests
         });
     }
 
+    [Test]
+    public void Contract_sender_executes_and_pays_fees_when_sender_code_check_skipped()
+    {
+        // Regression for the eth_simulateV1 spec type-erasure (follow-up to the EIP-3607/BAL fix): relaxing
+        // EIP-3607 via the SkipSenderCodeCheck execution-policy flag keeps the concrete ITaikoReleaseSpec, so
+        // PayFees can still cast it. The earlier spec-wrapping relaxation replaced it with a NoEip3607Spec
+        // (plain IReleaseSpec) and this cast threw InvalidCastException.
+        _spec.IsEip3607Enabled = true;
+        _stateProvider!.InsertCode(TestItem.AddressA, Bytes.FromHexString("0x600060"), _spec);
+        _stateProvider!.Commit(_spec);
+
+        ulong gasLimit = 100000;
+        Transaction tx = Build.A.Transaction
+            .WithValue(1)
+            .WithGasPrice(1)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx)
+            .WithBaseFeePerGas(1)
+            .WithExtraData(new byte[32])
+            .WithBeneficiary(TestItem.AddressC).WithGasLimit(gasLimit).TestObject;
+
+        _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance,
+            ExecutionOptions.Commit | ExecutionOptions.SkipSenderCodeCheck);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+    }
+
     public static IEnumerable FeesDistributionTests
     {
         get

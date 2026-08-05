@@ -27,7 +27,10 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         }
         transaction.Hash = transaction.CalculateHash();
 
-        TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
+        // SkipSenderCodeCheck relaxes EIP-3607 so a state-overridden contract can be the sender (mirrors the
+        // BAL path, which gets the same flag via BlockAccessListTxExecutionOptions).
+        ExecutionOptions options = (simulateRequestState.Validate ? ExecutionOptions.Commit : ExecutionOptions.SkipValidationAndCommit) | ExecutionOptions.SkipSenderCodeCheck;
+        TransactionResult result = transactionProcessor.Process(transaction, txTracer, options);
 
         // Keep track of gas left
         ulong blockGasUsed = transaction.BlockGasUsed;
@@ -41,8 +44,6 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _currentTxIndex = 0;
-        // EIP-3607 is relaxed on the block execution context by SimulateBlockValidationTransactionsExecutor
-        // (which reaches both this processor and the EIP-7928 BAL manager), so the spec here is already relaxed.
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
     }
 }
