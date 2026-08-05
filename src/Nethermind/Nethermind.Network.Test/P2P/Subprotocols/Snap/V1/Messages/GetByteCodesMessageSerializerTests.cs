@@ -45,7 +45,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetByteCodesMessageSerializer serializer = new();
 
             // The message encodes as [requestId, hashes, bytes].
-            SerializerTester.TestZero(serializer, msg, "c5820457c00a");
+            SerializerTester.TestZero(serializer, msg, "c5" + SnapSerializerGoldens.RequestId1111Rlp + "c0" + "0a");
         }
 
         [Test]

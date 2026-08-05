@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetAccountRangeMessage msg = new()
             {
                 RequestId = 1111,
-                AccountRange = new(Keccak.OfAnEmptyString, new Hash256("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")),
+                AccountRange = new(Keccak.OfAnEmptyString, SnapSerializerGoldens.RangeStart, SnapSerializerGoldens.RangeLimit),
                 ResponseBytes = 10
             };
             GetAccountRangeMessageSerializer serializer = new();
@@ -33,10 +33,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             // The message encodes as [requestId, rootHash, startingHash, limitHash, responseBytes].
             SerializerTester.TestZero(serializer, msg,
-                "f867" + "820457" +
-                "a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" +
-                "a015d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" +
-                "a020d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" +
+                "f867" + SnapSerializerGoldens.RequestId1111Rlp +
+                SnapSerializerGoldens.EmptyStringKeccakRlp +
+                SnapSerializerGoldens.RangeStartRlp +
+                SnapSerializerGoldens.RangeLimitRlp +
                 "0a");
         }
 
@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             // A null limit hash goes on the wire as Keccak.MaxValue; response bytes 0 as 1000000.
             SerializerTester.TestZero(serializer, msg,
                 "f870" + "887fffffffffffffff" +
-                "a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" +
+                SnapSerializerGoldens.EmptyStringKeccakRlp +
                 "a00000000000000000000000000000000000000000000000000000000000000000" +
                 "a0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" +
                 "830f4240");
