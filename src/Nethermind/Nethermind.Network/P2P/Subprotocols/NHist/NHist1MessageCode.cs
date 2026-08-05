@@ -1,0 +1,13 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Network.P2P.Subprotocols.NHist;
+
+public static class NHist1MessageCode
+{
+    public const int GetHistoryRangeAtHeight = 0x00;
+    public const int HistoryRangeAtHeight = 0x01;
+    public const int GetChangesets = 0x02;
+    public const int Changesets = 0x03;
+    public const int Status = 0x04;
+}
