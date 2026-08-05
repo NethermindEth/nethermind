@@ -230,7 +230,6 @@ public class BranchProcessor(
             task?.GetAwaiter().GetResult();
             task = null;
         }
-
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>

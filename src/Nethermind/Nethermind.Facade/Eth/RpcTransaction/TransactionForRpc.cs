@@ -144,6 +144,7 @@ public abstract class TransactionForRpc
             RegisterTransactionType<EIP1559TransactionForRpc>();
             RegisterTransactionType<BlobTransactionForRpc>();
             RegisterTransactionType<SetCodeTransactionForRpc>();
+            RegisterTransactionType<FrameTransactionForRpc>();
         }
 
         internal static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped

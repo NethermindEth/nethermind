@@ -38,6 +38,8 @@ namespace Nethermind.Core
             Bloom = other.Bloom;
             Logs = other.Logs;
             Error = other.Error;
+            Payer = other.Payer;
+            FrameReceipts = other.FrameReceipts;
         }
 
         /// <summary>
@@ -85,6 +87,17 @@ namespace Nethermind.Core
         public Bloom? Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
+
+        /// <summary>
+        /// EIP-8141: the account that paid the transaction fees; determined at execution time.
+        /// </summary>
+        public Address? Payer { get; set; }
+
+        /// <summary>
+        /// EIP-8141: per-frame receipt entries. For frame transactions <see cref="Logs"/> holds the
+        /// union of all frame logs so bloom calculation and log indexing keep working internally.
+        /// </summary>
+        public TxFrameReceipt[]? FrameReceipts { get; set; }
 
 
         public Bloom CalculateBloom()

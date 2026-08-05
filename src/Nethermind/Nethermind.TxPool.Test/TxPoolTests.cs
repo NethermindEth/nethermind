@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -1980,6 +1981,9 @@ namespace Nethermind.TxPool.Test
             // No need to check for deposit tx
             if (txType == TxType.DepositTx) return;
 
+            // Frame txs are rejected at pool ingress until the EIP-8141 mempool rules land
+            if (txType == TxType.FrameTx) return;
+
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
@@ -2021,6 +2025,208 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
                 Assert.That(_txPool.GetPendingTransactions(), Does.Not.Contain(testTx));
             }
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransaction_RejectedAtIngressAsNotSupported()
+        {
+            _txPool = CreatePool();
+            Transaction frameTx = Build.A.Transaction
+                .WithType(TxType.FrameTx)
+                .WithNonce(0)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType), "frame transactions must be rejected at pool ingress");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "no frame transaction may enter the pool");
+            }
+        }
+
+        [Test]
+        public void SubmitTx_FrameTransaction_AcceptedWhenEip8141Active()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.PrivateKeyA.Address,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>())],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            frameTx.Hash = frameTx.CalculateHash();
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "frame transactions must enter the pool once the EIP-8141 fork is active");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the frame transaction must be pending");
+            }
+        }
+
+        // EIP-8141: expired frame txs must be evicted on the new head; deadline == timestamp is still valid
+        // (the predeploy reverts only on strictly greater-than).
+        [TestCase(1_000UL, 1_500UL, 0, TestName = "deadline in the past is dropped")]
+        [TestCase(2_000UL, 1_500UL, 1, TestName = "deadline in the future is retained")]
+        [TestCase(1_500UL, 1_500UL, 1, TestName = "deadline equal to head timestamp is retained")]
+        public async Task Expired_frame_transaction_is_dropped_on_new_head(ulong deadline, ulong headTimestamp, int expectedPending)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending),
+                "expired frame transactions must be evicted on the new head, unexpired ones retained");
+        }
+
+        // No expiry frame means no deadline, so the expiry pass (and the count guard that gates it) must never
+        // evict it, whatever the head timestamp.
+        [Test]
+        public async Task Frame_transaction_without_expiry_frame_survives_new_head()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the frame transaction must first enter the pool");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ulong.MaxValue).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
+                "a frame transaction without an expiry frame has no deadline and must never be evicted by the expiry pass");
+        }
+
+        // Fast path: a non-frame tx is never counted or evicted by the expiry pass, even with the fork active
+        // and an extreme head timestamp.
+        [Test]
+        public async Task Regular_transaction_survives_expiry_pass_when_fork_active()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ulong.MaxValue).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
+                "the expiry pass must only ever touch frame transactions carrying a deadline");
+        }
+
+        // Symmetry of _expiringFrameTxCount across the replacement path: replacing A with B fires Removed(A) and
+        // Inserted(B) inside a single DistinctValueSortedPool.InsertCore call. If those ever netted the count to
+        // zero the expiry pass would be skipped and B would silently survive past its deadline; assert it is evicted.
+        [Test]
+        public async Task Replaced_expiring_frame_transaction_is_still_evicted_on_new_head()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction a = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_000);
+            Assert.That(_txPool.SubmitTx(a, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "the original expiring frame transaction must first enter the pool");
+
+            // Same sender + nonce + deadline, both fees bumped well past the 10% replacement threshold.
+            Transaction b = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_000, maxPriorityFeePerGas: 2.GWei, maxFeePerGas: 2.GWei);
+            Assert.That(_txPool.SubmitTx(b, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "the fee-bumped replacement must be accepted");
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the replacement must displace the original");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0),
+                "the replacement inherits the deadline and must still be evicted by the expiry pass");
+        }
+
+        // EIP-8141: a frame tx whose expiry deadline is already behind the current head must be rejected at submit —
+        // never pooled, never broadcast — mirroring the on-head eviction predicate. deadline == head timestamp is the
+        // boundary the expiry-verifier predeploy still accepts (strict >), so it must be admitted.
+        [TestCase(1_000UL, 1_500UL, false, TestName = "already-expired frame tx is rejected at ingress")]
+        [TestCase(2_000UL, 1_500UL, true, TestName = "not-yet-expired frame tx is accepted at ingress")]
+        [TestCase(1_500UL, 1_500UL, true, TestName = "boundary deadline equal to head timestamp is accepted at ingress")]
+        public async Task Expired_frame_transaction_is_rejected_at_ingress(ulong deadline, ulong headTimestamp, bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(peer);
+
+            // Advance the head so the ingress filter has a current timestamp to compare the deadline against.
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(headTimestamp).TestObject);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expectedAccepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxExpired));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0),
+                    "an already-expired frame transaction must not enter the pool");
+            }
+
+            if (expectedAccepted)
+            {
+                peer.Received().SendNewTransaction(frameTx);
+            }
+            else
+            {
+                peer.DidNotReceive().SendNewTransaction(frameTx);
+            }
+        }
+
+        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null)
+        {
+            List<TxFrame> frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            ];
+
+            if (deadline is not null)
+            {
+                byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+                BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
+                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
+            }
+
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = nonce,
+                SenderAddress = sender,
+                Frames = [.. frames],
+                FrameSignatures = [],
+                GasLimit = 1_000_000,
+                GasPrice = maxPriorityFeePerGas ?? 1.GWei,
+                DecodedMaxFeePerGas = maxFeePerGas ?? 1.GWei,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
         }
 
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
@@ -2444,6 +2650,9 @@ namespace Nethermind.TxPool.Test
                     case TxType.SetCode:
                         builder.WithAuthorizationCodeIfAuthorizationListTx();
                         break;
+                    case TxType.FrameTx:
+                        //Frame txs are rejected at pool ingress until the EIP-8141 mempool rules land
+                        continue;
                     case TxType.DepositTx:
                         continue;
                 }
