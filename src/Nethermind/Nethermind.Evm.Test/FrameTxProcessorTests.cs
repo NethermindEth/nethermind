@@ -147,6 +147,56 @@ public class FrameTxProcessorTests
         Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)frame.GasLimit), "unused gas refunded");
     }
 
+    [Test]
+    public void Execute_BlobCarryingFrameTx_ChargesAndBurnsBlobFee()
+    {
+        // EIP-8141 (spec ~L492-499): a blob-carrying frame tx follows EIP-4844 — the payer covers the
+        // blob fee, which is burned. With base fee 0 the whole gas premium goes to the beneficiary, so
+        // the only value that leaves the payer for good is the burned blob fee. Parity: EELS #3047.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = 1000;
+
+        CallOutputTracer tracer = new();
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        UInt256 spentGas = (UInt256)tracer.GasSpent;
+        UInt256 blobFee = ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
+        Assert.That(blobFee, Is.GreaterThan(UInt256.Zero), "blob fee is nonzero at the minimum blob base fee");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(spentGas), "beneficiary gets the gas premium only");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - spentGas - blobFee), "payer pays the spent gas and the blob fee");
+            Assert.That(_stateProvider.GetBalance(Sender) + _stateProvider.GetBalance(Beneficiary),
+                Is.EqualTo(1.Ether - blobFee), "the blob fee is burned, not paid to the beneficiary");
+        }
+    }
+
+    [Test]
+    public void Execute_BlobFrameTx_MaxFeePerBlobGasBelowBlobBaseFee_Invalid()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.BlobVersionedHashes = [new byte[32]];
+
+        const ulong excessBlobGas = 50_000_000;
+        UInt256 feePerBlobGas = FeePerBlobGas(excessBlobGas);
+        Assert.That(feePerBlobGas, Is.GreaterThan(UInt256.One), "excess chosen so the blob base fee exceeds 1");
+        tx.MaxFeePerBlobGas = feePerBlobGas - 1;
+
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance));
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
+        }
+    }
+
     [TestCase(7ul, 2ul, 10ul, 2ul, TestName = "Execute_NonZeroBaseFee_PremiumIsTheRequestedPriorityFee")]
     [TestCase(7ul, 5ul, 8ul, 1ul, TestName = "Execute_NonZeroBaseFee_PremiumCappedByMaxFeeMinusBaseFee")]
     public void Execute_NonZeroBaseFee_PaysBeneficiaryThePremiumAndBurnsTheBaseFee(
@@ -1023,6 +1073,27 @@ public class FrameTxProcessorTests
             .WithGasLimit(30_000_000).TestObject;
         return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
     }
+
+    private TransactionResult ProcessWithBlobHeader(Transaction tx, ulong excessBlobGas, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
+    {
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(baseFeePerGas)
+            .WithBeneficiary(Beneficiary)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
+    }
+
+    private UInt256 FeePerBlobGas(ulong excessBlobGas)
+    {
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(excessBlobGas).TestObject;
+        BlobGasCalculator.TryCalculateFeePerBlobGas(header, Spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+        return feePerBlobGas;
+    }
+
+    private UInt256 ExpectedBlobFee(ulong excessBlobGas, int blobCount) =>
+        FeePerBlobGas(excessBlobGas) * BlobGasCalculator.CalculateBlobGas(blobCount);
 
     private void DeploySmartSender(byte[] code) => DeployContract(Sender, code, 1.Ether);
 

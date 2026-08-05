@@ -4,6 +4,8 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
@@ -77,18 +79,36 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
-        // max_fee_per_gas plus blob cost, not the effective price, so it is not under-reserved.
-        // Settlement below still charges the effective price, so the payer's net cost is unchanged.
-        // EIP8141-DEVIATION: blob gas is reserved here but never settled — a blob-carrying frame tx
-        // would have its blob reservation fully refunded (blobs go uncharged) and BlobGasUsed is not
-        // set. Blob support is deferred pending the upstream blob-semantics spec; devnets do not send
-        // blob frame txs. Charge blob gas (and reject or account it) once that lands.
+        // max_fee_per_gas plus the blob fee, not the effective price, so it is not under-reserved.
+        // Settlement below still charges the effective price, so the payer's net gas cost is unchanged.
         // Overflow-checked like BuyGas: premium <= max fee and spentGas <= txGasLimit, so bounding
         // this product also bounds the settlement products (spentCost, fees) below.
-        ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
+        //
+        // EIP-8141 (spec ~L492-499, ethereum/EIPs#11985): a blob-carrying frame tx follows EIP-4844 —
+        // the payer covers blob_gas × blob_base_fee, which is charged and burned (never refunded).
+        // Parity with EELS #3047: the blob leg of max_cost is priced at the actual blob_base_fee, not
+        // max_fee_per_blob_gas. The escrow the payer sees mid-transaction must match EELS, and the
+        // burned blob fee cancels against this term in the refund below.
+        UInt256 blobFee = UInt256.Zero;
+        if (tx.BlobVersionedHashes is { Length: > 0 })
+        {
+            if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobFee))
+            {
+                TraceLogInvalidTx(tx, "BLOB_BASE_FEE_OVERFLOW");
+                return RequiredBalanceExceeds256Bits(tx);
+            }
+
+            // EIP-4844: max_fee_per_blob_gas must cover the current blob base fee, else the tx is invalid.
+            if (tx.MaxFeePerBlobGas.GetValueOrDefault() < feePerBlobGas)
+            {
+                TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
+                return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
+                    BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
+            }
+        }
+
         if (UInt256.MultiplyOverflow((UInt256)txGasLimit, tx.DecodedMaxFeePerGas, out UInt256 maxCost)
-            || UInt256.MultiplyOverflow((UInt256)blobGas, tx.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 maxBlobCost)
-            || UInt256.AddOverflow(maxCost, maxBlobCost, out maxCost))
+            || UInt256.AddOverflow(maxCost, blobFee, out maxCost))
         {
             TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE");
             return RequiredBalanceExceeds256Bits(tx);
@@ -345,10 +365,22 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
         // pay the beneficiary premium. The base-fee share stays deducted (burned).
+        // EIP-8141/EIP-4844: the blob fee (blob_gas × blob_base_fee) is also charged and burned — it
+        // is excluded from the refund regardless of frame outcome. Both charged legs are bounded by
+        // max_cost (spentCost <= txGasLimit × maxFeePerGas, blobFee is max_cost's blob leg), so the
+        // subtraction cannot underflow.
         UInt256 spentCost = (UInt256)spentGas * effectiveGasPrice;
-        if (maxCost > spentCost)
+        UInt256 chargedCost = spentCost + blobFee;
+        if (maxCost > chargedCost)
         {
-            WorldState.AddToBalance(payer, maxCost - spentCost, spec);
+            WorldState.AddToBalance(payer, maxCost - chargedCost, spec);
+        }
+
+        // EIP-4844 fee-collector chains (e.g. Gnosis) collect the burned blob fee instead of losing
+        // it, consistent with the regular path's PayFees; elsewhere the fee is simply burned.
+        if (!blobFee.IsZero && spec.IsEip4844FeeCollectorEnabled && spec.FeeCollector is not null)
+        {
+            WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, blobFee, spec);
         }
 
         // EIP-1559/EIP-7928: fee accounting touches the beneficiary regardless of premium, so the
@@ -377,9 +409,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (tracer.IsTracingFees)
         {
             // As in PayFees, the burnt half is capped at the effective price paid so validation-off
-            // runs with max fee below base fee do not over-report.
+            // runs with max fee below base fee do not over-report; the burned blob fee is added in.
             UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
-            tracer.ReportFees(fees, effectiveBaseFee * spentGas);
+            tracer.ReportFees(fees, effectiveBaseFee * spentGas + blobFee);
         }
 
         if (tracer.IsTracingReceipt)
