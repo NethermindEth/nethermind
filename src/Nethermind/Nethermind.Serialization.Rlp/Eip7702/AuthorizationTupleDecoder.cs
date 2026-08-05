@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
@@ -19,7 +18,7 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         int length = decoderContext.ReadSequenceLength();
         int check = length + decoderContext.Position;
         UInt256 chainId = decoderContext.DecodeUInt256();
-        Address? codeAddress = decoderContext.DecodeAddressOrNull();
+        Address codeAddress = decoderContext.DecodeAddress();
         ulong nonce = decoderContext.DecodeULong();
         byte yParity = decoderContext.DecodeByte();
         UInt256 r = decoderContext.DecodeUInt256();
@@ -28,11 +27,6 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
             decoderContext.Check(check);
-        }
-
-        if (codeAddress is null)
-        {
-            ThrowMissingCodeAddressException();
         }
 
         return new AuthorizationTuple(chainId, codeAddress, nonce, yParity, r, s);
@@ -103,7 +97,4 @@ public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
         Rlp.LengthOf(chainId)
         + Rlp.LengthOf(codeAddress)
         + Rlp.LengthOf(nonce);
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowMissingCodeAddressException() => throw new RlpException("Missing code address for Authorization");
 }

@@ -76,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                     {
                         int length = innerCtx.ReadSequenceLength();
                         int checkPosition = innerCtx.Position + length;
-                        Hash256 path = innerCtx.DecodeKeccakOrNull() ?? throw new RlpException("Storage slot path cannot be null.");
+                        Hash256 path = innerCtx.DecodeKeccak();
                         byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
                         innerCtx.Check(checkPosition);
                         return new PathWithStorageSlot(in path.ValueHash256, value);

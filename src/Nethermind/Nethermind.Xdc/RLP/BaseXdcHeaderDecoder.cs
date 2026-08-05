@@ -115,7 +115,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         writer.StartSequence(GetContentLength(h, rlpBehaviors));
 
         // Common fields
-        writer.Encode(h.ParentHash ?? Hash256.Zero);
+        writer.Encode(h.ParentHash ?? Keccak.Zero);
         writer.Encode(h.UnclesHash ?? Keccak.OfAnEmptySequenceRlp);
         writer.Encode(h.Beneficiary ?? Address.Zero);
         writer.Encode(h.StateRoot ?? Keccak.EmptyTreeHash);
@@ -128,7 +128,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
         writer.Encode(h.GasUsed);
         writer.Encode(h.Timestamp);
         writer.Encode(h.ExtraData);
-        writer.Encode(h.MixHash ?? Hash256.Zero);
+        writer.Encode(h.MixHash ?? Keccak.Zero);
         writer.Encode(h.Nonce, NonceLength);
 
         EncodeHeaderSpecificFields(ref writer, h, rlpBehaviors);
@@ -178,7 +178,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
     private int GetContentLength(TH header, RlpBehaviors rlpBehaviors)
     {
         int contentLength =
-            +Rlp.LengthOf(header.ParentHash ?? Hash256.Zero)
+            +Rlp.LengthOf(header.ParentHash ?? Keccak.Zero)
             + Rlp.LengthOf(header.UnclesHash ?? Keccak.OfAnEmptySequenceRlp)
             + Rlp.LengthOf(header.Beneficiary ?? Address.Zero)
             + Rlp.LengthOf(header.StateRoot ?? Keccak.EmptyTreeHash)
@@ -191,7 +191,7 @@ public abstract class BaseXdcHeaderDecoder<TH> : RlpDecoder<BlockHeader>, IHeade
             + Rlp.LengthOf(header.GasUsed)
             + Rlp.LengthOf(header.Timestamp)
             + Rlp.LengthOf(header.ExtraData)
-            + Rlp.LengthOf(header.MixHash ?? Hash256.Zero)
+            + Rlp.LengthOf(header.MixHash ?? Keccak.Zero)
             + Rlp.LengthOfNonce(header.Nonce);
 
         contentLength += GetHeaderSpecificContentLength(header, rlpBehaviors);
