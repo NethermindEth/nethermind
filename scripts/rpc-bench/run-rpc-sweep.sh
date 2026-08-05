@@ -32,6 +32,8 @@ DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 # counts only and deleted.
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
 CORPUS_DIR="${CORPUS_DIR:-/mnt/sda/expb-data/rpc-bench}"
+# Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
+CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 default_image() {
@@ -93,11 +95,11 @@ case "$JB_ETH_CALL_CORPUS" in
   *) echo "::error::JB_ETH_CALL_CORPUS must be true or false"; exit 1 ;;
 esac
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
-  for f in "$CORPUS_DIR"/eth-call-corpus*.jsonl.gz; do
+  for f in "$CORPUS_DIR"/$CORPUS_GLOB; do
     [[ -f "$f" ]] && CORPORA+=("$f")
   done
   if [[ "${#CORPORA[@]}" -eq 0 ]]; then
-    echo "::error::no eth-call-corpus*.jsonl.gz files under $CORPUS_DIR"; exit 1
+    echo "::error::no corpus files matching '$CORPUS_GLOB' under $CORPUS_DIR"; exit 1
   fi
   echo "Corpus scenarios: $(for f in "${CORPORA[@]}"; do printf '%s ' "$(corpus_label "$f")"; done)"
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
