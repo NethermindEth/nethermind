@@ -642,6 +642,20 @@ jobs:
           export JB_VALIDATE_SCHEMA="$(getb '.validate_schema')"
           export JB_DEEP_CHECK="$(getb '.deep_check')"
           export JB_ETH_CALL_CORPUS="$(getb '.eth_call_corpus')"
+          # corpus_glob selects which runner-side corpus the single-node path replays
+          # (the sweep discovers all of them; here exactly one must match).
+          jb_corpus_glob="$(get '.corpus_glob')"
+          if [[ -n "${jb_corpus_glob}" ]]; then
+            shopt -s nullglob
+            jb_corpus_matches=( "/mnt/sda/expb-data/rpc-bench/"${jb_corpus_glob} )
+            shopt -u nullglob
+            if [[ "${#jb_corpus_matches[@]}" -ne 1 ]]; then
+              echo "corpus_glob '${jb_corpus_glob}' matched ${#jb_corpus_matches[@]} files; expected exactly 1."
+              exit 1
+            fi
+            export JB_ETH_CALL_CORPUS_FILE="${jb_corpus_matches[0]}"
+            echo "Corpus: $(basename "${JB_ETH_CALL_CORPUS_FILE}")"
+          fi
           jb_html="$(getb '.html_report')";              [[ -n "${jb_html}" ]] && export JB_HTML_REPORT="${jb_html}"
           export JB_FAIL_ON_DIFF="$(getb '.fail_on_diff')"
           # getb: '// empty' would swallow an explicit 0 (jq treats it as truthy-false).
