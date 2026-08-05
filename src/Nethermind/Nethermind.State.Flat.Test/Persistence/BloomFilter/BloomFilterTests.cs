@@ -85,7 +85,17 @@ public class BloomFilterTests
 
         Task.WaitAll(writerTasks.Concat(readerTasks).ToArray());
 
-        Assert.Pass("Concurrent operations completed without exceptions");
+        // A bloom filter never reports false negatives, so every added hash must be
+        // found afterwards - a miss means a write was lost to a concurrent-access race.
+        for (int threadId = 0; threadId < 3; threadId++)
+        {
+            ulong hash = (ulong)(threadId * 1000000);
+            for (int i = 0; i < iterationsPerThread; i++)
+            {
+                Assert.That(bloom.MightContain(hash), Is.True, $"hash {hash} was lost during concurrent add");
+                hash++;
+            }
+        }
     }
 
     [Test]

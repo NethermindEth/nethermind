@@ -50,28 +50,6 @@ public class FlatDbManagerPersistedTests
     }
 
     [Test]
-    public async Task ConstructorAcceptsPersistedRepository()
-    {
-        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
-        SnapshotRepository repo = tier.Repository;
-
-        await using FlatDbManager manager = new(
-            Substitute.For<IResourcePool>(),
-            _processExitSource,
-            Substitute.For<ITrieNodeCache>(),
-            Substitute.For<ISnapshotCompactor>(),
-            repo,
-            Substitute.For<IPersistenceManager>(),
-            Substitute.For<IPersistedSnapshotLoader>(),
-            _config,
-            new BlocksConfig(),
-            LimboLogs.Instance,
-            enableDetailedMetrics: false);
-
-        Assert.That(manager, Is.Not.Null);
-    }
-
-    [Test]
     public async Task GatherReadOnlySnapshotBundle_IncludesPersistedSnapshots()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -116,7 +94,7 @@ public class FlatDbManagerPersistedTests
     }
 
     [Test]
-    public async Task DisposeAsync_DisposesPersistedRepository()
+    public async Task DisposeAsync_CompletesPromptlyAndIsIdempotent()
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
@@ -140,8 +118,11 @@ public class FlatDbManagerPersistedTests
             LimboLogs.Instance,
             enableDetailedMetrics: false);
 
-        await manager.DisposeAsync();
+        // A hang here means the worker-channel drain deadlocked; the timeout turns that
+        // into a fast failure instead of stalling the test host.
+        await manager.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Pass("Dispose completed without error");
+        // Repeated disposal must be a no-op - completing an already-completed channel throws.
+        await manager.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
     }
 }
