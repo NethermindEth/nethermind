@@ -2252,6 +2252,25 @@ public partial class EthRpcModuleTests
             Does.Contain("0x0000000000000000000000000000000000000000000000000000000000000001"));
     }
 
+    [Test]
+    public async Task Eth_createAccessList_unfunded_sender_without_fee_fields_succeeds()
+    {
+        // execution-apis #854: when all gas-fee fields are omitted, the request must not fail
+        // solely because the sender cannot afford client-selected default fees.
+        // London-enabled so the head block has a nonzero base fee — the divergent client
+        // behavior is defaulting maxFeePerGas to the base fee and failing affordability.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        // Unfunded sender, codeless recipient, zero value, no gas/fee fields.
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx,
+            """{"from":"0x000000000000000000000000000000000000dead","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
+            stateOverrideJson: null, optimize: true);
+
+        Assert.That(result["error"], Is.Null);
+        Assert.That(result["accessList"]!.ToArray(), Is.Empty, "expected empty access list for a plain transfer to a codeless account");
+        Assert.That(gasUsed, Is.EqualTo(21_000));
+    }
+
     private static async Task<(JToken Result, long GasUsed)> CallCreateAccessList(
         Context ctx, string txJson, string? stateOverrideJson, bool optimize)
     {
@@ -2261,8 +2280,9 @@ public partial class EthRpcModuleTests
             : JsonSerializer.Deserialize<object>(stateOverrideJson);
         string serialized = await ctx.Test.TestEthRpc(
             "eth_createAccessList", tx, "latest", stateOverride, optimize);
-        JToken result = JToken.Parse(serialized)["result"]!;
-        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        JToken? result = JToken.Parse(serialized)["result"];
+        Assert.That(result, Is.Not.Null, $"expected a result, got: {serialized}");
+        long gasUsed = Convert.ToInt64(result!["gasUsed"]!.Value<string>(), 16);
         return (result, gasUsed);
     }
 

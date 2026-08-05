@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Network.Enr;
 
-namespace Nethermind.Network.Discovery;
+namespace Nethermind.Network;
 
 public interface INodeRecordProvider
 {
