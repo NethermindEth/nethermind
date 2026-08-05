@@ -24,9 +24,12 @@ public class SimulateBlockValidationTransactionsExecutor(
         // while BlockProcessor still receives the unwrapped spec, preserving chain-specific spec interfaces.
         IReleaseSpec spec = blockExecutionContext.Spec.WithoutEip3607();
 
+        // This is now the single funnel for every processor in the simulate scope, so preserve the incoming
+        // PrevRandao rather than re-deriving it — a BlockProcessor subclass (e.g. XdcBlockProcessor) may have
+        // supplied a non-default value that the default derivation would otherwise discard.
         baseTransactionExecutor.SetBlockExecutionContext(simulateState.BlobBaseFeeOverride is null
-            ? new BlockExecutionContext(blockExecutionContext.Header, spec)
-            : new BlockExecutionContext(blockExecutionContext.Header, spec, simulateState.BlobBaseFeeOverride.Value));
+            ? BlockExecutionContext.WithPrevRandao(blockExecutionContext.Header, spec, blockExecutionContext.PrevRandao)
+            : BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(blockExecutionContext.Header, spec, blockExecutionContext.PrevRandao, simulateState.BlobBaseFeeOverride.Value));
     }
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,

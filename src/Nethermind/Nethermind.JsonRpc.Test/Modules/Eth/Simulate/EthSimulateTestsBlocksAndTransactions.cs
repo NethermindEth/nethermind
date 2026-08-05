@@ -883,8 +883,14 @@ public class EthSimulateTestsBlocksAndTransactions
         TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
         TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
 
-        // Contract sender transferring value. Gas is set explicitly so the assertion isn't masked by the
-        // EIP-8037 block-gas-limit default; gas price is zero so validation:false skips the fee check.
+        // The whole point of the test is the EIP-7928 BAL path; pin the premise so it can't quietly degrade
+        // into a duplicate of the London validation-enabled test if Amsterdam's EIP set ever changes.
+        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+
+        // Contract sender transferring value, with validation enabled so EIP-3607 is actually evaluated:
+        // without the fix the code-bearing sender is rejected with -38024; with it the tx reaches the balance
+        // check. Gas is set explicitly so the EIP-8037 block-gas-limit default doesn't mask the result (#12692);
+        // gas price is zero so the unfunded failure is unambiguously the value transfer (-38014), not the fee.
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
@@ -901,7 +907,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     ]
                 }
             ],
-            Validation = false
+            Validation = true
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
