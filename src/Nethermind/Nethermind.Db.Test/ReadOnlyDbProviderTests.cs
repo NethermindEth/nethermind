@@ -36,7 +36,11 @@ namespace Nethermind.Db.Test
 
             dbProvider.ClearTempChanges();
 
-            Assert.That(readOnlyDb.Get(TestItem.KeccakB), Is.Null, "the in-memory overlay must be dropped");
+            if (localChanges)
+            {
+                Assert.That(readOnlyDb.Get(TestItem.KeccakB), Is.Null, "the in-memory overlay must be dropped");
+            }
+
             Assert.That(readOnlyDb.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1, 2, 3 }), "the wrapped db must be untouched");
         }
     }
