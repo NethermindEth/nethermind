@@ -35,6 +35,9 @@ CONTAINER_NAME="${CONTAINER_NAME:-rpcbench-$INSTANCE}"
 RPC_PORT="${RPC_PORT:-8545}"
 NETWORK="${NETWORK:-mainnet}"
 DOTTRACE="${DOTTRACE:-false}"
+# sampling | tracing | timeline. Timeline snapshots are UI-only (Reporter cannot emit XML);
+# line-by-line is not offered because the client images carry no PDBs.
+DOTTRACE_MODE="${DOTTRACE_MODE:-sampling}"
 DOTTRACE_HOST_PATH="${DOTTRACE_HOST_PATH:-/opt/dottrace}"
 DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
@@ -55,6 +58,10 @@ NODE_MEMORY="${NODE_MEMORY:-}"                     # e.g. 64g
 if [[ "$DOTTRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
   die "dottrace profiling requires CLIENT=nethermind (dotTrace is .NET-specific)"
 fi
+case "$DOTTRACE_MODE" in
+  sampling|tracing|timeline) ;;
+  *) die "DOTTRACE_MODE must be sampling, tracing, or timeline (got '$DOTTRACE_MODE')" ;;
+esac
 
 mkdir -p "$STATE_DIR"
 [[ -d "$DB_SOURCE" ]] || {
@@ -281,7 +288,7 @@ if [[ "$DOTTRACE" == "true" ]]; then
     -v "$DIAG_DIR/dottrace:/dottrace-output:rw"
     --entrypoint /opt/dottrace/dottrace
   )
-  entry_args=(start --framework=NetCore "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.dtp" --propagate-exit-code -- /nethermind/nethermind)
+  entry_args=(start --framework=NetCore "--profiling-type=${DOTTRACE_MODE^}" "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.dtp" --propagate-exit-code -- /nethermind/nethermind)
 fi
 # Nethermind keeps the image's entrypoint.sh (as expb and production do): it applies
 # host tuning and enables a shipped PGO profile, which a direct binary call skips.
