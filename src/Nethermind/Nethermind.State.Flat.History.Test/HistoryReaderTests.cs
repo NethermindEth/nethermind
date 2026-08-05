@@ -26,7 +26,7 @@ public class HistoryReaderTests
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, _historyColumns, new FlatDbConfig(), LimboLogs.Instance);
     }
 
     [TearDown]

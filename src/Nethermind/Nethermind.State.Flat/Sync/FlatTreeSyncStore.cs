@@ -15,7 +15,11 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync;
 
-public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager persistenceManager, ILogManager logManager) : ITreeSyncStore
+public class FlatTreeSyncStore(
+    IPersistence persistence,
+    IPersistenceManager persistenceManager,
+    ILogManager logManager,
+    IHistoryPivotSeeder? historyPivotSeeder = null) : ITreeSyncStore
 {
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
@@ -244,6 +248,15 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         // Snap/heal writes use DisableWAL and are only crash-durable once flushed. Flush before advancing the
         // WAL-durable pointer, so a crash can't leave CurrentState pointing past unflushed (holed) data. #11457
         persistence.Flush();
+
+        // Before the state pointer advances: the reader must see exactly the pivot's state, no block processing
+        // yet on top of it. A no-op when history capture or windowing is not configured.
+        if (historyPivotSeeder is not null)
+        {
+            Hash256 pivotStateRoot = pivotHeader.StateRoot ?? throw new InvalidOperationException(
+                $"Sync pivot header {pivotHeader.Number} has no state root; cannot seed the flat history floor at it.");
+            historyPivotSeeder.SeedPivot(pivotHeader.Number, pivotStateRoot, reader);
+        }
 
         // Create and immediately dispose to increment state ID
         // This pattern is used by Importer - the from->to transition updates the current state pointer

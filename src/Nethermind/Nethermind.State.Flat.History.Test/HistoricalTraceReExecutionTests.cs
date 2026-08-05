@@ -63,7 +63,7 @@ public class HistoricalTraceReExecutionTests
 
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _historyReader = new HistoryReader(_historyDb, _historyColumns, LimboLogs.Instance);
+        _historyReader = new HistoryReader(_historyDb, _historyColumns, new FlatDbConfig(), LimboLogs.Instance);
 
         _persistenceManager.GetCurrentPersistedStateId().Returns(new StateId(HistoryBarrier, TestItem.KeccakA));
     }

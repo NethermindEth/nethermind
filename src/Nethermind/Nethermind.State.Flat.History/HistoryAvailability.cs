@@ -85,6 +85,30 @@ internal sealed class HistoryAvailability
         }
     }
 
+    /// <summary>
+    /// Resolves which row format this process must use, upgrade-only: once a DB has ever been stamped
+    /// <see cref="WindowedFormatVersion"/> it stays declared that way regardless of later config (see
+    /// <see cref="HistoryWriter"/>'s format-version field comment for why deriving this fresh from config alone
+    /// on every write would be unsafe). v2 (post-value, descending suffix) and v3 (pre-value, ascending suffix)
+    /// are incompatible row shapes in the same column — a DB cannot be converted between them in place.
+    /// </summary>
+    /// <exception cref="InvalidConfigurationException"><paramref name="windowingConfigured"/> is true but this DB
+    /// already holds existing v2 data — windowing requires v3, and there is no in-place v2-&gt;v3 migration.</exception>
+    public byte ResolveFormatVersion(bool windowingConfigured)
+    {
+        byte? stamped = StampedFormatVersion;
+        if (windowingConfigured && stamped == FormatVersion)
+        {
+            throw new InvalidConfigurationException(
+                "HistoryRetentionBlocks is set, but this flatHistory database already holds history captured in the " +
+                "unwindowed (v2) format. Windowing requires the v3 pre-value row format, which cannot be converted " +
+                "from existing v2 data in place. Resync the flatHistory database to enable windowing, or unset " +
+                "HistoryRetentionBlocks to keep running unwindowed against the existing data.", -1);
+        }
+
+        return windowingConfigured || stamped == WindowedFormatVersion ? WindowedFormatVersion : FormatVersion;
+    }
+
     /// <summary>The highest block H such that every block in <c>[0, H]</c> has been captured; <c>false</c> when none has.</summary>
     public bool TryGetWatermark(out ulong watermark)
     {

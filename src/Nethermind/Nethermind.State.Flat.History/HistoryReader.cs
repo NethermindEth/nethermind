@@ -13,23 +13,34 @@ using Nethermind.State.Flat.Persistence;
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// Reads finalized historical state "as of block B" from the history columns. The mirror of
-/// <see cref="HistoryWriter"/>: encode the flat key, floor-seek the value at B via <see cref="HistoryStore"/>,
-/// decode with the same flat account/slot format the live columns use. Serves block-parameter reads below the
-/// finalization barrier, where the per-block snapshots have already been pruned.
+/// Reads finalized historical state "as of block B" from the history columns. Serves block-parameter reads below
+/// the finalization barrier, where the per-block snapshots have already been pruned.
 /// </summary>
+/// <remarks>
+/// Two row formats, chosen once from the stamped format version (never mixed on the same DB — see
+/// <see cref="HistoryAvailability.ResolveFormatVersion"/>): v2 (<see cref="HistoryStore"/>, post-value, descending
+/// suffix) does a single floor-seek and never needs a fallback. v3 (<see cref="HistoryStoreV3"/>, pre-value,
+/// ascending suffix) forward-seeks for the first change after B, and if none is captured, falls through to the
+/// persisted (never tip/snapshot-stacked) live flat column — see <see cref="HistoryStoreV3"/>'s remarks for why
+/// that fallback is sound.
+/// </remarks>
 public sealed class HistoryReader
 {
     // Slim-format account RLP is at most nonce + balance + two 32-byte hashes; 256 bytes is ample headroom.
     private const int AccountValueBufferSize = 256;
 
-    private readonly HistoryStore _accountHistory;
-    private readonly HistoryStore _storageHistory;
+    private readonly HistoryStore? _accountHistory;
+    private readonly HistoryStore? _storageHistory;
+    private readonly HistoryStoreV3? _accountHistoryV3;
+    private readonly HistoryStoreV3? _storageHistoryV3;
+    private readonly IDb? _persistedAccounts;
+    private readonly IDb? _persistedStorage;
     private readonly StorageClearStore _storageClears;
     private readonly HistoryAvailability _availability;
     private readonly bool _rlpWrapSlots;
+    private readonly bool _isV3;
 
-    public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, ILogManager logManager)
+    public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(history);
         ILogger logger = logManager.GetClassLogger<HistoryReader>();
@@ -37,11 +48,27 @@ public sealed class HistoryReader
             db,
             (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
             logger);
-        _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory), logger);
-        _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory), logger);
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
         _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         _availability.VerifyFormat();
+
+        // Config is required here, not just the on-disk stamp (see HistoryWriter.ResolveFormatVersion): a brand
+        // new windowed DB has no stamp at all until its writer's first capture, and a reader constructed before
+        // that (the normal DI startup order) must still resolve to v3, or it would speak v2 to a writer that is
+        // about to speak v3 the moment it captures anything.
+        _isV3 = _availability.ResolveFormatVersion(config.HistoryRetentionBlocks > 0) == HistoryAvailability.WindowedFormatVersion;
+        if (_isV3)
+        {
+            _accountHistoryV3 = new HistoryStoreV3(history.GetColumnDb(FlatHistoryColumns.AccountHistory));
+            _storageHistoryV3 = new HistoryStoreV3(history.GetColumnDb(FlatHistoryColumns.StorageHistory));
+            _persistedAccounts = db.GetColumnDb(FlatDbColumns.Account);
+            _persistedStorage = db.GetColumnDb(FlatDbColumns.Storage);
+        }
+        else
+        {
+            _accountHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.AccountHistory), logger);
+            _storageHistory = new HistoryStore(history.GetColumnDb(FlatHistoryColumns.StorageHistory), logger);
+        }
     }
 
     /// <summary>Whether contiguous history has been captured up to and including <paramref name="block"/>.</summary>
@@ -69,8 +96,10 @@ public sealed class HistoryReader
             stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
 
         Span<byte> valueBuffer = stackalloc byte[AccountValueBufferSize];
-        int written = _accountHistory.TryGetAt(block, flatKey, valueBuffer);
-        if (written <= 0) // -1 = never changed at/before block, 0 = deletion tombstone
+        int written = _isV3
+            ? TryGetAccountV3(block, flatKey, valueBuffer)
+            : _accountHistory!.TryGetAt(block, flatKey, valueBuffer);
+        if (written <= 0) // -1 (or persisted-column miss) = absent, 0 = deletion tombstone
         {
             account = default;
             return false;
@@ -78,6 +107,12 @@ public sealed class HistoryReader
 
         RlpReader context = new(valueBuffer[..written]);
         return AccountDecoder.Slim.TryDecodeStruct(ref context, out account);
+    }
+
+    private int TryGetAccountV3(ulong block, ReadOnlySpan<byte> flatKey, Span<byte> valueBuffer)
+    {
+        int written = _accountHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+        return written >= 0 ? written : _persistedAccounts!.Get(flatKey, valueBuffer);
     }
 
     /// <summary>
@@ -88,7 +123,8 @@ public sealed class HistoryReader
         TryGetStorage(block, address, index, out value, clearsCache: null);
 
     /// <param name="clearsCache">Optional per-scope memo that skips the per-slot self-destruct probe for the
-    /// overwhelmingly common account with no clear markers at all.</param>
+    /// overwhelmingly common account with no clear markers at all. Consulted only on the v2 path — see the v3
+    /// gap note below.</param>
     [SkipLocalsInit]
     internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value, StorageClearsScopeCache? clearsCache)
     {
@@ -99,8 +135,29 @@ public sealed class HistoryReader
             stackalloc byte[BaseFlatPersistence.StorageKeyLength], addrHash, slotHash);
 
         Span<byte> valueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int written = _storageHistory.TryGetAt(block, flatKey, valueBuffer, out ulong changedAtBlock);
-        if (written <= 0) // -1 = never changed at/before block, 0 = cleared tombstone
+
+        if (_isV3)
+        {
+            // A destruct whose persisted-slot count exceeded HistoryWriter's enumeration cap left no per-slot
+            // pre-value rows for this account above the destruct block — silently falling through would omit
+            // slots rather than answer wrong, but fail closed instead: a caller cannot tell "no history" from
+            // "history exists but was too large to record" otherwise.
+            ReadOnlySpan<byte> destructAccountKey = BaseFlatPersistence.EncodeAccountKeyHashed(
+                stackalloc byte[BaseFlatPersistence.AccountKeyLength], addrHash);
+            if (_storageClears.HasPoisonedClearAbove(destructAccountKey, block))
+                throw new StateUnavailableException(
+                    $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
+                    "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
+
+            int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+            if (written < 0) written = _persistedStorage!.Get(flatKey, valueBuffer);
+            if (written <= 0) { value = default; return false; }
+            value = DecodeSlotValue(valueBuffer[..written]);
+            return true;
+        }
+
+        int v2Written = _storageHistory!.TryGetAt(block, flatKey, valueBuffer, out ulong changedAtBlock);
+        if (v2Written <= 0) // -1 = never changed at/before block, 0 = cleared tombstone
         {
             value = default;
             return false;
@@ -117,14 +174,18 @@ public sealed class HistoryReader
             return false;
         }
 
-        ReadOnlySpan<byte> stored = valueBuffer[..written];
+        value = DecodeSlotValue(valueBuffer[..v2Written]);
+        return true;
+    }
+
+    private SlotValue DecodeSlotValue(ReadOnlySpan<byte> stored)
+    {
         if (_rlpWrapSlots)
         {
             RlpReader context = new(stored);
             stored = context.DecodeByteArraySpan();
         }
 
-        value = SlotValue.FromSpanWithoutLeadingZero(stored);
-        return true;
+        return SlotValue.FromSpanWithoutLeadingZero(stored);
     }
 }

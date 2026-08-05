@@ -28,6 +28,7 @@ public class FlatHistoryModule : Module
             .AddSingleton<HistoryWindowPruner>()
             .Bind<IFlatPersistenceCaptureHook, HistoryWriter>()
             .Bind<IStateHistoryCaptureStatus, HistoryWriter>()
+            .Bind<IHistoryPivotSeeder, HistoryWriter>()
             .AddDecorator<IFlatDbManager>((ctx, inner) => new HistoricalFlatDbManager(
                 inner,
                 ctx.Resolve<IPersistenceManager>(),
