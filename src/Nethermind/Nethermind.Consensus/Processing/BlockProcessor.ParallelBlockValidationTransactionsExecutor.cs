@@ -144,9 +144,7 @@ public partial class BlockProcessor
                             incrementalValidation),
                         static (i, state) =>
                         {
-                            // Validation has already rejected the block, so executing the rest of it
-                            // cannot change the outcome. Draining the remaining indices without work
-                            // keeps the loop's contract intact; GetResult then reports the rejection.
+                            // Block already rejected — executing the rest cannot change the outcome.
                             if (state.incrementalValidation.HasFailed) return state;
 
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
@@ -443,12 +441,10 @@ public partial class BlockProcessor
             private BlockReceiptsTracer[]? _receiptsTracers;
             private BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? _transactionProcessedEventHandler;
             private CancellationToken _token;
-            // Volatile: transaction workers poll HasFailed to abandon a block already known invalid.
             private volatile Exception? _exception;
 
-            /// <summary>Whether validation has terminally failed, meaning <see cref="GetResult"/> is
-            /// guaranteed to throw. Lets the transaction workers stop executing a block whose
-            /// rejection is already decided, instead of running to the end of the schedule.</summary>
+            /// <summary>Whether validation has terminally failed, so <see cref="GetResult"/> is
+            /// guaranteed to throw. Polled by the transaction workers.</summary>
             public bool HasFailed => _exception is not null;
 
             public void Schedule(
