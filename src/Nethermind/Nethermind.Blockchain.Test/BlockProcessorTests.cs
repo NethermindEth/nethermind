@@ -1211,6 +1211,72 @@ public class BlockProcessorTests
         }
     }
 
+    /// <summary>
+    /// A block whose invalidity is decided by a cheap prefix must not pay for its expensive tail:
+    /// once incremental validation rejects transaction <c>rejectIndex</c>, the worker loop has to stop
+    /// pulling new transactions instead of executing all of the remaining ones.
+    /// </summary>
+    [Test]
+    public void Parallel_validation_stops_executing_tail_once_inclusion_check_rejects()
+    {
+        // gas after txs 0..2 is 3 * cap and the block has less than one cap left, so tx 3 is the
+        // first transaction that provably cannot fit (EIP-8037 inclusion check).
+        const int rejectIndex = 3;
+        ulong txGasLimit = Eip7825Constants.DefaultTxGasLimitCap;
+        ulong blockGasLimit = ((ulong)rejectIndex + 1ul) * txGasLimit - 1ul;
+        int txCount = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(1024) + 2048;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Transaction[] transactions = CreateParallelValidationTransactions(txCount);
+        foreach (Transaction transaction in transactions)
+        {
+            transaction.GasLimit = txGasLimit;
+        }
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(blockGasLimit)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        using ManualResetEventSlim validationFinished = new(false);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(rejectIndex, txGasLimit, validationFinished);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(transactionProcessor)
+            {
+                IncrementalValidationAction = (b, gasResults) => ReplayInclusionChecks(b, gasResults, validationFinished)
+            },
+            LimboLogs.Instance);
+
+        InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() => executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            new BlockReceiptsTracer(),
+            CancellationToken.None));
+
+        int[] decisivePrefix = new int[rejectIndex + 1];
+        for (int i = 0; i < decisivePrefix.Length; i++)
+        {
+            decisivePrefix[i] = i;
+        }
+
+        // Every worker can still be mid-flight through a tail transaction when the rejection lands;
+        // doubling that leaves slack without coming anywhere near the full transaction count.
+        int maxExpectedExecutions = rejectIndex + 1 + (2 * Environment.ProcessorCount);
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
+            Assert.That(transactionProcessor.ExecutedTxIndexes, Is.SupersetOf(decisivePrefix));
+            Assert.That(transactionProcessor.ExecutedTxIndexes, Has.Count.LessThanOrEqualTo(maxExpectedExecutions));
+        });
+    }
+
     [Test]
     public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
     {
@@ -1259,6 +1325,29 @@ public class BlockProcessorTests
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
 
         Assert.That(balManager.ParallelExecutionEnabled, Is.True);
+    }
+
+    /// <summary>
+    /// Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s per-transaction ordering —
+    /// wait for the worker's gas result, then run the production EIP-8037 inclusion check — without
+    /// needing the surrounding block-access-list machinery.
+    /// </summary>
+    private static void ReplayInclusionChecks(Block block, GasValidationResultSlot[] gasResults, ManualResetEventSlim validationFinished)
+    {
+        try
+        {
+            ulong totalExecutionGas = 0;
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                GasValidationResult gasResult = gasResults[i].GetResult();
+                BlockAccessListManager.CheckPerTxInclusion(block, i, block.Transactions[i], Amsterdam.Instance, totalExecutionGas, 0);
+                totalExecutionGas += gasResult.BlockGasUsed;
+            }
+        }
+        finally
+        {
+            validationFinished.Set();
+        }
     }
 
     private static GasValidationResultSlot[] ResultsForCount(int count)
@@ -1440,6 +1529,8 @@ public class BlockProcessorTests
         {
         }
 
+        public Action<Block, GasValidationResultSlot[]>? IncrementalValidationAction { get; init; }
+
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled => true;
@@ -1481,8 +1572,7 @@ public class BlockProcessorTests
         }
 
         public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
-        {
-        }
+            => IncrementalValidationAction?.Invoke(block, gasResults);
 
         public void SetBlockAccessList(Block block)
         {
@@ -1520,6 +1610,43 @@ public class BlockProcessorTests
             balIndexes.Add((txIndex, balIndex));
 
             ulong gasUsed = 21_000ul + (ulong)txIndex;
+            transaction.BlockGasUsed = gasUsed;
+            txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
+
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Records which transactions actually ran and holds every transaction after
+    /// <c>decisiveIndex</c> until incremental validation has finished, so an executed-count
+    /// assertion measures whether the tail was cancelled rather than how the scheduler happened
+    /// to interleave.
+    /// </summary>
+    private sealed class GatedTailTransactionProcessorAdapter(
+        int decisiveIndex,
+        ulong gasUsed,
+        ManualResetEventSlim validationFinished) : ITransactionProcessorAdapter
+    {
+        public ConcurrentBag<int> ExecutedTxIndexes { get; } = [];
+
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            int txIndex = (int)transaction.Nonce;
+            if (txIndex > decisiveIndex)
+            {
+                // Timeout rather than block forever, so a regression fails the assertion instead of
+                // wedging the run. The spin then keeps a released worker busy for far longer than
+                // the gap between validation failing and the worker loop observing cancellation.
+                validationFinished.Wait(TimeSpan.FromSeconds(10));
+                Thread.SpinWait(50_000);
+            }
+
+            ExecutedTxIndexes.Add(txIndex);
             transaction.BlockGasUsed = gasUsed;
             txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
 

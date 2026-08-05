@@ -123,9 +123,13 @@ public partial class BlockProcessor
                 gasResults[i].Reset();
             }
 
+            BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+
+            // Nothing may fail between scheduling and the try below: the work item is only joined by
+            // GetResult, and Schedule recycles the previous block's state on the assumption that its
+            // validator has already been joined.
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
-            BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
             try
             {
@@ -138,7 +142,11 @@ public partial class BlockProcessor
                     ParallelUnbalancedWork.For(
                         0,
                         len + 1,
-                        ParallelUnbalancedWork.DefaultOptions,
+                        new ParallelOptions
+                        {
+                            MaxDegreeOfParallelism = ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism,
+                            CancellationToken = incrementalValidation.Failed
+                        },
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
                             txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner),
                         static (i, state) =>
@@ -205,6 +213,13 @@ public partial class BlockProcessor
                                 ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
                             }
                         });
+                }
+                catch (OperationCanceledException) when (incrementalValidation.Failed.IsCancellationRequested)
+                {
+                    // Validation is already terminal, so whatever of the tail never got scheduled is
+                    // moot. Surface the validation failure rather than the stop signal it raised.
+                    incrementalValidation.GetResult();
+                    throw;
                 }
                 catch
                 {
@@ -431,6 +446,7 @@ public partial class BlockProcessor
         private sealed class IncrementalValidationWorkItem : IThreadPoolWorkItem
         {
             private readonly ManualResetEventSlim _completed = new(false);
+            private CancellationTokenSource _failed = new();
             private IBlockAccessListManager? _balManager;
             private Block? _block;
             private GasValidationResultSlot[]? _gasResults;
@@ -438,6 +454,13 @@ public partial class BlockProcessor
             private BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? _transactionProcessedEventHandler;
             private CancellationToken _token;
             private Exception? _exception;
+
+            /// <summary>Cancelled once validation has terminally failed, so the transaction workers
+            /// stop pulling new indices instead of executing the whole tail of a block that is
+            /// already known to be invalid.</summary>
+            /// <remarks>Only ever cancelled together with a stored exception, so a caller that sees
+            /// this token cancelled can rely on <see cref="GetResult"/> throwing.</remarks>
+            public CancellationToken Failed => _failed.Token;
 
             public void Schedule(
                 IBlockAccessListManager balManager,
@@ -450,9 +473,14 @@ public partial class BlockProcessor
                 _completed.Reset();
                 _exception = null;
 
+                // A cancelled source cannot be un-cancelled. The previous block's validator was
+                // joined by GetResult before this call, so replacing the source here is unraced.
+                _failed.Dispose();
+                _failed = new CancellationTokenSource();
+
                 if (token.IsCancellationRequested)
                 {
-                    _exception = new TaskCanceledException();
+                    SetFailure(new TaskCanceledException());
                     _completed.Set();
                     return;
                 }
@@ -497,12 +525,21 @@ public partial class BlockProcessor
                 }
                 catch (Exception ex)
                 {
-                    _exception = ex;
+                    SetFailure(ex);
                 }
                 finally
                 {
                     _completed.Set();
                 }
+            }
+
+            /// <summary>Stores the failure and signals <see cref="Failed"/>. The two must always move
+            /// together — the foreground treats the cancellation as a stop signal and relies on
+            /// <see cref="GetResult"/> rethrowing the stored exception in its place.</summary>
+            private void SetFailure(Exception exception)
+            {
+                _exception = exception;
+                _failed.Cancel();
             }
         }
     }
