@@ -143,7 +143,7 @@ the workflow's defensive-cleanup step).
 
 | Input | Meaning |
 |---|---|
-| `benchmark_tool` | `flood`, `ethcallchaos`, or `jsonbench`. |
+| `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
 | `client` | `nethermind` (default), `geth`, or `reth` — the node under test. |
 | `reference_client` | `none` (default) or a client to compare against (see comparison mode). |
 | `snapshot_block` | Same-block snapshot set tag (`/mnt/sda/<client>-<tag>`); empty = expb snapshot (nethermind) / `25490000` (geth/reth, comparisons). |
@@ -278,6 +278,58 @@ the corpus DB is how you constrain the workload. Corpus resolution order:
 the `corpus-v1` release asset of `kamilchodola/EthCallChaos`) → a DB committed
 in the tool repo → fresh evolution from scratch.
 
+## Private `eth_call` corpus (`tool_config.eth_call_corpus: true`)
+
+For call sets that must not appear in GitHub logs or artifacts (e.g. shared by a
+third party): the corpus lives only on the runner, and runs publish **aggregate
+numbers and parity counts only**. This is a logging/artifact boundary, not a
+defense against the runner itself — anything executing on the VM (trusted
+images, this repo's scripts) can read the corpus there.
+
+**Corpus files** (JSON Lines, one `{"method":"eth_call","params":[...]}` per
+line, extra fields ignored, optionally gzipped) go to the runner at
+`/mnt/sda/expb-data/rpc-bench/eth-call-corpus[-<label>].jsonl.gz`. A
+`jsonbench-sweep` with `eth_call_corpus:true` discovers **every**
+`eth-call-corpus*.jsonl.gz` there and runs each as its own scenario;
+single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
+`corpus_dir` (sweep tool_config) overrides the directory.
+
+**What a corpus sweep does per client:** one k6 latency cell per corpus per
+`rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
+JSON-array fixture because json-bench's JSONL reader caps lines at ~64 KiB),
+then one full-corpus replay via `corpus_parity.py` while the node is still up.
+The **first client in `clients` is the parity baseline**; every later client's
+responses are compared byte-for-byte against it, and any defect or mismatch
+fails the job. Calls the baseline client rejects with a JSON-RPC error are
+recorded as error outcomes (captured corpora legitimately contain calls that
+fail at the pinned head, e.g. explicit `gasPrice` with an underfunded sender);
+both clients rejecting a call counts as agreement (`both_rpc_errors`), a
+one-sided rejection as divergence. Corpus cells raise start-node's uniform
+`RPC_GAS_CAP` from 1e9 to 1e12 so the corpus's explicit multi-billion `gas`
+fields are not clamped into artificial failures. Clients, images (`ctype@image`), rates, and duration are all
+free-form — pick rates the node can sustain, and mind that latency numbers from
+a cold node at low rps are indicative, not steady-state.
+
+**How contents stay off GitHub:** the json-bench container's output goes to a
+VM-scratch file instead of the job log; per-call k6 outputs, deep-check, and
+HTML reports are disabled or left in scratch; the published `summary.json` is
+rewritten by `corpus_results.py sanitize` to a fixed numeric schema; parity
+reports contain counters and client labels only; node logs are scanned for the
+usual Exception / invalid-block / shutdown gates but print **counts only** and
+are deleted (sweep) or excluded from upload; the artifact is assembled by
+`corpus_results.py stage`, which copies nothing but validated `summary.json`,
+`parity.json`, and generated markdown. Failures print category + counts (e.g.
+`rpc_error=3`), never request or response bytes — raw detail stays on the
+runner in `<scratch>/jsonbench/` for SSH diagnosis until the next run wipes it.
+
+Example — 4-way private comparison, 3 rates, both corpora, one dispatch:
+
+```json
+{"eth_call_corpus": true,
+ "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:some-pr-branch reth@ghcr.io/paradigmxyz/reth:v2.2.0 reth@ghcr.io/paradigmxyz/reth:latest",
+ "rps_list": "1 10 100", "duration": "120s"}
+```
+
 ## dotTrace flow (goal #3)
 
 Setting `dottrace` to a mode (requires `client=nethermind`) uses the same mechanism as
@@ -346,5 +398,8 @@ The `reproducible-benchmarks` self-hosted runner must provide:
 | `stop-node.sh` | Graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
+| `corpus_parity.py` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |
+| `corpus_results.py` | Sanitize k6 summaries to a fixed numeric schema and stage only validated aggregate files for the corpus artifact. |
+| `prepare-eth-call-corpus.py` | Convert a JSONL(.gz) corpus into the JSON-array fixture json-bench consumes. |
 | `run-jsonbench.sh` | Clone/build json-bench's runner image, adapt the workload config to the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
 | `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |
