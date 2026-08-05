@@ -23,6 +23,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
+    public RecentRootReferenceForRpc[]? RecentRootReferences { get; set; }
+
     [JsonConstructor]
     public FrameTransactionForRpc() { }
 
@@ -31,6 +33,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     {
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
+        RecentRootReferences = RecentRootReferenceForRpc.FromReferences(transaction.RecentRootReferences);
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
@@ -41,6 +44,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         Transaction tx = baseResult.Data;
         tx.Frames = FrameForRpc.ToFrames(Frames);
         tx.FrameSignatures = FrameSignatureForRpc.ToSignatures(Signatures);
+        tx.RecentRootReferences = RecentRootReferenceForRpc.ToReferences(RecentRootReferences);
         return tx;
     }
 
