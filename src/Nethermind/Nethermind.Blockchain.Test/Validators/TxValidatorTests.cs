@@ -847,6 +847,71 @@ public class TxValidatorTests
             };
         }
     }
+
+    // EIP-7594 (ethereum/EIPs#11985): a blob-carrying frame tx (EIP-8141) is bound by the same per-tx
+    // blob-count limit (BLOB_COUNT_LIMIT = 6) and versioned-hash version byte (0x01) as a type-3 blob tx,
+    // matching EELS validate_frame_transaction.
+    [Test]
+    public void IsWellFormed_FrameTxWithSingleValidBlob_ReturnTrue()
+    {
+        Transaction tx = BuildBlobFrameTx(blobCount: 1);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameTxAtBlobCountLimit_ReturnTrue()
+    {
+        Transaction tx = BuildBlobFrameTx(blobCount: (int)Bogota.Instance.MaxBlobsPerTx);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameTxExceedsBlobCountLimit_ReturnFalse()
+    {
+        Transaction tx = BuildBlobFrameTx(blobCount: (int)Bogota.Instance.MaxBlobsPerTx + 1);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameTxWithWrongVersionedHashVersionByte_ReturnFalse()
+    {
+        Transaction tx = BuildBlobFrameTx(blobCount: 1, versionByte: 0x02);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        ValidationResult result = txValidator.IsWellFormed(tx, Bogota.Instance);
+
+        Assert.That(result.AsBool(), Is.False);
+        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidBlobVersionedHashVersion));
+    }
+
+    private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
+    {
+        byte[][] versionedHashes = new byte[blobCount][];
+        for (int i = 0; i < blobCount; i++)
+        {
+            byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+            hash[0] = versionByte;
+            versionedHashes[i] = hash;
+        }
+
+        return new Transaction
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            DecodedMaxFeePerGas = 100_000,
+            MaxFeePerBlobGas = 1,
+            BlobVersionedHashes = versionedHashes,
+        };
+    }
 }
 
 /// <summary>The EIP-7906 fork gate on the <c>POST_TX</c> frame mode.</summary>
