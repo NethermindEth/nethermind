@@ -77,9 +77,11 @@ public class FrameTxReceiptDecoderTests
 
     // Regression: ReceiptsIterator (eth_getLogs) loops DecodeStructRef with RlpBehaviors.Storage.
     // A frame-tx receipt used to leave the reader mid-sequence, breaking the next receipt. It sits
-    // between two regular ones so any misalignment surfaces on a neighbour.
+    // between two regular ones so any misalignment surfaces on a neighbour. Runs over both storage
+    // decoders since ReceiptsIterator picks compact or legacy at runtime from the stored bytes.
     [Test]
-    public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours()
+    public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours(
+        [Values(true, false)] bool compactEncoding)
     {
         LogEntry frameLog = Log(0x01);
         TxReceipt frameReceipt = CreateStorageFrameReceipt(
@@ -93,7 +95,10 @@ public class FrameTxReceiptDecoderTests
         TxReceipt after = Build.A.Receipt.WithAllFieldsFilled
             .WithSender(TestItem.AddressE).WithGasUsedTotal(2000).WithCalculatedBloom().TestObject;
 
-        CompactReceiptStorageDecoder decoder = new();
+        RlpDecoder<TxReceipt> decoder = compactEncoding
+            ? new CompactReceiptStorageDecoder()
+            : new ReceiptStorageDecoder();
+        IReceiptRefDecoder refDecoder = (IReceiptRefDecoder)decoder;
         byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
 
         // Mirror ReceiptsIterator.TryGetNext's loop bound exactly. TxReceiptStructRef is a ref
@@ -104,10 +109,10 @@ public class FrameTxReceiptDecoderTests
         (byte Status, ulong Gas, string Sender, TxType Type, LogEntry[] Logs)[] decoded = new (byte, ulong, string, TxType, LogEntry[])[3];
         while (reader.Position < length)
         {
-            decoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef current);
+            refDecoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef current);
             if (count < decoded.Length)
             {
-                decoded[count] = (current.StatusCode, current.GasUsedTotal, current.Sender.ToString(), current.TxType, DecodeLogs(current.LogsRlp));
+                decoded[count] = (current.StatusCode, current.GasUsedTotal, current.Sender.ToString(), current.TxType, DecodeLogs(current.LogsRlp, compactEncoding));
             }
             count++;
         }
@@ -121,7 +126,10 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
         Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
         Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender!.ToString()), "frame sender");
-        Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the extension's presence identifies a frame-tx receipt");
+        // This is the decoder's inferred TxType, observed only by callers that skip recovery. On the
+        // eth_getLogs path ReceiptsRecovery.RecoverReceiptData overwrites TxType from the matching
+        // transaction, so this value does not pin what that path ultimately reports.
+        Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the decoder infers FrameTx from the extension's presence");
         AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs!);
 
         // The receipt after the frame tx must be intact, proving the reader realigned.
@@ -130,14 +138,16 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded[2].Type, Is.EqualTo(TxType.Legacy));
     }
 
-    private static LogEntry[] DecodeLogs(scoped ReadOnlySpan<byte> logsRlp)
+    private static LogEntry[] DecodeLogs(scoped ReadOnlySpan<byte> logsRlp, bool compact)
     {
         RlpReader reader = new(logsRlp);
         int end = reader.ReadSequenceLength() + reader.Position;
         List<LogEntry> logs = [];
         while (reader.Position < end)
         {
-            LogEntry log = CompactLogEntryDecoder.Instance.Decode(ref reader, RlpBehaviors.AllowExtraBytes)!;
+            LogEntry log = compact
+                ? CompactLogEntryDecoder.Instance.Decode(ref reader, RlpBehaviors.AllowExtraBytes)!
+                : LogEntryDecoder.Instance.Decode(ref reader, RlpBehaviors.AllowExtraBytes)!;
             logs.Add(log);
         }
 
