@@ -323,15 +323,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         UInt256 fees = premiumPerGas * (UInt256)spentGas;
         WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
-        bool commit = opts.HasFlag(ExecutionOptions.Commit);
-        if (commit)
-        {
-            WorldState.Commit(spec, commitRoots: false);
-        }
-
+        // CommitAndRestore asks for both, and a commit clears the journals the snapshot indexes into,
+        // so restoring after it would revert nothing. The frame path keeps the whole transaction in
+        // the journal until here, so the restore alone returns the state the caller started with —
+        // which is what lets a gas-estimation loop run repeated CallAndRestore calls on one world state.
         if (opts.HasFlag(ExecutionOptions.Restore))
         {
             WorldState.Restore(txSnapshot);
+        }
+        else if (opts.HasFlag(ExecutionOptions.Commit))
+        {
+            WorldState.Commit(spec, commitRoots: false);
         }
 
         if (tracer.IsTracingFees)
