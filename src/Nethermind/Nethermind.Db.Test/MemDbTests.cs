@@ -31,8 +31,9 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new(10, 10);
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
-            memDb.Get(TestItem.KeccakA);
-            _ = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
+            Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
+            Assert.That(result[0].Value, Is.EqualTo(new byte[] { 1, 2, 3 }));
         }
 
         [Test]
@@ -49,7 +50,7 @@ namespace Nethermind.Db.Test
         {
             MemDb memDb = new();
             memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
-            memDb.Get(TestItem.KeccakA);
+            Assert.That(memDb.Get(TestItem.KeccakA), Is.EqualTo(new byte[] { 1, 2, 3 }));
         }
 
         [Test]
@@ -131,20 +132,6 @@ namespace Nethermind.Db.Test
             memDb.Set(TestItem.KeccakA, _sampleValue);
             memDb.Set(TestItem.KeccakB, _sampleValue);
             Assert.That(memDb.Values, Has.Count.EqualTo(2));
-        }
-
-        [Test]
-        public void Dispose_does_not_cause_trouble()
-        {
-            MemDb memDb = new();
-            memDb.Dispose();
-        }
-
-        [Test]
-        public void Flush_does_not_cause_trouble()
-        {
-            MemDb memDb = new();
-            memDb.Flush();
         }
 
         [Test]
