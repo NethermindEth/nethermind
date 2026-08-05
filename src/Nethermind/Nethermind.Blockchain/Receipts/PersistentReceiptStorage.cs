@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IBlockTree _blockTree;
         private readonly IBlockStore _blockStore;
         private readonly IReceiptConfig _receiptConfig;
+        private readonly IStateHistoryCaptureStatus? _historyCaptureStatus;
         private readonly ILogger _logger;
         private readonly bool _legacyHashKey;
 
@@ -78,6 +79,24 @@ namespace Nethermind.Blockchain.Receipts
         // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
         private readonly Lock _writeLock = new();
 
+        // Bodies skipped by StoresBodies, held until capture durably covers their block so a capture breakdown can
+        // persist them before the pending state persist prunes the blocks' snapshots — their only other source.
+        // Null when derivation is off or capture status is unwired, since then no body is ever skipped.
+        private readonly ConcurrentDictionary<ValueHash256, RetainedBody>? _retainedBodies;
+        private long _retainedBytes;
+
+        // A block count alone does not bound memory: a block's receipts run from ~100 KB to ~5 MB.
+        internal const int MaxRetainedBodies = 1024;
+        internal const long MaxRetainedBytes = 256L * 1024 * 1024;
+
+        // Deliberate over-estimates: binding a cap early is harmless, holding more than accounted for is not.
+        private const int RetainedReceiptOverhead = 512;
+        private const int RetainedLogOverhead = 96;
+        private const int RetainedTopicBytes = 56;
+        private volatile bool _retentionSaturationLogged;
+
+        private sealed record RetainedBody(ulong BlockNumber, Hash256 BlockHash, TxReceipt[] Receipts, RlpBehaviors Behaviors, long EstimatedBytes);
+
         /// <summary>
         /// Mirrors the deferred tx-index write: block number under <see cref="IReceiptConfig.CompactTxIndex"/>
         /// (resolved canonically on read, so a reorged-out block self-heals like the persisted form), else block hash.
@@ -97,8 +116,10 @@ namespace Nethermind.Blockchain.Receipts
             ReceiptArrayStorageDecoder? storageDecoder = null,
             IDeferredBlockDataWriter? deferredWriter = null,
             IStatePersistenceBarrier? persistenceBarrier = null,
-            ILogManager? logManager = null)
+            ILogManager? logManager = null,
+            IStateHistoryCaptureStatus? historyCaptureStatus = null)
         {
+            _historyCaptureStatus = historyCaptureStatus;
             _deferredWriter = deferredWriter is { Enabled: true } ? deferredWriter : null;
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
             _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
@@ -126,6 +147,13 @@ namespace Nethermind.Blockchain.Receipts
                 _pendingReceipts = new DeferredWriteOverlay<(TxReceipt[] Receipts, RlpBehaviors Behaviors)>(_deferredWriter, WriteReceipts, _writeLock);
                 // Fsync the whole receipts DB WAL (receipts + transaction columns) after the barrier drains the writer.
                 (persistenceBarrier ?? NullStatePersistenceBarrier.Instance).RegisterFlush(() => _database.Flush(onlyWal: true));
+            }
+
+            if (historyCaptureStatus is not null && receiptConfig.DeriveFromState)
+            {
+                _retainedBodies = new ConcurrentDictionary<ValueHash256, RetainedBody>();
+                historyCaptureStatus.WatermarkAdvanced += EvictRetainedBodies;
+                historyCaptureStatus.CaptureDisabled += PersistRetainedBodies;
             }
         }
 
@@ -525,7 +553,11 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_pendingReceipts is null)
             {
-                Insert(block, txReceipts, spec, ensureCanonical: false);
+                bool storesBody = StoresBodies(spec);
+                InsertCore(block, txReceipts, spec, ensureCanonical: false, WriteFlags.None, lastBlockNumber: null,
+                    storeBody: storesBody);
+                if (!storesBody) RetainSkippedBody(block, txReceipts ?? []);
+                if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
                 return;
             }
 
@@ -546,7 +578,8 @@ namespace Nethermind.Blockchain.Receipts
 
             Hash256 blockHash = block.Hash!;
             _receiptsCache.Set(blockHash, txReceipts);
-            _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
+            if (StoresBodies(spec)) _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
+            else RetainSkippedBody(block, txReceipts);
 
             if (block.Number < MigratedBlockNumber)
             {
@@ -567,8 +600,176 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
         }
 
+        /// <summary>
+        /// Whether the block-processing path writes this block's receipt bodies. Pre-EIP-658 receipts carry a
+        /// post-transaction state root that re-execution cannot reproduce, so they are stored even when deriving.
+        /// </summary>
+        /// <remarks>
+        /// Only block processing may skip the write, because only its blocks are regenerable. Sync, era import and
+        /// receipt migration write through unconditionally — migration in particular deletes the legacy key after
+        /// re-inserting, so a skipped write there would destroy the bodies.
+        /// </remarks>
+        private bool StoresBodies(IReleaseSpec spec) =>
+            !_receiptConfig.DeriveFromState
+            || !spec.IsEip658Enabled
+            // A skipped body is permanently lost once its block leaves the in-memory tier: follow live capture
+            // health, and treat absent status (patricia backend) as unhealthy.
+            || _historyCaptureStatus?.CaptureHealthy != true
+            || IsRetentionSaturated();
+
+        /// <summary>Whether either retention cap is reached — the skip then stops until an eviction drops below it.</summary>
+        private bool IsRetentionSaturated()
+        {
+            if (_retainedBodies is null) return false;
+
+            int count = _retainedBodies.Count;
+            long bytes = Volatile.Read(ref _retainedBytes);
+            if (count < MaxRetainedBodies && bytes < MaxRetainedBytes) return false;
+
+            if (_logger.IsWarn && !_retentionSaturationLogged)
+            {
+                _retentionSaturationLogged = true;
+                _logger.Warn(
+                    $"Retained receipt bodies reached the retention cap ({count}/{MaxRetainedBodies} blocks, {bytes / (1024 * 1024)}/{MaxRetainedBytes / (1024 * 1024)} MB) - history capture is not keeping up, e.g. during a finality stall. Storing bodies to disk until it catches up.");
+            }
+
+            return true;
+        }
+
+        private void RetainSkippedBody(Block block, TxReceipt[] txReceipts)
+        {
+            if (_retainedBodies is null || txReceipts.Length == 0) return;
+
+            // Post-EIP-658 by StoresBodies, so the storage encoding is fixed.
+            RetainedBody body = new(block.Number, block.Hash!, txReceipts,
+                RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage, EstimateRetainedBytes(txReceipts));
+
+            DropRetainedBody(block.Hash!.ValueHash256);
+            _retainedBodies[block.Hash!.ValueHash256] = body;
+            Interlocked.Add(ref _retainedBytes, body.EstimatedBytes);
+            UpdateRetentionMetrics();
+
+            // A disable may have drained between the health check that skipped the write and the add above,
+            // which would strand this entry forever.
+            if (_historyCaptureStatus?.CaptureHealthy is false) PersistRetainedBodies();
+        }
+
+        /// <summary>Discards a retained body, keeping <see cref="_retainedBytes"/> in step. Gauges are left to the
+        /// caller so a bulk eviction settles them once.</summary>
+        private bool DropRetainedBody(in ValueHash256 blockHash)
+        {
+            if (_retainedBodies is null || !_retainedBodies.TryRemove(blockHash, out RetainedBody? dropped)) return false;
+
+            Interlocked.Add(ref _retainedBytes, -dropped.EstimatedBytes);
+            return true;
+        }
+
+        /// <summary>Approximate live heap held by a retained body, for the byte cap (see <see cref="MaxRetainedBytes"/>).</summary>
+        private static long EstimateRetainedBytes(TxReceipt[] txReceipts)
+        {
+            long bytes = 0;
+            foreach (TxReceipt receipt in txReceipts)
+            {
+                bytes += RetainedReceiptOverhead;
+
+                LogEntry[]? logs = receipt.Logs;
+                if (logs is null) continue;
+
+                foreach (LogEntry log in logs)
+                {
+                    bytes += RetainedLogOverhead + (log.Topics?.Length ?? 0) * RetainedTopicBytes + (log.Data?.Length ?? 0);
+                }
+            }
+
+            return bytes;
+        }
+
+        private void EvictRetainedBodies(ulong watermark)
+        {
+            if (_retainedBodies is null) return;
+
+            foreach (KeyValuePair<ValueHash256, RetainedBody> retained in _retainedBodies)
+            {
+                if (retained.Value.BlockNumber <= watermark) DropRetainedBody(retained.Key);
+            }
+
+            // Count locks every bucket, so sample it once for both the re-arm and the gauges.
+            int remaining = _retainedBodies.Count;
+            long remainingBytes = Volatile.Read(ref _retainedBytes);
+
+            if (remaining < MaxRetainedBodies && remainingBytes < MaxRetainedBytes)
+            {
+                _retentionSaturationLogged = false;
+            }
+
+            UpdateRetentionMetrics(remaining, remainingBytes);
+        }
+
+        /// <summary>Retention state for tests, which cannot assert on the process-wide gauges while running in parallel.</summary>
+        internal long RetainedBytes => Volatile.Read(ref _retainedBytes);
+
+        internal int RetainedBodyCount => _retainedBodies?.Count ?? 0;
+
+        private void UpdateRetentionMetrics() =>
+            UpdateRetentionMetrics(_retainedBodies?.Count ?? 0, Volatile.Read(ref _retainedBytes));
+
+        private static void UpdateRetentionMetrics(int count, long bytes)
+        {
+            Metrics.RetainedReceiptBodies = count;
+            Metrics.RetainedReceiptBodyBytes = bytes;
+        }
+
+        /// <summary>
+        /// Persists every retained body — capture stopped, so their blocks will never be derivable from history.
+        /// </summary>
+        /// <remarks>
+        /// Runs before the pending state persist resumes, so the WAL sync makes the bodies durable before that
+        /// persist prunes the blocks' snapshots. Must not throw: disabling is one-shot, so nothing re-notifies.
+        /// </remarks>
+        private void PersistRetainedBodies()
+        {
+            if (_retainedBodies is null || _retainedBodies.IsEmpty) return;
+
+            int persisted = 0;
+            bool allWritten = false;
+            try
+            {
+                lock (_writeLock)
+                {
+                    foreach (KeyValuePair<ValueHash256, RetainedBody> retained in _retainedBodies)
+                    {
+                        if (!_retainedBodies.TryRemove(retained.Key, out RetainedBody? body)) continue;
+                        // Subtract on removal: a throwing write must not leave the entry gone but its bytes counted.
+                        Interlocked.Add(ref _retainedBytes, -body.EstimatedBytes);
+                        WriteReceipts(body.BlockNumber, body.BlockHash, (body.Receipts, body.Behaviors));
+                        persisted++;
+                    }
+                }
+
+                allWritten = true;
+
+                // SyncWal rethrows where Flush(onlyWal: true) degrades to a warning; this line carries the
+                // durability claim above.
+                _database.SyncWal();
+                if (_logger.IsWarn) _logger.Warn(
+                    $"History capture stopped: persisted the receipt bodies retained for {persisted} block(s) that can no longer be derived from state history.");
+            }
+            catch (Exception e)
+            {
+                string failure = allWritten
+                    ? $"the write-ahead log sync failed after writing all {persisted} block(s), so none of them is guaranteed durable"
+                    : $"writing failed after {persisted} block(s), leaving {_retainedBodies.Count} unwritten";
+                if (_logger.IsError) _logger.Error(
+                    $"Failed to persist the retained receipt bodies after history capture stopped: {failure} - the affected blocks cannot serve receipts; re-sync receipts to recover them.", e);
+            }
+            finally
+            {
+                UpdateRetentionMetrics();
+            }
+        }
+
         [SkipLocalsInit]
-        private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber)
+        private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber, bool storeBody = true)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -585,11 +786,14 @@ namespace Nethermind.Blockchain.Receipts
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(txReceipts, behaviors);
-            Span<byte> blockNumPrefixed = stackalloc byte[40];
-            GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
+            if (storeBody)
+            {
+                using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(txReceipts, behaviors);
+                Span<byte> blockNumPrefixed = stackalloc byte[40];
+                GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-            _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+                _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+            }
 
             _receiptsCache.Set(block.Hash, txReceipts);
 
@@ -656,6 +860,7 @@ namespace Nethermind.Blockchain.Receipts
             // Cancel any queued canonical write for this block so it cannot resurrect the tx-index below. The
             // block-level entry is the only overlay state, so one removal drops all its txs from the lazy scan.
             _pendingCanonical.TryRemove(block.Hash!.ValueHash256, out _);
+            if (DropRetainedBody(block.Hash!.ValueHash256)) UpdateRetentionMetrics();
 
             _receiptsCache.Delete(block.Hash);
 

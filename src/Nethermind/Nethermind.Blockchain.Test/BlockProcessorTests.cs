@@ -677,9 +677,10 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 
-    [TestCase(2000ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
-    [TestCase(1999ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, bool shouldThrow)
+    [TestCase(2000ul, 0ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999ul, 0ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    [TestCase(2000ul, 2001ul, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool shouldThrow)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -707,6 +708,7 @@ public class BlockProcessorTests
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
+        balManager.SpendGas(gasSpent);
         // Generated BAL has the account but no storage reads
         BlockAccessListAtIndex generatedAtIndex = new();
         generatedAtIndex.AddAccountRead(TestItem.AddressA);
@@ -860,7 +862,7 @@ public class BlockProcessorTests
         // execution-specs PR 2703: the per-tx 2D inclusion check rejects a tx whose
         // worst-case dimension contribution exceeds the remaining budget, even if its
         // actual post-execution gas would have fit. tx1.GasLimit (50_000) exceeds the
-        // remaining regular budget of 35_000 left after tx0's 65_000 actual usage, so
+        // remaining execution budget of 35_000 left after tx0's 65_000 actual usage, so
         // the spec rejects tx1 at inclusion regardless of its actual usage.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction firstTx = Build.A.Transaction
@@ -889,7 +891,7 @@ public class BlockProcessorTests
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
 
         Assert.That(exception!.Message, Does.Contain("EIP-8037 inclusion check"));
-        Assert.That(exception.Message, Does.Contain("RegularDimensionExceeded"));
+        Assert.That(exception.Message, Does.Contain("ExecutionDimensionExceeded"));
     }
 
     [Test]
@@ -928,7 +930,7 @@ public class BlockProcessorTests
     public void IncrementalValidation_eip8037_block_gas_check_uses_actual_state_dimension()
     {
         // CREATE tx GasLimit sized to pass the EIP-8037 worst-case inclusion check
-        // (worst-case state = GasLimit - intrinsic.regular must <= state_available
+        // (worst-case state = GasLimit - intrinsic.execution must <= state_available
         // = 250_000 - 60_000 = 190_000). A 165_000 limit gives worst-case state of
         // ~135_000, which fits. Actual post-execution state is GasCostOf.CreateState
         // (the AccountCreationCost) so the post-exec max(R,S) check still ends up

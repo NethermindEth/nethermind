@@ -811,8 +811,8 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.5.0",
-    "hash": "sha256-p/XRR33R5yvthNf44xwbYvs0QptdB2uD0RFz8gQu0Ls="
+    "version": "1.6.0",
+    "hash": "sha256-vmEuQU3EGJgNi01AVaOtSCz0DolTfTrUeGCMD/A3nwY="
   },
   {
     "pname": "Nethermind.TurboPForBindings",
