@@ -217,6 +217,7 @@ jobs:
           - Ethereum.Legacy.VM.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
+          - Ethereum.Ssz.Test
           - Ethereum.Transaction.Test
           - Ethereum.Trie.Test
         chunk: ['']
@@ -370,9 +371,35 @@ jobs:
       test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest
       setup_group: sequential
 
+  matrix-guard:
+    name: Check test project matrix is exhaustive
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Check every test project has a matrix entry
+        run: |
+          # Intentional exclusions:
+          # - Nethermind.Precompiles.Benchmark.Test: lives in Benchmarks.slnx only, not built by the test artifact
+          # - Ethereum.Blockchain.Pyspec.Test: superseded by the nethtest job (see run-nethtest.yml)
+          allowlist="Nethermind.Precompiles.Benchmark.Test Ethereum.Blockchain.Pyspec.Test"
+          missing=0
+          for dir in src/Nethermind/*.Test; do
+            project=$(basename "$dir")
+            [[ -f "$dir/$project.csproj" ]] || continue
+            [[ " $allowlist " == *" $project "* ]] && continue
+            esc=$(printf '%s' "$project" | sed 's/\./\\./g')
+            if ! grep -qE "^ +- ${esc}\$|project: ${esc}[,} ]" .github/workflows/nethermind-tests.yml; then
+              echo "::error::$project runs in no CI matrix - add it to a matrix in nethermind-tests.yml or to the allowlist in this step"
+              missing=1
+            fi
+          done
+          exit $missing
+
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked, nethtest]
+    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
     steps:
