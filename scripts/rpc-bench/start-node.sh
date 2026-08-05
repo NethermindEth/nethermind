@@ -38,6 +38,11 @@ DOTTRACE="${DOTTRACE:-false}"
 # sampling | tracing | timeline. Timeline snapshots are UI-only (Reporter cannot emit XML);
 # line-by-line is not offered because the client images carry no PDBs.
 DOTTRACE_MODE="${DOTTRACE_MODE:-sampling}"
+# EventPipe sidecar: GC/contention/threading/exception events from a host-side
+# dotnet-trace listener. Complements dotTrace (different channel) and answers the
+# questions a CPU profile cannot: pause times, lock waits, allocation-driven stalls.
+DOTNET_TRACE="${DOTNET_TRACE:-false}"
+DOTNET_TRACE_HOST_PATH="${DOTNET_TRACE_HOST_PATH:-/opt/dotnet-trace}"
 DOTTRACE_HOST_PATH="${DOTTRACE_HOST_PATH:-/opt/dottrace}"
 DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1800}"
@@ -62,6 +67,13 @@ case "$DOTTRACE_MODE" in
   sampling|tracing|timeline) ;;
   *) die "DOTTRACE_MODE must be sampling, tracing, or timeline (got '$DOTTRACE_MODE')" ;;
 esac
+case "$DOTNET_TRACE" in
+  true|false) ;;
+  *) die "DOTNET_TRACE must be true or false (got '$DOTNET_TRACE')" ;;
+esac
+if [[ "$DOTNET_TRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
+  die "dotnet-trace requires CLIENT=nethermind (EventPipe is .NET-specific)"
+fi
 
 mkdir -p "$STATE_DIR"
 [[ -d "$DB_SOURCE" ]] || {
@@ -182,6 +194,37 @@ DATA_MOUNT_TARGET="$DATA_DIR_TARGET"
 log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DATA_MOUNT_TARGET)"
 
 # Persist state for teardown NOW — if docker run fails below, stop-node.sh must still
+
+# EventPipe sidecar: start the listener BEFORE the container so the runtime finds it
+# (a nosuspend connect port with nobody listening records nothing). The socket lives in a
+# short /tmp dir: unix socket paths cap at ~107 chars.
+DOTNET_TRACE_PID=""
+DOTNET_TRACE_DIAG_DIR=""
+if [[ "$DOTNET_TRACE" == "true" ]]; then
+  if [[ ! -x "$DOTNET_TRACE_HOST_PATH/dotnet-trace" ]]; then
+    log "dotnet-trace not found at $DOTNET_TRACE_HOST_PATH — installing via dotnet tool..."
+    dotnet tool install --tool-path "$DOTNET_TRACE_HOST_PATH" dotnet-trace \
+      || as_root dotnet tool install --tool-path "$DOTNET_TRACE_HOST_PATH" dotnet-trace \
+      || die "failed to install dotnet-trace (is the .NET SDK on the runner?)"
+  fi
+  mkdir -p "$DIAG_DIR/dotnet-trace"
+  DOTNET_TRACE_DIAG_DIR="$(mktemp -d /tmp/rpcbench-dt-XXXXXX)"
+  nettrace_out="$DIAG_DIR/dotnet-trace/rpcbench-${NETWORK}${SUFFIX}.nettrace"
+  rm -f "$nettrace_out"
+  # Alongside dotTrace: runtime events only, so the two profilers never double-sample CPU.
+  if [[ "$DOTTRACE" == "true" ]]; then
+    dt_capture=(--clrevents gc+contention+threading+exception --clreventlevel informational)
+  else
+    dt_capture=(--profile cpu-sampling)
+  fi
+  "$DOTNET_TRACE_HOST_PATH/dotnet-trace" collect \
+    --diagnostic-port "$DOTNET_TRACE_DIAG_DIR/diag.sock" \
+    -o "$nettrace_out" \
+    "${dt_capture[@]}" > "$DIAG_DIR/dotnet-trace/collect${SUFFIX}.log" 2>&1 &
+  DOTNET_TRACE_PID=$!
+  log "dotnet-trace listener started (pid $DOTNET_TRACE_PID) -> $(basename "$nettrace_out")"
+fi
+
 # verify the fingerprint and tear down the mount.
 {
   echo "CLIENT=$CLIENT"
@@ -194,6 +237,9 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DA
   echo "DB_SOURCE=$DB_SOURCE"
   echo "DIAG_DIR=$DIAG_DIR"
   echo "DOTTRACE=$DOTTRACE"
+  echo "DOTNET_TRACE=$DOTNET_TRACE"
+  echo "DOTNET_TRACE_PID=${DOTNET_TRACE_PID:-}"
+  echo "DOTNET_TRACE_DIAG_DIR=${DOTNET_TRACE_DIAG_DIR:-}"
   echo "RPC_PORT=$RPC_PORT"
 } > "$STATE_DIR/node$SUFFIX.env"
 
@@ -262,6 +308,9 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
+if [[ "$DOTNET_TRACE" == "true" ]]; then
+  docker_args+=(-v "$DOTNET_TRACE_DIAG_DIR:/dotnet-trace-diag:rw")
+fi
 # Production-default code generation (no DOTNET_* pins); one-off experiments use NODE_ENV_VARS.
 # shellcheck disable=SC2086
 for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
@@ -288,7 +337,16 @@ if [[ "$DOTTRACE" == "true" ]]; then
     -v "$DIAG_DIR/dottrace:/dottrace-output:rw"
     --entrypoint /opt/dottrace/dottrace
   )
-  entry_args=(start --framework=NetCore "--profiling-type=${DOTTRACE_MODE^}" "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.dtp" --propagate-exit-code -- /nethermind/nethermind)
+  entry_args=(start --framework=NetCore "--profiling-type=${DOTTRACE_MODE^}" "--save-to=/dottrace-output/rpcbench-${NETWORK}${SUFFIX}.dtp" --propagate-exit-code --)
+  if [[ "$DOTNET_TRACE" == "true" ]]; then
+    # Container-wide env would be inherited by the dotTrace CLI launcher (itself a .NET
+    # process), which would grab the diagnostic-port connection and be traced instead of
+    # the node. Scope it to the node process only.
+    entry_args+=(/usr/bin/env "DOTNET_DiagnosticPorts=/dotnet-trace-diag/diag.sock,nosuspend")
+  fi
+  entry_args+=(/nethermind/nethermind)
+elif [[ "$DOTNET_TRACE" == "true" ]]; then
+  docker_args+=(-e "DOTNET_DiagnosticPorts=/dotnet-trace-diag/diag.sock,nosuspend")
 fi
 # Nethermind keeps the image's entrypoint.sh (as expb and production do): it applies
 # host tuning and enables a shipped PGO profile, which a direct binary call skips.

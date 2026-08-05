@@ -33,6 +33,22 @@ docker stop -t "$STOP_GRACE" "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Capturing node logs -> $LOG_OUT"
 docker logs "$CONTAINER_NAME" > "$LOG_OUT" 2>&1 || true
 
+# 1b) Finalize the EventPipe sidecar: SIGINT flushes the .nettrace. The session
+#     usually ends by itself once the node's runtime disconnects.
+if [[ "${DOTNET_TRACE:-false}" == "true" && -n "${DOTNET_TRACE_PID:-}" ]]; then
+  if kill -0 "$DOTNET_TRACE_PID" 2>/dev/null; then
+    kill -INT "$DOTNET_TRACE_PID" 2>/dev/null || true
+    for _ in $(seq 1 60); do
+      kill -0 "$DOTNET_TRACE_PID" 2>/dev/null || break
+      sleep 1
+    done
+    kill -9 "$DOTNET_TRACE_PID" 2>/dev/null || true
+  fi
+  log "dotnet-trace output under $DIAG_DIR/dotnet-trace:"
+  find "$DIAG_DIR/dotnet-trace" -type f 2>/dev/null | sed 's/^/  /' || true
+fi
+[[ -n "${DOTNET_TRACE_DIAG_DIR:-}" ]] && rm -rf "$DOTNET_TRACE_DIAG_DIR"
+
 # 2) Collect dotTrace snapshots (if profiling was enabled).
 if [[ "${DOTTRACE:-}" == "true" ]]; then
   log "dotTrace snapshots under $DIAG_DIR/dottrace:"

@@ -555,6 +555,9 @@ jobs:
           RPC_GAS_CAP: ${{ needs.resolve.outputs.eth_call_corpus == 'true' && '1000000000000' || '' }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
+          # EventPipe sidecar rides along with every dotTrace run: GC pauses and lock
+          # contention are invisible to a CPU profile.
+          DOTNET_TRACE: ${{ needs.resolve.outputs.dottrace }}
           NODE_CPUSET: ${{ needs.resolve.outputs.node_cpuset }}
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
@@ -728,11 +731,14 @@ jobs:
           ARCHIVE: ${{ runner.temp }}/dottrace-rpcbench.zip
         run: |
           set -euo pipefail
-          if [[ -d "${DIAG_DIR}/dottrace" ]] && [[ -n "$(find "${DIAG_DIR}/dottrace" -type f 2>/dev/null)" ]]; then
-            ( cd "${DIAG_DIR}" && zip -9r "${ARCHIVE}" dottrace )
-            echo "Archived dotTrace snapshots to ${ARCHIVE}"
+          collected=()
+          [[ -n "$(find "${DIAG_DIR}/dottrace" -type f 2>/dev/null)" ]] && collected+=(dottrace)
+          [[ -n "$(find "${DIAG_DIR}/dotnet-trace" -type f 2>/dev/null)" ]] && collected+=(dotnet-trace)
+          if [[ "${#collected[@]}" -gt 0 ]]; then
+            ( cd "${DIAG_DIR}" && zip -9r "${ARCHIVE}" "${collected[@]}" )
+            echo "Archived ${collected[*]} to ${ARCHIVE}"
           else
-            echo "No dotTrace snapshots found under ${DIAG_DIR}/dottrace."
+            echo "No profiler output found under ${DIAG_DIR}."
           fi
 
       - name: Scan node logs for errors
