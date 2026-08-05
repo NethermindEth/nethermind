@@ -160,11 +160,14 @@ public class HintBasedCacheTests
         hintBasedCache.Hint(_guidA, 0, 29999);
         hintBasedCache.Hint(_guidB, 120000, 149999);
         await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 2, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
-        Assert.That(hintBasedCache.Get(0), Is.Not.Null);
-        Assert.That(hintBasedCache.Get(1), Is.Null);
-        Assert.That(hintBasedCache.Get(2), Is.Null);
-        Assert.That(hintBasedCache.Get(3), Is.Null);
-        Assert.That(hintBasedCache.Get(4), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hintBasedCache.Get(0), Is.Not.Null);
+            Assert.That(hintBasedCache.Get(1), Is.Null);
+            Assert.That(hintBasedCache.Get(2), Is.Null);
+            Assert.That(hintBasedCache.Get(3), Is.Null);
+            Assert.That(hintBasedCache.Get(4), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -175,10 +178,13 @@ public class HintBasedCacheTests
         hintBasedCache.Hint(_guidA, 30000, 239999);
         await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 7, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
 
-        Assert.That(hintBasedCache.Get(0), Is.Null);
-        for (uint i = 1; i < 8; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(hintBasedCache.Get(i), Is.Not.Null, i.ToString());
+            Assert.That(hintBasedCache.Get(0), Is.Null);
+            for (uint i = 1; i < 8; i++)
+            {
+                Assert.That(hintBasedCache.Get(i), Is.Not.Null, i.ToString());
+            }
         }
     }
 
