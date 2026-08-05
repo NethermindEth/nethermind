@@ -9,8 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Facade.Simulate;
 
-// Wraps a chain's own factory so the EIP-7928 BAL processors it builds skip the EIP-3607 sender-code
-// check, keeping the concrete processor type (unlike replacing the factory).
+// Wraps a chain's own factory so the EIP-7928 BAL processors it builds skip the EIP-3607 sender-code check.
 public sealed class SkipSenderCodeCheckTransactionProcessorFactory(ITransactionProcessorFactory inner) : ITransactionProcessorFactory
 {
     public ITransactionProcessor Create(

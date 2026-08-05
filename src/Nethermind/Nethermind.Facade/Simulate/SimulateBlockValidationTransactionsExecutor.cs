@@ -15,8 +15,7 @@ public class SimulateBlockValidationTransactionsExecutor(
     SimulateRequestState simulateState)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    // Apply the simulate blobBaseFee override; forward PrevRandao and BlobBaseFee verbatim rather than
-    // re-deriving them (a BlockProcessor subclass may have set non-default values).
+    // Apply the blobBaseFee override; forward PrevRandao/BlobBaseFee verbatim (a subclass may have set them).
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
         baseTransactionExecutor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
             blockExecutionContext.Header,

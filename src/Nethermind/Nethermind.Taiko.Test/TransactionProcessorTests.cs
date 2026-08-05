@@ -91,8 +91,7 @@ public class TransactionProcessorTests
     [Test]
     public void Contract_sender_executes_and_pays_fees_when_sender_code_check_skipped()
     {
-        // SkipSenderCodeCheck relaxes EIP-3607 without wrapping the spec, so PayFees can still cast to the
-        // concrete ITaikoReleaseSpec; the old spec-wrapping threw InvalidCastException here.
+        // Relaxing EIP-3607 without wrapping the spec keeps the concrete ITaikoReleaseSpec that PayFees casts to.
         _spec.IsEip3607Enabled = true;
         _stateProvider!.InsertCode(TestItem.AddressA, Bytes.FromHexString("0x600060"), _spec);
         _stateProvider!.Commit(_spec);

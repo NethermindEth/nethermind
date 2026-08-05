@@ -62,8 +62,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
-            // Relax EIP-3607 so a state-overridden contract can be the sender, on the main processor and the
-            // EIP-7928 BAL processors (built via the factory), keeping each chain's concrete processor type.
             .Intercept<ITransactionProcessor>(static p => { if (p is TransactionProcessorBase b) b.SkipSenderCodeCheck = true; })
             .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderCodeCheckTransactionProcessorFactory(inner))
             .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
