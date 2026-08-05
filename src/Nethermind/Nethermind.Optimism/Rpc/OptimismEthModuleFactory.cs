@@ -24,6 +24,7 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Optimism.Rpc;
 
@@ -60,7 +61,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IBlockchainBridgeFactory blockchainBridgeFactory,
         IBlockFinder blockFinder,
         IBlockTree blockTree,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IEthCapabilitiesProvider capabilitiesProvider,
         IStateReader stateReader,
         ITxPool txPool,

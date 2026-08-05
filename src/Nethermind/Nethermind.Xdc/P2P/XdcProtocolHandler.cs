@@ -53,12 +53,16 @@ internal class XdcProtocolHandler(
 
         int packetType = message.PacketType;
 
-        (bool isSyncing, _, _) = blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus);
-        if (isSyncing && packetType is XdcMessageCode.VoteMsg or XdcMessageCode.TimeoutMsg)
+        if (packetType is XdcMessageCode.VoteMsg or XdcMessageCode.TimeoutMsg)
         {
-            const string ignored = $"XDC message ignored, syncing";
-            ReportIn(ignored, size);
-            return true;
+            (bool isSyncing, ulong headNumber, ulong bestSuggested) = blockTree.IsSyncing(XdcConstants.MaxSyncDistanceForConsensus);
+            bool isGenesisBootstrap = headNumber == 0 && bestSuggested == 0;
+            if (isSyncing && !isGenesisBootstrap)
+            {
+                const string ignored = $"XDC message ignored, syncing";
+                ReportIn(ignored, size);
+                return true;
+            }
         }
 
         switch (packetType)

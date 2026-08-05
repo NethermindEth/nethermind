@@ -33,7 +33,7 @@ public class XdcProtocolHandlerTests
 {
     private static (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
         IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, ISyncInfoManager syncInfoManager)
-        CreateAll(int suggestedAheadOfHead = 0)
+        CreateAll(int suggestedAheadOfHead = 0, ulong headNumber = 100)
     {
         IVotesManager votesManager = Substitute.For<IVotesManager>();
         ITimeoutCertificateManager timeoutManager = Substitute.For<ITimeoutCertificateManager>();
@@ -47,7 +47,7 @@ public class XdcProtocolHandlerTests
         nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(headNumber).TestObject;
         Block headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
         blockTree.Head.Returns(headBlock);
         BlockHeader bestSuggested = suggestedAheadOfHead == 0
@@ -307,6 +307,56 @@ public class XdcProtocolHandlerTests
         (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
             IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, _)
             = CreateAll(suggestedAheadOfHead: 900);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            handler.HandleMessage(CreatePacket(XdcMessageCode.VoteMsg));
+            handler.HandleMessage(CreatePacket(XdcMessageCode.TimeoutMsg));
+
+            votesManager.DidNotReceive().OnReceiveVote(Arg.Any<Vote>());
+            timeoutManager.DidNotReceive().OnReceiveTimeout(Arg.Any<Timeout>());
+            session.DidNotReceive().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        }
+    }
+
+    [Test]
+    public void HandleMessage_VoteAndTimeoutMsgAtGenesisBootstrap_AreProcessed()
+    {
+        // At genesis, with nothing beyond it known to us or our peers, every node reports isSyncing
+        // (bestSuggested == 0) - without a bootstrap exemption a chain stuck at genesis could never
+        // exchange the timeout/vote messages needed to form a TC and elect a later round's leader.
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, _)
+            = CreateAll(headNumber: 0);
+        using (handler)
+        {
+            HandleIncomingStatus(handler, serializer);
+
+            Vote vote = CreateVote(round: 3);
+            ZeroPacket votePacket = CreatePacket(XdcMessageCode.VoteMsg);
+            serializer.Deserialize<VoteMsg>(votePacket.Content).Returns(new VoteMsg { Vote = vote });
+            handler.HandleMessage(votePacket);
+
+            Timeout timeout = CreateTimeout(round: 3);
+            ZeroPacket timeoutPacket = CreatePacket(XdcMessageCode.TimeoutMsg);
+            serializer.Deserialize<TimeoutMsg>(timeoutPacket.Content).Returns(new TimeoutMsg { Timeout = timeout });
+            handler.HandleMessage(timeoutPacket);
+
+            votesManager.Received(1).OnReceiveVote(vote);
+            timeoutManager.Received(1).OnReceiveTimeout(timeout);
+        }
+    }
+
+    [Test]
+    public void HandleMessage_VoteAndTimeoutMsgWhileSyncingAnExistingChainFromGenesis_AreIgnored()
+    {
+        // A node joining an existing chain also sits at head 0 for the whole header/state-sync window,
+        // but its peers have announced blocks far beyond genesis (bestSuggested >> 0) - the bootstrap
+        // exemption must not mistake that for a fresh chain nobody has produced a block on yet.
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, ISession session,
+            IVotesManager votesManager, ITimeoutCertificateManager timeoutManager, _)
+            = CreateAll(suggestedAheadOfHead: 1000, headNumber: 0);
         using (handler)
         {
             HandleIncomingStatus(handler, serializer);

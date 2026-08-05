@@ -14,12 +14,13 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Xdc.Contracts;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Xdc.RPC;
 
 internal sealed class XdcExtendedEthModule(
     IBlockFinder blockFinder,
-    IReceiptFinder receiptFinder,
+    [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
     IMasternodeVotingContract masternodeVotingContract,
     IRewardsStore rewardsStore) : IXdcExtendedEthRpcModule

@@ -17,12 +17,10 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using WholeReadScanner = Nethermind.State.Flat.PersistedSnapshots.PersistedSnapshotScanner<
-    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSession,
-    Nethermind.State.Flat.PersistedSnapshots.Storage.WholeReadSessionReader,
-    Nethermind.State.Flat.Io.NoOpPin>;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
+[assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
+[assembly: InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.State.Flat;
@@ -37,7 +35,8 @@ public class PersistenceManager(
     ILogManager logManager,
     IPersistedSnapshotCompactor compactor,
     IPersistedSnapshotLoader loader,
-    IProcessExitSource processExitSource) : IPersistenceManager, IDisposable
+    IProcessExitSource processExitSource,
+    IFlatPersistenceCaptureHook? captureHook = null) : IPersistenceManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     // Linked to process exit so the conversion Parallel.ForEach below cancels at shutdown-start —
@@ -248,6 +247,7 @@ public class PersistenceManager(
                 {
                     using Snapshot _ = toPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
+                    CaptureHistory(toPersist.To);
                     PersistSnapshot(toPersist);
                     CurrentPersistedStateId = toPersist.To;
                     snapshotRepository.RemoveStatesUntil(toPersist.To.BlockNumber);
@@ -256,6 +256,7 @@ public class PersistenceManager(
                 {
                     using PersistedSnapshot _ = persistedToPersist;
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
+                    CaptureHistory(persistedToPersist.To);
                     PersistPersistedSnapshot(persistedToPersist);
                     CurrentPersistedStateId = persistedToPersist.To;
                     snapshotRepository.RemoveStatesUntil(persistedToPersist.To.BlockNumber);
@@ -278,6 +279,15 @@ public class PersistenceManager(
         {
             _persistenceLock.Release();
         }
+    }
+
+    // Runs before the persist and the prune: the flat head must never advance past durable history, or a crash in
+    // between leaves a permanently uncapturable range. Failures propagate and abort this iteration (retried next).
+    private void CaptureHistory(in StateId persistedHead)
+    {
+        if (captureHook is null || persistedHead == StateId.PreGenesis) return;
+
+        captureHook.CaptureUpTo(persistedHead, snapshotRepository, _cts.Token);
     }
 
     /// <summary>
@@ -419,6 +429,7 @@ public class PersistenceManager(
             {
                 using PersistedSnapshot persistedScope = persisted;
                 snapshotRepository.RemoveSiblingAndDescendents(persisted.To);
+                CaptureHistory(persisted.To);
                 PersistPersistedSnapshot(persisted);
                 CurrentPersistedStateId = persisted.To;
                 currentPersistedState = CurrentPersistedStateId;
@@ -431,6 +442,7 @@ public class PersistenceManager(
             using Snapshot inMemScope = snapshotToPersist;
 
             snapshotRepository.RemoveSiblingAndDescendents(snapshotToPersist.To);
+            CaptureHistory(snapshotToPersist.To);
             PersistSnapshot(snapshotToPersist);
             CurrentPersistedStateId = snapshotToPersist.To;
             currentPersistedState = CurrentPersistedStateId;
