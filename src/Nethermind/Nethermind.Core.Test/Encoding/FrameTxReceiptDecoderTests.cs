@@ -14,14 +14,15 @@ namespace Nethermind.Core.Test.Encoding;
 /// <summary>
 /// Round-trips of the EIP-8141 receipt payload <c>[cumulative_gas_used, payer,
 /// [[status, gas_used, logs], ...]]</c>. The wire form is spec-literal: no top-level status and no
-/// bloom. EIP8141-GAP: internally the decoder sets StatusCode to success and unions frame logs into
-/// Logs so bloom calculation and log indexing keep working — asserted here as the pinned behavior.
+/// bloom. EIP8141-GAP: the decoder derives StatusCode from the frame statuses and unions frame logs
+/// into Logs so bloom calculation and log indexing keep working — asserted here as the pinned
+/// behavior.
 /// </summary>
 [TestFixture]
 public class FrameTxReceiptDecoderTests
 {
     [TestCaseSource(nameof(RoundtripCases))]
-    public void Roundtrip_FrameTxReceipt_PreservesPayloadFields(TxReceipt receipt)
+    public void Roundtrip_FrameTxReceipt_PreservesPayloadFields(TxReceipt receipt, byte expectedStatus)
     {
         ReceiptMessageDecoder decoder = new();
 
@@ -32,7 +33,8 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
         Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
         AssertFrameReceiptsEqual(decoded.FrameReceipts!, receipt.FrameReceipts!);
-        Assert.That(decoded.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+        Assert.That(decoded.StatusCode, Is.EqualTo(expectedStatus),
+            "the transaction status is absent from the wire and must be derived from the frame statuses");
         // Decoded Logs must be the in-order union of frame logs.
         AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
     }
@@ -145,17 +147,27 @@ public class FrameTxReceiptDecoderTests
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [Log(0x01)])))
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [Log(0x01)])),
+            TxFrameReceipt.StatusSuccess)
             .SetName("Roundtrip_SingleSuccessfulFrameWithLog");
 
         yield return new TestCaseData(CreateReceipt(
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 50_000, [Log(0x01), Log(0x02)]),
             new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, []),
-            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, [])))
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, [])),
+            TxFrameReceipt.StatusFailure)
             .SetName("Roundtrip_SuccessFailureAndSkippedStatuses");
 
+        // A frame skipped by a failed atomic batch is not a success either.
         yield return new TestCaseData(CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, [])))
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, []),
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, [])),
+            TxFrameReceipt.StatusFailure)
+            .SetName("Roundtrip_SkippedFrameIsNotASuccess");
+
+        yield return new TestCaseData(CreateReceipt(
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, [])),
+            TxFrameReceipt.StatusSuccess)
             .SetName("Roundtrip_EmptyLogsAndZeroGas");
     }
 
