@@ -81,8 +81,8 @@ public interface IBlocksConfig : IConfig
     bool ParallelBalStateRootShadow { get; set; }
 
     [ConfigItem(
-        Description = "On the parallel Block Level Access List path, apply the BAL's post-block values through the backend's bulk write batch (journal-bypassing, per-account parallel) instead of replaying them through the journaled world-state operations. Experimental; enable only after the shadow-mode soak (`ParallelBalStateRootShadow`) is clean.",
-        DefaultValue = "false",
+        Description = "On the parallel Block Level Access List path, apply the BAL's post-block values through the backend's bulk write batch (journal-bypassing, per-account parallel) instead of replaying them through the journaled world-state operations. Experimental Amsterdam/BAL path; disabling falls back to the journaled replay.",
+        DefaultValue = "true",
         HiddenFromDocs = true)]
     bool ParallelBalBulkApply { get; set; }
 
