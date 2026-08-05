@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db;
 
@@ -81,6 +83,34 @@ internal sealed class ChangesetSidecarStore
         Span<byte> key = stackalloc byte[KeyLength];
         WriteKey(key, block, chunkIndex);
         return _sidecar.Get(key);
+    }
+
+    public List<(ulong Block, uint ChunkIndex, byte[] Payload)> ScanRange(ulong fromBlockInclusive, ulong toBlockInclusive, long byteLimit, int maxChunks, CancellationToken cancellationToken)
+    {
+        List<(ulong, uint, byte[])> results = [];
+        if (_sidecar is not ISortedKeyValueStore sorted) return results;
+
+        byte[] lowerBound = new byte[KeyLength];
+        WriteKey(lowerBound, fromBlockInclusive, 0);
+
+        byte[] upperBound = new byte[KeyLength + 1];
+        WriteKey(upperBound, toBlockInclusive, uint.MaxValue);
+
+        long consumed = 0;
+        using ISortedView view = sorted.GetViewBetween(lowerBound, upperBound);
+        while (consumed < byteLimit && results.Count < maxChunks && !cancellationToken.IsCancellationRequested && view.MoveNext())
+        {
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            if (key.Length != KeyLength) continue;
+
+            ulong block = BinaryPrimitives.ReadUInt64BigEndian(key);
+            uint chunkIndex = BinaryPrimitives.ReadUInt32BigEndian(key[BlockBytes..]);
+            byte[] payload = view.CurrentValue.ToArray();
+            results.Add((block, chunkIndex, payload));
+            consumed += payload.Length;
+        }
+
+        return results;
     }
 
     private static void WriteKey(Span<byte> destination, ulong block, uint chunkIndex)

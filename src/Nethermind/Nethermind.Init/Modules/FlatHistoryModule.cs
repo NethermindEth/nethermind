@@ -3,12 +3,14 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
+using Nethermind.State.SnapServer;
 
 namespace Nethermind.Init.Modules;
 
@@ -18,7 +20,8 @@ namespace Nethermind.Init.Modules;
 /// </summary>
 public class FlatHistoryModule : Module
 {
-    protected override void Load(ContainerBuilder builder) =>
+    protected override void Load(ContainerBuilder builder)
+    {
         builder
             .AddColumnDatabase<FlatHistoryColumns>(DbNames.FlatHistory)
             .AddSingleton<HistoryReader>()
@@ -26,6 +29,8 @@ public class FlatHistoryModule : Module
             .AddSingleton<HistoryScopeGate>()
             .AddSingleton<IBackfillInterlock>(NullBackfillInterlock.Instance)
             .AddSingleton<HistoryWindowPruner>()
+            .AddSingleton<HistoryServer>()
+            .Bind<IHistoryServer, HistoryServer>()
             .Bind<IFlatPersistenceCaptureHook, HistoryWriter>()
             .Bind<IStateHistoryCaptureStatus, HistoryWriter>()
             .Bind<IHistoryPivotSeeder, HistoryWriter>()
@@ -39,4 +44,12 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<HistoryScopeGate>()))
             .AddStep(typeof(SeedFlatHistoryGenesis))
             .AddStep(typeof(StartHistoryWindowPruner));
+
+        builder.RegisterBuildCallback(ctx =>
+        {
+            IFlatDbConfig flatDbConfig = ctx.Resolve<IFlatDbConfig>();
+            ISyncConfig syncConfig = ctx.Resolve<ISyncConfig>();
+            syncConfig.HistoryServingEnabled ??= flatDbConfig.HistoryEnabled && flatDbConfig.HistoryRetentionBlocks > 0;
+        });
+    }
 }

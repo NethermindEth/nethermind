@@ -431,6 +431,15 @@ public class DbConfig : IDbConfig
     public string? FlatHistoryAvailableBlocksDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
     public string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; } = "write_buffer_size=8000000;max_write_buffer_number=2;";
 
+    public string? FlatHistoryChangesetSidecarDbRocksDbOptions { get; set; } =
+        "compression=kZSTD;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=2;" +
+        "block_based_table_factory.block_size=65536;" +
+        "";
+
+    public string? FlatHistoryChangesetSidecarDbAdditionalRocksDbOptions { get; set; }
+
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 
