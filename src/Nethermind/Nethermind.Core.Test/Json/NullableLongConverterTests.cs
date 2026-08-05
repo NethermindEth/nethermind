@@ -22,6 +22,11 @@ public class NullableLongConverterTests : ConverterTestBase<long?>
     [TestCase(0L)]
     public void Test_roundtrip(long value) => TestConverter((long?)value, static (a, b) => a.Equals(b), converter);
 
+    [TestCase(10485760L, "\"0xa00000\"")]
+    [TestCase(0L, "\"0x0\"")]
+    public void Writes_correct_hex(long value, string expectedJson) =>
+        TestConverter((long?)value, expectedJson, converter, static (a, b) => a.Equals(b));
+
     [TestCase("\"0xa00000\"", 10485760L)]
     [TestCase("\"0x0\"", 0L)]
     [TestCase("0", 0L)]
