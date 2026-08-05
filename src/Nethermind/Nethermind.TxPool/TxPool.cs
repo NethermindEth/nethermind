@@ -76,8 +76,6 @@ namespace Nethermind.TxPool
         private ulong _txIndex;
 
         private readonly ITimer? _timer;
-        private volatile Transaction[]? _transactionSnapshot;
-        private volatile Transaction[]? _blobTransactionSnapshot;
         private ulong _lastBlockNumber = ulong.MaxValue;
         private Hash256? _lastBlockHash;
 
@@ -197,7 +195,7 @@ namespace Nethermind.TxPool
             _headProcessing = ProcessNewHeads();
         }
 
-        public Transaction[] GetPendingTransactions() => _transactionSnapshot ??= _transactions.GetSnapshot();
+        public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
@@ -316,12 +314,6 @@ namespace Nethermind.TxPool
                     }
                     finally
                     {
-                        // Snapshot must be cleared inside the write lock so readers cannot
-                        // regenerate it from a partially-updated _transactions collection.
-                        // Placed in finally to guarantee clearing even if an exception occurs
-                        // mid-update (otherwise readers could see a stale snapshot).
-                        _transactionSnapshot = null;
-                        _blobTransactionSnapshot = null;
                         _newHeadLock.ExitWriteLock();
                     }
                 }
@@ -464,8 +456,8 @@ namespace Nethermind.TxPool
                 // Also skip announcing if peer's head number is shown as 0 as then we don't know peer's head block yet
                 if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.HeadNumber + 16)
                 {
-                    Transaction[] txSnapshot = _transactionSnapshot ??= _transactions.GetSnapshot();
-                    Transaction[] blobTxSnapshot = _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot();
+                    Transaction[] txSnapshot = _transactions.GetSnapshot();
+                    Transaction[] blobTxSnapshot = _blobTransactions.GetSnapshot();
                     _broadcaster.AnnounceOnce(peer, txSnapshot);
                     _broadcaster.AnnounceOnce(peer, blobTxSnapshot);
                     if (_logger.IsTrace) _logger.Trace($"Announced {txSnapshot.Length} txs and {blobTxSnapshot.Length} blob txs to peer {peer}");
@@ -518,10 +510,6 @@ namespace Nethermind.TxPool
                 // Update metrics after removal
                 Metrics.TransactionCount = _transactions.Count;
                 Metrics.BlobTransactionCount = _blobTransactions.Count;
-
-                // Reset snapshots
-                _transactionSnapshot = null;
-                _blobTransactionSnapshot = null;
             }
             finally
             {
@@ -581,16 +569,6 @@ namespace Nethermind.TxPool
             }
             finally
             {
-                // Snapshot must be cleared inside the read lock so a concurrent reader
-                // cannot cache a snapshot taken between AddCore completing and the
-                // null-assignment (which would be missing the just-added tx).
-                if (accepted)
-                {
-                    if (tx.SupportsBlobs)
-                        _blobTransactionSnapshot = null;
-                    else
-                        _transactionSnapshot = null;
-                }
                 _newHeadLock.ExitReadLock();
             }
 
