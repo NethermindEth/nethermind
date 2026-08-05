@@ -77,29 +77,20 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.That(document.RootElement.TryGetProperty(jsonPropertyName, out _), Is.False);
         }
 
-        [Test]
-        public void Serializes_root_as_full_width_data()
+        private const string LeadingZeroRootHex = "0x0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+
+        [TestCase(LeadingZeroRootHex, LeadingZeroRootHex)]
+        [TestCase(null, "0x0000000000000000000000000000000000000000000000000000000000000000")]
+        public void Serializes_root_as_full_width_data(string? rootHex, string expectedRoot)
         {
-            // The first hex digit is zero. A receipt root is DATA per EIP-1474. All 64 digits must survive.
-            const string leadingZeroRootHex = "0x0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e";
+            // A receipt root is DATA per EIP-1474. The writer must keep all 64 digits. A null root becomes the full-width zero hash.
             TxReceipt receipt = CreateDiagnosticReceipt();
-            receipt.PostTransactionState = new Hash256(leadingZeroRootHex);
+            receipt.PostTransactionState = rootHex is null ? null : new Hash256(rootHex);
 
             string serialized = SerializeReceipt(receipt);
 
             using JsonDocument document = JsonDocument.Parse(serialized);
-            Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(leadingZeroRootHex));
-        }
-
-        [Test]
-        public void Serializes_null_root_as_full_width_zero()
-        {
-            TxReceipt receipt = CreateDiagnosticReceipt();
-
-            string serialized = SerializeReceipt(receipt);
-
-            using JsonDocument document = JsonDocument.Parse(serialized);
-            Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo($"0x{new string('0', 64)}"));
+            Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(expectedRoot));
         }
 
         [Test]
