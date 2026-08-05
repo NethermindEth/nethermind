@@ -145,7 +145,8 @@ public partial class BlockProcessor
                         static (i, state) =>
                         {
                             // Block already rejected — executing the rest cannot change the outcome.
-                            if (state.incrementalValidation.HasFailed) return state;
+                            // Iteration 0 is exempt so pre-execution keeps its previous semantics.
+                            if (i != 0 && state.incrementalValidation.HasFailed) return state;
 
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
                             // worker so processing-stats heuristics (e.g. allocation-thread filters)

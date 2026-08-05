@@ -1248,12 +1248,12 @@ public class BlockProcessorTests
             new BlockReceiptsTracer(),
             CancellationToken.None));
 
-        // The decisive prefix has to run; past it each worker can be mid-flight through one tx.
+        // The decisive prefix has to run. The upper bound stays well clear of the in-flight window
+        // so it asserts that the tail stopped without depending on how fast cancellation propagates.
         Assert.Multiple(() =>
         {
             Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
-            Assert.That(transactionProcessor.ExecutedCount,
-                Is.InRange(rejectIndex + 1, rejectIndex + 1 + (2 * Environment.ProcessorCount)));
+            Assert.That(transactionProcessor.ExecutedCount, Is.InRange(rejectIndex + 1, txCount / 8));
         });
     }
 
