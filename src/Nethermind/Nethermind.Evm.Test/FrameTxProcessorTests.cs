@@ -416,6 +416,34 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_FrameDataCopy_UsesMemOffsetDataOffsetLengthFrameIndexOrder()
+    {
+        // frameData[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
+        // Operand order (top to bottom) is memOffset, dataOffset, length, frameIndex — matching
+        // CALLDATACOPY plus the trailing frameIndex. Asymmetric operands catch a reversed pop order.
+        byte[] frameData = new byte[32];
+        for (int i = 0; i < frameData.Length; i++) frameData[i] = (byte)i;
+
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(1).PushData(8).PushData(4).PushData(0) // frameIndex, length, dataOffset, memOffset (deepest to top)
+            .Op(Instruction.FRAMEDATACOPY)
+            .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: Recipient, data: frameData),
+            Frame(TxFrame.ModeDefault, target: Observer));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        byte[] expected = new byte[32];
+        frameData.AsSpan(4, 8).CopyTo(expected); // copied bytes land in the high-order end of the word
+        AssertStorage(Observer, 0, new UInt256(expected, isBigEndian: true));
+    }
+
+    [Test]
     public void Execute_SigParam_ReadsArbitrarySignatureMetadata()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));

@@ -119,8 +119,7 @@ public static unsafe partial class EvmInstructions
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
-        // EIP8141-ISSUE: no explicit stack table (audit L-8); the prose lists offset, frameIndex —
-        // read top-to-bottom, so offset is on top (matching CALLDATALOAD).
+        // Spec stack order: offset on top, frameIndex second (matching CALLDATALOAD).
         if (!stack.PopUInt256(out UInt256 offset, out UInt256 frameIndex)) return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
 
@@ -146,8 +145,7 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
-        // EIP8141-ISSUE: no explicit stack table (audit L-8); the prose lists memOffset, dataOffset,
-        // length, frameIndex — read top-to-bottom like the SIGPARAM copy list, so frameIndex is deepest.
+        // Spec stack order: memOffset, dataOffset, length, frameIndex (top to bottom, matching CALLDATACOPY).
         if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length, out UInt256 frameIndex))
             return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
@@ -217,8 +215,6 @@ public static unsafe partial class EvmInstructions
         if (param.u0 == 0x04)
         {
             if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
-            // Spec stack order after signatureIndex/param: memOffset, dataOffset, length —
-            // matching CALLDATACOPY/CODECOPY/RETURNDATACOPY and the sibling FRAMEDATACOPY (ethereum/EIPs#12042).
             if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length))
                 return EvmExceptionType.StackUnderflow;
             return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
