@@ -215,6 +215,14 @@ namespace Nethermind.Core
         public TxFrameSignature[]? FrameSignatures { get; set; }
 
         /// <summary>
+        /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
+        /// https://eips.ethereum.org/EIPS/eip-8250
+        /// </summary>
+        /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
+        /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
+        public UInt256[]? NonceKeys { get; set; }
+
+        /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
@@ -333,6 +341,7 @@ namespace Nethermind.Core
                 obj.AuthorizationList = default;
                 obj.Frames = default;
                 obj.FrameSignatures = default;
+                obj.NonceKeys = default;
 
                 return true;
             }
@@ -367,6 +376,7 @@ namespace Nethermind.Core
             tx.AuthorizationList = AuthorizationList;
             tx.Frames = Frames;
             tx.FrameSignatures = FrameSignatures;
+            tx.NonceKeys = NonceKeys;
         }
 
         public virtual ProofVersion? GetProofVersion() =>
