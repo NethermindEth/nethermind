@@ -689,7 +689,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
-
     [Test]
     public void Test_CallTrace_DeepNesting_DoesNotThrow()
     {
