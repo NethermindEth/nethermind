@@ -1,27 +1,33 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Api;
-using Nethermind.Api.Extensions;
+using System.Collections.Generic;
+using System.Linq;
+using Autofac;
+using Nethermind.Api.Steps;
 using Nethermind.EthStats.Configs;
-using Nethermind.Runner.Test.Ethereum;
 using NUnit.Framework;
 
 namespace Nethermind.EthStats.Test;
 
 public class EthStatsPluginTests
 {
-    private NethermindApi _context = null!;
-    private INethermindPlugin _plugin = null!;
+    [Test]
+    public void Enabled_reflects_config([Values] bool enabled)
+    {
+        EthStatsPlugin plugin = new(new EthStatsConfig { Enabled = enabled });
 
-    [SetUp]
-    public void Setup() => _context = Build.ContextWithMocks();
+        Assert.That(plugin.Enabled, Is.EqualTo(enabled));
+    }
 
     [Test]
-    public void Init_eth_stats_plugin_does_not_throw_exception([Values] bool enabled)
+    public void Module_registers_the_eth_stats_step()
     {
-        _plugin = new EthStatsPlugin(new EthStatsConfig() { Enabled = enabled });
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new EthStatsPlugin(new EthStatsConfig()).Module);
+        using IContainer container = builder.Build();
 
-        Assert.DoesNotThrow(() => _plugin.InitTxTypesAndRlpDecoders(_context));
+        Assert.That(container.Resolve<IEnumerable<StepInfo>>().Select(static s => s.StepType),
+            Does.Contain(typeof(EthStatsStep)));
     }
 }
