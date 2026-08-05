@@ -70,6 +70,15 @@ public sealed class HistoryWindowPruner : IDisposable
     private readonly Task _loop;
     private ulong _lastFloorPublishWatermark;
 
+    // Owned here (not in HistoryAvailability, a pure availability/scope-record store) so a concurrent backfill
+    // importer has one dedicated method pair to call around its active pass. Real mutual exclusion, not a sampled
+    // flag: RunOnePass only proceeds if it can claim the gate outright, so a pass can never start deleting rows a
+    // backfill is concurrently writing, and BeginBackfill only returns once any in-flight pass has released it.
+    // Plain-lock-backed (not ReaderWriterLockSlim): ImportRangeAsync awaits across network I/O between
+    // BeginBackfill and its matching dispose, and its continuation can resume on a different thread — a lock type
+    // that tracks per-thread ownership would throw when release happens on a thread that never acquired it.
+    private readonly BackfillGate _backfillGate = new();
+
     public HistoryWindowPruner(
         HistoryWriter writer,
         IColumnsDb<FlatHistoryColumns> history,
@@ -96,9 +105,90 @@ public sealed class HistoryWindowPruner : IDisposable
         }
     }
 
+    /// <summary>Blocks (briefly — only against an already-in-flight prune pass, bounded by its own budget) until
+    /// the gate is claimed for backfill, then marks it active for the duration of the returned scope. Multiple
+    /// concurrent backfills may hold this simultaneously (many readers); a prune pass claims it exclusively (one
+    /// writer, no readers). Idempotent and exception-safe by construction — disposing the same scope twice, or
+    /// disposing it from a <c>finally</c> after an exception, only ever releases once.</summary>
+    public IDisposable BeginBackfill()
+    {
+        SpinWait spinner = default;
+        while (!_backfillGate.TryEnterBackfill())
+        {
+            spinner.SpinOnce();
+        }
+
+        return new BackfillScope(this);
+    }
+
+    private void EndBackfill() => _backfillGate.ExitBackfill();
+
+    private sealed class BackfillScope(HistoryWindowPruner owner) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) owner.EndBackfill();
+        }
+    }
+
+    /// <summary>Real shared/exclusive gate between concurrent backfill importers (any number of simultaneous
+    /// readers) and this pruner (one exclusive writer, admitted only when no reader holds the gate). Deliberately
+    /// not <see cref="ReaderWriterLockSlim"/>: that type tracks lock ownership per-thread, and
+    /// <c>BeginBackfill</c>/<c>EndBackfill</c> are held across <c>await</c> points in an async importer whose
+    /// continuation can resume on a different thread than the one that entered — released-without-held would
+    /// throw. This type carries no thread affinity: each method is a single synchronous, uncontended-fast
+    /// <c>lock</c> section, never held across a suspension point.</summary>
+    private sealed class BackfillGate
+    {
+        private readonly Lock _sync = new();
+        private int _activeBackfills;
+        private bool _pruningActive;
+
+        public bool TryEnterBackfill()
+        {
+            lock (_sync)
+            {
+                if (_pruningActive) return false;
+                _activeBackfills++;
+                return true;
+            }
+        }
+
+        public void ExitBackfill()
+        {
+            lock (_sync)
+            {
+                _activeBackfills--;
+            }
+        }
+
+        public bool TryEnterPrune()
+        {
+            lock (_sync)
+            {
+                if (_activeBackfills > 0 || _pruningActive) return false;
+                _pruningActive = true;
+                return true;
+            }
+        }
+
+        public void ExitPrune()
+        {
+            lock (_sync)
+            {
+                _pruningActive = false;
+            }
+        }
+    }
+
     private void OnWatermarkAdvanced(ulong watermark)
     {
-        if (watermark < _lastFloorPublishWatermark + _config.HistoryPruneIntervalBlocks) return;
+        // Written from RunOnePassUnderGate on the prune loop's own task, read here from whatever thread the
+        // writer's capture path runs on: Volatile is the correctness requirement, not the plain field a
+        // single-writer/single-reader assumption would permit.
+        if (watermark < Volatile.Read(ref _lastFloorPublishWatermark) + _config.HistoryPruneIntervalBlocks) return;
         try { _wakeSignal.Release(); } catch (SemaphoreFullException) { }
     }
 
@@ -116,8 +206,9 @@ public sealed class HistoryWindowPruner : IDisposable
                 return;
             }
 
-            if (_interlock.IsBackfillActive) continue;
-
+            // No pre-check against the gate here: RunOnePass claims it (or cleanly declines) itself, so there is
+            // exactly one place that can skip a pass — a duplicate outer check previously consumed the wake
+            // signal on decline without re-arming it, losing the very request that should have retried later.
             try
             {
                 RunOnePass(token);
@@ -137,10 +228,27 @@ public sealed class HistoryWindowPruner : IDisposable
     /// (e.g. "exhausted after N rows") never leaks its state into an unrelated column.</summary>
     internal void RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
     {
-        // Checked here too (not just before the caller invokes this from the wake loop): the interlock is a
-        // correctness requirement, not an optimization, so it must hold regardless of call path.
+        // Advisory fast path: some other caller may set this without ever going through BeginBackfill/EndBackfill.
+        // Declining here (or at the real gate below) never re-arms the wake signal immediately — doing so would
+        // busy-spin RunLoopAsync for the entire backfill duration, since the very next iteration would just wake,
+        // decline, and re-arm again. A decline instead relies on OnWatermarkAdvanced's own natural retrigger:
+        // capture keeps advancing the watermark during backfill, and each capture re-evaluates the interval
+        // threshold against it, so the request is retried on the next captured block rather than lost outright.
         if (_interlock.IsBackfillActive) return;
+        if (!_backfillGate.TryEnterPrune()) return;
 
+        try
+        {
+            RunOnePassUnderGate(token, budgetFactory);
+        }
+        finally
+        {
+            _backfillGate.ExitPrune();
+        }
+    }
+
+    private void RunOnePassUnderGate(CancellationToken token, Func<IPruneBudget>? budgetFactory)
+    {
         ulong retention = _config.HistoryRetentionBlocks;
         if (retention == 0) return;
 
@@ -170,7 +278,7 @@ public sealed class HistoryWindowPruner : IDisposable
             // epoch it lands in — only scopes admitted under the old, lower floor need draining before deleting.
             _availability.PublishGlobalFloor(newFloor);
             Metrics.FlatHistoryFloor = (long)newFloor;
-            _lastFloorPublishWatermark = watermark;
+            Volatile.Write(ref _lastFloorPublishWatermark, watermark);
             floor = newFloor;
 
             if (!_scopeGate.TryDrainForFloorAdvance(passBudget, token))

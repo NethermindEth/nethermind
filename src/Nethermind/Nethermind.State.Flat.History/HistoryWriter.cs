@@ -301,7 +301,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// </summary>
     private void RecordChangesetSidecarChunk(ulong block, Snapshot snapshot, IColumnsWriteBatch<FlatHistoryColumns> batch)
     {
-        Dictionary<Address, List<ChangesetSlotEntry>> storageByAddress = new();
+        Dictionary<Address, List<ChangesetSlotEntry>> storageByAddress = [];
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> change in snapshot.Storages)
         {
             (Address address, UInt256 slot) = change.Key.Key;
@@ -315,7 +315,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             slots.Add(new ChangesetSlotEntry(slot, value));
         }
 
-        List<ChangesetAccountEntry> entries = new(snapshot.Accounts.Count + storageByAddress.Count);
+        List<ChangesetAccountEntry> entries = new(snapshot.AccountsCount + storageByAddress.Count);
         foreach (KeyValuePair<HashedKey<Address>, Account?> change in snapshot.Accounts)
         {
             Address address = change.Key.Key;
