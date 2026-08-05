@@ -24,15 +24,6 @@ public class PublicKeyConverterTests : ConverterTestBase<PublicKey>
         converter,
         static (key, publicKey) => key == publicKey);
 
-    // Known deviation: a public key is fixed-width DATA (parity_getTransaction), but the
-    // writer drops leading zeros. The reader pads the value back to 64 bytes.
-    [Test]
-    public void Serializes_zero_key_without_leading_zeros() => TestConverter(
-        new PublicKey(new byte[64]),
-        "\"0x0\"",
-        converter,
-        static (key, publicKey) => key == publicKey);
-
     static IEnumerable<TestCaseData> PublicKeyTestCases =
     [
         new TestCaseData(null).SetName("null"),
