@@ -726,6 +726,24 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>A VERIFY frame runs as a STATICCALL, so a write inside it halts the frame, and a failed
+    /// VERIFY invalidates the transaction.</summary>
+    /// <remarks>
+    /// The write-free case is the control: without it a transaction dropped for any other reason would
+    /// satisfy the assertion, and the post-state is no evidence either — the failure path restores it.
+    /// </remarks>
+    [TestCase(true, ExpectedResult = false, TestName = "Execute_VerifyFrameWritesState_InvalidatesTheTransaction")]
+    [TestCase(false, ExpectedResult = true, TestName = "Execute_VerifyFrameWithoutWrite_Executes")]
+    public bool Execute_VerifyFrame_IsStatic(bool writesState)
+    {
+        Prepare code = Prepare.EvmCode;
+        if (writesState) code = code.PushData(1).PushData(0).Op(Instruction.SSTORE);
+        DeploySmartSender(code
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
+
+        return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
+    }
+
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
