@@ -532,6 +532,8 @@ jobs:
           LAYOUT_FLAGS: ${{ needs.resolve.outputs.layout_flags }}
           ADDITIONAL_FLAGS: ${{ needs.resolve.outputs.additional_flags }}
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
+          # Same raised cap as corpus sweep cells, so both dispatch modes agree (empty = script default).
+          RPC_GAS_CAP: ${{ needs.resolve.outputs.eth_call_corpus == 'true' && '1000000000000' || '' }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           NODE_CPUSET: ${{ needs.resolve.outputs.node_cpuset }}
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}

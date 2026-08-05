@@ -64,11 +64,16 @@ class CorpusResultsTests(unittest.TestCase):
                 data = corpus_results.sanitize_data(raw_summary(http_req_failed=metric))
                 self.assertEqual(data["metrics"]["http_req_failed"]["values"]["rate"], 0.25)
 
-    def test_sanitize_defaults_missing_dropped_iterations_to_zero(self):
+    def test_sanitize_defaults_missing_optional_metrics_to_zero(self):
+        # k6 omits checks (no check() calls in the workload), http_req_failed, and
+        # dropped_iterations when nothing triggered them — absence means zero.
         raw = raw_summary()
-        del raw["metrics"]["dropped_iterations"]
+        for metric in ("dropped_iterations", "checks", "http_req_failed"):
+            del raw["metrics"][metric]
         data = corpus_results.sanitize_data(raw)
-        self.assertEqual(data["metrics"]["dropped_iterations"]["values"]["count"], 0)
+        self.assertEqual(data["metrics"]["dropped_iterations"]["values"], {"count": 0})
+        self.assertEqual(data["metrics"]["checks"]["values"], {"passes": 0, "fails": 0})
+        self.assertEqual(data["metrics"]["http_req_failed"]["values"], {"rate": 0})
 
     def test_sanitize_rejects_broken_summaries(self):
         for name, raw in (

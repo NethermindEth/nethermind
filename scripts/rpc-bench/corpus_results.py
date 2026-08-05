@@ -67,9 +67,12 @@ def sanitize_data(raw: Any) -> dict[str, Any]:
         raise CorpusResultsError("summary has no metrics object")
     raw_metrics = raw["metrics"]
     sanitized: dict[str, Any] = {}
+    # k6 omits these when the workload triggers no check()/failed request/drop — absence
+    # means zero, and must not kill a finished cell.
+    optional_metrics = ("dropped_iterations", "checks", "http_req_failed")
     for name, fields in METRIC_FIELDS.items():
-        if name == "dropped_iterations" and name not in raw_metrics:
-            sanitized[name] = {"values": {"count": 0}}
+        if name in optional_metrics and name not in raw_metrics:
+            sanitized[name] = {"values": {field: 0 for field in fields}}
             continue
         values = {field: _metric_value(raw_metrics.get(name), field, f"{name}.{field}") for field in fields}
         sanitized[name] = {"values": values}
