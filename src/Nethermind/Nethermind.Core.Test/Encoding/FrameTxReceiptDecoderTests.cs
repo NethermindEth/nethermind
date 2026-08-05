@@ -73,13 +73,9 @@ public class FrameTxReceiptDecoderTests
             "the stored union must stay the union, not get rebuilt from frame logs");
     }
 
-    // Regression for eth_getLogs throwing on any block containing a frame-tx receipt.
-    // LogFinder reads receipts through ReceiptsIterator, which loops CompactReceiptStorageDecoder
-    // .DecodeStructRef over the array with RlpBehaviors.Storage (no AllowExtraBytes). The struct-ref
-    // path used to skip past the frame extension (payer + per-frame receipts) only when
-    // AllowExtraBytes was set, so a frame-tx receipt left the reader parked mid-sequence and the
-    // next DecodeStructRef misread the payer bytes as a receipt prefix, throwing an RlpException.
-    // The frame receipt is placed between two regular receipts so a misalignment corrupts a neighbor.
+    // Regression: ReceiptsIterator (eth_getLogs) loops DecodeStructRef with RlpBehaviors.Storage.
+    // A frame-tx receipt used to leave the reader mid-sequence, breaking the next receipt. It sits
+    // between two regular ones so any misalignment surfaces on a neighbour.
     [Test]
     public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours()
     {
@@ -98,10 +94,8 @@ public class FrameTxReceiptDecoderTests
         CompactReceiptStorageDecoder decoder = new();
         byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
 
-        // Mirror ReceiptsIterator.TryGetNext: read the outer sequence, then loop DecodeStructRef
-        // while the absolute Position stays within the content length returned by
-        // ReadSequenceLength(), exactly as ReceiptsIterator does. TxReceiptStructRef is a ref
-        // struct, so scalar fields are captured per index as we go.
+        // Mirror ReceiptsIterator.TryGetNext's loop bound exactly. TxReceiptStructRef is a ref
+        // struct, so capture the scalar fields we assert per index as we iterate.
         RlpReader reader = new(encoded);
         int length = reader.ReadSequenceLength();
         int count = 0;
@@ -194,9 +188,8 @@ public class FrameTxReceiptDecoderTests
             FrameReceipts = frameReceipts,
         };
 
-    // Applies the storage-only fixups a frame receipt gets before it is persisted: internal success
-    // status, a recovered sender, the verbatim union Logs (which may differ from the frame-order
-    // concatenation), and the matching bloom.
+    // Applies the storage-only fixups a frame receipt gets before persistence: success status,
+    // recovered sender, verbatim union Logs, and matching bloom.
     private static TxReceipt CreateStorageFrameReceipt(LogEntry[] unionLogs, params TxFrameReceipt[] frameReceipts)
     {
         TxReceipt receipt = CreateReceipt(frameReceipts);
