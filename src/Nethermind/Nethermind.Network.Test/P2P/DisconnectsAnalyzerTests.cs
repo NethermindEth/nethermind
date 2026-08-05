@@ -35,34 +35,27 @@ namespace Nethermind.Network.Test.P2P
 
             public void TriggerFlushes() => DisconnectsAnalyzer.WithIntervalOverride(10);
 
-            public void ShouldEventuallyReport(string pattern) =>
-                Assert.That(PollUntil(() => _logger.CountMatches(pattern) >= 1), Is.True,
+            public void ShouldEventuallyReport(string pattern)
+            {
+                // A flush can land in SpinUntil's final sleep tick. Re-check once after a timeout.
+                Func<bool> reported = () => _logger.CountMatches(pattern) >= 1;
+                Assert.That(SpinWait.SpinUntil(reported, WaitLimit) || reported(), Is.True,
                     () => $"expected a flush report matching '{pattern}'; got: {_logger.Dump()}");
+            }
 
             public void ShouldStayAt(string pattern, int times)
             {
                 // The analyzer double-buffers its counters. A lost clear makes a stale
                 // category appear again in every other flush. Watch more flushes to detect that.
                 int flushesSeen = _logger.FlushCount;
-                Assert.That(PollUntil(() => _logger.FlushCount >= flushesSeen + 4), Is.True,
+                Func<bool> flushed = () => _logger.FlushCount >= flushesSeen + 4;
+                Assert.That(SpinWait.SpinUntil(flushed, WaitLimit) || flushed(), Is.True,
                     "flush timer stopped ticking");
                 Assert.That(_logger.CountMatches(pattern), Is.EqualTo(times),
                     () => $"a cleared category resurfaced in a later flush; got: {_logger.Dump()}");
             }
 
             public void Dispose() => DisconnectsAnalyzer.Dispose();
-
-            private static bool PollUntil(Func<bool> condition)
-            {
-                long deadline = Environment.TickCount64 + (long)WaitLimit.TotalMilliseconds;
-                while (Environment.TickCount64 < deadline)
-                {
-                    if (condition()) return true;
-                    Thread.Sleep(1);
-                }
-
-                return condition();
-            }
 
             private sealed class FlushCapturingLogger : InterfaceLogger
             {
