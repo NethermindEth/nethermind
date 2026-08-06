@@ -456,7 +456,7 @@ public class DebugModuleTests
     {
         _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
 
-        // The old single-argument request failed binding with -32602 and never reached the bridge.
+        // debug_migrateReceipts binds (from, to); one argument yields -32602 and never reaches the bridge.
         string response = await SerializedRequest("debug_migrateReceipts", 100, 200);
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));

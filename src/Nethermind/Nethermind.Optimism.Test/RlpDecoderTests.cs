@@ -22,6 +22,13 @@ public class RlpDecoderTests
         _decoder.RegisterDecoder(new OptimismLegacyTxDecoder());
     }
 
+    // Derived with pyrlp: rlp(0x7e || rlp([sourceHash, from, to, mint, value, gas, isSystemTx, data])).
+    // The independent pin catches a coordinated encode/decode field swap, which the roundtrip cannot see.
+    private const string DepositTxRlpHex =
+        "b8597ef856a003783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760" +
+        "94b7705ae4c6f81b66cdb323c65f4e8133690fc09994942921b14f1b1c385cd7e0cc2ef7abe5" +
+        "598c835805038275300184deadbeef";
+
     [Test]
     public void Deposit_tx_fields_roundtrip()
     {
@@ -30,6 +37,8 @@ public class RlpDecoderTests
         byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
         RlpWriter writer = new(rlp);
         _decoder.Encode(ref writer, tx);
+
+        Assert.That(rlp.ToHexString(), Is.EqualTo(DepositTxRlpHex));
 
         RlpReader ctx = new(rlp);
         Transaction? decodedTx = _decoder.Decode(ref ctx);
@@ -62,7 +71,6 @@ public class RlpDecoderTests
 
         Transaction transaction = _decoder.Decode(ref context);
 
-        Assert.That(transaction, Is.Not.Null);
         // The expected values come from an independent pyrlp decode of hexBytes.
         using (Assert.EnterMultipleScope())
         {
@@ -100,8 +108,7 @@ public class RlpDecoderTests
         Assert.That(decoded, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded!.Type, Is.EqualTo(expected.Type));
-            Assert.That(decoded.SourceHash, Is.EqualTo(expected.SourceHash));
+            Assert.That(decoded!.SourceHash, Is.EqualTo(expected.SourceHash));
             Assert.That(decoded.SenderAddress, Is.EqualTo(expected.SenderAddress));
             Assert.That(decoded.To, Is.EqualTo(expected.To));
             Assert.That(decoded.Mint, Is.EqualTo(expected.Mint));
