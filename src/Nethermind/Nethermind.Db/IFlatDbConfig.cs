@@ -37,6 +37,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Also capture each finalized block's changeset into the block-major changesets sidecar column (separate from the key-major history read-path columns), for future devp2p serving and concurrent backfill import. Off by default; when off the capture path does no extra work.", DefaultValue = "false")]
     bool HistoryChangesetSidecarEnabled { get; set; }
 
+    [ConfigItem(Description = "Bounded rolling-window retention for the changesets sidecar column, in blocks below the watermark - independent of HistoryRetentionBlocks, since the sidecar serves devp2p/backfill replay rather than as-of-block reads. 0 falls back to HistoryRetentionBlocks; both 0 means unbounded (today's shipped behavior).", DefaultValue = "0")]
+    ulong HistoryChangesetSidecarRetentionBlocks { get; set; }
+
+    [ConfigItem(Description = "Hard cap, in bytes, on the changesets sidecar column's total size. When the retention-based prune alone is not enough to stay under this, the oldest still-retained block ranges are dropped early (ahead of their normal retention floor) until back under the cap; a FlatHistorySidecarOverCapPurge metric counts these forced drops. Guards against unbounded sidecar growth outrunning its own retention window under a burst of destruct-heavy blocks.", DefaultValue = "53687091200")]
+    long HistoryChangesetSidecarMaxBytes { get; set; }
+
     [ConfigItem(Description = "Number of disjoint address-hash-prefix shards the concurrent backfill importer partitions writes into. Each shard buffers and sorts its own rows before writing, so worker count and write ordering scale with this independently of the source feed's block-major order.", DefaultValue = "16")]
     int HistoryImportShardCount { get; set; }
 

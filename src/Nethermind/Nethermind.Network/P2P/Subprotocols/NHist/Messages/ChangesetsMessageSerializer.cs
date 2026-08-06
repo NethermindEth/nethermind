@@ -4,7 +4,7 @@
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.SnapServer;
+using Nethermind.State;
 
 namespace Nethermind.Network.P2P.Subprotocols.NHist.Messages;
 

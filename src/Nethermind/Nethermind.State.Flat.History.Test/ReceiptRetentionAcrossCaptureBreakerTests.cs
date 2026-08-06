@@ -52,7 +52,9 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
         _tier = new FlatTestContainer(new FlatDbConfig { CompactSize = 16 });
-        _writer = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+        FlatDbConfig historyConfig = new() { HistoryEnabled = true };
+        (HistoryAvailability historyAvailability, HistoryRowFormat historyRowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, historyConfig);
+        _writer = new HistoryWriter(_db, _historyColumns, historyConfig, historyAvailability, historyRowFormat, LimboLogs.Instance);
 
         _specProvider = new TestSpecProvider(Byzantium.Instance);
         _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();

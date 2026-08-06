@@ -20,7 +20,7 @@ public class HistoryScopeGateTests
     }
 
     [Test]
-    public void TryDrainForFloorAdvance_WaitsForAScopeOpenedBeforeTheFlipToClose()
+    public void TryDrainForFloorAdvance_AScopeClosedBeforeTheDrainCall_DoesNotBlockIt()
     {
         HistoryScopeGate gate = new();
         int epoch = gate.EnterScope();

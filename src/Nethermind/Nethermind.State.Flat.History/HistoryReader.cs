@@ -40,7 +40,7 @@ public sealed class HistoryReader
     private readonly bool _rlpWrapSlots;
     private readonly bool _isV3;
 
-    public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, ILogManager logManager)
+    public HistoryReader(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(history);
         ILogger logger = logManager.GetClassLogger<HistoryReader>();
@@ -49,14 +49,14 @@ public sealed class HistoryReader
             (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage),
             logger);
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
-        _availability = new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        _availability = availability;
         _availability.VerifyFormat();
 
-        // Config is required here, not just the on-disk stamp (see HistoryWriter.ResolveFormatVersion): a brand
+        // rowFormat is resolved from config, not just the on-disk stamp (see HistoryRowFormat's remarks): a brand
         // new windowed DB has no stamp at all until its writer's first capture, and a reader constructed before
         // that (the normal DI startup order) must still resolve to v3, or it would speak v2 to a writer that is
         // about to speak v3 the moment it captures anything.
-        _isV3 = _availability.ResolveFormatVersion(config.HistoryRetentionBlocks > 0) == HistoryAvailability.WindowedFormatVersion;
+        _isV3 = rowFormat.IsV3;
         if (_isV3)
         {
             _accountHistoryV3 = new HistoryStoreV3(history.GetColumnDb(FlatHistoryColumns.AccountHistory));

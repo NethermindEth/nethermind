@@ -2,11 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
 
+// Byte-level chunk splitting (cap boundaries, entry-boundary independence, the >1MB destruct-shaped case) is
+// covered directly against ChangesetChunkCodec.EncodeChunked in ChangesetChunkCodecTests - this store is now a
+// thin sequential-write/read wrapper around whatever chunks that codec produces, so these tests cover only its
+// own concern: writing them under contiguous 0-based indices per block, and reading them back.
 public class ChangesetSidecarStoreTests
 {
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _columnsDb = null!;
@@ -23,138 +31,95 @@ public class ChangesetSidecarStoreTests
     public void TearDown() => _columnsDb.Dispose();
 
     [Test]
-    public void RecordChangeset_SmallerThanCap_WritesASingleChunk()
+    public void RecordChangeset_SmallEntries_WritesASingleChunk()
     {
-        byte[] payload = Fill(1024);
+        List<ChangesetAccountEntry> entries = [Entry(TestItem.AddressA)];
 
-        Write(1, payload);
+        Write(1, entries);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_store.TryGetChunk(1, 0), Is.EqualTo(payload));
-            Assert.That(_store.TryGetChunk(1, 1), Is.Null, "a payload under the cap must not spill into a second chunk");
+            Assert.That(_store.TryGetChunk(1, 0), Is.Not.Null);
+            Assert.That(_store.TryGetChunk(1, 1), Is.Null, "small entries must not spill into a second chunk");
         }
     }
 
     [Test]
-    public void RecordChangeset_ExactlyAtTheCap_WritesASingleChunk()
+    public void RecordChangeset_EmptyEntries_StillWritesChunkZero()
     {
-        byte[] payload = Fill(ChangesetSidecarStore.MaxChunkPayloadBytes);
-
-        Write(1, payload);
+        Write(1, []);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_store.TryGetChunk(1, 0), Is.EqualTo(payload));
-            Assert.That(_store.TryGetChunk(1, 1), Is.Null, "a payload of exactly the cap must still fit in one chunk, not spill an empty second one");
-        }
-    }
-
-    [Test]
-    public void RecordChangeset_OneByteOverTheCap_SplitsIntoTwoChunks()
-    {
-        byte[] payload = Fill(ChangesetSidecarStore.MaxChunkPayloadBytes + 1);
-
-        Write(1, payload);
-
-        byte[]? chunk0 = _store.TryGetChunk(1, 0);
-        byte[]? chunk1 = _store.TryGetChunk(1, 1);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chunk0, Is.Not.Null);
-            Assert.That(chunk0!.Length, Is.EqualTo(ChangesetSidecarStore.MaxChunkPayloadBytes));
-            Assert.That(chunk1, Is.Not.Null);
-            Assert.That(chunk1!.Length, Is.EqualTo(1));
-            Assert.That(_store.TryGetChunk(1, 2), Is.Null);
-            AssertReassembles(payload, chunk0, chunk1);
-        }
-    }
-
-    // A destruct-heavy block's changeset spans 3+ chunks: chunk index must stay contiguous and 0-based, and
-    // concatenating every chunk back together must reproduce the original payload exactly.
-    [Test]
-    public void RecordChangeset_SpanningThreeOrMoreChunks_ReassemblesExactly()
-    {
-        byte[] payload = Fill(2 * ChangesetSidecarStore.MaxChunkPayloadBytes + 500);
-
-        Write(7, payload);
-
-        byte[]? chunk0 = _store.TryGetChunk(7, 0);
-        byte[]? chunk1 = _store.TryGetChunk(7, 1);
-        byte[]? chunk2 = _store.TryGetChunk(7, 2);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chunk0, Is.Not.Null);
-            Assert.That(chunk0!.Length, Is.EqualTo(ChangesetSidecarStore.MaxChunkPayloadBytes));
-            Assert.That(chunk1, Is.Not.Null);
-            Assert.That(chunk1!.Length, Is.EqualTo(ChangesetSidecarStore.MaxChunkPayloadBytes));
-            Assert.That(chunk2, Is.Not.Null);
-            Assert.That(chunk2!.Length, Is.EqualTo(500));
-            Assert.That(_store.TryGetChunk(7, 3), Is.Null, "the sequence must end exactly where the payload ends");
-            AssertReassembles(payload, chunk0, chunk1, chunk2);
-        }
-    }
-
-    [Test]
-    public void RecordChangeset_EmptyPayload_StillWritesChunkZero()
-    {
-        Write(1, ReadOnlySpan<byte>.Empty);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_store.TryGetChunk(1, 0), Is.EqualTo(Array.Empty<byte>()),
+            Assert.That(_store.TryGetChunk(1, 0), Is.Not.Null,
                 "an empty changeset must still be distinguishable from a block that was never recorded");
             Assert.That(_store.TryGetChunk(1, 1), Is.Null);
         }
     }
 
+    // Enough accounts, each with enough slots, that the encoded total well exceeds the store's 1MB cap - every
+    // chunk EncodeChunked yields (not just the first) must be written under a contiguous 0-based index.
+    [Test]
+    public void RecordChangeset_EntriesOverTheCap_WritesEachChunkUnderASequentialIndex()
+    {
+        List<ChangesetAccountEntry> entries = [];
+        for (int account = 0; account < 20; account++)
+        {
+            List<ChangesetSlotEntry> slots = new(2000);
+            for (int i = 0; i < 2000; i++)
+            {
+                slots.Add(new ChangesetSlotEntry((UInt256)(i + 1), new byte[] { (byte)i, 0xAB }, ReadOnlyMemory<byte>.Empty));
+            }
+            entries.Add(new ChangesetAccountEntry(AddressAt(account), AccountChanged: true, new byte[] { 0x01 }, ReadOnlyMemory<byte>.Empty, slots));
+        }
+
+        Write(7, entries);
+
+        int chunkCount = 0;
+        while (_store.TryGetChunk(7, (uint)chunkCount) is not null)
+        {
+            chunkCount++;
+        }
+
+        Assert.That(chunkCount, Is.GreaterThan(1), "20 accounts of 2000 slots each must not fit in a single 1MB chunk");
+    }
+
     [Test]
     public void RecordChangeset_DifferentBlocks_DoNotBleedIntoEachOthersChunks()
     {
-        byte[] payloadA = Fill(ChangesetSidecarStore.MaxChunkPayloadBytes + 10, seed: 1);
-        byte[] payloadB = Fill(ChangesetSidecarStore.MaxChunkPayloadBytes + 20, seed: 2);
-
-        Write(10, payloadA);
-        Write(20, payloadB);
+        Write(10, [Entry(TestItem.AddressA)]);
+        Write(20, [Entry(TestItem.AddressB)]);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_store.TryGetChunk(10, 0)!.Length, Is.EqualTo(ChangesetSidecarStore.MaxChunkPayloadBytes));
-            Assert.That(_store.TryGetChunk(10, 1)!.Length, Is.EqualTo(10));
-            Assert.That(_store.TryGetChunk(20, 0)!.Length, Is.EqualTo(ChangesetSidecarStore.MaxChunkPayloadBytes));
-            Assert.That(_store.TryGetChunk(20, 1)!.Length, Is.EqualTo(20));
+            Assert.That(_store.TryGetChunk(10, 0), Is.Not.Null);
+            Assert.That(_store.TryGetChunk(20, 0), Is.Not.Null);
+            Assert.That(ChangesetChunkCodec.Decode(_store.TryGetChunk(10, 0)!)[0].Address, Is.EqualTo(TestItem.AddressA));
+            Assert.That(ChangesetChunkCodec.Decode(_store.TryGetChunk(20, 0)!)[0].Address, Is.EqualTo(TestItem.AddressB));
         }
     }
 
-    private void Write(ulong block, ReadOnlySpan<byte> payload)
+    private void Write(ulong block, List<ChangesetAccountEntry> entries)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _columnsDb.StartWriteBatch();
-        _store.RecordChangeset(block, payload, batch.GetColumnBatch(FlatHistoryColumns.ChangesetSidecar));
+        _store.RecordChangeset(block, entries, batch.GetColumnBatch(FlatHistoryColumns.ChangesetSidecar));
     }
 
-    private static void AssertReassembles(byte[] expected, params byte[]?[] chunks)
+    private static ChangesetAccountEntry Entry(Address address)
     {
-        byte[] reassembled = new byte[expected.Length];
-        int offset = 0;
-        foreach (byte[]? chunk in chunks)
-        {
-            chunk!.CopyTo(reassembled, offset);
-            offset += chunk.Length;
-        }
-
-        Assert.That(reassembled, Is.EqualTo(expected));
+        List<ChangesetSlotEntry> slots = [
+            new ChangesetSlotEntry(1, new byte[] { 0xAA }, ReadOnlyMemory<byte>.Empty),
+            new ChangesetSlotEntry(2, new byte[] { 0xBB }, ReadOnlyMemory<byte>.Empty),
+        ];
+        return new ChangesetAccountEntry(address, AccountChanged: true, new byte[] { 0x01 }, ReadOnlyMemory<byte>.Empty, slots);
     }
 
-    private static byte[] Fill(int length, int seed = 0)
+    private static Address AddressAt(int i)
     {
-        byte[] bytes = new byte[length];
-        for (int i = 0; i < length; i++)
-        {
-            bytes[i] = (byte)(i + seed);
-        }
-
-        return bytes;
+        Span<byte> bytes = stackalloc byte[20];
+        bytes[0] = 0xCC;
+        bytes[18] = (byte)(i >> 8);
+        bytes[19] = (byte)i;
+        return new Address(bytes);
     }
 }

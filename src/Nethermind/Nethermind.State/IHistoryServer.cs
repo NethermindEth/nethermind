@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.State.SnapServer;
+namespace Nethermind.State;
 
 public readonly record struct HistoryServingScope(ValueHash256 KeyRangeStart, ValueHash256 KeyRangeEnd, ulong FloorBlock, ulong WatermarkBlock);
 
@@ -31,12 +31,14 @@ public interface IHistoryServer
         ulong height,
         byte[]? cursor,
         long byteLimit,
+        int maxEntries,
         CancellationToken cancellationToken);
 
     IAsyncEnumerable<ChangesetChunkEntry> GetChangesets(
         ulong fromBlockInclusive,
         ulong toBlockInclusive,
         long byteLimit,
+        int maxChunks,
         CancellationToken cancellationToken);
 }
 
@@ -51,11 +53,11 @@ public sealed class NullHistoryServer : IHistoryServer
     public IReadOnlyList<HistoryServingScope> ServedScopes => [];
 
     public (IOwnedReadOnlyList<HistoryRangeEntry> Entries, byte[]? NextCursor) GetHistoryRangeAtHeight(
-        in ValueHash256 startKey, in ValueHash256 endKey, ulong height, byte[]? cursor, long byteLimit, CancellationToken cancellationToken) =>
+        in ValueHash256 startKey, in ValueHash256 endKey, ulong height, byte[]? cursor, long byteLimit, int maxEntries, CancellationToken cancellationToken) =>
         (ArrayPoolList<HistoryRangeEntry>.Empty(), null);
 
     public async IAsyncEnumerable<ChangesetChunkEntry> GetChangesets(
-        ulong fromBlockInclusive, ulong toBlockInclusive, long byteLimit, [EnumeratorCancellation] CancellationToken cancellationToken)
+        ulong fromBlockInclusive, ulong toBlockInclusive, long byteLimit, int maxChunks, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await Task.CompletedTask;
         yield break;

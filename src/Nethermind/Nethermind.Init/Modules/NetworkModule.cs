@@ -182,8 +182,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             ;
 
-        builder.RegisterInstance(State.SnapServer.NullHistoryServer.Instance)
-            .As<State.SnapServer.IHistoryServer>()
+        builder.RegisterInstance(State.NullHistoryServer.Instance)
+            .As<State.IHistoryServer>()
             .PreserveExistingDefaults();
     }
 

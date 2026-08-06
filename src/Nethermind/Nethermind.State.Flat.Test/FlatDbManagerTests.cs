@@ -63,7 +63,9 @@ public class FlatDbManagerTests
 
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _historyReader = new HistoryReader(_historyDb, _historyColumns, _config, LimboLogs.Instance);
+        HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, _config.HistoryRetentionBlocks > 0);
+        _historyReader = new HistoryReader(_historyDb, _historyColumns, _config, availability, rowFormat, LimboLogs.Instance);
         _accountStore = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
         _storageStore = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
     }

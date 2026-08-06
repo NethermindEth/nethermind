@@ -47,8 +47,8 @@ public sealed class HistoryScopeGate
         }
     }
 
-    /// <summary>Marks the scope opened under <paramref name="epoch"/> (the value <see cref="EnterScope"/>
-    /// returned) as closed.</summary>
+    /// <summary>Closes the scope that joined <paramref name="epoch"/> — the value the matching
+    /// <see cref="EnterScope"/> call returned; a mismatched epoch would undercount the wrong census.</summary>
     public void ExitScope(int epoch) => Decrement(epoch);
 
     /// <summary>

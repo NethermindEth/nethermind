@@ -113,6 +113,20 @@ public class HistoryStoreV3Tests
         }
     }
 
+    // A row wider than the caller's buffer means the row is corrupt (every encoder here caps at the buffer's
+    // size) - fail loudly rather than truncate a pre-value into something that reads as a different, wrong value.
+    [Test]
+    public void TryGetValueBeforeNextChange_ValueWiderThanTheBuffer_ThrowsStateUnavailable()
+    {
+        Record(20, KeyA, new byte[65]); // wider than the 64-byte buffer used below
+
+        Assert.That(() =>
+        {
+            Span<byte> buffer = stackalloc byte[64];
+            _store.TryGetValueBeforeNextChange(5, KeyA, buffer, out _);
+        }, Throws.InstanceOf<InvalidOperationException>());
+    }
+
     private void Record(ulong block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> valueBeforeChange)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _columnsDb.StartWriteBatch();

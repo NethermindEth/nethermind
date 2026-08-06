@@ -15,18 +15,45 @@ namespace Nethermind.State.Flat.History;
 /// members throw — a historical trie traversal must fail loudly as unsupported, not silently produce a wrong proof
 /// or an empty state walk.
 /// </summary>
-internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block, HistoryScopeGate scopeGate) : IPersistence.IPersistenceReader
+/// <remarks>
+/// <see cref="HistoricalFlatDbManager"/>'s own availability check, made before this reader is even constructed, is
+/// only a routing decision — it is not atomic with this reader's scope registration, so a floor-advance's
+/// publish-then-drain-then-delete could complete entirely in the gap between that check and
+/// <see cref="HistoryScopeGate.EnterScope"/>. The constructor re-validates availability immediately after entering
+/// the scope, closing that window: any floor advance from this point on is guaranteed to see this scope in its
+/// drain (or this construction fails closed instead of serving a block whose rows may already be gone).
+/// </remarks>
+internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistenceReader
 {
+    private readonly HistoryReader _historyReader;
+    private readonly StateId _block;
+    private readonly HistoryScopeGate _scopeGate;
     private readonly StorageClearsScopeCache _clearsCache = new();
-    private readonly int _scopeEpoch = scopeGate.EnterScope();
+    private readonly int _scopeEpoch;
 
-    public StateId CurrentState => block;
+    public HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block, HistoryScopeGate scopeGate)
+    {
+        _historyReader = historyReader;
+        _block = block;
+        _scopeGate = scopeGate;
+        _scopeEpoch = scopeGate.EnterScope();
+
+        if (!historyReader.IsAvailable(block))
+        {
+            scopeGate.ExitScope(_scopeEpoch);
+            throw StateUnavailable(new StateUnavailableException(
+                $"Historical state for block {block.BlockNumber} is unavailable" +
+                (historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (pruned below the flat history retention floor)." : ".")));
+        }
+    }
+
+    public StateId CurrentState => _block;
 
     public Account? GetAccount(Address address)
     {
         try
         {
-            return historyReader.TryGetAccount(block.BlockNumber, address, out AccountStruct account)
+            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account)
                 ? new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment())
                 : null;
         }
@@ -40,7 +67,7 @@ internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader
     {
         try
         {
-            if (!historyReader.TryGetStorage(block.BlockNumber, address, slot, out SlotValue value, _clearsCache)) return false;
+            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out SlotValue value, _clearsCache)) return false;
             outValue = value;
             return true;
         }
@@ -55,9 +82,9 @@ internal sealed class HistoryBackedPersistenceReader(HistoryReader historyReader
     /// contract, which JSON-RPC maps to resource-not-found instead of an internal error.
     /// </summary>
     private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
-        new($"Historical state for block {block.BlockNumber} is unavailable", null, TreePath.Empty, block.StateRoot.ToCommitment(), inner);
+        new($"Historical state for block {_block.BlockNumber} is unavailable", null, TreePath.Empty, _block.StateRoot.ToCommitment(), inner);
 
-    public void Dispose() => scopeGate.ExitScope(_scopeEpoch);
+    public void Dispose() => _scopeGate.ExitScope(_scopeEpoch);
 
     public bool IsPreimageMode => false;
 

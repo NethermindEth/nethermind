@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -29,6 +31,16 @@ public class HistoryBackedPersistenceReaderTests
 
         HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
         HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0xAA]);
+
+        // The constructor re-validates availability against the SAME state root every Reader(block) call below
+        // uses (Keccak.EmptyTreeHash) - closing the check-register race means a block must genuinely be available
+        // (covered by the watermark, root matching) before a reader can be built for it at all, matching the real
+        // HistoricalFlatDbManager -> HistoryBackedPersistenceReader call chain.
+        for (ulong block = 0; block <= 10; block++)
+        {
+            HistoryColumnsWriter.MarkBlock(_historyColumns, block, Keccak.EmptyTreeHash);
+        }
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 10);
     }
 
     [TearDown]
@@ -113,6 +125,41 @@ public class HistoryBackedPersistenceReaderTests
         }
     }
 
-    private HistoryBackedPersistenceReader Reader(ulong block) =>
-        new(new HistoryReader(_db, _historyColumns, new FlatDbConfig(), LimboLogs.Instance), new StateId(block, Keccak.EmptyTreeHash), new HistoryScopeGate());
+    // Closes the check-register race between HistoricalFlatDbManager's own (pre-construction) availability check
+    // and this reader's scope registration: the constructor re-validates under its own scope, so a block that is
+    // not actually available (here: above the watermark) must fail closed at construction, not be silently served.
+    [Test]
+    public void Constructor_ForABlockAboveTheWatermark_ThrowsMissingTrieNode_AndReleasesTheScope()
+    {
+        HistoryScopeGate gate = new();
+
+        Assert.That(() => Reader(11, gate), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+
+        // No leaked scope: draining succeeds immediately, proving the failed construction released what it took.
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
+    }
+
+    // EIP-1898: a non-canonical root at an otherwise-covered height must also fail closed at construction, not
+    // just at a later read - the same re-validation this constructor performs after entering its own scope.
+    [Test]
+    public void Constructor_ForANonCanonicalStateRoot_ThrowsMissingTrieNode_AndReleasesTheScope()
+    {
+        HistoryScopeGate gate = new();
+
+        Assert.That(() => Reader(10, gate, TestItem.KeccakA), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
+    }
+
+    private HistoryBackedPersistenceReader Reader(ulong block) => Reader(block, new HistoryScopeGate());
+
+    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate) => Reader(block, scopeGate, Keccak.EmptyTreeHash);
+
+    private HistoryBackedPersistenceReader Reader(ulong block, HistoryScopeGate scopeGate, Hash256 stateRoot)
+    {
+        FlatDbConfig config = new();
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        HistoryReader reader = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        return new HistoryBackedPersistenceReader(reader, new StateId(block, stateRoot), scopeGate);
+    }
 }

@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -15,25 +16,23 @@ namespace Nethermind.State.Flat.History;
 /// <summary>
 /// Primary (peer/era-fed) concurrent backfill importer: implements the write side of populating or extending a
 /// window from any <see cref="IWindowImportSource"/> feed, without depending on a local trie-diff accelerator
-/// existing at all. Feeds the exact same raw-bytes row-key layout <see cref="HistoryStore"/> owns
-/// (<see cref="HistoryStore.WriteHistoryKey"/>), so imported rows are byte-identical to what forward capture
-/// would have produced for the same range.
+/// existing at all.
 /// </summary>
 /// <remarks>
-/// Known gap, not fixable from this subtask: the current <see cref="ChangesetChunkCodec"/> wire shape (owned by
-/// 39-1, explicitly documented there as a placeholder pending 39-2) carries account and storage-slot changes only
-/// — it has no field for a self-destruct/storage-clear event. Forward capture writes a <c>StorageClears</c> row
-/// for every self-destruct that had persisted storage; this importer cannot reconstruct that row because the wire
-/// data it receives does not carry it. Rows in <c>AccountHistory</c> and <c>StorageHistory</c> import
-/// byte-identical; <c>StorageClears</c> rows do not, for any block containing a self-destruct with prior storage.
-/// This needs the codec extended with a destruct/clear signal before that gap closes — reported to 39-1/39-2
-/// rather than changed here, since <see cref="ChangesetChunkCodec"/> is explicitly still-evolving seam ownership.
+/// v3 rows are pre-values (see <see cref="HistoryStoreV3"/>), and the wire (<see cref="ChangesetAccountEntry"/>/
+/// <see cref="ChangesetSlotEntry"/>) carries the pre-value for every touch directly — <c>AccountPreValue</c>/
+/// <c>PreValue</c> — so no chaining or cross-touch derivation is needed: each touch's row is exactly its own
+/// wire-carried pre-value, re-encoded to match the live column's byte shape (RLP-wrapped for storage slots when
+/// configured; already-identical bytes for accounts). Known remaining gap, not fixable from here: the wire still
+/// carries account and storage-slot changes only, with no self-destruct signal, so this importer cannot
+/// reconstruct a <c>StorageClears</c> row for a self-destruct within the imported range.
 /// </remarks>
 public sealed class PeerFedWindowImporter
 {
-    // A GB/h throughput target belongs to a real EXPB-class benchmark (production-scale hardware, real network
-    // feed), not a wall-clock unit test — the project's standing rule against timing tests applies here exactly
-    // as it does everywhere else. This constant is the number a future benchmark is measured against.
+    /// <summary>The stated import throughput target once the row-key/value gap above is closed and this importer
+    /// writes real data — a GB/h number belongs to a real EXPB-class benchmark (production-scale hardware, a real
+    /// network feed), not a wall-clock unit test, so this constant records the number such a benchmark is
+    /// measured against rather than being asserted anywhere in this project's test suite.</summary>
     public const double TargetThroughputGigabytesPerHour = 20.0;
 
     private const int BlockBytes = sizeof(ulong);
@@ -47,9 +46,10 @@ public sealed class PeerFedWindowImporter
 
     private readonly IWindowImportSource _source;
     private readonly IDb _availableBlocks;
-    private readonly IDb _accountHistory;
-    private readonly IDb _storageHistory;
+    private readonly IDb _accountHistoryColumn;
+    private readonly IDb _storageHistoryColumn;
     private readonly HistoryAvailability _availability;
+    private readonly HistoryRowFormat _rowFormat;
     private readonly HistoryWindowPruner _pruner;
     private readonly IChangesetHashSource? _hashSource;
     private readonly IImportPeerSink? _peerSink;
@@ -62,11 +62,12 @@ public sealed class PeerFedWindowImporter
     private readonly ILogger _logger;
 
     /// <summary>
-    /// <paramref name="hashSource"/>/<paramref name="peerSink"/> are optional: 39-2's real attested-hash channel
-    /// and peer pool do not exist yet, so verification is opt-in — omitting them imports and writes rows exactly
-    /// as before, with no verification pass at all, which keeps the primary write path testable and usable on its
-    /// own per this subtask's own mandate ("build and gate-test the peer-fed path as complete and correct entirely
-    /// on its own"). Wiring both turns on per-batch verification.
+    /// <paramref name="hashSource"/>/<paramref name="peerSink"/> are optional: the real attested-hash channel and
+    /// peer pool do not exist yet, so verification is opt-in — omitting them imports without a verification
+    /// pass. <paramref name="availability"/>/<paramref name="rowFormat"/> are the shared, DI-owned singletons
+    /// (see <see cref="Nethermind.Init.Modules.FlatHistoryModule"/>) — this type must never construct its own
+    /// <see cref="HistoryAvailability"/>, since a floor lowered here has to be observed immediately by every other
+    /// holder (the pruner in particular).
     /// </summary>
     public PeerFedWindowImporter(
         IWindowImportSource source,
@@ -74,6 +75,8 @@ public sealed class PeerFedWindowImporter
         IColumnsDb<FlatHistoryColumns> history,
         IFlatDbConfig config,
         HistoryWindowPruner pruner,
+        HistoryAvailability availability,
+        HistoryRowFormat rowFormat,
         ILogManager logManager,
         IChangesetHashSource? hashSource = null,
         IImportPeerSink? peerSink = null,
@@ -82,11 +85,14 @@ public sealed class PeerFedWindowImporter
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(pruner);
+        ArgumentNullException.ThrowIfNull(availability);
+        ArgumentNullException.ThrowIfNull(rowFormat);
         _source = source;
         _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
-        _accountHistory = history.GetColumnDb(FlatHistoryColumns.AccountHistory);
-        _storageHistory = history.GetColumnDb(FlatHistoryColumns.StorageHistory);
-        _availability = new HistoryAvailability(_availableBlocks);
+        _accountHistoryColumn = history.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        _storageHistoryColumn = history.GetColumnDb(FlatHistoryColumns.StorageHistory);
+        _availability = availability;
+        _rowFormat = rowFormat;
         _pruner = pruner;
         _hashSource = hashSource;
         _peerSink = peerSink;
@@ -122,18 +128,34 @@ public sealed class PeerFedWindowImporter
 
     /// <summary>
     /// Imports <c>[floorBlockInclusive, anchorBlockInclusive]</c> from the configured source, one batch at a
-    /// time, resuming from the last durably-completed batch on a prior crash. Below-anchor reads become
-    /// servable only once every block in this exact range has actually been received and written — tracked by
-    /// the next-expected block number end to end, never inferred from a chunk merely touching the anchor — and
-    /// only for this exact (floor, anchor) pair: a persisted cursor from a different target is never reused as
-    /// if it covered this one.
+    /// time, resuming from the last durably-completed batch on a prior crash. Refuses outright on an unwindowed
+    /// (v2) database: backfilling a window is meaningless for a node configured to keep everything from genesis
+    /// unbounded, and letting the call proceed would silently stamp the windowed format as a side effect of a
+    /// call whose only job is populating a window this node's own configuration says it does not want.
     /// </summary>
-    public async Task ImportRangeAsync(ulong floorBlockInclusive, ulong anchorBlockInclusive, CancellationToken cancellationToken)
+    public Task ImportRangeAsync(ulong floorBlockInclusive, ulong anchorBlockInclusive, CancellationToken cancellationToken)
+    {
+        if (!_rowFormat.IsV3)
+        {
+            throw new InvalidConfigurationException(
+                "Backfill import requires a windowed (v3) flatHistory database (HistoryRetentionBlocks > 0). " +
+                "This node's flatHistory database is unwindowed (v2); refusing rather than silently stamping it " +
+                "to the windowed format as a side effect of importing. Configure HistoryRetentionBlocks to enable " +
+                "windowing before running a backfill import.", -1);
+        }
+
+        return ImportRangeCoreAsync(floorBlockInclusive, anchorBlockInclusive, cancellationToken);
+    }
+
+    /// <summary>The real pipeline, gated behind <see cref="ImportRangeAsync"/>'s v2 refusal. Kept internal and
+    /// separately callable so tests can exercise batching, verification, floor-lowering, and the backfill gate
+    /// directly, independent of that outer check.</summary>
+    internal async Task ImportRangeCoreAsync(ulong floorBlockInclusive, ulong anchorBlockInclusive, CancellationToken cancellationToken)
     {
         (ulong expectedBlock, ValueHash256 runningChain) = ResolveResumePoint(floorBlockInclusive, anchorBlockInclusive);
         if (expectedBlock > anchorBlockInclusive)
         {
-            PublishConnectedRangeAndLowerFloor(floorBlockInclusive, anchorBlockInclusive);
+            await PublishConnectedRangeAndLowerFloorAsync(floorBlockInclusive, anchorBlockInclusive, cancellationToken);
             return;
         }
 
@@ -143,26 +165,26 @@ public sealed class PeerFedWindowImporter
             while (expectedBlock <= anchorBlockInclusive)
             {
                 ulong batchEnd = Math.Min(expectedBlock + _batchBlocks - 1, anchorBlockInclusive);
-                (List<BlockDigest> digests, ulong lastProcessedBlock, ShardBuffers buffers) =
-                    await CollectRangeAsync(_source, expectedBlock, batchEnd, cancellationToken);
-
-                if (digests.Count == 0) break; // the source yielded nothing for this batch: no progress, stop cleanly
+                CollectedBatch batch = await CollectRangeAsync(_source, expectedBlock, batchEnd, cancellationToken);
+                if (batch.Digests.Count == 0) break; // the source yielded nothing for this batch: no progress, stop cleanly
 
                 if (_hashSource is not null)
                 {
-                    (digests, buffers, runningChain) = await VerifyAndRecoverAsync(digests, buffers, runningChain, expectedBlock, cancellationToken);
+                    (batch, runningChain) = await VerifyAndRecoverAsync(batch, runningChain, expectedBlock, cancellationToken);
                 }
                 else
                 {
-                    runningChain = WindowImportVerifier.FoldAscending(digests, runningChain);
+                    runningChain = WindowImportVerifier.FoldAscending(batch.Digests, runningChain);
                 }
 
-                using (IDisposable backfillScope = _pruner.BeginBackfill())
+                ShardBuffers buffers = ShardTouches(batch.Touches, _shardCount, _shardBufferBudget);
+
+                using (await _pruner.BeginBackfillAsync(cancellationToken))
                 {
                     FlushShards(buffers);
                 }
 
-                expectedBlock = lastProcessedBlock + 1;
+                expectedBlock = batch.LastProcessedBlock + 1;
                 PersistProgress(floorBlockInclusive, anchorBlockInclusive, expectedBlock, runningChain);
             }
         }
@@ -173,7 +195,7 @@ public sealed class PeerFedWindowImporter
 
         if (expectedBlock == anchorBlockInclusive + 1)
         {
-            PublishConnectedRangeAndLowerFloor(floorBlockInclusive, anchorBlockInclusive);
+            await PublishConnectedRangeAndLowerFloorAsync(floorBlockInclusive, anchorBlockInclusive, cancellationToken);
         }
     }
 
@@ -181,13 +203,13 @@ public sealed class PeerFedWindowImporter
     /// from an alternate, and verifies that instead — corrupt data is caught before it ever reaches the write
     /// batch, never written then overwritten. Throws (fail closed) if there is no alternate, or the alternate's
     /// data fails verification too.</summary>
-    private async Task<(List<BlockDigest> Digests, ShardBuffers Buffers, ValueHash256 RunningChain)> VerifyAndRecoverAsync(
-        List<BlockDigest> digests, ShardBuffers buffers, ValueHash256 runningChainBefore, ulong batchStart, CancellationToken cancellationToken)
+    private async Task<(CollectedBatch Batch, ValueHash256 RunningChain)> VerifyAndRecoverAsync(
+        CollectedBatch batch, ValueHash256 runningChainBefore, ulong batchStart, CancellationToken cancellationToken)
     {
-        WindowImportVerdict verdict = await _verifier.VerifyAsync(digests, runningChainBefore, batchStart, _hashSource!, cancellationToken);
+        WindowImportVerdict verdict = await _verifier.VerifyAsync(batch.Digests, runningChainBefore, batchStart, _hashSource!, cancellationToken);
         if (verdict.Verified)
         {
-            return (digests, buffers, WindowImportVerifier.FoldAscending(digests, runningChainBefore));
+            return (batch, WindowImportVerifier.FoldAscending(batch.Digests, runningChainBefore));
         }
 
         if (_logger.IsWarn) _logger.Warn(
@@ -201,24 +223,22 @@ public sealed class PeerFedWindowImporter
 
         _peerSink.BanSource(_source, $"changeset hash chain mismatch isolated to blocks [{verdict.MismatchRangeStart}, {verdict.MismatchRangeEnd}]");
 
-        ulong batchEnd = digests[^1].Block;
-        (List<BlockDigest> altDigests, ulong altLastProcessed, ShardBuffers altBuffers) =
-            await CollectRangeAsync(alternate, batchStart, batchEnd, cancellationToken);
-
-        if (altLastProcessed != batchEnd)
+        ulong batchEnd = batch.Digests[^1].Block;
+        CollectedBatch altBatch = await CollectRangeAsync(alternate, batchStart, batchEnd, cancellationToken);
+        if (altBatch.LastProcessedBlock != batchEnd)
         {
             throw new InvalidOperationException(
                 $"The alternate source could not supply the full batch [{batchStart}, {batchEnd}] after the primary source was banned.");
         }
 
-        WindowImportVerdict altVerdict = await _verifier.VerifyAsync(altDigests, runningChainBefore, batchStart, _hashSource!, cancellationToken);
+        WindowImportVerdict altVerdict = await _verifier.VerifyAsync(altBatch.Digests, runningChainBefore, batchStart, _hashSource!, cancellationToken);
         if (!altVerdict.Verified)
         {
             throw new InvalidOperationException(
                 $"The alternate source's data for batch [{batchStart}, {batchEnd}] also failed changeset verification.");
         }
 
-        return (altDigests, altBuffers, WindowImportVerifier.FoldAscending(altDigests, runningChainBefore));
+        return (altBatch, WindowImportVerifier.FoldAscending(altBatch.Digests, runningChainBefore));
     }
 
     /// <summary>Resolves the block to resume fetching from, and the chain value to resume verification from. A
@@ -236,82 +256,152 @@ public sealed class PeerFedWindowImporter
         return (Math.Max(cursor, floorBlockInclusive), chain);
     }
 
-    /// <summary>Streams <paramref name="source"/> over <c>[fromBlockInclusive, toBlockInclusive]</c>, sharding
-    /// rows for the write path and computing each block's digest incrementally (one
-    /// <see cref="Nethermind.Core.Crypto.KeccakHash"/> per block, fed as chunks arrive — never a growing byte
-    /// list) as it goes, so the network is read exactly once. Stops early — reporting a
-    /// <c>lastProcessedBlock</c> below <paramref name="toBlockInclusive"/> — the moment any shard buffer reaches
-    /// its budget, so a buffer never grows past it regardless of how large the requested range is.</summary>
-    private async Task<(List<BlockDigest> Digests, ulong LastProcessedBlock, ShardBuffers Buffers)> CollectRangeAsync(
-        IWindowImportSource source, ulong fromBlockInclusive, ulong toBlockInclusive, CancellationToken cancellationToken)
-    {
-        ShardBuffers buffers = new(_shardCount, _shardBufferBudget);
-        List<BlockDigest> digests = new((int)Math.Min(toBlockInclusive - fromBlockInclusive + 1, (ulong)_batchBlocks));
+    internal readonly record struct RawTouch(byte[] FlatKey, ulong Block, byte[] PreValue, bool IsAccount);
 
-        ulong expectedBlock = fromBlockInclusive;
-        bool processedAny = false;
-        ulong lastProcessedBlock = fromBlockInclusive;
-        ulong? currentBlock = null;
-        bool currentBlockCompleted = true;
-        List<ChangesetAccountEntry> currentEntries = [];
-        KeccakHash currentBlockHash = KeccakHash.Create();
-        uint expectedChunkIndex = 0;
-        byte[] digestBuffer = new byte[ChainBytes]; // must survive the await foreach boundary; a stackalloc'd Span cannot
+    internal readonly record struct CollectedBatch(List<RawTouch> Touches, List<BlockDigest> Digests, ulong LastProcessedBlock);
+
+    /// <summary>Streams <paramref name="source"/> over <c>[fromBlockInclusive, toBlockInclusive]</c>, decoding and
+    /// validating the wire stream (block-gap, chunk-gap, mid-block-end, and malformed-payload guards) and
+    /// computing each block's digest incrementally (one <see cref="KeccakHash"/> per block, fed as chunks
+    /// arrive — never a growing byte list) as it goes, so the network is read exactly once. Internal (not
+    /// private) so the decode/validate/digest mechanism is directly testable on its own.</summary>
+    internal async Task<CollectedBatch> CollectRangeAsync(IWindowImportSource source, ulong fromBlockInclusive, ulong toBlockInclusive, CancellationToken cancellationToken)
+    {
+        List<RawTouch> touches = [];
+        List<BlockDigest> digests = new((int)Math.Min(toBlockInclusive - fromBlockInclusive + 1, (ulong)_batchBlocks));
+        BlockStreamCursor cursor = new(fromBlockInclusive);
 
         await foreach (WindowImportChunk chunk in source.GetChangesetsAsync(fromBlockInclusive, toBlockInclusive, cancellationToken))
         {
-            if (currentBlock is null || chunk.Block != currentBlock.Value)
-            {
-                if (!currentBlockCompleted)
-                {
-                    throw new InvalidOperationException(
-                        $"Changeset stream moved to block {chunk.Block} before block {currentBlock} finished (missing the final chunk).");
-                }
-
-                if (chunk.Block != expectedBlock)
-                {
-                    throw new InvalidOperationException(
-                        $"Changeset stream has a block gap: expected block {expectedBlock}, got {chunk.Block}. A gap must fail closed, never silently narrow what is later published as connected.");
-                }
-
-                currentBlock = chunk.Block;
-                currentEntries = [];
-                currentBlockHash = KeccakHash.Create();
-                expectedChunkIndex = 0;
-                currentBlockCompleted = false;
-            }
-
-            if (chunk.ChunkIndex != expectedChunkIndex)
-            {
-                throw new InvalidOperationException(
-                    $"Changeset chunk gap for block {chunk.Block}: expected chunk index {expectedChunkIndex}, got {chunk.ChunkIndex}.");
-            }
-
-            expectedChunkIndex++;
-            currentBlockHash.Update(chunk.Payload.Span);
-            currentEntries.AddRange(DecodeChunkPayload(chunk));
+            cursor.AdvanceTo(chunk);
+            cursor.Hash.Update(chunk.Payload.Span);
+            cursor.Entries.AddRange(DecodeChunkPayload(chunk));
 
             if (!chunk.IsLastChunkForBlock) continue;
 
-            currentBlockCompleted = true;
-            DistributeIntoShards(chunk.Block, currentEntries, buffers);
+            AppendTouches(chunk.Block, cursor.Entries, touches);
+            digests.Add(cursor.FinalizeDigest(chunk.Block));
 
-            currentBlockHash.UpdateFinalTo(digestBuffer);
-            digests.Add(new BlockDigest(chunk.Block, new ValueHash256(digestBuffer)));
-
-            processedAny = true;
-            lastProcessedBlock = chunk.Block;
-            expectedBlock = chunk.Block + 1;
-
-            if (chunk.Block == toBlockInclusive || buffers.AnyOverBudget()) break;
+            if (chunk.Block == toBlockInclusive || TooManyTouchesBuffered(touches)) break;
         }
 
-        if (!currentBlockCompleted && !cancellationToken.IsCancellationRequested)
+        cursor.ThrowIfIncomplete(cancellationToken);
+        return new CollectedBatch(touches, digests, cursor.LastCompletedBlock ?? fromBlockInclusive);
+    }
+
+    /// <summary>Cheap early-stop guard so an unexpectedly wide range cannot grow the touch list without bound —
+    /// mirrors the same budget the shard buffers are sized against, checked here instead of after sharding since
+    /// sharding now happens once, after the whole batch is collected.</summary>
+    private bool TooManyTouchesBuffered(List<RawTouch> touches) => touches.Count >= _shardBufferBudget * _shardCount;
+
+    /// <summary>Per-block streaming state for <see cref="CollectRangeAsync"/>: tracks which block is currently
+    /// being assembled, enforces the block-gap/chunk-gap/mid-block-end guards, and folds the block's raw payload
+    /// bytes into a running digest as chunks arrive.</summary>
+    private sealed class BlockStreamCursor(ulong fromBlockInclusive)
+    {
+        private ulong _expectedBlock = fromBlockInclusive;
+        private ulong? _currentBlock;
+        private bool _currentBlockCompleted = true;
+        private uint _expectedChunkIndex;
+        private readonly byte[] _digestBuffer = new byte[ChainBytes]; // must survive the await foreach boundary; a stackalloc'd Span cannot
+
+        public List<ChangesetAccountEntry> Entries { get; private set; } = [];
+        public KeccakHash Hash { get; private set; } = KeccakHash.Create();
+        public ulong? LastCompletedBlock { get; private set; }
+
+        public void AdvanceTo(WindowImportChunk chunk)
         {
-            throw new InvalidOperationException($"Changeset stream ended mid-block at block {currentBlock} without a final chunk.");
+            if (_currentBlock is not null && chunk.Block == _currentBlock.Value)
+            {
+                if (chunk.ChunkIndex != _expectedChunkIndex)
+                {
+                    throw new InvalidOperationException(
+                        $"Changeset chunk gap for block {chunk.Block}: expected chunk index {_expectedChunkIndex}, got {chunk.ChunkIndex}.");
+                }
+
+                _expectedChunkIndex++;
+                return;
+            }
+
+            if (!_currentBlockCompleted)
+            {
+                throw new InvalidOperationException(
+                    $"Changeset stream moved to block {chunk.Block} before block {_currentBlock} finished (missing the final chunk).");
+            }
+
+            if (chunk.Block != _expectedBlock)
+            {
+                throw new InvalidOperationException(
+                    $"Changeset stream has a block gap: expected block {_expectedBlock}, got {chunk.Block}. A gap must fail closed, never silently narrow what is later published as connected.");
+            }
+
+            if (chunk.ChunkIndex != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Changeset chunk gap for block {chunk.Block}: expected chunk index 0, got {chunk.ChunkIndex}.");
+            }
+
+            _currentBlock = chunk.Block;
+            Entries = [];
+            Hash = KeccakHash.Create();
+            _expectedChunkIndex = 1;
+            _currentBlockCompleted = false;
         }
 
-        return (digests, processedAny ? lastProcessedBlock : fromBlockInclusive, buffers);
+        public BlockDigest FinalizeDigest(ulong block)
+        {
+            _currentBlockCompleted = true;
+            LastCompletedBlock = block;
+            _expectedBlock = block + 1;
+            Hash.UpdateFinalTo(_digestBuffer);
+            return new BlockDigest(block, new ValueHash256(_digestBuffer));
+        }
+
+        public void ThrowIfIncomplete(CancellationToken cancellationToken)
+        {
+            if (!_currentBlockCompleted && !cancellationToken.IsCancellationRequested)
+            {
+                throw new InvalidOperationException($"Changeset stream ended mid-block at block {_currentBlock} without a final chunk.");
+            }
+        }
+    }
+
+    /// <summary>Extracts each touch's row directly from the wire's own pre-value fields — <c>AccountPreValue</c>
+    /// is already the exact bytes the <c>AccountHistory</c> column stores (the same <c>AccountDecoder.Slim</c>
+    /// RLP forward capture both writes and puts on the wire), but a storage slot's wire pre-value is the raw,
+    /// leading-zeros-stripped bytes and must be re-encoded (RLP-wrapped when configured) to match what
+    /// <c>StorageHistory</c> actually stores — mirroring <see cref="HistoryWriter.RecordStorageV3"/> exactly, so
+    /// an imported row is byte-identical to what forward capture would have written for the same change.</summary>
+    private void AppendTouches(ulong block, List<ChangesetAccountEntry> entries, List<RawTouch> touches)
+    {
+        Span<byte> accountKeyBuffer = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        Span<byte> storageKeyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
+        Span<byte> storageValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+
+        foreach (ChangesetAccountEntry entry in entries)
+        {
+            ValueHash256 addrHash = entry.Address.ToAccountPath;
+
+            if (entry.AccountChanged)
+            {
+                byte[] flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKeyBuffer, addrHash).ToArray();
+                byte[] preValue = entry.AccountPreValue.IsEmpty ? [] : entry.AccountPreValue.ToArray();
+                touches.Add(new RawTouch(flatKey, block, preValue, IsAccount: true));
+            }
+
+            foreach (ChangesetSlotEntry slot in entry.StorageChanges)
+            {
+                ValueHash256 slotHash = ValueKeccak.Zero;
+                StorageTree.ComputeKeyWithLookup(slot.Slot, ref slotHash);
+                byte[] flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(storageKeyBuffer, addrHash, slotHash).ToArray();
+
+                int written = slot.PreValue.IsEmpty
+                    ? 0
+                    : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(slot.PreValue.Span), _rlpWrapSlots, storageValueBuffer);
+                byte[] preValue = storageValueBuffer[..written].ToArray();
+                touches.Add(new RawTouch(flatKey, block, preValue, IsAccount: false));
+            }
+        }
     }
 
     private static List<ChangesetAccountEntry> DecodeChunkPayload(WindowImportChunk chunk)
@@ -329,39 +419,20 @@ public sealed class PeerFedWindowImporter
         }
     }
 
-    private void DistributeIntoShards(ulong block, List<ChangesetAccountEntry> entries, ShardBuffers buffers)
+    /// <summary>Shards every touch's already-resolved v3 row (see <see cref="AppendTouches"/> — each touch's
+    /// pre-value comes straight from the wire, no cross-touch derivation needed) by address-hash prefix, ready
+    /// for a sorted, per-shard batch write.</summary>
+    private static ShardBuffers ShardTouches(List<RawTouch> touches, int shardCount, int budgetPerShard)
     {
-        Span<byte> accountKeyBuffer = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
-        Span<byte> storageKeyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
-        Span<byte> storageValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-
-        foreach (ChangesetAccountEntry entry in entries)
+        ShardBuffers buffers = new(shardCount, budgetPerShard);
+        foreach (RawTouch touch in touches)
         {
-            ValueHash256 addrHash = entry.Address.ToAccountPath;
-            ShardBuffer shard = buffers[ShardOf(addrHash, buffers.ShardCount)];
-
-            if (entry.AccountChanged)
-            {
-                ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKeyBuffer, addrHash);
-                byte[] historyKey = BuildHistoryRowKey(flatKey, block);
-                byte[] value = entry.AccountValue.IsEmpty ? [] : entry.AccountValue.ToArray();
-                shard.AccountRows.Add((historyKey, value));
-            }
-
-            foreach (ChangesetSlotEntry slot in entry.StorageChanges)
-            {
-                ValueHash256 slotHash = ValueKeccak.Zero;
-                StorageTree.ComputeKeyWithLookup(slot.Slot, ref slotHash);
-                ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(storageKeyBuffer, addrHash, slotHash);
-                byte[] historyKey = BuildHistoryRowKey(flatKey, block);
-
-                int written = slot.Value.IsEmpty
-                    ? 0
-                    : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(slot.Value.Span), _rlpWrapSlots, storageValueBuffer);
-                byte[] value = storageValueBuffer[..written].ToArray();
-                shard.StorageRows.Add((historyKey, value));
-            }
+            ShardBuffer shard = buffers[ShardOfFlatKey(touch.FlatKey, shardCount)];
+            byte[] historyKey = BuildV3RowKey(touch.FlatKey, touch.Block);
+            (touch.IsAccount ? shard.AccountRows : shard.StorageRows).Add((historyKey, touch.PreValue));
         }
+
+        return buffers;
     }
 
     private void FlushShards(ShardBuffers buffers)
@@ -369,8 +440,8 @@ public sealed class PeerFedWindowImporter
         for (int i = 0; i < buffers.ShardCount; i++)
         {
             ShardBuffer shard = buffers[i];
-            WriteSortedRows(_accountHistory, shard.AccountRows);
-            WriteSortedRows(_storageHistory, shard.StorageRows);
+            WriteSortedRows(_accountHistoryColumn, shard.AccountRows);
+            WriteSortedRows(_storageHistoryColumn, shard.StorageRows);
             shard.Clear();
         }
     }
@@ -389,26 +460,31 @@ public sealed class PeerFedWindowImporter
 
     /// <summary>Widens the write buffer / L0 compaction trigger for the duration of the import, then restores the
     /// default profile — the repo's own bulk-import precedent (<c>EraImporter</c>) for exactly this shape of
-    /// workload, in place of the manual per-flush <c>CompactRange</c> this importer no longer issues. A no-op on
-    /// backends that do not implement <see cref="ITunableDb"/> (e.g. in-memory test doubles).</summary>
+    /// workload. A no-op on backends that do not implement <see cref="ITunableDb"/> (e.g. in-memory test doubles).</summary>
     private void TuneForBulkWrite()
     {
-        (_accountHistory as ITunableDb)?.Tune(ITunableDb.TuneType.HeavyWrite);
-        (_storageHistory as ITunableDb)?.Tune(ITunableDb.TuneType.HeavyWrite);
+        (_accountHistoryColumn as ITunableDb)?.Tune(ITunableDb.TuneType.HeavyWrite);
+        (_storageHistoryColumn as ITunableDb)?.Tune(ITunableDb.TuneType.HeavyWrite);
     }
 
     private void TuneForDefault()
     {
-        (_accountHistory as ITunableDb)?.Tune(ITunableDb.TuneType.Default);
-        (_storageHistory as ITunableDb)?.Tune(ITunableDb.TuneType.Default);
+        (_accountHistoryColumn as ITunableDb)?.Tune(ITunableDb.TuneType.Default);
+        (_storageHistoryColumn as ITunableDb)?.Tune(ITunableDb.TuneType.Default);
     }
 
-    private static int ShardOf(in ValueHash256 addrHash, int shardCount) => addrHash.Bytes[0] * shardCount / 256;
+    private static int ShardOfFlatKey(byte[] flatKey, int shardCount) => flatKey[0] * shardCount / 256;
 
-    private static byte[] BuildHistoryRowKey(ReadOnlySpan<byte> flatKey, ulong block)
+    /// <summary>v3's row-key layout (<c>[flatKey | block BE]</c>, ascending — the complement of v2's
+    /// <see cref="HistoryStore.WriteHistoryKey"/>). <see cref="HistoryStoreV3"/> owns the same encoding internally
+    /// but does not expose it for external key-building; reimplemented here rather than widening its visibility,
+    /// since unlike v2's already-shared helper this layout is small, fixed, and fully specified by
+    /// <see cref="HistoryStoreV3"/>'s own public remarks with no ambiguity to duplicate incorrectly.</summary>
+    private static byte[] BuildV3RowKey(byte[] flatKey, ulong block)
     {
         byte[] key = new byte[flatKey.Length + BlockBytes];
-        HistoryStore.WriteHistoryKey(key, flatKey, block);
+        flatKey.CopyTo(key, 0);
+        BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(flatKey.Length), block);
         return key;
     }
 
@@ -448,28 +524,25 @@ public sealed class PeerFedWindowImporter
     }
 
     /// <summary>Publishes the connected range as a single key (never two independent writes a reader could observe
-    /// torn), and extends the retention floor down to cover it. The floor extension matters:
-    /// <see cref="HistoryWindowPruner"/> computes its own floor from <c>watermark - retention</c> with no notion
-    /// that a backfill just widened coverage further into the past, so without this call its very next pass would
-    /// delete the rows just imported as "below floor". Only ever lowers — raising it here would wrongly narrow the
-    /// servable window for rows the pruner has not actually deleted. Publishing also stamps the windowed format
-    /// version (via <see cref="HistoryAvailability.PublishGlobalFloor"/>), which a fresh, never-forward-captured
-    /// node (backfill running right after a snap-sync pivot, before any capture batch or genesis seed) would
-    /// otherwise never stamp — leaving <see cref="HistoryAvailability.VerifyFormat"/> to treat these reserved keys
-    /// as a pre-versioning layout and refuse to start on the very next restart.</summary>
-    private void PublishConnectedRangeAndLowerFloor(ulong floor, ulong anchor)
+    /// torn), and extends the retention floor down to cover it via <see cref="HistoryAvailability.TryLowerGlobalFloor"/>
+    /// — never a raw key write, and never <see cref="HistoryAvailability.PublishGlobalFloor"/> (unconditional,
+    /// reserved for the pruner's own initial seed): the CAS pair with the pruner's
+    /// <see cref="HistoryAvailability.TryRaiseGlobalFloor"/> is what stops a concurrent prune pass and this call
+    /// from clobbering each other's write to the same shared instance. <see cref="HistoryWindowPruner"/> already
+    /// consults <see cref="HistoryAvailability.TryGetConnectedRange"/> before raising the floor past this range's
+    /// bottom, so the two sides only need to agree on which method owns which direction.</summary>
+    private async Task PublishConnectedRangeAndLowerFloorAsync(ulong floor, ulong anchor, CancellationToken cancellationToken)
     {
         Span<byte> value = stackalloc byte[2 * BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(value, floor);
         BinaryPrimitives.WriteUInt64BigEndian(value[BlockBytes..], anchor);
         _availableBlocks.PutSpan(ConnectedRangeKey, value);
-
-        if (!_availability.TryGetGlobalFloor(out ulong currentFloor) || floor < currentFloor)
-        {
-            _availability.PublishGlobalFloor(floor);
-        }
-
         _availableBlocks.SyncWal();
+
+        using (await _pruner.BeginBackfillAsync(cancellationToken))
+        {
+            _availability.TryLowerGlobalFloor(floor);
+        }
     }
 
     private sealed class ShardBuffer(int budget)
@@ -478,8 +551,6 @@ public sealed class PeerFedWindowImporter
         // reserving the whole budget per list would over-reserve roughly 2x what is ever reachable.
         public readonly List<(byte[] Key, byte[] Value)> AccountRows = new(Math.Max(1, budget / 2));
         public readonly List<(byte[] Key, byte[] Value)> StorageRows = new(Math.Max(1, budget / 2));
-
-        public bool IsOverBudget => AccountRows.Count + StorageRows.Count >= budget;
 
         public void Clear()
         {
@@ -505,15 +576,5 @@ public sealed class PeerFedWindowImporter
         public int ShardCount { get; }
 
         public ShardBuffer this[int index] => _shards[index];
-
-        public bool AnyOverBudget()
-        {
-            for (int i = 0; i < _shards.Length; i++)
-            {
-                if (_shards[i].IsOverBudget) return true;
-            }
-
-            return false;
-        }
     }
 }

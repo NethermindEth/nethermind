@@ -8,9 +8,9 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Monitoring.Config;
+using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
-using Nethermind.State.SnapServer;
 
 namespace Nethermind.Init.Modules;
 
@@ -24,6 +24,15 @@ public class FlatHistoryModule : Module
     {
         builder
             .AddColumnDatabase<FlatHistoryColumns>(DbNames.FlatHistory)
+            // Single shared owner of "which row format, and how are its rows shaped" for every collaborator that
+            // needs it - a writer/reader/pruner (and the changeset server/importer, once they migrate onto this
+            // too) each resolving their own would risk disagreeing about the format, and duplicates the
+            // availability column's floor state across instances that must otherwise stay in lockstep (a floor
+            // lowered by a backfill importer must be observed immediately by every other holder).
+            .AddSingleton<HistoryAvailability>(ctx =>
+                new HistoryAvailability(ctx.Resolve<IColumnsDb<FlatHistoryColumns>>().GetColumnDb(FlatHistoryColumns.AvailableBlocks)))
+            .AddSingleton<HistoryRowFormat>(ctx =>
+                HistoryRowFormat.Resolve(ctx.Resolve<HistoryAvailability>(), ctx.Resolve<IFlatDbConfig>().HistoryRetentionBlocks > 0))
             .AddSingleton<HistoryReader>()
             .AddSingleton<HistoryWriter>()
             .AddSingleton<HistoryScopeGate>()

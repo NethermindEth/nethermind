@@ -9,13 +9,14 @@ using Nethermind.Db;
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// Erigon-style pre-value store: <c>[key | block] -&gt; value BEFORE the change at block</c>, key-major with an
-/// ASCENDING block suffix (the opposite of <see cref="HistoryStore"/>'s descending suffix), so an as-of read is a
-/// forward seek for the smallest recorded block strictly greater than the query block.
+/// Pre-value store: <c>[key | block] -&gt; value BEFORE the change at block</c>, key-major with an ASCENDING block
+/// suffix (the opposite of <see cref="HistoryStore"/>'s descending suffix), so an as-of read is a forward seek for
+/// the smallest recorded block strictly greater than the query block.
 /// </summary>
 /// <remarks>
-/// The subtask's decision record calls for "if no later change is found, the current live flat value is
-/// correct." That rule is sound under one condition: the fallback must read the <em>persisted</em> flat column
+/// A read finding no captured change above its query block falls back to the current live flat value, on the
+/// premise that nothing changed the key since. That rule is sound under one condition: the fallback must read the
+/// <em>persisted</em> flat column
 /// (<c>FlatDbColumns.Account</c>/<c>Storage</c>), never a tip- or snapshot-stack-including view. The invariant
 /// chain that makes this hold: <see cref="HistoryWriter"/>'s capture always runs strictly before the flat persist
 /// it captured from commits (its own contract — "the flat persist commits only after; must never get ahead of

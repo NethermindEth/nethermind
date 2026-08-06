@@ -13,10 +13,10 @@ public readonly record struct WindowImportChunk(ulong Block, uint ChunkIndex, bo
 
 /// <summary>
 /// Transport-agnostic source of changeset chunks for populating or extending a window. The concurrent backfill
-/// importer (39-3) is written against this interface, not against a specific transport, so a local trie-diff
-/// walker and a devp2p peer client (39-2) are interchangeable inputs to the same import path — devp2p is not
-/// the only feed this is meant to support; era-file bulk artifacts and post-Amsterdam BALs are plausible future
-/// implementations behind the same seam.
+/// importer is written against this interface, not against a specific transport, so a local trie-diff walker and
+/// a devp2p peer client are interchangeable inputs to the same import path — devp2p is not the only feed this is
+/// meant to support; era-file bulk artifacts and post-Amsterdam BALs are plausible future implementations behind
+/// the same seam.
 /// </summary>
 public interface IWindowImportSource
 {

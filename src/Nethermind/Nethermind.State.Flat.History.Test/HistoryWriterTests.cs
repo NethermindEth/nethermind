@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -40,6 +41,8 @@ public class HistoryWriterTests
     private SnapshotRepository _repository = null!;
     private HistoryWriter _writer = null!;
     private HistoryReader _reader = null!;
+    private HistoryAvailability _availability = null!;
+    private HistoryRowFormat _rowFormat = null!;
     private HistoryStore _accountHistory = null!;
     private HistoryStore _storageHistory = null!;
 
@@ -51,8 +54,10 @@ public class HistoryWriterTests
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
         _tier = new FlatTestContainer(new FlatDbConfig { CompactSize = 16 });
         _repository = _tier.Repository;
-        _writer = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
-        _reader = new HistoryReader(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        (_availability, _rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        _writer = new HistoryWriter(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance);
+        _reader = new HistoryReader(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance);
         _accountHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
         _storageHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
     }
@@ -369,7 +374,7 @@ public class HistoryWriterTests
         _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         // "Restart": a fresh writer over the same columns, replay re-captures the same head, then extends.
-        HistoryWriter restarted = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
+        HistoryWriter restarted = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance);
         restarted.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         Account atBlock3 = new(3, 33);
@@ -395,7 +400,7 @@ public class HistoryWriterTests
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None); // unconnected: markers written, watermark never published
 
-        Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance));
+        Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance));
     }
 
     // Only a completed capture may report health: config cannot prove the hook is wired, and the seed proves
@@ -567,7 +572,9 @@ public class HistoryWriterTests
     [Test]
     public void Capture_with_history_disabled_records_nothing()
     {
-        HistoryWriter disabled = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = false }, LimboLogs.Instance);
+        FlatDbConfig disabledConfig = new() { HistoryEnabled = false };
+        (HistoryAvailability disabledAvailability, HistoryRowFormat disabledRowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, disabledConfig);
+        HistoryWriter disabled = new(_db, _historyColumns, disabledConfig, disabledAvailability, disabledRowFormat, LimboLogs.Instance);
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
 
         disabled.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -586,7 +593,7 @@ public class HistoryWriterTests
     [Test]
     public void Windowed_writer_stamps_windowed_format_version_and_it_survives_further_captures()
     {
-        HistoryWriter windowed = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 100 }, LimboLogs.Instance);
+        (HistoryWriter windowed, _) = CreateWindowedPair(retentionBlocks: 100);
         windowed.SeedGenesis([], StateAt(0).StateRoot);
 
         Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)3),
@@ -639,8 +646,7 @@ public class HistoryWriterTests
         // Construct the writer/reader before populating the live flat columns, matching real startup order (DI
         // constructs both before sync ever runs) — ResolveSlotEncoding reads whether the storage column is empty
         // at construction time, so writing to it first would flip the resolved encoding out from under this test.
-        HistoryWriter windowedWriter = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
-        HistoryReader windowedReader = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
         _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(5, 500)));
         Span<byte> slotValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
@@ -675,8 +681,7 @@ public class HistoryWriterTests
     [Test]
     public void V3Read_AtOrBelowWatermark_ResolvesCorrectly_BeforeAndAfterThePersistCatchesUp()
     {
-        HistoryWriter windowedWriter = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
-        HistoryReader windowedReader = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
         // "Persisted flat, as of the old watermark (block 0)": AddrA's value before this round's only change.
         _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(0, 100)));
@@ -726,8 +731,7 @@ public class HistoryWriterTests
     [Test]
     public void V3_SelfDestruct_MaterializesPerSlotPreValue_ReadableBelowDestructBlock()
     {
-        HistoryWriter windowedWriter = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
-        HistoryReader windowedReader = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
@@ -762,8 +766,7 @@ public class HistoryWriterTests
     [Test]
     public void V3_AccountCreatedThenDestructed_AllSlotsResolveCorrectlyAcrossTheWindow()
     {
-        HistoryWriter windowedWriter = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
-        HistoryReader windowedReader = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
@@ -813,8 +816,7 @@ public class HistoryWriterTests
     [Test]
     public void V3_SlotDestructedAndRewrittenInSameBlock_ReadsPreValueBelowAndResurrectedValueAt()
     {
-        HistoryWriter windowedWriter = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
-        HistoryReader windowedReader = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
@@ -850,8 +852,7 @@ public class HistoryWriterTests
     [Test]
     public void V3_SelfDestruct_AboveEnumerationCap_PoisonsAccount_ReadFailsClosed()
     {
-        HistoryWriter windowedWriter = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
-        HistoryReader windowedReader = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 1000 }, LimboLogs.Instance);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
@@ -866,6 +867,113 @@ public class HistoryWriterTests
         Assert.That(() => windowedReader.TryGetStorage(0, AddrA, Slot1, out _),
             Throws.InstanceOf<InvalidOperationException>(),
             "reads for this account below an over-cap destruct must fail closed rather than silently report every slot absent");
+    }
+
+    // A key with no older touch anywhere in the walk has its pre-value known only once ResolvePendingV3 reads the
+    // persisted column, at the very end of the walk - the exact reason the sidecar entry cannot be written
+    // immediately per-block and must be buffered until then (see HistoryWriter.FlushSidecarBuilders' remarks).
+    [Test]
+    public void V3_SidecarEntry_ForATouchWithNoOlderTouchInTheWalk_ResolvesPreValueFromThePersistedColumn()
+    {
+        HistoryWriter windowedWriter = CreateWindowedWriterWithSidecar(retentionBlocks: 1000);
+
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(0, 100)));
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 111))]);
+        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        ChangesetAccountEntry entry = DecodeSidecarEntries(1)[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.Address, Is.EqualTo(AddrA));
+            Assert.That(entry.AccountValue.ToArray(), Is.EqualTo(EncodedAccount(new Account(1, 111))),
+                "the post-value must still be the block's own touch - unaffected by adding PreValue");
+            Assert.That(entry.AccountPreValue.ToArray(), Is.EqualTo(EncodedAccount(new Account(0, 100))),
+                "the pre-value must be exactly what the persisted column held before this round - the same read ResolvePendingV3 uses for the history row itself");
+        }
+    }
+
+    // Two blocks touching the same key: the older block's post-value becomes the newer block's resolved
+    // pre-value via in-walk chaining (PendingV3Writes.ResolveAndTrack), never the persisted-column fallback.
+    [Test]
+    public void V3_SidecarEntry_ForAChainedTouch_ResolvesPreValueFromTheOlderTouchInTheSameWalk()
+    {
+        HistoryWriter windowedWriter = CreateWindowedWriterWithSidecar(retentionBlocks: 1000);
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        ChangesetSlotEntry block1Slot = DecodeSidecarEntries(1)[0].StorageChanges[0];
+        ChangesetSlotEntry block2Slot = DecodeSidecarEntries(2)[0].StorageChanges[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block1Slot.PreValue.Length, Is.EqualTo(0), "block 1 is the slot's first-ever touch - no prior value exists");
+            Assert.That(block2Slot.PreValue.ToArray(), Is.EqualTo(EncodedHistorySlot(0x0a)),
+                "block 2's pre-value must be block 1's post-value, resolved by in-walk chaining, not a persisted-column read");
+        }
+    }
+
+    // A same-block destruct + rewrite of the same slot: the destruct's synthetic wipe has no sidecar entry of its
+    // own (a separate, documented gap - see HandleSelfDestructV3's remarks), so the rewrite's real sidecar entry
+    // must still resolve its pre-value correctly, unclobbered by the synthetic touch it shares a block with.
+    [Test]
+    public void V3_SidecarEntry_ForASameBlockDestructAndRewrite_ResolvesTheRewriteEntrysPreValueCorrectly()
+    {
+        HistoryWriter windowedWriter = CreateWindowedWriterWithSidecar(retentionBlocks: 1000);
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0a));
+
+        CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        List<ChangesetAccountEntry> block2Entries = DecodeSidecarEntries(2);
+        ChangesetSlotEntry rewrittenSlot = block2Entries.Single(e => e.Address == AddrA).StorageChanges.Single(s => s.Slot == Slot1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewrittenSlot.Value.ToArray(), Is.EqualTo(EncodedHistorySlot(0x0b)), "the rewrite's post-value must win, matching the live column");
+            Assert.That(rewrittenSlot.PreValue.ToArray(), Is.EqualTo(EncodedHistorySlot(0x0a)), "the rewrite entry's own pre-value must resolve correctly despite sharing its block with the destruct's sinkless synthetic touch");
+        }
+    }
+
+    // v2 (unwindowed) capture has no deferred pre-value mechanism at all - its sidecar entries (a documented gap,
+    // see RecordChangesetSidecarChunk's remarks) must round-trip with an explicitly empty PreValue, never a wrong
+    // guess, so a consumer can tell "genuinely created here" from "not derived" only by cross-referencing the
+    // stamped format version - never by the PreValue field's shape alone.
+    [Test]
+    public void V2_SidecarEntry_HasNoPreValueMechanism_RoundTripsEmpty()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryChangesetSidecarEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        HistoryWriter unwindowedWriter = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+        unwindowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        ChangesetAccountEntry entry = DecodeSidecarEntries(1)[0];
+        Assert.That(entry.AccountPreValue.Length, Is.EqualTo(0));
+    }
+
+    private List<ChangesetAccountEntry> DecodeSidecarEntries(ulong block)
+    {
+        ChangesetSidecarStore sidecarStore = new(_historyColumns.GetColumnDb(FlatHistoryColumns.ChangesetSidecar));
+        byte[]? chunk = sidecarStore.TryGetChunk(block, 0);
+        Assert.That(chunk, Is.Not.Null, $"precondition: block {block} must have a recorded sidecar chunk");
+        return ChangesetChunkCodec.Decode(chunk!);
+    }
+
+    private HistoryWriter CreateWindowedWriterWithSidecar(ulong retentionBlocks)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = retentionBlocks, HistoryChangesetSidecarEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        return new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
     }
 
     // The range mixes tiers deliberately — blocks 2-3 converted to the persisted tier, blocks 1 and 4 in memory —
@@ -1070,6 +1178,18 @@ public class HistoryWriterTests
     // Establishes the block-0 watermark floor (as production genesis capture / SeedGenesis does) so a later capture
     // walk connects to it and publishes its watermark without needing a genesis snapshot in the repository.
     private void SeedGenesisFloor() => _writer.SeedGenesis([], StateAt(0).StateRoot);
+
+    // A windowed writer/reader pair sharing one HistoryAvailability/HistoryRowFormat resolved from one config -
+    // mirroring the single DI-bound instance production wires both through, matching every collaborator to the
+    // same config the pruner's own tests must also share (see HistoryColumnsWriter.CreateSharedFormat's remarks).
+    private (HistoryWriter Writer, HistoryReader Reader) CreateWindowedPair(ulong retentionBlocks)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = retentionBlocks };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryReader reader = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        return (writer, reader);
+    }
 
     private static StateId StateAt(ulong blockNumber)
     {

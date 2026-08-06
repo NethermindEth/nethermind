@@ -15,14 +15,16 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.NHist;
 using Nethermind.Network.P2P.Subprotocols.NHist.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.State.SnapServer;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.NHist;
@@ -34,7 +36,7 @@ public class NHist1ProtocolHandlerTests
     {
         IHistoryServer historyServer = Substitute.For<IHistoryServer>();
         historyServer.CanServe.Returns(true);
-        historyServer.GetHistoryRangeAtHeight(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>(), Arg.Any<ulong>(), Arg.Any<byte[]?>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+        historyServer.GetHistoryRangeAtHeight(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>(), Arg.Any<ulong>(), Arg.Any<byte[]?>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns((ArrayPoolList<HistoryRangeEntry>.Empty(), (byte[]?)null));
 
         ISession session = Substitute.For<ISession>();
@@ -64,7 +66,46 @@ public class NHist1ProtocolHandlerTests
 
         Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRangeAtHeight);
 
-        historyServer.Received(1).GetHistoryRangeAtHeight(request.StartKey, request.EndKey, request.Height, Arg.Any<byte[]?>(), request.ResponseBytes, Arg.Any<CancellationToken>());
+        historyServer.Received(1).GetHistoryRangeAtHeight(request.StartKey, request.EndKey, request.Height, Arg.Any<byte[]?>(), request.ResponseBytes, NHistMessageLimits.MaxResponseEntries, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public void GetHistoryRangeAtHeight_WhenRequestedBytesExceedCap_ClampsToMaxResponseBytesBeforeCallingHistoryServer()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+        historyServer.GetHistoryRangeAtHeight(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>(), Arg.Any<ulong>(), Arg.Any<byte[]?>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns((ArrayPoolList<HistoryRangeEntry>.Empty(), (byte[]?)null));
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRangeAtHeightMessageSerializer()),
+            SerializerInfo.Create(new HistoryRangeAtHeightMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            historyServer);
+
+        using GetHistoryRangeAtHeightMessage request = new()
+        {
+            RequestId = 1,
+            StartKey = ValueKeccak.Zero,
+            EndKey = ValueKeccak.MaxValue,
+            Height = 1,
+            Cursor = [],
+            ResponseBytes = long.MaxValue
+        };
+
+        Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRangeAtHeight);
+
+        historyServer.Received(1).GetHistoryRangeAtHeight(
+            request.StartKey, request.EndKey, request.Height, Arg.Any<byte[]?>(), NHistMessageLimits.MaxResponseBytes, NHistMessageLimits.MaxResponseEntries, Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -72,7 +113,7 @@ public class NHist1ProtocolHandlerTests
     {
         IHistoryServer historyServer = Substitute.For<IHistoryServer>();
         historyServer.CanServe.Returns(true);
-        historyServer.GetChangesets(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+        historyServer.GetChangesets(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(EmptyChangesets());
 
         ISession session = Substitute.For<ISession>();
@@ -94,7 +135,37 @@ public class NHist1ProtocolHandlerTests
 
         Handle(handler, serializer, request, NHist1MessageCode.GetChangesets);
 
-        historyServer.Received(1).GetChangesets(request.FromBlock, request.ToBlock, request.ResponseBytes, Arg.Any<CancellationToken>());
+        historyServer.Received(1).GetChangesets(request.FromBlock, request.ToBlock, request.ResponseBytes, NHistMessageLimits.MaxResponseChunks, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public void GetChangesets_WhenRequestedBytesExceedCap_ClampsToMaxResponseBytesBeforeCallingHistoryServer()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+        historyServer.GetChangesets(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(EmptyChangesets());
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetChangesetsMessageSerializer()),
+            SerializerInfo.Create(new ChangesetsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            historyServer);
+
+        using GetChangesetsMessage request = new() { RequestId = 1, FromBlock = 10, ToBlock = 20, ResponseBytes = long.MaxValue };
+
+        Handle(handler, serializer, request, NHist1MessageCode.GetChangesets);
+
+        historyServer.Received(1).GetChangesets(request.FromBlock, request.ToBlock, NHistMessageLimits.MaxResponseBytes, NHistMessageLimits.MaxResponseChunks, Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -143,6 +214,136 @@ public class NHist1ProtocolHandlerTests
             ScheduledCount++;
             return true;
         }
+    }
+
+    [Test]
+    public void Init_SendsStatusMessageWithServedScopesAndNotifiesProtocolInitialized()
+    {
+        HistoryServingScope scope = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 5, 100);
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+        historyServer.ServedScopes.Returns(new[] { scope });
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<IMessageSerializationService>(),
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            historyServer);
+
+        bool initialized = false;
+        handler.ProtocolInitialized += (_, _) => initialized = true;
+
+        handler.Init();
+
+        using (Assert.EnterMultipleScope())
+        {
+            session.Received(1).DeliverMessage(Arg.Is<NHistStatusMessage>(m => m.Scopes.Length == 1 && m.Scopes[0].Equals(scope)));
+            Assert.That(initialized, Is.True, "Init must notify protocol initialization so the session marks nhist1 usable");
+        }
+    }
+
+    [Test]
+    public void HandleMessage_WhenStatusReceived_StoresPeerServedScopes()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new NHistStatusMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            historyServer);
+
+        HistoryServingScope scope = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 5, 100);
+        using NHistStatusMessage statusMessage = new() { Scopes = [scope] };
+
+        Handle(handler, serializer, statusMessage, NHist1MessageCode.Status);
+
+        Assert.That(handler.PeerServedScopes, Is.EqualTo(new[] { scope }), "the peer's advertised served scopes must be recorded exactly as received");
+    }
+
+    [Test]
+    public void ScheduleOrReleaseQuota_WhenDeserializationFails_ReleasesInFlightQuotaOnEveryFailure()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService realSerializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRangeAtHeightMessageSerializer()),
+            SerializerInfo.Create(new HistoryRangeAtHeightMessageSerializer()));
+
+        IMessageSerializationService faultySerializer = Substitute.For<IMessageSerializationService>();
+        faultySerializer.Deserialize<GetHistoryRangeAtHeightMessage>(Arg.Any<IByteBuffer>())
+            .Throws(new InvalidOperationException("simulated deserialization failure"));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            faultySerializer,
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            historyServer);
+
+        for (int i = 0; i < 5; i++)
+        {
+            using GetHistoryRangeAtHeightMessage request = new() { RequestId = i, Cursor = [] };
+            Assert.That(() => Handle(handler, realSerializer, request, NHist1MessageCode.GetHistoryRangeAtHeight), Throws.InvalidOperationException,
+                $"request {i} must still surface the deserialization failure to the caller");
+        }
+
+        session.DidNotReceive().InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+    }
+
+    [Test]
+    public void ScheduleOrReleaseQuota_WhenBackgroundSchedulerQueueIsFull_ReleasesInFlightQuota()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRangeAtHeightMessageSerializer()),
+            SerializerInfo.Create(new HistoryRangeAtHeightMessageSerializer()));
+
+        RejectingScheduler scheduler = new();
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            scheduler,
+            LimboLogs.Instance,
+            historyServer);
+
+        for (int i = 0; i < 10; i++)
+        {
+            using GetHistoryRangeAtHeightMessage request = new() { RequestId = i, Cursor = [] };
+            Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRangeAtHeight);
+        }
+
+        session.DidNotReceive().InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+    }
+
+    private sealed class RejectingScheduler : IBackgroundTaskScheduler
+    {
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null) => false;
     }
 
     [Test]

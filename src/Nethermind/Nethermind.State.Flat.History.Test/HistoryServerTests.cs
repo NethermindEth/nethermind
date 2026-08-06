@@ -11,7 +11,10 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.State.SnapServer;
+using Nethermind.Int256;
+using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.History;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -19,6 +22,8 @@ namespace Nethermind.State.Flat.History.Test;
 public class HistoryServerTests
 {
     private static readonly Address[] Addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE];
+    private const int NoEntryCap = 1_000_000;
+    private const int NoChunkCap = 1_000_000;
 
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
 
@@ -28,7 +33,11 @@ public class HistoryServerTests
     [TearDown]
     public void TearDown() => _historyColumns.Dispose();
 
-    private HistoryServer CreateServer(FlatDbConfig config) => new(_historyColumns, config);
+    private HistoryServer CreateServer(FlatDbConfig config)
+    {
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        return new HistoryServer(_historyColumns, config, availability, rowFormat);
+    }
 
     [Test]
     public void CanServe_WhenHistoryDisabled_ReportsFalse()
@@ -75,7 +84,7 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
 
         (IOwnedReadOnlyList<HistoryRangeEntry> firstPage, byte[]? cursor) = server.GetHistoryRangeAtHeight(
-            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 1, cursor: null, byteLimit: 1, CancellationToken.None);
+            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 1, cursor: null, byteLimit: 1, NoEntryCap, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -91,7 +100,7 @@ public class HistoryServerTests
         {
             Assert.That(--pagesRemaining, Is.GreaterThan(0), "the cursor must never repeat the same group forever - a broken cursor-skip would hang here instead of failing");
             (IOwnedReadOnlyList<HistoryRangeEntry> page, byte[]? next) = server.GetHistoryRangeAtHeight(
-                ValueKeccak.Zero, ValueKeccak.MaxValue, height: 1, cursor, byteLimit: 1, CancellationToken.None);
+                ValueKeccak.Zero, ValueKeccak.MaxValue, height: 1, cursor, byteLimit: 1, NoEntryCap, CancellationToken.None);
             collected.AddRange(page);
             page.Dispose();
             cursor = next;
@@ -114,12 +123,12 @@ public class HistoryServerTests
 
         List<byte[]> seenKeys = [];
         byte[]? cursor = null;
-        int pagesRemaining = Addresses.Length + 1;
+        int pagesRemaining = Addresses.Length + 2;
         do
         {
             Assert.That(--pagesRemaining, Is.GreaterThan(0), "a block-0 row's suffix is all 0xFF - the exact case the cursor-skip fix protects - so a broken fix would hang here instead of failing");
             (IOwnedReadOnlyList<HistoryRangeEntry> page, byte[]? next) = server.GetHistoryRangeAtHeight(
-                ValueKeccak.Zero, ValueKeccak.MaxValue, height: 10, cursor, byteLimit: 1, CancellationToken.None);
+                ValueKeccak.Zero, ValueKeccak.MaxValue, height: 10, cursor, byteLimit: 1, NoEntryCap, CancellationToken.None);
             foreach (HistoryRangeEntry entry in page) seenKeys.Add(entry.Key);
             page.Dispose();
             cursor = next;
@@ -139,7 +148,7 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
 
         (IOwnedReadOnlyList<HistoryRangeEntry> entries, byte[]? cursor) = server.GetHistoryRangeAtHeight(
-            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 12, cursor: null, byteLimit: 1_000_000, CancellationToken.None);
+            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 12, cursor: null, byteLimit: 1_000_000, NoEntryCap, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -152,6 +161,36 @@ public class HistoryServerTests
     }
 
     [Test]
+    public void GetHistoryRangeAtHeight_OnWindowedV3Database_ResolvesFirstChangeAboveHeight()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 1000 };
+        Account atBlock20 = new(20, 2000);
+        Account atBlock5 = new(5, 500);
+
+        // v3 rows are pre-values: the row at block 20 records what AddressA held BEFORE that change, i.e. its
+        // value at block 5 (and every block up to 19); AddressB never changes again after block 5, so it has no
+        // row above that at all and must resolve via the live persisted flat fallback, matching HistoryReader's
+        // own contract - which HistoryServer cannot exercise without a live flat column, so this covers only the
+        // has-a-later-row case explicitly (the live-fallback gap for a range scan is a separate, reported gap).
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, TestItem.AddressA, block: 20, atBlock5);
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+
+        HistoryServer server = CreateServer(config);
+
+        (IOwnedReadOnlyList<HistoryRangeEntry> entries, byte[]? cursor) = server.GetHistoryRangeAtHeight(
+            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 12, cursor: null, byteLimit: 1_000_000, NoEntryCap, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Count, Is.EqualTo(1), "a v3 database must resolve the captured row, not decode it as v2 and silently find nothing");
+            Assert.That(entries[0].Block, Is.EqualTo(20UL), "the reported block is the row actually found (the next-change block), matching HistoryStoreV3.TryGetValueBeforeNextChange's own metadata contract");
+        }
+
+        entries.Dispose();
+        _ = atBlock20;
+    }
+
+    [Test]
     public void GetHistoryRangeAtHeight_WhenHeightAboveWatermark_ReturnsNothing()
     {
         HistoryColumnsWriter.RecordAccount(_historyColumns, TestItem.AddressA, block: 5, new Account(5, 500));
@@ -160,7 +199,7 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
 
         (IOwnedReadOnlyList<HistoryRangeEntry> entries, byte[]? cursor) = server.GetHistoryRangeAtHeight(
-            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 50, cursor: null, byteLimit: 1_000_000, CancellationToken.None);
+            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 50, cursor: null, byteLimit: 1_000_000, NoEntryCap, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -181,11 +220,36 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
 
         (IOwnedReadOnlyList<HistoryRangeEntry> entries, byte[]? cursor) = server.GetHistoryRangeAtHeight(
-            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 10, cursor: null, byteLimit: 1_000_000, CancellationToken.None);
+            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 10, cursor: null, byteLimit: 1_000_000, NoEntryCap, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(entries.Count, Is.EqualTo(0), "a height below the retention floor may be answered from partially-pruned data, so it must be refused outright rather than served as if authoritative");
+            Assert.That(cursor, Is.Null);
+        }
+
+        entries.Dispose();
+    }
+
+    [Test]
+    public void GetHistoryRangeAtHeight_HeavilyModifiedKey_DoesNotWalkEveryVersionOnceAnswered()
+    {
+        const ulong versionCount = 5_000;
+        for (ulong block = 1; block <= versionCount; block++)
+        {
+            HistoryColumnsWriter.RecordAccount(_historyColumns, TestItem.AddressA, block, new Account(block, block * 100));
+        }
+        HistoryColumnsWriter.SetWatermark(_historyColumns, versionCount);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
+
+        (IOwnedReadOnlyList<HistoryRangeEntry> entries, byte[]? cursor) = server.GetHistoryRangeAtHeight(
+            ValueKeccak.Zero, ValueKeccak.MaxValue, height: versionCount, cursor: null, byteLimit: 1_000_000, NoEntryCap, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Count, Is.EqualTo(1), "one key was written many times, so exactly one entry must resolve");
+            Assert.That(entries[0].Block, Is.EqualTo(versionCount), "the newest version is at or below the requested height, so it is the correct floor answer");
             Assert.That(cursor, Is.Null);
         }
 
@@ -207,7 +271,7 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(config);
 
         List<ChangesetChunkEntry> chunks = [];
-        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(10, 10, 1_000_000, CancellationToken.None))
+        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(10, 10, 1_000_000, NoChunkCap, CancellationToken.None))
         {
             chunks.Add(chunk);
         }
@@ -232,7 +296,7 @@ public class HistoryServerTests
         cts.Cancel();
 
         List<ChangesetChunkEntry> chunks = [];
-        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(1, 1, 1_000_000, cts.Token))
+        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(1, 1, 1_000_000, NoChunkCap, cts.Token))
         {
             chunks.Add(chunk);
         }
@@ -254,7 +318,7 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(config);
 
         List<ChangesetChunkEntry> chunks = [];
-        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(50, 50, 1_000_000, CancellationToken.None))
+        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(50, 50, 1_000_000, NoChunkCap, CancellationToken.None))
         {
             chunks.Add(chunk);
         }
@@ -274,14 +338,14 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
 
         (IOwnedReadOnlyList<HistoryRangeEntry> firstPage, byte[]? firstCursor) = server.GetHistoryRangeAtHeight(
-            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 1, cursor: null, byteLimit: 1, CancellationToken.None);
+            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 1, cursor: null, byteLimit: 1, NoEntryCap, CancellationToken.None);
         Assert.That(firstCursor, Is.Not.Null, "precondition: the first capped page must hand back a resumable cursor");
         firstPage.Dispose();
 
         using CancellationTokenSource cts = new();
         cts.Cancel();
         (IOwnedReadOnlyList<HistoryRangeEntry> cancelledPage, byte[]? cancelledCursor) = server.GetHistoryRangeAtHeight(
-            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 1, firstCursor, byteLimit: 1_000_000, cts.Token);
+            ValueKeccak.Zero, ValueKeccak.MaxValue, height: 1, firstCursor, byteLimit: 1_000_000, NoEntryCap, cts.Token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -306,7 +370,7 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(config);
 
         List<ChangesetChunkEntry> chunks = [];
-        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(1, 1, 1_000_000, CancellationToken.None))
+        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(1, 1, 1_000_000, NoChunkCap, CancellationToken.None))
         {
             chunks.Add(chunk);
         }
@@ -324,11 +388,59 @@ public class HistoryServerTests
         HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true, HistoryChangesetSidecarEnabled = false });
 
         List<ChangesetChunkEntry> chunks = [];
-        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(1, 1, 1_000_000, CancellationToken.None))
+        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(1, 1, 1_000_000, NoChunkCap, CancellationToken.None))
         {
             chunks.Add(chunk);
         }
 
         Assert.That(chunks, Is.Empty, "GetChangesets must never fall through to the read-path history columns when the sidecar is off");
+    }
+
+    [Test]
+    public async Task GetChangesets_RealMultiChunkSplit_IsLastChunkForBlockReflectsStorageNotScanCap()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryChangesetSidecarEnabled = true };
+        ChangesetSidecarStore sidecar = new(_historyColumns.GetColumnDb(FlatHistoryColumns.ChangesetSidecar));
+
+        List<ChangesetAccountEntry> entries = [];
+        byte[] bigSlotValue = new byte[2000];
+        for (int i = 0; i < 1000; i++)
+        {
+            Address address = new(Overwrite(TestItem.AddressA.Bytes.ToArray(), i));
+            List<ChangesetSlotEntry> slots = [new ChangesetSlotEntry(new UInt256((ulong)i), bigSlotValue, ReadOnlyMemory<byte>.Empty)];
+            entries.Add(new ChangesetAccountEntry(address, true, new byte[] { 1 }, ReadOnlyMemory<byte>.Empty, slots));
+        }
+
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            sidecar.RecordChangeset(5, entries, batch.GetColumnBatch(FlatHistoryColumns.ChangesetSidecar));
+        }
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 5);
+
+        HistoryServer server = CreateServer(config);
+
+        List<ChangesetChunkEntry> chunks = [];
+        await foreach (ChangesetChunkEntry chunk in server.GetChangesets(5, 5, 1_000_000_000, NoChunkCap, CancellationToken.None))
+        {
+            chunks.Add(chunk);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chunks.Count, Is.GreaterThan(1), "precondition: 1000 large slot values must force EncodeChunked to split this one block across more than one real chunk");
+            for (int i = 0; i < chunks.Count - 1; i++)
+            {
+                Assert.That(chunks[i].IsLastChunkForBlock, Is.False, $"chunk {i} of {chunks.Count} has a real successor chunk on disk and must not report completeness");
+            }
+            Assert.That(chunks[^1].IsLastChunkForBlock, Is.True, "the actual final chunk (confirmed absent from storage at index+1) must report completeness");
+        }
+    }
+
+    private static byte[] Overwrite(byte[] source, int index)
+    {
+        byte[] copy = (byte[])source.Clone();
+        copy[0] = (byte)(index % 256);
+        copy[1] = (byte)(index / 256);
+        return copy;
     }
 }

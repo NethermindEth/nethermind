@@ -102,6 +102,42 @@ public class FlatTreeSyncStoreTests
         Assert.That(reader.CurrentState.BlockNumber, Is.EqualTo(123), "state pointer should end at the pivot block");
     }
 
+    [Test]
+    public void FinalizeSync_seeds_the_history_pivot_with_the_pivot_block_and_root_before_advancing_the_state_pointer()
+    {
+        IHistoryPivotSeeder seeder = Substitute.For<IHistoryPivotSeeder>();
+        List<string> log = [];
+        seeder.When(s => s.SeedPivot(Arg.Any<ulong>(), Arg.Any<ValueHash256>(), Arg.Any<IPersistence.IPersistenceReader>()))
+            .Do(_ => log.Add("seed-pivot"));
+        OrderRecordingPersistence spy = new(_persistence, log);
+        FlatTreeSyncStore store = new(spy, Substitute.For<IPersistenceManager>(), LimboLogs.Instance, seeder);
+        BlockHeader pivot = Build.A.BlockHeader.WithNumber(123).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        store.FinalizeSync(pivot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            seeder.Received(1).SeedPivot(123, TestItem.KeccakA, Arg.Any<IPersistence.IPersistenceReader>());
+
+            int seedCallIndex = log.IndexOf("seed-pivot");
+            int firstAdvance = log.IndexOf("advance-pointer");
+            Assert.That(seedCallIndex, Is.GreaterThanOrEqualTo(0), "the seeder must actually be called");
+            Assert.That(firstAdvance, Is.GreaterThan(seedCallIndex),
+                "the pivot must be seeded while the reader still sees exactly the pivot's state, before any block is processed on top of it");
+        }
+    }
+
+    [Test]
+    public void FinalizeSync_withNoSeeder_neverTouchesTheHistoryPivotSeeder()
+    {
+        // No IHistoryPivotSeeder passed - the existing tests above already exercise this implicitly (omitting the
+        // parameter), but this makes the "no-op when history capture/windowing is not configured" contract explicit.
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        BlockHeader pivot = Build.A.BlockHeader.WithNumber(123).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        Assert.DoesNotThrow(() => store.FinalizeSync(pivot));
+    }
+
     private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log) : IPersistence
     {
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);

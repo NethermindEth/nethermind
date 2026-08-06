@@ -7,7 +7,7 @@ using System.Reflection;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.NHist.Messages;
-using Nethermind.State.SnapServer;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.NHist.Messages;

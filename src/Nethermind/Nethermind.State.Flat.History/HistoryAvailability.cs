@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.History;
 /// gap) <em>and</em> the queried state root matches the captured root (so a non-canonical EIP-1898 hash below the
 /// barrier is rejected rather than served the canonical value).
 /// </summary>
-internal sealed class HistoryAvailability
+public sealed class HistoryAvailability
 {
     // v2: no ChangeSets columns, descending block suffix — v1 data is unreadable under v2 seeks.
     internal const byte FormatVersion = 2;
@@ -32,20 +32,27 @@ internal sealed class HistoryAvailability
     private static ReadOnlySpan<byte> WatermarkKey => "history:watermark"u8;
     private static ReadOnlySpan<byte> FormatVersionKey => "history:format"u8;
 
-    // Floor entries are (key-range, floor-block) records so a future narrower scope (a per-contract slice, 39-4)
-    // is a new entry under this same prefix, not a format change. Only the all-keys entry is published or read
-    // in this subtask; TryGetFloor/PublishFloor take an explicit range key so the shape is already in place.
+    // Floor entries are (key-range, floor-block) records so a future narrower scope (a per-contract slice) is a
+    // new entry under this same prefix, not a format change. Only the all-keys entry is published or read here;
+    // TryGetGlobalFloor/PublishGlobalFloor take an explicit range key so the shape is already in place.
     private static ReadOnlySpan<byte> GlobalFloorKey => "history:floor:global"u8;
 
+    // A peer-fed backfill importer can publish a connected, contiguous imported range that extends the window
+    // backward past the floor the pruner's own retention math would compute — see TryGetConnectedRange's remarks
+    // on why the pruner must never raise the floor past the bottom of one.
+    private static ReadOnlySpan<byte> ConnectedRangeKey => "history:import:connected"u8; // [floor|anchor]
+
     private readonly IDb _availableBlocks;
+    private readonly Lock _floorLock = new();
 
     // Monotonic fast path: never used to refuse (a miss re-reads), so a reader instance cannot lag the writer.
     private long _observedWatermark = -1;
 
-    // The mirror-image fast path: a rolling floor only ever moves up, so a cached value may lag the true (higher)
-    // floor. That means it can safely REFUSE a read early (the true floor is never lower than what's cached), but
-    // must never ACCEPT early — an accept always re-reads the DB so a read can't slip in below a floor that
-    // advanced since the cache was last observed.
+    // The mirror-image fast path: refusing early is safe only while the floor only ever moves up (a cached value
+    // then never overstates how much is retained). A backfill importer can also LOWER the floor (extending the
+    // window backward); TryLowerGlobalFloor invalidates this cache when that happens, so a lowering is observed
+    // immediately by every holder of this instance instead of only for a fresh one. An accept always re-reads the
+    // DB regardless, so a read can never slip in below a floor that advanced since the cache was last observed.
     private long _observedFloor = -1;
 
     public HistoryAvailability(IDb availableBlocks)
@@ -179,13 +186,87 @@ internal sealed class HistoryAvailability
     /// Publishes the retention floor for the all-keys scope and stamps the windowed format version. Callers must
     /// publish before deleting anything below it: a crash between the two leaves the floor honestly behind (never
     /// ahead of) what is still on disk, mirroring <see cref="PublishWatermark"/>'s fail-closed ordering.
+    /// Unconditional — for the initial seed (there is no prior floor to race against). A pruner raising the floor
+    /// or an importer lowering it must go through <see cref="TryRaiseGlobalFloor"/>/<see cref="TryLowerGlobalFloor"/>
+    /// instead, so the two directions cannot interleave a lost update.
     /// </summary>
     public void PublishGlobalFloor(ulong floor)
+    {
+        lock (_floorLock)
+        {
+            WriteGlobalFloorUnderLock(floor);
+        }
+    }
+
+    /// <summary>
+    /// Raises the retention floor if and only if <paramref name="newFloor"/> is strictly above the current value
+    /// — the pruner's side of the CAS pair with <see cref="TryLowerGlobalFloor"/>, so a concurrent backfill
+    /// importer lowering the floor (extending the window backward) cannot have its write clobbered by a stale
+    /// compare racing on the same instance. Returns whether the floor actually moved.
+    /// </summary>
+    public bool TryRaiseGlobalFloor(ulong newFloor)
+    {
+        lock (_floorLock)
+        {
+            TryGetGlobalFloor(out ulong current);
+            if (newFloor <= current) return false;
+            WriteGlobalFloorUnderLock(newFloor);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Lowers the retention floor if and only if <paramref name="newFloor"/> is strictly below the current value
+    /// (or none is published yet) — the backfill importer's side of the CAS pair with
+    /// <see cref="TryRaiseGlobalFloor"/>. Invalidates the refuse-fast-path cache on every collaborator sharing
+    /// this instance, so a reader that had cached the higher floor observes the lowering immediately rather than
+    /// for the remainder of the process lifetime. Returns whether the floor actually moved.
+    /// </summary>
+    public bool TryLowerGlobalFloor(ulong newFloor)
+    {
+        lock (_floorLock)
+        {
+            bool hasFloor = TryGetGlobalFloor(out ulong current);
+            if (hasFloor && newFloor >= current) return false;
+            WriteGlobalFloorUnderLock(newFloor);
+            InvalidateFloorCache();
+            return true;
+        }
+    }
+
+    /// <summary>Resets the refuse-fast-path cache so the next <see cref="IsBelowGlobalFloor"/> call re-reads the
+    /// DB instead of trusting a floor value that may have just been lowered out from under it.</summary>
+    public void InvalidateFloorCache() => Volatile.Write(ref _observedFloor, -1);
+
+    private void WriteGlobalFloorUnderLock(ulong floor)
     {
         Span<byte> value = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(value, floor);
         _availableBlocks.PutSpan(GlobalFloorKey, value);
         _availableBlocks.PutSpan(FormatVersionKey, [WindowedFormatVersion]);
+    }
+
+    /// <summary>
+    /// The most recent contiguous range a backfill importer has connected and durably imported — <c>[floor,
+    /// anchor]</c>, both inclusive. A rolling-window pruner must never raise the global floor past
+    /// <paramref name="floor"/>-out (the bottom of this range) without also pruning it in the same pass: doing so
+    /// would silently re-delete a range the importer just spent effort populating, purely because the pruner's own
+    /// retention math (<c>watermark - retention</c>) does not know an import extended the window backward. Absent
+    /// (returns <c>false</c>) when no backfill has ever connected a range on this DB.
+    /// </summary>
+    public bool TryGetConnectedRange(out ulong floor, out ulong anchor)
+    {
+        byte[]? value = _availableBlocks.Get(ConnectedRangeKey);
+        if (value is not { Length: 2 * BlockBytes })
+        {
+            floor = 0;
+            anchor = 0;
+            return false;
+        }
+
+        floor = BinaryPrimitives.ReadUInt64BigEndian(value);
+        anchor = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(BlockBytes));
+        return true;
     }
 
     /// <summary>Records the per-block marker (<c>block -> captured state root</c>) into <paramref name="batch"/>.</summary>
