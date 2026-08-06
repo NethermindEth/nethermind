@@ -8,28 +8,32 @@ namespace Nethermind.Abi.Test
 {
     public class AbiEncoderExtensionsTests
     {
+        // A misforwarded argument makes the substitute return null, so the identity
+        // asserts pin both the unpacking and the return propagation.
         [Test]
-        public void Encode_should_be_called()
+        public void Encode_ForwardsUnpackedInfoAndReturnsTheEncoderResult()
         {
             IAbiEncoder abi = Substitute.For<IAbiEncoder>();
             object[] parameters = new object[] { "p1" };
             AbiSignature abiSignature = new("test", AbiType.String);
             const AbiEncodingStyle abiEncodingStyle = AbiEncodingStyle.Packed;
+            byte[] encoded = new byte[] { 1, 2, 3 };
+            abi.Encode(abiEncodingStyle, abiSignature, parameters).Returns(encoded);
 
-            abi.Encode(new AbiEncodingInfo(abiEncodingStyle, abiSignature), parameters);
-            abi.Received().Encode(abiEncodingStyle, abiSignature, parameters);
+            Assert.That(abi.Encode(new AbiEncodingInfo(abiEncodingStyle, abiSignature), parameters), Is.SameAs(encoded));
         }
 
         [Test]
-        public void Decode_should_be_called()
+        public void Decode_ForwardsUnpackedInfoAndReturnsTheEncoderResult()
         {
             IAbiEncoder abi = Substitute.For<IAbiEncoder>();
             byte[] data = new byte[] { 100, 200 };
             AbiSignature abiSignature = new("test", AbiType.String);
             const AbiEncodingStyle abiEncodingStyle = AbiEncodingStyle.Packed;
+            object[] decoded = new object[] { "decoded" };
+            abi.Decode(abiEncodingStyle, abiSignature, data).Returns(decoded);
 
-            abi.Decode(new AbiEncodingInfo(abiEncodingStyle, abiSignature), data);
-            abi.Received().Decode(abiEncodingStyle, abiSignature, data);
+            Assert.That(abi.Decode(new AbiEncodingInfo(abiEncodingStyle, abiSignature), data), Is.SameAs(decoded));
         }
     }
 }
