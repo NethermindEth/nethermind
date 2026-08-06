@@ -30,4 +30,6 @@ public static class TxPoolErrorMessages
     public const string NodeIsSyncing = "node is syncing";
     public const string FrameTxExpired = "frame transaction expired";
     public const string FrameTxVerifyGasTooHigh = "frame transaction validation prefix exceeds MAX_VERIFY_GAS";
+
+    public const string FrameTxUnrecognizedValidationPrefix = "frame transaction validation prefix is not recognized by the public mempool";
 }

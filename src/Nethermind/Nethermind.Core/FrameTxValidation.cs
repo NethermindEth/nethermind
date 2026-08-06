@@ -188,64 +188,82 @@ public static class FrameTxValidation
     /// validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
     /// </summary>
     /// <remarks>
-    /// The validation prefix is the shortest prefix of frames whose successful execution sets
-    /// <c>payer</c>, so the walk stops at the first frame that could set one. Permission to approve
-    /// payment is not enough: <c>APPROVE</c> rejects a payment approval that is not preceded by an
-    /// execution approval, so a payment-only frame ahead of any execution approval provably cannot
-    /// set a payer and the frames behind it still run before any gas is paid. A frame transaction
-    /// with no payer-setting frame at all is charged its whole frame list, which keeps the figure
-    /// from being an under-estimate. Signature validation counts against the same budget per
-    /// EIP-8141 "Validation Prefix".
+    /// EIP-8141 "Public Mempool-recognized Validation Prefixes" admits four layouts, each optionally
+    /// preceded by an expiry verifier frame: <c>[self_verify]</c>, <c>[deploy, self_verify]</c>,
+    /// <c>[only_verify, pay]</c> and <c>[deploy, only_verify, pay]</c>. Matching the layout instead of
+    /// walking the list for a frame that might set <c>payer</c> is what makes the figure sound without
+    /// reading state: every recognized prefix ends in a <c>VERIFY</c> frame whose approval is
+    /// protocol-defined, so nothing has to be assumed about a target's deployed code. Any other layout
+    /// is ineligible for the public mempool whatever its gas, since the work before <c>payer</c> is set
+    /// is then bounded only by the frame list itself. Signature validation counts against the same
+    /// budget per EIP-8141 "Validation Prefix".
     /// </remarks>
-    public static ulong ValidationWorkGas(Transaction transaction, bool senderHasCode)
+    /// <param name="transaction">The frame transaction to price.</param>
+    /// <param name="workGas">The prefix gas limits plus signature verification cost, 0 when unrecognized.</param>
+    /// <returns><c>false</c> if the frame layout matches none of the recognized validation prefixes.</returns>
+    public static bool TryGetValidationWorkGas(Transaction transaction, out ulong workGas)
     {
+        workGas = 0;
+
+        TxFrame[] frames = transaction.Frames ?? [];
+        Address? sender = transaction.SenderAddress;
+        int next = 0;
+        if (next < frames.Length && IsExpiryVerify(frames[next])) next++;
+        if (next < frames.Length && IsDeploy(frames[next])) next++;
+
+        int prefixEnd;
+        if (next < frames.Length && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecutionAndPayment, sender))
+        {
+            prefixEnd = next;
+        }
+        else if (next + 1 < frames.Length
+                 && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecution, sender)
+                 && IsPay(frames[next + 1]))
+        {
+            prefixEnd = next + 1;
+        }
+        else
+        {
+            return false;
+        }
+
         ulong total = 0;
-
-        TxFrame[]? frames = transaction.Frames;
-        if (frames is not null)
+        for (int i = 0; i <= prefixEnd; i++)
         {
-            bool senderApproved = false;
-            foreach (TxFrame frame in frames)
-            {
-                total = frame.GasLimit > ulong.MaxValue - total ? ulong.MaxValue : total + frame.GasLimit;
-
-                byte scope = frame.AllowedApproveScope;
-                bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
-                bool canApprove = CanApprove(frame, transaction.SenderAddress, senderHasCode);
-                if ((scope & TxFrame.ApprovePayment) != 0 && (approvesExecution || senderApproved) && canApprove)
-                {
-                    break;
-                }
-
-                senderApproved |= approvesExecution && canApprove;
-            }
+            total = Saturating(total, frames[i].GasLimit);
         }
 
-        TxFrameSignature[]? signatures = transaction.FrameSignatures;
-        if (signatures is not null)
+        foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
         {
-            foreach (TxFrameSignature signature in signatures)
-            {
-                ulong cost = SignatureVerificationGas(signature.Scheme);
-                total = cost > ulong.MaxValue - total ? ulong.MaxValue : total + cost;
-            }
+            total = Saturating(total, SignatureVerificationGas(signature.Scheme));
         }
 
-        return total;
+        workGas = total;
+        return true;
     }
 
-    /// <summary>
-    /// Whether <paramref name="frame"/> can reach an <c>APPROVE</c> at all: a frame resolving to a
-    /// codeless target runs the EIP-8141 default code, which approves only in <c>VERIFY</c> mode.
-    /// </summary>
-    /// <remarks>
-    /// Outside <c>VERIFY</c> only a code-bearing target approves, and the sender is the only target
-    /// whose code is known here. A third-party target is attacker-chosen, so assuming it has code
-    /// would end the walk at a frame that provably cannot set a payer.
-    /// </remarks>
-    private static bool CanApprove(TxFrame frame, Address? sender, bool senderHasCode) =>
+    private static ulong Saturating(ulong total, ulong addend) =>
+        addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
+
+    private static bool IsExpiryVerify(TxFrame frame) =>
         frame.Mode == TxFrame.ModeVerify
-        || (senderHasCode && (frame.Target is null || frame.Target == sender));
+        && frame.Flags == TxFrame.ApproveScopeNone
+        && frame.Target == Eip8141Constants.ExpiryVerifierAddress;
+
+    private static bool IsDeploy(TxFrame frame) =>
+        frame.Mode == TxFrame.ModeDefault && frame.Flags == TxFrame.ApproveScopeNone;
+
+    /// <remarks>
+    /// Comparing the whole <see cref="TxFrame.Flags"/> byte rather than the approve scope also enforces
+    /// the EIP-8141 structural rule that no prefix frame carries <c>ATOMIC_BATCH_FLAG</c>.
+    /// </remarks>
+    private static bool IsSelfTargetedVerify(TxFrame frame, byte flags, Address? sender) =>
+        frame.Mode == TxFrame.ModeVerify
+        && frame.Flags == flags
+        && (frame.Target is null || frame.Target == sender);
+
+    private static bool IsPay(TxFrame frame) =>
+        frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
 
     /// <summary>
     /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.
