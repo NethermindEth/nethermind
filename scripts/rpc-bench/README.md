@@ -305,10 +305,10 @@ Line-by-line is not offered: it needs PDBs the Docker images do not ship.
 4. The `dottrace-summary` job runs [`scripts/dottrace-report.sh`](../dottrace-report.sh)
    `top` over each XML and writes the hot functions into the job summary.
 
-A **dotnet-trace EventPipe sidecar** rides along with every profiled run, landing a
-`.nettrace` beside the snapshot in the `dottrace-rpcbench` artifact. It records
-runtime events a CPU profile cannot show — GC pause durations, lock contention,
-exception throws — and works for `timeline` too, where there is no XML.
+The EXPB workflow additionally collects a **dotnet-trace EventPipe sidecar** alongside
+its dotTrace snapshot (GC pauses, lock contention, exception throws — runtime events a
+CPU profile cannot show). rpc-bench does not: a `timeline` run here yields the `.dtt`
+snapshot only, for the dotTrace UI.
 
 > The snapshot spans the node's whole lifetime (including DB load and warmup), so
 > keep the benchmark `duration` the dominant phase, or analyze by time window, so
