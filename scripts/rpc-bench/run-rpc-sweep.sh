@@ -40,6 +40,12 @@ CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
 # for and only the run length changes. Empty = size cells by JB_DURATION as before.
 CORPUS_REQUESTS="${CORPUS_REQUESTS:-}"
 CORPUS_PASSES="${CORPUS_PASSES:-}"
+# Per-record latency matrix (corpus_parity.py timings): replays the corpus in order so each row is
+# attributable to one record, which the k6 cells cannot do. Bypasses k6 entirely, so it is the only
+# way to drive a large corpus at a high rate without materializing a request-sized CSV.
+CORPUS_TIMINGS_PASSES="${CORPUS_TIMINGS_PASSES:-}"
+CORPUS_TIMINGS_RPS="${CORPUS_TIMINGS_RPS:-0}"
+CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 default_image() {
@@ -183,6 +189,8 @@ for entry in $CLIENTS; do
     # while the node is still up. The first started client is the parity baseline.
     for corpus in "${CORPORA[@]}"; do
       clabel="$(corpus_label "$corpus")"
+      # An empty rps_list runs no k6 cells: for a large corpus the JSON-array fixture alone can
+      # exceed the box, and parity/timings do not need it.
       for rps in $RPS_LIST; do
         cell="$OUT_DIR/corpus/${clabel}/${label}/${rps}"
         cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
@@ -212,6 +220,18 @@ for entry in $CLIENTS; do
           echo "::warning::parity defects for ${label} vs ${BASELINE_LABEL} on corpus ${clabel} (see report counts)"
           parity_fail=$((parity_fail + 1))
           [[ -f "$report" ]] && PARITY_ROWS+=("${clabel}|${label}|$report")
+        fi
+      fi
+
+      if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
+        tdir="$OUT_DIR/corpus/${clabel}/${label}"; mkdir -p "$tdir"
+        echo "-- TIMINGS ${clabel}: ${label} (${CORPUS_TIMINGS_PASSES} passes @ ${CORPUS_TIMINGS_RPS} rps) --"
+        if ! python3 "$here/corpus_parity.py" timings \
+            --corpus "$corpus" --rpc-url "http://localhost:8545" \
+            --out "$tdir/timings.csv" --passes "$CORPUS_TIMINGS_PASSES" \
+            --rps "$CORPUS_TIMINGS_RPS" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"; then
+          echo "::warning::timings replay failed for ${label} on corpus ${clabel}"
+          cell_fail=$((cell_fail + 1))
         fi
       fi
     done
