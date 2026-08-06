@@ -407,7 +407,7 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
-            ReturnClean(memory, (int)Math.Min(Size, (ulong)memory.Length));
+            Return(memory);
         }
     }
 
@@ -453,38 +453,45 @@ public struct EvmPooledMemory
 
     private const int MinRentSize = 1_024;
     private const int MaxCachedArrayLength = 1 << 16;
-    private const int CleanCacheSlots = 16;
+    private const int CacheSlots = 16;
 
-    [ThreadStatic] private static byte[]?[]? _cleanArrays;
-    [ThreadStatic] private static int _cleanArrayCount;
+    [ThreadStatic] private static byte[]?[]? _cachedArrays;
+    [ThreadStatic] private static int _cachedArrayCount;
 
-    private static byte[] RentClean(int minLength)
+    /// <remarks>
+    /// Buffers are cached and rented dirty: nothing is zeroed on frame exit or on rent. Instead
+    /// <see cref="RentSlow"/> zero-extends the valid prefix (<see cref="_lastZeroedSize"/>) to the
+    /// current <see cref="Size"/> whenever memory grows. Total bytes cleared are the same — each
+    /// frame's high-water is zeroed exactly once — but the clear lands right before the region is
+    /// used, on cache-hot lines, instead of as a bulk cold pass over the whole high-water at frame
+    /// exit. Every access is preceded by <see cref="EnsureRented"/> (or <see cref="ClearForTracing"/>
+    /// for tracer exposure), so no caller can observe bytes beyond the zeroed prefix.
+    /// </remarks>
+    private static byte[] Rent(int minLength)
     {
-        byte[]?[]? cache = _cleanArrays;
-        int cleanArrayCount = _cleanArrayCount - 1;
-        for (int i = cleanArrayCount; i >= 0; i--)
+        byte[]?[]? cache = _cachedArrays;
+        int cachedArrayCount = _cachedArrayCount - 1;
+        for (int i = cachedArrayCount; i >= 0; i--)
         {
             byte[] candidate = cache![i]!;
             if (candidate.Length >= minLength)
             {
-                _cleanArrayCount = cleanArrayCount;
-                cache[i] = cache[cleanArrayCount];
-                cache[cleanArrayCount] = null;
+                _cachedArrayCount = cachedArrayCount;
+                cache[i] = cache[cachedArrayCount];
+                cache[cachedArrayCount] = null;
                 return candidate;
             }
         }
 
         if (minLength > MaxCachedArrayLength)
         {
-            byte[] pooled = RentLarge(minLength);
-            Array.Clear(pooled);
-            return pooled;
+            return RentLarge(minLength);
         }
 
         return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
     }
 
-    private static void ReturnClean(byte[] array, int dirtyLength)
+    private static void Return(byte[] array)
     {
         if (array.Length > MaxCachedArrayLength)
         {
@@ -492,11 +499,10 @@ public struct EvmPooledMemory
             return;
         }
 
-        byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
-        if (_cleanArrayCount < CleanCacheSlots)
+        byte[]?[] cache = _cachedArrays ??= new byte[CacheSlots][];
+        if (_cachedArrayCount < CacheSlots)
         {
-            Array.Clear(array, 0, dirtyLength);
-            cache[_cleanArrayCount++] = array;
+            cache[_cachedArrayCount++] = array;
         }
     }
 
@@ -528,19 +534,30 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
-        if (_memory is null)
+        byte[]? memory = _memory;
+        if (memory is null)
         {
-            _memory = RentClean((int)Math.Max((uint)Size, MinRentSize));
+            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize));
+            _lastZeroedSize = 0;
         }
-        else if (Size > (ulong)_memory.LongLength)
+        else if (Size > (ulong)memory.LongLength)
         {
-            byte[] beforeResize = _memory;
-            _memory = RentClean(TruncateToInt32(Size));
-            Array.Copy(beforeResize, 0, _memory, 0, beforeResize.Length);
-            ReturnClean(beforeResize, beforeResize.Length);
+            byte[] grown = Rent(TruncateToInt32(Size));
+            // Only the zeroed prefix holds EVM-valid bytes; beyond it the old buffer is garbage,
+            // and the tail of the new buffer is zero-extended below.
+            Array.Copy(memory, 0, grown, 0, (int)_lastZeroedSize);
+            Return(memory);
+            _memory = memory = grown;
         }
 
-        _lastZeroedSize = (ulong)_memory.Length;
+        // Zero-extend the valid prefix to the current size; the rest of the buffer stays dirty
+        // until a later growth exposes it.
+        ulong size = Size;
+        if (size > _lastZeroedSize)
+        {
+            Array.Clear(memory, (int)_lastZeroedSize, (int)(size - _lastZeroedSize));
+            _lastZeroedSize = size;
+        }
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
