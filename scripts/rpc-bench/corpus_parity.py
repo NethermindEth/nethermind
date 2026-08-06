@@ -14,13 +14,17 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Sequence
 
-MAX_CORPUS_RECORDS = 10_000
+# Guard rail, not a hard limit: the replay holds every record's params in memory, so a large
+# capture needs a deliberate raise (and a runner with the RAM for it) rather than discovering the
+# cost mid-sweep. Override with RPC_BENCH_MAX_CORPUS_RECORDS.
+MAX_CORPUS_RECORDS = int(os.environ.get("RPC_BENCH_MAX_CORPUS_RECORDS", "10000"))
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 120
 
