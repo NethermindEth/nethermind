@@ -53,10 +53,19 @@ on:
         required: false
         default: ""
       dottrace:
-        description: Capture a JetBrains dotTrace performance snapshot of the node (sampling mode) and post-process it to XML (nethermind only, works with any image)
+        description: >-
+          dotTrace profiling of the node (nethermind only, works with any image). sampling/tracing
+          snapshots are post-processed to XML reports; timeline captures a UI-only snapshot (Reporter
+          cannot convert it). Line-by-line is not offered - it needs PDBs the docker images do not carry.
+          'true' is accepted as a legacy alias for sampling.
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - "false"
+          - sampling
+          - tracing
+          - timeline
+        default: "false"
       state_layout:
         description: State layout — picks the Nethermind DB snapshot and layout flags (expb convention); ignored for geth/reth
         required: true
@@ -116,6 +125,7 @@ jobs:
       reference_client: ${{ steps.resolve.outputs.reference_client }}
       comparison: ${{ steps.resolve.outputs.comparison }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       image_mode: ${{ steps.resolve.outputs.image_mode }}
       image_ref: ${{ steps.resolve.outputs.image_ref }}
       ref_image_ref: ${{ steps.resolve.outputs.ref_image_ref }}
@@ -197,6 +207,14 @@ jobs:
             echo "reference_client comparison is supported for flood and jsonbench only (EthCallChaos drives a single node)."
             exit 1
           fi
+          # Normalize the profiling selector: legacy boolean 'true' means sampling.
+          case "${dottrace}" in
+            true|sampling) dottrace_mode="sampling" ;;
+            tracing|timeline) dottrace_mode="${dottrace}" ;;
+            false|"") dottrace_mode="" ;;
+            *) echo "dottrace must be false, sampling, tracing, or timeline (got '${dottrace}')."; exit 1;;
+          esac
+          if [[ -n "${dottrace_mode}" ]]; then dottrace="true"; else dottrace="false"; fi
           if [[ "${dottrace}" == "true" && "${client}" != "nethermind" ]]; then
             echo "dottrace requires client=nethermind (dotTrace is .NET-specific)."
             exit 1
@@ -409,6 +427,7 @@ jobs:
             echo "reference_client=${reference_client}"
             echo "comparison=${comparison}"
             echo "dottrace=${dottrace}"
+            echo "dottrace_mode=${dottrace_mode}"
             echo "image_mode=${image_mode}"
             echo "image_ref=${image_ref}"
             echo "ref_image_ref=${ref_image_ref}"
@@ -535,6 +554,7 @@ jobs:
           # Same raised cap as corpus sweep cells, so both dispatch modes agree (empty = script default).
           RPC_GAS_CAP: ${{ needs.resolve.outputs.eth_call_corpus == 'true' && '1000000000000' || '' }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           NODE_CPUSET: ${{ needs.resolve.outputs.node_cpuset }}
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
@@ -910,7 +930,8 @@ jobs:
     needs: [resolve, benchmark]
     # Run whenever the benchmark executed (success OR failure): an errored node still leaves a .dtp, often most valuable then.
     # Only skip if benchmark was skipped/cancelled. Missing snapshot artifacts are tolerated downstream.
-    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.benchmark.result != 'skipped' && needs.benchmark.result != 'cancelled'
+    # Timeline snapshots cannot be converted by Reporter.exe - they ship as the raw .dtt artifact only.
+    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.resolve.outputs.dottrace_mode != 'timeline' && needs.benchmark.result != 'skipped' && needs.benchmark.result != 'cancelled'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -990,7 +1011,7 @@ jobs:
   # Surface the dotTrace hot spots in the job summary for quick iteration.
   dottrace-summary:
     needs: [resolve, generate-dottrace-reports]
-    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.generate-dottrace-reports.result == 'success'
+    if: always() && needs.resolve.outputs.dottrace == 'true' && needs.resolve.outputs.dottrace_mode != 'timeline' && needs.generate-dottrace-reports.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
