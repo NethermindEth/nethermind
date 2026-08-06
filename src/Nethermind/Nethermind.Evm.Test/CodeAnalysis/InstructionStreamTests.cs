@@ -38,12 +38,12 @@ public class InstructionStreamTests
             Assert.That(stream.BlockGas[0], Is.EqualTo(3 * GasCostOf.VeryLow),
                 "two pushes and an add are one block charged as a single sum");
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.BlockFirst), "the first op of a block carries its charge");
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo(1UL), "PUSH1 immediates are pre-decoded into the entry");
-            Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.FusedInBlock),
-                "PUSH1 2; ADD folds into a single const-op entry");
-            Assert.That(stream.Ops[1].Opcode, Is.EqualTo(FusedOpcode.Add), "the pair runs under its virtual opcode");
-            Assert.That(stream.Constants[(int)stream.Ops[1].Operand], Is.EqualTo((Nethermind.Int256.UInt256)2),
-                "the pushed constant survives in the pool as the pair's operand");
+            Assert.That(stream.Ops[0].Opcode, Is.EqualTo((byte)Instruction.PUSH8),
+                "a folded value that fits in 64 bits rides in the operand instead of the constant pool");
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo(3UL),
+                "the folded value is computed with the operation the executor would have dispatched");
+            Assert.That(stream.Constants, Is.Empty, "nothing was pooled, so no constant load survives");
+            Assert.That(stream.Ops, Has.Length.EqualTo(2), "the folded push and the STOP boundary");
             Assert.That(stream.Ops[^1].Kind, Is.EqualTo(StreamOpKind.Boundary),
                 "STOP is not a static-cost op and must run the standard handler");
         }
@@ -114,8 +114,8 @@ public class InstructionStreamTests
         {
             Assert.That(stream.Ops[0].Kind, Is.EqualTo(StreamOpKind.StaticJump),
                 "an analysis-validated PUSH2+JUMP pair jumps straight to its target entry");
-            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5]),
-                "the operand is the pre-resolved target entry index");
+            Assert.That(stream.Ops[0].Operand, Is.EqualTo((ulong)stream.PcToEntry[5] + 1),
+                "the jump charges the JUMPDEST itself, so the operand points one entry past the solo marker");
             Assert.That(stream.Ops[1].Kind, Is.EqualTo(StreamOpKind.Boundary), "STOP stays a table op");
         }
     }
@@ -286,7 +286,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     }
 
     // PUSH; AND fuses to a bitwise superinstruction that indexes ConstantBytes — exercises the path that
-    // only allocates ConstantBytes when a bitwise fusion is actually emitted.
     private static readonly byte[] BitwiseFusionWithConstant = Prepare.EvmCode
         .PushData(0xFF)
         .PushData(0x0F)
@@ -303,7 +302,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     {
         // 1024 PUSH0 fill the stack to the limit, so the fused PUSH2 overflows on its own push exactly as the
         // unfused PUSH2 does — the jump must never execute. The PUSH2 immediate targets the JUMPDEST so the
-        // analyzer fuses PUSH2+JUMP/JUMPI into StaticJump/StaticJumpI, which is the path under test.
         const int fill = 1024;
         byte[] code = new byte[fill + 6];
         code.AsSpan(0, fill).Fill((byte)Instruction.PUSH0);
@@ -321,7 +319,6 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
     private static Address SolidityExampleAddress => TestItem.AddressE;
 
     // Runtime code of Legacy stExample.solidityExample — smallest real-world reproducer of the
-    // mainnet stream divergence (CREATE child contract, then CALL into it).
     private const string SolidityExampleRuntime =
         "608060405234801561001057600080fd5b506004361061002b5760003560e01c8063b66176a714610030575b600080fd5b61004a6004803603810190610045919061018d565b61004c565b005b60405161005890610145565b604051809103906000f080158015610074573d6000803e3d6000fd5b506000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555060008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663b66176a783836040518363ffffffff1660e01b815260040161010f9291906101dc565b600060405180830381600087803b15801561012957600080fd5b505af115801561013d573d6000803e3d6000fd5b505050505050565b6101238061020683390190565b600080fd5b6000819050919050565b61016a81610157565b811461017557600080fd5b50565b60008135905061018781610161565b92915050565b600080604083850312156101a4576101a3610152565b5b60006101b285828601610178565b92505060206101c385828601610178565b9150509250929050565b6101d681610157565b82525050565b60006040820190506101f160008301856101cd565b6101fe60208301846101cd565b939250505056fe608060405267ff00ff00ff00ff0060005534801561001c57600080fd5b5060f88061002b6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063b66176a714602d575b600080fd5b60436004803603810190603f91906089565b6045565b005b806000819055508082555050565b600080fd5b6000819050919050565b6069816058565b8114607357600080fd5b50565b6000813590506083816062565b92915050565b60008060408385031215609d57609c6053565b5b600060a9858286016076565b925050602060b8858286016076565b915050925092905056fea26469706673582212209beb73a466a9b6fcce247e8e1ec0ac303febcb2192064276aa2188d57d06a98d64736f6c63430008150033a2646970667358221220223335c3b4079496a81c6cbdfc0adb8a4b8ed0637499a9301f31c89383d238e164736f6c63430008150033";
 
@@ -389,7 +386,7 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore),
-                "the stream interpreter did not engage — this differential proved nothing");
+                "the stream interpreter did not engage - this differential proved nothing");
             Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "success/failure must match");
             Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas must match to the unit");
             Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
@@ -459,6 +456,187 @@ public class StreamInterpreterDifferentialTests : VirtualMachineTestsBase
             Assert.That(baseline.StatusCode, Is.EqualTo((byte)Evm.StatusCode.Failure), "precondition: the bytecode loop must run out of gas");
             Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "out-of-gas status must match the bytecode loop");
             Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent), "gas spent on out-of-gas must match the bytecode loop");
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(5)]
+    public void JumpDestGasCarry_MatchesByteCodeLoop_PerTakenJumpCount(int counter)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(counter)
+            .Op(Instruction.JUMPDEST)
+            .PushData(1).Op(Instruction.SWAP1).Op(Instruction.SUB)
+            .Op(Instruction.DUP1)
+            .PushData(2).Op(Instruction.JUMPI)
+            .Op(Instruction.STOP)
+            .Done;
+
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+        Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+            "gas must match per taken-jump count: a landing that re-charges the JUMPDEST scales the error with the jump count");
+    }
+
+    private static IEnumerable<TestCaseData> ElidedMarkerLandingCases()
+    {
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH1, 0x02, (byte)Instruction.STOP,
+        })
+        { TestName = "PeepholeLandsOnElidedMarker" };
+
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH1, 0x01,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH1, 0x02, (byte)Instruction.STOP,
+        })
+        { TestName = "MeteredWalkReachesElidedMarker" };
+    }
+
+    private static IEnumerable<TestCaseData> LinearBoundarySuffixCases()
+    {
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
+            (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x02, (byte)Instruction.ADD, (byte)Instruction.POP,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "MeteredWalkCrossesTheLinearBoundary" };
+
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x00, (byte)Instruction.PUSH1, 0x04, (byte)Instruction.EXTCODESIZE, (byte)Instruction.ISZERO,
+            (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x02, (byte)Instruction.ADD, (byte)Instruction.POP,
+            (byte)Instruction.STOP,
+        })
+        { TestName = "PeepholeLandsOnTheLinearBoundary" };
+    }
+
+    private static IEnumerable<TestCaseData> PeepholeConsumedBlockFirstCases()
+    {
+        foreach ((string name, byte consumed) in new[] { ("Gt", (byte)Instruction.GT), ("Eq", (byte)Instruction.EQ) })
+        {
+            yield return new TestCaseData(new byte[]
+            {
+                (byte)Instruction.PUSH1, 0x00,
+                (byte)Instruction.PUSH1, 0x04,
+                (byte)Instruction.EXTCODESIZE,
+                consumed,
+                (byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x02, (byte)Instruction.ADD,
+                (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE,
+                (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.RETURN,
+            })
+            { TestName = $"Peephole{name}ConsumesTheBlockFirstEntry" };
+        }
+
+        yield return new TestCaseData(new byte[]
+        {
+            (byte)Instruction.PUSH1, 0x04,
+            (byte)Instruction.EXTCODESIZE,
+            (byte)Instruction.ISZERO,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x02, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.MSTORE,
+            (byte)Instruction.PUSH1, 0x20, (byte)Instruction.PUSH1, 0x00, (byte)Instruction.RETURN,
+        })
+        { TestName = "PeepholeIsZeroConsumesTheBlockFirstEntryBeforeAJumpTarget" };
+    }
+
+    [TestCaseSource(nameof(PeepholeConsumedBlockFirstCases))]
+    public void StreamInterpreter_PeepholeConsumingABlocksFirstEntry_MatchesByteCodeLoop(byte[] code)
+    {
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), "the stream did not engage");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "status must match");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+                "a handler that consumes the opcode a block charges first must not leave the block's gas unpaid or paid twice");
+            Assert.That(streamed.Output, Is.EqualTo(baseline.Output), "return data must match");
+        }
+    }
+
+    [TestCaseSource(nameof(LinearBoundarySuffixCases))]
+    public void StreamInterpreter_BlockEnteredPastItsCharge_PaysTheLinearBoundarySuffix(byte[] code)
+    {
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), "the stream did not engage");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "status must match");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+                "in-block ops after a linear boundary are paid by a block charge a mid-block arrival bypassed");
+        }
+    }
+
+    [TestCaseSource(nameof(ElidedMarkerLandingCases))]
+    public void StreamInterpreter_LandingOnElidedJumpTarget_ChargesTheMarker(byte[] code)
+    {
+        ReceiptCaptureTracer baseline = RunWithInterpreter(code, useStream: false);
+        Setup();
+        long framesBefore = StreamInterpreter.FramesExecuted;
+        ReceiptCaptureTracer streamed = RunWithInterpreter(code, useStream: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StreamInterpreter.FramesExecuted, Is.GreaterThan(framesBefore), "the stream did not engage");
+            Assert.That(streamed.StatusCode, Is.EqualTo(baseline.StatusCode), "status must match");
+            Assert.That(streamed.GasSpent, Is.EqualTo(baseline.GasSpent),
+                "an arrival that bypasses the block charge carrying an elided JUMPDEST must still pay the marker's gas");
+        }
+    }
+
+    [Test]
+    public void StreamInterpreter_StaticJumpLoop_HonorsCancellation()
+    {
+        byte[] code =
+        [
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH2, 0x00, 0x00, (byte)Instruction.JUMP,
+        ];
+
+        TestState.CreateAccount(CalleeAddress, 1000000);
+        TestState.InsertCode(CalleeAddress, CalleeCode, Spec);
+
+        bool enabledBefore = StreamInterpreter.Enabled;
+        int thresholdBefore = StreamInterpreter.BuildThreshold;
+        StreamInterpreter.Enabled = true;
+        StreamInterpreter.BuildThreshold = 1;
+        try
+        {
+            (Block block, Transaction transaction) = PrepareTx(Activation, 8_000_000, code);
+            CodeInfo codeInfo = CodeInfoRepository.GetCachedCodeInfo(Recipient, Spec);
+            if (!System.Threading.SpinWait.SpinUntil(() => codeInfo.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)))
+                Assert.Fail("the stream did not build within the timeout");
+
+            Evm.Tracing.CancellationTxTracer tracer = new(new ReceiptCaptureTracer(), new System.Threading.CancellationToken(canceled: true));
+            Assert.Throws<OperationCanceledException>(
+                () => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
+                "a cancelled tracer must stop the loop instead of letting it spin to the gas cap");
+        }
+        finally
+        {
+            StreamInterpreter.Enabled = enabledBefore;
+            StreamInterpreter.BuildThreshold = thresholdBefore;
         }
     }
 

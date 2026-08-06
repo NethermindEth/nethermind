@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using static System.Runtime.CompilerServices.Unsafe;
+using Nethermind.Core;
 
 namespace Nethermind.Evm;
 
@@ -11,12 +14,12 @@ using Int256;
 public static partial class EvmInstructions
 {
     /// <summary>
-    /// Fused <c>PUSH const; binary-op</c>: runs against the pre-decoded constant on the stack top —
-    /// no push/pop, one dispatch. Preserves per-op failure order: push overflow before op underflow.
+    /// Fused <c>PUSH const; binary-op</c> against the pre-decoded constant on the stack top.
+    /// Preserves per-op failure order: push overflow before op underflow.
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType FusedConstBinaryCore<TOpMath>(ref EvmStack stack, UInt256 a)
+    internal static EvmExceptionType FusedConstBinaryCore<TOpMath>(ref EvmStack stack, in UInt256 a)
         where TOpMath : struct, IOpMath2Param
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
@@ -31,10 +34,13 @@ public static partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
-    /// <summary>Fused <c>PUSH shift-amount; SHL/SHR</c>, mirroring <see cref="ShiftCore{TOpShift, TTracingInst}"/>.</summary>
+    /// <summary>Fused <c>PUSH shift-amount; SHL/SHR</c>, mirroring <see cref="ShiftCore{TOpShift, TTracingInst}"/>.
+    /// Generated code shifts almost exclusively by whole bytes, so the byte-aligned case runs as a
+    /// byte move over the stack representation, with no limb conversion. Big-endian order makes SHL
+    /// a move toward index zero and SHR a move away from it.</summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, UInt256 a)
+    internal static EvmExceptionType FusedConstShiftCore<TOpShift>(ref EvmStack stack, in UInt256 a)
         where TOpShift : struct, IOpShift
     {
         if (stack.Head == EvmStack.MaxStackSize - 1)
@@ -50,10 +56,61 @@ public static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
+        int amount = (int)a.u0;
+        if ((amount & 7) == 0)
+        {
+            int bytes = amount >> 3;
+            Span<byte> window = stackalloc byte[EvmStack.WordSize * 2];
+            ref byte first = ref MemoryMarshal.GetReference(window);
+            ref byte second = ref Add(ref first, EvmStack.WordSize);
+            EvmWord word = ReadUnaligned<EvmWord>(ref topRef);
+            if (typeof(TOpShift) == typeof(OpShl))
+            {
+                WriteUnaligned(ref first, word);
+                WriteUnaligned(ref second, default(EvmWord));
+                WriteUnaligned(ref topRef, ReadUnaligned<EvmWord>(ref Add(ref first, bytes)));
+            }
+            else
+            {
+                WriteUnaligned(ref first, default(EvmWord));
+                WriteUnaligned(ref second, word);
+                WriteUnaligned(ref topRef, ReadUnaligned<EvmWord>(ref Add(ref second, -bytes)));
+            }
+
+            return EvmExceptionType.None;
+        }
+
         EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         TOpShift.Operation(in a, in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
         return EvmExceptionType.None;
+    }
+
+    /// <summary>
+    /// Fused <c>POP; POP</c>. One bounds check for two drops: the depths it rejects are exactly the
+    /// depths at which one of the two POPs would have underflowed.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedPopPopCore(ref EvmStack stack)
+    {
+        if (stack.Head < 2) return EvmExceptionType.StackUnderflow;
+        stack.Head -= 2;
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
+    /// Fused <c>PUSH1 a; PUSH1 b</c>, both immediates packed into the entry operand: <c>a</c> in the
+    /// low byte, <c>b</c> in the next. The leading check rejects only a full stack; at one slot free
+    /// the first push lands and the second one's own bound reports the overflow, as unfused.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType FusedPush1Push1Core(ref EvmStack stack, ulong packed)
+    {
+        EvmExceptionType result = stack.PushUInt64<OffFlag>(packed & 0xFF);
+        if (result != EvmExceptionType.None) return result;
+        return stack.PushUInt64<OffFlag>((packed >> 8) & 0xFF);
     }
 
     /// <summary>

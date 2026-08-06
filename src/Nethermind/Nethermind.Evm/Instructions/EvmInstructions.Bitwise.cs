@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
@@ -136,5 +137,52 @@ public static partial class EvmInstructions
 #else
         public static EvmWord Operation(in EvmWord a, in EvmWord b) => a == b ? One : default;
 #endif
+    }
+
+    public interface IOpCompare
+    {
+        static abstract bool IsSigned { get; }
+        static abstract bool IsGreater { get; }
+    }
+
+    public struct OpLtBytes : IOpCompare { public static bool IsSigned => false; public static bool IsGreater => false; }
+    public struct OpGtBytes : IOpCompare { public static bool IsSigned => false; public static bool IsGreater => true; }
+    public struct OpSLtBytes : IOpCompare { public static bool IsSigned => true; public static bool IsGreater => false; }
+    public struct OpSGtBytes : IOpCompare { public static bool IsSigned => true; public static bool IsGreater => true; }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType CompareCore<TOpCompare>(ref EvmStack stack)
+        where TOpCompare : struct, IOpCompare
+    {
+        ref byte aRef = ref stack.PopBytesByRef();
+        if (IsNullRef(ref aRef)) goto StackUnderflow;
+        ref byte bRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bRef)) goto StackUnderflow;
+
+        EvmWord a = ReadUnaligned<EvmWord>(ref aRef);
+        EvmWord b = ReadUnaligned<EvmWord>(ref bRef);
+
+        bool result = false;
+        uint differing = ~Vector256.Equals(a, b).ExtractMostSignificantBits();
+        if (differing != 0)
+        {
+            int index = BitOperations.TrailingZeroCount(differing);
+            uint left = Unsafe.Add(ref aRef, index);
+            uint right = Unsafe.Add(ref bRef, index);
+            if (TOpCompare.IsSigned && index == 0)
+            {
+                left ^= 0x80;
+                right ^= 0x80;
+            }
+
+            result = TOpCompare.IsGreater ? left > right : left < right;
+        }
+
+        WriteUnaligned(ref bRef, default(EvmWord));
+        if (result) Unsafe.Add(ref bRef, 31) = 1;
+        return EvmExceptionType.None;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
     }
 }

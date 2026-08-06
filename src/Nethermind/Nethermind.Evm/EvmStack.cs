@@ -2212,6 +2212,55 @@ public ref struct EvmStack
         return EvmExceptionType.None;
     }
 
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType SwapPop(int depth)
+    {
+        int head = Head;
+        if (head < depth)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        ref byte bytes = ref _stack;
+        nuint headOffset = (nuint)(uint)head << 5;
+
+        ref byte partner = ref Unsafe.Add(ref bytes, headOffset - ((nuint)(uint)depth << 5));
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
+
+        Unsafe.WriteUnaligned(ref partner, Unsafe.ReadUnaligned<EvmWord>(ref top));
+        Head = head - 1;
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public EvmExceptionType AndIsZero()
+    {
+        int head = Head;
+        if (head < 2)
+        {
+            return EvmExceptionType.StackUnderflow;
+        }
+
+        ref byte bytes = ref _stack;
+        nuint headOffset = (nuint)(uint)head << 5;
+
+        ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
+        ref byte second = ref Unsafe.Add(ref bytes, headOffset - (WordSize * 2));
+
+        bool isZero = (Unsafe.ReadUnaligned<EvmWord>(ref top) & Unsafe.ReadUnaligned<EvmWord>(ref second)) == default;
+
+        Unsafe.WriteUnaligned(ref second, default(EvmWord));
+        if (isZero)
+        {
+            Unsafe.Add(ref second, WordSize - 1) = 1;
+        }
+
+        Head = head - 1;
+        return EvmExceptionType.None;
+    }
+
     public readonly bool EnsureDepth(int depth)
         => Head >= depth;
 
