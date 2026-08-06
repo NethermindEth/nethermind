@@ -29,7 +29,8 @@ public class HistoryRangeAtHeightMessageSerializer : NHistSerializerBase<History
         byte[] key = ctx.DecodeByteArray();
         ulong block = ctx.DecodeULong();
         byte[] value = ctx.DecodeByteArray();
-        return new HistoryRangeEntry(key, block, value);
+        bool isLiveFallback = ctx.DecodeBool();
+        return new HistoryRangeEntry(key, block, value, isLiveFallback);
     }
 
     public override void Serialize(IByteBuffer byteBuffer, HistoryRangeAtHeightMessage message)
@@ -43,11 +44,12 @@ public class HistoryRangeAtHeightMessageSerializer : NHistSerializerBase<History
         for (int i = 0; i < entries.Count; i++)
         {
             HistoryRangeEntry entry = entries[i];
-            int entryLength = Rlp.LengthOf(entry.Key) + Rlp.LengthOf(entry.Block) + Rlp.LengthOf(entry.Value);
+            int entryLength = Rlp.LengthOf(entry.Key) + Rlp.LengthOf(entry.Block) + Rlp.LengthOf(entry.Value) + Rlp.LengthOf(entry.IsLiveFallback);
             writer.StartSequence(entryLength);
             writer.Encode(entry.Key);
             writer.Encode(entry.Block);
             writer.Encode(entry.Value);
+            writer.Encode(entry.IsLiveFallback);
         }
 
         writer.Encode(message.NextCursor ?? []);
@@ -68,7 +70,7 @@ public class HistoryRangeAtHeightMessageSerializer : NHistSerializerBase<History
         for (int i = 0; i < entries.Count; i++)
         {
             HistoryRangeEntry entry = entries[i];
-            int entryLength = Rlp.LengthOf(entry.Key) + Rlp.LengthOf(entry.Block) + Rlp.LengthOf(entry.Value);
+            int entryLength = Rlp.LengthOf(entry.Key) + Rlp.LengthOf(entry.Block) + Rlp.LengthOf(entry.Value) + Rlp.LengthOf(entry.IsLiveFallback);
             length += Rlp.LengthOfSequence(entryLength);
         }
 

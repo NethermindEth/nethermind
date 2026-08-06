@@ -4,6 +4,8 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -104,6 +106,82 @@ public sealed class HistoryWindowPruner : IDisposable
     private static bool SidecarPruningConfigured(IFlatDbConfig config) =>
         config.HistoryChangesetSidecarEnabled &&
         (config.HistoryChangesetSidecarRetentionBlocks > 0 || config.HistoryChangesetSidecarMaxBytes > 0);
+
+    /// <summary>
+    /// One-time (startup) reconciliation of the operator's <c>Flat.HistorySliceAddresses</c> allow-list against
+    /// the scope records already on disk: deletes a scope for an address no longer configured (its rows below the
+    /// general floor become prunable again on the next pass) and creates one for a newly configured address that
+    /// has none yet. Never touches an already-existing scope's floor - that is the per-pass maintenance below
+    /// (bounded retention) or a future backfill importer's job (unbounded), never a blind reset back to some seed
+    /// value on every restart.
+    /// </summary>
+    /// <exception cref="InvalidConfigurationException">Slices are configured against a database that is not
+    /// windowed (<see cref="IFlatDbConfig.HistoryRetentionBlocks"/> is 0) - a slice is meaningless there (the v2
+    /// unwindowed format already retains everything), and publishing one would incorrectly stamp the windowed
+    /// format onto v2 data.</exception>
+    public void ReconcileSliceScopes()
+    {
+        IReadOnlyList<SliceScopeEntry> configured = SliceScopeConfig.Parse(_config.HistorySliceAddresses);
+
+        if (configured.Count > 0 && !_rowFormat.IsV3)
+        {
+            throw new InvalidConfigurationException(
+                "Flat.HistorySliceAddresses is set, but this flatHistory database is not windowed " +
+                "(HistoryRetentionBlocks is 0). Per-contract slices require the v3 pre-value format used by " +
+                "windowed retention; unset HistorySliceAddresses or set HistoryRetentionBlocks.", -1);
+        }
+
+        Dictionary<byte[], SliceScopeEntry> configuredByKey = new(configured.Count, Bytes.EqualityComparer);
+        foreach (SliceScopeEntry entry in configured)
+        {
+            configuredByKey[AccountKeyOf(entry.Address)] = entry;
+        }
+
+        // Runs even for an empty configured list, so removing the last remaining slice from the allow-list still
+        // deletes its scope record instead of leaving it orphaned on disk.
+        foreach (ScopeFloor existing in _availability.GetScopes())
+        {
+            if (!configuredByKey.ContainsKey(existing.Key))
+            {
+                _availability.RemoveScope(existing.Key);
+            }
+        }
+
+        if (configured.Count == 0) return;
+
+        _availability.TryGetGlobalFloor(out ulong currentGeneralFloor);
+        ulong watermark = _writer.LastCapturedBlock;
+
+        foreach ((byte[] key, SliceScopeEntry entry) in configuredByKey)
+        {
+            if (_availability.TryGetScopeFloor(key, out _)) continue;
+
+            ulong seedFloor = currentGeneralFloor;
+            if (entry.RetentionBlocks is { } retention)
+            {
+                ulong retentionFloor = watermark > retention ? watermark - retention : 0;
+                seedFloor = Math.Max(currentGeneralFloor, retentionFloor);
+            }
+
+            _availability.PublishScope(key, seedFloor);
+        }
+    }
+
+    /// <summary>Per-pass maintenance for a slice configured with a bounded (not unbounded) retention: advances its
+    /// own floor toward <c>watermark - retention</c> as the watermark grows, the same way the general floor
+    /// advances - never past its own current value (<see cref="HistoryAvailability.TryRaiseScopeFloor"/> is a
+    /// raise-only CAS), and never below <see cref="ReconcileSliceScopes"/>'s seed.</summary>
+    private void MaintainBoundedSliceFloors(ulong watermark)
+    {
+        foreach (SliceScopeEntry entry in SliceScopeConfig.Parse(_config.HistorySliceAddresses))
+        {
+            if (entry.RetentionBlocks is not { } retention || watermark <= retention) continue;
+            _availability.TryRaiseScopeFloor(AccountKeyOf(entry.Address), watermark - retention);
+        }
+    }
+
+    private static byte[] AccountKeyOf(Address address) =>
+        address.ToAccountPath.Bytes[..BaseFlatPersistence.AccountKeyLength].ToArray();
 
     /// <summary>Blocks (briefly — only against an already-in-flight prune pass, bounded by its own budget) until
     /// the gate is claimed for backfill, then marks it active for the duration of the returned scope. Multiple
@@ -323,6 +401,7 @@ public sealed class HistoryWindowPruner : IDisposable
         else
         {
             ulong watermark = _writer.LastCapturedBlock;
+            MaintainBoundedSliceFloors(watermark);
             if (watermark <= retention) return true;
 
             ulong newFloor = watermark - retention;
@@ -358,12 +437,33 @@ public sealed class HistoryWindowPruner : IDisposable
         // Each column gets its own budget instance so a slow account column can never starve storage/clears/markers
         // of all progress: without this, a resumed pass would always restart from "has account finished yet?" and
         // the other three columns could go passes on end without a single row examined.
-        bool completedAccount = PruneVersionedColumn(_accountHistory, AccountCursorKey, BaseFlatPersistence.AccountKeyLength, floor, newBudget(), token);
-        bool completedStorage = PruneVersionedColumn(_storageHistory, StorageCursorKey, BaseFlatPersistence.StorageKeyLength, floor, newBudget(), token);
-        bool completedClears = PruneClearsColumn(floor, newBudget(), token);
-        bool completedBlocks = PruneBlockMarkers(floor, newBudget(), token);
+        bool hasScopes = _availability.GetScopesArray().Length > 0;
+
+        // Clears and block markers are not (yet) resolved per-key like AccountHistory/StorageHistory above - a
+        // clear-context row or a block's root marker is retained down to the DEEPEST configured scope floor
+        // instead, so a sliced address's clear-probe and canonicity check both stay answerable even though this
+        // is coarser than strictly necessary for every other key. See HistoryReader's clear-probe remarks for why
+        // collapsing clears context away would be a wrong-answer hazard, not just a missing-data one.
+        ulong markersAndClearsFloor = hasScopes ? ComputeMinScopeFloor(floor) : floor;
+
+        bool completedAccount = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, newBudget(), token);
+        bool completedStorage = PruneVersionedColumn(_storageHistory, StorageCursorKey, HistoryKeyLayout.Storage, floor, hasScopes, newBudget(), token);
+        bool completedClears = PruneClearsColumn(markersAndClearsFloor, newBudget(), token);
+        bool completedBlocks = PruneBlockMarkers(markersAndClearsFloor, newBudget(), token);
 
         return completedAccount && completedStorage && completedClears && completedBlocks;
+    }
+
+    private ulong ComputeMinScopeFloor(ulong generalFloor)
+    {
+        ulong minFloor = generalFloor;
+        ScopeFloor[] scopes = _availability.GetScopesArray();
+        for (int i = 0; i < scopes.Length; i++)
+        {
+            if (scopes[i].Floor < minFloor) minFloor = scopes[i].Floor;
+        }
+
+        return minFloor;
     }
 
     /// <summary>
@@ -505,8 +605,9 @@ public sealed class HistoryWindowPruner : IDisposable
     /// at or below the floor is unconditionally dead. <see cref="HistoryRowFormat.RetainsNewestRowAtOrBelowFloor"/>
     /// selects between the two so this decode/retention logic never has to assume one format over the other.
     /// </summary>
-    private bool PruneVersionedColumn(IDb column, ReadOnlySpan<byte> cursorKeyName, int flatKeyLength, ulong floor, IPruneBudget budget, CancellationToken token)
+    private bool PruneVersionedColumn(IDb column, ReadOnlySpan<byte> cursorKeyName, HistoryKeyLayout keyLayout, ulong floor, bool hasScopes, IPruneBudget budget, CancellationToken token)
     {
+        int flatKeyLength = keyLayout.FlatKeyLength;
         ISortedKeyValueStore sorted = (ISortedKeyValueStore)column;
         byte[]? cursor = ReadCursor(cursorKeyName);
 
@@ -515,6 +616,8 @@ public sealed class HistoryWindowPruner : IDisposable
 
         byte[]? currentGroupKey = null;
         bool currentGroupHasFloorRow = false;
+        ulong currentGroupFloor = floor;
+        Span<byte> addressKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         int sinceFlush = 0;
 
         using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound);
@@ -537,10 +640,19 @@ public sealed class HistoryWindowPruner : IDisposable
                 {
                     currentGroupKey = keyPrefix.ToArray();
                     currentGroupHasFloorRow = false;
+
+                    // Byte-for-byte today's cost when no slices are configured: currentGroupFloor never leaves
+                    // the pass-level floor, and neither ExtractAddressKey nor ResolveScope (a DB-free lookup, but
+                    // still O(scopes) work) is ever called.
+                    if (hasScopes)
+                    {
+                        keyLayout.ExtractAddressKey(keyPrefix, addressKey);
+                        currentGroupFloor = _availability.ResolveScope(addressKey, floor).Floor;
+                    }
                 }
 
                 ulong block = _rowFormat.DecodeSuffixBlock(key[flatKeyLength..]);
-                if (block <= floor)
+                if (block <= currentGroupFloor)
                 {
                     if (_rowFormat.RetainsNewestRowAtOrBelowFloor && !currentGroupHasFloorRow)
                     {

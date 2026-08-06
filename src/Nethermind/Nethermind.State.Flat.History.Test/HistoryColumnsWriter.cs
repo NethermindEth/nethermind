@@ -168,4 +168,31 @@ internal static class HistoryColumnsWriter
     /// test fixtures — the v3 counterpart to <see cref="SetWatermark"/>.</summary>
     public static void SetWatermarkV3(IColumnsDb<FlatHistoryColumns> columns, ulong watermark) =>
         new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(watermark, HistoryAvailability.WindowedFormatVersion);
+
+    public static void SetPersistedAccount(IColumnsDb<FlatDbColumns> db, Address address, Account? account)
+    {
+        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
+            stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
+
+        IDb accountColumn = db.GetColumnDb(FlatDbColumns.Account);
+        if (account is null)
+        {
+            accountColumn.Remove(flatKey);
+            return;
+        }
+
+        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+        accountColumn.PutSpan(flatKey, rlp);
+    }
+}
+
+internal sealed class TestCaptureStatus : IStateHistoryCaptureStatus
+{
+    public bool CaptureHealthy { get; set; } = true;
+
+#pragma warning disable CS0067
+    public event Action<ulong>? WatermarkAdvanced;
+
+    public event Action? CaptureDisabled;
+#pragma warning restore CS0067
 }

@@ -18,7 +18,7 @@ public class StartHistoryWindowPruner(HistoryWindowPruner pruner) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        _ = pruner;
+        pruner.ReconcileSliceScopes();
         return Task.CompletedTask;
     }
 }
