@@ -18,7 +18,7 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.SupportsBlobs)
+        if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.CarriesBlobs)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob transactions are not supported.");
