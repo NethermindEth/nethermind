@@ -13,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using System;
 using Nethermind.Core.Messages;
 
@@ -173,6 +174,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         {
             result = _abiEncoder.Decode(AbiEncodingStyle.None, DepositEventAbi, log.Data);
             ValidateLayout(result, block);
+            ValidateCanonicalLayout(log.Data);
         }
         catch (AbiException e)
         {
@@ -210,6 +212,21 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
             {
                 throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Decoded ABI result contains invalid {name} element, size does not match, expected {expectedSize}, got {byteArray.Length}."));
             }
+        }
+    }
+
+    private static void ValidateCanonicalLayout(byte[] data)
+    {
+        ValidateOffset(data, 0, 160);
+        ValidateOffset(data, 32, 256);
+        ValidateOffset(data, 64, 320);
+        ValidateOffset(data, 96, 384);
+        ValidateOffset(data, 128, 512);
+
+        static void ValidateOffset(byte[] data, int offset, int expected)
+        {
+            if (new UInt256(data.AsSpan(offset, 32), isBigEndian: true) != (UInt256)expected)
+                throw new AbiException($"Deposit event ABI offset at {offset} is not canonical.");
         }
     }
 

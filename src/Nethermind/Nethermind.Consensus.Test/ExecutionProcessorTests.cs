@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -172,10 +173,35 @@ public class ExecutionProcessorTests
     }
 
     private static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
+        CreateLogEntry(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!));
+
+    private static LogEntry CreateLogEntry(byte[] data) =>
         Build.A.LogEntry
-            .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
+            .WithData(data)
             .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
             .WithAddress(DepositContractAddress).TestObject;
+
+    [Test]
+    public void ShouldRejectNonCanonicalDepositEventOffsets()
+    {
+        byte[][] requestDataParts = [new byte[48], new byte[32], new byte[8], new byte[96], new byte[8]];
+        byte[] canonical = _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts);
+        byte[] nonCanonical = canonical.ToArray();
+
+        WriteOffset(nonCanonical.AsSpan(64, 32), 448);
+        WriteOffset(nonCanonical.AsSpan(96, 32), 320);
+        canonical.AsSpan(384, 128).CopyTo(nonCanonical.AsSpan(320, 128));
+        canonical.AsSpan(320, 64).CopyTo(nonCanonical.AsSpan(448, 64));
+
+        TxReceipt[] txReceipts = [
+            Build.A.Receipt.WithLogs(CreateLogEntry(nonCanonical)).TestObject
+        ];
+
+        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(() => ProcessBlockAndGetRequestsHash(1, txReceipts));
+        Assert.That(exception!.Message, Does.Contain("Deposit event ABI offset").IgnoreCase);
+    }
+
+    private static void WriteOffset(Span<byte> destination, int value) => ((UInt256)value).ToBigEndian(destination);
 
     [Test]
     public void ShouldUseCorrectDepositTopic() => Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
