@@ -13,15 +13,13 @@ public class AccumulatorCalculatorTests
     // An independent Python SSZ merkleization (hashlib only) derived every root in this file:
     // hash_tree_root(EpochRecord) with EpochRecord = List[HeaderRecord, 8192] per EIP-7643.
 
-    // The root of [(Keccak.Zero, td 1), (Keccak.MaxValue, td 2)].
-    private const string TwoEntryRoot = "0x3ed62652dfb7e1072d0f040feb6d002a9f7ce37cf8ddb16549a7ac5cf8e3b791";
-
     // The single-entry cases differ pairwise in exactly one input, so a root that ignores
     // the hash or the total difficulty cannot match all of them.
     public static IEnumerable<TestCaseData> ComputeRootCases()
     {
         yield return new TestCaseData(
-            new (Hash256, UInt256)[] { (Keccak.Zero, 1), (Keccak.MaxValue, 2) }, TwoEntryRoot)
+            new (Hash256, UInt256)[] { (Keccak.Zero, 1), (Keccak.MaxValue, 2) },
+            "0x3ed62652dfb7e1072d0f040feb6d002a9f7ce37cf8ddb16549a7ac5cf8e3b791")
             .SetName($"{nameof(ComputeRoot_MatchesSpecRoot)}(two entries)");
         yield return new TestCaseData(
             new (Hash256, UInt256)[] { (Keccak.Zero, 1) },
