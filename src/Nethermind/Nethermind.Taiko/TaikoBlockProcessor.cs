@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -43,6 +44,7 @@ public class TaikoBlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
+    IBlockFinder blockFinder,
     ZkGasMeterHolder? zkGasMeterHolder = null)
     : BlockProcessor(
         specProvider,
@@ -56,7 +58,8 @@ public class TaikoBlockProcessor(
         logManager,
         withdrawalProcessor,
         executionRequestsProcessor,
-        balManager)
+        balManager,
+        blockFinder)
 {
     private readonly ZkGasMeterHolder? _zkGasMeterHolder = zkGasMeterHolder;
 

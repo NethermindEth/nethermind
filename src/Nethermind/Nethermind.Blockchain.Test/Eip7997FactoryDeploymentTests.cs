@@ -1,23 +1,35 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -136,6 +148,59 @@ public class Eip7997FactoryDeploymentTests
             Assert.That(factory.BalanceChanges, Is.Empty);
             Assert.That(factory.StorageChanges, Is.Empty);
             Assert.That(factory.StorageReads, Is.Empty);
+        }
+    }
+
+    [TestCase(false, true, TestName = "Installs on the activation block whose parent predates EIP-7997")]
+    [TestCase(true, false, TestName = "Leaves the factory untouched once the parent is already on the fork")]
+    public void BlockProcessor_installs_factory_only_on_the_activation_block(bool parentHasEip7997, bool expectInstalled)
+    {
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessor txProcessor = Substitute.For<ITransactionProcessor>();
+
+        // Minimal fork spec: EIP-7997 without EIP-7928 so the deploy takes the plain-state path and the
+        // post-state is directly observable without decoding a block access list.
+        IReleaseSpec blockSpec = new ReleaseSpec { IsEip7997Enabled = true, IsEip158Enabled = true, MaxCodeSize = long.MaxValue };
+        IReleaseSpec parentSpec = parentHasEip7997 ? new ReleaseSpec { IsEip7997Enabled = true } : new ReleaseSpec();
+
+        const ulong parentTimestamp = 100;
+        const ulong blockTimestamp = 200;
+        ISpecProvider specProvider = new CustomSpecProvider(
+            (new ForkActivation(0, parentTimestamp), parentSpec),
+            (new ForkActivation(0, blockTimestamp), blockSpec));
+
+        BlockAccessListManager balManager = new(
+            state, specProvider, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance),
+            static ws => new EthereumCodeInfoRepository(ws));
+        IBlockProcessor.IBlockTransactionsExecutor executor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(txProcessor), state),
+            state, specProvider, balManager, LimboLogs.Instance);
+
+        BlockHeader parentHeader = Build.A.BlockHeader.WithNumber(0).WithTimestamp(parentTimestamp).TestObject;
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parentHeader);
+
+        BlockProcessor processor = new(
+            specProvider, Substitute.For<IBlockValidator>(), NoBlockRewards.Instance, executor, state,
+            NullReceiptStorage.Instance, new BeaconBlockRootHandler(txProcessor, state), Substitute.For<IBlockhashStore>(),
+            LimboLogs.Instance, new WithdrawalProcessor(state, LimboLogs.Instance), new ExecutionRequestsProcessor(txProcessor),
+            balManager, blockFinder);
+
+        Block block = Build.A.Block.WithNumber(1).WithTimestamp(blockTimestamp)
+            .WithParentHash(parentHeader.Hash!).WithBaseFeePerGas(0).WithGasLimit(GasCostOf.Transaction * 4).TestObject;
+
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, blockSpec, CancellationToken.None);
+
+        byte[]? factoryCode = state.GetCode(Factory);
+        if (expectInstalled)
+        {
+            Assert.That(factoryCode, Is.EqualTo(Eip7997Constants.Code));
+        }
+        else
+        {
+            Assert.That(factoryCode, Is.Null.Or.Empty);
         }
     }
 

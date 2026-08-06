@@ -47,7 +47,7 @@ public partial class BlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
-    IBlockFinder? blockFinder = null)
+    IBlockFinder blockFinder)
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
@@ -257,15 +257,22 @@ public partial class BlockProcessor(
 
     /// <summary>
     /// Installs the EIP-7997 deterministic deployment factory as the first state change of the fork
-    /// activation block. It fires once — when the parent block belongs to a fork that did not define
-    /// EIP-7997 — so later blocks neither re-touch the account nor re-record it in the block access list.
+    /// activation block — the single block whose parent belongs to a fork that did not define
+    /// EIP-7997 — so later blocks neither re-touch the account nor re-record it in the block access
+    /// list. Fails closed: an unresolvable parent is treated as "not the boundary" (no install)
+    /// rather than re-installing on every block.
     /// </summary>
+    /// <remarks>
+    /// The <see cref="BlockHeader.IsGenesis"/> guard is load-bearing: <c>FindParentHeader</c> computes
+    /// <c>Number - 1</c> (which underflows at genesis), and a chain that activates EIP-7997 at genesis
+    /// must instead carry the factory in its genesis allocation.
+    /// </remarks>
     private void DeployDeterministicFactory(BlockHeader header, IReleaseSpec spec)
     {
         if (!spec.IsEip7997Enabled || header.IsGenesis) return;
 
-        BlockHeader? parent = blockFinder?.FindParentHeader(header, BlockTreeLookupOptions.None);
-        if (parent is not null && _specProvider.GetSpec(parent).IsEip7997Enabled) return;
+        BlockHeader? parent = blockFinder.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (parent is null || _specProvider.GetSpec(parent).IsEip7997Enabled) return;
 
         if (_balManager.Enabled)
         {

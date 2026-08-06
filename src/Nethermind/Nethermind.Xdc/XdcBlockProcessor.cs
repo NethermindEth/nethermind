@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -32,7 +33,8 @@ internal class XdcBlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager), IBlockProcessor
+    IBlockAccessListManager balManager,
+    IBlockFinder blockFinder) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager, blockFinder), IBlockProcessor
 {
     protected override void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
     {

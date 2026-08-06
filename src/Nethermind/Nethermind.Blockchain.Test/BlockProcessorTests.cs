@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
@@ -275,7 +276,8 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<IBlockFinder>());
 
         BranchProcessor branchProcessor = new(
             processor,
@@ -395,7 +397,8 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<IBlockFinder>());
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(block.Header, "invalid BAL");

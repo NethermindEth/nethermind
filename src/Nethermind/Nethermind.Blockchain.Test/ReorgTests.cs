@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -105,7 +106,8 @@ public class ReorgTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            Substitute.For<IBlockFinder>());
         BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,

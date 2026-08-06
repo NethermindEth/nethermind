@@ -836,8 +836,10 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(preAmsterdam.IsEip7976Enabled, Is.False);
             Assert.That(preAmsterdam.IsEip7981Enabled, Is.False);
+            Assert.That(preAmsterdam.IsEip7997Enabled, Is.False);
             Assert.That(amsterdam.IsEip7976Enabled, Is.True);
             Assert.That(amsterdam.IsEip7981Enabled, Is.True);
+            Assert.That(amsterdam.IsEip7997Enabled, Is.True);
         }
     }
 

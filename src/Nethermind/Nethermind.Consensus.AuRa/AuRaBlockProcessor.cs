@@ -67,7 +67,8 @@ namespace Nethermind.Consensus.AuRa
                 logManager,
                 withdrawalProcessor,
                 executionRequestsProcessor,
-                blockAccessListManager)
+                blockAccessListManager,
+                blockTree)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
