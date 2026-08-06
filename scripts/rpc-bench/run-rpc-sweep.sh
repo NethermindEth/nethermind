@@ -16,7 +16,9 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${JB_BENCHMARK_CONFIG:?mixed (all-scenario) benchmark config, repo-relative}"
 
 CLIENTS="${CLIENTS:-nethermind geth reth}"
-RPS_LIST="${RPS_LIST:-100 250 500}"
+# `-` not `:-`: an explicitly empty RPS_LIST means "no k6 cells" (parity/timings only), and
+# `:-` would substitute the default over it, which is exactly the case the caller wants.
+RPS_LIST="${RPS_LIST-100 250 500}"
 ISO_CONFIGS="${ISO_CONFIGS:-}"          # space-separated repo-relative single-scenario configs; empty = mixed only
 STATE_LAYOUT="${STATE_LAYOUT:-flat}"
 JB_DURATION="${JB_DURATION:-60s}"       # mixed-run load duration
