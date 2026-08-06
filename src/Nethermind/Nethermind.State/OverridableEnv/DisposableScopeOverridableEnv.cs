@@ -21,9 +21,9 @@ public class DisposableScopeOverridableEnv<T>(
     T resolvedComponents
 ) : IOverridableEnv<T>
 {
-    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null)
+    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null, bool requireStateRoot = true)
     {
-        IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
+        IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride, specOverride, blockOverride, requireStateRoot);
         return new Scope<T>(resolvedComponents, disposable);
     }
 }

@@ -26,13 +26,13 @@ public sealed class ShareableOverridableEnvSource<T>(
     private int _activeCount;
     private volatile bool _disposed;
 
-    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, bool requireStateRoot = true)
     {
         IOverridableEnv<T> env = Rent();
         Scope<T> innerScope;
         try
         {
-            innerScope = env.BuildAndOverride(header, stateOverride, blockOverride: blockOverride);
+            innerScope = env.BuildAndOverride(header, stateOverride, blockOverride: blockOverride, requireStateRoot: requireStateRoot);
         }
         catch
         {

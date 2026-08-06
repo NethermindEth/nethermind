@@ -36,7 +36,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
         private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
 
-        public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null)
+        public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null, bool requireStateRoot = true)
         {
             if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
 
@@ -60,8 +60,22 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                     // override still commits the unchanged state at the overridden number.
                     if (stateOverride is not null || blockOverride is not null)
                     {
-                        _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
-                        header.StateRoot = _worldState.StateRoot;
+                        if (requireStateRoot)
+                        {
+                            _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(header), header.Number);
+                            header.StateRoot = _worldState.StateRoot;
+                        }
+                        else
+                        {
+                            // Merkleizing the override costs a trie path load and rehash per touched
+                            // account. Callers that only read through this scope's world state do not
+                            // need the resulting root, so commit the journal (making the override
+                            // visible to block-level reads, including the EIP-7610 storage check)
+                            // without flushing anything to the trie.
+                            IReleaseSpec overrideSpec = specProvider.GetSpec(header).WithoutEip158();
+                            _worldState.ApplyStateOverridesNoCommit(_codeInfoRepository, stateOverride, overrideSpec);
+                            _worldState.Commit(overrideSpec, commitRoots: false);
+                        }
                     }
                 }
 
