@@ -52,7 +52,7 @@ public class GethLikeTxDirectStreamingTracerTests : VirtualMachineTestsBase
         List<StructLog> logs = StreamLogs(ParentRefundThenRevertingCallCode(), GethTraceOptions.Default);
 
         Assert.That(
-            logs.Last(l => l is {Op: "STOP", Depth: 1}).Refund, Is.EqualTo(Spec.GasCosts.SClearRefund),
+            logs.Last(l => l is { Op: "STOP", Depth: 1 }).Refund, Is.EqualTo(Spec.GasCosts.SClearRefund),
             "parent refund must persist after the child frame reverts"
         );
     }
