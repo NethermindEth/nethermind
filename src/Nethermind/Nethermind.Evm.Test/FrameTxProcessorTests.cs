@@ -186,10 +186,35 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance));
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.InsufficientSenderBalance));
             Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
             Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
         }
+    }
+
+    [Test]
+    public void Execute_TxParamMaxCost_BlobCarryingFrameTx_ReservesBlobLegAtBlobBaseFeeNotMaxFee()
+    {
+        // TXPARAM 0x06 (max_cost) is consensus-visible mid-transaction and also gates payer solvency.
+        // For a blob-carrying frame tx the blob leg of max_cost is reserved at the actual blob_base_fee,
+        // not max_fee_per_blob_gas, so it must equal the blobless gas leg plus blob_gas × blob_base_fee.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x06).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = 1000;
+
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        // Gas leg is the same 415_950 the blobless Execute_TxParam_MaxCost case observes (max fee 1).
+        UInt256 expectedMaxCost = 415_950 + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
+        AssertStorage(Observer, 0, expectedMaxCost);
+        UInt256 maxFeePricedMaxCost = 415_950 + tx.MaxFeePerBlobGas.Value * BlobGasCalculator.CalculateBlobGas(1);
+        Assert.That(expectedMaxCost, Is.LessThan(maxFeePricedMaxCost),
+            "max_cost priced below the max_fee_per_blob_gas reservation, i.e. at the blob base fee");
     }
 
     [TestCase(7ul, 2ul, 10ul, 2ul, TestName = "Execute_NonZeroBaseFee_PremiumIsTheRequestedPriorityFee")]

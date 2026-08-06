@@ -202,6 +202,11 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
         if (blobVersionedHashes is { Length: > 0 })
         {
+            if (transaction.MaxFeePerBlobGas is null)
+            {
+                return TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
+            }
+
             ValidationResult blobGasLimitResult = BlobFieldsTxValidator.ValidateBlobGasLimits(blobVersionedHashes.Length, releaseSpec);
             return !blobGasLimitResult ? blobGasLimitResult : BlobFieldsTxValidator.ValidateBlobVersionedHashes(blobVersionedHashes);
         }
@@ -282,7 +287,7 @@ public sealed class BlobFieldsTxValidator : ITxValidator
     /// Validates that every blob versioned hash is present, 32 bytes, and carries the KZG version byte
     /// (EIP-4844 <c>VERSIONED_HASH_VERSION_KZG = 0x01</c>).
     /// </summary>
-    public static ValidationResult ValidateBlobVersionedHashes(byte[]?[] blobVersionedHashes)
+    internal static ValidationResult ValidateBlobVersionedHashes(byte[]?[] blobVersionedHashes)
     {
         foreach (byte[]? versionedHash in blobVersionedHashes)
         {

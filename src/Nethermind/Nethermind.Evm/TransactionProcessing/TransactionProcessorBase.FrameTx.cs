@@ -108,7 +108,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             if (tx.MaxFeePerBlobGas.GetValueOrDefault() < feePerBlobGas)
             {
                 TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
-                return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
+                return TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
                     BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
             }
         }
@@ -343,6 +343,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-4844 fee-collector chains (e.g. Gnosis) collect the burned blob fee instead of losing
         // it, consistent with the regular path's PayFees; elsewhere the fee is simply burned.
+        // The EIP-1559 base-fee share of a frame tx is not routed to the collector (only burned); no
+        // chain enables both frame txs and the fee collector, so this stays deferred.
         if (!blobFee.IsZero && spec.IsEip4844FeeCollectorEnabled && spec.FeeCollector is not null)
         {
             WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, blobFee, spec);
