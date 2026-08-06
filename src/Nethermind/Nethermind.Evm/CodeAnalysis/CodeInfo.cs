@@ -78,8 +78,6 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
             return null;
-        // No cache key (e.g. eth_call overrides) — building would only be discarded.
-        // Stateless: CodeHash is assigned after construction, so do not latch Unavailable.
         if (CodeHash == default)
             return null;
         if (InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
