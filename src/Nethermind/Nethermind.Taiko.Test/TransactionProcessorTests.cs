@@ -114,6 +114,7 @@ public class TransactionProcessorTests
         TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
 
         Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.GreaterThan(UInt256.Zero));
     }
 
     public static IEnumerable FeesDistributionTests

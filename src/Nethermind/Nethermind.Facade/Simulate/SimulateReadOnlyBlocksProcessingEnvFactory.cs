@@ -62,7 +62,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
-            .Intercept<ITransactionProcessor>(static p => { if (p is TransactionProcessorBase b) b.SkipSenderCodeCheck = true; })
+            .Intercept<ITransactionProcessor>(SkipSenderCodeCheckTransactionProcessorFactory.Apply)
             .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderCodeCheckTransactionProcessorFactory(inner))
             .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)

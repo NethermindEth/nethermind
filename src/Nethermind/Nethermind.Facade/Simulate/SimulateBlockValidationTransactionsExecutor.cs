@@ -15,13 +15,20 @@ public class SimulateBlockValidationTransactionsExecutor(
     SimulateRequestState simulateState)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    // Apply the blobBaseFee override; forward PrevRandao/BlobBaseFee verbatim (a subclass may have set them).
-    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
-        baseTransactionExecutor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
-            blockExecutionContext.Header,
-            blockExecutionContext.Spec,
-            blockExecutionContext.PrevRandao,
-            simulateState.BlobBaseFeeOverride ?? blockExecutionContext.BlobBaseFee.ToUInt256()));
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+    {
+        if (simulateState.BlobBaseFeeOverride is null)
+        {
+            baseTransactionExecutor.SetBlockExecutionContext(in blockExecutionContext);
+            return;
+        }
+
+        baseTransactionExecutor.SetBlockExecutionContext(
+            new BlockExecutionContext(blockExecutionContext.Header,
+                blockExecutionContext.Spec,
+                simulateState.BlobBaseFeeOverride.Value)
+        );
+    }
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer,
         CancellationToken token = default)
