@@ -168,6 +168,34 @@ def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
     return None, result.lower()
 
 
+# eth_call is read-only and deterministic against a parked head, so replaying concurrently cannot
+# change what any record returns - only how fast the whole set is collected. Results are stored by
+# index, so completion order is irrelevant. Serial replay left the node ~99% idle: at 50k records
+# that is ~17 minutes of wall clock to do a few seconds of work.
+REPLAY_CONCURRENCY = int(os.environ.get("RPC_BENCH_PARITY_CONCURRENCY", "16"))
+
+
+def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str | None, str]]:
+    """Replay every record and return (category, result) per record, in corpus order."""
+    outcomes: list[tuple[str | None, str] | None] = [None] * len(params_list)
+    started = time.perf_counter()
+    done = 0
+    lock = threading.Lock()
+
+    def one(position: int) -> None:
+        nonlocal done
+        outcomes[position] = _post(rpc_url, position + 1, params_list[position])
+        with lock:
+            done += 1
+            _progress(done, len(params_list), started, what)
+
+    workers = max(1, min(REPLAY_CONCURRENCY, len(params_list)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        for _ in pool.map(one, range(len(params_list))):
+            pass
+    return [o if o is not None else ("transport_failure", "") for o in outcomes]
+
+
 def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     """Replay the whole corpus and store each outcome: result hex, or an error marker.
 
@@ -180,10 +208,7 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     results: list[str] = []
     failures: dict[str, int] = {}
     error_count = 0
-    started = time.perf_counter()
-    for index, params in enumerate(params_list, start=1):
-        _progress(index, len(params_list), started, "baseline")
-        category, result = _post(rpc_url, index, params)
+    for category, result in _replay(rpc_url, params_list, "baseline"):
         if category == "rpc_error":
             error_count += 1
             results.append(ERROR_MARKER)
@@ -238,11 +263,9 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         if len(divergences) < MAX_DIVERGENCE_INDEXES:
             divergences.append({"index": index, "kind": kind})
 
-    compare_started = time.perf_counter()
-    for index, params in enumerate(params_list, start=1):
-        _progress(index, len(params_list), compare_started, "compare")
+    replayed = _replay(rpc_url, params_list, "compare")
+    for index, (category, actual) in enumerate(replayed, start=1):
         expected = baseline_results[index - 1]
-        category, actual = _post(rpc_url, index, params)
         if category == "transport_failure":
             report["candidate_transport_failures"] += 1
             diverge(index, "candidate_transport_failure")
