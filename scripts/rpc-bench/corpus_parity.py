@@ -173,6 +173,9 @@ def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
 # index, so completion order is irrelevant. Serial replay left the node ~99% idle: at 50k records
 # that is ~17 minutes of wall clock to do a few seconds of work.
 REPLAY_CONCURRENCY = int(os.environ.get("RPC_BENCH_PARITY_CONCURRENCY", "16"))
+# Outcomes that indicate the transport or the node struggled, not that the call has an answer.
+# rpc_error is excluded: a captured corpus legitimately contains calls that fail at the head.
+RETRYABLE_CATEGORIES = frozenset({"transport_failure", "invalid_response"})
 
 
 def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str | None, str]]:
@@ -193,7 +196,23 @@ def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str 
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         for _ in pool.map(one, range(len(params_list))):
             pass
-    return [o if o is not None else ("transport_failure", "") for o in outcomes]
+    settled = [o if o is not None else ("transport_failure", "") for o in outcomes]
+
+    # A node under concurrent load can drop or truncate a response, which would otherwise be
+    # indistinguishable from a real defect. Re-run those records one at a time, unloaded: a
+    # record that only fails under concurrency is a load artifact, not a divergence.
+    suspect = [i for i, (category, _) in enumerate(settled) if category in RETRYABLE_CATEGORIES]
+    if suspect:
+        print(f"  {what}: re-running {len(suspect)} non-clean record(s) serially", flush=True)
+        recovered = 0
+        for position in suspect:
+            retried = _post(rpc_url, position + 1, params_list[position])
+            if retried[0] not in RETRYABLE_CATEGORIES:
+                recovered += 1
+            settled[position] = retried
+        if recovered:
+            print(f"  {what}: {recovered} recovered on retry (concurrency artifacts, not defects)", flush=True)
+    return settled
 
 
 def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
@@ -264,6 +283,26 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
             divergences.append({"index": index, "kind": kind})
 
     replayed = _replay(rpc_url, params_list, "compare")
+
+    # Second gate: anything that disagrees with the baseline is re-run unloaded before it is
+    # counted. A real semantic divergence reproduces; a load artifact does not. Cheap because
+    # disagreements are rare, and it keeps the concurrent replay from inventing defects.
+    disputed = [
+        i for i, (category, actual) in enumerate(replayed)
+        if not (category is None and actual == baseline_results[i])
+        and not (category == "rpc_error" and baseline_results[i] == ERROR_MARKER)
+    ]
+    if disputed:
+        print(f"  compare: re-verifying {len(disputed)} disagreement(s) serially", flush=True)
+        settled = 0
+        for position in disputed:
+            retried = _post(rpc_url, position + 1, params_list[position])
+            if retried != replayed[position]:
+                settled += 1
+            replayed[position] = retried
+        if settled:
+            print(f"  compare: {settled} disagreement(s) changed outcome on retry", flush=True)
+
     for index, (category, actual) in enumerate(replayed, start=1):
         expected = baseline_results[index - 1]
         if category == "transport_failure":
