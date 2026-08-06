@@ -11,11 +11,10 @@ public class AccumulatorCalculatorTests
     // An independent Python SSZ merkleization (hashlib only) derived every root in this file:
     // hash_tree_root(EpochRecord) with EpochRecord = List[HeaderRecord, 8192] per EIP-7643.
 
-    // The root of [(Keccak.Zero, td 1)].
     private const string SingleEntryZeroTd1Root = "0xadd755f5bbbf0768705dad22180e521ef7fad7ee697a9d43f63cd37713b489c6";
 
-    // The single-entry cases differ pairwise in exactly one input, so a root that ignores
-    // the hash or the total difficulty cannot match all of them.
+    // The single-entry cases vary the hash and the total difficulty independently, so an
+    // implementation that ignores either field cannot match all roots.
     public static IEnumerable<TestCaseData> ComputeRootCases()
     {
         yield return new TestCaseData(
@@ -63,8 +62,7 @@ public class AccumulatorCalculatorTests
         sut.Clear();
         sut.Add(Keccak.Zero, 1);
 
-        // EraWriter.Finalize clears the calculator between era files. A lost reset
-        // corrupts every accumulator after the first.
+        // ComputeRoot after Clear must ignore everything added before it.
         Assert.That(sut.ComputeRoot(), Is.EqualTo(new ValueHash256(SingleEntryZeroTd1Root)));
     }
 }
