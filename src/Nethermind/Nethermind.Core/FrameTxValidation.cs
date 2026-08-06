@@ -104,9 +104,8 @@ public static class FrameTxValidation
                 }
             }
 
-            // EIP-8141 (ethereum/EIPs#12109): a frame belonging to an atomic batch must not carry
-            // approval scope. A frame belongs to a batch when it is flagged, or its predecessor is —
-            // covering the batch's non-flagged terminating frame and back-to-back batches.
+            // EIP-8141 (ethereum/EIPs#12109): a frame belonging to an atomic batch must not carry approval
+            // scope. A frame belongs when it is flagged, or its predecessor is (the terminating frame).
             if (((frame.Flags & TxFrame.AtomicBatchFlag) != 0 || (i > 0 && (frames[i - 1].Flags & TxFrame.AtomicBatchFlag) != 0))
                 && (frame.Flags & TxFrame.ApproveScopeMask) != 0)
             {
