@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -28,6 +29,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     private readonly ulong _gasLimit;
     private readonly Hash256? _txHash;
+    private readonly bool _isEip8037Enabled;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = [];
@@ -38,11 +40,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     public NativeCallTracer(
         Transaction? tx,
+        IReleaseSpec spec,
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
         _gasLimit = tx!.GasLimit;
         _txHash = tx.Hash;
+        _isEip8037Enabled = spec.IsEip8037Enabled;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -182,6 +186,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         firstCallFrame.Output = new ArrayPoolList<byte>(output);
+        ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
     }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
@@ -191,6 +196,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
+        ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
         if (output is not null)
             firstCallFrame.Output = new ArrayPoolList<byte>(output);
 
@@ -208,6 +214,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         {
             ClearFailedLogs(firstCallFrame, true);
         }
+    }
+
+    private void ApplyTwoDimensionalGas(NativeCallTracerCallFrame firstCallFrame, in GasConsumed gasSpent)
+    {
+        if (!_isEip8037Enabled) return;
+
+        firstCallFrame.Eip8037Gas = new TwoDimensionalGas(gasSpent.EffectiveBlockGas, gasSpent.BlockStateGas, gasSpent.GasRefund);
     }
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
