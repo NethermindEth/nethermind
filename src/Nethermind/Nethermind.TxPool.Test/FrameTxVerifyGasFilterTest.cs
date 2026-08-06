@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -15,44 +14,39 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 internal class FrameTxVerifyGasFilterTest
 {
-    // A frame that may approve both scopes but runs EIP-8141 default code unless the sender has
-    // code, followed by a frame that only stays inside the ceiling while the walk stops early.
-    private static Transaction FrameTx() => new()
+    private static Transaction FrameTx(params TxFrame[] frames) => new()
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
-        Frames =
-        [
-            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 1_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, target: TestItem.AddressB, gasLimit: 3_000_000, UInt256.Zero, default),
-        ],
+        Frames = frames,
         FrameSignatures = [],
     };
 
-    // The account readers diverge on the out-value of a failed lookup, and a zero code hash reads
-    // back as code-bearing. Scoring a missing sender that way ends the prefix walk at a frame that
-    // provably cannot approve, so the frames behind it are never counted against MAX_VERIFY_GAS.
-    [TestCase(false, TestName = "a missing sender is codeless, so the whole prefix is counted")]
-    [TestCase(true, TestName = "a code-bearing sender ends the prefix at the approving frame")]
-    public void Accept_ScoresAMissingSenderAsCodeless(bool senderExistsWithCode)
+    private static TxFrame SelfVerify(ulong gasLimit) =>
+        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
+
+    private static TxFrame Execution(ulong gasLimit) =>
+        new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit, UInt256.Zero, default);
+
+    // Approving flags on a DEFAULT frame do not end the validation prefix: whether that frame approves
+    // at all depends on code the sender controls, so a prefix walk that trusted the flags would leave
+    // the frames behind it unbudgeted while the node still runs them before any gas is paid.
+    [TestCase(false, TestName = "a recognized prefix inside the ceiling is accepted")]
+    [TestCase(true, TestName = "an unrecognized prefix is rejected whatever its gas")]
+    public void Accept_RejectsAnUnrecognizedValidationPrefix(bool unrecognized)
     {
-        IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
-        if (senderExistsWithCode)
-        {
-            accounts.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(call =>
-            {
-                call[1] = new AccountStruct(0, UInt256.One, Keccak.EmptyTreeHash.ValueHash256, TestItem.KeccakA.ValueHash256);
-                return true;
-            });
-        }
+        Transaction tx = unrecognized
+            ? FrameTx(
+                new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, target: null, 1_000, UInt256.Zero, default),
+                Execution(3_000_000))
+            : FrameTx(SelfVerify(1_000), Execution(3_000_000));
 
         FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
-        Transaction tx = FrameTx();
-        TxFilteringState state = new(tx, accounts);
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
 
         AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
 
-        Assert.That(result, Is.EqualTo(senderExistsWithCode ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxVerifyGasTooHigh));
+        Assert.That(result, Is.EqualTo(unrecognized ? AcceptTxResult.FrameTxVerifyGasTooHigh : AcceptTxResult.Accepted));
     }
 
     // The pool's account cache stores the empty account on a miss while the reader beneath it may
@@ -61,7 +55,7 @@ internal class FrameTxVerifyGasFilterTest
     [Test]
     public void SenderAccount_OfAMissingAccount_ReadsTheSameOnEveryProbe()
     {
-        TxFilteringState state = new(FrameTx(), Substitute.For<IAccountStateProvider>());
+        TxFilteringState state = new(FrameTx(SelfVerify(1_000)), Substitute.For<IAccountStateProvider>());
 
         using (Assert.EnterMultipleScope())
         {

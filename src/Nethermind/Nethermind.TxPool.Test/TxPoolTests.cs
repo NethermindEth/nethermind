@@ -2297,7 +2297,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
-        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 100_000)
+        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000)
         {
             List<TxFrame> frames =
             [
@@ -2308,7 +2308,8 @@ namespace Nethermind.TxPool.Test
             {
                 byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
                 BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
+                // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
+                frames.Insert(0, new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
             }
 
             Transaction tx = new()

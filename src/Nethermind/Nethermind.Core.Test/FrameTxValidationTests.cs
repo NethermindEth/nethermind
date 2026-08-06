@@ -213,85 +213,73 @@ public class FrameTxValidationTests
 
     private static IEnumerable<TestCaseData> ValidationWorkCases()
     {
-        static TestCaseData Work(string name, TxFrame[] frames, TxFrameSignature[] signatures, ulong expected, bool senderHasCode = false) =>
-            new TestCaseData(frames, signatures, expected, senderHasCode).SetName($"ValidationWorkGas_{name}");
+        static TestCaseData Work(string name, TxFrame[] frames, TxFrameSignature[] signatures, ulong? expected) =>
+            new TestCaseData(frames, signatures, expected).SetName($"ValidationWorkGas_{name}");
 
         static TxFrameSignature Signature(byte scheme) => new(scheme, null, default, Array.Empty<byte>());
 
+        static TxFrame OnlyVerifyFrame() =>
+            Frame(TxFrame.ModeVerify, TxFrame.ApproveExecution, gasLimit: 40_000);
+
+        static TxFrame PayFrame() =>
+            Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressB, gasLimit: 30_000);
+
         // The prefix ends at the self-verify frame; the execution frame behind it is paid for out of
         // the transaction's own gas and is outside the budget.
-        yield return Work("SelfVerifyThenSenderFrame_CountsOnlyThePrefix",
+        yield return Work("SelfVerify_CountsOnlyThePrefix",
             [SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: TestItem.AddressB, gasLimit: 5_000_000)],
             [], 100_000);
 
-        // The canonical paymaster shape: execution approval, then payment approval by the sponsor.
-        yield return Work("ExecutionThenPaymentApproval_CountsBothPrefixFrames",
-            [
-                Frame(TxFrame.ModeVerify, TxFrame.ApproveExecution, gasLimit: 40_000),
-                Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressB, gasLimit: 30_000),
-                Frame(TxFrame.ModeSender, target: TestItem.AddressC, gasLimit: 900_000),
-            ],
+        // The expiry verifier frame is skipped when matching the shape, but its work is still the
+        // node's to do before any gas is paid.
+        yield return Work("ExpiryThenSelfVerify_CountsBoth",
+            [ExpiryFrame(), SelfVerifyFrame()], [], 130_000);
+
+        yield return Work("DeployThenSelfVerify_CountsBoth",
+            [DefaultModeFrame(), SelfVerifyFrame()], [], 150_000);
+
+        yield return Work("OnlyVerifyThenPay_CountsBothPrefixFrames",
+            [OnlyVerifyFrame(), PayFrame(), Frame(TxFrame.ModeSender, target: TestItem.AddressC, gasLimit: 900_000)],
             [], 70_000);
 
-        // A payment-only frame ahead of any execution approval provably cannot set the payer
-        // (APPROVE reverts), so the walk must continue past it and count the frames that still run
-        // before the transaction is paid for.
-        yield return Work("PaymentApprovalBeforeExecutionApproval_KeepsWalking",
-            [
-                Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressB, gasLimit: 1_000),
-                Frame(gasLimit: 3_000_000),
-                SelfVerifyFrame(),
-            ],
-            [], 3_101_000);
-
-        // Nothing in the list can ever set a payer, so the whole list is charged.
-        yield return Work("NoPaymentApprovalAnywhere_CountsEveryFrame",
-            [Frame(gasLimit: 10_000), Frame(gasLimit: 20_000)], [], 30_000);
+        yield return Work("DeployThenOnlyVerifyThenPay_CountsAllThree",
+            [DefaultModeFrame(), OnlyVerifyFrame(), PayFrame()], [], 120_000);
 
         yield return Work("SignatureCostsCountAgainstTheBudget",
             [SelfVerifyFrame()],
             [Signature(TxFrameSignature.SchemeSecp256k1), Signature(TxFrameSignature.SchemeP256)],
             100_000 + Eip8141Constants.Secp256k1VerificationGasCost + Eip8141Constants.P256VerificationGasCost);
 
-        yield return Work("OverflowingFrameGas_Saturates",
-            [Frame(gasLimit: ulong.MaxValue), Frame(gasLimit: 1)], [], ulong.MaxValue);
+        yield return Work("OverflowingPrefixGas_Saturates",
+            [DefaultModeFrame(), Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, gasLimit: ulong.MaxValue)],
+            [], ulong.MaxValue);
 
-        // Permission to approve is not the same as the ability to: a DEFAULT frame resolving to a
-        // codeless sender runs default code, which approves only in VERIFY mode. Stopping the walk
-        // there would leave the frames behind it unbudgeted.
-        TxFrame[] defaultApprovalFrames =
-        [
-            Frame(flags: TxFrame.ApproveExecutionAndPayment, gasLimit: 1_000),
-            Frame(gasLimit: 3_000_000),
-            SelfVerifyFrame(),
-        ];
-        yield return Work("DefaultFrameOnACodelessSender_KeepsWalking", defaultApprovalFrames, [], 3_101_000);
-        yield return Work("DefaultFrameOnAContractSender_EndsThePrefix", defaultApprovalFrames, [], 1_000, senderHasCode: true);
+        // Approving flags on a DEFAULT frame do not make a prefix: whether the target approves at all
+        // depends on code the sender controls, so the frames behind it would run unbudgeted.
+        yield return Work("DefaultFrameWithApprovingFlags_IsNotRecognized",
+            [Frame(flags: TxFrame.ApproveExecutionAndPayment, gasLimit: 1_000), Frame(gasLimit: 3_000_000)],
+            [], null);
 
-        // The sender is the only target whose code is known here, so an approval by a third party
-        // cannot be assumed: the target is attacker-chosen and may be codeless, in which case
-        // default code runs, nothing approves, and the frames behind it would go unbudgeted.
-        yield return Work("DefaultFrameOnAThirdPartyTarget_KeepsWalking",
-            [
-                Frame(flags: TxFrame.ApproveExecutionAndPayment, target: TestItem.AddressB, gasLimit: 1_000),
-                Frame(gasLimit: 3_000_000),
-                SelfVerifyFrame(),
-            ],
-            [], 3_101_000, senderHasCode: true);
+        // APPROVE rejects a payment approval that no execution approval precedes.
+        yield return Work("PayBeforeOnlyVerify_IsNotRecognized",
+            [PayFrame(), OnlyVerifyFrame()], [], null);
 
-        // An execution approval by a frame that cannot reach APPROVE never happens, so it must not
-        // let the payment-only frame behind it end the walk either.
-        yield return Work("ExecutionApprovalThatCannotHappen_DoesNotEnableThePaymentBreak",
-            [
-                Frame(flags: TxFrame.ApproveExecution, gasLimit: 1_000),
-                Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressB, gasLimit: 1_000),
-                Frame(gasLimit: 20_000_000),
-            ],
-            [], 20_002_000);
+        // A verifier the sender does not control is third-party mutable state.
+        yield return Work("SelfVerifyTargetingAThirdParty_IsNotRecognized",
+            [Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB)], [], null);
+
+        yield return Work("PrefixFrameInAnAtomicBatch_IsNotRecognized",
+            [Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment | TxFrame.AtomicBatchFlag)], [], null);
+
+        yield return Work("OnlyVerifyWithoutPay_IsNotRecognized",
+            [OnlyVerifyFrame(), Frame(TxFrame.ModeSender, gasLimit: 900_000)], [], null);
+
+        yield return Work("NoApprovingFrameAtAll_IsNotRecognized",
+            [Frame(gasLimit: 10_000), Frame(gasLimit: 20_000)], [], null);
     }
 
     [TestCaseSource(nameof(ValidationWorkCases))]
-    public void ValidationWorkGas_BoundsThePrefixAndSignatures(TxFrame[] frames, TxFrameSignature[] signatures, ulong expected, bool senderHasCode)
+    public void TryGetValidationWorkGas_BoundsTheRecognizedPrefixAndSignatures(TxFrame[] frames, TxFrameSignature[] signatures, ulong? expected)
     {
         Transaction tx = CreateValidFrameTx(candidate =>
         {
@@ -299,7 +287,13 @@ public class FrameTxValidationTests
             candidate.FrameSignatures = signatures;
         });
 
-        Assert.That(FrameTxValidation.ValidationWorkGas(tx, senderHasCode), Is.EqualTo(expected));
+        bool recognized = FrameTxValidation.TryGetValidationWorkGas(tx, out ulong workGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recognized, Is.EqualTo(expected is not null));
+            Assert.That(workGas, Is.EqualTo(expected ?? 0));
+        }
     }
 
     [Test]
