@@ -45,10 +45,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         if (serving || syncingState)
         {
             capabilities.Add(SnapCapability);
-            if (_syncConfig.Snap2Enabled)
-            {
-                capabilities.Add(Snap2Capability);
-            }
+            capabilities.Add(Snap2Capability);
         }
     }
 
