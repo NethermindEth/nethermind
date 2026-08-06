@@ -452,20 +452,23 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugMigrateReceipts_WhenInvoked_ReturnsResponse()
+    public async Task DebugMigrateReceipts_WhenInvoked_ReturnsBridgeResult()
     {
         _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
 
-        string response = await SerializedRequest("debug_migrateReceipts", 100);
-        Assert.That(response, Is.Not.Null);
+        // The old single-argument request failed binding with -32602 and never reached the bridge.
+        string response = await SerializedRequest("debug_migrateReceipts", 100, 200);
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+        await _debugBridge.Received().MigrateReceipts(100, 200);
     }
 
     [Test]
     public async Task DebugResetHead_WhenInvoked_UpdatesHeadBlock()
     {
-        _debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
+        string response = await SerializedRequest("debug_resetHead", TestItem.KeccakA);
 
-        await SerializedRequest("debug_resetHead", TestItem.KeccakA);
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 
