@@ -1476,6 +1476,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public virtual void Compact() => _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
 
+    public virtual void SyncWal()
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        try
+        {
+            _rocksDbNative.rocksdb_flush_wal(_db.Handle, 1);
+        }
+        catch (RocksDbSharpException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
     private void InnerFlush(bool onlyWal)
     {
         try

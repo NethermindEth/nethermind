@@ -59,4 +59,63 @@ public static class KeyedNonceManager
             state.Set(StorageSlot(sender, nonceKey), nextSeq);
         }
     }
+
+    /// <summary>Checks whether <paramref name="nonceKeys"/> is a well-formed <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> nonce-key set.</summary>
+    /// <remarks>
+    /// Well-formed means: length in <c>[1, <see cref="Eip8250Constants.MaxNonceKeys"/>]</c>; key 0 appears only as the
+    /// singleton set <c>[0]</c>; and any multi-key set is strictly increasing, which also excludes a later 0.
+    /// </remarks>
+    public static bool AreNonceKeysWellFormed(ReadOnlySpan<UInt256> nonceKeys)
+    {
+        if (nonceKeys.Length < 1 || nonceKeys.Length > Eip8250Constants.MaxNonceKeys)
+        {
+            return false;
+        }
+
+        // Key 0 is valid only as the singleton [0].
+        if (nonceKeys[0].IsZero)
+        {
+            return nonceKeys.Length == 1;
+        }
+
+        // Strictly increasing; as the first key is non-zero this also rejects any later 0.
+        for (int i = 1; i < nonceKeys.Length; i++)
+        {
+            if (nonceKeys[i] <= nonceKeys[i - 1])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Checks whether <paramref name="nonceKeys"/>/<paramref name="nonceSeq"/> is a valid set to consume against <paramref name="sender"/>'s current state.</summary>
+    /// <remarks>
+    /// Requires all of: <paramref name="nonceKeys"/> is well-formed (see <see cref="AreNonceKeysWellFormed"/>),
+    /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, and every key in the set is
+    /// currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
+    /// </remarks>
+    public static bool IsNonceSetValid(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
+    {
+        if (!AreNonceKeysWellFormed(nonceKeys))
+        {
+            return false;
+        }
+
+        if (nonceSeq >= Eip8250Constants.MaxNonceSeq)
+        {
+            return false;
+        }
+
+        foreach (ref readonly UInt256 nonceKey in nonceKeys)
+        {
+            if (CurrentNonceSeq(state, sender, nonceKey) != nonceSeq)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

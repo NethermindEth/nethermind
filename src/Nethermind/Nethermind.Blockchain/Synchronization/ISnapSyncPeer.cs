@@ -12,6 +12,7 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public interface ISnapSyncPeer
     {
+        byte SnapProtocolVersion { get; }
         Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token);
         Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token);
         Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token);
