@@ -181,7 +181,7 @@ public class FrameTxValidationTests
 
     private static IEnumerable<TestCaseData> ValidationWorkCases()
     {
-        static TestCaseData Work(string name, TxFrame[] frames, TxFrameSignature[] signatures, ulong? expected) =>
+        static TestCaseData Work(string name, TxFrame[] frames, TxFrameSignature[] signatures, ulong expected) =>
             new TestCaseData(frames, signatures, expected).SetName($"ValidationWorkGas_{name}");
 
         static TxFrameSignature Signature(byte scheme) => new(scheme, null, default, Array.Empty<byte>());
@@ -222,32 +222,36 @@ public class FrameTxValidationTests
             [DefaultModeFrame(), Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, gasLimit: ulong.MaxValue)],
             [], ulong.MaxValue);
 
-        // Approving flags on a DEFAULT frame do not make a prefix: whether the target approves at all
-        // depends on code the sender controls, so the frames behind it would run unbudgeted.
-        yield return Work("DefaultFrameWithApprovingFlags_IsNotRecognized",
+        // Approving flags on a DEFAULT frame do not end a prefix: whether the target approves at all
+        // depends on code the sender controls, so the frames behind it may still run unpaid and the
+        // whole list is charged. Estimating this layout at its first frame is what let a sender on a
+        // delegation walk past the ceiling.
+        yield return Work("DefaultFrameWithApprovingFlags_ChargesTheWholeList",
             [Frame(flags: TxFrame.ApproveExecutionAndPayment, gasLimit: 1_000), Frame(gasLimit: 3_000_000)],
-            [], null);
+            [], 3_001_000);
 
         // APPROVE rejects a payment approval that no execution approval precedes.
-        yield return Work("PayBeforeOnlyVerify_IsNotRecognized",
-            [PayFrame(), OnlyVerifyFrame()], [], null);
+        yield return Work("PayBeforeOnlyVerify_ChargesTheWholeList",
+            [PayFrame(), OnlyVerifyFrame()], [], 70_000);
 
         // A verifier the sender does not control is third-party mutable state.
-        yield return Work("SelfVerifyTargetingAThirdParty_IsNotRecognized",
-            [Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB)], [], null);
+        yield return Work("SelfVerifyTargetingAThirdParty_ChargesTheWholeList",
+            [Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB), Frame(gasLimit: 900_000)],
+            [], 950_000);
 
-        yield return Work("PrefixFrameInAnAtomicBatch_IsNotRecognized",
-            [Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment | TxFrame.AtomicBatchFlag)], [], null);
+        yield return Work("PrefixFrameInAnAtomicBatch_ChargesTheWholeList",
+            [Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment | TxFrame.AtomicBatchFlag), Frame(gasLimit: 900_000)],
+            [], 950_000);
 
-        yield return Work("OnlyVerifyWithoutPay_IsNotRecognized",
-            [OnlyVerifyFrame(), Frame(TxFrame.ModeSender, gasLimit: 900_000)], [], null);
+        yield return Work("OnlyVerifyWithoutPay_ChargesTheWholeList",
+            [OnlyVerifyFrame(), Frame(TxFrame.ModeSender, gasLimit: 900_000)], [], 940_000);
 
-        yield return Work("NoApprovingFrameAtAll_IsNotRecognized",
-            [Frame(gasLimit: 10_000), Frame(gasLimit: 20_000)], [], null);
+        yield return Work("NoApprovingFrameAtAll_ChargesTheWholeList",
+            [Frame(gasLimit: 10_000), Frame(gasLimit: 20_000)], [], 30_000);
     }
 
     [TestCaseSource(nameof(ValidationWorkCases))]
-    public void TryGetValidationWorkGas_BoundsTheRecognizedPrefixAndSignatures(TxFrame[] frames, TxFrameSignature[] signatures, ulong? expected)
+    public void ValidationWorkGas_BoundsThePrefixAndSignatures(TxFrame[] frames, TxFrameSignature[] signatures, ulong expected)
     {
         Transaction tx = CreateValidFrameTx(candidate =>
         {
@@ -255,13 +259,7 @@ public class FrameTxValidationTests
             candidate.FrameSignatures = signatures;
         });
 
-        bool recognized = FrameTxValidation.TryGetValidationWorkGas(tx, out ulong workGas);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(recognized, Is.EqualTo(expected is not null));
-            Assert.That(workGas, Is.EqualTo(expected ?? 0));
-        }
+        Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(expected));
     }
 
     [Test]
