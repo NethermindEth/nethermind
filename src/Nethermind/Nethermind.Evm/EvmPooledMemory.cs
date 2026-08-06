@@ -397,7 +397,11 @@ public struct EvmPooledMemory
     {
         ulong size = Size;
         ClearForTracing(size);
-        return new(size, _memory);
+        // Clamp to Size so TraceMemory.Slice past the EVM high-water cannot see dirty tail bytes.
+        if (_memory is null || size == 0)
+            return new(size, default);
+        int visible = (int)Math.Min(size, (ulong)_memory.Length);
+        return new(size, _memory.AsMemory(0, visible));
     }
 
     public void Dispose()
@@ -458,7 +462,7 @@ public struct EvmPooledMemory
     [ThreadStatic] private static byte[]?[]? _cachedArrays;
     [ThreadStatic] private static int _cachedArrayCount;
 
-    // Cached dirty; RentSlow zero-extends [_lastZeroedSize, Size) on growth.
+    // Cached dirty; RentSlow zero-extends past Size in chunks on growth.
     private static byte[] Rent(int minLength)
     {
         byte[]?[]? cache = _cachedArrays;
@@ -543,8 +547,11 @@ public struct EvmPooledMemory
         ulong size = Size;
         if (size > _lastZeroedSize)
         {
-            Array.Clear(memory, (int)_lastZeroedSize, (int)(size - _lastZeroedSize));
-            _lastZeroedSize = size;
+            // Over-zero to a chunk boundary so sequential MSTORE growth does not take RentSlow per word.
+            const ulong zeroChunk = 4 * 1024;
+            ulong target = Math.Min((ulong)memory.Length, (size + (zeroChunk - 1)) & ~(zeroChunk - 1));
+            Array.Clear(memory, (int)_lastZeroedSize, (int)(target - _lastZeroedSize));
+            _lastZeroedSize = target;
         }
     }
 

@@ -156,6 +156,32 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
+    public void GetTrace_slice_past_size_does_not_leak_dirty_bytes()
+    {
+        const int dirtySize = 1024;
+        EvmPooledMemory dirty = new();
+        Span<byte> pattern = new byte[dirtySize];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(UInt256.Zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory memory = new();
+        try
+        {
+            memory.CalculateMemoryCost(0, 32, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+
+            TraceMemory trace = memory.GetTrace();
+            Assert.That(trace.Size, Is.EqualTo(32UL));
+            Assert.That(trace.Slice(0, 512).ToArray(), Is.EqualTo(new byte[512]));
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Test]
     public void CalculateMemoryCost_LengthExceedsLongMax_ShouldReturnOutOfGas()
     {
         EvmPooledMemory memory = new();
