@@ -73,6 +73,11 @@ esac
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   [[ "$JB_MODE" == "benchmark" ]] || die "eth_call corpus is supported only in benchmark mode"
   [[ -f "$JB_ETH_CALL_CORPUS_FILE" ]] || die "eth_call corpus file not found: $JB_ETH_CALL_CORPUS_FILE"
+  # The sweep validates corpora before starting a node; this path is entered directly, so apply the
+  # same gate here. Without it a corpus the sweep rejects in seconds is converted into a multi-GB
+  # fixture and handed to k6. corpus_parity is the single authority on what a legal corpus is.
+  python3 "$HERE/corpus_parity.py" validate --corpus "$JB_ETH_CALL_CORPUS_FILE" \
+    || die "eth_call corpus failed validation (see error above — it reports counts and line numbers, not contents)"
   # Both would write raw request/response content into OUT_DIR — keep the artifact aggregate-only.
   JB_DEEP_CHECK="false"
   JB_HTML_REPORT="false"

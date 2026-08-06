@@ -57,9 +57,18 @@ class CorpusParityError(Exception):
     """Raised with a content-free message when a replay cannot produce a trustworthy result."""
 
 
+def _reject_non_json_constant(value: str) -> None:
+    raise ValueError(f"invalid JSON constant {value!r}")
+
+
 def load_corpus(path: str | Path) -> list[list]:
     """Return the params of each corpus record, in file order."""
     path = Path(path)
+    # The latency cells convert the same file with prepare-eth-call-corpus.py, which requires one
+    # of these suffixes. Enforcing it here too keeps both readers agreeing on what a legal corpus
+    # is, so a bad corpus_glob fails at validation rather than inside the first cell.
+    if not (path.name.endswith(".jsonl") or path.name.endswith(".jsonl.gz")):
+        raise CorpusParityError("corpus must have a .jsonl or .jsonl.gz extension")
     opener = gzip.open if path.name.endswith(".gz") else open
     params: list[list] = []
     try:
@@ -70,8 +79,12 @@ def load_corpus(path: str | Path) -> list[list]:
                 if len(params) >= MAX_CORPUS_RECORDS:
                     raise CorpusParityError(f"corpus exceeds {MAX_CORPUS_RECORDS} records")
                 try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
+                    # Match the converter: NaN/Infinity are not JSON, and accepting them here
+                    # would validate a corpus that then fails conversion in the first cell.
+                    record = json.loads(line, parse_constant=_reject_non_json_constant)
+                # JSONDecodeError is a ValueError; so is the rejection above. Catch both so a
+                # malformed corpus reports a line number instead of a traceback.
+                except (ValueError, RecursionError):
                     raise CorpusParityError(f"corpus line {number}: invalid JSON") from None
                 if not isinstance(record, dict) or record.get("method") != "eth_call" \
                         or not isinstance(record.get("params"), list):
