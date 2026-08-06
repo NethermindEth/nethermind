@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -159,7 +160,6 @@ public abstract class TransactionForRpc
                 TxType = T.TxType,
                 Type = txType,
                 FromTransactionFunc = T.FromTransaction,
-                DiscriminatorProperties = uniqueProperties,
                 DiscriminatorPropertiesUtf8 = Array.ConvertAll(uniqueProperties, static p => Encoding.UTF8.GetBytes(p.ToLowerInvariant()))
             };
 
@@ -171,6 +171,9 @@ public abstract class TransactionForRpc
             }
             else
             {
+                // Discriminator bitset in DeriveTxType is ulong — keep registration count within it.
+                Debug.Assert(_txTypes.Count < 64);
+
                 // Adding in reverse order so newer tx types are in priority
                 int indexOfPreviousTxType = _txTypes.FindIndex(t => t.TxType < typeInfo.TxType);
                 if (indexOfPreviousTxType != -1)
@@ -217,6 +220,8 @@ public abstract class TransactionForRpc
                     {
                         reader.Read();
                         setType = JsonSerializer.Deserialize<TxType?>(ref reader, options);
+                        // Explicit type fully determines the concrete class — stop scanning large payloads.
+                        if (setType is not null) break;
                         continue;
                     }
 
@@ -226,7 +231,7 @@ public abstract class TransactionForRpc
                     }
                     else
                     {
-                        int count = Math.Min(_txTypes.Count, 64);
+                        int count = _txTypes.Count;
                         for (int i = 0; i < count; i++)
                         {
                             foreach (byte[] discriminator in _txTypes[i].DiscriminatorPropertiesUtf8)
@@ -241,7 +246,7 @@ public abstract class TransactionForRpc
                     }
 
                     reader.Read();
-                    reader.Skip();
+                    if (!reader.TrySkip()) break;
                 }
             }
 
@@ -279,18 +284,30 @@ public abstract class TransactionForRpc
             return typeof(EIP1559TransactionForRpc);
         }
 
+        // lowerCaseName must be pure ASCII letters — |0x20 fold is only sound for that alphabet.
         private static bool NameEqualsIgnoreCase(ref Utf8JsonReader reader, ReadOnlySpan<byte> lowerCaseName)
         {
-            if (reader.HasValueSequence || reader.ValueIsEscaped)
+            if (!reader.HasValueSequence && !reader.ValueIsEscaped)
             {
-                return string.Equals(reader.GetString(), Encoding.UTF8.GetString(lowerCaseName), StringComparison.OrdinalIgnoreCase);
+                ReadOnlySpan<byte> name = reader.ValueSpan;
+                if (name.Length != lowerCaseName.Length) return false;
+                for (int i = 0; i < name.Length; i++)
+                {
+                    if ((name[i] | 0x20) != lowerCaseName[i]) return false;
+                }
+
+                return true;
             }
 
-            ReadOnlySpan<byte> name = reader.ValueSpan;
-            if (name.Length != lowerCaseName.Length) return false;
-            for (int i = 0; i < name.Length; i++)
+            // Escaped / multi-segment: ordinal match first (no alloc), then one unescaped compare.
+            if (reader.ValueTextEquals(lowerCaseName)) return true;
+
+            string? unescaped = reader.GetString();
+            if (unescaped is null || unescaped.Length != lowerCaseName.Length) return false;
+            for (int i = 0; i < unescaped.Length; i++)
             {
-                if ((name[i] | 0x20) != lowerCaseName[i]) return false;
+                char c = unescaped[i];
+                if (c > 0x7f || ((byte)c | 0x20) != lowerCaseName[i]) return false;
             }
 
             return true;
@@ -306,7 +323,6 @@ public abstract class TransactionForRpc
             public TxType TxType { get; set; }
             public Type Type { get; set; }
             public FromTransactionFunc FromTransactionFunc { get; set; }
-            public string[] DiscriminatorProperties { get; set; } = [];
             public byte[][] DiscriminatorPropertiesUtf8 { get; set; } = [];
         }
     }

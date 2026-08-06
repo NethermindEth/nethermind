@@ -209,17 +209,30 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public void GetOrBuildStream_without_code_hash_is_unavailable()
+        public void GetOrBuildStream_without_code_hash_never_schedules_build()
         {
-            byte[] code = Enumerable.Repeat((byte)Instruction.JUMPDEST, StreamInterpreter.BuildThreshold + 8).ToArray();
-            CodeInfo codeInfo = new(code);
-
-            for (int i = 0; i < StreamInterpreter.BuildThreshold + 2; i++)
+            int thresholdBefore = StreamInterpreter.BuildThreshold;
+            StreamInterpreter.BuildThreshold = 1;
+            try
             {
-                Assert.That(codeInfo.GetOrBuildStream(), Is.Null);
-            }
+                byte[] code = Enumerable.Repeat((byte)Instruction.JUMPDEST, 32).ToArray();
+                CodeInfo unhashed = new(code);
+                for (int i = 0; i < 8; i++)
+                    Assert.That(unhashed.GetOrBuildStream(), Is.Null);
 
-            Assert.That(codeInfo.GetOrBuildStream(), Is.Null);
+                Assert.That(
+                    !System.Threading.SpinWait.SpinUntil(() => unhashed.GetOrBuildStream() is not null, TimeSpan.FromMilliseconds(250)),
+                    "default CodeHash must not publish a stream");
+
+                CodeInfo hashed = new(code) { CodeHash = Nethermind.Core.Crypto.ValueKeccak.Compute(code) };
+                Assert.That(
+                    System.Threading.SpinWait.SpinUntil(() => hashed.GetOrBuildStream() is not null, TimeSpan.FromSeconds(5)),
+                    "hashed CodeInfo should build a stream");
+            }
+            finally
+            {
+                StreamInterpreter.BuildThreshold = thresholdBefore;
+            }
         }
 
         [TestCaseSource(nameof(Codes))]

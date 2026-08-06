@@ -158,7 +158,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void GetTrace_slice_past_size_does_not_leak_dirty_bytes()
     {
-        const int dirtySize = 1024;
+        // Must exceed the 4 KiB RentSlow zero chunk, otherwise the whole buffer is zeroed anyway.
+        const int dirtySize = 32 * 1024;
         EvmPooledMemory dirty = new();
         Span<byte> pattern = new byte[dirtySize];
         pattern.Fill(0xff);
@@ -168,12 +169,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         try
         {
-            memory.CalculateMemoryCost(0, 32, out bool outOfGas);
-            Assert.That(outOfGas, Is.False);
+            // TrySaveWord rents (unlike CalculateMemoryCost), so the dirty buffer is reused with Size = 32.
+            Assert.That(memory.TrySaveWord(UInt256.Zero, new byte[EvmPooledMemory.WordSize]), Is.True);
 
             TraceMemory trace = memory.GetTrace();
-            Assert.That(trace.Size, Is.EqualTo(32UL));
-            Assert.That(trace.Slice(0, 512).ToArray(), Is.EqualTo(new byte[512]));
+            Assert.That(trace.Size, Is.EqualTo((ulong)EvmPooledMemory.WordSize));
+            Assert.That(trace.Slice(0, 8 * 1024).ToArray(), Is.EqualTo(new byte[8 * 1024]), "trace leaked dirty tail bytes past Size");
         }
         finally
         {
