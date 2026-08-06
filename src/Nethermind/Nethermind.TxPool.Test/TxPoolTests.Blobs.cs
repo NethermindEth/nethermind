@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
@@ -1476,9 +1477,61 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8141: a blob-carrying frame tx lives in the blob pool, so the on-head expiry pass must scan it there
+        // (the blob pool's Inserted/Removed feed the same expiry counter as the normal pool).
+        [Test]
+        public async Task Expired_blob_carrying_frame_tx_is_evicted_from_blob_pool_on_new_head()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
+                "an expired blob-carrying frame tx must be evicted from the blob pool on a new head");
+        }
+
+        // EIP-8141: with blobs disabled the blob-pool routing has zero capacity, so a blob-carrying frame tx must be
+        // rejected as an unsupported type at ingress rather than silently dropped as too-low-fee.
+        [Test]
+        public void Blob_carrying_frame_tx_is_rejected_when_blobs_disabled()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.Disabled };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(BuildBlobFrameTx(nonce: 0, blobCount: 1), TxHandlingOptions.None);
+
+            Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
+        }
+
+        // EIP-8141: a blob-carrying frame tx counts against the per-sender blob limit (MaxPendingBlobTxsPerSender),
+        // not the unlimited normal-pool default, so a nonce beyond that window is rejected as too far in the future.
+        [Test]
+        public void Blob_carrying_frame_tx_respects_per_sender_blob_limit()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, MaxPendingBlobTxsPerSender = 2 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            using (Assert.EnterMultipleScope())
+            {
+                // Consecutive nonces within the window [current, current + 2] are admitted; the first beyond it is not.
+                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 0, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 1, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 2, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 3, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceTooFarInFuture));
+            }
+        }
+
         private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount)
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null)
         {
             byte[][] versionedHashes = null;
             if (blobCount > 0)
@@ -1493,6 +1546,17 @@ namespace Nethermind.TxPool.Test
                 }
             }
 
+            List<TxFrame> frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            ];
+            if (deadline is not null)
+            {
+                byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+                BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
+                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
+            }
+
             Transaction tx = new()
             {
                 Type = TxType.FrameTx,
@@ -1503,10 +1567,7 @@ namespace Nethermind.TxPool.Test
                 GasPrice = 1,
                 DecodedMaxFeePerGas = 1.GWei,
                 MaxFeePerBlobGas = blobCount > 0 ? 1.GWei : UInt256.Zero,
-                Frames =
-                [
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
-                ],
+                Frames = [.. frames],
                 FrameSignatures = [],
                 BlobVersionedHashes = versionedHashes,
             };

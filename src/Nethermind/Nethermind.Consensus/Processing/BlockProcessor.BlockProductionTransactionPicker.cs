@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Processing
                 // depth: a frame tx arriving here still carries no resolvable EIP-7594 sidecar, so producing
                 // it would count towards header.BlobGasUsed yet leave the block's blobs bundle incomplete.
                 // Exclude it until the sidecar wire format lands and its blob data can be published.
-                if (currentTx.Type == TxType.FrameTx && currentTx.BlobVersionedHashes is { Length: > 0 })
+                if (currentTx.Type == TxType.FrameTx && currentTx.CarriesBlobs)
                 {
                     return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");
                 }
@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.Processing
                         return false;
                     }
 
-                    if (transaction.BlobVersionedHashes is { Length: > 0 } && (
+                    if (transaction.CarriesBlobs && (
                         !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
                         senderBalance < (maxFee += blobBaseFee)))
                     {
