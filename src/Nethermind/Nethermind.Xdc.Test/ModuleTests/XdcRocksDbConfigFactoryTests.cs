@@ -21,7 +21,7 @@ namespace Nethermind.Xdc.Test.ModuleTests
 
             Assert.That(config, Is.InstanceOf<PerTableDbConfig>());
             // The Xdc databases have no dedicated options in IDbConfig, so the config must
-            // fall back to the unprefixed options. A wrong database name appends prefixed options.
+            // fall back to the unprefixed options.
             Assert.That(config.RocksDbOptions, Is.EqualTo(dbConfig.RocksDbOptions));
             baseFactory.DidNotReceive().GetForDatabase(Arg.Any<string>(), Arg.Any<string?>());
         }

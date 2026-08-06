@@ -6,8 +6,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Abi.Test
 {
-    // A misforwarded argument makes the substitute return null. The identity asserts
-    // then pin both the unpacking and the return propagation.
+    // A misforwarded argument leaves the stub unmatched, so the call returns a different
+    // instance. The identity asserts then pin both the unpacking and the return propagation.
     public class AbiEncoderExtensionsTests
     {
         [Test]
