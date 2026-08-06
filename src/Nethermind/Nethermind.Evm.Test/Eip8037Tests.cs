@@ -163,8 +163,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         IntrinsicGas<EthereumGasPolicy> splitIntrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
-        // Access-list entries repriced to the cold costs; the value-bearing recipient touch
-        // adds COLD_ACCOUNT_ACCESS + TX_VALUE (transfer log folded into TX_VALUE).
+        // Access-list entries subtract the warm charge from the cold costs; the value-bearing
+        // recipient touch adds COLD_ACCOUNT_ACCESS + TX_VALUE (transfer log folded into TX_VALUE).
         ulong recipientExecution = Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
         ulong accessListBaseCost = Eip8038Constants.AccessListAddressCost + 3 * Eip8038Constants.AccessListStorageKeyCost;
         ulong accessListFloorTokens = (20ul + 3ul * 32ul) * Amsterdam.Instance.GasCosts.TxDataNonZeroMultiplier;
