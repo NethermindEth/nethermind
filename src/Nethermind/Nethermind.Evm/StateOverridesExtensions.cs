@@ -109,16 +109,12 @@ public static class StateOverridesExtensions
 
         if (accountOverride.Code is not null)
         {
-            ReadOnlyMemory<byte> code = accountOverride.Code;
-            ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
-            stateProvider.InsertCode(address, in codeHash, code, currentSpec);
+            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
 
-            // Stamping the real hash lets repeated calls with the same override reuse the cached
-            // instruction stream instead of re-running the un-analyzed bytecode every time.
             overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(code) { CodeHash = codeHash });
+                new CodeInfo(accountOverride.Code));
         }
     }
 
