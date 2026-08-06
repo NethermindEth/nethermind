@@ -472,6 +472,8 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
+
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         if (_currentAction!.Result is null)

@@ -120,4 +120,6 @@ public sealed class SimulateTxTracer : TxTracer
         base.ReportActionError(evmExceptionType);
         _exceptionType = evmExceptionType;
     }
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
 }

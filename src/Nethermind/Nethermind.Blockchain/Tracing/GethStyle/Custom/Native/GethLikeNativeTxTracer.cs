@@ -35,8 +35,9 @@ public abstract class GethLikeNativeTxTracer(GethTraceOptions options) : GethLik
         Depth--;
     }
 
-    // Deliberately does not call base: TxTracer.ReportActionRevert redirects to
-    // ReportActionError(Revert). A derived tracer that overrides both
-    // would then process the same frame exit twice, popping and mislabeling the parent frame.
-    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => Depth--;
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionRevert(gas, output);
+        Depth--;
+    }
 }

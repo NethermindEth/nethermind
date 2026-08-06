@@ -127,6 +127,8 @@ public class EstimateGasTracer : TxTracer
         UpdateAdditionalGas();
     }
 
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
+
     public void ReportActionError(EvmExceptionType exceptionType, ulong gasLeft)
     {
         ReportOperationError(exceptionType);
