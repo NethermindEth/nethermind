@@ -9,7 +9,7 @@ SRC_DIR := /nethermind/src
 # Overridable so a local bflat/ziskemu build can be dropped in without editing
 # the recipe. The bflat image must be one that carries the built-in zisk
 # substitutions (see substitutions.zisk.xml) and understands the ISA gates below.
-BFLAT_IMAGE ?= maximmenshikov/bflat-riscv64-zk-11-x16
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:latest@sha256:6bd2c9fca626cb0d5b58621c94e4011e0ded365667d30e299002ab16965508f1
 ZISK_IMAGE ?= nethermindeth/zisk:1.0.0-alpha@sha256:bad3982b10861adb452c90906ce8e93907ae6095205c89c1377a960c767b4e7a
 # Fail the build here rather than in the emulator. ziskemu converts the WHOLE
 # .text to ROM before executing anything, so a single F/D, compressed or atomic
