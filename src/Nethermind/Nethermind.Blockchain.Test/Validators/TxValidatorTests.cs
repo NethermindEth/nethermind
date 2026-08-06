@@ -851,31 +851,33 @@ public class TxValidatorTests
     // EIP-7594 (ethereum/EIPs#11985): a blob-carrying frame tx (EIP-8141) is bound by the same per-tx
     // blob-count limit (BLOB_COUNT_LIMIT = 6) and versioned-hash version byte (0x01) as a type-3 blob tx,
     // matching EELS validate_frame_transaction.
-    [Test]
-    public void IsWellFormed_FrameTxWithSingleValidBlob_ReturnTrue()
+    private static IEnumerable<int> FrameTxWithinBlobCountLimitCases()
     {
-        Transaction tx = BuildBlobFrameTx(blobCount: 1);
+        yield return 1;
+        yield return (int)Bogota.Instance.MaxBlobsPerTx; // BLOB_COUNT_LIMIT
+    }
+
+    [TestCaseSource(nameof(FrameTxWithinBlobCountLimitCases))]
+    public void IsWellFormed_FrameTxWithinBlobCountLimit_ReturnTrue(int blobCount)
+    {
+        Transaction tx = BuildBlobFrameTx(blobCount);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
     }
 
     [Test]
-    public void IsWellFormed_FrameTxAtBlobCountLimit_ReturnTrue()
+    public void IsWellFormed_FrameTxExceedsBlobCountLimit_ReturnBlobGasLimitExceeded()
     {
-        Transaction tx = BuildBlobFrameTx(blobCount: (int)Bogota.Instance.MaxBlobsPerTx);
+        int blobCount = (int)Bogota.Instance.MaxBlobsPerTx + 1;
+        Transaction tx = BuildBlobFrameTx(blobCount);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
-    }
+        ValidationResult result = txValidator.IsWellFormed(tx, Bogota.Instance);
 
-    [Test]
-    public void IsWellFormed_FrameTxExceedsBlobCountLimit_ReturnFalse()
-    {
-        Transaction tx = BuildBlobFrameTx(blobCount: (int)Bogota.Instance.MaxBlobsPerTx + 1);
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-
-        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+        Assert.That(result.AsBool(), Is.False);
+        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxGasLimitExceeded(
+            (ulong)blobCount * Eip4844Constants.GasPerBlob, Bogota.Instance.GasCosts.MaxBlobGasPerTx)));
     }
 
     [Test]

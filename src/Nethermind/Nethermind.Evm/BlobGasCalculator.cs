@@ -46,12 +46,9 @@ public static class BlobGasCalculator
         ulong blobCount = 0UL;
         foreach (Transaction tx in transactions)
         {
-            // EIP-8141: include blob-carrying frame transactions (type 6), not just type-3, in the
-            // block's blob gas — gate on blob hashes instead of the type-level SupportsBlobs.
-            if (tx.BlobVersionedHashes is { Length: > 0 })
-            {
-                blobCount += (ulong)tx.GetBlobCount();
-            }
+            // EIP-8141: blob-carrying frame transactions (type 6) count towards the block's blob gas too,
+            // so the count comes from the blob hashes rather than the type-level SupportsBlobs.
+            blobCount += (ulong)tx.GetBlobCount();
         }
 
         return CalculateBlobGas(blobCount);
