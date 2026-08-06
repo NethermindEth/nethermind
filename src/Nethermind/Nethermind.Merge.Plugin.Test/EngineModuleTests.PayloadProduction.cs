@@ -336,16 +336,21 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Retry(3)]
     [Obsolete]
     public async Task consecutive_blockImprovements_should_be_disposed()
     {
         MergeConfig mergeConfig = new() { SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 50 * delay;
+        // The slot cutoff (timePerSlot * 1.3) must sit beyond the 30s test timeout.
+        TimeSpan timePerSlot = TimeSpan.FromSeconds(60);
         long txPoolPendingTransactionsAdded = 0;
+        long moreTransactionsExpected = 1;
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.PendingTransactionsAdded.Returns((_) => txPoolPendingTransactionsAdded);
+        // Every read returns a fresh value until frozen, so each improvement-loop poll starts
+        // a new improvement without a timed background writer.
+        txPool.PendingTransactionsAdded.Returns((_) => Interlocked.Read(ref moreTransactionsExpected) == 1
+            ? Interlocked.Increment(ref txPoolPendingTransactionsAdded)
+            : Interlocked.Read(ref txPoolPendingTransactionsAdded));
 
         using MergeTestBlockchain chain = await CreateBlockchain(null, mergeConfig, configurer: (builder) => builder
             .AddSingleton<IBlockImprovementContextFactory>(static chain => new StoringBlockImprovementContextFactory(new MockBlockImprovementContextFactory()))
@@ -361,32 +366,30 @@ public partial class EngineModuleTests
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
-        CancellationTokenSource cts = new();
-        Task addingTx = Task.Run(async () =>
-        {
-            while (!cts.IsCancellationRequested)
-            {
-                Interlocked.Increment(ref txPoolPendingTransactionsAdded);
-                await Task.Delay(10);
-            }
-        });
-
-        Task waitForImprovement = chain.WaitForImprovedBlock();
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
-        await waitForImprovement;
 
-        SpinWait.SpinUntil(() => improvementContextFactory.CreatedContexts.Count >= 3, TimeSpan.FromSeconds(10));
-        Assert.That(improvementContextFactory.CreatedContexts.Count, Is.GreaterThanOrEqualTo(3));
+        Assert.That(() => improvementContextFactory.SnapshotCreatedContexts(), Has.Length.GreaterThanOrEqualTo(3).After(10000, 10));
 
-        cts.Cancel();
-        await addingTx;
+        // The list is append-only, so the first two contexts are superseded and must be disposed.
+        IBlockImprovementContext[] contexts = improvementContextFactory.SnapshotCreatedContexts();
+        Assert.That(() => contexts[0].Disposed && contexts[1].Disposed, Is.True.After(5000, 10));
 
-        Assert.That(improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).All(static i => i.Disposed), Is.True);
+        // Freeze the counter so the improvement chain parks in its delay loop. Wait for the
+        // context count to settle, or the retrieval below races a context it cannot dispose.
+        Interlocked.Exchange(ref moreTransactionsExpected, 0);
+        int lastCount = -1;
+        Assert.That(() =>
+        {
+            int count = improvementContextFactory.SnapshotCreatedContexts().Length;
+            bool stable = count == lastCount;
+            lastCount = count;
+            return stable;
+        }, Is.True.After(10000, 500));
 
         await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        Assert.That(improvementContextFactory.CreatedContexts.All(static i => i.Disposed), Is.True);
+        Assert.That(() => improvementContextFactory.SnapshotCreatedContexts().All(static i => i.Disposed), Is.True.After(5000, 10));
     }
 
     [Parallelizable(ParallelScope.None)] // Timing sensitive
@@ -394,8 +397,9 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        // Must stay above the PayloadPreparationService slot-cutoff (timePerSlot * 1.3) for all 3 wait rounds.
-        TimeSpan timePerSlot = 500 * delay;
+        // The slot cutoff (timePerSlot * 1.3) must sit beyond the 30s test timeout, so a slow
+        // build surfaces as a clean cancellation instead of silent improvement starvation.
+        TimeSpan timePerSlot = TimeSpan.FromSeconds(60);
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             ctx => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
             timePerSlot, delay: delay);
@@ -445,7 +449,9 @@ public partial class EngineModuleTests
 
         MergeTestBlockchain blockchain = CreateBaseBlockchain();
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 1000 * delay;
+        // The slot cutoff (timePerSlot * 1.3) must sit beyond the 30s test timeout: the large
+        // contract deploy in round 1 otherwise trips it and round 2 never starts.
+        TimeSpan timePerSlot = TimeSpan.FromSeconds(60);
         using MergeTestBlockchain chain = await blockchain.BuildMergeTestBlockchain(builder =>
         {
             builder
@@ -454,11 +460,8 @@ public partial class EngineModuleTests
                 {
                     state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
                 })
-                .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay))
-                ;
-
+                .AddSingleton(ConfigurePayloadPreparationService(timePerSlot, delay));
         });
-        ;
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -491,7 +494,9 @@ public partial class EngineModuleTests
     public async Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 50 * delay;
+        // The slot cutoff (timePerSlot * 1.3) must sit beyond the 30s test timeout, or a slow
+        // first build stops improvements before context 2 exists and the wait below hangs.
+        TimeSpan timePerSlot = TimeSpan.FromSeconds(60);
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             ctx => new StoringBlockImprovementContextFactory(new FirstOnlyBlockImprovementContextFactory(
                 ctx.Resolve<IBlockProducer>(), TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
@@ -596,13 +601,13 @@ public partial class EngineModuleTests
         Assert.That(finalResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Cannot_produce_bad_blocks()
     {
         // this test sends two payloadAttributes on block X and X + 1 to start many block improvements
         // as the result we want to check if we are not able to produce invalid block by repeating this many times.
-        // The 100-iteration loop is internal (was [Repeat(100)]) so it can be combined with [Retry(3)] — NUnit
-        // refuses to combine [Repeat] and [Retry] attributes.
+        // No [Retry]: a Valid-status failure here is the consensus defect this test hunts, and a
+        // retry would hide it.
 
         const int iterations = 100;
         bool logInvalidBlockExecution = false; // change to true if you want to log invalid blocks
@@ -641,7 +646,7 @@ public partial class EngineModuleTests
 
             await improvementTask;
             Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(getPayloadResult);
-            if (result1.Result.Data.Status != PayloadStatus.Valid)
+            if (logInvalidBlockExecution && result1.Result.Data.Status != PayloadStatus.Valid)
             {
                 string[] files = Directory.GetFiles(logFolder);
                 foreach (string file in files)
@@ -674,7 +679,7 @@ public partial class EngineModuleTests
             Assert.That(getSecondBlockPayload, Is.Not.Null, $"iteration {iteration}");
 
             Task<ResultWrapper<PayloadStatusV1>> secondBlock = rpc.engine_newPayloadV1(getSecondBlockPayload!);
-            if (secondBlock.Result.Data.Status != PayloadStatus.Valid)
+            if (logInvalidBlockExecution && secondBlock.Result.Data.Status != PayloadStatus.Valid)
             {
                 string[] files = Directory.GetFiles(logFolder);
                 foreach (string file in files)
@@ -763,6 +768,10 @@ public partial class EngineModuleTests
             timer,
             logManager,
             timePerSlot,
+            // Keep the MergeTestBlockchain default: the cleanup timer must not evict the
+            // payload under test. With short test slots the default of 6 evicts payloads
+            // within milliseconds and getPayload returns null.
+            slotsPerOldPayloadCleanup: 50_000,
             improvementDelay: delay);
 
     [TestCaseSource(nameof(OsakaTransitionInvalidatedTransactionsTestCaseSource))]

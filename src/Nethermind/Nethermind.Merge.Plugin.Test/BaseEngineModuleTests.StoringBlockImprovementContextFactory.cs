@@ -44,6 +44,17 @@ public partial class BaseEngineModuleTests
             return blockImprovementContext;
         }
 
+        /// <summary>
+        /// Copies the created contexts under the same lock the improvement loop appends with.
+        /// </summary>
+        public IBlockImprovementContext[] SnapshotCreatedContexts()
+        {
+            lock (CreatedContexts)
+            {
+                return CreatedContexts.ToArray();
+            }
+        }
+
         public async Task<IBlockImprovementContext> WaitForNextImprovementContext(CancellationToken cancellationToken)
         {
             IBlockImprovementContext? theContext = null;
