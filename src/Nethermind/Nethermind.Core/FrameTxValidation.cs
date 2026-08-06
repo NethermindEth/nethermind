@@ -233,51 +233,29 @@ public static class FrameTxValidation
     };
 
     /// <summary>
-    /// The public-mempool validation work of <paramref name="transaction"/>: the gas limits of its
-    /// validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
+    /// An upper bound on the public-mempool validation work of <paramref name="transaction"/>: the gas limits
+    /// of its validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
     /// </summary>
     /// <remarks>
-    /// EIP-8141 "Public Mempool-recognized Validation Prefixes" admits four layouts, each optionally
-    /// preceded by an expiry verifier frame: <c>[self_verify]</c>, <c>[deploy, self_verify]</c>,
-    /// <c>[only_verify, pay]</c> and <c>[deploy, only_verify, pay]</c>. Matching the layout instead of
-    /// walking the list for a frame that might set <c>payer</c> is what makes the figure sound without
-    /// reading state: every recognized prefix ends in a <c>VERIFY</c> frame whose approval is
-    /// protocol-defined, so nothing has to be assumed about a target's deployed code. Any other layout
-    /// is ineligible for the public mempool whatever its gas, since the work before <c>payer</c> is set
-    /// is then bounded only by the frame list itself. Signature validation counts against the same
-    /// budget per EIP-8141 "Validation Prefix".
+    /// The figure is an upper bound on the work a node does before any gas is paid, and it is derived
+    /// from the frame layout alone so that no state has to be read. EIP-8141 "Public Mempool-recognized
+    /// Validation Prefixes" admits four layouts, each optionally preceded by an expiry verifier frame:
+    /// <c>[self_verify]</c>, <c>[deploy, self_verify]</c>, <c>[only_verify, pay]</c> and
+    /// <c>[deploy, only_verify, pay]</c>. Each ends in a <c>VERIFY</c> frame targeting the sender, whose
+    /// approval is protocol-defined, so the prefix provably ends there and the frames behind it are
+    /// already paid for. Under any other layout nothing can be assumed about where <c>payer</c> is set:
+    /// approval then depends on code at an attacker-chosen target, so the whole frame list is charged.
+    /// That keeps a cheap unusual layout admissible while denying the layout its low estimate. Signature
+    /// validation counts against the same budget per EIP-8141 "Validation Prefix".
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
-    /// <param name="workGas">The prefix gas limits plus signature verification cost, 0 when unrecognized.</param>
-    /// <returns><c>false</c> if the frame layout matches none of the recognized validation prefixes.</returns>
-    public static bool TryGetValidationWorkGas(Transaction transaction, out ulong workGas)
+    public static ulong ValidationWorkGas(Transaction transaction)
     {
-        workGas = 0;
-
         TxFrame[] frames = transaction.Frames ?? [];
-        Address? sender = transaction.SenderAddress;
-        int next = 0;
-        if (next < frames.Length && IsExpiryVerify(frames[next])) next++;
-        if (next < frames.Length && IsDeploy(frames[next])) next++;
-
-        int prefixEnd;
-        if (next < frames.Length && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecutionAndPayment, sender))
-        {
-            prefixEnd = next;
-        }
-        else if (next + 1 < frames.Length
-                 && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecution, sender)
-                 && IsPay(frames[next + 1]))
-        {
-            prefixEnd = next + 1;
-        }
-        else
-        {
-            return false;
-        }
+        int counted = RecognizedPrefixLength(frames, transaction.SenderAddress) ?? frames.Length;
 
         ulong total = 0;
-        for (int i = 0; i <= prefixEnd; i++)
+        for (int i = 0; i < counted; i++)
         {
             total = Saturating(total, frames[i].GasLimit);
         }
@@ -287,8 +265,32 @@ public static class FrameTxValidation
             total = Saturating(total, SignatureVerificationGas(signature.Scheme));
         }
 
-        workGas = total;
-        return true;
+        return total;
+    }
+
+    /// <summary>
+    /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
+    /// mempool, or <c>null</c> when the layout matches none of them.
+    /// </summary>
+    private static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
+    {
+        int next = 0;
+        if (next < frames.Length && IsExpiryVerify(frames[next])) next++;
+        if (next < frames.Length && IsDeploy(frames[next])) next++;
+
+        if (next < frames.Length && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecutionAndPayment, sender))
+        {
+            return next + 1;
+        }
+
+        if (next + 1 < frames.Length
+            && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecution, sender)
+            && IsPay(frames[next + 1]))
+        {
+            return next + 2;
+        }
+
+        return null;
     }
 
     private static ulong Saturating(ulong total, ulong addend) =>

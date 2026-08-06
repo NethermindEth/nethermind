@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -28,25 +29,32 @@ internal class FrameTxVerifyGasFilterTest
     private static TxFrame Execution(ulong gasLimit) =>
         new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit, UInt256.Zero, default);
 
-    // Approving flags on a DEFAULT frame do not end the validation prefix: whether that frame approves
-    // at all depends on code the sender controls, so a prefix walk that trusted the flags would leave
-    // the frames behind it unbudgeted while the node still runs them before any gas is paid.
-    [TestCase(false, TestName = "a recognized prefix inside the ceiling is accepted")]
-    [TestCase(true, TestName = "an unrecognized prefix is rejected whatever its gas")]
-    public void Accept_RejectsAnUnrecognizedValidationPrefix(bool unrecognized)
-    {
-        Transaction tx = unrecognized
-            ? FrameTx(
-                new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, target: null, 1_000, UInt256.Zero, default),
-                Execution(3_000_000))
-            : FrameTx(SelfVerify(1_000), Execution(3_000_000));
+    private static TxFrame ApprovingDefault(ulong gasLimit) =>
+        new(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
 
+    // Approving flags on a DEFAULT frame do not end the validation prefix: whether that frame approves
+    // at all depends on code the sender controls, so the frames behind it may still run before any gas
+    // is paid and are charged too. That is the ceiling bypass a sender on a delegation had; a layout
+    // whose whole frame list fits under the ceiling costs the node no more than a recognized one and
+    // stays admissible.
+    private static IEnumerable<TestCaseData> PrefixCases()
+    {
+        yield return new TestCaseData(new[] { SelfVerify(1_000), Execution(3_000_000) }, AcceptTxResult.Accepted)
+            .SetName("execution behind a recognized prefix is outside the ceiling");
+        yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(3_000_000) }, AcceptTxResult.FrameTxVerifyGasTooHigh)
+            .SetName("an unrecognized layout is charged its whole frame list");
+        yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(20_000) }, AcceptTxResult.Accepted)
+            .SetName("an unrecognized layout under the ceiling is still accepted");
+    }
+
+    [TestCaseSource(nameof(PrefixCases))]
+    public void Accept_ChargesEveryFrameThatMayRunBeforePayment(TxFrame[] frames, AcceptTxResult expected)
+    {
+        Transaction tx = FrameTx(frames);
         FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
 
-        AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
-
-        Assert.That(result, Is.EqualTo(unrecognized ? AcceptTxResult.FrameTxVerifyGasTooHigh : AcceptTxResult.Accepted));
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
     }
 
     // The pool's account cache stores the empty account on a miss while the reader beneath it may
