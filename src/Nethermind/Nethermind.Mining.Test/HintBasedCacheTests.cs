@@ -61,8 +61,8 @@ public class HintBasedCacheTests
     {
         HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
         hintBasedCache.Hint(_guidA, 200000, 200000);
-        IEthashDataSet firstGet = hintBasedCache.Get(6);
-        Assert.That(hintBasedCache.Get(6), Is.Not.Null.And.SameAs(firstGet));
+        IEthashDataSet firstGet = hintBasedCache.Get(Ethash.GetEpoch(200000UL));
+        Assert.That(hintBasedCache.Get(Ethash.GetEpoch(200000UL)), Is.Not.Null.And.SameAs(firstGet));
     }
 
     [Test]
