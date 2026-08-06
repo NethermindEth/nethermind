@@ -6,12 +6,12 @@ using NUnit.Framework;
 
 namespace Nethermind.Abi.Test
 {
+    // A misforwarded argument makes the substitute return null. The identity asserts
+    // then pin both the unpacking and the return propagation.
     public class AbiEncoderExtensionsTests
     {
-        // A misforwarded argument makes the substitute return null, so the identity
-        // asserts pin both the unpacking and the return propagation.
         [Test]
-        public void Encode_ForwardsUnpackedInfoAndReturnsTheEncoderResult()
+        public void Encode_forwards_unpacked_info_and_returns_the_encoder_result()
         {
             IAbiEncoder abi = Substitute.For<IAbiEncoder>();
             object[] parameters = new object[] { "p1" };
@@ -24,7 +24,7 @@ namespace Nethermind.Abi.Test
         }
 
         [Test]
-        public void Decode_ForwardsUnpackedInfoAndReturnsTheEncoderResult()
+        public void Decode_forwards_unpacked_info_and_returns_the_encoder_result()
         {
             IAbiEncoder abi = Substitute.For<IAbiEncoder>();
             byte[] data = new byte[] { 100, 200 };
