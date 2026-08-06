@@ -80,6 +80,15 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
+        // The lone-only_verify proof is code-independent: a deployed sender cannot approve payment on a
+        // frame whose allowed scope excludes it, so a following-frame-less prefix is still NoPayer.
+        yield return Case("OnlyVerifyWithoutPay_DeployedCodeSender_NoPayer",
+            state =>
+            {
+                DeployedCodeAccount(state, Sender);
+                return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
+            }, FrameTxPayerOutcome.NoPayer, null);
+
         // A leading DEFAULT frame is not a recognized legible prefix.
         yield return Case("DefaultFrameFirst_RequiresSimulation",
             state =>

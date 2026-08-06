@@ -115,20 +115,18 @@ internal static class FrameTxPayerResolver
         // frame sets the payer.
         if (IsOnlyVerify(verifyFrame, sender))
         {
-            if (senderHasCode)
+            // A lone only_verify frame has no payment-approving frame after it, so it provably never sets
+            // a payer regardless of signature or sender code (APPROVE cannot exceed the frame's allowed
+            // scope) — a structural NoPayer.
+            if (index + 1 >= frames.Length)
             {
-                return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
+                return Unresolved(FrameTxPayerOutcome.NoPayer);
             }
 
-            // With no following frame the prefix has no payment-approving frame at all, so it provably
-            // never sets a payer regardless of any signature — a structural NoPayer. A following frame
-            // names a third-party payer (an EOA sponsor or a paymaster) the pool cannot authenticate
-            // natively (its pay-frame signature is unverified at admission, and naming a payer on a
-            // forged signature is a griefing vector), so that case is deferred to the
-            // signature-verification / simulation layer (ethereum/EIPs#12007) rather than resolved here.
-            return Unresolved(index + 1 >= frames.Length
-                ? FrameTxPayerOutcome.NoPayer
-                : FrameTxPayerOutcome.RequiresSimulation);
+            // A following pay frame names a third-party payer the pool cannot authenticate natively (its
+            // pay-frame signature is unverified at admission), and a deployed/delegated sender runs its
+            // own code; both are deferred to the signature-verification / simulation layer.
+            return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
         // Not a recognized legible prefix (e.g. a deploy frame, or an unrecognized VERIFY shape).
@@ -141,8 +139,8 @@ internal static class FrameTxPayerResolver
     /// Cryptographic verification is a separate deferred gate; this checks only the structural conditions.
     /// </summary>
     /// <remarks>
-    /// The sponsored index-1 / third-party-signer generality was removed with the native sponsored
-    /// branch; that path (restored with the signature-verification slice) is deferred to simulation.
+    /// Only the index-0 / sender case is modelled; a payment-only verifier reads index 1 to name a
+    /// third party and is deferred to simulation until frame signatures are verified at admission.
     /// </remarks>
     private static bool DefaultCodeApproves(TxFrameSignature[] signatures, Address sender)
     {
