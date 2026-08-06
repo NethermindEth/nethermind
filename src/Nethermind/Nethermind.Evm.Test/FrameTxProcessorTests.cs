@@ -745,10 +745,12 @@ public class FrameTxProcessorTests
         return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
     }
 
-    // eth_estimateGas runs one probe plus a binary search of CallAndRestore calls against a single
-    // world state, so a frame transaction's CallAndRestore has to leave nothing behind: a surviving
-    // nonce bump makes the next iteration fail the nonce pre-check and the estimate comes back as an
-    // error instead of a gas figure.
+    /// <summary>A frame transaction's <c>CallAndRestore</c> must leave nothing behind.</summary>
+    /// <remarks>
+    /// <c>eth_estimateGas</c> runs one probe plus a binary search of <c>CallAndRestore</c> calls against a single
+    /// world state, so a surviving nonce bump makes the next iteration fail the nonce pre-check and the estimate
+    /// comes back as an error instead of a gas figure.
+    /// </remarks>
     [Test]
     public void CallAndRestore_RepeatedForGasEstimation_LeavesNoStateAndEstimates()
     {
@@ -769,9 +771,9 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error, Is.Null);
-            Assert.That(estimate, Is.GreaterThan(0ul));
+            Assert.That(estimate, Is.GreaterThan((ulong)GasCostOf.Transaction), "the estimate collapsed to the regular-path lower bound");
             Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0ul), "the estimation loop committed a nonce bump");
-            Assert.That(_stateProvider.GetBalance(Sender) == 1.Ether, Is.True, "the estimation loop committed a payer charge");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether), "the estimation loop committed a payer charge");
         }
     }
 
