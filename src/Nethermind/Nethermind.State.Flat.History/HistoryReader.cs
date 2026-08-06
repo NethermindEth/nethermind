@@ -85,6 +85,18 @@ public sealed class HistoryReader
     /// retention floor — distinct from "never captured" so a caller can fail loudly instead of reporting absence.</summary>
     public bool IsPrunedBelowFloor(ulong block) => _availability.IsCovered(block) && _availability.IsBelowGlobalFloor(block);
 
+    /// <summary>Whether <paramref name="state"/> is covered and its root matches — deliberately independent of the
+    /// general floor, so a caller that already knows a block sits below it (a restricted, per-slice bundle) can
+    /// still re-verify canonicity before serving anything from it.</summary>
+    public bool IsCoveredAndRootMatches(in StateId state) => _availability.IsCoveredAndRootMatches(state.BlockNumber, state.StateRoot);
+
+    /// <summary>Whether <paramref name="block"/> sits below the published general (all-keys) retention floor.</summary>
+    public bool IsBelowGlobalFloor(ulong block) => _availability.IsBelowGlobalFloor(block);
+
+    /// <summary>Every configured per-address slice scope, for a restricted bundle to carry as its own in-memory,
+    /// no-further-DB-reads gate.</summary>
+    public IReadOnlyList<ScopeFloor> GetSliceScopes() => _availability.GetScopes();
+
     /// <summary>
     /// Resolves the account as of <paramref name="block"/>. Returns <c>false</c> when the account did not exist at
     /// that block — either it never changed at/before it, or its latest change at/before it was a deletion.

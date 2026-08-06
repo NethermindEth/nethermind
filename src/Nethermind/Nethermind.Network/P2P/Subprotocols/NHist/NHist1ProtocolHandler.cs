@@ -152,7 +152,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         }
     }
 
-    private async ValueTask ThrottleForServedBytesAsync(int responseBytes, CancellationToken cancellationToken)
+    private async ValueTask ThrottleForServedBytesAsync(long responseBytes, CancellationToken cancellationToken)
     {
         long nowWindow = Stopwatch.GetTimestamp() / TicksPerWindow;
         long servedInWindow;
@@ -196,7 +196,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             (entries, nextCursor) = HistoryServer.GetHistoryRangeAtHeight(
                 message.StartKey, message.EndKey, message.Height, cursor, byteLimit, NHistMessageLimits.MaxResponseEntries, cancellationToken);
 
-            int responseBytes = 0;
+            long responseBytes = 0;
             for (int i = 0; i < entries.Count; i++) responseBytes += entries[i].Value.Length;
             await ThrottleForServedBytesAsync(responseBytes, cancellationToken);
 
@@ -228,7 +228,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             using GetChangesetsMessage message = getMessage;
             long byteLimit = NHistMessageLimits.ClampResponseBytes(message.ResponseBytes);
             chunks = new ArrayPoolList<ChangesetChunkEntry>(16);
-            int responseBytes = 0;
+            long responseBytes = 0;
 
             await foreach (ChangesetChunkEntry chunk in HistoryServer.GetChangesets(message.FromBlock, message.ToBlock, byteLimit, NHistMessageLimits.MaxResponseChunks, cancellationToken))
             {

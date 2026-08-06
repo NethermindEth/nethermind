@@ -17,6 +17,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong HistoryChangesetSidecarRetentionBlocks { get; set; } = 0;
     public long HistoryChangesetSidecarMaxBytes { get; set; } = 50.GiB;
     public int HistoryImportShardCount { get; set; } = 16;
+    public string? HistorySliceAddresses { get; set; }
     public ulong HistoryImportBatchBlocks { get; set; } = 1000;
     public int HistoryImportShardBufferBudgetEntries { get; set; } = 65536;
     public bool ImportFromPruningTrieState { get; set; } = false;

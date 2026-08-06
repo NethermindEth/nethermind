@@ -13,7 +13,13 @@ namespace Nethermind.State;
 
 public readonly record struct HistoryServingScope(ValueHash256 KeyRangeStart, ValueHash256 KeyRangeEnd, ulong FloorBlock, ulong WatermarkBlock);
 
-public readonly record struct HistoryRangeEntry(byte[] Key, ulong Block, ReadOnlyMemory<byte> Value);
+/// <summary><paramref name="IsLiveFallback"/> distinguishes a value read from the live persisted flat column
+/// (nothing changed the key after the queried height) from a real captured history row - the two are otherwise
+/// indistinguishable by <paramref name="Block"/> alone (a live-fallback entry reports the queried height itself,
+/// which collides with a genuine change captured at that exact block). An importer must never write a
+/// <c>IsLiveFallback</c> entry back as a history row: it is a value-at-height, not a change record, and has no
+/// well-defined "block this changed at" to file it under.</summary>
+public readonly record struct HistoryRangeEntry(byte[] Key, ulong Block, ReadOnlyMemory<byte> Value, bool IsLiveFallback);
 
 public readonly record struct ChangesetChunkEntry(ulong Block, uint ChunkIndex, bool IsLastChunkForBlock, ReadOnlyMemory<byte> Payload);
 

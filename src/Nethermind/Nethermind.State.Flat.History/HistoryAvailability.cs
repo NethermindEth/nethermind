@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections.ObjectModel;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
@@ -32,10 +34,15 @@ public sealed class HistoryAvailability
     private static ReadOnlySpan<byte> WatermarkKey => "history:watermark"u8;
     private static ReadOnlySpan<byte> FormatVersionKey => "history:format"u8;
 
-    // Floor entries are (key-range, floor-block) records so a future narrower scope (a per-contract slice) is a
-    // new entry under this same prefix, not a format change. Only the all-keys entry is published or read here;
-    // TryGetGlobalFloor/PublishGlobalFloor take an explicit range key so the shape is already in place.
     private static ReadOnlySpan<byte> GlobalFloorKey => "history:floor:global"u8;
+
+    // Point scopes only: one record per configured address, keyed by its own account-key bytes. A future range
+    // scope (multiple addresses sharing one record) is a new record kind under a different prefix, not a retrofit
+    // of this one - see SliceScopeConfig's remarks.
+    private static ReadOnlySpan<byte> ScopeRecordPrefix => "history:floor:scope:"u8;
+    private const int ScopeRecordPrefixLength = 20;
+    private const int ScopeRecordKeyLength = ScopeRecordPrefixLength + BaseFlatPersistence.AccountKeyLength;
+    private const int ScopeRecordValueLength = BlockBytes;
 
     // A peer-fed backfill importer can publish a connected, contiguous imported range that extends the window
     // backward past the floor the pruner's own retention math would compute — see TryGetConnectedRange's remarks
@@ -43,6 +50,7 @@ public sealed class HistoryAvailability
     private static ReadOnlySpan<byte> ConnectedRangeKey => "history:import:connected"u8; // [floor|anchor]
 
     private readonly IDb _availableBlocks;
+    private readonly ISortedKeyValueStore _sortedAvailableBlocks;
     private readonly Lock _floorLock = new();
 
     // Monotonic fast path: never used to refuse (a miss re-reads), so a reader instance cannot lag the writer.
@@ -55,10 +63,21 @@ public sealed class HistoryAvailability
     // DB regardless, so a read can never slip in below a floor that advanced since the cache was last observed.
     private long _observedFloor = -1;
 
+    // Generation-guarded cache: a scan started before a concurrent Publish/Remove could otherwise publish a torn
+    // view. Writers bump the generation under _floorLock; a scan only publishes if the generation it started with
+    // is still current when it finishes, so a racing write always wins and the next reader rescans instead of
+    // trusting a result that may have missed that write.
+    private ScopeFloor[]? _cachedScopes;
+    private int _scopeGeneration;
+
     public HistoryAvailability(IDb availableBlocks)
     {
         ArgumentNullException.ThrowIfNull(availableBlocks);
+        if (availableBlocks is not ISortedKeyValueStore sortedAvailableBlocks)
+            throw new ArgumentException($"AvailableBlocks column must be a {nameof(ISortedKeyValueStore)}.", nameof(availableBlocks));
+
         _availableBlocks = availableBlocks;
+        _sortedAvailableBlocks = sortedAvailableBlocks;
     }
 
     /// <summary>
@@ -140,10 +159,14 @@ public sealed class HistoryAvailability
     }
 
     /// <summary>Whether <paramref name="block"/> is covered and its captured state root equals <paramref name="stateRoot"/>.</summary>
-    public bool Matches(ulong block, in ValueHash256 stateRoot)
+    public bool Matches(ulong block, in ValueHash256 stateRoot) => !IsBelowGlobalFloor(block) && IsCoveredAndRootMatches(block, stateRoot);
+
+    /// <summary>Whether <paramref name="block"/> is covered and its captured state root equals <paramref name="stateRoot"/> —
+    /// deliberately independent of the global floor, so a restricted (per-slice) caller can re-verify canonicity for
+    /// a block it already knows sits below that floor.</summary>
+    public bool IsCoveredAndRootMatches(ulong block, in ValueHash256 stateRoot)
     {
         if (!IsCovered(block)) return false;
-        if (IsBelowGlobalFloor(block)) return false;
 
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
@@ -246,6 +269,168 @@ public sealed class HistoryAvailability
         _availableBlocks.PutSpan(FormatVersionKey, [WindowedFormatVersion]);
     }
 
+    /// <summary>Creates or overwrites the point scope for <paramref name="accountKey"/>. Refuses (never silently
+    /// stamps) when the resolved on-disk format is the unwindowed v2 - a slice is meaningless there (everything is
+    /// already retained) and stamping the windowed format onto live v2 data would brick it for the v2 read path.</summary>
+    /// <exception cref="InvalidConfigurationException">The DB is stamped as the unwindowed (v2) format.</exception>
+    public void PublishScope(ReadOnlySpan<byte> accountKey, ulong floor)
+    {
+        lock (_floorLock)
+        {
+            WriteScopeRecordUnderLock(accountKey, floor);
+        }
+    }
+
+    public bool TryGetScopeFloor(ReadOnlySpan<byte> accountKey, out ulong floor)
+    {
+        Span<byte> key = stackalloc byte[ScopeRecordKeyLength];
+        EncodeScopeRecordKey(accountKey, key);
+        byte[]? value = _availableBlocks.Get(key);
+        if (value is not { Length: ScopeRecordValueLength })
+        {
+            floor = 0;
+            return false;
+        }
+
+        floor = BinaryPrimitives.ReadUInt64BigEndian(value);
+        return true;
+    }
+
+    /// <summary>Raises one scope's own floor if and only if <paramref name="newFloor"/> is strictly above its
+    /// current value - the pruner's per-slice counterpart to <see cref="TryRaiseGlobalFloor"/>, for a slice
+    /// configured with a bounded (not unbounded) retention. Returns <c>false</c> (never creates) when the scope
+    /// does not already exist.</summary>
+    public bool TryRaiseScopeFloor(ReadOnlySpan<byte> accountKey, ulong newFloor)
+    {
+        lock (_floorLock)
+        {
+            if (!TryGetScopeFloor(accountKey, out ulong current)) return false;
+            if (newFloor <= current) return false;
+            WriteScopeRecordUnderLock(accountKey, newFloor);
+            return true;
+        }
+    }
+
+    /// <summary>Deletes a scope record - an address removed from the operator's allow-list reverts to the all-keys
+    /// scope, so its rows below the general floor become prunable again on the pruner's next pass.</summary>
+    public void RemoveScope(ReadOnlySpan<byte> accountKey)
+    {
+        lock (_floorLock)
+        {
+            Span<byte> key = stackalloc byte[ScopeRecordKeyLength];
+            EncodeScopeRecordKey(accountKey, key);
+            _availableBlocks.Remove(key);
+            InvalidateScopeCache();
+        }
+    }
+
+    private void WriteScopeRecordUnderLock(ReadOnlySpan<byte> accountKey, ulong floor)
+    {
+        byte? stamped = StampedFormatVersion;
+        if (stamped == FormatVersion)
+        {
+            throw new InvalidConfigurationException(
+                "Cannot publish a flat history slice scope: this database is stamped as the unwindowed (v2) format, " +
+                "which retains everything already and cannot represent a narrower or wider per-address floor.", -1);
+        }
+
+        Span<byte> key = stackalloc byte[ScopeRecordKeyLength];
+        EncodeScopeRecordKey(accountKey, key);
+
+        Span<byte> value = stackalloc byte[ScopeRecordValueLength];
+        BinaryPrimitives.WriteUInt64BigEndian(value, floor);
+
+        _availableBlocks.PutSpan(key, value);
+        if (stamped != WindowedFormatVersion)
+        {
+            _availableBlocks.PutSpan(FormatVersionKey, [WindowedFormatVersion]);
+        }
+
+        InvalidateScopeCache();
+    }
+
+    private static void EncodeScopeRecordKey(ReadOnlySpan<byte> accountKey, Span<byte> buffer)
+    {
+        ScopeRecordPrefix.CopyTo(buffer);
+        accountKey[..BaseFlatPersistence.AccountKeyLength].CopyTo(buffer[ScopeRecordPrefixLength..]);
+    }
+
+    private void InvalidateScopeCache()
+    {
+        Interlocked.Increment(ref _scopeGeneration);
+        Volatile.Write(ref _cachedScopes, null);
+    }
+
+    /// <summary>Every configured point scope, cached until the next <see cref="PublishScope"/>/<see cref="RemoveScope"/>.
+    /// Wrapped so a caller cannot mutate the shared cache through the returned reference; <see cref="GetScopesArray"/>
+    /// is the zero-wrap internal counterpart for the pruner's hot per-group path.</summary>
+    public IReadOnlyList<ScopeFloor> GetScopes() => new ReadOnlyCollection<ScopeFloor>(GetScopesArray());
+
+    internal ScopeFloor[] GetScopesArray()
+    {
+        ScopeFloor[]? cached = Volatile.Read(ref _cachedScopes);
+        if (cached is not null) return cached;
+
+        int generationBeforeScan = Volatile.Read(ref _scopeGeneration);
+        ScopeFloor[] scanned = ScanScopeRecords();
+
+        // Publish only if no writer bumped the generation while this scan was running - otherwise the scan may
+        // have raced a concurrent Publish/Remove and reflects a torn view. Leaving the cache null makes the next
+        // caller rescan instead of trusting a stale result; this call still returns its own (possibly torn) scan
+        // rather than retrying, since a fresh caller immediately after will simply rescan for real.
+        if (Interlocked.CompareExchange(ref _scopeGeneration, generationBeforeScan, generationBeforeScan) == generationBeforeScan)
+        {
+            Volatile.Write(ref _cachedScopes, scanned);
+        }
+
+        return scanned;
+    }
+
+    private ScopeFloor[] ScanScopeRecords()
+    {
+        List<ScopeFloor> scopes = [];
+        byte[] upperBound = new byte[ScopeRecordPrefixLength + BaseFlatPersistence.AccountKeyLength + 1];
+        ScopeRecordPrefix.CopyTo(upperBound);
+        upperBound.AsSpan(ScopeRecordPrefixLength).Fill(0xFF);
+
+        using ISortedView view = _sortedAvailableBlocks.GetViewBetween(ScopeRecordPrefix, upperBound);
+        while (view.MoveNext())
+        {
+            if (view.CurrentKey.Length != ScopeRecordKeyLength) continue;
+            if (view.CurrentValue.Length != ScopeRecordValueLength) continue;
+
+            byte[] key = view.CurrentKey[ScopeRecordPrefixLength..].ToArray();
+            ulong floor = BinaryPrimitives.ReadUInt64BigEndian(view.CurrentValue);
+            scopes.Add(new ScopeFloor(key, floor, IsGeneral: false));
+        }
+
+        return scopes.ToArray();
+    }
+
+    /// <summary>Resolves the narrowest applicable floor for <paramref name="key"/> - its own point scope if one is
+    /// configured, else the all-keys scope at <paramref name="knownGeneralFloor"/>. Takes the caller's own already-known
+    /// general floor so a per-group hot-path caller (the pruner) never re-reads the DB for it.</summary>
+    public ScopeFloor ResolveScope(ReadOnlySpan<byte> key, ulong knownGeneralFloor)
+    {
+        ScopeFloor[] scopes = GetScopesArray();
+        for (int i = 0; i < scopes.Length; i++)
+        {
+            if (((ReadOnlySpan<byte>)scopes[i].Key).SequenceEqual(key)) return scopes[i];
+        }
+
+        return new ScopeFloor([], knownGeneralFloor, IsGeneral: true);
+    }
+
+    public ScopeFloor ResolveScope(ReadOnlySpan<byte> key) => ResolveScope(key, GeneralFloorOrZero());
+
+    public ScopeFloor ResolveScope(in ValueHash256 accountHash) => ResolveScope(accountHash.Bytes[..BaseFlatPersistence.AccountKeyLength]);
+
+    private ulong GeneralFloorOrZero()
+    {
+        TryGetGlobalFloor(out ulong floor);
+        return floor;
+    }
+
     /// <summary>
     /// The most recent contiguous range a backfill importer has connected and durably imported — <c>[floor,
     /// anchor]</c>, both inclusive. A rolling-window pruner must never raise the global floor past
@@ -297,3 +482,8 @@ public sealed class HistoryAvailability
         _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
     }
 }
+
+/// <summary>One retention floor: either a configured point scope for exactly one address (<see cref="IsGeneral"/>
+/// false, <see cref="Key"/> its 20-byte account key), or the all-keys fallback (<see cref="IsGeneral"/> true,
+/// <see cref="Key"/> empty).</summary>
+public readonly record struct ScopeFloor(byte[] Key, ulong Floor, bool IsGeneral);

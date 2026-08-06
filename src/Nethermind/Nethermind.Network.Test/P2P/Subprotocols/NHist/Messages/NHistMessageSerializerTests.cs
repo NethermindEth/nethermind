@@ -49,8 +49,8 @@ public class NHistMessageSerializerTests
         HistoryRangeAtHeightMessageSerializer serializer = new();
         ArrayPoolList<HistoryRangeEntry> entries = new(2)
         {
-            new HistoryRangeEntry([1, 2, 3], 10, new byte[] { 0xAA, 0xBB }),
-            new HistoryRangeEntry([4, 5, 6], 20, Array.Empty<byte>())
+            new HistoryRangeEntry([1, 2, 3], 10, new byte[] { 0xAA, 0xBB }, IsLiveFallback: false),
+            new HistoryRangeEntry([4, 5, 6], 20, Array.Empty<byte>(), IsLiveFallback: true)
         };
         using HistoryRangeAtHeightMessage message = new() { RequestId = 3, Entries = entries, NextCursor = [9, 9] };
 
@@ -64,7 +64,9 @@ public class NHistMessageSerializerTests
             Assert.That(deserialized.Entries[0].Key, Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(deserialized.Entries[0].Block, Is.EqualTo(10UL));
             Assert.That(deserialized.Entries[0].Value.ToArray(), Is.EqualTo(new byte[] { 0xAA, 0xBB }));
+            Assert.That(deserialized.Entries[0].IsLiveFallback, Is.False, "a real history match must round-trip as IsLiveFallback = false");
             Assert.That(deserialized.Entries[1].Value.ToArray(), Is.Empty);
+            Assert.That(deserialized.Entries[1].IsLiveFallback, Is.True, "a live-flat-fallback entry must round-trip as IsLiveFallback = true, distinct from Block alone");
             Assert.That(deserialized.NextCursor, Is.EqualTo(message.NextCursor));
         }
     }

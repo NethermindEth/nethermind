@@ -46,6 +46,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Number of disjoint address-hash-prefix shards the concurrent backfill importer partitions writes into. Each shard buffers and sorts its own rows before writing, so worker count and write ordering scale with this independently of the source feed's block-major order.", DefaultValue = "16")]
     int HistoryImportShardCount { get; set; }
 
+    [ConfigItem(Description = "A comma-separated list of contract addresses to retain unbounded (or far deeper than HistoryRetentionBlocks) flat history for, independent of the general rolling window. Static allow-list only - an address is never added or removed except by editing this config and restarting.", DefaultValue = "null")]
+    string? HistorySliceAddresses { get; set; }
+
     [ConfigItem(Description = "Blocks per import batch: the concurrent backfill importer flushes all shard buffers and durably advances its resume pointer after this many blocks, so a crash mid-backfill loses at most one batch of already-buffered (not yet written) rows.", DefaultValue = "1000")]
     ulong HistoryImportBatchBlocks { get; set; }
 
