@@ -193,9 +193,10 @@ namespace Nethermind.TxPool
 
             // EIP-8141: resolve and record the frame-tx payer for downstream mempool policy, and reject
             // provably-payerless prefixes. Runs last so only otherwise-admissible frame txs (sender
-            // already recovered) are resolved. The earlier balance filters gate on sender balance, so
-            // only self_verify (payer == sender) reaches here today; sponsored/third-party-payer
-            // prefixes need payer-aware balance filters and native signature verification (deferred).
+            // already recovered) are resolved. The earlier balance filters gate on the sender balance, so
+            // any prefix with a funded sender arrives here; a sponsored prefix whose sender is unfunded is
+            // rejected upstream. Payer-aware balance filters and native signature verification (needed to
+            // name a third-party payer) are deferred.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
