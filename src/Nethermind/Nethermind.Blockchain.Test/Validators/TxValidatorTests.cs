@@ -851,12 +851,11 @@ public class TxValidatorTests
 
 /// <summary>The EIP-7906 fork gate on the <c>POST_TX</c> frame mode.</summary>
 /// <remarks>
-/// The frame-list shape check accepts the mode without fork context, so admission is decided here.
 /// Before the fork the mode is undefined, and a node treating such a frame as DEFAULT would execute
 /// it with write access, which the assertion semantics forbid.
 /// </remarks>
 [TestFixture]
-public class FrameTxPostTxModeValidatorTests
+public class FrameTxPostTxModeGateTests
 {
     [TestCase(false, ExpectedResult = true, TestName = "PostTx frame is admitted once EIP-7906 is enabled")]
     [TestCase(true, ExpectedResult = false, TestName = "PostTx frame is rejected before EIP-7906")]
@@ -874,6 +873,6 @@ public class FrameTxPostTxModeValidatorTests
             ],
         };
 
-        return FrameTxPostTxModeValidator.Instance.IsWellFormed(tx, spec);
+        return FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, spec);
     }
 }

@@ -75,11 +75,17 @@ public class FrameTxBlockReceiptsTests
 
         (TxReceipt receipt, _, _) = RunFrameTx(revert);
 
+        ReceiptMessageDecoder decoder = new();
+        RlpReader reader = new(decoder.EncodeNew(receipt));
+        TxReceipt decoded = decoder.Decode(ref reader)!;
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
             Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure),
                 "a reverted frame must not be reported as a successful transaction");
+            Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode),
+                "a node that only received the receipt must report the status the executing node reported");
         }
     }
 

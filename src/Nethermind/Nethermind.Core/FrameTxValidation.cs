@@ -17,6 +17,7 @@ public static class FrameTxValidation
     public const string MissingSender = "frame transaction sender must be set";
     public const string InvalidMode = "frame mode must be DEFAULT, VERIFY, SENDER, or POST_TX";
     public const string PostTxNotTrailing = "POST_TX frames must form a trailing suffix of the frame list";
+    public const string PostTxNotEnabled = "POST_TX frames are not enabled";
     public const string InvalidFlags = "frame flags must not use reserved bits";
     public const string ValueOutsideSenderMode = "frame value is only allowed in SENDER mode";
     public const string ExecutionApprovalWrongTarget = "frames allowed to approve execution must target the sender";
@@ -24,6 +25,7 @@ public static class FrameTxValidation
     public const string AtomicBatchOnVerifyFrame = "the atomic batch flag must not be set on a VERIFY frame";
     public const string AtomicBatchOnPostTxFrame = "the atomic batch flag must not be set on a POST_TX frame";
     public const string AtomicBatchFollowedByVerifyFrame = "an atomic batch frame must not be followed by a VERIFY frame";
+    public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
@@ -33,7 +35,7 @@ public static class FrameTxValidation
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
 
-    public static bool IsWellFormed(Transaction transaction, out string? error)
+    public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {
         error = null;
 
@@ -59,6 +61,12 @@ public static class FrameTxValidation
             if (frame.Mode > TxFrame.ModePostTx)
             {
                 error = InvalidMode;
+                return false;
+            }
+
+            if (frame.Mode == TxFrame.ModePostTx && !postTxEnabled)
+            {
+                error = PostTxNotEnabled;
                 return false;
             }
 
@@ -119,6 +127,14 @@ public static class FrameTxValidation
                 if (i + 1 < frames.Length && frames[i + 1].Mode == TxFrame.ModeVerify)
                 {
                     error = AtomicBatchFollowedByVerifyFrame;
+                    return false;
+                }
+
+                // An unroll moves the terminal frame onto the successor and marks it skipped. On a POST_TX
+                // successor that silently drops the assertion, which is the case it exists to catch.
+                if (i + 1 < frames.Length && frames[i + 1].Mode == TxFrame.ModePostTx)
+                {
+                    error = AtomicBatchFollowedByPostTxFrame;
                     return false;
                 }
             }

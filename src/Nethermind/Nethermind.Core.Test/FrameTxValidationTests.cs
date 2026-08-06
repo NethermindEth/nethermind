@@ -22,7 +22,7 @@ public class FrameTxValidationTests
     {
         Transaction tx = CreateValidFrameTx(mutate);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled: true, out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
@@ -104,6 +104,9 @@ public class FrameTxValidationTests
         yield return Case("AtomicBatchFollowedByVerifyFrame_AtomicBatchFollowedByVerifyFrame",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModeVerify)],
             FrameTxValidation.AtomicBatchFollowedByVerifyFrame);
+        yield return Case("AtomicBatchFollowedByPostTxFrame_AtomicBatchFollowedByPostTxFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModePostTx)],
+            FrameTxValidation.AtomicBatchFollowedByPostTxFrame);
 
         // total_frame_gas accumulated across frames must not overflow 2^64 - 1
         yield return Case("TotalFrameGasOverflows_FrameGasOverflow",
