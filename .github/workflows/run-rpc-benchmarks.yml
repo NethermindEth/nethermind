@@ -80,7 +80,7 @@ on:
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
           All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file).
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -692,6 +692,9 @@ jobs:
           export JB_DURATION="$(get '.duration')";         [[ -z "${JB_DURATION}" ]] && export JB_DURATION="60s"
           export ISO_CONFIGS="$(get '.iso_configs')"
           export ISO_DURATION="$(get '.iso_duration')";    [[ -z "${ISO_DURATION}" ]] && export ISO_DURATION="20s"
+          # Size corpus cells by request count rather than wall time (rate is still rps_list).
+          corpus_requests="$(get '.corpus_requests')"; [[ -n "${corpus_requests}" ]] && export CORPUS_REQUESTS="${corpus_requests}"
+          corpus_passes="$(get '.corpus_passes')";     [[ -n "${corpus_passes}" ]] && export CORPUS_PASSES="${corpus_passes}"
           export STATE_ROOT="${STATE_DIR}/sweep"
           ./scripts/rpc-bench/run-rpc-sweep.sh
 
