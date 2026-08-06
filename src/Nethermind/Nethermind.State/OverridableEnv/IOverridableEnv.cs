@@ -25,7 +25,14 @@ public interface IOverridableEnv : IModule
     /// context after this returns. The header is also assigned the post-state-override state root. Callers must pass a
     /// header they own (e.g. a clone), never a shared block-tree header.
     /// </remarks>
-    IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null);
+    /// <param name="requireStateRoot">
+    /// When <c>false</c>, the overrides are left uncommitted: they stay visible through the scope's
+    /// <see cref="Nethermind.Evm.State.IWorldState"/> but are not merkleized into the state trie, and
+    /// <paramref name="header"/> keeps its original state root. Callers that only execute against the
+    /// scope's world state (eth_call and friends) can skip that work; anything that resolves state
+    /// through a root - re-processing a block, or reading via an <c>IStateReader</c> - must not.
+    /// </param>
+    IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null, bool requireStateRoot = true);
 }
 
 /// <summary>
@@ -42,5 +49,6 @@ public interface IOverridableEnv<T>
     /// When <paramref name="blockOverride"/> is supplied it is applied to <paramref name="header"/> <b>in place</b>;
     /// see <see cref="IOverridableEnv.BuildAndOverride"/>. Callers must pass a header they own (e.g. a clone).
     /// </remarks>
-    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null);
+    /// <inheritdoc cref="IOverridableEnv.BuildAndOverride"/>
+    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null, bool requireStateRoot = true);
 }
