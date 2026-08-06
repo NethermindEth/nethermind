@@ -291,7 +291,12 @@ namespace Nethermind.Core.Test
             }
         }
 
-        // RLP integer length per Yellow Paper appendix B: one byte below 0x80, else one prefix byte plus the minimal big-endian bytes.
+        /// <summary>Computes the RLP length of an unsigned integer.</summary>
+        /// <remarks>
+        /// Transcribed from Yellow Paper appendix B: a value below 0x80 uses one byte; larger values use
+        /// one prefix byte plus the minimal big-endian bytes. The loop shape is deliberately different from
+        /// the production implementation so both cannot share one defect.
+        /// </remarks>
         private static int SpecLengthOf(ulong value)
         {
             if (value < 0x80)

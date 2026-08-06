@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -125,20 +124,27 @@ public class BlockDecoderTests
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded = decoder.Encode(decoded);
 
-        // The expected values come from an independent pyrlp decode of the fixed bytes.
-        // This is the one test that decodes canonical wire, so only its field asserts can catch a self-canceling encode/decode error.
+        // An independent pyrlp decode of the fixed bytes produced the expected values.
+        // Only this test decodes canonical wire. Only these asserts can find a self-canceling encode/decode error.
         Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Transactions, Has.Length.EqualTo(1));
+        Transaction tx = decoded.Transactions[0];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
-            Assert.That(decoded!.Number, Is.EqualTo(5644));
-            Assert.That(decoded.Header.GasLimit, Is.EqualTo(8_000_000L));
-            Assert.That(decoded.Header.GasUsed, Is.EqualTo(21_000L));
+            Assert.That(decoded.Header.Number, Is.EqualTo(5644UL));
+            Assert.That(decoded.Header.Difficulty, Is.EqualTo(UInt256.One));
+            Assert.That(decoded.Header.Beneficiary, Is.EqualTo(Address.Zero));
+            Assert.That(decoded.Header.GasLimit, Is.EqualTo(8_000_000UL));
+            Assert.That(decoded.Header.GasUsed, Is.EqualTo(21_000UL));
             Assert.That(decoded.Header.Timestamp, Is.EqualTo(1549034638UL));
+            Assert.That(decoded.Header.Nonce, Is.EqualTo(0UL));
             Assert.That(decoded.Header.StateRoot, Is.EqualTo(new Hash256("0xfe77dd4ad7c2a3fa4c11868a00e4d728adcdfef8d2e3c13b256b06cbdbb02ec9")));
-            Assert.That(decoded.Transactions, Has.Length.EqualTo(1));
-            Assert.That(decoded.Transactions[0].Nonce, Is.EqualTo(0UL));
-            Assert.That(decoded.Transactions[0].Value, Is.EqualTo(UInt256.Parse("100000000000000000000000")));
+            Assert.That(tx.Nonce, Is.EqualTo(0UL));
+            Assert.That(tx.GasPrice, Is.EqualTo((UInt256)1_000_000_000));
+            Assert.That(tx.GasLimit, Is.EqualTo(21_000L));
+            Assert.That(tx.To, Is.EqualTo(new Address("0x22ea9f6b28db76a7162054c05ed812deb2f519cd")));
+            Assert.That(tx.Value, Is.EqualTo(UInt256.Parse("100000000000000000000000")));
             Assert.That(decoded.Uncles, Is.Empty);
         }
     }
@@ -153,13 +159,13 @@ public class BlockDecoderTests
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded2 = decoder.Encode(decoded);
 
-        // A re-encode comparison alone cannot see a symmetric decode error. Compare the decoded block to the original as well.
-        // Hashes derive from the wire bytes, so only direct field comparisons can catch a symmetric field swap.
+        // A re-encode comparison alone cannot find a symmetric decode error. Compare the decoded block with the original.
         Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Transactions.Length, Is.EqualTo(block.Transactions.Length));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
-            Assert.That(decoded!.Hash, Is.EqualTo(block.Hash));
+            Assert.That(decoded.Hash, Is.EqualTo(block.Hash));
 
             BlockHeader actual = decoded.Header;
             BlockHeader expected = block.Header;
@@ -169,16 +175,19 @@ public class BlockDecoderTests
             Assert.That(actual.StateRoot, Is.EqualTo(expected.StateRoot));
             Assert.That(actual.TxRoot, Is.EqualTo(expected.TxRoot));
             Assert.That(actual.ReceiptsRoot, Is.EqualTo(expected.ReceiptsRoot));
+            Assert.That(actual.Difficulty, Is.EqualTo(expected.Difficulty));
             Assert.That(actual.Number, Is.EqualTo(expected.Number));
             Assert.That(actual.GasLimit, Is.EqualTo(expected.GasLimit));
             Assert.That(actual.GasUsed, Is.EqualTo(expected.GasUsed));
             Assert.That(actual.Timestamp, Is.EqualTo(expected.Timestamp));
+            Assert.That(actual.ExtraData, Is.EqualTo(expected.ExtraData));
+            Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
             Assert.That(actual.BaseFeePerGas, Is.EqualTo(expected.BaseFeePerGas));
+            Assert.That(actual.WithdrawalsRoot, Is.EqualTo(expected.WithdrawalsRoot));
             Assert.That(actual.BlobGasUsed, Is.EqualTo(expected.BlobGasUsed));
             Assert.That(actual.ExcessBlobGas, Is.EqualTo(expected.ExcessBlobGas));
             Assert.That(actual.MixHash, Is.EqualTo(expected.MixHash));
 
-            Assert.That(decoded.Transactions.Length, Is.EqualTo(block.Transactions.Length));
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Assert.That(decoded.Transactions[i].Hash, Is.EqualTo(block.Transactions[i].Hash), $"transaction {i}");

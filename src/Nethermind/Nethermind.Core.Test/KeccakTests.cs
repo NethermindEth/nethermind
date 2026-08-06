@@ -159,7 +159,7 @@ namespace Nethermind.Core.Test
                 byteArray[i] = (byte)(i % 256);
             }
 
-            // The expected hash comes from an independent keccak-256 implementation (pycryptodome).
+            // An independent keccak-256 implementation (pycryptodome) produced the expected hash.
             Hash256 expected = new("0x5902e53903be0d0f9656bdbd5b9f0d8c2d815f865645d629eef77f5185f6cd7f");
             using (Assert.EnterMultipleScope())
             {
