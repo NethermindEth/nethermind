@@ -669,14 +669,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// <remarks>
     /// State-independent by design: a flat cold touch for a non-self recipient, plus TX_VALUE_COST on
     /// value transfers (the EIP-7708 transfer log is folded into TX_VALUE_COST). Contract creation's
-    /// recipient charge is fully covered by CREATE_ACCESS, so it adds nothing here even with value.
-    /// New-account and delegation costs are charged elsewhere.
+    /// recipient balance write is already covered by the create charge (CREATE_ACCESS under EIP-8038),
+    /// so it adds nothing here even with value. New-account and delegation costs are charged elsewhere.
     /// </remarks>
     private static ulong Eip2780ExtraGas(Transaction tx, IReleaseSpec spec)
     {
         if (!spec.IsEip2780Enabled) return 0;
 
-        // Contract creation is fully priced by CREATE_ACCESS; a value endowment adds no further charge.
+        // The create charge (CREATE_ACCESS under EIP-8038) already covers the recipient balance write; a value endowment adds nothing.
         if (tx.IsContractCreation) return 0;
 
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.

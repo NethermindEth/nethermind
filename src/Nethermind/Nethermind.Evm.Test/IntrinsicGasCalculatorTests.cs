@@ -316,18 +316,21 @@ namespace Nethermind.Evm.Test
             Assert.That(actual, Is.EqualTo(TxBaseEip2780 + GasCostOf.AccessAccountListEntry + ColdAccess + TxValueCost));
         }
 
-        [Test]
-        public void Eip2780_intrinsic_gas_for_create_is_value_independent()
+        [TestCase(false, TestName = "Eip2780_create_value_independent_pre8038")]
+        [TestCase(true, TestName = "Eip2780_create_value_independent_8038")]
+        public void Eip2780_intrinsic_gas_for_create_is_value_independent(bool eip8038Enabled)
         {
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true, IsEip8038Enabled = eip8038Enabled };
 
             Transaction createZero = Build.A.Transaction.WithValue(0).WithCode(Array.Empty<byte>())
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction createValue = Build.A.Transaction.WithValue(1).WithCode(Array.Empty<byte>())
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            // The recipient balance write is already covered by CREATE_ACCESS, so a value endowment adds nothing.
-            ulong expected = TxBaseEip2780 + GasCostOf.TxCreate;
+            // The create charge (CREATE_ACCESS under EIP-8038) already covers the recipient balance write,
+            // so a value endowment adds nothing — create-with-value equals create-with-zero-value.
+            ulong createCharge = eip8038Enabled ? Eip8038Constants.CreateAccess : GasCostOf.TxCreate;
+            ulong expected = TxBaseEip2780 + createCharge;
             Assert.That(IntrinsicGasCalculator.Calculate(createZero, spec).Standard, Is.EqualTo(expected));
             Assert.That(IntrinsicGasCalculator.Calculate(createValue, spec).Standard, Is.EqualTo(expected));
         }
