@@ -101,7 +101,17 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   if [[ "${#CORPORA[@]}" -eq 0 ]]; then
     echo "::error::no corpus files matching '$CORPUS_GLOB' under $CORPUS_DIR"; exit 1
   fi
-  echo "Corpus scenarios: $(for f in "${CORPORA[@]}"; do printf '%s ' "$(corpus_label "$f")"; done)"
+  CORPUS_LABELS=()
+  for f in "${CORPORA[@]}"; do CORPUS_LABELS+=("$(corpus_label "$f")"); done
+  echo "Corpus scenarios: ${CORPUS_LABELS[*]}"
+  # corpus_label sanitizes the filename, so two distinct corpora can collapse onto one label and
+  # would then share a parity baseline and cell directory — the second baseline overwrites the
+  # first and later clients diff against the wrong one. It fails safe (a count mismatch), but far
+  # into the sweep and pointing at nothing real, so reject it before any node starts.
+  collisions="$(printf '%s\n' "${CORPUS_LABELS[@]}" | sort | uniq -d | tr '\n' ' ')"
+  if [[ -n "${collisions// /}" ]]; then
+    echo "::error::corpus scenario labels collide (${collisions%% }) — rename the files so each yields a distinct label"; exit 1
+  fi
   # Fail on an unreadable/oversized corpus in seconds, before any node starts or cell runs.
   for corpus in "${CORPORA[@]}"; do
     if ! python3 "$here/corpus_parity.py" validate --corpus "$corpus"; then
