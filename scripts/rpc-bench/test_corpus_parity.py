@@ -119,6 +119,50 @@ class CorpusParityTests(unittest.TestCase):
                                           "base_client", "cand_client")
         return clean, json.loads(self.report.read_text(encoding="utf-8")), out.getvalue()
 
+    def test_concurrency_only_failures_are_retried_and_not_reported_as_defects(self):
+        """A node that fails only while requests overlap must not produce parity defects."""
+        corpus = self.write_corpus(30)
+        corpus_parity.REPLAY_CONCURRENCY = 1
+        self.run_baseline(corpus, lambda i: "0x" + f"{i:04x}")
+
+        state = {"inflight": 0, "flaked": 0}
+        guard = threading.Lock()
+
+        def flaky(i):
+            with guard:
+                state["inflight"] += 1
+                overlapped = state["inflight"] > 1
+            try:
+                time.sleep(0.01)
+                if overlapped:
+                    with guard:
+                        state["flaked"] += 1
+                    return ("http", 503)
+                return "0x" + f"{i:04x}"
+            finally:
+                with guard:
+                    state["inflight"] -= 1
+
+        corpus_parity.REPLAY_CONCURRENCY = 8
+        clean, report, _ = self.run_compare(corpus, flaky)
+        self.assertGreater(state["flaked"], 0, "test did not actually induce overlap failures")
+        self.assertTrue(clean)
+        self.assertEqual(report["matched"], 30)
+        self.assertEqual(report["candidate_transport_failures"], 0)
+
+    def test_reproducible_divergence_survives_the_retry(self):
+        """The retry must not mask a client that is genuinely wrong."""
+        corpus = self.write_corpus(30)
+        corpus_parity.REPLAY_CONCURRENCY = 1
+        self.run_baseline(corpus, lambda i: "0x" + f"{i:04x}")
+        corpus_parity.REPLAY_CONCURRENCY = 8
+        wrong = {5, 17}
+        clean, report, _ = self.run_compare(
+            corpus, lambda i: "0xdeadbeef" if i in wrong else "0x" + f"{i:04x}")
+        self.assertFalse(clean)
+        self.assertEqual(report["matched"], 28)
+        self.assertEqual(sorted(d["index"] for d in report["divergences"]), sorted(wrong))
+
     def test_timings_writes_a_record_by_pass_matrix_without_content(self):
         corpus = self.write_corpus(3)
         out_csv = self.dir / "timings.csv"
