@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Text;
 using Nethermind.Core.Crypto;
 
@@ -14,28 +15,35 @@ namespace Nethermind.Network.Dns;
 /// </summary>
 internal static class EnrTreeHash
 {
-    private const string Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
     /// <summary>
     /// Publishers may abbreviate a label, so only a prefix of the hash is bound. The accepted range matches
     /// the reference implementation's <c>minHashLength</c>/<c>isValidHash</c>: fewer than 12 bytes leaves a
     /// prefix short enough to collide, and no label carries more than a keccak256 hash.
     /// </summary>
     private const int MinHashLength = 12;
-    private const int MaxHashLength = 32;
+
+    private const int StackallocThreshold = 512;
 
     /// <summary>
     /// Checks that <paramref name="entryText"/> hashes to the <paramref name="subdomain"/> label it was served from.
     /// </summary>
     public static bool Matches(string subdomain, string entryText)
     {
-        Span<byte> expected = stackalloc byte[MaxHashLength];
+        Span<byte> expected = stackalloc byte[Keccak.Size];
         if (!TryDecodeBase32(subdomain, expected, out int expectedLength) || expectedLength < MinHashLength)
         {
             return false;
         }
 
-        ValueHash256 actual = ValueKeccak.Compute(Encoding.UTF8.GetBytes(entryText));
+        int byteCount = Encoding.UTF8.GetByteCount(entryText);
+        byte[]? rented = null;
+        Span<byte> utf8 = byteCount <= StackallocThreshold
+            ? stackalloc byte[StackallocThreshold]
+            : (rented = ArrayPool<byte>.Shared.Rent(byteCount));
+        byteCount = Encoding.UTF8.GetBytes(entryText, utf8);
+        ValueHash256 actual = ValueKeccak.Compute(utf8[..byteCount]);
+        if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+
         return actual.Bytes[..expectedLength].SequenceEqual(expected[..expectedLength]);
     }
 
@@ -46,7 +54,7 @@ internal static class EnrTreeHash
     private static bool TryDecodeBase32(string encoded, Span<byte> destination, out int length)
     {
         length = 0;
-        if (encoded.Length * 5 / 8 > destination.Length)
+        if (encoded.Length * 5L / 8 > destination.Length)
         {
             return false;
         }
@@ -55,7 +63,12 @@ internal static class EnrTreeHash
         int bits = 0;
         foreach (char c in encoded)
         {
-            int value = Base32Alphabet.IndexOf(c);
+            int value = c switch
+            {
+                >= 'A' and <= 'Z' => c - 'A',
+                >= '2' and <= '7' => c - ('2' - 26),
+                _ => -1,
+            };
             if (value < 0)
             {
                 return false;
