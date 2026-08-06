@@ -124,7 +124,23 @@ public class BlockDecoderTests
         RlpReader ctx = new(bytes);
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded = decoder.Encode(decoded);
-        Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
+
+        // The expected values come from an independent pyrlp decode of the fixed bytes.
+        // This is the one test that decodes canonical wire, so only its field asserts can catch a self-canceling encode/decode error.
+        Assert.That(decoded, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.Bytes.ToHexString(), Is.EqualTo(bytes.ToHexString()));
+            Assert.That(decoded!.Number, Is.EqualTo(5644));
+            Assert.That(decoded.Header.GasLimit, Is.EqualTo(8_000_000L));
+            Assert.That(decoded.Header.GasUsed, Is.EqualTo(21_000L));
+            Assert.That(decoded.Header.Timestamp, Is.EqualTo(1549034638UL));
+            Assert.That(decoded.Header.StateRoot, Is.EqualTo(new Hash256("0xfe77dd4ad7c2a3fa4c11868a00e4d728adcdfef8d2e3c13b256b06cbdbb02ec9")));
+            Assert.That(decoded.Transactions, Has.Length.EqualTo(1));
+            Assert.That(decoded.Transactions[0].Nonce, Is.EqualTo(0UL));
+            Assert.That(decoded.Transactions[0].Value, Is.EqualTo(UInt256.Parse("100000000000000000000000")));
+            Assert.That(decoded.Uncles, Is.Empty);
+        }
     }
 
     [Test]
