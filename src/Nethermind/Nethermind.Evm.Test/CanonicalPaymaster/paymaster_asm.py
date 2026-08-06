@@ -1,7 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 """Canonical paymaster runtime assembler - EIP-8141 (Stage 2, finalized).
 
-Opcode stack orders verified against Nethermind.Evm/Instructions/EvmInstructions.FrameTx.cs
-on branch eip8141-frame-txs-devnet7:
+Opcode stack orders verified against Nethermind.Evm/Instructions/EvmInstructions.FrameTx.cs:
 
   APPROVE (0xaa): pops (offset, length, scope) top-to-bottom -> push scope, length, offset.
                   ApprovePayment scope bit = 0x1 (TxFrame.ApprovePayment), NOT 0x2.
@@ -19,7 +21,7 @@ DELAY = 86400  # seconds (1 day) - per-version constant, spec Treasury rules.
 OPS = {
     'STOP': 0x00, 'ADD': 0x01, 'LT': 0x10, 'EQ': 0x14, 'ISZERO': 0x15, 'SHR': 0x1c,
     'CALLVALUE': 0x34, 'CALLDATALOAD': 0x35, 'CALLDATASIZE': 0x36, 'CALLER': 0x33,
-    'TIMESTAMP': 0x42, 'POP': 0x50, 'SLOAD': 0x54, 'SSTORE': 0x55, 'JUMP': 0x56,
+    'TIMESTAMP': 0x42, 'POP': 0x50, 'SLOAD': 0x54, 'SSTORE': 0x55,
     'JUMPI': 0x57, 'JUMPDEST': 0x5b, 'GAS': 0x5a, 'DUP1': 0x80, 'DUP5': 0x84,
     'CALL': 0xf1, 'REVERT': 0xfd, 'APPROVE': 0xaa, 'SIGPARAM': 0xb4,
 }
@@ -152,15 +154,15 @@ def encode(item):
         return bytes([OPS[item[1]]])
     if kind == 'push':
         return push_bytes(item[1])
-    if kind in ('jumpi', 'jump'):
-        return bytes([0x61, 0, 0]) + bytes([OPS['JUMPI'] if kind == 'jumpi' else OPS['JUMP']])  # PUSH2 <hi><lo> + JUMP(I)
+    if kind == 'jumpi':
+        return bytes([0x61, 0, 0, OPS['JUMPI']])  # PUSH2 <hi><lo> + JUMPI
     if kind == 'dest':
         return bytes([OPS['JUMPDEST']])
     raise ValueError(item)
 
 
 def assemble():
-    # Pass 1: assign offsets, collect label addresses (all label refs are fixed-width PUSH2).
+    # Pass 1: assign offsets, collect label addresses (every label ref is a fixed-width PUSH2 + JUMPI).
     labels = {}
     offset = 0
     for item in PROGRAM:
@@ -171,10 +173,9 @@ def assemble():
     # Pass 2: emit, patching PUSH2 operands with resolved addresses.
     out = bytearray()
     for item in PROGRAM:
-        if item[0] in ('jumpi', 'jump'):
+        if item[0] == 'jumpi':
             addr = labels[item[1]]
-            op = OPS['JUMPI'] if item[0] == 'jumpi' else OPS['JUMP']
-            out += bytes([0x61, (addr >> 8) & 0xff, addr & 0xff, op])
+            out += bytes([0x61, (addr >> 8) & 0xff, addr & 0xff, OPS['JUMPI']])
         else:
             out += encode(item)
     return bytes(out)

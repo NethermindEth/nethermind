@@ -45,15 +45,11 @@ public class Eip8141CanonicalPaymasterTests
 
     private const string CanonicalCodeHash = "0xda42f0d11838c4c0c3129b8b8e93e9718127ad6b315e517e1088125707c4d45c";
 
-    // Middle byte of the DELAY constant (PUSH3 0x015180) in the withdrawal-initiate path — a mutation
-    // here changes the code hash without touching the validation path.
-    private const int NearMatchMutationOffset = 158;
-
     private const ulong BlockTimestamp = 1_000_000;
     private const ulong Delay = 86_400;
 
-    // Below MaxCost for the sponsored tx (frame gas limits sum to 315,000 at 1 wei/gas), so an
-    // instance deployed with this balance cannot back the sponsorship until a deposit tops it up.
+    // Below MaxCost for the sponsored tx (intrinsic + the sum of the frame gas limits, at 1 wei/gas),
+    // so an instance deployed with this balance cannot back the sponsorship until a deposit tops it up.
     private static readonly UInt256 UnderfundedBalance = 1_000;
 
     // Measured pay-frame validation gas under the prototype fork. Higher than the design doc §5a
@@ -63,11 +59,17 @@ public class Eip8141CanonicalPaymasterTests
 
     private static readonly byte[] PaymasterCode = Bytes.FromHexString(PaymasterRuntimeHex);
 
+    // Middle byte of the DELAY constant (PUSH3 0x015180) in the withdrawal-initiate path, located at
+    // runtime so it tracks the bytecode — a mutation here changes the code hash without touching the
+    // validation path.
+    private static readonly int NearMatchMutationOffset =
+        PaymasterCode.AsSpan().IndexOf<byte>([0x62, 0x01, 0x51, 0x80]) + 2;
+
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly PrivateKey SenderKey = TestItem.PrivateKeyA;
     private static readonly Address Signer = TestItem.PrivateKeyB.Address;
     private static readonly PrivateKey SignerKey = TestItem.PrivateKeyB;
-    private static readonly Address Recipient = TestItem.AddressC;
+    private static readonly Address Recipient = Address.FromNumber(0x1141);
     private static readonly Address Paymaster = TestItem.AddressD;
     private static readonly Address ThirdParty = TestItem.PrivateKeyE.Address;
     private static readonly PrivateKey ThirdPartyKey = TestItem.PrivateKeyE;
@@ -77,8 +79,8 @@ public class Eip8141CanonicalPaymasterTests
     private static readonly Address RevertingReceiver = Address.FromNumber(0x7141);
     private static readonly Address ReentrantSigner = Address.FromNumber(0x8141);
 
-    // A codeless-equivalent contract that unconditionally reverts on any call (PUSH0 PUSH0 REVERT),
-    // used as a withdrawal target that rejects the incoming value.
+    // A contract that unconditionally reverts on any call (PUSH0 PUSH0 REVERT), used as a
+    // withdrawal target that rejects the incoming value.
     private static readonly byte[] RevertOnCallCode = [0x5f, 0x5f, 0xfd];
 
     private static readonly TxFrame OnlyVerifyFrame =
@@ -283,14 +285,18 @@ public class Eip8141CanonicalPaymasterTests
         Assert.That(Slot(1), Is.EqualTo((UInt256)500), "the pending withdrawal is untouched");
     }
 
-    // 10. A one-opcode mutation keeps the validation path behaving, but its code hash no longer matches
+    // 10a. The mempool recognition anchor: the assembled reference bytecode hashes to the pinned
+    // canonical code hash. This is the single assertion that fails if the assembler output ever drifts.
+    [Test]
+    public void AssembledBytecode_MatchesCanonicalCodeHash() =>
+        Assert.That(Keccak.Compute(PaymasterCode), Is.EqualTo(new Hash256(CanonicalCodeHash)),
+            "the assembled bytecode must hash to the pinned canonical code hash");
+
+    // 10b. A one-opcode mutation keeps the validation path behaving, but its code hash no longer matches
     // the pinned canonical hash — the mempool recognition fixture: recognition fails closed, not behavior.
     [Test]
     public void NearMatchBytecode_BehavesButCodeHashDiffers()
     {
-        Assert.That(Keccak.Compute(PaymasterCode), Is.EqualTo(new Hash256(CanonicalCodeHash)),
-            "the assembled bytecode must hash to the pinned canonical code hash");
-
         byte[] nearMatch = (byte[])PaymasterCode.Clone();
         nearMatch[NearMatchMutationOffset] ^= 0x01;
         Assert.That(Keccak.Compute(nearMatch), Is.Not.EqualTo(new Hash256(CanonicalCodeHash)),
@@ -513,7 +519,7 @@ public class Eip8141CanonicalPaymasterTests
         DeployPaymaster(PaymasterCode, Signer, UnderfundedBalance);
         Fund(ThirdParty);
 
-        // 1,000,000 wei clears the 315,000-wei sum of the frame gas limits with ample margin.
+        // 1,000,000 wei clears MaxCost (intrinsic + the sum of the frame gas limits, at 1 wei/gas) with ample margin.
         ProcessBlock(BlockTimestamp, AdminTx(ThirdPartyKey, 0, [], value: 1_000_000));
         Assert.That(_stateProvider.GetBalance(Paymaster), Is.EqualTo(UnderfundedBalance + 1_000_000), "the deposit is credited");
 
