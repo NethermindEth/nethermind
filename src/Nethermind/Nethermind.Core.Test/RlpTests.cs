@@ -281,7 +281,32 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Length_of_ulong_same_as_uint256([ValueSource(nameof(ULongValues))] ulong value) => Assert.That(Rlp.LengthOf(value), Is.EqualTo(Rlp.LengthOf((UInt256)value)));
+        public void Length_of_ulong_matches_spec([ValueSource(nameof(ULongValues))] ulong value)
+        {
+            int expected = SpecLengthOf(value);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Rlp.LengthOf(value), Is.EqualTo(expected), "ulong");
+                Assert.That(Rlp.LengthOf((UInt256)value), Is.EqualTo(expected), "UInt256");
+            }
+        }
+
+        // RLP integer length per Yellow Paper appendix B: one byte below 0x80, else one prefix byte plus the minimal big-endian bytes.
+        private static int SpecLengthOf(ulong value)
+        {
+            if (value < 0x80)
+            {
+                return 1;
+            }
+
+            int byteCount = 0;
+            for (ulong rest = value; rest != 0; rest >>= 8)
+            {
+                byteCount++;
+            }
+
+            return 1 + byteCount;
+        }
 
         [Test]
         public void Single_byte_encoding_decoding()
