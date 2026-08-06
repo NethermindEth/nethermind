@@ -465,14 +465,17 @@ public partial class EngineModuleTests
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
-        Assert.That(transactionsLength, Is.Ordered);
-        Assert.That(transactionsLength, Is.SupersetOf(new int?[] { 3, 6, 11 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactionsLength, Is.Ordered);
+            Assert.That(transactionsLength, Is.SupersetOf(new int?[] { 3, 6, 11 }));
+        }
         Transaction[] txs = getPayloadResult.TryGetTransactions().Data!;
 
         Assert.That(txs.Length, Is.EqualTo(11));
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task TestTwoTransaction_SameContract_WithBlockImprovement()
     {
         string tx1Hex =
@@ -528,7 +531,6 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [Retry(3)]
     public async Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
