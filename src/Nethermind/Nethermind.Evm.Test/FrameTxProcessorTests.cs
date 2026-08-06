@@ -469,7 +469,7 @@ public class FrameTxProcessorTests
     {
         // signature bytes[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
         // Operand order (top to bottom) is memOffset, dataOffset, length — matching CALLDATACOPY and
-        // FRAMEDATACOPY (ethereum/EIPs#12042). Asymmetric operands catch a reversed pop order.
+        // FRAMEDATACOPY. Asymmetric operands catch a reversed pop order.
         byte[] signatureBytes = new byte[32];
         for (int i = 0; i < signatureBytes.Length; i++) signatureBytes[i] = (byte)i;
 
