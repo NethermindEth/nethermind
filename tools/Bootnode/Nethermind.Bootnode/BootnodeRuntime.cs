@@ -80,11 +80,13 @@ internal sealed class BootnodeRuntime(
         {
             using PeriodicTimer timer = new(TimeSpan.FromSeconds(1));
             metrics.UpdateDiscoveryMessageCounters();
+            metrics.UpdateDiscoveryTrafficCounters();
             metrics.UpdateKademliaBucketStats(bucketRegistry.CreateSnapshot());
 
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
                 metrics.UpdateDiscoveryMessageCounters();
+                metrics.UpdateDiscoveryTrafficCounters();
                 metrics.UpdateKademliaBucketStats(bucketRegistry.CreateSnapshot());
             }
         }

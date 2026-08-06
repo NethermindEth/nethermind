@@ -18,7 +18,7 @@ Standalone discovery bootnode for discv4 and discv5.
   - `bootnode_nodeInfo`
   - `bootnode_activeNodes`
   - `bootnode_allNodes`
-- Exposes Prometheus metrics on `/metrics` with discovery-node gauges labeled similarly to `SyncPeers`.
+- Exposes Prometheus metrics on `/metrics` for discovery nodes, message rates, traffic rates, buckets, identity, CPU, and memory.
 
 ## Run
 

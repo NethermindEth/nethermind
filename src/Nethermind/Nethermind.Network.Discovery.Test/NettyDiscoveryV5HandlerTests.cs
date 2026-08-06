@@ -13,6 +13,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
@@ -109,6 +110,48 @@ namespace Nethermind.Network.Discovery.Test
             finally
             {
                 forwardedPacket.Dispose();
+            }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task UpdatesDiscoveryByteMetrics()
+        {
+            byte[] sentData = [1, 2, 3, 4];
+            byte[] receivedData = [5, 6, 7];
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
+            long bytesSentBefore = Interlocked.Read(ref Metrics.DiscoveryBytesSent);
+            long bytesReceivedBefore = Interlocked.Read(ref Metrics.DiscoveryBytesReceived);
+
+            await _handler.SendAsync(sentData, to, CancellationToken.None);
+            DatagramPacket outboundPacket = _channel.ReadOutbound<DatagramPacket>();
+            try
+            {
+                Assert.That(outboundPacket, Is.Not.Null);
+            }
+            finally
+            {
+                ReferenceCountUtil.Release(outboundPacket);
+            }
+
+            using CancellationTokenSource cancellationSource = new(10_000);
+            await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = _handler
+                .ReadMessagesAsync(cancellationSource.Token)
+                .GetAsyncEnumerator(cancellationSource.Token);
+            ValueTask<bool> readTask = enumerator.MoveNextAsync();
+
+            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
+            _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(receivedData), from, to));
+
+            Assert.That(await readTask, Is.True);
+            PooledUdpReceiveResult forwardedPacket = enumerator.Current;
+            forwardedPacket.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesSent) - bytesSentBefore, Is.EqualTo(sentData.Length));
+                Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesReceived) - bytesReceivedBefore, Is.EqualTo(receivedData.Length));
             }
         }
 

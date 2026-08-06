@@ -13,9 +13,12 @@ namespace Nethermind.Bootnode;
 internal sealed class BootnodeMetrics
 {
     private readonly Lock _messageMetricsLock = new();
+    private readonly Lock _trafficMetricsLock = new();
     private readonly Lock _bucketMetricsLock = new();
     private readonly Lock _identityMetricsLock = new();
     private readonly Dictionary<DiscoveryMessageKey, long> _lastDiscoveryMessagesSent = [];
+    private long _lastDiscoveryBytesSent;
+    private long _lastDiscoveryBytesReceived;
     private readonly HashSet<BucketMetricKey> _publishedBuckets = [];
     private IdentityMetricKey? _publishedIdentity;
 
@@ -43,6 +46,11 @@ internal sealed class BootnodeMetrics
         "nethermind_bootnode_discovery_messages_sent_total",
         "Total number of discovery messages sent by the bootnode.",
         new CounterConfiguration { LabelNames = ["protocol", "message_type"] });
+
+    private static readonly Counter DiscoveryTrafficBytes = PrometheusMetrics.CreateCounter(
+        "nethermind_bootnode_discovery_traffic_bytes_total",
+        "Total discovery UDP traffic handled by the bootnode.",
+        new CounterConfiguration { LabelNames = ["direction"] });
 
     private static readonly Gauge KademliaBucketNodes = PrometheusMetrics.CreateGauge(
         "nethermind_bootnode_kademlia_bucket_nodes",
@@ -87,6 +95,20 @@ internal sealed class BootnodeMetrics
     public void UpdateDiscoveryMessageCounters() =>
         UpdateDiscoveryMessageCounters(NetworkMetrics.DiscoveryMessagesSentByProtocol);
 
+    public void UpdateDiscoveryTrafficCounters() =>
+        UpdateDiscoveryTrafficCounters(
+            Interlocked.Read(ref NetworkMetrics.DiscoveryBytesSent),
+            Interlocked.Read(ref NetworkMetrics.DiscoveryBytesReceived));
+
+    internal long UpdateDiscoveryTrafficCounters(long bytesSent, long bytesReceived)
+    {
+        lock (_trafficMetricsLock)
+        {
+            return UpdateDiscoveryTrafficCounter("sent", bytesSent, ref _lastDiscoveryBytesSent)
+                + UpdateDiscoveryTrafficCounter("received", bytesReceived, ref _lastDiscoveryBytesReceived);
+        }
+    }
+
     internal long UpdateDiscoveryMessageCounters(string protocol, IEnumerable<KeyValuePair<MsgType, long>> messagesSent)
     {
         List<KeyValuePair<DiscoveryMessageKey, long>> protocolMessages = [];
@@ -126,6 +148,23 @@ internal sealed class BootnodeMetrics
         }
 
         return totalDelta;
+    }
+
+    private static long UpdateDiscoveryTrafficCounter(string direction, long currentBytes, ref long previousBytes)
+    {
+        long delta = currentBytes >= previousBytes
+            ? currentBytes - previousBytes
+            : currentBytes;
+
+        previousBytes = currentBytes;
+
+        if (delta <= 0)
+        {
+            return 0;
+        }
+
+        DiscoveryTrafficBytes.WithLabels(direction).Inc(delta);
+        return delta;
     }
 
     public void UpdateKademliaBucketStats(IReadOnlyList<BootnodeKademliaBucketSnapshot> buckets)

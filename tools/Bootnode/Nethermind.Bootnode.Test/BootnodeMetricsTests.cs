@@ -63,6 +63,27 @@ public class BootnodeMetricsTests
     }
 
     [Test]
+    public async Task UpdateDiscoveryTrafficCounters_publishes_direction_label()
+    {
+        BootnodeMetrics metrics = new();
+
+        long firstDelta = metrics.UpdateDiscoveryTrafficCounters(bytesSent: 12, bytesReceived: 7);
+        long secondDelta = metrics.UpdateDiscoveryTrafficCounters(bytesSent: 17, bytesReceived: 7);
+        long resetDelta = metrics.UpdateDiscoveryTrafficCounters(bytesSent: 2, bytesReceived: 3);
+
+        string scrape = await ScrapeMetrics();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstDelta, Is.EqualTo(19));
+            Assert.That(secondDelta, Is.EqualTo(5));
+            Assert.That(resetDelta, Is.EqualTo(5));
+            Assert.That(scrape, Does.Contain("nethermind_bootnode_discovery_traffic_bytes_total{direction=\"sent\"}"));
+            Assert.That(scrape, Does.Contain("nethermind_bootnode_discovery_traffic_bytes_total{direction=\"received\"}"));
+        }
+    }
+
+    [Test]
     public async Task SetIdentity_replaces_previous_identity_info()
     {
         string id = Guid.NewGuid().ToString("N");
