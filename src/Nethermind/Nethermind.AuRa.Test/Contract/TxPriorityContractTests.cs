@@ -112,29 +112,15 @@ public class TxPriorityContractTests
             ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
             : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
 
-        SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
-        chain.LocalDataSource.Changed += (sender, args) =>
-        {
-            TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-            if (localData is not null)
-            {
-                Assert.That(localData.Whitelist, Is.EquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB }));
-                semaphoreSlim.Release();
-            }
-        };
-
         if (!await chain.FileSemaphore.WaitAsync(100))
         {
             Assert.Fail("File not written");
         }
 
-        if (!await semaphoreSlim.WaitAsync(100))
-        {
-            if (chain.LocalDataSource.Data is null)
-            {
-                Assert.Fail("Local file rule storage has not been loaded.");
-            }
-        }
+        // Poll on the test thread until the file watcher loads the data. A timeout with
+        // stale or empty data fails here instead of skipping the assert.
+        Assert.That(() => chain.LocalDataSource.Data?.Whitelist,
+            Is.EquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB }).After(5000, 50));
 
         object[] expected = { TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC };
 
@@ -158,30 +144,16 @@ public class TxPriorityContractTests
             new(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One, TxPriorityContract.DestinationSource.Contract, 1),
         };
 
-        SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
-        chain.LocalDataSource.Changed += (sender, args) =>
-        {
-            TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-            if (localData is not null)
-            {
-                Assert.That(chain.LocalDataSource.Data.Priorities,
-                    Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local)).UsingPropertiesComparer());
-                semaphoreSlim.Release();
-            }
-        };
-
         if (!await chain.FileSemaphore.WaitAsync(100))
         {
             Assert.Fail("File not written");
         }
 
-        if (!await semaphoreSlim.WaitAsync(100))
-        {
-            if (chain.LocalDataSource.Data is null)
-            {
-                Assert.Fail("Local file rule storage has not been loaded.");
-            }
-        }
+        // Poll on the test thread until the file watcher loads the data. A timeout with
+        // stale or empty data fails here instead of skipping the assert.
+        Assert.That(() => chain.LocalDataSource.Data?.Priorities,
+            Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
+                .UsingPropertiesComparer().After(5000, 50));
 
         IEnumerable<TxPriorityContract.Destination> priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
         Assert.That(priorities, Is.EquivalentTo(expected).UsingPropertiesComparer());
@@ -202,30 +174,16 @@ public class TxPriorityContractTests
             new(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
         };
 
-        SemaphoreSlim semaphoreSlim = new(chain.LocalDataSource.Data is not null ? 1 : 0);
-        chain.LocalDataSource.Changed += (sender, args) =>
-        {
-            TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
-            if (localData is not null)
-            {
-                Assert.That(chain.LocalDataSource.Data.MinGasPrices,
-                    Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local)).UsingPropertiesComparer());
-                semaphoreSlim.Release();
-            }
-        };
-
         if (!await chain.FileSemaphore.WaitAsync(100))
         {
             Assert.Fail("File not written");
         }
 
-        if (!await semaphoreSlim.WaitAsync(100))
-        {
-            if (chain.LocalDataSource.Data is null)
-            {
-                Assert.Fail("Local file rule storage has not been loaded.");
-            }
-        }
+        // Poll on the test thread until the file watcher loads the data. A timeout with
+        // stale or empty data fails here instead of skipping the assert.
+        Assert.That(() => chain.LocalDataSource.Data?.MinGasPrices,
+            Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
+                .UsingPropertiesComparer().After(5000, 50));
 
         IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
         Assert.That(minGasPrices, Is.EquivalentTo(expected).UsingPropertiesComparer());
