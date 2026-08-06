@@ -31,6 +31,15 @@ DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 # summaries; parity reports carry counts, never request/response bytes; node logs are scanned as
 # counts only and deleted.
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
+# Profiling a sweep only makes sense with a single Nethermind client: nodes start one at a time
+# and would otherwise overwrite each other's snapshots under a shared DIAG_DIR.
+DOTTRACE="${DOTTRACE:-false}"
+DOTTRACE_MODE="${DOTTRACE_MODE:-sampling}"
+if [[ "$DOTTRACE" != "false" && "$CLIENTS" != "nethermind" ]]; then
+  echo "::warning::dotTrace requested but CLIENTS='$CLIENTS' — profiling needs a lone nethermind client; disabling"
+  DOTTRACE="false"
+fi
+sweep_dottrace="$DOTTRACE"
 CORPUS_DIR="${CORPUS_DIR:-/mnt/sda/expb-data/rpc-bench}"
 # Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
@@ -128,7 +137,8 @@ for entry in $CLIENTS; do
        DB_SOURCE="$(snap_path "$ctype")" DB_ISOLATION="$(isolation "$ctype")" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$(layout_flags "$ctype")" \
-       ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+       ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" \
+       DOTTRACE="$sweep_dottrace" DOTTRACE_MODE="$DOTTRACE_MODE" DOTNET_TRACE="$sweep_dottrace" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
        "$here/start-node.sh"; then

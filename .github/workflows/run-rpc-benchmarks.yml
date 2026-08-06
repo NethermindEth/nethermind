@@ -710,6 +710,8 @@ jobs:
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
           NETWORK: ${{ needs.resolve.outputs.network }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
         shell: bash
         run: |
           set -euo pipefail
