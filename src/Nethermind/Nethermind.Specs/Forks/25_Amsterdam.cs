@@ -19,6 +19,7 @@ public class Amsterdam() : NamedReleaseSpec<Amsterdam>(BPO2.Instance)
         spec.IsEip7843Enabled = true;
         spec.IsEip7928Enabled = true;
         spec.IsEip7954Enabled = true;
+        spec.IsEip7997Enabled = true;
         spec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip7954;
         spec.IsEip8024Enabled = true;
         spec.IsEip8037Enabled = true;

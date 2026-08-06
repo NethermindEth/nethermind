@@ -432,6 +432,11 @@ namespace Nethermind.Core.Specs
         public bool IsEip8037Enabled { get; }
 
         /// <summary>
+        /// EIP-7997: install the deterministic deployment factory on the fork activation block.
+        /// </summary>
+        public bool IsEip7997Enabled { get; }
+
+        /// <summary>
         /// EIP-7708: ETH transfers and burns emit a log
         /// </summary>
         public bool IsEip7708Enabled { get; }

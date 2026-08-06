@@ -35,6 +35,14 @@ public partial class BlockAccessListManager
         new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
+    public void DeployDeterministicFactory(IReleaseSpec spec)
+    {
+        CheckInitialized();
+
+        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        Eip7997FactoryDeployer.Deploy(preExecution.WorldState, spec);
+    }
+
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         CheckInitialized();

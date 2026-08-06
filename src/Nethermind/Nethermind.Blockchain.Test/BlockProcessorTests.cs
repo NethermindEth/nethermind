@@ -1567,6 +1567,10 @@ public class BlockProcessorTests
         {
         }
 
+        public void DeployDeterministicFactory(IReleaseSpec spec)
+        {
+        }
+
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
         {
         }

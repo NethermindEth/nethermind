@@ -94,7 +94,8 @@ public class StatelessBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new StatelessExecutionRequestsProcessor(txProcessor),
-            blockAccessListManager
+            blockAccessListManager,
+            statelessBlockTree
         );
     }
 

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
@@ -45,7 +46,8 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    IBlockFinder? blockFinder = null)
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
@@ -162,6 +164,7 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
+        DeployDeterministicFactory(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
@@ -250,6 +253,28 @@ public partial class BlockProcessor(
     {
         using MetricsTimer<CommitTimeSink> _ = new();
         _stateProvider.Commit(spec, commitRoots: false);
+    }
+
+    /// <summary>
+    /// Installs the EIP-7997 deterministic deployment factory as the first state change of the fork
+    /// activation block. It fires once — when the parent block belongs to a fork that did not define
+    /// EIP-7997 — so later blocks neither re-touch the account nor re-record it in the block access list.
+    /// </summary>
+    private void DeployDeterministicFactory(BlockHeader header, IReleaseSpec spec)
+    {
+        if (!spec.IsEip7997Enabled || header.IsGenesis) return;
+
+        BlockHeader? parent = blockFinder?.FindParentHeader(header, BlockTreeLookupOptions.None);
+        if (parent is not null && _specProvider.GetSpec(parent).IsEip7997Enabled) return;
+
+        if (_balManager.Enabled)
+        {
+            _balManager.DeployDeterministicFactory(spec);
+        }
+        else
+        {
+            Eip7997FactoryDeployer.Deploy(_stateProvider, spec);
+        }
     }
 
     private void CommitStateAndStorageRoots(IReleaseSpec spec)
