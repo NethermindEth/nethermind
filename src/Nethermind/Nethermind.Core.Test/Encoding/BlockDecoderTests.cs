@@ -178,6 +178,7 @@ public class BlockDecoderTests
         // that decodes canonical wire, like Can_do_roundtrip_regression, can find that class.
         Assert.That(decoded, Is.Not.Null);
         Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
+        Assert.That(decoded.Uncles, Has.Length.EqualTo(block.Uncles.Length));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
@@ -215,7 +216,11 @@ public class BlockDecoderTests
                 Assert.That(decoded.Transactions[i].Hash, Is.EqualTo(block.Transactions[i].Hash), $"transaction {i}");
             }
 
-            Assert.That(decoded.Uncles.Length, Is.EqualTo(block.Uncles.Length));
+            for (int i = 0; i < block.Uncles.Length; i++)
+            {
+                Assert.That(decoded.Uncles[i].Hash, Is.EqualTo(block.Uncles[i].Hash), $"uncle {i}");
+            }
+
             Assert.That(decoded.Withdrawals?.Length, Is.EqualTo(block.Withdrawals?.Length));
         }
     }
