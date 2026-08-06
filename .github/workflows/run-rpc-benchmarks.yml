@@ -704,7 +704,13 @@ jobs:
           corpus_dir="$(get '.corpus_dir')";               [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
           corpus_glob="$(get '.corpus_glob')";             [[ -n "${corpus_glob}" ]] && export CORPUS_GLOB="${corpus_glob}"
           export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind geth reth"
-          export RPS_LIST="$(get '.rps_list')";            [[ -z "${RPS_LIST}" ]] && export RPS_LIST="100 250 500"
+          # An ABSENT rps_list means "use the default"; an explicitly EMPTY one means "no k6 cells"
+          # (corpus runs that only want parity/timings). `// empty` cannot tell those apart.
+          if [[ "$(echo "${cfg}" | jq -r 'has("rps_list")')" == "true" ]]; then
+            export RPS_LIST="$(echo "${cfg}" | jq -r '.rps_list // ""')"
+          else
+            export RPS_LIST="100 250 500"
+          fi
           export SNAPSHOT_BLOCK="$(get '.snapshot_block')";[[ -z "${SNAPSHOT_BLOCK}" ]] && export SNAPSHOT_BLOCK="25490000"
           export STATE_LAYOUT="$(get '.state_layout')";    [[ -z "${STATE_LAYOUT}" ]] && export STATE_LAYOUT="flat"
           export JB_BENCHMARK_CONFIG="$(get '.benchmark_config')"; [[ -z "${JB_BENCHMARK_CONFIG}" ]] && export JB_BENCHMARK_CONFIG="config/benchmark/ethcallchaos-percategory-validated.yaml"
