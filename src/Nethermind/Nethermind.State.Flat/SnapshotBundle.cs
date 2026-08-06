@@ -471,9 +471,7 @@ public sealed class SnapshotBundle : IDisposable
 
     internal void PromoteAccount(Address address, Account? account)
     {
-        // TryAdd takes the bucket lock before it can discover the key is already there, and a hot
-        // account is promoted on every read. ContainsKey is lock-free, so pre-checking keeps the
-        // repeat promotions - the overwhelming majority - off the lock entirely.
+        // ContainsKey is lock-free; TryAdd alone would take the bucket lock on every hot re-promote.
         HashedKey<Address> key = new(address);
         if (!_changedAccounts.ContainsKey(key))
         {

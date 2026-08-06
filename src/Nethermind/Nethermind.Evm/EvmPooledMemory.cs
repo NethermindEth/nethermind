@@ -458,15 +458,7 @@ public struct EvmPooledMemory
     [ThreadStatic] private static byte[]?[]? _cachedArrays;
     [ThreadStatic] private static int _cachedArrayCount;
 
-    /// <remarks>
-    /// Buffers are cached and rented dirty: nothing is zeroed on frame exit or on rent. Instead
-    /// <see cref="RentSlow"/> zero-extends the valid prefix (<see cref="_lastZeroedSize"/>) to the
-    /// current <see cref="Size"/> whenever memory grows. Total bytes cleared are the same — each
-    /// frame's high-water is zeroed exactly once — but the clear lands right before the region is
-    /// used, on cache-hot lines, instead of as a bulk cold pass over the whole high-water at frame
-    /// exit. Every access is preceded by <see cref="EnsureRented"/> (or <see cref="ClearForTracing"/>
-    /// for tracer exposure), so no caller can observe bytes beyond the zeroed prefix.
-    /// </remarks>
+    // Cached dirty; RentSlow zero-extends [_lastZeroedSize, Size) on growth.
     private static byte[] Rent(int minLength)
     {
         byte[]?[]? cache = _cachedArrays;
@@ -543,15 +535,11 @@ public struct EvmPooledMemory
         else if (Size > (ulong)memory.LongLength)
         {
             byte[] grown = Rent(TruncateToInt32(Size));
-            // Only the zeroed prefix holds EVM-valid bytes; beyond it the old buffer is garbage,
-            // and the tail of the new buffer is zero-extended below.
             Array.Copy(memory, 0, grown, 0, (int)_lastZeroedSize);
             Return(memory);
             _memory = memory = grown;
         }
 
-        // Zero-extend the valid prefix to the current size; the rest of the buffer stays dirty
-        // until a later growth exposes it.
         ulong size = Size;
         if (size > _lastZeroedSize)
         {

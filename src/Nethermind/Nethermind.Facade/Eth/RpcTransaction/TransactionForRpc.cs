@@ -187,11 +187,7 @@ public abstract class TransactionForRpc
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            // Copy the reader so we can do a double parse:
-            // The first pass only inspects property names to choose the concrete type, the second
-            // parses the whole transaction. The pass is done over the reader rather than a
-            // materialized DOM: an eth_call transaction carries its call data, which on
-            // simulation-style payloads runs to hundreds of kilobytes.
+            // Peek property names for the concrete type, then deserialize (no DOM).
             Utf8JsonReader txTypeReader = reader;
 
             Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted);
@@ -211,9 +207,7 @@ public abstract class TransactionForRpc
         {
             TxType? setType = null;
             bool hasGasPrice = false;
-            // One bit per registered type: which types had a discriminator property present. The
-            // winner is chosen afterwards in registration order, so a payload carrying several
-            // discriminators resolves to the same type as a whole-object lookup would.
+            // Bit i set ⇒ discriminator for _txTypes[i] seen; lowest bit wins (registration order).
             ulong discriminated = 0;
 
             if (reader.TokenType == JsonTokenType.StartObject)
@@ -286,12 +280,6 @@ public abstract class TransactionForRpc
             return typeof(EIP1559TransactionForRpc);
         }
 
-        /// <summary>Compares the current property name against an ASCII-lower-cased UTF-8 literal.</summary>
-        /// <remarks>
-        /// The serializer matches property names case-insensitively, so the comparison folds ASCII
-        /// case. Escaped or multi-segment names take the allocating path; both are absent from
-        /// real transaction payloads.
-        /// </remarks>
         private static bool NameEqualsIgnoreCase(ref Utf8JsonReader reader, ReadOnlySpan<byte> lowerCaseName)
         {
             if (reader.HasValueSequence || reader.ValueIsEscaped)
@@ -303,8 +291,6 @@ public abstract class TransactionForRpc
             if (name.Length != lowerCaseName.Length) return false;
             for (int i = 0; i < name.Length; i++)
             {
-                // Folding with 0x20 maps A-Z onto a-z; every other byte either stays put or moves to
-                // a value that cannot collide with the lower-case ASCII letters being matched.
                 if ((name[i] | 0x20) != lowerCaseName[i]) return false;
             }
 
@@ -322,7 +308,6 @@ public abstract class TransactionForRpc
             public Type Type { get; set; }
             public FromTransactionFunc FromTransactionFunc { get; set; }
             public string[] DiscriminatorProperties { get; set; } = [];
-            /// <summary>ASCII-lower-cased UTF-8 forms of <see cref="DiscriminatorProperties"/>, for matching property names off the JSON reader.</summary>
             public byte[][] DiscriminatorPropertiesUtf8 { get; set; } = [];
         }
     }

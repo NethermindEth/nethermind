@@ -102,8 +102,6 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(0UL));
     }
 
-    // Covers both the thread-local dirty cache (≤ 64 KiB) and the large ArrayPool path: buffers
-    // are returned dirty and must be zero-extended on the next rent before any EVM-visible load.
     [TestCase(1024)]
     [TestCase(4096)]
     [TestCase(32 * 1024)]

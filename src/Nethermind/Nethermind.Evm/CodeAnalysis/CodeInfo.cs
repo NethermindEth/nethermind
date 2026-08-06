@@ -78,10 +78,7 @@ public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
             return null;
-        // Without a hash there is no cache key, so a built stream could neither be published nor
-        // looked up: the build would run in full and be discarded. Code that never goes through the
-        // shared cache (eth_call state overrides) lands here, so skip it rather than churning the
-        // large per-build buffers on every request.
+        // No cache key (e.g. eth_call overrides) — building would only be discarded.
         if (CodeHash == default)
         {
             Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
