@@ -45,7 +45,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
     public void ValueTransfer_WithLog_AddsLogsToCorrectFrames(TransferLogScenario scenario)
     {
         (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, scenario.RecipientCode, value: TopValue);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(scenario.Config));
+        using NativeCallTracer tracer = new(tx, SpecProvider.GetSpec(block.Header), GetGethTraceOptions(scenario.Config));
 
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 

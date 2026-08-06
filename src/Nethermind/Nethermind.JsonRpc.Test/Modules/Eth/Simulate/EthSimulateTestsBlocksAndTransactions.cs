@@ -870,6 +870,58 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Regression test for the glamsterdam-devnet-8 Hive divergence: under EIP-7928 the block-access-list
+    /// execution path must also skip EIP-3607, so a state-overridden contract sender is not rejected with
+    /// "sender has deployed code" (-38024) — a funded one succeeds, an unfunded one reaches the normal
+    /// balance check (-38014).
+    /// </summary>
+    [TestCase(true, null, TestName = "Amsterdam contract sender: funded succeeds")]
+    [TestCase(false, ErrorCodes.InsufficientFunds, TestName = "Amsterdam contract sender: unfunded fails on funds, not EIP-3607")]
+    public async Task eth_simulateV1_contract_sender_skips_eip3607_on_bal_path(bool funded, int? expectedErrorCode)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip3607Enabled = true };
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+
+        // Pin the EIP-7928 premise so the test can't silently degrade into a duplicate of the London case.
+        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+
+        // Explicit Gas avoids the EIP-8037 block-gas-limit default masking the result with -38015 (#12692);
+        // zero gas price makes the unfunded failure unambiguously the value transfer (-38014), not the fee.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressC, new AccountOverride { Balance = funded ? 1.Ether : UInt256.Zero, Code = Bytes.FromHexString("0x60006000") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressC, To = TestItem.AddressB, Value = 1000, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        if (expectedErrorCode is null)
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+        }
+        else
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode.Value));
+        }
+    }
+
+    /// <summary>
     /// Regression test: blob tx rejected when <c>maxFeePerBlobGas</c> is below the <c>blobBaseFee</c>
     /// block override. The decorated calculator must be used for validation, not the static
     /// <c>BlobGasCalculator.TryCalculateFeePerBlobGas</c> which reads from the raw header.
