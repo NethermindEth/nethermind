@@ -58,7 +58,7 @@ public class StateSyncRunner(
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed.");
 
-                    if (syncConfig.Snap2Enabled && await RunBalHealing(firstPivot, token))
+                    if (await RunBalHealing(firstPivot, token))
                         return;
                 }
 
