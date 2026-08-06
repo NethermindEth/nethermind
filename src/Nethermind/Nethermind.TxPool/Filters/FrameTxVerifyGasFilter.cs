@@ -11,11 +11,9 @@ namespace Nethermind.TxPool.Filters;
 /// <c>MAX_VERIFY_GAS</c> to check.
 /// </summary>
 /// <remarks>
-/// This is a public-mempool DoS bound, not a validity rule: a block carrying such a transaction stays valid, and the
-/// transaction can still be delivered out of band. Without the bound a sender can make every node on the network run
-/// an arbitrarily expensive prefix before any gas is paid. The budget is read statically from the frame layout, so no
-/// prefix simulation is required. Must run after <see cref="MalformedTxFilter"/>, which guarantees the frame list is
-/// well-formed. A configured limit of 0 lifts the bound, matching the other per-sender pool limits.
+/// A public-mempool DoS bound, not a validity rule: a block carrying such a transaction stays valid. Must run after
+/// <see cref="MalformedTxFilter"/>, which guarantees the frame list is well-formed. A configured limit of 0 lifts the
+/// bound, matching the other per-sender pool limits.
 /// </remarks>
 internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {

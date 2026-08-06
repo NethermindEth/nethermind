@@ -237,15 +237,10 @@ public static class FrameTxValidation
     /// of its validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
     /// </summary>
     /// <remarks>
-    /// The figure is an upper bound on the work a node does before any gas is paid, and it is derived
-    /// from the frame layout alone so that no state has to be read. EIP-8141 "Public Mempool-recognized
-    /// Validation Prefixes" admits four layouts, each optionally preceded by an expiry verifier frame:
-    /// <c>[self_verify]</c>, <c>[deploy, self_verify]</c>, <c>[only_verify, pay]</c> and
-    /// <c>[deploy, only_verify, pay]</c>. Each ends in a <c>VERIFY</c> frame targeting the sender, whose
-    /// approval is protocol-defined, so the prefix provably ends there and the frames behind it are
-    /// already paid for. Under any other layout nothing can be assumed about where <c>payer</c> is set:
-    /// approval then depends on code at an attacker-chosen target, so the whole frame list is charged.
-    /// That keeps a cheap unusual layout admissible while denying the layout its low estimate. Signature
+    /// Derived from the frame layout alone, so no state is read. Each layout of EIP-8141 "Public
+    /// Mempool-recognized Validation Prefixes" ends in a <c>VERIFY</c> frame targeting the sender, whose
+    /// approval is protocol-defined, so the prefix provably ends there. Under any other layout approval
+    /// depends on code at an attacker-chosen target, so the whole frame list is charged. Signature
     /// validation counts against the same budget per EIP-8141 "Validation Prefix".
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
