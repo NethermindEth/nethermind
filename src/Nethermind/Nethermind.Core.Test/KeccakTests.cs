@@ -159,7 +159,13 @@ namespace Nethermind.Core.Test
                 byteArray[i] = (byte)(i % 256);
             }
 
-            Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(Keccak.Compute(byteArray)));
+            // The expected hash comes from an independent keccak-256 implementation (pycryptodome).
+            Hash256 expected = new("0x5902e53903be0d0f9656bdbd5b9f0d8c2d815f865645d629eef77f5185f6cd7f");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(expected));
+                Assert.That(Keccak.Compute(byteArray), Is.EqualTo(expected));
+            }
         }
 
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
