@@ -208,6 +208,23 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
+        [Test]
+        public void GetOrBuildStream_without_code_hash_is_unavailable()
+        {
+            // eth_call state overrides construct CodeInfo without a cache key; building a stream
+            // would only allocate large per-build buffers that can never be published.
+            byte[] code = Enumerable.Repeat((byte)Instruction.JUMPDEST, StreamInterpreter.BuildThreshold + 8).ToArray();
+            CodeInfo codeInfo = new(code);
+
+            for (int i = 0; i < StreamInterpreter.BuildThreshold + 2; i++)
+            {
+                Assert.That(codeInfo.GetOrBuildStream(), Is.Null);
+            }
+
+            // Once marked unavailable, further hits stay null without scheduling a build.
+            Assert.That(codeInfo.GetOrBuildStream(), Is.Null);
+        }
+
         [TestCaseSource(nameof(Codes))]
         public void JumpDestinationAnalyzer_are_equivalent(byte[] codeInput)
         {

@@ -77,6 +77,13 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"type":"0x2"}""");
             yield return Make(TxType.Blob, """{"type":"0x3"}""");
             yield return Make(TxType.SetCode, """{"type":"0x4"}""");
+
+            // Large call data (eth_call simulation-style payload): type detection must not
+            // materialize a DOM of the whole object — only property names are inspected first.
+            string largeInput = "0x" + new string('a', 64 * 1024);
+            yield return Make(TxType.EIP1559, $$"""{"type":"0x2","input":"{{largeInput}}","maxFeePerGas":"0x1"}""");
+            yield return Make(TxType.Legacy, $$"""{"gasPrice":"0x1","input":"{{largeInput}}"}""");
+            yield return Make(TxType.AccessList, $$"""{"accessList":[],"input":"{{largeInput}}"}""");
         }
     }
 

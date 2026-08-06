@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -158,7 +160,8 @@ public abstract class TransactionForRpc
                 TxType = T.TxType,
                 Type = txType,
                 FromTransactionFunc = T.FromTransaction,
-                DiscriminatorProperties = uniqueProperties
+                DiscriminatorProperties = uniqueProperties,
+                DiscriminatorPropertiesUtf8 = Array.ConvertAll(uniqueProperties, static p => Encoding.UTF8.GetBytes(p.ToLowerInvariant()))
             };
 
             int existingTypeInfo = _txTypes.FindIndex(t => t.TxType == typeInfo.TxType);
@@ -185,11 +188,13 @@ public abstract class TransactionForRpc
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             // Copy the reader so we can do a double parse:
-            // The first parse is used to check for fields, while the second parses the entire Transaction
+            // The first pass only inspects property names to choose the concrete type, the second
+            // parses the whole transaction. The pass is done over the reader rather than a
+            // materialized DOM: an eth_call transaction carries its call data, which on
+            // simulation-style payloads runs to hundreds of kilobytes.
             Utf8JsonReader txTypeReader = reader;
-            JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
 
-            Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted);
+            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted);
 
             TransactionForRpc? result = (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
             if (result is not null)
@@ -199,29 +204,78 @@ public abstract class TransactionForRpc
             return result;
         }
 
-        private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options, out bool isDefaulted)
-        {
-            const string gasPriceFieldKey = nameof(LegacyTransactionForRpc.GasPrice);
-            const string typeFieldKey = nameof(TransactionForRpc.Type);
+        private static ReadOnlySpan<byte> TypeFieldUtf8 => "type"u8;
+        private static ReadOnlySpan<byte> GasPriceFieldUtf8 => "gasprice"u8;
 
-            if (untyped.TryGetPropertyValue(typeFieldKey, out JsonNode? node))
+        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted)
+        {
+            TxType? setType = null;
+            bool hasGasPrice = false;
+            // One bit per registered type: which types had a discriminator property present. The
+            // winner is chosen afterwards in registration order, so a payload carrying several
+            // discriminators resolves to the same type as a whole-object lookup would.
+            ulong discriminated = 0;
+
+            if (reader.TokenType == JsonTokenType.StartObject)
             {
-                TxType? setType = node.Deserialize<TxType?>(options);
-                if (setType is not null)
+                while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
                 {
-                    isDefaulted = false;
-                    return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ?? throw new JsonException("Unknown transaction type");
+                    if (setType is null && NameEqualsIgnoreCase(ref reader, TypeFieldUtf8))
+                    {
+                        reader.Read();
+                        setType = JsonSerializer.Deserialize<TxType?>(ref reader, options);
+                        continue;
+                    }
+
+                    if (!hasGasPrice && NameEqualsIgnoreCase(ref reader, GasPriceFieldUtf8))
+                    {
+                        hasGasPrice = true;
+                    }
+                    else
+                    {
+                        int count = Math.Min(_txTypes.Count, 64);
+                        for (int i = 0; i < count; i++)
+                        {
+                            foreach (byte[] discriminator in _txTypes[i].DiscriminatorPropertiesUtf8)
+                            {
+                                if (NameEqualsIgnoreCase(ref reader, discriminator))
+                                {
+                                    discriminated |= 1UL << i;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    reader.Read();
+                    reader.Skip();
                 }
             }
 
-            if (untyped.ContainsKey(gasPriceFieldKey))
+            Type? viaDiscriminator = null;
+            if (discriminated != 0)
+            {
+                viaDiscriminator = _txTypes[BitOperations.TrailingZeroCount(discriminated)].Type;
+            }
+
+            if (setType is not null)
+            {
+                isDefaulted = false;
+                foreach (TxTypeInfo candidate in _txTypes)
+                {
+                    if (candidate.TxType == setType) return candidate.Type;
+                }
+
+                throw new JsonException("Unknown transaction type");
+            }
+
+            if (hasGasPrice)
             {
                 isDefaulted = true;
                 return typeof(LegacyTransactionForRpc);
             }
 
             // Discriminator field is a strong signal — not a default.
-            Type? viaDiscriminator = _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type;
             if (viaDiscriminator is not null)
             {
                 isDefaulted = false;
@@ -230,6 +284,31 @@ public abstract class TransactionForRpc
 
             isDefaulted = true;
             return typeof(EIP1559TransactionForRpc);
+        }
+
+        /// <summary>Compares the current property name against an ASCII-lower-cased UTF-8 literal.</summary>
+        /// <remarks>
+        /// The serializer matches property names case-insensitively, so the comparison folds ASCII
+        /// case. Escaped or multi-segment names take the allocating path; both are absent from
+        /// real transaction payloads.
+        /// </remarks>
+        private static bool NameEqualsIgnoreCase(ref Utf8JsonReader reader, ReadOnlySpan<byte> lowerCaseName)
+        {
+            if (reader.HasValueSequence || reader.ValueIsEscaped)
+            {
+                return string.Equals(reader.GetString(), Encoding.UTF8.GetString(lowerCaseName), StringComparison.OrdinalIgnoreCase);
+            }
+
+            ReadOnlySpan<byte> name = reader.ValueSpan;
+            if (name.Length != lowerCaseName.Length) return false;
+            for (int i = 0; i < name.Length; i++)
+            {
+                // Folding with 0x20 maps A-Z onto a-z; every other byte either stays put or moves to
+                // a value that cannot collide with the lower-case ASCII letters being matched.
+                if ((name[i] | 0x20) != lowerCaseName[i]) return false;
+            }
+
+            return true;
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), options);
@@ -243,6 +322,8 @@ public abstract class TransactionForRpc
             public Type Type { get; set; }
             public FromTransactionFunc FromTransactionFunc { get; set; }
             public string[] DiscriminatorProperties { get; set; } = [];
+            /// <summary>ASCII-lower-cased UTF-8 forms of <see cref="DiscriminatorProperties"/>, for matching property names off the JSON reader.</summary>
+            public byte[][] DiscriminatorPropertiesUtf8 { get; set; } = [];
         }
     }
 

@@ -102,9 +102,14 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(0UL));
     }
 
+    // Covers both the thread-local dirty cache (≤ 64 KiB) and the large ArrayPool path: buffers
+    // are returned dirty and must be zero-extended on the next rent before any EVM-visible load.
+    [TestCase(1024)]
+    [TestCase(4096)]
+    [TestCase(32 * 1024)]
     [TestCase(70 * 1024)]
     [TestCase(2 * 1024 * 1024)]
-    public void Large_pooled_buffer_is_zeroed_on_reuse(int size)
+    public void Pooled_buffer_is_zeroed_on_reuse(int size)
     {
         EvmPooledMemory dirty = new();
         UInt256 zero = UInt256.Zero;
@@ -119,6 +124,37 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(data.Length, Is.EqualTo(size));
         Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
         clean.Dispose();
+    }
+
+    [Test]
+    public void Grow_after_dirty_reuse_preserves_written_prefix_and_zeroes_tail()
+    {
+        const int firstSize = 2048;
+        const int secondSize = 8192;
+
+        EvmPooledMemory dirty = new();
+        Span<byte> pattern = new byte[firstSize];
+        pattern.Fill(0xaa);
+        Assert.That(dirty.TrySave(UInt256.Zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory next = new();
+        try
+        {
+            byte[] firstWord = TestItem.KeccakA.BytesToArray();
+            Assert.That(next.TrySaveWord(UInt256.Zero, firstWord), Is.True);
+
+            UInt256 growOffset = (UInt256)(secondSize - EvmPooledMemory.WordSize);
+            Assert.That(next.TryLoadSpan(in growOffset, (UInt256)EvmPooledMemory.WordSize, out Span<byte> tail), Is.True);
+            Assert.That(tail.ToArray(), Is.EqualTo(new byte[EvmPooledMemory.WordSize]));
+
+            Assert.That(next.TryLoadSpan(UInt256.Zero, (UInt256)EvmPooledMemory.WordSize, out Span<byte> head), Is.True);
+            Assert.That(head.ToArray(), Is.EqualTo(firstWord));
+        }
+        finally
+        {
+            next.Dispose();
+        }
     }
 
     [Test]
