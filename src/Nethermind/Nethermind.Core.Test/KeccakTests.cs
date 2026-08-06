@@ -151,7 +151,7 @@ namespace Nethermind.Core.Test
         public void CompareSameInstance() => Assert.That(Keccak.Zero.CompareTo(Keccak.Zero), Is.EqualTo(0));
 
         [Test]
-        public void Span()
+        public void Computes_known_hash_for_span_and_array()
         {
             byte[] byteArray = new byte[1024];
             for (int i = 0; i < byteArray.Length; i++)

@@ -94,6 +94,21 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
+                .TestObject,
+            // Every optional tail field is set, with a distinct value per field. This makes the field comparisons discriminating.
+            Build.A.Block.WithNumber(1)
+                .WithBaseFeePerGas(1)
+                .WithTransactions(transactions)
+                .WithUncles(uncles)
+                .WithWithdrawals(8)
+                .WithBloom(new Bloom(new[] { Build.A.LogEntry.TestObject }))
+                .WithBlobGasUsed(1)
+                .WithExcessBlobGas(2)
+                .WithParentBeaconBlockRoot(TestItem.KeccakA)
+                .WithRequestsHash(TestItem.KeccakB)
+                .WithBlockAccessListHash(TestItem.KeccakC)
+                .WithSlotNumber(7)
+                .WithMixHash(Keccak.EmptyTreeHash)
                 .TestObject
         ];
     }
@@ -158,13 +173,15 @@ public class BlockDecoderTests
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded2 = decoder.Encode(decoded);
 
-        // A re-encode comparison alone cannot find a symmetric encode/decode error. The hash values also derive
-        // from the encoded bytes. Only direct field comparisons can find such an error.
+        // A re-encode comparison cannot find a decode error that the matching encode hides. The field
+        // comparisons below can. A fully self-canceling encode/decode pair passes both; only the
+        // canonical-wire regression test can find that class.
         Assert.That(decoded, Is.Not.Null);
         Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
+            // The hash pins the embedded header bytes against the standalone header encoding. It cannot find decode errors.
             Assert.That(decoded.Hash, Is.EqualTo(block.Hash));
 
             BlockHeader actual = decoded.Header;
@@ -175,6 +192,7 @@ public class BlockDecoderTests
             Assert.That(actual.StateRoot, Is.EqualTo(expected.StateRoot));
             Assert.That(actual.TxRoot, Is.EqualTo(expected.TxRoot));
             Assert.That(actual.ReceiptsRoot, Is.EqualTo(expected.ReceiptsRoot));
+            Assert.That(actual.Bloom, Is.EqualTo(expected.Bloom));
             Assert.That(actual.Difficulty, Is.EqualTo(expected.Difficulty));
             Assert.That(actual.Number, Is.EqualTo(expected.Number));
             Assert.That(actual.GasLimit, Is.EqualTo(expected.GasLimit));
@@ -187,6 +205,10 @@ public class BlockDecoderTests
             Assert.That(actual.BlobGasUsed, Is.EqualTo(expected.BlobGasUsed));
             Assert.That(actual.ExcessBlobGas, Is.EqualTo(expected.ExcessBlobGas));
             Assert.That(actual.MixHash, Is.EqualTo(expected.MixHash));
+            Assert.That(actual.ParentBeaconBlockRoot, Is.EqualTo(expected.ParentBeaconBlockRoot));
+            Assert.That(actual.RequestsHash, Is.EqualTo(expected.RequestsHash));
+            Assert.That(actual.BlockAccessListHash, Is.EqualTo(expected.BlockAccessListHash));
+            Assert.That(actual.SlotNumber, Is.EqualTo(expected.SlotNumber));
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
