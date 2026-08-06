@@ -530,6 +530,38 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Parent_frame_refund_survives_child_revert()
+    {
+        byte[] calleeCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.REVERT)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .PersistData("0x0", HexZero)
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+
+        Assert.That(
+            topLevelStop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund),
+            "parent refund must persist after the child frame reverts"
+        );
+    }
+
+    [Test]
     public void Can_trace_returndata_when_enabled()
     {
         const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
