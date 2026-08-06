@@ -13,7 +13,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip()
         {
-            ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
+            ArrayPoolList<byte[]> data = new(2)
+            {
+                new byte[] { 0xc4, 0x81, 0xde, 0x81, 0xad },
+                new byte[] { 0xc2, 0x81, 0xfe },
+            };
 
             using BlockAccessListsMessage message = new(new ByteArrayListAdapter(data)) { RequestId = 1 };
 
@@ -26,7 +30,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         public void Roundtrip_preserves_positional_empty_entries()
         {
             // EIP-8189: an unavailable block access list is returned as a positional empty entry, not skipped.
-            ArrayPoolList<byte[]> data = new(3) { new byte[] { 1, 2, 3 }, System.Array.Empty<byte>(), new byte[] { 4, 5 } };
+            ArrayPoolList<byte[]> data = new(3)
+            {
+                new byte[] { 0xc3, 1, 2, 3 },
+                System.Array.Empty<byte>(),
+                new byte[] { 0xc2, 4, 5 },
+            };
 
             using BlockAccessListsMessage message = new(new ByteArrayListAdapter(data)) { RequestId = 7 };
 
@@ -36,9 +45,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             Assert.That(decoded.RequestId, Is.EqualTo(7));
             Assert.That(decoded.BlockAccessLists.Count, Is.EqualTo(3));
-            Assert.That(decoded.BlockAccessLists[0].ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(decoded.BlockAccessLists[0].ToArray(), Is.EqualTo(new byte[] { 0xc3, 1, 2, 3 }));
             Assert.That(decoded.BlockAccessLists[1].Length, Is.EqualTo(0));
-            Assert.That(decoded.BlockAccessLists[2].ToArray(), Is.EqualTo(new byte[] { 4, 5 }));
+            Assert.That(decoded.BlockAccessLists[2].ToArray(), Is.EqualTo(new byte[] { 0xc2, 4, 5 }));
         }
     }
 }
