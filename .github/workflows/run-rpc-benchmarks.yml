@@ -861,7 +861,7 @@ jobs:
     needs: [resolve, benchmark]
     # Run whenever the benchmark executed (success OR failure): an errored node still leaves a .dtp, often most valuable then.
     # Only skip if benchmark was skipped/cancelled. Missing snapshot artifacts are tolerated downstream.
-    # Timeline snapshots cannot be converted by Reporter.exe - they ship as the raw .dtp artifact only.
+    # Timeline snapshots cannot be converted by Reporter.exe - they ship as the raw .dtt artifact only.
     if: always() && needs.resolve.outputs.dottrace == 'true' && needs.resolve.outputs.dottrace_mode != 'timeline' && needs.benchmark.result != 'skipped' && needs.benchmark.result != 'cancelled'
     runs-on: windows-latest
     timeout-minutes: 30

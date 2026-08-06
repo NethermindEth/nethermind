@@ -260,7 +260,8 @@ jobs:
                 echo "trace_blocks cannot be combined with dottrace=timeline (per-block snapshots need a performance profiling session)."
                 exit 1
               fi
-              [[ -z "${dottrace_mode}" ]] && dottrace_mode="sampling"   # tracing specific blocks implies dotTrace
+              # tracing specific blocks implies dotTrace
+              if [[ -z "${dottrace_mode}" ]]; then dottrace_mode="sampling"; fi
             fi
             if [[ -n "${dottrace_mode}" ]]; then dottrace="true"; else dottrace="false"; fi
             client_env="${DISPATCH_CLIENT_ENV:-}"
@@ -835,10 +836,7 @@ jobs:
             # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
             # always rides along with dotTrace - different channel, adds the GC/lock story
             # the CPU profile cannot show. Requires expb with --dotnet-trace support.
-            dottrace_flag="--dottrace --dotnet-trace"
-            if [[ -n "${DOTTRACE_MODE:-}" && "${DOTTRACE_MODE}" != "sampling" ]]; then
-              dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE} --dotnet-trace"
-            fi
+            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
           fi
 
           # Marker for dottrace artifact collection — only files newer than this
@@ -1942,10 +1940,7 @@ jobs:
             # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
             # always rides along with dotTrace - different channel, adds the GC/lock story
             # the CPU profile cannot show. Requires expb with --dotnet-trace support.
-            dottrace_flag="--dottrace --dotnet-trace"
-            if [[ -n "${DOTTRACE_MODE:-}" && "${DOTTRACE_MODE}" != "sampling" ]]; then
-              dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE} --dotnet-trace"
-            fi
+            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
           fi
 
           # Marker for dottrace artifact collection — only files newer than this
