@@ -72,6 +72,7 @@ def _reject_non_json_constant(value: str) -> None:
 def load_corpus(path: str | Path) -> list[list]:
     """Return the params of each corpus record, in file order."""
     path = Path(path)
+    load_started = time.perf_counter()
     # The latency cells convert the same file with prepare-eth-call-corpus.py, which requires one
     # of these suffixes. Enforcing it here too keeps both readers agreeing on what a legal corpus
     # is, so a bad corpus_glob fails at validation rather than inside the first cell.
@@ -102,6 +103,10 @@ def load_corpus(path: str | Path) -> list[list]:
         raise CorpusParityError(f"cannot read corpus: {error.__class__.__name__}") from None
     if not params:
         raise CorpusParityError("corpus contains no records")
+    # Decompressing and parsing a large corpus takes minutes; say so rather than looking hung.
+    took = time.perf_counter() - load_started
+    if took > 5:
+        print(f"  loaded {len(params)} records in {took:.0f}s", flush=True)
     return params
 
 
@@ -175,7 +180,9 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     results: list[str] = []
     failures: dict[str, int] = {}
     error_count = 0
+    started = time.perf_counter()
     for index, params in enumerate(params_list, start=1):
+        _progress(index, len(params_list), started, "baseline")
         category, result = _post(rpc_url, index, params)
         if category == "rpc_error":
             error_count += 1
@@ -231,7 +238,9 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         if len(divergences) < MAX_DIVERGENCE_INDEXES:
             divergences.append({"index": index, "kind": kind})
 
+    compare_started = time.perf_counter()
     for index, params in enumerate(params_list, start=1):
+        _progress(index, len(params_list), compare_started, "compare")
         expected = baseline_results[index - 1]
         category, actual = _post(rpc_url, index, params)
         if category == "transport_failure":
@@ -286,6 +295,21 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         preview = " ".join(str(d["index"]) for d in divergences[:40])
         print(f"divergent corpus indexes (first {min(len(divergences), 40)}): {preview}")
     return clean
+
+
+# A 50k-record replay is a long silent stretch; emit progress often enough that an operator can
+# tell a slow node from a hung one, but rarely enough not to flood the job log.
+PROGRESS_EVERY = 2000
+
+
+def _progress(done: int, total: int, started: float, what: str) -> None:
+    if done % PROGRESS_EVERY and done != total:
+        return
+    elapsed = time.perf_counter() - started
+    rate = done / elapsed if elapsed > 0 else 0.0
+    eta = (total - done) / rate if rate > 0 else 0.0
+    print(f"  {what} {done}/{total} ({done / total * 100:.0f}%) "
+          f"{rate:.0f} req/s, ~{eta / 60:.1f} min left", flush=True)
 
 
 def _timed_post(url: str, index: int, params: list) -> tuple[float, str]:
