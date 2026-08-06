@@ -12,10 +12,14 @@ reports carry only record indexes, counts, and category names. The baseline stat
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import csv
 import gzip
 import json
 import os
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -284,6 +288,72 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
     return clean
 
 
+def _timed_post(url: str, index: int, params: list) -> tuple[float, str]:
+    """POST one eth_call and return (elapsed_ms, outcome). Never raises."""
+    started = time.perf_counter()
+    try:
+        category, _ = _post(url, index, params)
+    except Exception:  # a replay must never lose the whole matrix to one bad record
+        category = "transport_failure"
+    return (time.perf_counter() - started) * 1000.0, category or "ok"
+
+
+def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, concurrency: int) -> None:
+    """Replay every record `passes` times and write a record x pass matrix of latencies.
+
+    Unlike the k6 cells, which sample the corpus uniformly with replacement and tag every request
+    identically, this walks the corpus in order so each row is attributable to one record. Output
+    carries record indexes and milliseconds only — no request or response content.
+    """
+    params_list = load_corpus(corpus)
+    total_records = len(params_list)
+    if passes < 1:
+        raise CorpusParityError("passes must be >= 1")
+    head, chain_id = _node_identity(rpc_url)
+
+    grid: list[list[float | None]] = [[None] * passes for _ in range(total_records)]
+    outcomes: dict[str, int] = {}
+    lock = threading.Lock()
+    started_at = time.perf_counter()
+
+    def run_one(order: int, record: int, current_pass: int) -> None:
+        # Pace by submission order so the achieved rate matches --rps regardless of latency.
+        if rps > 0:
+            due = started_at + order / rps
+            delay = due - time.perf_counter()
+            if delay > 0:
+                time.sleep(delay)
+        elapsed, outcome = _timed_post(rpc_url, record + 1, params_list[record])
+        with lock:
+            grid[record][current_pass] = elapsed
+            outcomes[outcome] = outcomes.get(outcome, 0) + 1
+
+    schedule = [(p * total_records + i, i, p) for p in range(passes) for i in range(total_records)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+        for _ in pool.map(lambda a: run_one(*a), schedule):
+            pass
+
+    wall = time.perf_counter() - started_at
+    issued = len(schedule)
+    target = Path(out_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["record_index"] + [f"pass_{p + 1}_ms" for p in range(passes)])
+        for record in range(total_records):
+            writer.writerow([record + 1] + [
+                "" if v is None else f"{v:.3f}" for v in grid[record]
+            ])
+
+    achieved = issued / wall if wall > 0 else 0.0
+    summary = ", ".join(f"{k}={v}" for k, v in sorted(outcomes.items()))
+    print(f"timings: {total_records} records x {passes} passes = {issued} requests "
+          f"at head {head} chain {chain_id}")
+    print(f"  wall {wall:.1f}s, achieved {achieved:.1f} rps"
+          + (f" (target {rps:g})" if rps > 0 else " (unpaced)"))
+    print(f"  outcomes: {summary}")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -304,10 +374,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     compare_parser.add_argument("--baseline-client", required=True)
     compare_parser.add_argument("--candidate-client", required=True)
 
+    timings_parser = subparsers.add_parser(
+        "timings", help="replay the corpus N times and write a record x pass latency matrix")
+    timings_parser.add_argument("--corpus", required=True)
+    timings_parser.add_argument("--rpc-url", required=True)
+    timings_parser.add_argument("--out", required=True, help="CSV destination (indexes + ms only)")
+    timings_parser.add_argument("--passes", type=int, default=1, help="times to replay the whole corpus")
+    timings_parser.add_argument("--rps", type=float, default=0.0, help="target request rate; 0 = unpaced")
+    timings_parser.add_argument("--concurrency", type=int, default=16, help="in-flight requests")
+
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "validate":
             print(f"corpus OK: {len(load_corpus(arguments.corpus))} records")
+            return 0
+        if arguments.command == "timings":
+            timings(arguments.corpus, arguments.rpc_url, arguments.out,
+                    arguments.passes, arguments.rps, arguments.concurrency)
             return 0
         if arguments.command == "baseline":
             baseline(arguments.corpus, arguments.rpc_url, arguments.state)

@@ -3,12 +3,14 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 import contextlib
+import csv
 import gzip
 import io
 import json
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -116,6 +118,37 @@ class CorpusParityTests(unittest.TestCase):
             clean = corpus_parity.compare(str(corpus), server.url, str(self.state), str(self.report),
                                           "base_client", "cand_client")
         return clean, json.loads(self.report.read_text(encoding="utf-8")), out.getvalue()
+
+    def test_timings_writes_a_record_by_pass_matrix_without_content(self):
+        corpus = self.write_corpus(3)
+        out_csv = self.dir / "timings.csv"
+        with RpcServer(lambda i: "0x" + "ab" * i) as server, contextlib.redirect_stdout(io.StringIO()) as out:
+            corpus_parity.timings(str(corpus), server.url, str(out_csv),
+                                  passes=4, rps=0.0, concurrency=4)
+        rows = list(csv.reader(out_csv.read_text(encoding="utf-8").splitlines()))
+        # header + one row per record; one column per pass, all populated
+        self.assertEqual(rows[0], ["record_index", "pass_1_ms", "pass_2_ms", "pass_3_ms", "pass_4_ms"])
+        self.assertEqual(len(rows), 4)
+        for position, row in enumerate(rows[1:], start=1):
+            self.assertEqual(row[0], str(position))
+            self.assertEqual(len(row), 5)
+            for cell in row[1:]:
+                self.assertGreaterEqual(float(cell), 0.0)
+        self.assertNotIn(SENTINEL, out_csv.read_text(encoding="utf-8"))
+        self.assertNotIn(SENTINEL, out.getvalue())
+        self.assertIn("3 records x 4 passes = 12 requests", out.getvalue())
+
+    def test_timings_paces_to_the_requested_rate(self):
+        corpus = self.write_corpus(5)
+        out_csv = self.dir / "timings.csv"
+        with RpcServer(lambda i: "0x00") as server, contextlib.redirect_stdout(io.StringIO()) as out:
+            started = time.perf_counter()
+            corpus_parity.timings(str(corpus), server.url, str(out_csv),
+                                  passes=4, rps=40.0, concurrency=8)
+            elapsed = time.perf_counter() - started
+        # 20 requests at 40 rps cannot finish faster than ~0.475s of pacing
+        self.assertGreater(elapsed, 0.4)
+        self.assertIn("target 40", out.getvalue())
 
     def test_baseline_then_matching_compare_is_clean_and_content_free(self):
         corpus = self.write_corpus(3)
