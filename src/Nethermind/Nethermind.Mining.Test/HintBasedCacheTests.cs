@@ -74,8 +74,8 @@ public class HintBasedCacheTests
         {
             Assert.That(hintBasedCache.CachedEpochsCount, Is.EqualTo(1));
             Assert.That(hintBasedCache.Get(Ethash.GetEpoch(200000UL)), Is.Not.Null);
-            Assert.That(hintBasedCache.Get(5), Is.Null);
-            Assert.That(hintBasedCache.Get(7), Is.Null);
+            Assert.That(hintBasedCache.Get(Ethash.GetEpoch(200000UL) - 1), Is.Null);
+            Assert.That(hintBasedCache.Get(Ethash.GetEpoch(200000UL) + 1), Is.Null);
         }
     }
 
@@ -197,9 +197,9 @@ public class HintBasedCacheTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(hintBasedCache.Get(1000000000 / 30000), Is.Not.Null);
-            Assert.That(hintBasedCache.Get(1000000000 / 30000 - 1), Is.Null);
-            Assert.That(hintBasedCache.Get(1000000000 / 30000 + 1), Is.Null);
+            Assert.That(hintBasedCache.Get(Ethash.GetEpoch(1000000000UL)), Is.Not.Null);
+            Assert.That(hintBasedCache.Get(Ethash.GetEpoch(1000000000UL) - 1), Is.Null);
+            Assert.That(hintBasedCache.Get(Ethash.GetEpoch(1000000000UL) + 1), Is.Null);
         }
     }
 
