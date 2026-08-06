@@ -393,13 +393,19 @@ public struct EvmPooledMemory
         return cost;
     }
 
+    private static readonly TraceMemory EmptyTraceMemory = new(0, default);
+
     public TraceMemory GetTrace()
     {
         ulong size = Size;
+        if (size == 0)
+            return EmptyTraceMemory;
+
         ClearForTracing(size);
         // Clamp to Size so TraceMemory.Slice past the EVM high-water cannot see dirty tail bytes.
-        if (_memory is null || size == 0)
+        if (_memory is null)
             return new(size, default);
+
         int visible = (int)Math.Min(size, (ulong)_memory.Length);
         return new(size, _memory.AsMemory(0, visible));
     }
