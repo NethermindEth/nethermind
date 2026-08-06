@@ -286,6 +286,18 @@ numbers and parity counts only**. This is a logging/artifact boundary, not a
 defense against the runner itself — anything executing on the VM (trusted
 images, this repo's scripts) can read the corpus there.
 
+The boundary covers call *contents*, not the **filename**: everything after the
+`eth-call-corpus-` prefix becomes the scenario label, which appears in the step
+summary, the parity table, artifact paths, and `summaries.manifest`. That is
+deliberate — scenarios have to be told apart — so name files by workload shape,
+never after anything sensitive.
+
+Two operational limits worth knowing before capturing: `corpus_parity.py`
+enforces `MAX_CORPUS_RECORDS = 10_000`, and the k6 fixture scales with record
+count (~142 MB for 497 records, since eth_call records with state overrides run
+to hundreds of KB each). Large captures need sampling down to a representative
+subset, not a raised cap.
+
 **Corpus files** (JSON Lines, one `{"method":"eth_call","params":[...]}` per
 line, extra fields ignored, optionally gzipped) go to the runner at
 `/mnt/sda/expb-data/rpc-bench/eth-call-corpus[-<label>].jsonl.gz`. A
@@ -293,6 +305,37 @@ line, extra fields ignored, optionally gzipped) go to the runner at
 `eth-call-corpus*.jsonl.gz` there and runs each as its own scenario;
 single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
 `corpus_dir` (sweep tool_config) overrides the directory.
+
+**Sizing a cell by request count.** By default a corpus cell runs for `duration` at each
+`rps_list` rate. `corpus_requests` (absolute) or `corpus_passes` (a multiple of that
+corpus's record count) instead size the cell by how many requests it should issue: the
+rate is unchanged and the length is derived as `ceil(count / rps)`, since k6's
+constant-arrival-rate executor holds the rate. `corpus_passes: 5` on a 50k corpus at
+`rps_list: "500"` is 250,000 requests over 500s. Note this is *draws with replacement*,
+not a guarantee every record is visited — coverage is `N x (1 - (1 - 1/N)^requests)`.
+
+**Per-record timings.** The k6 cells cannot attribute a latency to a corpus record: every
+corpus request carries the same `req_name` tag, and json-bench samples the corpus
+uniformly *with replacement* without recording which record it drew. To get a
+record-by-record profile, replay the corpus directly against a running node:
+
+```bash
+scripts/rpc-bench/corpus_parity.py timings   --corpus /mnt/sda/expb-data/rpc-bench/eth-call-corpus-<label>.jsonl.gz   --rpc-url http://localhost:8545 --out timings.csv --passes 5 --rps 100 --concurrency 16
+```
+
+Walks the corpus in order, `--passes` times, pacing submissions to `--rps` (0 = unpaced),
+and writes one row per record with one column per pass:
+
+```
+record_index,pass_1_ms,pass_2_ms,pass_3_ms,pass_4_ms,pass_5_ms
+1,6.855,9.761,12.712,7.105,7.004
+2,37.086,37.002,58.363,36.698,37.114
+```
+
+Every record is hit exactly `--passes` times — unlike the k6 cells, where coverage is a
+random draw. The CSV carries record indexes and milliseconds only, so it is safe to
+publish under the same boundary as the parity reports. The achieved rate is printed so a
+run that could not keep up with `--rps` is visible rather than silently slower.
 
 **What a corpus sweep does per client:** one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a

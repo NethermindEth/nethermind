@@ -43,6 +43,18 @@ sweep_dottrace="$DOTTRACE"
 CORPUS_DIR="${CORPUS_DIR:-/mnt/sda/expb-data/rpc-bench}"
 # Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
+# Size a corpus cell by request count instead of wall time. CORPUS_REQUESTS is absolute;
+# CORPUS_PASSES is a multiple of the corpus's own record count (2 = every record drawn twice on
+# average). Either one derives the cell duration from the rate, so the rate stays what was asked
+# for and only the run length changes. Empty = size cells by JB_DURATION as before.
+CORPUS_REQUESTS="${CORPUS_REQUESTS:-}"
+CORPUS_PASSES="${CORPUS_PASSES:-}"
+# Per-record latency matrix (corpus_parity.py timings): replays the corpus in order so each row is
+# attributable to one record, which the k6 cells cannot do. Bypasses k6 entirely, so it is the only
+# way to drive a large corpus at a high rate without materializing a request-sized CSV.
+CORPUS_TIMINGS_PASSES="${CORPUS_TIMINGS_PASSES:-}"
+CORPUS_TIMINGS_RPS="${CORPUS_TIMINGS_RPS:-0}"
+CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 default_image() {
@@ -81,6 +93,27 @@ run_cell() {
 # carry explicit gas up to billions, and clamping them would make calls fail artificially.
 CORPUS_RPC_GAS_CAP="1000000000000"
 
+# Cell length for a corpus at a given rate. With CORPUS_REQUESTS/CORPUS_PASSES the cell is sized by
+# request count instead of wall time: k6's constant-arrival-rate executor holds the rate, so running
+# for count/rate seconds delivers exactly that many requests at exactly the rate asked for.
+corpus_cell_duration() {
+  local corpus="$1" rps="$2" target=""
+  if [[ -n "$CORPUS_REQUESTS" ]]; then
+    target="$CORPUS_REQUESTS"
+  elif [[ -n "$CORPUS_PASSES" ]]; then
+    local records="${CORPUS_RECORDS[$corpus]:-}"
+    if [[ -z "$records" ]]; then
+      echo "::warning::no record count for $(corpus_label "$corpus") — falling back to JB_DURATION" >&2
+      printf '%s' "$JB_DURATION"; return
+    fi
+    target=$((records * CORPUS_PASSES))
+  else
+    printf '%s' "$JB_DURATION"; return
+  fi
+  # Round up so the cell never delivers fewer than the requested count.
+  printf '%ss' "$(( (target + rps - 1) / rps ))"
+}
+
 # Short scenario label from a corpus filename: eth-call-corpus[-<label>].jsonl.gz -> <label> | default
 corpus_label() {
   local b; b="$(basename "$1")"
@@ -110,10 +143,25 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   if [[ "${#CORPORA[@]}" -eq 0 ]]; then
     echo "::error::no corpus files matching '$CORPUS_GLOB' under $CORPUS_DIR"; exit 1
   fi
-  echo "Corpus scenarios: $(for f in "${CORPORA[@]}"; do printf '%s ' "$(corpus_label "$f")"; done)"
+  CORPUS_LABELS=()
+  for f in "${CORPORA[@]}"; do CORPUS_LABELS+=("$(corpus_label "$f")"); done
+  echo "Corpus scenarios: ${CORPUS_LABELS[*]}"
+  # corpus_label sanitizes the filename, so two distinct corpora can collapse onto one label and
+  # would then share a parity baseline and cell directory — the second baseline overwrites the
+  # first and later clients diff against the wrong one. It fails safe (a count mismatch), but far
+  # into the sweep and pointing at nothing real, so reject it before any node starts.
+  collisions="$(printf '%s\n' "${CORPUS_LABELS[@]}" | sort | uniq -d | tr '\n' ' ')"
+  if [[ -n "${collisions// /}" ]]; then
+    echo "::error::corpus scenario labels collide (${collisions%% }) — rename the files so each yields a distinct label"; exit 1
+  fi
   # Fail on an unreadable/oversized corpus in seconds, before any node starts or cell runs.
+  declare -A CORPUS_RECORDS=()
   for corpus in "${CORPORA[@]}"; do
-    if ! python3 "$here/corpus_parity.py" validate --corpus "$corpus"; then
+    # validate prints "corpus OK: <n> records" — reuse that count for CORPUS_PASSES sizing.
+    if validate_out="$(python3 "$here/corpus_parity.py" validate --corpus "$corpus")"; then
+      echo "$validate_out"
+      CORPUS_RECORDS["$corpus"]="$(printf '%s' "$validate_out" | awk '/^corpus OK:/ {print $3}')"
+    else
       echo "::error::corpus $(corpus_label "$corpus") failed validation — fix the file before sweeping"; exit 1
     fi
   done
@@ -151,10 +199,13 @@ for entry in $CLIENTS; do
     # while the node is still up. The first started client is the parity baseline.
     for corpus in "${CORPORA[@]}"; do
       clabel="$(corpus_label "$corpus")"
+      # An empty rps_list runs no k6 cells: for a large corpus the JSON-array fixture alone can
+      # exceed the box, and parity/timings do not need it.
       for rps in $RPS_LIST; do
         cell="$OUT_DIR/corpus/${clabel}/${label}/${rps}"
-        echo "-- CORPUS ${clabel} ${label} @ rps=${rps} --"
-        run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$cell" "$ctype" "$label" "$corpus" \
+        cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
+        echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
+        run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" \
           || { echo "::warning::corpus ${clabel}/${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
         [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${clabel}|${label}|${rps}=$cell/jsonbench-summary.md")
       done
@@ -179,6 +230,18 @@ for entry in $CLIENTS; do
           echo "::warning::parity defects for ${label} vs ${BASELINE_LABEL} on corpus ${clabel} (see report counts)"
           parity_fail=$((parity_fail + 1))
           [[ -f "$report" ]] && PARITY_ROWS+=("${clabel}|${label}|$report")
+        fi
+      fi
+
+      if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
+        tdir="$OUT_DIR/corpus/${clabel}/${label}"; mkdir -p "$tdir"
+        echo "-- TIMINGS ${clabel}: ${label} (${CORPUS_TIMINGS_PASSES} passes @ ${CORPUS_TIMINGS_RPS} rps) --"
+        if ! python3 "$here/corpus_parity.py" timings \
+            --corpus "$corpus" --rpc-url "http://localhost:8545" \
+            --out "$tdir/timings.csv" --passes "$CORPUS_TIMINGS_PASSES" \
+            --rps "$CORPUS_TIMINGS_RPS" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"; then
+          echo "::warning::timings replay failed for ${label} on corpus ${clabel}"
+          cell_fail=$((cell_fail + 1))
         fi
       fi
     done
