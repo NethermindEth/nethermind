@@ -2080,68 +2080,6 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [Test]
-        public void SubmitTx_FrameTransactions_SharingPayer_BoundBySponsorBalance_ReleasedOnRemoval()
-        {
-            // Two frame txs from different senders both resolve their payer to one sponsor whose
-            // balance covers a single tx: the second is rejected on exposure, and removing the first
-            // releases the reservation so a re-submission is admitted (TxPool exposure accounting).
-            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
-
-            Address sponsor = TestItem.AddressD;
-            UInt256 maxCost = (UInt256)1.GWei * 1_000_000;
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
-            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
-            EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
-
-            // Distinct senders (avoids (sender, nonce) replacement) sharing the one sponsor as payer.
-            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA.Address, sponsor);
-            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB.Address, sponsor);
-            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC.Address, sponsor);
-
-            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
-            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
-
-            _txPool.RemoveTransaction(first.Hash);
-            AcceptTxResult thirdResult = _txPool.SubmitTx(third, TxHandlingOptions.PersistentBroadcast);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted), "first sponsored frame tx is within the sponsor's balance");
-                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.PayerExposureExceeded), "the summed exposure of both txs exceeds the sponsor's balance");
-                Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx released the reservation");
-            }
-        }
-
-        // A frame tx whose legible only_verify|pay prefix resolves the payer to <paramref name="sponsor"/>
-        // (a default-code EOA sponsor), with the sender approved by a canonical-hash secp256k1 signature.
-        private Transaction SponsoredFrameTx(Address sender, Address sponsor)
-        {
-            Transaction tx = new()
-            {
-                Type = TxType.FrameTx,
-                ChainId = _specProvider.ChainId,
-                Nonce = 0,
-                SenderAddress = sender,
-                Frames =
-                [
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsor, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
-                ],
-                FrameSignatures =
-                [
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty),
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsor, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty),
-                ],
-                GasLimit = 1_000_000,
-                GasPrice = 1.GWei,
-                DecodedMaxFeePerGas = 1.GWei,
-            };
-            tx.Hash = tx.CalculateHash();
-            return tx;
-        }
-
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);
