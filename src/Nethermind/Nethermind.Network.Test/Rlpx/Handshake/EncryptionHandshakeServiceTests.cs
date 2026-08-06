@@ -158,7 +158,6 @@ public class EncryptionHandshakeServiceTests
         Ack();
         Agree();
 
-        //            Assert.AreEqual(_recipientHandshake.Secrets.Token, _initiatorHandshake.Secrets.Token, "Token");
         Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(_recipientHandshake.Secrets.AesSecret), "AES");
         Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(_recipientHandshake.Secrets.MacSecret), "MAC");
 
@@ -174,34 +173,38 @@ public class EncryptionHandshakeServiceTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Initiator_secrets_are_not_null(bool preEip8Format)
+    public void Initiator_secrets_have_expected_sizes(bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        //            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
-        Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.Not.Null, "AES");
-        Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.Not.Null, "MAC");
-        Assert.That(_initiatorHandshake.Secrets.EgressMac, Is.Not.Null, "Egress");
-        Assert.That(_initiatorHandshake.Secrets.IngressMac, Is.Not.Null, "Ingress");
+        AssertSecretSizes(_initiatorHandshake);
     }
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Recipient_secrets_are_not_null(bool preEip8Format)
+    public void Recipient_secrets_have_expected_sizes(bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        //            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
-        Assert.That(_recipientHandshake.Secrets.AesSecret, Is.Not.Null, "AES");
-        Assert.That(_recipientHandshake.Secrets.MacSecret, Is.Not.Null, "MAC");
-        Assert.That(_recipientHandshake.Secrets.EgressMac, Is.Not.Null, "Egress");
-        Assert.That(_recipientHandshake.Secrets.IngressMac, Is.Not.Null, "Ingress");
+        AssertSecretSizes(_recipientHandshake);
+    }
+
+    // RLPx secrets are keccak-256 outputs: 32 bytes each.
+    private static void AssertSecretSizes(EncryptionHandshake handshake)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handshake.Secrets.AesSecret, Has.Length.EqualTo(32), "AES");
+            Assert.That(handshake.Secrets.MacSecret, Has.Length.EqualTo(32), "MAC");
+            Assert.That(handshake.Secrets.EgressMac.Hash, Has.Length.EqualTo(32), "Egress");
+            Assert.That(handshake.Secrets.IngressMac.Hash, Has.Length.EqualTo(32), "Ingress");
+        }
     }
 
     [TestCase(true)]
