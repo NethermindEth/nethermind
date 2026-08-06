@@ -14,8 +14,7 @@ public class AccumulatorCalculatorTests
     private const int TreeDepth = 13; // log2(8192)
 
     // An independent Python SSZ merkleization (hashlib only) derived every root in this file:
-    // hash_tree_root(List[HeaderRecord, 8192]) per the portal-network history spec,
-    // https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
+    // hash_tree_root(EpochRecord) with EpochRecord = List[HeaderRecord, 8192] per EIP-7643.
 
     // The root of [(Keccak.Zero, td 1), (Keccak.MaxValue, td 2)].
     private const string TwoEntryRoot = "0x3ed62652dfb7e1072d0f040feb6d002a9f7ce37cf8ddb16549a7ac5cf8e3b791";
@@ -66,8 +65,7 @@ public class AccumulatorCalculatorTests
         Assert.That(() => sut.GetProof(index), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
-    // The index 2 case has a set bit above tree level 1, so it exercises the right-hand
-    // sibling order in the upper levels.
+    // Index 2 sets a bit above position 0. It is the only case that catches a wrong index shift.
     public static IEnumerable<TestCaseData> ProofCases()
     {
         (Hash256, UInt256)[] single = [(Keccak.Zero, 42)];
@@ -117,7 +115,7 @@ public class AccumulatorCalculatorTests
     /// Recomputes the accumulator root from one block's proof.
     /// </summary>
     /// <remarks>
-    /// Transcribes the merkle proof verification from the portal-network history spec.
+    /// Transcribes single-leaf SSZ merkle proof verification for the EIP-7643 epoch record.
     /// The leaf is sha256(block_hash ++ total_difficulty_le). Each index bit selects the
     /// side of the next tree level. The SSZ list length mixes in last. The transcription
     /// uses SHA256 directly, so the expectation stays independent of the production

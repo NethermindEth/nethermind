@@ -9,8 +9,7 @@ namespace Nethermind.Era1.Test;
 public class AccumulatorCalculatorTests
 {
     // An independent Python SSZ merkleization (hashlib only) derived these roots:
-    // hash_tree_root(List[HeaderRecord, 8192]) per the portal-network history spec,
-    // https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
+    // hash_tree_root(EpochRecord) with EpochRecord = List[HeaderRecord, 8192] per EIP-7643.
     public static IEnumerable<TestCaseData> ComputeRootCases()
     {
         yield return new TestCaseData(
