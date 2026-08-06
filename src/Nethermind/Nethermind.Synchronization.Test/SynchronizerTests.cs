@@ -18,6 +18,8 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
+using Nethermind.Network.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -296,6 +298,24 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
                 .AddSingleton<ContainerDependencies>()
                 .AddSingleton(_logManager);
 
+            // The default 1s allocation-upgrade interval turns every misdirected bodies
+            // allocation into a 1-2s peer-sleep cycle, which stacks up against the asserts
+            // below on a loaded runner. 25ms makes the recovery cost negligible.
+            builder.AddSingleton<ISyncPeerPool>(ctx =>
+            {
+                INetworkConfig networkConfig = ctx.Resolve<INetworkConfig>();
+                ISyncConfig resolvedSyncConfig = ctx.Resolve<ISyncConfig>();
+                return new SyncPeerPool(
+                    ctx.Resolve<IBlockTree>(),
+                    ctx.Resolve<INodeStatsManager>(),
+                    ctx.Resolve<IBetterPeerStrategy>(),
+                    _logManager,
+                    networkConfig.MaxActivePeers,
+                    networkConfig.PriorityPeersMaxCount,
+                    resolvedSyncConfig.AllocationSlots,
+                    allocationsUpgradeIntervalInMsInMs: 25);
+            });
+
             if (useMaxRequestLimits)
             {
                 builder.AddSingleton(CreateMaxRequestLimitNodeStatsManager());
@@ -342,6 +362,33 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         }
 
         private const int DynamicTimeout = 30000;
+
+        private Task? _newSuggestedBlockGate;
+
+        /// <summary>
+        /// Arms a gate for the expected suggestion. Arm it before the action that triggers
+        /// the sync, or the event can fire before the subscription.
+        /// </summary>
+        /// <remarks>
+        /// NewSuggestedBlock fires for every not-already-known suggestion.
+        /// NewBestSuggestedBlock does not fire for the fast-sync fixtures, whose feed
+        /// inserts without processing.
+        /// </remarks>
+        public SyncingContext RegisterNewSuggestedBlockGate(BlockHeader header)
+        {
+            Hash256 expectedHash = header.Hash!;
+            _newSuggestedBlockGate = Wait.ForEventCondition<BlockEventArgs>(CancellationToken.None,
+                h => BlockTree.NewSuggestedBlock += h,
+                h => BlockTree.NewSuggestedBlock -= h,
+                e => e.Block.Hash == expectedHash);
+            return this;
+        }
+
+        public SyncingContext WaitForNewSuggestedBlockGate(int timeoutMs = DynamicTimeout)
+        {
+            Assert.That(_newSuggestedBlockGate!.Wait(timeoutMs), Is.True, "the armed NewSuggestedBlock gate timed out");
+            return this;
+        }
 
         public SyncingContext BestSuggestedHeaderIs(BlockHeader header, int timeout = DynamicTimeout)
         {
@@ -751,7 +798,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_reorg_based_on_total_difficulty()
     {
         if (WithTTD(_synchronizerType)) { return; }
@@ -761,12 +808,17 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         SyncPeerMock peerB = new("B");
         peerB.AddHighDifficultyBlocksUpTo(6, 0, 1);
 
-        await When.Syncing
+        // await using disposes the context when an assert throws mid-chain; without it a
+        // failing run leaks a hot container into the rest of the fixture.
+        await using SyncingContext ctx = When.Syncing;
+        await ctx
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
+            .RegisterNewSuggestedBlockGate(peerB.HeadHeader)
             .AfterPeerIsAdded(peerB)
-            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
+            .WaitForNewSuggestedBlockGate(BatchSyncDynamicTimeout)
+            .BestSuggestedHeaderIs(peerB.HeadHeader, 2000)
             .StopAsync();
     }
 
@@ -792,7 +844,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
-    [Test, Retry(3)]
+    [Test]
     public async Task Can_extend_chain_on_new_block_when_high_difficulty_low_number()
     {
 
@@ -803,12 +855,15 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         SyncPeerMock peerB = new("B");
         peerB.AddHighDifficultyBlocksUpTo(6, 0, 1);
 
-        await When.Syncing
+        await using SyncingContext ctx = When.Syncing;
+        await ctx
             .AfterProcessingGenesis()
             .AfterPeerIsAdded(peerA)
             .BestSuggestedHeaderIs(peerA.HeadHeader, BatchSyncDynamicTimeout)
+            .RegisterNewSuggestedBlockGate(peerB.HeadHeader)
             .AfterPeerIsAdded(peerB)
-            .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
+            .WaitForNewSuggestedBlockGate(BatchSyncDynamicTimeout)
+            .BestSuggestedHeaderIs(peerB.HeadHeader, 2000)
             .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
             .AfterNewBlockMessage(peerB.HeadBlock, peerB)
             .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
