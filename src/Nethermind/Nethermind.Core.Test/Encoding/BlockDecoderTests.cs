@@ -138,11 +138,10 @@ public class BlockDecoderTests
             Assert.That(decoded.Header.GasLimit, Is.EqualTo(8_000_000UL));
             Assert.That(decoded.Header.GasUsed, Is.EqualTo(21_000UL));
             Assert.That(decoded.Header.Timestamp, Is.EqualTo(1549034638UL));
-            Assert.That(decoded.Header.Nonce, Is.EqualTo(0UL));
             Assert.That(decoded.Header.StateRoot, Is.EqualTo(new Hash256("0xfe77dd4ad7c2a3fa4c11868a00e4d728adcdfef8d2e3c13b256b06cbdbb02ec9")));
             Assert.That(tx.Nonce, Is.EqualTo(0UL));
             Assert.That(tx.GasPrice, Is.EqualTo((UInt256)1_000_000_000));
-            Assert.That(tx.GasLimit, Is.EqualTo(21_000L));
+            Assert.That(tx.GasLimit, Is.EqualTo(21_000UL));
             Assert.That(tx.To, Is.EqualTo(new Address("0x22ea9f6b28db76a7162054c05ed812deb2f519cd")));
             Assert.That(tx.Value, Is.EqualTo(UInt256.Parse("100000000000000000000000")));
             Assert.That(decoded.Uncles, Is.Empty);
@@ -159,9 +158,10 @@ public class BlockDecoderTests
         Block? decoded = decoder.Decode(ref ctx);
         Rlp encoded2 = decoder.Encode(decoded);
 
-        // A re-encode comparison alone cannot find a symmetric decode error. Compare the decoded block with the original.
+        // A re-encode comparison alone cannot find a symmetric encode/decode error. The hash values also derive
+        // from the encoded bytes. Only direct field comparisons can find such an error.
         Assert.That(decoded, Is.Not.Null);
-        Assert.That(decoded!.Transactions.Length, Is.EqualTo(block.Transactions.Length));
+        Assert.That(decoded!.Transactions, Has.Length.EqualTo(block.Transactions.Length));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));

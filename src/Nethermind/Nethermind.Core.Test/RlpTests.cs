@@ -293,9 +293,9 @@ namespace Nethermind.Core.Test
 
         /// <summary>Computes the RLP length of an unsigned integer.</summary>
         /// <remarks>
-        /// Transcribed from Yellow Paper appendix B: a value below 0x80 uses one byte; larger values use
+        /// Yellow Paper appendix B gives the length. A value below 0x80 uses one byte. Larger values use
         /// one prefix byte plus the minimal big-endian bytes. The loop shape is deliberately different from
-        /// the production implementation so both cannot share one defect.
+        /// the production implementation. This prevents a defect shared with the production code.
         /// </remarks>
         private static int SpecLengthOf(ulong value)
         {
