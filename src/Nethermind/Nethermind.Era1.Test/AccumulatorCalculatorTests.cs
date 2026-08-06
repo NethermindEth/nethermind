@@ -8,8 +8,9 @@ namespace Nethermind.Era1.Test;
 
 public class AccumulatorCalculatorTests
 {
-    // Roots derived with an independent Python SSZ merkleization (hashlib only):
-    // hash_tree_root(List[HeaderRecord, 8192]) per the portal-network history spec.
+    // An independent Python SSZ merkleization (hashlib only) derived these roots:
+    // hash_tree_root(List[HeaderRecord, 8192]) per the portal-network history spec,
+    // https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
     public static IEnumerable<TestCaseData> ComputeRootCases()
     {
         yield return new TestCaseData(

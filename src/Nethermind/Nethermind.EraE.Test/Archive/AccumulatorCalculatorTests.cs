@@ -13,13 +13,18 @@ public class AccumulatorCalculatorTests
 {
     private const int TreeDepth = 13; // log2(8192)
 
-    // Root of [(Keccak.Zero, td 1), (Keccak.MaxValue, td 2)]. Derived with an independent
-    // Python SSZ merkleization (hashlib only): hash_tree_root(List[HeaderRecord, 8192])
-    // per the portal-network history spec.
+    // An independent Python SSZ merkleization (hashlib only) derived every root in this file:
+    // hash_tree_root(List[HeaderRecord, 8192]) per the portal-network history spec,
+    // https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
+
+    // The root of [(Keccak.Zero, td 1), (Keccak.MaxValue, td 2)].
     private const string TwoEntryRoot = "0x3ed62652dfb7e1072d0f040feb6d002a9f7ce37cf8ddb16549a7ac5cf8e3b791";
 
-    // Same derivation as TwoEntryRoot. The single-entry cases differ pairwise in exactly
-    // one input, so a root that ignores the hash or the total difficulty cannot match all of them.
+    // The root of [(Keccak.Zero, td 1), (Keccak.MaxValue, td 2), (Keccak.Zero, td 3)].
+    private const string ThreeEntryRoot = "0xad672b00113a701a63f19c62c6278475deae69ae8ac13434192beebc75efa4fb";
+
+    // The single-entry cases differ pairwise in exactly one input, so a root that ignores
+    // the hash or the total difficulty cannot match all of them.
     public static IEnumerable<TestCaseData> ComputeRootCases()
     {
         yield return new TestCaseData(
@@ -61,18 +66,37 @@ public class AccumulatorCalculatorTests
         Assert.That(() => sut.GetProof(index), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
-    [Test]
-    public void GetProof_WithSingleEntry_ValidatesAgainstSpecRoot()
+    // The index 2 case has a set bit above tree level 1, so it exercises the right-hand
+    // sibling order in the upper levels.
+    public static IEnumerable<TestCaseData> ProofCases()
+    {
+        (Hash256, UInt256)[] single = [(Keccak.Zero, 42)];
+        (Hash256, UInt256)[] two = [(Keccak.Zero, 1), (Keccak.MaxValue, 2)];
+        (Hash256, UInt256)[] three = [(Keccak.Zero, 1), (Keccak.MaxValue, 2), (Keccak.Zero, 3)];
+        yield return new TestCaseData(single, 0,
+            "0xa5693bb5c7bbdcb3a65f20ba6e4643535e56c974d6e46262a1c314678bd271c3")
+            .SetName($"{nameof(GetProof_ValidatesAgainstSpecRoot)}(single entry, index 0)");
+        yield return new TestCaseData(two, 0, TwoEntryRoot)
+            .SetName($"{nameof(GetProof_ValidatesAgainstSpecRoot)}(two entries, index 0)");
+        yield return new TestCaseData(two, 1, TwoEntryRoot)
+            .SetName($"{nameof(GetProof_ValidatesAgainstSpecRoot)}(two entries, index 1)");
+        yield return new TestCaseData(three, 2, ThreeEntryRoot)
+            .SetName($"{nameof(GetProof_ValidatesAgainstSpecRoot)}(three entries, index 2)");
+    }
+
+    [TestCaseSource(nameof(ProofCases))]
+    public void GetProof_ValidatesAgainstSpecRoot((Hash256 Hash, UInt256 Td)[] entries, int blockIndex, string expectedRoot)
     {
         using AccumulatorCalculator sut = new();
-        sut.Add(Keccak.Zero, 42);
+        foreach ((Hash256 hash, UInt256 td) in entries)
+        {
+            sut.Add(hash, td);
+        }
 
-        ValueHash256[] proof = sut.GetProof(0);
+        ValueHash256[] proof = sut.GetProof(blockIndex);
 
-        Assert.That(proof, Has.Length.EqualTo(15));
-        // Root of [(Keccak.Zero, td 42)], derived like TwoEntryRoot.
-        Assert.That(ComputeRootFromProof(Keccak.Zero, proof, 0),
-            Is.EqualTo(new ValueHash256("0xa5693bb5c7bbdcb3a65f20ba6e4643535e56c974d6e46262a1c314678bd271c3")));
+        Assert.That(ComputeRootFromProof(entries[blockIndex].Hash, proof, blockIndex),
+            Is.EqualTo(new ValueHash256(expectedRoot)));
     }
 
     [TestCase(0U)]
@@ -89,21 +113,6 @@ public class AccumulatorCalculatorTests
         Assert.That(sut.GetProof((int)blockIndex)[0].ToByteArray(), Is.EqualTo(expected));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    public void GetProof_WithTwoEntries_EachIndexValidatesAgainstSpecRoot(int blockIndex)
-    {
-        using AccumulatorCalculator sut = new();
-        sut.Add(Keccak.Zero, 1);
-        sut.Add(Keccak.MaxValue, 2);
-
-        ValueHash256[] proof = sut.GetProof(blockIndex);
-
-        Hash256 headerHash = blockIndex == 0 ? Keccak.Zero : Keccak.MaxValue;
-        Assert.That(ComputeRootFromProof(headerHash, proof, blockIndex),
-            Is.EqualTo(new ValueHash256(TwoEntryRoot)));
-    }
-
     /// <summary>
     /// Recomputes the accumulator root from one block's proof.
     /// </summary>
@@ -111,10 +120,14 @@ public class AccumulatorCalculatorTests
     /// Transcribes the merkle proof verification from the portal-network history spec.
     /// The leaf is sha256(block_hash ++ total_difficulty_le). Each index bit selects the
     /// side of the next tree level. The SSZ list length mixes in last. The transcription
-    /// uses SHA256 directly, so the expectation stays independent of the production merkleization.
+    /// uses SHA256 directly, so the expectation stays independent of the production
+    /// merkleization. The method asserts the exact proof length first, so an over-long
+    /// proof cannot pass unnoticed.
     /// </remarks>
     private static ValueHash256 ComputeRootFromProof(Hash256 headerHash, ValueHash256[] proof, int blockIndex)
     {
+        Assert.That(proof, Has.Length.EqualTo(15));
+
         Span<byte> node = stackalloc byte[32];
         Span<byte> combined = stackalloc byte[64];
         headerHash.Bytes.CopyTo(combined);
