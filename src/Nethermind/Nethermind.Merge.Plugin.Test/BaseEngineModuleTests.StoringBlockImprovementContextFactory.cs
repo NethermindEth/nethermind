@@ -28,15 +28,15 @@ public partial class BaseEngineModuleTests
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
-            if (_skipDuplicatedContext
-                && CreatedContexts.Count > 0
-                && CreatedContexts[^1].CurrentBestBlock == blockImprovementContext.CurrentBestBlock)
-            {
-                return blockImprovementContext;
-            }
-
             lock (CreatedContexts)
             {
+                if (_skipDuplicatedContext
+                    && CreatedContexts.Count > 0
+                    && CreatedContexts[^1].CurrentBestBlock == blockImprovementContext.CurrentBestBlock)
+                {
+                    return blockImprovementContext;
+                }
+
                 CreatedContexts.Add(blockImprovementContext);
             }
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);

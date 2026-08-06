@@ -298,10 +298,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
                 .AddSingleton<ContainerDependencies>()
                 .AddSingleton(_logManager);
 
-            // The default 1s allocation-upgrade interval turns every misdirected bodies
-            // allocation into a 1-2s peer-sleep cycle, which stacks up against the asserts
-            // below on a loaded runner. 25ms makes the recovery cost negligible.
-            builder.AddSingleton<ISyncPeerPool>(ctx =>
+            // A misdirected bodies allocation puts the peer to sleep for a hardcoded 1s
+            // floor; the default 1s upgrade-poll period then doubles the worst case. The
+            // short period halves it, which stops the cycles stacking on a loaded runner.
+            // The CONCRETE type is registered, so both interface binds forward here.
+            builder.AddSingleton<SyncPeerPool>(ctx =>
             {
                 INetworkConfig networkConfig = ctx.Resolve<INetworkConfig>();
                 ISyncConfig resolvedSyncConfig = ctx.Resolve<ISyncConfig>();
@@ -364,6 +365,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         private const int DynamicTimeout = 30000;
 
         private Task? _newSuggestedBlockGate;
+        private CancellationTokenSource? _newSuggestedBlockGateCancellation;
 
         /// <summary>
         /// Arms a gate for the expected suggestion. Arm it before the action that triggers
@@ -377,7 +379,8 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public SyncingContext RegisterNewSuggestedBlockGate(BlockHeader header)
         {
             Hash256 expectedHash = header.Hash!;
-            _newSuggestedBlockGate = Wait.ForEventCondition<BlockEventArgs>(CancellationToken.None,
+            _newSuggestedBlockGateCancellation = new CancellationTokenSource();
+            _newSuggestedBlockGate = Wait.ForEventCondition<BlockEventArgs>(_newSuggestedBlockGateCancellation.Token,
                 h => BlockTree.NewSuggestedBlock += h,
                 h => BlockTree.NewSuggestedBlock -= h,
                 e => e.Block.Hash == expectedHash);
@@ -386,7 +389,14 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public SyncingContext WaitForNewSuggestedBlockGate(int timeoutMs = DynamicTimeout)
         {
-            Assert.That(_newSuggestedBlockGate!.Wait(timeoutMs), Is.True, "the armed NewSuggestedBlock gate timed out");
+            bool arrived = _newSuggestedBlockGate!.Wait(timeoutMs);
+            if (!arrived)
+            {
+                // Unsubscribes the armed handler before the assert ends the test.
+                _newSuggestedBlockGateCancellation!.Cancel();
+            }
+
+            Assert.That(arrived, Is.True, "the armed NewSuggestedBlock gate timed out");
             return this;
         }
 

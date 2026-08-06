@@ -149,7 +149,9 @@ public partial class EngineModuleTests
         get
         {
             yield return new TestCaseData(50, TimeSpan.Zero, 50) { TestName = "Production manages to finish" };
-            yield return new TestCaseData(5, TimeSpan.Zero, 5) { TestName = "Production makes partial block" };
+            // The non-zero improve delay makes production yield before it pulls transactions,
+            // so forkchoiceUpdated returns and getPayload is what cancels the blocked pull.
+            yield return new TestCaseData(5, TimeSpan.FromMilliseconds(10), 5) { TestName = "Production makes partial block" };
             yield return new TestCaseData(0, PayloadPreparationService.GetPayloadWaitForNonEmptyBlockMillisecondsDelay * 2, 0) { TestName = "Production takes too long" };
         }
     }
@@ -647,7 +649,8 @@ public partial class EngineModuleTests
         // this test sends two payloadAttributes on block X and X + 1 to start many block improvements
         // as the result we want to check if we are not able to produce invalid block by repeating this many times.
         // No [Retry]: a Valid-status failure here is the consensus defect this test hunts, and a
-        // retry would hide it.
+        // retry would hide it. The 100-iteration loop stays internal, so every assert message
+        // carries the iteration number and one run covers all iterations.
 
         const int iterations = 100;
         bool logInvalidBlockExecution = false; // change to true if you want to log invalid blocks
