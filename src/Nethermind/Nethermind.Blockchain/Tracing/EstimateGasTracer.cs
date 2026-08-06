@@ -121,13 +121,15 @@ public class EstimateGasTracer : TxTracer
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         UpdateAdditionalGas(gas);
 
-    public override void ReportActionError(EvmExceptionType exceptionType)
+    public override void ReportActionError(EvmExceptionType exceptionType) => HandleActionError(exceptionType);
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert);
+
+    private void HandleActionError(EvmExceptionType exceptionType)
     {
         ReportOperationError(exceptionType);
         UpdateAdditionalGas();
     }
-
-    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
 
     public void ReportActionError(EvmExceptionType exceptionType, ulong gasLeft)
     {
