@@ -81,6 +81,7 @@ public class RlpDecoderTests
             Assert.That(transaction.To, Is.EqualTo(new Address("0x4200000000000000000000000000000000000007")));
             Assert.That(transaction.Value, Is.EqualTo(UInt256.Zero));
             Assert.That(transaction.Data.Length, Is.EqualTo(420));
+            Assert.That(transaction.Data[..4].ToArray(), Is.EqualTo(Bytes.FromHexString("cbd4ece9")));
             // A pre-Bedrock unsigned tx has empty v, r and s. The decoder must return a null signature and must not throw.
             Assert.That(transaction.Signature, Is.Null);
         }
@@ -108,7 +109,8 @@ public class RlpDecoderTests
         Assert.That(decoded, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded!.SourceHash, Is.EqualTo(expected.SourceHash));
+            Assert.That(decoded!.Type, Is.EqualTo(TxType.DepositTx));
+            Assert.That(decoded.SourceHash, Is.EqualTo(expected.SourceHash));
             Assert.That(decoded.SenderAddress, Is.EqualTo(expected.SenderAddress));
             Assert.That(decoded.To, Is.EqualTo(expected.To));
             Assert.That(decoded.Mint, Is.EqualTo(expected.Mint));

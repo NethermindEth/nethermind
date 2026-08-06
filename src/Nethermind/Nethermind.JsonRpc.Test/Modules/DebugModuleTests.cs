@@ -456,8 +456,8 @@ public class DebugModuleTests
     {
         _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
 
-        // debug_migrateReceipts binds (from, to); one argument yields -32602 and never reaches the bridge.
-        string response = await SerializedRequest("debug_migrateReceipts", 100, 200);
+        // Both arguments are required. Hex-string quantities stay valid when a parallel fixture enables StrictHexFormat.
+        string response = await SerializedRequest("debug_migrateReceipts", "0x64", "0xc8");
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
         await _debugBridge.Received().MigrateReceipts(100, 200);

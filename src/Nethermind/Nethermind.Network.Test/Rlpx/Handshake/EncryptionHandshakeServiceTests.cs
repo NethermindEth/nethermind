@@ -173,42 +173,42 @@ public class EncryptionHandshakeServiceTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Initiator_secrets_have_expected_sizes(bool preEip8Format)
+    public void Initiator_secrets_match_the_test_vectors(bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        AssertSecretSizes(_initiatorHandshake);
+        AssertSecrets(_initiatorHandshake);
     }
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Recipient_secrets_have_expected_sizes(bool preEip8Format)
+    public void Recipient_secrets_match_the_test_vectors(bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        AssertSecretSizes(_recipientHandshake);
+        AssertSecrets(_recipientHandshake);
     }
 
-    // RLPx secrets are keccak-256 outputs. Reading .Hash finalizes the MAC state. Call this helper last.
-    private static void AssertSecretSizes(EncryptionHandshake handshake)
+    // The nonces and ephemeral keys are fixed vectors, so the AES and MAC secrets are deterministic.
+    // The MAC states also hash the packet bytes, which carry ECIES randomness. Reading .Hash finalizes them. Call this helper last.
+    private static void AssertSecrets(EncryptionHandshake handshake)
     {
         const int SecretSize = 32;
         byte[] egressHash = handshake.Secrets.EgressMac.Hash;
         byte[] ingressHash = handshake.Secrets.IngressMac.Hash;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(handshake.Secrets.AesSecret, Has.Length.EqualTo(SecretSize), "AES");
-            Assert.That(handshake.Secrets.MacSecret, Has.Length.EqualTo(SecretSize), "MAC");
+            Assert.That(handshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "AES");
+            Assert.That(handshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "MAC");
             Assert.That(egressHash, Has.Length.EqualTo(SecretSize), "Egress");
             Assert.That(ingressHash, Has.Length.EqualTo(SecretSize), "Ingress");
-            // Each derivation uses a distinct preimage. A derivation collapse makes two of them equal.
-            Assert.That(handshake.Secrets.AesSecret, Is.Not.EqualTo(handshake.Secrets.MacSecret), "AES vs MAC");
+            // The egress and ingress preimages differ. A derivation collapse makes the two hashes equal.
             Assert.That(egressHash, Is.Not.EqualTo(ingressHash), "Egress vs Ingress");
         }
     }
