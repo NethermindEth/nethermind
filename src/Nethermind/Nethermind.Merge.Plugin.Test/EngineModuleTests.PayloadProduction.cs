@@ -264,8 +264,12 @@ public partial class EngineModuleTests
             await improvedBlock;
         }
 
-        Transaction[] transactions = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!.TryGetTransactions().Data!;
-        Assert.That(transactions, Has.Length.EqualTo(expectedTxCount));
+        // The first call cancels a blocked pull, but production can finish outside the call's
+        // 50ms non-empty wait under load. The stored context keeps the settled block, so the
+        // poll below reads it without a wall-clock cliff.
+        await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+        Assert.That(() => rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId)).Result.Data!.TryGetTransactions().Data!,
+            Has.Length.EqualTo(expectedTxCount).After(5000, 10));
     }
 
     [Test]
