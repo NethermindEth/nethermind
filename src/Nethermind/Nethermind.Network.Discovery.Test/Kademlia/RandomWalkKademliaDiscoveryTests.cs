@@ -78,14 +78,57 @@ public class RandomWalkKademliaDiscoveryTests
         }
     }
 
+    [Test]
+    public void Pacing_should_back_off_when_healthy_table_lookup_adds_no_nodes()
+    {
+        RandomWalkDiscoveryPacingState pacing = new(TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(200));
+        RandomWalkDiscoveryOccupancy fullTable = new(NodeCount: 2, Capacity: 2);
+
+        Assert.That(pacing.GetNextIterationDuration(false, 0, fullTable), Is.EqualTo(TimeSpan.FromMilliseconds(60)));
+        Assert.That(pacing.GetNextIterationDuration(false, 0, fullTable), Is.EqualTo(TimeSpan.FromMilliseconds(120)));
+        Assert.That(pacing.GetNextIterationDuration(false, 0, fullTable), Is.EqualTo(TimeSpan.FromMilliseconds(200)));
+    }
+
+    [Test]
+    public void Pacing_should_keep_minimum_duration_when_table_is_underfilled()
+    {
+        RandomWalkDiscoveryPacingState pacing = new(TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(200));
+        RandomWalkDiscoveryOccupancy underfilledTable = new(NodeCount: 1, Capacity: 2);
+
+        Assert.That(pacing.GetNextIterationDuration(false, 0, underfilledTable), Is.EqualTo(TimeSpan.FromMilliseconds(30)));
+        Assert.That(pacing.GetNextIterationDuration(false, 0, underfilledTable), Is.EqualTo(TimeSpan.FromMilliseconds(30)));
+    }
+
+    [Test]
+    public void Pacing_should_reset_when_lookup_adds_node()
+    {
+        RandomWalkDiscoveryPacingState pacing = new(TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(200));
+        RandomWalkDiscoveryOccupancy fullTable = new(NodeCount: 2, Capacity: 2);
+
+        Assert.That(pacing.GetNextIterationDuration(false, 0, fullTable), Is.EqualTo(TimeSpan.FromMilliseconds(60)));
+        Assert.That(pacing.GetNextIterationDuration(false, 1, fullTable), Is.EqualTo(TimeSpan.FromMilliseconds(30)));
+    }
+
+    [Test]
+    public void Pacing_should_saturate_without_overflow()
+    {
+        TimeSpan minimum = TimeSpan.FromTicks((TimeSpan.MaxValue.Ticks / 2) + 1);
+        RandomWalkDiscoveryPacingState pacing = new(minimum, TimeSpan.MaxValue);
+        RandomWalkDiscoveryOccupancy fullTable = new(NodeCount: 2, Capacity: 2);
+
+        Assert.That(pacing.GetNextIterationDuration(false, 0, fullTable), Is.EqualTo(TimeSpan.MaxValue));
+    }
+
     private sealed class TestKademlia : IKademlia<int, int>
     {
-        public event EventHandler<int>? OnNodeAdded { add { } remove { } }
+        public event EventHandler<int>? OnNodeAdded;
         public event EventHandler<int>? OnNodeRemoved { add { } remove { } }
 
         public int LookupNodesCalls { get; private set; }
         public int? LastMaxResults { get; private set; }
         public TimeSpan LookupDelay { get; set; }
+        public int[] LookupResults { get; set; } = [1, 2];
+        public bool RaiseNodeAddedEvents { get; set; } = true;
 
         public void AddOrRefresh(int node) => throw new NotSupportedException();
 
@@ -97,11 +140,11 @@ public class RandomWalkKademliaDiscoveryTests
 
         public Task<int[]> LookupNodesClosest(int key, CancellationToken token, int? k = null) => throw new NotSupportedException();
 
-        public IAsyncEnumerable<int> LookupNodes(int key, CancellationToken token, int? maxResults = null)
+        public IAsyncEnumerable<int> LookupNodes(int key, CancellationToken token, int? maxResults = null, Action? onNodeAdded = null)
         {
             LookupNodesCalls++;
             LastMaxResults = maxResults;
-            return CreateAsyncEnumerable(LookupDelay, token, 1, 2);
+            return CreateLookupNodes(onNodeAdded, token);
         }
 
         public int[] GetKNeighbour(int target, int excluding = 0, bool excludeSelf = false) => throw new NotSupportedException();
@@ -109,6 +152,26 @@ public class RandomWalkKademliaDiscoveryTests
         public int[] GetAllAtDistance(int distance) => throw new NotSupportedException();
 
         public IEnumerable<int> IterateNodes() => throw new NotSupportedException();
+
+        private async IAsyncEnumerable<int> CreateLookupNodes(Action? onNodeAdded, [EnumeratorCancellation] CancellationToken token)
+        {
+            if (LookupDelay > TimeSpan.Zero)
+            {
+                await Task.Delay(LookupDelay, token);
+            }
+
+            for (int i = 0; i < LookupResults.Length; i++)
+            {
+                await Task.Yield();
+                if (RaiseNodeAddedEvents)
+                {
+                    onNodeAdded?.Invoke();
+                    OnNodeAdded?.Invoke(this, LookupResults[i]);
+                }
+
+                yield return LookupResults[i];
+            }
+        }
     }
 
     private sealed class IntKeyOperator : IKeyOperator<int, int, int>
@@ -122,16 +185,4 @@ public class RandomWalkKademliaDiscoveryTests
         public int CreateRandomKeyAtDistance(int nodePrefix, int depth) => depth;
     }
 
-    private static async IAsyncEnumerable<T> CreateAsyncEnumerable<T>(TimeSpan delay, [EnumeratorCancellation] CancellationToken token, params IEnumerable<T> items)
-    {
-        if (delay > TimeSpan.Zero)
-        {
-            await Task.Delay(delay, token);
-        }
-        foreach (T item in items)
-        {
-            await Task.Yield();
-            yield return item;
-        }
-    }
 }

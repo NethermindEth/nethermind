@@ -103,7 +103,7 @@ public class BootnodeDiscoveryV5NodeSourceTests
         public Task<Node[]> LookupNodesClosest(PublicKey key, CancellationToken token, int? k = null) =>
             throw new NotSupportedException();
 
-        public IAsyncEnumerable<Node> LookupNodes(PublicKey key, CancellationToken token, int? maxResults = null) =>
+        public IAsyncEnumerable<Node> LookupNodes(PublicKey key, CancellationToken token, int? maxResults = null, Action? onNodeAdded = null) =>
             throw new NotSupportedException();
 
         public Node[] GetKNeighbour(PublicKey target, Node? excluding = null, bool excludeSelf = false) =>

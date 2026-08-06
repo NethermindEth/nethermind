@@ -36,6 +36,16 @@ public class KademliaConfig<TNode>
     public TimeSpan BucketRefreshInterval { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
+    /// Minimum duration of an active random discovery lookup iteration. Default: 1 second.
+    /// </summary>
+    public TimeSpan RandomWalkMinimumIterationDuration { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Maximum duration of an idle active random discovery lookup iteration. Default: 30 minutes.
+    /// </summary>
+    public TimeSpan RandomWalkMaximumIdleIterationDuration { get; set; } = TimeSpan.FromMinutes(30);
+
+    /// <summary>
     /// The timeout for each find neighbour call lookup
     /// </summary>
     public TimeSpan LookupFindNeighbourHardTimeout { get; set; } = TimeSpan.FromSeconds(10);

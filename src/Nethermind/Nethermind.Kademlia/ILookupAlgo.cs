@@ -36,11 +36,13 @@ public interface ILookupAlgo<TNode, TKadKey>
     /// <param name="targetHash">The hash to search near.</param>
     /// <param name="maxResults">Maximum number of candidates to emit before stopping the lookup.</param>
     /// <param name="findNeighbourOp">Operation that fetches neighbours from a candidate node.</param>
+    /// <param name="onNodeAdded">Optional callback invoked when this lookup newly admits a node to the routing table. It may be called concurrently by lookup workers.</param>
     /// <param name="token">Cancellation token.</param>
     IAsyncEnumerable<TNode> LookupNodes(
         TKadKey targetHash,
         int maxResults,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
+        Action? onNodeAdded,
         CancellationToken token
     );
 }

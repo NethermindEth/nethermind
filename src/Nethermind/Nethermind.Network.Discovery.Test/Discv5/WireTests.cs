@@ -600,7 +600,7 @@ public class WireTests
 
         public Task<Node[]> LookupNodesClosest(PublicKey key, CancellationToken token, int? k = null) => throw new NotSupportedException();
 
-        public IAsyncEnumerable<Node> LookupNodes(PublicKey key, CancellationToken token, int? maxResults = null) => throw new NotSupportedException();
+        public IAsyncEnumerable<Node> LookupNodes(PublicKey key, CancellationToken token, int? maxResults = null, Action? onNodeAdded = null) => throw new NotSupportedException();
 
         public Node[] GetKNeighbour(PublicKey target, Node? excluding = null, bool excludeSelf = false) => throw new NotSupportedException();
 

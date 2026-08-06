@@ -58,6 +58,25 @@ public class KBucketTreeTests
         Assert.That(result.All(expectedCandidates.Contains), Is.True);
     }
 
+    [Test]
+    public void GetStats_should_count_leaf_buckets_and_nodes()
+    {
+        KBucketTree<int, int> tree = CreateTree(k: 2, beta: 0);
+
+        Add(tree, KeyAtDistance(31, 0x10));
+        Add(tree, KeyAtDistance(30, 0x20));
+        Add(tree, KeyAtDistance(31, 0x11));
+        Add(tree, KeyAtDistance(30, 0x21));
+
+        RoutingTableStats stats = tree.GetStats();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stats.NodeCount, Is.EqualTo(4));
+            Assert.That(stats.BucketCount, Is.EqualTo(3));
+        }
+    }
+
     private static int KeyAtDistance(int distance, int suffix)
         => Int32KademliaDistance.Instance.SetBit(suffix, Int32KademliaDistance.Instance.MaxDistance - distance);
 }

@@ -87,13 +87,14 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         );
     }
 
-    public IAsyncEnumerable<TNode> LookupNodes(TKey key, CancellationToken token, int? maxResults = null)
+    public IAsyncEnumerable<TNode> LookupNodes(TKey key, CancellationToken token, int? maxResults = null, Action? onNodeAdded = null)
     {
         TKadKey keyHash = _keyOperator.GetKeyHash(key);
         return _lookupAlgo.LookupNodes(
             keyHash,
             maxResults ?? _kSize,
             (nextNode, token) => FindNeighbours(key, keyHash, nextNode, token),
+            onNodeAdded,
             token
         );
     }

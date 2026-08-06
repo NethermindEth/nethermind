@@ -73,7 +73,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             {
                 if (await kademliaMessageSender.Ping(toRefresh, token))
                 {
-                    OnIncomingMessageFrom(toRefresh);
+                    _ = OnIncomingMessageFrom(toRefresh);
                 }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -106,7 +106,8 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
     /// Call when an incoming message from a node is received. This is used by other algorithm for health checks.
     /// </summary>
     /// <param name="node"></param>
-    public void OnIncomingMessageFrom(TNode node)
+    /// <returns><c>true</c> when the node was newly added to the routing table.</returns>
+    public bool OnIncomingMessageFrom(TNode node)
     {
         _isRefreshing.TryRemove(nodeHashProvider.GetHash(node), out _);
 
@@ -124,6 +125,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             }
         }
         _peerFailures.Delete(nodeHashProvider.GetHash(node));
+        return addResult == BucketAddResult.Added;
     }
 
     /// <summary>
