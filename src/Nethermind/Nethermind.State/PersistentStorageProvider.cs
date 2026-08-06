@@ -424,6 +424,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
 
+        /// <summary>Whether any uncommitted block-level change leaves a slot at a non-zero value.</summary>
+        public bool HasNonZeroValue
+        {
+            get
+            {
+                foreach (StorageChangeTrace trace in _dictionary.Values)
+                {
+                    if (trace.After.AsSpan().IndexOfAnyExcept((byte)0) >= 0)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
@@ -507,6 +524,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             get
             {
+                // Uncommitted writes count first: state overrides apply storage without
+                // merkleizing it, so the committed root cannot see them; a clear marker also
+                // empties the change dictionary, so surviving entries always post-date the clear.
+                if (BlockChange.HasNonZeroValue) return false;
+
                 // _backend.RootHash is not reflected until after commit, but this need to be reflected before commit
                 // for SelfDestruct, since the deletion is not part of changelog, it need to be handled here.
                 if (BlockChange.HasClear) return true;

@@ -117,7 +117,7 @@ public class ShareableOverridableEnvSourceTests
     {
         public bool IsDisposed { get; private set; }
 
-        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null)
+        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null, bool requireStateRoot = true)
         {
             if (throwOnBuild) throw new InvalidOperationException("simulated build failure");
             return new Scope<Marker>(new Marker(), new NoopDisposable());

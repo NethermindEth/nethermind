@@ -58,8 +58,9 @@ public sealed class RegeneratingReceiptsEnvSourceFactory(
             BlockHeader? header,
             Dictionary<Address, AccountOverride>? stateOverride = null,
             IReleaseSpec? specOverride = null,
-            BlockOverride? blockOverride = null) =>
-            inner.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
+            BlockOverride? blockOverride = null,
+            bool requireStateRoot = true) =>
+            inner.BuildAndOverride(header, stateOverride, specOverride, blockOverride, requireStateRoot);
 
         public void Dispose() => scope.Dispose();
     }
