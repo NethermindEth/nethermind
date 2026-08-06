@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
@@ -321,20 +322,34 @@ public static class FrameTxValidation
     /// <see cref="Transaction.GasLimit"/> of a frame transaction carries only the sum of the frame gas limits, so any
     /// consumer gating on a gas budget (mempool admission, block production, execution) must price the transaction
     /// through this method or it under-counts by at least <see cref="Eip8141Constants.IntrinsicGasCost"/>.
-    /// The intrinsic cost is FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST + the calldata cost of the
-    /// frame data and signature fields + the per-scheme signature verification cost. The rate and token weighting
-    /// behind <paramref name="floorGas"/> are resolved from the spec, as
-    /// <c>IntrinsicGasCalculator.CalculateFloorCost</c> does, so a frame transaction's floor cannot diverge from an
-    /// ordinary transaction's under the same fork. A transaction whose frames reserve less than the floor raises its
-    /// reservation rather than becoming invalid; the headroom is reserved and refunded, never spendable.
+    /// A transaction whose frames reserve less than the floor raises its reservation rather than becoming invalid;
+    /// the headroom is reserved and refunded, never spendable.
+    /// The result is memoized on <see cref="Transaction.IntrinsicGasMemo"/>, which a frame transaction otherwise
+    /// leaves unused, and is keyed on the spec reference as <c>EthereumGasPolicy</c> keys its own memo.
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
     /// <param name="spec">The release spec supplying the calldata token pricing.</param>
     /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
     /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>
-    /// <returns><c>false</c> if the frame gas limits or the resulting budget overflow <see cref="ulong"/>.</returns>
+    /// <returns><c>false</c> if the transaction carries no frames, or if the frame gas limits or the resulting budget
+    /// overflow <see cref="ulong"/>. In every failure case the outputs are 0 and the transaction cannot be priced.</returns>
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
+    {
+        if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo && ReferenceEquals(memo.Spec, spec))
+        {
+            (intrinsicGas, floorGas, maxGas) = (memo.IntrinsicGas, memo.FloorGas, memo.MaxGas);
+            return memo.Priced;
+        }
+
+        bool priced = CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
+        Volatile.Write(ref transaction.IntrinsicGasMemo, new FrameGasBudgetMemo(spec, priced, intrinsicGas, floorGas, maxGas));
+        return priced;
+    }
+
+    private sealed record FrameGasBudgetMemo(IReleaseSpec Spec, bool Priced, ulong IntrinsicGas, ulong FloorGas, ulong MaxGas) : IIntrinsicGasMemo;
+
+    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
         intrinsicGas = 0;
         floorGas = 0;

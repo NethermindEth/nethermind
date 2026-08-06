@@ -480,7 +480,15 @@ namespace Nethermind.Blockchain.Test
 
             BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider);
 
-            Assert.That(args.Action == BlockProcessor.TxAction.Skip && args.Reason.StartsWith("Not enough gas in block"), Is.EqualTo(expectedSkipped));
+            if (expectedSkipped)
+            {
+                Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+                Assert.That(args.Reason, Does.StartWith("Not enough gas in block"));
+            }
+            else
+            {
+                Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add), args.Reason);
+            }
         }
 
         private static Transaction[] RunBlockProduction(
