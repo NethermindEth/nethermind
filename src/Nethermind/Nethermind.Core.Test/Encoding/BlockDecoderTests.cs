@@ -138,11 +138,30 @@ public class BlockDecoderTests
         Rlp encoded2 = decoder.Encode(decoded);
 
         // A re-encode comparison alone cannot see a symmetric decode error. Compare the decoded block to the original as well.
+        // Hashes derive from the wire bytes, so only direct field comparisons can catch a symmetric field swap.
         Assert.That(decoded, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(encoded2.Bytes.ToHexString(), Is.EqualTo(encoded.Bytes.ToHexString()));
             Assert.That(decoded!.Hash, Is.EqualTo(block.Hash));
+
+            BlockHeader actual = decoded.Header;
+            BlockHeader expected = block.Header;
+            Assert.That(actual.ParentHash, Is.EqualTo(expected.ParentHash));
+            Assert.That(actual.UnclesHash, Is.EqualTo(expected.UnclesHash));
+            Assert.That(actual.Beneficiary, Is.EqualTo(expected.Beneficiary));
+            Assert.That(actual.StateRoot, Is.EqualTo(expected.StateRoot));
+            Assert.That(actual.TxRoot, Is.EqualTo(expected.TxRoot));
+            Assert.That(actual.ReceiptsRoot, Is.EqualTo(expected.ReceiptsRoot));
+            Assert.That(actual.Number, Is.EqualTo(expected.Number));
+            Assert.That(actual.GasLimit, Is.EqualTo(expected.GasLimit));
+            Assert.That(actual.GasUsed, Is.EqualTo(expected.GasUsed));
+            Assert.That(actual.Timestamp, Is.EqualTo(expected.Timestamp));
+            Assert.That(actual.BaseFeePerGas, Is.EqualTo(expected.BaseFeePerGas));
+            Assert.That(actual.BlobGasUsed, Is.EqualTo(expected.BlobGasUsed));
+            Assert.That(actual.ExcessBlobGas, Is.EqualTo(expected.ExcessBlobGas));
+            Assert.That(actual.MixHash, Is.EqualTo(expected.MixHash));
+
             Assert.That(decoded.Transactions.Length, Is.EqualTo(block.Transactions.Length));
             for (int i = 0; i < block.Transactions.Length; i++)
             {
