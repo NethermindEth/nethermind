@@ -117,7 +117,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
     private GethLikeTxTrace TraceValueTransfer(byte[]? recipientCode, string? config = WithLog)
     {
         (Block block, Transaction tx) = PrepareTx(Activation, 200_000UL, recipientCode, value: TopValue);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(config));
+        using NativeCallTracer tracer = new(tx, Amsterdam.Instance, GetGethTraceOptions(config));
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer.BuildResult();
     }
