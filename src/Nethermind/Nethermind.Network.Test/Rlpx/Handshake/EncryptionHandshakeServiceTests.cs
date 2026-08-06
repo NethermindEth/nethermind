@@ -195,7 +195,7 @@ public class EncryptionHandshakeServiceTests
         AssertSecretSizes(_recipientHandshake);
     }
 
-    // RLPx secrets are keccak-256 outputs. Reading .Hash finalizes the MAC state, so call this helper last.
+    // RLPx secrets are keccak-256 outputs. Reading .Hash finalizes the MAC state. Call this helper last.
     private static void AssertSecretSizes(EncryptionHandshake handshake)
     {
         const int SecretSize = 32;
