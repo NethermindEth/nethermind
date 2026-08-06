@@ -104,13 +104,16 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
 
         int position = decoderContext.Position;
-        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.L32);
+        // Keep the complete field available so every value wider than uint64 is reported as
+        // a nonce overflow instead of being mistaken for a generic RLP size violation.
+        ReadOnlySpan<byte> nonceBytes = decoderContext.DecodeByteArraySpan(RlpLimit.DefaultLimit);
         if (nonceBytes[0] == 0)
         {
             RlpHelpers.ThrowNonCanonicalInteger(position);
         }
 
-        return ulong.MaxValue;
+        RlpHelpers.ThrowNonceOverflow(position);
+        return 0;
     }
 
     protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
