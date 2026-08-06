@@ -306,6 +306,14 @@ line, extra fields ignored, optionally gzipped) go to the runner at
 single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
 `corpus_dir` (sweep tool_config) overrides the directory.
 
+**Sizing a cell by request count.** By default a corpus cell runs for `duration` at each
+`rps_list` rate. `corpus_requests` (absolute) or `corpus_passes` (a multiple of that
+corpus's record count) instead size the cell by how many requests it should issue: the
+rate is unchanged and the length is derived as `ceil(count / rps)`, since k6's
+constant-arrival-rate executor holds the rate. `corpus_passes: 5` on a 50k corpus at
+`rps_list: "500"` is 250,000 requests over 500s. Note this is *draws with replacement*,
+not a guarantee every record is visited — coverage is `N x (1 - (1 - 1/N)^requests)`.
+
 **What a corpus sweep does per client:** one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
 JSON-array fixture because json-bench's JSONL reader caps lines at ~64 KiB),

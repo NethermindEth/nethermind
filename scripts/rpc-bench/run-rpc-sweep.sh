@@ -34,6 +34,12 @@ JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
 CORPUS_DIR="${CORPUS_DIR:-/mnt/sda/expb-data/rpc-bench}"
 # Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
+# Size a corpus cell by request count instead of wall time. CORPUS_REQUESTS is absolute;
+# CORPUS_PASSES is a multiple of the corpus's own record count (2 = every record drawn twice on
+# average). Either one derives the cell duration from the rate, so the rate stays what was asked
+# for and only the run length changes. Empty = size cells by JB_DURATION as before.
+CORPUS_REQUESTS="${CORPUS_REQUESTS:-}"
+CORPUS_PASSES="${CORPUS_PASSES:-}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 default_image() {
@@ -71,6 +77,27 @@ run_cell() {
 # Corpus mode raises start-node's uniform RPC_GAS_CAP (default 1e9) to 1e12: captured calls
 # carry explicit gas up to billions, and clamping them would make calls fail artificially.
 CORPUS_RPC_GAS_CAP="1000000000000"
+
+# Cell length for a corpus at a given rate. With CORPUS_REQUESTS/CORPUS_PASSES the cell is sized by
+# request count instead of wall time: k6's constant-arrival-rate executor holds the rate, so running
+# for count/rate seconds delivers exactly that many requests at exactly the rate asked for.
+corpus_cell_duration() {
+  local corpus="$1" rps="$2" target=""
+  if [[ -n "$CORPUS_REQUESTS" ]]; then
+    target="$CORPUS_REQUESTS"
+  elif [[ -n "$CORPUS_PASSES" ]]; then
+    local records="${CORPUS_RECORDS[$corpus]:-}"
+    if [[ -z "$records" ]]; then
+      echo "::warning::no record count for $(corpus_label "$corpus") — falling back to JB_DURATION" >&2
+      printf '%s' "$JB_DURATION"; return
+    fi
+    target=$((records * CORPUS_PASSES))
+  else
+    printf '%s' "$JB_DURATION"; return
+  fi
+  # Round up so the cell never delivers fewer than the requested count.
+  printf '%ss' "$(( (target + rps - 1) / rps ))"
+}
 
 # Short scenario label from a corpus filename: eth-call-corpus[-<label>].jsonl.gz -> <label> | default
 corpus_label() {
@@ -113,8 +140,13 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     echo "::error::corpus scenario labels collide (${collisions%% }) — rename the files so each yields a distinct label"; exit 1
   fi
   # Fail on an unreadable/oversized corpus in seconds, before any node starts or cell runs.
+  declare -A CORPUS_RECORDS=()
   for corpus in "${CORPORA[@]}"; do
-    if ! python3 "$here/corpus_parity.py" validate --corpus "$corpus"; then
+    # validate prints "corpus OK: <n> records" — reuse that count for CORPUS_PASSES sizing.
+    if validate_out="$(python3 "$here/corpus_parity.py" validate --corpus "$corpus")"; then
+      echo "$validate_out"
+      CORPUS_RECORDS["$corpus"]="$(printf '%s' "$validate_out" | awk '/^corpus OK:/ {print $3}')"
+    else
       echo "::error::corpus $(corpus_label "$corpus") failed validation — fix the file before sweeping"; exit 1
     fi
   done
@@ -153,8 +185,9 @@ for entry in $CLIENTS; do
       clabel="$(corpus_label "$corpus")"
       for rps in $RPS_LIST; do
         cell="$OUT_DIR/corpus/${clabel}/${label}/${rps}"
-        echo "-- CORPUS ${clabel} ${label} @ rps=${rps} --"
-        run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$cell" "$ctype" "$label" "$corpus" \
+        cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
+        echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
+        run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" \
           || { echo "::warning::corpus ${clabel}/${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
         [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${clabel}|${label}|${rps}=$cell/jsonbench-summary.md")
       done
