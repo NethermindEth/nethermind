@@ -120,7 +120,7 @@ public class TxPriorityContractTests
         // Poll on the test thread until the file watcher loads the data. A timeout with
         // stale or empty data fails here instead of skipping the assert.
         Assert.That(() => chain.LocalDataSource.Data?.Whitelist,
-            Is.EquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB }).After(5000, 50));
+            Is.Not.Null.And.EquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB }).After(5000, 50));
 
         object[] expected = { TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC };
 
@@ -149,10 +149,8 @@ public class TxPriorityContractTests
             Assert.Fail("File not written");
         }
 
-        // Poll on the test thread until the file watcher loads the data. A timeout with
-        // stale or empty data fails here instead of skipping the assert.
         Assert.That(() => chain.LocalDataSource.Data?.Priorities,
-            Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
+            Is.Not.Null.And.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
                 .UsingPropertiesComparer().After(5000, 50));
 
         IEnumerable<TxPriorityContract.Destination> priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
@@ -179,10 +177,8 @@ public class TxPriorityContractTests
             Assert.Fail("File not written");
         }
 
-        // Poll on the test thread until the file watcher loads the data. A timeout with
-        // stale or empty data fails here instead of skipping the assert.
         Assert.That(() => chain.LocalDataSource.Data?.MinGasPrices,
-            Is.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
+            Is.Not.Null.And.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
                 .UsingPropertiesComparer().After(5000, 50));
 
         IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
