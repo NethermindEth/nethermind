@@ -21,11 +21,12 @@ namespace Nethermind.TxPool.Filters
             ulong gasLimit = Math.Min(chainHeadInfoProvider.BlockGasLimit ?? ulong.MaxValue, _configuredGasLimit);
 
             // A frame transaction's GasLimit is only the sum of its frame gas limits, so gating on it alone would
-            // admit transactions whose reservation can never fit in a block.
-            ulong txGasBudget = tx.SupportsFrames
-                    && FrameTxValidation.TryCalculateGasBudget(tx, chainHeadInfoProvider.SpecProvider.GetCurrentHeadSpec(), out _, out _, out ulong frameTxMaxGas)
-                ? frameTxMaxGas
-                : tx.GasLimit;
+            // admit transactions whose reservation can never fit in a block. One that cannot be priced never fits.
+            ulong txGasBudget = !tx.SupportsFrames
+                ? tx.GasLimit
+                : FrameTxValidation.TryCalculateGasBudget(tx, chainHeadInfoProvider.SpecProvider.GetCurrentHeadSpec(), out _, out _, out ulong frameTxMaxGas)
+                    ? frameTxMaxGas
+                    : ulong.MaxValue;
 
             if (txGasBudget > gasLimit)
             {
