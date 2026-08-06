@@ -286,6 +286,18 @@ numbers and parity counts only**. This is a logging/artifact boundary, not a
 defense against the runner itself — anything executing on the VM (trusted
 images, this repo's scripts) can read the corpus there.
 
+The boundary covers call *contents*, not the **filename**: everything after the
+`eth-call-corpus-` prefix becomes the scenario label, which appears in the step
+summary, the parity table, artifact paths, and `summaries.manifest`. That is
+deliberate — scenarios have to be told apart — so name files by workload shape,
+never after anything sensitive.
+
+Two operational limits worth knowing before capturing: `corpus_parity.py`
+enforces `MAX_CORPUS_RECORDS = 10_000`, and the k6 fixture scales with record
+count (~142 MB for 497 records, since eth_call records with state overrides run
+to hundreds of KB each). Large captures need sampling down to a representative
+subset, not a raised cap.
+
 **Corpus files** (JSON Lines, one `{"method":"eth_call","params":[...]}` per
 line, extra fields ignored, optionally gzipped) go to the runner at
 `/mnt/sda/expb-data/rpc-bench/eth-call-corpus[-<label>].jsonl.gz`. A
