@@ -8,7 +8,7 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Era1;
 
-// https://github.com/ethereum/portal-network-specs/blob/master/history/history-network.md#algorithms
+// Computes hash_tree_root(EpochRecord) with EpochRecord = List[HeaderRecord, 8192] per EIP-7643.
 public class AccumulatorCalculator : IDisposable
 {
     private readonly ArrayPoolList<ValueHash256> _roots = new(EraWriter.MaxEra1Size);
