@@ -635,8 +635,7 @@ public partial class EthRpcModuleTests
 
         ulong eip2780ValueTransferBase = GasCostOf.TransactionEip2780
             + Eip8038Constants.ColdAccountAccess
-            + GasCostOf.TxValueCostEip2780
-            + GasCostOf.TransferLogEip2780;
+            + GasCostOf.TxValueCostEip2780;
 
         // EIP-7981: access list with 1 address, no calldata - standard wins.
         ulong eip7981Standard = eip2780ValueTransferBase + Eip8038Constants.AccessListAddressCost
