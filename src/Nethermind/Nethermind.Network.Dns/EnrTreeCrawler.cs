@@ -58,7 +58,7 @@ public class EnrTreeCrawler(ILogger logger)
                 // An empty query is a tree root, which EIP-1459 serves from a bare domain with no hash label.
                 if (query.Length != 0 && !EnrTreeHash.Matches(query, node))
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Rejecting ENR tree record from DNS query '{query}': content does not hash to the subdomain it was served from.");
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting ENR tree record from DNS query '{query}': content does not hash to the subdomain it was served from.");
                     continue;
                 }
 

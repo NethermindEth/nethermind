@@ -63,10 +63,11 @@ internal static class EnrTreeHash
         int bits = 0;
         foreach (char c in encoded)
         {
+            // RFC 4648 alphabet: 'A'..'Z' decode to 0..25, '2'..'7' continue at 26..31.
             int value = c switch
             {
                 >= 'A' and <= 'Z' => c - 'A',
-                >= '2' and <= '7' => c - ('2' - 26),
+                >= '2' and <= '7' => c - '2' + 26,
                 _ => -1,
             };
             if (value < 0)
