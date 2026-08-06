@@ -75,13 +75,15 @@ public class FrameTxReceiptDecoderTests
             "the stored union must stay the union, not get rebuilt from frame logs");
     }
 
-    // Regression: ReceiptsIterator (eth_getLogs) loops DecodeStructRef with RlpBehaviors.Storage.
-    // A frame-tx receipt used to leave the reader mid-sequence, breaking the next receipt. It sits
+    // Regression: ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts. A
+    // frame-tx receipt used to leave the reader mid-sequence, breaking the next receipt. It sits
     // between two regular ones so any misalignment surfaces on a neighbour. Runs over both storage
-    // decoders since ReceiptsIterator picks compact or legacy at runtime from the stored bytes.
+    // decoders and both AllowExtraBytes settings: the realign must hold regardless, and the two
+    // decoders guarded it on opposite conditions before the fix.
     [Test]
     public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours(
-        [Values(true, false)] bool compactEncoding)
+        [Values(true, false)] bool compactEncoding,
+        [Values(RlpBehaviors.Storage, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes)] RlpBehaviors decodeBehaviors)
     {
         LogEntry frameLog = Log(0x01);
         TxReceipt frameReceipt = CreateStorageFrameReceipt(
@@ -101,15 +103,15 @@ public class FrameTxReceiptDecoderTests
         IReceiptRefDecoder refDecoder = (IReceiptRefDecoder)decoder;
         byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
 
-        // Mirror ReceiptsIterator.TryGetNext's loop bound exactly. TxReceiptStructRef is a ref
-        // struct, so capture the scalar fields we assert per index as we iterate.
+        // Loop bound matches ReceiptsIterator: iterate while Position is below the content length
+        // from ReadSequenceLength. TxReceiptStructRef is a ref struct, so capture asserted fields.
         RlpReader reader = new(encoded);
         int length = reader.ReadSequenceLength();
         int count = 0;
         (byte Status, ulong Gas, string Sender, TxType Type, LogEntry[] Logs)[] decoded = new (byte, ulong, string, TxType, LogEntry[])[3];
         while (reader.Position < length)
         {
-            refDecoder.DecodeStructRef(ref reader, RlpBehaviors.Storage, out TxReceiptStructRef current);
+            refDecoder.DecodeStructRef(ref reader, decodeBehaviors, out TxReceiptStructRef current);
             if (count < decoded.Length)
             {
                 decoded[count] = (current.StatusCode, current.GasUsedTotal, current.Sender.ToString(), current.TxType, DecodeLogs(current.LogsRlp, compactEncoding));
@@ -126,13 +128,12 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
         Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
         Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender!.ToString()), "frame sender");
-        // This is the decoder's inferred TxType, observed only by callers that skip recovery. On the
-        // eth_getLogs path ReceiptsRecovery.RecoverReceiptData overwrites TxType from the matching
-        // transaction, so this value does not pin what that path ultimately reports.
-        Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the decoder infers FrameTx from the extension's presence");
+        // Decoder-assigned TxType, seen only by callers that skip recovery; on eth_getLogs
+        // ReceiptsRecovery.RecoverReceiptData overwrites it from the matching transaction.
+        Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
         AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs!);
 
-        // The receipt after the frame tx must be intact, proving the reader realigned.
+        // The trailing receipt decodes intact only if the reader advanced past the frame extension.
         Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender!.ToString()), "trailing receipt sender");
         Assert.That(decoded[2].Gas, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
         Assert.That(decoded[2].Type, Is.EqualTo(TxType.Legacy));
