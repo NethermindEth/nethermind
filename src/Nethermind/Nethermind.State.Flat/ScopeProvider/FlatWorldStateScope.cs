@@ -42,6 +42,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
     internal volatile bool _pausePrewarmer = false;
+    private readonly bool _acceptWarmupHints;
 
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
@@ -90,6 +91,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
+        // Hints only feed the background warmer; when it is the no-op (RPC scopes) the dedupe
+        // bloom, tree construction, and dictionary inserts they run through are pure overhead.
+        _acceptWarmupHints = trieCacheWarmer is not NoopTrieWarmer;
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -386,7 +390,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintWarmAccount(in ValueAddress address)
     {
-        if (IsDisposed || _pausePrewarmer) return;
+        if (IsDisposed || _pausePrewarmer || !_acceptWarmupHints) return;
         // The managed Address is materialized only after the dedupe bloom passes, so the
         // allocation happens at most once per account per block.
         if (_snapshotBundle.ShouldQueuePrewarm(address))
@@ -395,7 +399,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
     {
-        if (IsDisposed || _pausePrewarmer) return;
+        if (IsDisposed || _pausePrewarmer || !_acceptWarmupHints) return;
         if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
 
         FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address.ToAddress());
