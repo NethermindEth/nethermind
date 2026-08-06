@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
@@ -495,8 +497,57 @@ public struct EvmPooledMemory
         byte[]?[] cache = _cleanArrays ??= new byte[CleanCacheSlots][];
         if (_cleanArrayCount < CleanCacheSlots)
         {
-            Array.Clear(array, 0, dirtyLength);
+            ClearForReuse(array, dirtyLength);
             cache[_cleanArrayCount++] = array;
+        }
+    }
+
+    // Below this, the setup cost of the non-temporal path outweighs what it saves.
+    private const int NonTemporalClearThreshold = 8 * 1024;
+
+    /// <summary>Zeroes the first <paramref name="length"/> bytes of a buffer being recycled.</summary>
+    /// <remarks>
+    /// Frames hand back their whole high-water mark, and a busy call tree recycles far more memory
+    /// than fits in cache. A plain clear would pull every line in exclusively before overwriting it
+    /// and evict the working set on the way past, so larger buffers are zeroed with non-temporal
+    /// stores: no read-for-ownership traffic, and the caches keep holding what the EVM is using.
+    /// </remarks>
+    private static unsafe void ClearForReuse(byte[] array, int length)
+    {
+        if (length < NonTemporalClearThreshold || !Avx.IsSupported)
+        {
+            Array.Clear(array, 0, length);
+            return;
+        }
+
+        const int VectorSize = 32;
+        fixed (byte* start = array)
+        {
+            uint offset = 0;
+            uint total = (uint)length;
+
+            // Align to the vector size first: the non-temporal store requires it.
+            uint misaligned = (uint)((nuint)start & (VectorSize - 1));
+            if (misaligned != 0)
+            {
+                uint prologue = Math.Min(VectorSize - misaligned, total);
+                Unsafe.InitBlockUnaligned(start, 0, prologue);
+                offset = prologue;
+            }
+
+            Vector256<byte> zero = Vector256<byte>.Zero;
+            for (; offset + VectorSize <= total; offset += VectorSize)
+            {
+                Avx.StoreAlignedNonTemporal(start + offset, zero);
+            }
+
+            if (offset < total)
+            {
+                Unsafe.InitBlockUnaligned(start + offset, 0, total - offset);
+            }
+
+            // Non-temporal stores are weakly ordered; publish them before the buffer is reused.
+            Sse2.StoreFence();
         }
     }
 
