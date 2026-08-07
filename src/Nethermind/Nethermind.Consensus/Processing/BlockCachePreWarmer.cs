@@ -101,7 +101,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
-        _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
+        // The address warmer, transaction warmup, and storage discovery rent concurrently, each up to _concurrencyLevel.
+        _envPool = new DefaultObjectPoolProvider { MaximumRetained = Math.Max(maxPoolSize, _concurrencyLevel * 3 + 1) }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
         _nodeStorageCache = nodeStorageCache;
@@ -297,7 +298,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IWorldState worldState = scope.WorldState;
                     for (int i = range.Item1; i < range.Item2; i++)
                     {
-                        if ((i & 0x3F) == 0 && cancellationToken.IsCancellationRequested) return;
+                        if (((i - range.Item1) & 0x3F) == 0 && cancellationToken.IsCancellationRequested) return;
                         worldState.Get(in cells[i]);
                     }
                 }
