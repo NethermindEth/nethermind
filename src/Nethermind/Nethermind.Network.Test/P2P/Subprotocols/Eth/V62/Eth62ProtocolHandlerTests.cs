@@ -846,15 +846,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
         }
 
-        public enum HeadHeaderAnswer { RequestedBlock, DifferentBlock, Nothing }
+        public enum HeadHeaderAnswer { RequestedBlock, DifferentBlock, Nothing, EmptyHeader }
 
         /// <summary>
-        /// Answering with an empty list is how a peer says it does not have the block and must not cost it the
-        /// connection, but substituting another block is a protocol breach.
+        /// Saying "I don't have it" — an empty list, or an empty list item that decodes to a null header — must
+        /// not cost the peer its connection, but substituting another block is a protocol breach.
         /// </summary>
         [TestCase(HeadHeaderAnswer.RequestedBlock, false)]
         [TestCase(HeadHeaderAnswer.DifferentBlock, true)]
         [TestCase(HeadHeaderAnswer.Nothing, false)]
+        [TestCase(HeadHeaderAnswer.EmptyHeader, false)]
         public async Task Head_block_header_is_only_returned_for_the_requested_block(HeadHeaderAnswer answer, bool shouldDisconnect)
         {
             BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
@@ -862,6 +863,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 HeadHeaderAnswer.RequestedBlock => [requested],
                 HeadHeaderAnswer.DifferentBlock => [Build.A.BlockHeader.WithNumber(20).TestObject],
+                HeadHeaderAnswer.EmptyHeader => [null!],
                 _ => [],
             };
 
@@ -873,8 +875,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             BlockHeader? result = await request;
 
-            bool shouldFind = answer == HeadHeaderAnswer.RequestedBlock;
-            Assert.That(result?.Hash, Is.EqualTo(shouldFind ? requested.Hash : null));
+            if (answer == HeadHeaderAnswer.RequestedBlock)
+            {
+                Assert.That(result?.Hash, Is.EqualTo(requested.Hash));
+            }
+            else
+            {
+                Assert.That(result, Is.Null);
+            }
+
             _session.Received(shouldDisconnect ? 1 : 0)
                 .InitiateDisconnect(DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
         }
