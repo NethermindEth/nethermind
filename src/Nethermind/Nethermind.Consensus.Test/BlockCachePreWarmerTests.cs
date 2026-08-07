@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
@@ -802,43 +803,26 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void SelectDiscoveryCandidates_LearnsRepeatedHeavyDestination()
+    public void SelectDiscoveryCandidates_PicksHeavyCallsSkippingWarmedAndCreates()
     {
-        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 1);
-        using (preWarmer)
-        {
-            Transaction belowThresholdFirst = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction belowThresholdSecond = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
-                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Block belowThresholdBlock = Build.A.Block.WithTransactions(belowThresholdFirst, belowThresholdSecond).TestObject;
+        Transaction belowThreshold = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block belowThresholdBlock = Build.A.Block.WithTransactions(belowThreshold).TestObject;
 
-            Assert.That(preWarmer.SelectDiscoveryCandidates(belowThresholdBlock, speculativelyWarmed: null), Is.Null);
+        Assert.That(BlockCachePreWarmer.SelectDiscoveryCandidates(belowThresholdBlock, speculativelyWarmed: null), Is.Null);
 
-            Transaction first = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction second = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
-                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            Block repeatedBlock = Build.A.Block.WithTransactions(first, second).TestObject;
+        Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction heavyCreate = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(null)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction heavyWarmed = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+            .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        Block block = Build.A.Block.WithTransactions(heavy, heavyCreate, heavyWarmed, belowThreshold).TestObject;
 
-            List<Transaction>? repeatedCandidates = preWarmer.SelectDiscoveryCandidates(repeatedBlock, speculativelyWarmed: null);
+        List<Transaction>? candidates = BlockCachePreWarmer.SelectDiscoveryCandidates(
+            block, speculativelyWarmed: new HashSet<Hash256> { heavyWarmed.Hash! });
 
-            Assert.That(repeatedCandidates, Has.Count.EqualTo(2));
-
-            Transaction learned = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
-                .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-            Block learnedBlock = Build.A.Block.WithTransactions(learned).TestObject;
-            List<Transaction>? learnedCandidates = preWarmer.SelectDiscoveryCandidates(learnedBlock, speculativelyWarmed: null);
-
-            Assert.That(learnedCandidates, Has.Count.EqualTo(1));
-            Assert.That(learnedCandidates![0], Is.SameAs(learned));
-
-            Transaction unknown = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
-                .SignedAndResolved(TestItem.PrivateKeyD).TestObject;
-            Block unknownBlock = Build.A.Block.WithTransactions(unknown).TestObject;
-
-            Assert.That(preWarmer.SelectDiscoveryCandidates(unknownBlock, speculativelyWarmed: null), Is.Null);
-        }
+        Assert.That(candidates, Is.EqualTo(new[] { heavy }));
     }
 
     [Test]
