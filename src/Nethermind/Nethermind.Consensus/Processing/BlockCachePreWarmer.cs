@@ -49,7 +49,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
     private const ulong StorageDiscoveryGasThreshold = 10_000_000;
 
-    private static readonly IComparer<StorageCell> s_cellAddressComparer =
+    private static readonly IComparer<StorageCell> _cellAddressComparer =
         Comparer<StorageCell>.Create(static (left, right) => left.Address.CompareTo(right.Address));
 
     private int _mainThreadTxIndex = -1;
@@ -275,7 +275,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         StorageCell[] cells = ArrayPool<StorageCell>.Shared.Rent(cellCount);
         discoveredCells.CopyTo(cells, 0);
         // Group cells per contract so each range partition resolves the account and storage root once.
-        Array.Sort(cells, 0, cellCount, s_cellAddressComparer);
+        Array.Sort(cells, 0, cellCount, _cellAddressComparer);
         ParallelOptions parallelOptions = new()
         {
             MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, cellCount),
@@ -315,7 +315,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         finally
         {
-            // StorageCell holds an Address reference; clear so the pooled array does not keep it alive.
             ArrayPool<StorageCell>.Shared.Return(cells, clearArray: true);
         }
     }
