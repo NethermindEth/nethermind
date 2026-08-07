@@ -71,6 +71,13 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         internal static bool ForceSimpleTransferDisabled;
 
+        /// <summary>
+        /// When set, the EIP-3607 sender-has-code check is skipped, letting a state-overridden contract be
+        /// the eth_simulateV1 <c>from</c>. Must be set before execution: parallel EIP-7928 workers read it
+        /// without synchronisation, relying on the processor being fully configured before it is published.
+        /// </summary>
+        public bool SkipSenderCodeCheck { get; set; }
+
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
             // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
@@ -455,18 +462,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
             }
 
+            if (isTracingActions)
+            {
+                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+            }
+
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && hasValueTransfer && !senderIsRecipient && !newAccountOutOfGas)
             {
                 LogEntry transferLog = TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value);
                 logs = [transferLog];
                 if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
-            }
-
-            // Keep tracer event order aligned with VirtualMachine.ExecuteCall.
-            if (isTracingActions)
-            {
-                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
             }
 
             TransactionSubstate substate = new(
@@ -1021,7 +1027,9 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
 
-            if (validate && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
+            if (validate
+                && !SkipSenderCodeCheck
+                && WorldState.IsInvalidContractSender(spec, tx.SenderAddress!))
             {
                 TraceLogInvalidTx(tx, "SENDER_IS_CONTRACT");
                 return TransactionResult.SenderHasDeployedCode;
@@ -1560,7 +1568,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
             ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
 
-            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
+            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas, executionRefund);
         }
 
         private GasConsumed RefundFailedEip8037Gas(
@@ -1570,12 +1578,13 @@ namespace Nethermind.Evm.TransactionProcessing
             in UInt256 gasPrice,
             ulong spentGas,
             ulong blockGas,
-            long blockStateGas)
+            long blockStateGas,
+            ulong gasRefund = 0)
         {
             if (ShouldRefundGas(tx, opts, in gasPrice) && spentGas < tx.GasLimit)
                 PayRefund(tx, (tx.GasLimit - spentGas) * gasPrice, spec);
 
-            return new GasConsumed(spentGas, spentGas, blockGas, (ulong)blockStateGas, spentGas);
+            return new GasConsumed(spentGas, spentGas, blockGas, (ulong)blockStateGas, spentGas, gasRefund);
         }
 
         protected virtual bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
@@ -1715,7 +1724,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (ShouldRefundGas(tx, opts, in gasPrice))
                 PayRefund(tx, (tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
-            return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong));
+            return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong), refund > 0 ? (ulong)refund : 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

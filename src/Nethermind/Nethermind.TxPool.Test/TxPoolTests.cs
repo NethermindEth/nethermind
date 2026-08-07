@@ -1484,6 +1484,25 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.RemoveTransaction(null), Is.EqualTo(false));
         }
 
+        [Test]
+        public void should_refresh_pending_transactions_snapshot_after_removing_transaction()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactions(), Has.One.Matches<Transaction>(transaction => transaction.Hash == tx.Hash));
+            Assert.That(_txPool.RemoveTransaction(tx.Hash), Is.True);
+
+            Transaction[] snapshot = _txPool.GetPendingTransactions();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot, Is.Empty);
+                Assert.That(snapshot.Length, Is.EqualTo(_txPool.GetPendingTransactionsCount()));
+            }
+        }
+
         [TestCase(0, 0, false)]
         [TestCase(0, 1, true)]
         [TestCase(1, 2, true)]

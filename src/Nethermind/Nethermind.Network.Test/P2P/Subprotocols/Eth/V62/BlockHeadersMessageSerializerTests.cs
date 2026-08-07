@@ -63,6 +63,6 @@ public class BlockHeadersMessageSerializerTests
     public void To_string()
     {
         using BlockHeadersMessage newBlockMessage = new();
-        _ = newBlockMessage.ToString();
+        Assert.That(newBlockMessage.ToString(), Does.StartWith(nameof(BlockHeadersMessage)));
     }
 }

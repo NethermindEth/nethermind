@@ -13,19 +13,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [Parallelizable(ParallelScope.All)]
     public class GetNodeDataMessageSerializerTests
     {
-        private static void Test(Hash256[] keys)
+        private static void Test(Hash256[] keys, string? expected = null)
         {
             using GetNodeDataMessage message = new(keys.ToPooledList());
             GetNodeDataMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message);
+            SerializerTester.TestZero(serializer, message, expected);
         }
 
         [Test]
         public void Roundtrip()
         {
             Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
-            Test(keys);
+            Test(keys, EthSerializerGoldens.KeccakAbcListRlp);
         }
 
         [Test]
