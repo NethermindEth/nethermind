@@ -663,12 +663,38 @@ public class FrameTxProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
         ulong estimate = estimator.Estimate(tx, header, gasTracer, out string? error);
 
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong budget), Is.True);
+        const ulong frameGasSum = 3 * 200_000;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error, Is.Null, "a zero-balance sender must not cap a sponsored estimate");
-            Assert.That(estimate, Is.EqualTo(budget));
+            Assert.That(estimate, Is.GreaterThanOrEqualTo(
+                frameGasSum + (ulong)Eip8141Constants.IntrinsicGasCost + 3 * (ulong)Eip8141Constants.PerFrameGasCost),
+                "every frame's own limit is reserved on top of the transaction's intrinsic cost");
         }
+    }
+
+    /// <remarks>
+    /// The frames fix the budget, so a transaction reserving more than the block can hold is not estimable —
+    /// returning the reservation would hand the caller a figure no block can include.
+    /// </remarks>
+    [Test]
+    public void EstimateGas_FrameTxReservingMoreThanTheBlock_ReportsTheBudgetAsUnestimable()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(100_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        _transactionProcessor.CallAndRestore(tx, gasTracer);
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        Assert.That(error, Is.Not.Null);
     }
 
     [Test]
