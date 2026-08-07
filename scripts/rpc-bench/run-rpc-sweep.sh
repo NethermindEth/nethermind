@@ -48,6 +48,8 @@ CORPUS_PASSES="${CORPUS_PASSES:-}"
 CORPUS_TIMINGS_PASSES="${CORPUS_TIMINGS_PASSES:-}"
 CORPUS_TIMINGS_RPS="${CORPUS_TIMINGS_RPS:-0}"
 CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
+# Characterise each parity divergence word by word. Derived from response bytes, so opt-in.
+CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 default_image() {
@@ -216,7 +218,8 @@ for entry in $CLIENTS; do
         if python3 "$here/corpus_parity.py" compare \
             --corpus "$corpus" --rpc-url "http://localhost:8545" \
             --state "$PARITY_STATE/${clabel}.json" --report "$report" \
-            --baseline-client "$BASELINE_LABEL" --candidate-client "$label"; then
+            --baseline-client "$BASELINE_LABEL" --candidate-client "$label" \
+            $([[ "$CORPUS_PARITY_DIFFS" == "true" ]] && echo "--diffs $report_dir/parity-diffs.json"); then
           PARITY_ROWS+=("${clabel}|${label}|$report")
         else
           echo "::warning::parity defects for ${label} vs ${BASELINE_LABEL} on corpus ${clabel} (see report counts)"
