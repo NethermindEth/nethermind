@@ -306,7 +306,7 @@ public class TrieReassemblerTests
         using IPersistence.IWriteBatch writeBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         StateTree tree = new(new PersistenceTrieStoreAdapter(reader, writeBatch, enableDoubleWriteCheck: false), LimboLogs.Instance);
 
-        ArrayPoolListRef<BulkSetEntry> bulkSetEntries = new();
+        using ArrayPoolListRef<BulkSetEntry> bulkSetEntries = new();
         foreach ((Hash256 path, Account account) in accounts)
         {
             Rlp rlp = account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : AccountDecoder.Instance.Encode(account);
@@ -327,7 +327,7 @@ public class TrieReassemblerTests
         using IPersistence.IWriteBatch writeBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         StorageTree tree = new(new PersistenceStorageTrieStoreAdapter(reader, writeBatch, addressHash, enableDoubleWriteCheck: false), LimboLogs.Instance);
 
-        ArrayPoolListRef<BulkSetEntry> bulkSetEntries = new();
+        using ArrayPoolListRef<BulkSetEntry> bulkSetEntries = new();
         foreach ((Hash256 path, byte[] value) in slots)
         {
             bulkSetEntries.Add(new BulkSetEntry(path, value));
