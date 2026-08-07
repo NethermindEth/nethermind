@@ -123,8 +123,10 @@ public class TxPriorityContractTests
 
         object[] expected = { TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC };
 
-        IEnumerable<Address> whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        Assert.That(whiteList, Is.EquivalentTo(expected));
+        // The stores consume the data inside the Changed event, after Data is already visible;
+        // poll so this assert does not race that handoff.
+        Assert.That(() => chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header),
+            Is.EquivalentTo(expected).After(5000, 50));
     }
 
     [Test]
@@ -151,8 +153,8 @@ public class TxPriorityContractTests
             Is.Not.Null.And.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
                 .UsingPropertiesComparer().After(5000, 50));
 
-        IEnumerable<TxPriorityContract.Destination> priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        Assert.That(priorities, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        Assert.That(() => chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header),
+            Is.EquivalentTo(expected).UsingPropertiesComparer().After(5000, 50));
     }
 
     [Test]
@@ -178,8 +180,8 @@ public class TxPriorityContractTests
             Is.Not.Null.And.EquivalentTo(expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local))
                 .UsingPropertiesComparer().After(5000, 50));
 
-        IEnumerable<TxPriorityContract.Destination> minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        Assert.That(minGasPrices, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        Assert.That(() => chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header),
+            Is.EquivalentTo(expected).UsingPropertiesComparer().After(5000, 50));
     }
 
     public class TxPermissionContractBlockchain : TestContractBlockchain
@@ -314,7 +316,19 @@ public class TxPriorityContractTests
 
             FileSemaphore = new SemaphoreSlim(0);
             Semaphore = new SemaphoreSlim(0);
-            LocalDataSource.Changed += (o, e) => Semaphore.Release();
+            // The reload timer's callback is async void. A tick that lands during fixture dispose
+            // reaches this handler after the semaphore is disposed, and the throw would escape as
+            // an unhandled exception and crash the test host.
+            LocalDataSource.Changed += (o, e) =>
+            {
+                try
+                {
+                    Semaphore.Release();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            };
 
             LocalData = new TxPriorityContract.LocalData()
             {
