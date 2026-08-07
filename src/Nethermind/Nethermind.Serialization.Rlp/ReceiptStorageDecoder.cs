@@ -411,12 +411,13 @@ namespace Nethermind.Serialization.Rlp
                 {
                     item.Error = decoderContext.DecodeString();
                 }
+            }
 
-                // EIP-8141: skip the frame extension — ref-struct consumers only iterate logs.
-                if (decoderContext.Position < receiptEnd)
-                {
-                    decoderContext.Position = receiptEnd;
-                }
+            // EIP-8141: always realign to the receipt's end so the next receipt in an array stays
+            // aligned; for a frame tx this skips the trailing [payer, per-frame receipts].
+            if (decoderContext.Position < receiptEnd)
+            {
+                decoderContext.Position = receiptEnd;
             }
         }
 
