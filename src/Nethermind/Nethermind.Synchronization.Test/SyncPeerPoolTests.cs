@@ -72,7 +72,13 @@ public class SyncPeerPoolTests
             Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
-            Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
+            Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
+                HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty() : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
+
+        /// <summary>
+        /// Header this peer answers header requests with, whatever hash was asked for. Defaults to an arbitrary one.
+        /// </summary>
+        public BlockHeader? HeaderToReturn { get; set; }
 
         public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
@@ -92,7 +98,7 @@ public class SyncPeerPoolTests
             }
 
             IsInitialized = true;
-            return await Task.FromResult(Build.A.BlockHeader.TestObject);
+            return await Task.FromResult(HeaderToReturn ?? Build.A.BlockHeader.TestObject);
         }
 
         public void NotifyOfNewBlock(Block block, SendBlockMode mode)
@@ -738,6 +744,35 @@ public class SyncPeerPoolTests
         SyncPeerAllocation r2 = await w2;
         Assert.That(r1.HasPeer, Is.True);
         Assert.That(r2.HasPeer, Is.True);
+    }
+
+    /// <summary>
+    /// Every peer answers with a header, but only <paramref name="peerWithRequestedBlock"/> answers with the one
+    /// that was asked for (-1 when no peer has it). The rest stand in for peers serving some other block.
+    /// </summary>
+    [TestCase(0, 0, true, TestName = "Fetch_header_accepts_the_requested_block")]
+    [TestCase(-1, 0, false, TestName = "Fetch_header_rejects_a_different_block")]
+    [TestCase(1, 100, true, TestName = "Fetch_header_waits_past_a_peer_answering_with_a_different_block")]
+    public async Task Fetch_header_only_accepts_the_requested_block(int peerWithRequestedBlock, int responseDelay, bool shouldFind)
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        for (int i = 0; i < peers.Length; i++)
+        {
+            peers[i].HeaderToReturn = Build.A.BlockHeader.WithNumber(20 + i).TestObject;
+        }
+
+        if (peerWithRequestedBlock >= 0)
+        {
+            peers[peerWithRequestedBlock].HeaderToReturn = requested;
+            peers[peerWithRequestedBlock].SetHeaderResponseTime(responseDelay);
+        }
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result?.Hash, Is.EqualTo(shouldFind ? requested.Hash : null));
     }
 
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)

@@ -144,6 +144,13 @@ namespace Nethermind.Synchronization.Peers
         }
 
 
+        /// <summary>
+        /// Asks the connected peers for the header of <paramref name="hash"/>.
+        /// </summary>
+        /// <returns>
+        /// The header whose hash is <paramref name="hash"/>, or <c>null</c> if no peer supplied it in time.
+        /// A response for any other block is discarded, so the result never depends on which peer answered.
+        /// </returns>
         public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default)
         {
             try
@@ -187,14 +194,15 @@ namespace Nethermind.Synchronization.Peers
                     token);
 
                 ReadOnlySpan<BlockHeader> headersSpan = headers is null ? [] : headers.AsSpan();
-                return headersSpan.Length == 1 ? headersSpan[0] : null;
+                return headersSpan.Length == 1 && headersSpan[0].Hash == headerHash ? headersSpan[0] : null;
             }
 
             static async Task<BlockHeader?> FetchHeader(PeerInfo peer, Hash256 headerHash, CancellationToken token)
             {
                 try
                 {
-                    return await peer.SyncPeer.GetHeadBlockHeader(headerHash, token);
+                    BlockHeader? header = await peer.SyncPeer.GetHeadBlockHeader(headerHash, token);
+                    return header?.Hash == headerHash ? header : null;
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
                 {
