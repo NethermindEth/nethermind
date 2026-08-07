@@ -93,7 +93,7 @@ namespace Nethermind.Blockchain.Synchronization
         public ulong HeaderStateDistance { get; set; } = 0;
 
         public ulong FastHeadersMemoryBudget { get; set; } = 128UL.MB;
-        public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
+        public bool EnableSnapSyncStorageRangeSplit { get; set; } = true;
         public bool EnableSnapDoubleWriteCheck { get; set; } = false;
         public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB;
         public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB;

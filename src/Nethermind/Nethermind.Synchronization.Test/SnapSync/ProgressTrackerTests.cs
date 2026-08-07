@@ -200,7 +200,7 @@ public class ProgressTrackerTests
     [TestCase("0x8fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", null)]
     public void Should_not_partition_storage_request_if_last_processed_more_than_threshold(string start, string lastProcessed, string? limit)
     {
-        using ProgressTracker progressTracker = CreateProgressTracker();
+        using ProgressTracker progressTracker = CreateProgressTracker(enableStorageSplits: true);
 
         ValueHash256 lastProcessedHash = new(lastProcessed);
         ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
