@@ -23,16 +23,11 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     private int _currentTxIndex = 0;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
-        // The gas limit per tx go down as the block is processed.
-        if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
-        {
-            transaction.GasLimit = Math.Min(simulateRequestState.BlockGasLeft, simulateRequestState.TotalGasLeft);
-        }
-
-        if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
-        {
-            transaction.GasLimit = simulateRequestState.TotalGasLeft;
-        }
+        // Re-resolve against the state budget the executor already stored (a no-op re-store). On the
+        // non-BAL / validation:false paths the executor never calls the hook, so this seeds the gas here;
+        // on the BAL validation path it repeats the executor's call with the same budget, so it can't raise
+        // the limit the inclusion check already accepted.
+        PrepareForInclusionCheck(transaction, simulateRequestState.BlockStateGasLeft);
         transaction.Hash = transaction.CalculateHash();
 
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
@@ -50,5 +45,31 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     {
         _currentTxIndex = 0;
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Resolves a gas-less call to the running block budget so it reserves only what is left, not the
+    /// parse-time GasCap default the EIP-8037 inclusion check would reject. Clamps to both the execution
+    /// (<see cref="SimulateRequestState.BlockGasLeft"/>) and state (<paramref name="stateGasAvailable"/>)
+    /// dimensions so it fits both sides of the check. <see cref="Execute"/> calls this too, so the value the
+    /// check sees is exactly the value execution uses.
+    /// </remarks>
+    public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable)
+    {
+        simulateRequestState.BlockStateGasLeft = stateGasAvailable;
+
+        // The per-dimension budgets shrink as the block is processed.
+        if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
+        {
+            transaction.GasLimit = Math.Min(
+                Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable),
+                simulateRequestState.TotalGasLeft);
+        }
+
+        if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
+        {
+            transaction.GasLimit = simulateRequestState.TotalGasLeft;
+        }
     }
 }
