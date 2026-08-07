@@ -119,10 +119,11 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            // Handle any remaining extra bytes
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (decoderContext.Position < receiptEnd && allowExtraBytes)
+            // EIP-8141: skip a frame-tx receipt's trailing extension (payer + per-frame receipts) so
+            // the next receipt in the array stays aligned. Pre-fork receipts already end here (no-op).
+            if (decoderContext.Position < receiptEnd)
             {
+                item.TxType = TxType.FrameTx;
                 decoderContext.Position = receiptEnd;
             }
         }
