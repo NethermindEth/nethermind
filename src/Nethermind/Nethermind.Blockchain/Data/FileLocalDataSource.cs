@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain.Data
         private Timer _timer;
         private readonly int _interval;
         private DateTime _lastChange = DateTime.MinValue;
+        private bool _hasLoadedFile;
         public string FilePath { get; private set; }
 
         public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
@@ -119,23 +120,21 @@ namespace Nethermind.Blockchain.Data
 
             if (_fileSystem.File.Exists(FilePath))
             {
-                // UTC, so a later write can never carry an earlier timestamp: the local
-                // representation goes backwards on a DST fall-back, which would suppress
-                // reloads for the length of the overlap.
+                // Distinct UTC instants can have equal local representations during a DST fold.
                 DateTime lastWriteTime = _fileSystem.File.GetLastWriteTimeUtc(FilePath);
-                if (lastWriteTime > _lastChange)
+                if (!_hasLoadedFile || lastWriteTime != _lastChange)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} updated on {lastWriteTime:HH:mm:ss.ffff} after last read {_lastChange:HH:mm:ss.ffff}.");
+                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} with write time {lastWriteTime:O}; previous write time {_lastChange:O}.");
                     using Stream file = _fileSystem.File.OpenRead(FilePath);
                     _data = _jsonSerializer.Deserialize<T>(file);
                     if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {FilePath}.");
+                    _hasLoadedFile = true;
                     lastChange = lastWriteTime;
                 }
             }
-            else if (!Equals(_data, DefaultValue))
+            else if (_hasLoadedFile)
             {
-                // Sentinel, not the deletion instant: a file that reappears must reload even
-                // when its write time is older, as from a restore that preserves timestamps.
+                _hasLoadedFile = false;
                 lastChange = DateTime.MinValue;
                 _data = DefaultValue;
             }

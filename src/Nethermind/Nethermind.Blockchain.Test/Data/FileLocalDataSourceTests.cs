@@ -37,9 +37,7 @@ public class FileLocalDataSourceTests
         using TempPath tempFile = TempPath.GetTempFile();
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
         int interval = 30;
-        // Declared before the data source so it outlives the reload timer: a tick that lands
-        // after the semaphore is disposed would throw inside the timer's async void handler.
-        using SemaphoreSlim handle = new(0);
+        SemaphoreSlim handle = new(0);
         using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, interval);
         int changedRaised = 0;
         fileLocalDataSource.Changed += (sender, args) =>
@@ -80,7 +78,7 @@ public class FileLocalDataSourceTests
     public async Task correctly_updates_from_new_file()
     {
         using TempPath tempFile = TempPath.GetTempFile();
-        using SemaphoreSlim handle = new(0);
+        SemaphoreSlim handle = new(0);
         using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, 10);
         int changedRaised = 0;
         fileLocalDataSource.Changed += (sender, args) =>
@@ -134,13 +132,12 @@ public class FileLocalDataSourceTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task reloads_file_when_a_later_write_has_an_earlier_local_time()
+    public async Task reloads_file_when_distinct_utc_write_times_have_the_same_local_time()
     {
-        // A DST fall-back moves the local write-time representation backwards, so comparing
-        // local times makes a genuinely later write look older and suppresses the reload.
         DateTime utcT0 = new(2026, 10, 25, 0, 30, 0, DateTimeKind.Utc);
-        MockFileState state = new() { Exists = true, Json = GenerateStringJson("A"), UtcWriteTime = utcT0, LocalWriteTime = utcT0.AddHours(2) };
-        using SemaphoreSlim handle = new(0);
+        DateTime localFoldTime = new(2026, 10, 25, 1, 30, 0, DateTimeKind.Local);
+        MockFileState state = new() { Exists = true, Json = GenerateStringJson("A"), UtcWriteTime = utcT0, LocalWriteTime = localFoldTime };
+        SemaphoreSlim handle = new(0);
         using FileLocalDataSource<string[]> fileLocalDataSource = new("file", new EthereumJsonSerializer(), CreateFileSystem(state), LimboLogs.Instance, 10);
         fileLocalDataSource.Changed += (sender, args) => handle.Release();
         Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A" }));
@@ -148,38 +145,91 @@ public class FileLocalDataSourceTests
         lock (state.Lock)
         {
             state.Json = GenerateStringJson("B");
-            state.UtcWriteTime = utcT0.AddSeconds(30);
-            state.LocalWriteTime = utcT0.AddHours(1).AddSeconds(30);
+            state.UtcWriteTime = utcT0.AddHours(1);
+        }
+
+        await WaitForData(fileLocalDataSource, ["B"], handle);
+    }
+
+    [TestCase(false, TestName = "reloads_recreated_file_with_unchanged_write_time")]
+    [TestCase(true, TestName = "reloads_recreated_default_value_with_unchanged_write_time")]
+    [MaxTime(Timeout.MaxTestTime)]
+    public async Task reloads_recreated_file_with_unchanged_write_time(bool initialValueIsDefault)
+    {
+        DateTime utcT0 = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        string initialJson = initialValueIsDefault ? "null" : GenerateStringJson("A");
+        MockFileState state = new() { Exists = true, Json = initialJson, UtcWriteTime = utcT0, LocalWriteTime = utcT0 };
+        SemaphoreSlim handle = new(0);
+        using FileLocalDataSource<string[]> fileLocalDataSource = new("file", new EthereumJsonSerializer(), CreateFileSystem(state), LimboLogs.Instance, 10);
+        fileLocalDataSource.Changed += (sender, args) => handle.Release();
+        Assert.That(fileLocalDataSource.Data, Is.EqualTo(initialValueIsDefault ? null : new[] { "A" }));
+
+        lock (state.Lock) { state.Exists = false; }
+        Assert.That(await handle.WaitAsync(Timeout.MaxWaitTime), Is.True, "the deletion was not observed");
+        Assert.That(fileLocalDataSource.Data, Is.Null, "the deleted file must reset the data");
+
+        lock (state.Lock)
+        {
+            state.Json = GenerateStringJson("B");
+            state.Exists = true;
         }
 
         await WaitForData(fileLocalDataSource, ["B"], handle);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task reloads_recreated_file_with_older_write_time()
+    public async Task reloads_atomically_replaced_file_with_older_write_time()
     {
-        // A restore or copy that preserves timestamps recreates the file with a write time
-        // older than the deletion instant; the reload must not compare against a wall clock.
         DateTime utcT0 = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         MockFileState state = new() { Exists = true, Json = GenerateStringJson("A"), UtcWriteTime = utcT0, LocalWriteTime = utcT0 };
-        using SemaphoreSlim handle = new(0);
+        SemaphoreSlim handle = new(0);
         using FileLocalDataSource<string[]> fileLocalDataSource = new("file", new EthereumJsonSerializer(), CreateFileSystem(state), LimboLogs.Instance, 10);
         fileLocalDataSource.Changed += (sender, args) => handle.Release();
         Assert.That(fileLocalDataSource.Data, Is.EqualTo(new[] { "A" }));
-
-        lock (state.Lock) { state.Exists = false; }
-        await WaitForCondition(handle, () => fileLocalDataSource.Data is null);
-        Assert.That(fileLocalDataSource.Data, Is.Null, "the deleted file must reset the data");
 
         lock (state.Lock)
         {
             state.Json = GenerateStringJson("B");
             state.UtcWriteTime = utcT0.AddHours(-1);
             state.LocalWriteTime = utcT0.AddHours(-1);
-            state.Exists = true;
         }
 
         await WaitForData(fileLocalDataSource, ["B"], handle);
+    }
+
+    private sealed class AllocatingDefaultFileLocalDataSource(
+        string filePath,
+        IJsonSerializer jsonSerializer,
+        IFileSystem fileSystem,
+        ILogManager logManager,
+        int interval) : FileLocalDataSource<object>(filePath, jsonSerializer, fileSystem, logManager, interval)
+    {
+        protected override object DefaultValue => new();
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task does_not_report_changes_repeatedly_when_an_allocating_default_file_is_absent()
+    {
+        MockFileState state = new() { Exists = false, Json = "{}" };
+        SemaphoreSlim existsChecked = new(0);
+        int existsChecks = 0;
+        IFileSystem fileSystem = CreateFileSystem(state, () =>
+        {
+            Interlocked.Increment(ref existsChecks);
+            existsChecked.Release();
+        });
+        using AllocatingDefaultFileLocalDataSource fileLocalDataSource = new("file", new EthereumJsonSerializer(), fileSystem, LimboLogs.Instance, 10);
+        object initialData = fileLocalDataSource.Data;
+        int changedRaised = 0;
+        fileLocalDataSource.Changed += (sender, args) => Interlocked.Increment(ref changedRaised);
+        int initialExistsChecks = Volatile.Read(ref existsChecks);
+
+        Assert.That(await WaitForCondition(existsChecked, () => Volatile.Read(ref existsChecks) >= initialExistsChecks + 2), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileLocalDataSource.Data, Is.SameAs(initialData));
+            Assert.That(Volatile.Read(ref changedRaised), Is.Zero);
+        }
     }
 
     private sealed class MockFileState
@@ -191,10 +241,14 @@ public class FileLocalDataSourceTests
         public DateTime LocalWriteTime { get; set; }
     }
 
-    private static IFileSystem CreateFileSystem(MockFileState state)
+    private static IFileSystem CreateFileSystem(MockFileState state, Action? onExists = null)
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        fileSystem.File.Exists(Arg.Any<string>()).Returns(_ => { lock (state.Lock) { return state.Exists; } });
+        fileSystem.File.Exists(Arg.Any<string>()).Returns(_ =>
+        {
+            onExists?.Invoke();
+            lock (state.Lock) { return state.Exists; }
+        });
         fileSystem.File.GetLastWriteTime(Arg.Any<string>()).Returns(_ => { lock (state.Lock) { return state.LocalWriteTime; } });
         fileSystem.File.GetLastWriteTimeUtc(Arg.Any<string>()).Returns(_ => { lock (state.Lock) { return state.UtcWriteTime; } });
         fileSystem.File.OpenRead(Arg.Any<string>()).Returns(_ => { lock (state.Lock) { return new TestFileSystemStream(new MemoryStream(Encoding.UTF8.GetBytes(state.Json)), "file"); } });
@@ -206,7 +260,7 @@ public class FileLocalDataSourceTests
     {
         using TempPath tempFile = TempPath.GetTempFile();
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
-        using SemaphoreSlim handle = new(0);
+        SemaphoreSlim handle = new(0);
         using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, 50);
         int changedRaised = 0;
         fileLocalDataSource.Changed += (sender, args) =>
