@@ -32,6 +32,15 @@ public class FileLocalDataSourceTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void correctly_reads_existing_value_type_file()
+    {
+        using TempPath tempFile = TempPath.GetTempFile();
+        File.WriteAllText(tempFile.Path, "42");
+        using FileLocalDataSource<int> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance);
+        Assert.That(fileLocalDataSource.Data, Is.EqualTo(42));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task correctly_updates_from_existing_file()
     {
         using TempPath tempFile = TempPath.GetTempFile();
@@ -229,6 +238,33 @@ public class FileLocalDataSourceTests
         }
 
         await WaitForData(fileLocalDataSource, ["A"], handle);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task continues_watching_when_a_changed_subscriber_throws()
+    {
+        DateTime utcT0 = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        MockFileState state = new(new MockFile(Exists: false, GenerateStringJson("A"), utcT0, utcT0));
+        SemaphoreSlim firstChanged = new(0);
+        SemaphoreSlim handle = new(0);
+        using FileLocalDataSource<string[]> fileLocalDataSource = new("file", new EthereumJsonSerializer(), CreateFileSystem(state), LimboLogs.Instance, 10);
+        int changes = 0;
+        fileLocalDataSource.Changed += (sender, args) =>
+        {
+            if (Interlocked.Increment(ref changes) == 1)
+            {
+                firstChanged.Release();
+                throw new InvalidOperationException("subscriber failure");
+            }
+
+            handle.Release();
+        };
+
+        state.File = state.File with { Exists = true };
+        Assert.That(await firstChanged.WaitAsync(Timeout.MaxWaitTime), Is.True, "the first change was not published");
+        state.File = state.File with { Json = GenerateStringJson("B"), UtcWriteTime = utcT0.AddSeconds(1) };
+
+        await WaitForData(fileLocalDataSource, ["B"], handle);
     }
 
     private sealed class AllocatingDefaultFileLocalDataSource(

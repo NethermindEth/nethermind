@@ -245,6 +245,16 @@ namespace Nethermind.Synchronization.ParallelSync
                     await _concurrentProcessingSemaphore.WaitAsync(cancellationToken);
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Teardown raced this dispatch; stop rather than fault the un-awaited task.
+                if (Logger.IsDebug) Logger.Debug($"{_feedName} dispatch abandoned during shutdown.");
+                return;
+            }
             finally
             {
                 // The allocation must return to the pool on every exit: a cancelled wait would

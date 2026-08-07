@@ -275,12 +275,19 @@ public partial class ForwardHeaderProviderTests
         Context ctx = node.Resolve<Context>();
 
         IPeerAllocationStrategy? strategy = null;
+        int allocationTimeout = -1;
         ctx.PeerPool
-            .Allocate(Arg.Do<IPeerAllocationStrategy>(s => strategy = s), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Allocate(Arg.Do<IPeerAllocationStrategy>(s => strategy = s), Arg.Any<AllocationContexts>(), Arg.Do<int>(t => allocationTimeout = t), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(SyncPeerAllocation.FailedAllocation));
 
         using IOwnedReadOnlyList<BlockHeader?>? headers = await ctx.ForwardHeaderProvider.GetBlockHeaders(0, 128, CancellationToken.None);
-        Assert.That(strategy, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            // No allocatable peer returns promptly (one-shot timeout) instead of parking.
+            Assert.That(headers, Is.Null);
+            Assert.That(allocationTimeout, Is.EqualTo(0), "forward-header allocation must be one-shot");
+            Assert.That(strategy, Is.Not.Null);
+        }
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithTotalDifficulty(10_000_000).TestObject);

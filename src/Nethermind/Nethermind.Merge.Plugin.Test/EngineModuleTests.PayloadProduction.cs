@@ -255,7 +255,8 @@ public partial class EngineModuleTests
             // Partial production: the source consumed every permit and blocks on the next
             // pull. getPayload cancels that wait and returns the block built so far.
             await yieldedTransaction.Task;
-            Assert.That(() => txSource.Pulls, Is.EqualTo(permits + 1).After(10000, 10));
+            Assert.That(() => txSource.Pulls, Is.GreaterThanOrEqualTo(permits + 1).After(10000, 10));
+            Assert.That(txSource.Pulls, Is.EqualTo(permits + 1), "only one improvement may pull transactions before cancellation");
         }
 
         if (permits == 50)
@@ -526,7 +527,7 @@ public partial class EngineModuleTests
         await improvedBlockWait;
 
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
-        List<int?> transactionsLength = improvementContextFactory.CreatedContexts
+        List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
         Assert.That(transactionsLength, Is.EqualTo(new[] { 1, 2 }));

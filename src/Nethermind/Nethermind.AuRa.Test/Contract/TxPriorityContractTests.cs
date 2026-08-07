@@ -316,19 +316,7 @@ public class TxPriorityContractTests
 
             FileSemaphore = new SemaphoreSlim(0);
             Semaphore = new SemaphoreSlim(0);
-            // The reload timer's callback is async void. A tick that lands during fixture dispose
-            // reaches this handler after the semaphore is disposed, and the throw would escape as
-            // an unhandled exception and crash the test host.
-            LocalDataSource.Changed += (o, e) =>
-            {
-                try
-                {
-                    Semaphore.Release();
-                }
-                catch (ObjectDisposedException)
-                {
-                }
-            };
+            LocalDataSource.Changed += OnLocalDataChanged;
 
             LocalData = new TxPriorityContract.LocalData()
             {
@@ -352,12 +340,15 @@ public class TxPriorityContractTests
 
         public override void Dispose()
         {
+            LocalDataSource.Changed -= OnLocalDataChanged;
+            LocalDataSource.Dispose();
             base.Dispose();
-            LocalDataSource?.Dispose();
             TempFile?.Dispose();
             Semaphore.Dispose();
             FileSemaphore?.Dispose();
         }
+
+        private void OnLocalDataChanged(object? sender, EventArgs args) => Semaphore.Release();
 
         protected virtual bool FileFirst => false;
 

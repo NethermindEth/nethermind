@@ -45,8 +45,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
         private readonly AllocationAllowances _allocationAllowances;
 
-        // Internal so the RemovePeer race regression test can plant an already-disposed source.
-        internal readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
+        private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
 
         private readonly INodeStatsManager _stats;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
@@ -330,6 +329,17 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
         }
+
+        // Replaces only the dictionary target; the refresh continuation retains ownership of the
+        // original source and disposes it. Used to reproduce the cancel-versus-dispose race.
+        internal bool TryReplaceRefreshCancellation(PublicKey id, CancellationTokenSource replacement)
+        {
+            if (!_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current)) return false;
+            return _refreshCancelTokens.TryUpdate(id, replacement, current);
+        }
+
+        internal bool RefreshCancellationIs(PublicKey id, CancellationTokenSource expected) =>
+            _refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current) && ReferenceEquals(current, expected);
 
         public void SetPeerPriority(PublicKey id)
         {

@@ -375,15 +375,25 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public SyncingContext WaitForNewSuggestedBlockGate(int timeoutMs = DynamicTimeout)
         {
-            bool arrived = _newSuggestedBlockGate!.Wait(timeoutMs);
-            if (!arrived)
+            CancellationTokenSource cancellation = _newSuggestedBlockGateCancellation!;
+            try
             {
-                // Unsubscribes the armed handler before the assert ends the test.
-                _newSuggestedBlockGateCancellation!.Cancel();
-            }
+                bool arrived = _newSuggestedBlockGate!.Wait(timeoutMs);
+                if (!arrived)
+                {
+                    // Unsubscribes the armed handler before the assert ends the test.
+                    cancellation.Cancel();
+                }
 
-            Assert.That(arrived, Is.True, "the armed NewSuggestedBlock gate timed out");
-            return this;
+                Assert.That(arrived, Is.True, "the armed NewSuggestedBlock gate timed out");
+                return this;
+            }
+            finally
+            {
+                cancellation.Dispose();
+                _newSuggestedBlockGateCancellation = null;
+                _newSuggestedBlockGate = null;
+            }
         }
 
         public SyncingContext BestSuggestedHeaderIs(BlockHeader header, int timeout = DynamicTimeout)

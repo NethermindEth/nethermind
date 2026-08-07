@@ -19,7 +19,8 @@ public partial class BaseEngineModuleTests
     {
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory = blockImprovementContextFactory;
         private readonly bool _skipDuplicatedContext = skipDuplicatedContext;
-        public List<IBlockImprovementContext> CreatedContexts { get; } = [];
+        // Tests read the snapshot copy, never the live list the improvement loop appends to.
+        private List<IBlockImprovementContext> CreatedContexts { get; } = [];
 
         public event EventHandler<ImprovementStartedEventArgs>? ImprovementStarted;
 
