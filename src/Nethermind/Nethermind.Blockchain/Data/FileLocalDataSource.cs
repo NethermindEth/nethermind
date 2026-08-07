@@ -15,12 +15,16 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Data
 {
-    public class FileLocalDataSource<T> : ILocalDataSource<T>, IDisposable
+    /// <typeparam name="T">
+    /// The deserialized content. Constrained to a reference type because the reload timer
+    /// publishes it to readers of <see cref="Data"/> through a single volatile field.
+    /// </typeparam>
+    public class FileLocalDataSource<T> : ILocalDataSource<T>, IDisposable where T : class
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
-        private T _data;
+        private volatile T _data;
         private Timer _timer;
         private readonly int _interval;
         private DateTime _lastChange = DateTime.MinValue;
