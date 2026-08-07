@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test.Tracing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
-public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
+public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 {
     [Test]
     public void Can_trace_gas_halt_with_stop()
@@ -474,17 +474,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     [Test]
     public void Can_trace_refund_on_storage_clear()
     {
-        // Seed a non-zero slot so clearing it to zero grants a storage-clearing refund.
-        TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
-        TestState.Commit(Spec);
-
-        byte[] code = Prepare.EvmCode
-            .PersistData("0x0", HexZero)
-            .Op(Instruction.STOP)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethLikeTxTrace trace = ExecuteAndTrace(ClearSstoreCode());
 
         GethTxTraceEntry sstore = trace.Entries.Single(e => e.Opcode == "SSTORE");
         GethTxTraceEntry stop = trace.Entries.Single(e => e.Opcode == "STOP");
@@ -500,24 +490,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     [Test]
     public void Refund_is_rolled_back_when_frame_reverts()
     {
-        byte[] calleeCode = Prepare.EvmCode
-            .PersistData("0x0", HexZero)
-            .PushData(0)
-            .PushData(0)
-            .Op(Instruction.REVERT)
-            .Done;
-
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.Set(new StorageCell(TestItem.AddressC, 0), new byte[] { 1 });
-        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
-        TestState.Commit(Spec);
-
-        byte[] code = Prepare.EvmCode
-            .Call(TestItem.AddressC, 50000)
-            .Op(Instruction.STOP)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethLikeTxTrace trace = ExecuteAndTrace(ChildClearThenRevertCode());
 
         GethTxTraceEntry revert = trace.Entries.Single(e => e.Opcode == "REVERT");
         GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
@@ -532,26 +505,7 @@ public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
     [Test]
     public void Parent_frame_refund_survives_child_revert()
     {
-        byte[] calleeCode = Prepare.EvmCode
-            .PushData(0)
-            .PushData(0)
-            .Op(Instruction.REVERT)
-            .Done;
-
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
-
-        TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
-        TestState.Commit(Spec);
-
-        byte[] code = Prepare.EvmCode
-            .PersistData("0x0", HexZero)
-            .Call(TestItem.AddressC, 50000)
-            .Op(Instruction.STOP)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        GethLikeTxTrace trace = ExecuteAndTrace(RefundThenChildRevertCode());
 
         GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
 
