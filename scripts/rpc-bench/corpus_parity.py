@@ -381,6 +381,15 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
             if diffs_path:
                 diff_records.append(_describe_divergence(index, expected, actual))
 
+    if diffs_path and diff_records:
+        diffs_target = Path(diffs_path)
+        diffs_target.parent.mkdir(parents=True, exist_ok=True)
+        with diffs_target.open("w", encoding="utf-8") as handle:
+            json.dump({"baseline_client": baseline_client, "candidate_client": candidate_client,
+                       "total_divergences": report["content_mismatches"],
+                       "recorded": len(diff_records), "diffs": diff_records}, handle)
+        print(f"  wrote {len(diff_records)} divergence characterisations to {diffs_target.name}")
+
     document = {"baseline_client": baseline_client, "candidate_client": candidate_client,
                 "divergences": divergences, **report}
     target = Path(report_path)
