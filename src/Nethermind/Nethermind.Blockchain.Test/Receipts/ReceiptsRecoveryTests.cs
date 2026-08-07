@@ -76,15 +76,7 @@ public class ReceiptsRecoveryTests
     [Test]
     public void TryRecover_should_keep_a_failed_frame_transaction_status_with_logs()
     {
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, default, default)],
-            FrameSignatures = [],
-        };
-        tx.Hash = tx.CalculateHash();
-        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        Block block = FrameTxBlock();
         TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
         receipt.TxType = TxType.FrameTx;
         receipt.StatusCode = TxFrameReceipt.StatusFailure;
@@ -93,5 +85,42 @@ public class ReceiptsRecoveryTests
         _receiptsRecovery.TryRecover(block, [receipt]);
 
         Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure));
+    }
+
+    // An EIP-8141 frame transaction has no `to` field, which makes it look like a creation, but it
+    // creates nothing at the top level. Recovering an address here would name an account that was
+    // never created, and disagree with the address the executing node reported.
+    [Test]
+    public void TryRecover_should_not_invent_a_contract_address_for_a_frame_transaction()
+    {
+        Block block = FrameTxBlock();
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
+        // Recovery only ever assigns these, so a receipt that arrives empty would pass the assertions
+        // below without the exemption doing anything.
+        receipt.ContractAddress = TestItem.AddressD;
+        receipt.Recipient = TestItem.AddressD;
+        Assert.That(block.Transactions[0].IsContractCreation, Is.True,
+            "the transaction must look like a creation, or the exemption is not the reason for the null");
+
+        _receiptsRecovery.TryRecover(block, [receipt]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.ContractAddress, Is.Null);
+            Assert.That(receipt.Recipient, Is.Null, "a frame transaction has no top-level recipient either");
+        }
+    }
+
+    private static Block FrameTxBlock()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, default, default)],
+            FrameSignatures = [],
+        };
+        tx.Hash = tx.CalculateHash();
+        return Build.A.Block.WithTransactions(tx).TestObject;
     }
 }
