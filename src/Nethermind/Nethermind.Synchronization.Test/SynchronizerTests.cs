@@ -19,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
-using Nethermind.Network.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -53,6 +52,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     private const int BatchSyncDynamicTimeout = 60000;
 
     private readonly SynchronizerType _synchronizerType = synchronizerType;
+
+    // Each fixture instance owns the contexts it creates. Fixtures run in parallel,
+    // and a process-wide registry let one fixture's teardown dispose another
+    // fixture's live container mid-test.
+    private readonly ConcurrentQueue<SyncingContext> _ownedContexts = new();
+
     private static readonly Block _genesisBlock = Build.A.Block
         .Genesis
         .WithDifficulty(100000)
@@ -220,21 +225,21 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             $"SyncPeerMock:{ClientId}";
     }
 
-    private WhenImplementation When => new(_synchronizerType);
+    private WhenImplementation When => new(_synchronizerType, _ownedContexts);
 
-    private class WhenImplementation(SynchronizerType synchronizerType)
+    private class WhenImplementation(SynchronizerType synchronizerType, ConcurrentQueue<SyncingContext> ownedContexts)
     {
         private readonly SynchronizerType _synchronizerType = synchronizerType;
+        private readonly ConcurrentQueue<SyncingContext> _ownedContexts = ownedContexts;
 
-        public SyncingContext Syncing => new(_synchronizerType);
+        public SyncingContext Syncing => new(_synchronizerType, _ownedContexts);
 
-        public SyncingContext SyncingWithMaxRequestLimits => new(_synchronizerType, useMaxRequestLimits: true);
+        public SyncingContext SyncingWithMaxRequestLimits => new(_synchronizerType, _ownedContexts, useMaxRequestLimits: true);
     }
 
     public class SyncingContext : IAsyncDisposable
     {
         private bool _wasStopped = false;
-        public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
 
         private readonly Dictionary<string, ISyncPeer> _peers = [];
         private IBlockTree BlockTree => FromContainer.BlockTree;
@@ -259,7 +264,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         private readonly ILogger _logger;
 
-        public SyncingContext(SynchronizerType synchronizerType, bool useMaxRequestLimits = false)
+        public SyncingContext(SynchronizerType synchronizerType, ConcurrentQueue<SyncingContext> ownedContexts, bool useMaxRequestLimits = false)
         {
             ISyncConfig GetSyncConfig() =>
                 synchronizerType switch
@@ -298,25 +303,6 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
                 .AddSingleton<ContainerDependencies>()
                 .AddSingleton(_logManager);
 
-            // A misdirected bodies allocation puts the peer to sleep for a hardcoded 1s
-            // floor; the default 1s upgrade-poll period then doubles the worst case. The
-            // short period halves it, which stops the cycles stacking on a loaded runner.
-            // The CONCRETE type is registered, so both interface binds forward here.
-            builder.AddSingleton<SyncPeerPool>(ctx =>
-            {
-                INetworkConfig networkConfig = ctx.Resolve<INetworkConfig>();
-                ISyncConfig resolvedSyncConfig = ctx.Resolve<ISyncConfig>();
-                return new SyncPeerPool(
-                    ctx.Resolve<IBlockTree>(),
-                    ctx.Resolve<INodeStatsManager>(),
-                    ctx.Resolve<IBetterPeerStrategy>(),
-                    _logManager,
-                    networkConfig.MaxActivePeers,
-                    networkConfig.PriorityPeersMaxCount,
-                    resolvedSyncConfig.AllocationSlots,
-                    allocationsUpgradeIntervalInMsInMs: 25);
-            });
-
             if (useMaxRequestLimits)
             {
                 builder.AddSingleton(CreateMaxRequestLimitNodeStatsManager());
@@ -332,7 +318,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             _ = FromContainer.SyncServer; // Need to be created once to register events.
             SyncPeerPool.Start();
             Synchronizer.Start();
-            AllInstances.Enqueue(this);
+            ownedContexts.Enqueue(this);
         }
 
         private static INodeStatsManager CreateMaxRequestLimitNodeStatsManager()
@@ -535,12 +521,12 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     {
     }
 
-    [OneTimeTearDown]
+    [TearDown]
     public async Task TearDown()
     {
-        foreach (SyncingContext syncingContext in SyncingContext.AllInstances)
+        while (_ownedContexts.TryDequeue(out SyncingContext? context))
         {
-            await syncingContext.StopAsync();
+            await context.StopAsync();
         }
     }
 
