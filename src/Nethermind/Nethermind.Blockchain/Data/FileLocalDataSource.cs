@@ -4,12 +4,14 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
 using Polly;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Data
 {
@@ -23,6 +25,7 @@ namespace Nethermind.Blockchain.Data
         private readonly int _interval;
         private DateTime _lastChange = DateTime.MinValue;
         private bool _hasLoadedFile;
+        private readonly Lock _loadLock = new();
         public string FilePath { get; private set; }
 
         public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
@@ -116,32 +119,44 @@ namespace Nethermind.Blockchain.Data
 
         private void LoadFileCore()
         {
-            DateTime? lastChange = null;
+            bool changed = false;
 
-            if (_fileSystem.File.Exists(FilePath))
+            // The reload timer does not serialise its callbacks. Without this, two overlapping
+            // loads can publish the data of one and the write time of the other, which pairs
+            // stale content with a matching timestamp and suppresses every later reload.
+            lock (_loadLock)
             {
-                // Distinct UTC instants can have equal local representations during a DST fold.
-                DateTime lastWriteTime = _fileSystem.File.GetLastWriteTimeUtc(FilePath);
-                if (!_hasLoadedFile || lastWriteTime != _lastChange)
+                if (_fileSystem.File.Exists(FilePath))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} with write time {lastWriteTime:O}; previous write time {_lastChange:O}.");
-                    using Stream file = _fileSystem.File.OpenRead(FilePath);
-                    _data = _jsonSerializer.Deserialize<T>(file);
-                    if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {FilePath}.");
-                    _hasLoadedFile = true;
-                    lastChange = lastWriteTime;
+                    // Read in UTC: distinct instants can share a local representation during a DST
+                    // fold. Compare for inequality, not order: an atomic replace, as from a restore
+                    // that preserves timestamps, can carry an older write time. Two writes within
+                    // the file system's timestamp granularity are indistinguishable either way.
+                    DateTime lastWriteTime = _fileSystem.File.GetLastWriteTimeUtc(FilePath);
+                    if (!_hasLoadedFile || lastWriteTime != _lastChange)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} with write time {lastWriteTime:O}; previous write time {_lastChange:O}.");
+                        using Stream file = _fileSystem.File.OpenRead(FilePath);
+                        _data = _jsonSerializer.Deserialize<T>(file);
+                        if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {FilePath}.");
+                        _hasLoadedFile = true;
+                        _lastChange = lastWriteTime;
+                        changed = true;
+                    }
+                }
+                else if (_hasLoadedFile)
+                {
+                    // _lastChange is left alone: the flag makes the next file load whatever it holds.
+                    _hasLoadedFile = false;
+                    _data = DefaultValue;
+                    changed = true;
                 }
             }
-            else if (_hasLoadedFile)
-            {
-                _hasLoadedFile = false;
-                lastChange = DateTime.MinValue;
-                _data = DefaultValue;
-            }
 
-            if (lastChange.HasValue)
+            // Raised outside the lock: subscribers read the current Data rather than a snapshot,
+            // so event order does not matter, and their work must not block the next reload.
+            if (changed)
             {
-                _lastChange = lastChange.Value;
                 Changed?.Invoke(this, EventArgs.Empty);
             }
         }

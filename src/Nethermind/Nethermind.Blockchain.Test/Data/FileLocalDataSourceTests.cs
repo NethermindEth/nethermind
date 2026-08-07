@@ -37,6 +37,8 @@ public class FileLocalDataSourceTests
         using TempPath tempFile = TempPath.GetTempFile();
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
         int interval = 30;
+        // Not disposed: SemaphoreSlim allocates a wait handle only once AvailableWaitHandle is
+        // read, and disposing it would race a reload tick that outlives the source's Dispose.
         SemaphoreSlim handle = new(0);
         using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, interval);
         int changedRaised = 0;
@@ -134,6 +136,8 @@ public class FileLocalDataSourceTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task reloads_file_when_distinct_utc_write_times_have_the_same_local_time()
     {
+        // A DST fold maps two UTC instants onto one local time, so only a local-time collision
+        // distinguishes reading the write time in UTC from reading it in local time.
         DateTime utcT0 = new(2026, 10, 25, 0, 30, 0, DateTimeKind.Utc);
         DateTime localFoldTime = new(2026, 10, 25, 1, 30, 0, DateTimeKind.Local);
         MockFileState state = new() { Exists = true, Json = GenerateStringJson("A"), UtcWriteTime = utcT0, LocalWriteTime = localFoldTime };
@@ -220,16 +224,23 @@ public class FileLocalDataSourceTests
         });
         using AllocatingDefaultFileLocalDataSource fileLocalDataSource = new("file", new EthereumJsonSerializer(), fileSystem, LimboLogs.Instance, 10);
         object initialData = fileLocalDataSource.Data;
+        SemaphoreSlim handle = new(0);
         int changedRaised = 0;
-        fileLocalDataSource.Changed += (sender, args) => Interlocked.Increment(ref changedRaised);
+        fileLocalDataSource.Changed += (sender, args) =>
+        {
+            Interlocked.Increment(ref changedRaised);
+            handle.Release();
+        };
         int initialExistsChecks = Volatile.Read(ref existsChecks);
 
         Assert.That(await WaitForCondition(existsChecked, () => Volatile.Read(ref existsChecks) >= initialExistsChecks + 2), Is.True);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fileLocalDataSource.Data, Is.SameAs(initialData));
-            Assert.That(Volatile.Read(ref changedRaised), Is.Zero);
-        }
+        Assert.That(fileLocalDataSource.Data, Is.SameAs(initialData), "an absent file must not replace the data");
+
+        // Letting the file appear fences the polls above: its load can only be raised once they
+        // have run to completion, so counting one event here proves they raised none.
+        lock (state.Lock) { state.Exists = true; }
+        Assert.That(await WaitForCondition(handle, () => Volatile.Read(ref changedRaised) > 0), Is.True);
+        Assert.That(Volatile.Read(ref changedRaised), Is.EqualTo(1), "only the load may report a change");
     }
 
     private sealed class MockFileState
