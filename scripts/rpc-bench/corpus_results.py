@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import math
 import shutil
 import sys
@@ -31,6 +32,8 @@ METRIC_FIELDS: dict[str, tuple[str, ...]] = {
     "dropped_iterations": ("count",),
 }
 # Filenames stage will publish; everything else in the output tree is left behind.
+STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(:-?\d+)?")
+
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
                     "timings.csv")
 
@@ -144,19 +147,26 @@ def _validate_timings(path: Path) -> None:
             raise CorpusResultsError("timings.csv: empty") from None
         if not header or header[0] != "record_index" or len(header) < 2:
             raise CorpusResultsError("timings.csv: unexpected header")
-        if any(not column.startswith("pass_") or not column.endswith("_ms") for column in header[1:]):
-            raise CorpusResultsError("timings.csv: unexpected column name")
+        numeric = {0}
+        for position, column in enumerate(header[1:], start=1):
+            if column.startswith("pass_") and column.endswith("_ms"):
+                numeric.add(position)
+            elif not (column.startswith("pass_") and column.endswith("_status")):
+                raise CorpusResultsError("timings.csv: unexpected column name")
         for number, row in enumerate(reader, start=2):
             if len(row) != len(header):
                 raise CorpusResultsError(f"timings.csv: row {number} has {len(row)} of {len(header)} columns")
-            for cell in row:
-                # int index, float millisecond, or an empty cell for a pass that never ran.
+            for position, cell in enumerate(row):
                 if cell == "":
                     continue
-                try:
-                    float(cell)
-                except ValueError:
-                    raise CorpusResultsError(f"timings.csv: row {number} holds a non-numeric value") from None
+                if position in numeric:
+                    try:
+                        float(cell)
+                    except ValueError:
+                        raise CorpusResultsError(f"timings.csv: row {number} holds a non-numeric value") from None
+                # Status is a fixed vocabulary plus an optional JSON-RPC integer code — never content.
+                elif not STATUS_PATTERN.fullmatch(cell):
+                    raise CorpusResultsError(f"timings.csv: row {number} holds an unexpected status")
 
 
 def stage(output_root: str, stage_root: str) -> None:
