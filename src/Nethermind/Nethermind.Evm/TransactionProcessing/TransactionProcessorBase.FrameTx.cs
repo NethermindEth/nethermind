@@ -592,10 +592,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 if (substate.ShouldRevert || substate.IsError)
                 {
-                    // A frame capped to the remaining budget that then failed exhausted that cap, so the
-                    // prefix's validation work exceeds MAX_VERIFY_GAS: reject it as over-budget, distinct
-                    // from a genuine revert of a within-budget frame (spec §Structural Rules 6, L812).
-                    return capped
+                    // Attribute the failure to the budget only when the frame was capped and did not
+                    // explicitly REVERT: an explicit revert (e.g. a signature mismatch) returns unused gas
+                    // and is a genuine within-budget rejection, whereas a capped frame that ran out of gas
+                    // exhausted the cap, so its validation work exceeds MAX_VERIFY_GAS (spec §Structural Rules 6).
+                    return capped && !substate.ShouldRevert
                         ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS")
                         : TransactionResult.ErrorType.MalformedTransaction.WithDetail("validation prefix frame reverted");
                 }
