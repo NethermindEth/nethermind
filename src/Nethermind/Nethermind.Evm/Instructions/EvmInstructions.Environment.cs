@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -730,6 +731,7 @@ public static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
+    /// <see cref="EvmExceptionType.OutOfGas"/> if an EIP-7709 storage access cannot be paid;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if there are insufficient stack elements.
     /// </returns>
     [SkipLocalsInit]
@@ -737,22 +739,52 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        // Deduct the gas cost for block hash operation.
+        // EIP-7709 changes the hash source and gas accounting but retains the 256-block opcode window.
+        const ulong BlockHashServeWindow = 256;
+
         TGasPolicy.Consume<BlockHashGasCost>(ref gas);
 
-        // Pop the block number from the stack.
-        if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 blockNumber)) goto StackUnderflow;
 
-        // Retrieve the block hash for the given block number.
         BlockHeader header = vm.BlockExecutionContext.Header;
-        Hash256? blockHash = !a.IsUint64 || a.u0 >= header.Number
-            ? null // Current block, future block, or unrepresentable block number
-            : vm.BlockHashProvider.GetBlockhash(header, a.u0, vm.Spec);
+        IReleaseSpec spec = vm.Spec;
+        if (!blockNumber.IsUint64 || blockNumber.u0 >= header.Number)
+        {
+            return stack.PushZero<TTracingInst>();
+        }
 
-        // Push the block hash bytes if available; otherwise, push a 32-byte zero value.
+        ulong requestedBlockNumber = blockNumber.u0;
+        if (spec.IsBlockHashInStateAvailable)
+        {
+            if (header.Number - requestedBlockNumber > BlockHashServeWindow)
+            {
+                return stack.PushZero<TTracingInst>();
+            }
+
+            UInt256 storageIndex = new(requestedBlockNumber % spec.Eip2935RingBufferSize);
+            Address historyAddress = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+            StorageCell storageCell = new(historyAddress, in storageIndex);
+            TGasPolicy.Consume<SLoadGasCost>(ref gas, spec);
+            if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess,
+                    in storageCell, StorageAccessType.SLOAD, spec)) goto OutOfGas;
+            ReadOnlySpan<byte> value = vm.WorldState.Get(in storageCell);
+
+            bool isZero = value.Length == 1 && value[0] == 0;
+            EvmExceptionType storagePushResult = isZero
+                ? stack.PushZero<TTracingInst>()
+                : stack.PushBytes<TTracingInst>(value);
+
+            if (vm.TxTracer.IsTracingBlockHash && !isZero)
+            {
+                vm.TxTracer.ReportBlockHash(Hash256.FromBytesWithPadding(value));
+            }
+
+            return storagePushResult;
+        }
+
+        Hash256? blockHash = vm.BlockHashProvider.GetBlockhash(header, requestedBlockNumber, spec);
         EvmExceptionType pushResult = stack.PushBytes<TTracingInst>(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
-        // If block hash tracing is enabled and a valid block hash was obtained, report it.
         if (vm.TxTracer.IsTracingBlockHash && blockHash is not null)
         {
             vm.TxTracer.ReportBlockHash(blockHash);
@@ -760,6 +792,8 @@ public static partial class EvmInstructions
 
         return pushResult;
         // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
