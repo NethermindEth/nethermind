@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
@@ -19,4 +20,12 @@ public static class Eip8272Constants
 
     // Provisional: spec address is TBD; mirrors the only existing implementation.
     public static readonly Address RecentRootAddress = new("0x0000000000000000000000000000000000008272");
+
+    /// <summary>The runtime code installed at <see cref="RecentRootAddress"/> when EIP-8272 activates.</summary>
+    /// <remarks>
+    /// The spec leaves <c>RECENT_ROOT_CODE</c> TBD, and the predeploy is only ever a protocol-managed
+    /// storage namespace: recent-root entries are written natively and no call ever enters the account.
+    /// Empty code keeps the activation account state minimal and matches the only existing implementation.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> RecentRootCode { get; } = ReadOnlyMemory<byte>.Empty;
 }
