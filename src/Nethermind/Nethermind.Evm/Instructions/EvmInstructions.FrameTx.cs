@@ -125,6 +125,7 @@ public static unsafe partial class EvmInstructions
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
+        // RECENTROOTREFLOAD_GAS = 3.
         TGasPolicy.Consume<VeryLowGasCost>(ref gas);
         // Spec stack order: field on top, index second — the reverse of FRAMEPARAM and SIGPARAM.
         if (!stack.PopUInt256(out UInt256 field, out UInt256 index)) return EvmExceptionType.StackUnderflow;
