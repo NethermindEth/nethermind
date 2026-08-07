@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Precompiles;
@@ -130,7 +131,7 @@ public static class FrameTxSignatureValidator
         }
 
         ReadOnlySpan<byte> publicKey = raw.Slice(64, 64); // qx || qy
-        Address derived = new(Keccak.Compute(publicKey).Bytes[12..]);
+        Address derived = new(ValueKeccak.Compute(publicKey).Bytes[12..]);
         if (derived != resolvedSigner) return Fail(InvalidP256Signer, out error);
 
         // The secp256r1 primitive is packaged above Nethermind.Evm and reached through the same
@@ -138,12 +139,20 @@ public static class FrameTxSignatureValidator
         // secp256r1 semantics. Input layout: message || r || s || qx || qy (32 + P256 signature).
         if (p256Precompile is null) return Fail(P256NotSupported, out error);
 
-        byte[] input = new byte[Hash256.Size + TxFrameSignature.P256SignatureLength];
-        message.Bytes.CopyTo(input);
-        raw.CopyTo(input.AsSpan(Hash256.Size));
+        const int InputLength = Hash256.Size + TxFrameSignature.P256SignatureLength;
+        byte[] input = ArrayPool<byte>.Shared.Rent(InputLength);
+        try
+        {
+            message.Bytes.CopyTo(input);
+            raw.CopyTo(input.AsSpan(Hash256.Size));
 
-        Result<byte[]> result = p256Precompile.Run(input, spec);
-        return result && result.Data.Length > 0 || Fail(InvalidSignature, out error);
+            Result<byte[]> result = p256Precompile.Run(input.AsMemory(0, InputLength), spec);
+            return result && result.Data.Length > 0 || Fail(InvalidSignature, out error);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(input);
+        }
     }
 
     private static bool Fail(string message, out string? error)
