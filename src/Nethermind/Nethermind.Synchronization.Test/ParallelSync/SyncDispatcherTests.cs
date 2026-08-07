@@ -343,6 +343,11 @@ public class SyncDispatcherTests
         Task dispatcherTask = dispatcher.Start(cancellationToken);
         await syncFeed.WaitForHandleResponse().WaitAsync(cancellationToken);
 
+        // The permit holder has already freed its own slot, so exactly one slot outstanding
+        // means the second dispatch holds its allocation and the cancelled-wait path is real.
+        Assert.That(() => pool.AvailablePeers, Is.EqualTo(1).After(10_000, 10),
+            "guard: the second dispatch must hold an allocation before the feed finishes");
+
         syncFeed.Finish();
         await dispatcherTask.WaitAsync(cancellationToken);
 
