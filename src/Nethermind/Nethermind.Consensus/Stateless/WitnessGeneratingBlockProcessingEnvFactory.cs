@@ -100,6 +100,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
                 codeInfoRepositoryFactory: ctx.Resolve<CodeInfoRepositoryFactory>(),
+                txProcessorAdapterFactory: ctx.Resolve<TransactionProcessorAdapterFactory>(),
                 transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());

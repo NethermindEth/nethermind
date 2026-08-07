@@ -1017,6 +1017,53 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Regression test for #12692: under EIP-7928 the block-access-list path must enforce the
+    /// <c>JsonRpc.GasCap</c> budget across the calls of a request. The clamp to the running
+    /// <c>TotalGasLeft</c> lives in the simulate adapter, so with a tight cap the second call is
+    /// clamped below intrinsic gas and rejected. Without the adapter the cap is ignored and both
+    /// calls run with their full requested gas.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_enforces_gas_cap_across_calls_on_bal_path()
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance);
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+
+        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+
+        // GasCap covers barely more than one 21k transfer: after the first call the remaining budget
+        // is below intrinsic gas, so the second call's clamped gas limit is rejected.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 20_000, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 20_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig { GasCap = 20_000 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        // With the budget enforced, the first call spends most of it and the second call's clamped
+        // gas falls below intrinsic. Without the adapter both calls run unclamped and the request succeeds.
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
+    }
+
+    /// <summary>
     /// Regression test: blob tx rejected when <c>maxFeePerBlobGas</c> is below the <c>blobBaseFee</c>
     /// block override. The decorated calculator must be used for validation, not the static
     /// <c>BlobGasCalculator.TryCalculateFeePerBlobGas</c> which reads from the raw header.

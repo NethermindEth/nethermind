@@ -13,6 +13,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -172,7 +173,8 @@ public class BlockAccessListSequentialValidationTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            static worldState => new EthereumCodeInfoRepository(worldState),
+            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor));
         return (stateProvider, balManager);
     }
 

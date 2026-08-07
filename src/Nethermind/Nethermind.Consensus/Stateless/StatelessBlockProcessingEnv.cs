@@ -60,6 +60,7 @@ public class StatelessBlockProcessingEnv(
             },
             new WithdrawalProcessorFactory(logManager),
             codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance),
+            txProcessorAdapterFactory: static p => new ExecuteTransactionProcessorAdapter(p),
             executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(

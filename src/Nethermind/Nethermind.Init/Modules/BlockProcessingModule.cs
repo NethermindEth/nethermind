@@ -74,6 +74,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
                 worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))
+            .AddSingleton<TransactionProcessorAdapterFactory>(
+                (TransactionProcessorAdapterFactory)(static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor)))
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
