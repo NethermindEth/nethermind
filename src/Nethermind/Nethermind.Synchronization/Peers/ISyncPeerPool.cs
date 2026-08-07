@@ -202,8 +202,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 try
                 {
-                    BlockHeader? header = await peer.SyncPeer.GetHeadBlockHeader(headerHash, token);
-                    return header is null ? null : Validate(syncPeerPool, peer, header, headerHash);
+                    return Validate(syncPeerPool, peer, await peer.SyncPeer.GetHeadBlockHeader(headerHash, token), headerHash);
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
                 {
@@ -211,8 +210,10 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
-            static BlockHeader? Validate(ISyncPeerPool syncPeerPool, PeerInfo peer, BlockHeader header, Hash256 headerHash)
+            // A peer without the block answers with an empty list, or with an item that decodes to a null header.
+            static BlockHeader? Validate(ISyncPeerPool syncPeerPool, PeerInfo peer, BlockHeader? header, Hash256 headerHash)
             {
+                if (header is null) return null;
                 if (header.Hash == headerHash) return header;
 
                 syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.UnexpectedHeaderHash, "header hash inconsistent with request");

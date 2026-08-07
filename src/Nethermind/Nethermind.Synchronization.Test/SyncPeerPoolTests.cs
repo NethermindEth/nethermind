@@ -73,7 +73,14 @@ public class SyncPeerPoolTests
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
             Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
-                HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty() : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
+                AnswersWithEmptyHeader ? new ArrayPoolList<BlockHeader>([null!])
+                    : HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty()
+                        : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
+
+        /// <summary>
+        /// Makes the peer answer with a single null header, which is how an empty list item decodes off the wire.
+        /// </summary>
+        public bool AnswersWithEmptyHeader { get; set; }
 
         /// <summary>
         /// Header this peer answers header requests with, whatever hash was asked for. When unset, head-header
@@ -812,6 +819,22 @@ public class SyncPeerPoolTests
         await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
 
         Assert.That(peers[0].DisconnectRequested, Is.EqualTo(shouldReport));
+    }
+
+    [Test]
+    public async Task Fetch_header_treats_a_null_header_answer_as_the_block_being_absent()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        peers[0].HeadHeaderUnavailable = true;
+        peers[0].AnswersWithEmptyHeader = true;
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.Null);
+        Assert.That(peers[0].DisconnectRequested, Is.False);
     }
 
     [Test]
