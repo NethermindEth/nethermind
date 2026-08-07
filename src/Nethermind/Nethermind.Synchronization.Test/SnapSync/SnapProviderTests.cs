@@ -124,10 +124,13 @@ public class SnapProviderTests
         Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.False);
     }
 
-    [TestCase(1, 2)]
-    [TestCase(2, 3)]
-    [TestCase(4, 64)]
-    public void AddStorageRange_ResponseHasMoreSlotListsThanRequestedAccounts_ReturnsOutOfBounds(int accountCount, int slotListCount)
+    [TestCase(1, 2, AddRangeResult.OutOfBounds)]
+    [TestCase(2, 3, AddRangeResult.OutOfBounds)]
+    [TestCase(4, 64, AddRangeResult.OutOfBounds)]
+    [TestCase(1, 1, AddRangeResult.EmptyRange)]
+    [TestCase(4, 4, AddRangeResult.EmptyRange)]
+    [TestCase(4, 2, AddRangeResult.EmptyRange)]
+    public void AddStorageRange_RejectsResponseOnlyWhenSlotListsExceedRequestedAccounts(int accountCount, int slotListCount, AddRangeResult expected)
     {
         using IContainer container = CreateContainer();
 
@@ -136,7 +139,7 @@ public class SnapProviderTests
         using StorageRange request = CreateStorageRange(accountCount);
         using SlotsAndProofs response = CreateEmptySlotsResponse(slotListCount);
 
-        Assert.That(snapProvider.AddStorageRange(request, response), Is.EqualTo(AddRangeResult.OutOfBounds));
+        Assert.That(snapProvider.AddStorageRange(request, response), Is.EqualTo(expected));
     }
 
     [Test]
