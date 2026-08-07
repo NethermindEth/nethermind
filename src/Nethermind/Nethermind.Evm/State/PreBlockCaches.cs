@@ -103,10 +103,11 @@ public class PreBlockCaches
     /// </summary>
     public sealed class StorageReadCapture(PreBlockCaches owner) : IDisposable
     {
-        // A 10M+ gas transaction of mostly cold sloads captures low thousands of cells.
-        private const int InitialCellCapacity = 1024;
+        // Covers the modal candidate; genuinely heavy captures grow in a few doublings.
+        private const int InitialCellCapacity = 256;
 
         private readonly HashSet<StorageCell> _cells = new(InitialCellCapacity);
+        private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
         private bool _disposed;
 
         internal PreBlockCaches Owner { get; } = owner;
@@ -115,7 +116,11 @@ public class PreBlockCaches
         public IReadOnlyCollection<StorageCell> Cells => _cells;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Record(in StorageCell storageCell) => _cells.Add(storageCell);
+        public void Record(in StorageCell storageCell)
+        {
+            Debug.Assert(Environment.CurrentManagedThreadId == _ownerThreadId, "A capture must only record on the thread that created it.");
+            _cells.Add(storageCell);
+        }
 
         public void Dispose()
         {

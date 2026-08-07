@@ -282,10 +282,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             CancellationToken = cancellationToken
         };
 
+        // Wide ranges so one scope serves many reads and a contract's sorted slots stay in one partition.
+        int rangeSize = Math.Max(16, cellCount / (parallelOptions.MaxDegreeOfParallelism * 4));
+
         try
         {
             // Reads through a prewarmer scope populate PreBlockCaches, so plain parallel reads are the warm-up.
-            Parallel.ForEach(Partitioner.Create(0, cellCount), parallelOptions, range =>
+            Parallel.ForEach(Partitioner.Create(0, cellCount, rangeSize), parallelOptions, range =>
             {
                 IReadOnlyTxProcessorSource env = _envPool.Get();
                 try
@@ -294,6 +297,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IWorldState worldState = scope.WorldState;
                     for (int i = range.Item1; i < range.Item2; i++)
                     {
+                        if ((i & 0x3F) == 0 && cancellationToken.IsCancellationRequested) return;
                         worldState.Get(in cells[i]);
                     }
                 }
