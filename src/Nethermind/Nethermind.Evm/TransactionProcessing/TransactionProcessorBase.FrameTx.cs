@@ -142,6 +142,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             in tx.MaxPriorityFeePerGas,
             tx.DecodedMaxFeePerGas,
             tx.MaxFeePerBlobGas.GetValueOrDefault(),
+            WorldState.GetNonce(sender),
             tx.NonceKeys);
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
