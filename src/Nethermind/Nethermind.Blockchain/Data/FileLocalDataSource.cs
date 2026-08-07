@@ -119,13 +119,13 @@ namespace Nethermind.Blockchain.Data
 
             if (_fileSystem.File.Exists(FilePath))
             {
-                // UTC, to match the file-deleted branch below. The local representation lags
-                // UtcNow on negative-offset timezones, which suppressed reloads after a
-                // delete-then-recreate for the length of the offset.
+                // UTC, so a later write can never carry an earlier timestamp: the local
+                // representation goes backwards on a DST fall-back, which would suppress
+                // reloads for the length of the overlap.
                 DateTime lastWriteTime = _fileSystem.File.GetLastWriteTimeUtc(FilePath);
                 if (lastWriteTime > _lastChange)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} updated on {lastWriteTime:hh:mm:ss:ffff} after last read {_lastChange:hh:mm:ss:ffff}.");
+                    if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} updated on {lastWriteTime:HH:mm:ss.ffff} after last read {_lastChange:HH:mm:ss.ffff}.");
                     using Stream file = _fileSystem.File.OpenRead(FilePath);
                     _data = _jsonSerializer.Deserialize<T>(file);
                     if (_logger.IsDebug) _logger.Debug($"Loaded and deserialized {typeof(T)} from {FilePath}.");
@@ -134,7 +134,9 @@ namespace Nethermind.Blockchain.Data
             }
             else if (!Equals(_data, DefaultValue))
             {
-                lastChange = DateTime.UtcNow;
+                // Sentinel, not the deletion instant: a file that reappears must reload even
+                // when its write time is older, as from a restore that preserves timestamps.
+                lastChange = DateTime.MinValue;
                 _data = DefaultValue;
             }
 
