@@ -55,11 +55,11 @@ public class PrewarmerScopeProvider(
     {
         IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
         if (!isPrewarmer) preBlockCaches.MainScope = scope;
-        bool captureStorageMisses = isPrewarmer && preBlockCaches.IsStorageReadCaptureActive;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, captureStorageMisses, metrics);
+        PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics);
     }
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, bool captureStorageMisses, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, PreBlockCaches.StorageReadCapture? storageReadCapture, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
@@ -95,8 +95,8 @@ public class PrewarmerScopeProvider(
                 address,
                 isPrewarmer,
                 _metrics);
-            return captureStorageMisses
-                ? new CapturingStorageTreeWrapper(storageTree, preBlockCaches, storageCache, address)
+            return storageReadCapture is not null
+                ? new CapturingStorageTreeWrapper(storageTree, storageReadCapture, storageCache, address)
                 : storageTree;
         }
 
@@ -270,7 +270,7 @@ public class PrewarmerScopeProvider(
 
     private sealed class CapturingStorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        PreBlockCaches preBlockCaches,
+        PreBlockCaches.StorageReadCapture storageReadCapture,
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address) : IWorldStateScopeProvider.IStorageTree
     {
@@ -281,8 +281,9 @@ public class PrewarmerScopeProvider(
         public byte[] Get(in UInt256 index)
         {
             StorageCell storageCell = new(address, in index);
-            if (!preBlockCache.TryGetValue(in storageCell, out _) && preBlockCaches.CaptureStorageMiss(in storageCell))
+            if (!preBlockCache.TryGetValue(in storageCell, out _))
             {
+                storageReadCapture.Record(in storageCell);
                 // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
                 return SpeculativeStorageValue;
             }

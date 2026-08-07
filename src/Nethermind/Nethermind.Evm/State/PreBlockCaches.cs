@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -32,8 +32,6 @@ public class PreBlockCaches
 
     [ThreadStatic]
     private static StorageReadCapture? _currentStorageReadCapture;
-
-    private int _activeStorageReadCaptures;
 
     public PreBlockCaches() : this(new PreBlockCachesConfig()) { }
 
@@ -74,38 +72,17 @@ public class PreBlockCaches
     /// </remarks>
     public StorageReadCapture BeginStorageReadCapture()
     {
-        StorageReadCapture capture = new(this);
-        _currentStorageReadCapture = capture;
-        Interlocked.Increment(ref _activeStorageReadCaptures);
-        return capture;
+        Debug.Assert(_currentStorageReadCapture is null, "Storage-read captures must not nest; the previous capture would be orphaned.");
+        return _currentStorageReadCapture = new StorageReadCapture(this);
     }
 
-    /// <summary>
-    /// Records a backing-store storage miss in the capture active on the current thread.
-    /// </summary>
-    /// <returns><see langword="true"/> when the backing read should be skipped.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool CaptureStorageMiss(in StorageCell storageCell)
+    /// <summary>The capture active on the current thread for this cache, if any.</summary>
+    public StorageReadCapture? CurrentStorageReadCapture
     {
-        if (Volatile.Read(ref _activeStorageReadCaptures) == 0) return false;
-
-        StorageReadCapture? capture = _currentStorageReadCapture;
-        if (capture is null || !ReferenceEquals(capture.Owner, this)) return false;
-
-        capture.Record(in storageCell);
-        return true;
-    }
-
-    /// <summary>Whether this thread currently has a storage-read capture for this cache.</summary>
-    public bool IsStorageReadCaptureActive
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            if (Volatile.Read(ref _activeStorageReadCaptures) == 0) return false;
-
             StorageReadCapture? capture = _currentStorageReadCapture;
-            return capture is not null && ReferenceEquals(capture.Owner, this);
+            return capture is not null && ReferenceEquals(capture.Owner, this) ? capture : null;
         }
     }
 
@@ -121,11 +98,15 @@ public class PreBlockCaches
     }
 
     /// <summary>
-    /// A synchronous, thread-local storage-read capture. Dispose it on the thread where it was created.
+    /// A synchronous, thread-local storage-read capture. Not thread-safe: record and dispose only on the
+    /// thread where it was created.
     /// </summary>
     public sealed class StorageReadCapture(PreBlockCaches owner) : IDisposable
     {
-        private readonly HashSet<StorageCell> _cells = [];
+        // A 10M+ gas transaction of mostly cold sloads captures low thousands of cells.
+        private const int InitialCellCapacity = 1024;
+
+        private readonly HashSet<StorageCell> _cells = new(InitialCellCapacity);
         private bool _disposed;
 
         internal PreBlockCaches Owner { get; } = owner;
@@ -134,7 +115,7 @@ public class PreBlockCaches
         public IReadOnlyCollection<StorageCell> Cells => _cells;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void Record(in StorageCell storageCell) => _cells.Add(storageCell);
+        public void Record(in StorageCell storageCell) => _cells.Add(storageCell);
 
         public void Dispose()
         {
@@ -145,8 +126,6 @@ public class PreBlockCaches
             {
                 _currentStorageReadCapture = null;
             }
-
-            Interlocked.Decrement(ref Owner._activeStorageReadCaptures);
         }
     }
 

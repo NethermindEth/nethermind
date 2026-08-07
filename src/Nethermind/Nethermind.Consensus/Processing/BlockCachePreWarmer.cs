@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
@@ -47,6 +48,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private const int MaxDiscoveredCells = 8192;
     // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
     private const ulong StorageDiscoveryGasThreshold = 10_000_000;
+
+    private static readonly IComparer<StorageCell> s_cellAddressComparer =
+        Comparer<StorageCell>.Create(static (left, right) => left.Address.CompareTo(right.Address));
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
@@ -136,7 +140,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return Task.CompletedTask;
 
-        // A block-level access list already enumerates the block's exact reads, so speculative discovery adds nothing there.
+        // A block access list already enumerates the block's reads; discovery adds nothing.
         List<Transaction>? discoveryCandidates = IsBalReadWarmingEnabled(spec) && suggestedBlock.BlockAccessList is not null
             ? null
             : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
@@ -180,17 +184,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return candidates;
     }
 
-    private void DiscoverAndWarmStorage(List<Transaction> candidates, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken)
+    internal void DiscoverAndWarmStorage(List<Transaction> candidates, Block block, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
-        HashSet<StorageCell> allDiscoveredCells = [];
+        using PooledSet<StorageCell> allDiscoveredCells = [];
+        using PooledSet<StorageCell> roundCells = [];
+        Lock roundCellsLock = new();
+        List<Transaction> nextRoundCandidates = new(candidates.Count);
 
         for (int round = 0; round < MaxDiscoveryRounds && candidates.Count > 0; round++)
         {
-            HashSet<StorageCell> roundCells = [];
-            Lock roundCellsLock = new();
-            ConcurrentBag<Transaction> nextRoundCandidates = [];
+            roundCells.Clear();
+            nextRoundCandidates.Clear();
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, candidates.Count),
@@ -231,9 +237,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                         if (capture.Cells.Count == 0) return;
 
-                        nextRoundCandidates.Add(tx);
                         using (roundCellsLock.EnterScope())
                         {
+                            nextRoundCandidates.Add(tx);
                             roundCells.UnionWith(capture.Cells);
                         }
                     }
@@ -259,25 +265,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (!WarmDiscoveredStorage(parent, roundCells, cancellationToken)) return;
             if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
 
-            candidates = new List<Transaction>(nextRoundCandidates.Count);
-            while (nextRoundCandidates.TryTake(out Transaction? candidate)) candidates.Add(candidate);
+            (candidates, nextRoundCandidates) = (nextRoundCandidates, candidates);
         }
     }
 
-    private bool WarmDiscoveredStorage(BlockHeader parent, HashSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
+    private bool WarmDiscoveredStorage(BlockHeader parent, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
     {
-        StorageCell[] cells = new StorageCell[discoveredCells.Count];
-        discoveredCells.CopyTo(cells);
+        int cellCount = discoveredCells.Count;
+        StorageCell[] cells = ArrayPool<StorageCell>.Shared.Rent(cellCount);
+        discoveredCells.CopyTo(cells, 0);
+        // Group cells per contract so each range partition resolves the account and storage root once.
+        Array.Sort(cells, 0, cellCount, s_cellAddressComparer);
         ParallelOptions parallelOptions = new()
         {
-            MaxDegreeOfParallelism = _concurrencyLevel,
+            MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, cellCount),
             CancellationToken = cancellationToken
         };
 
         try
         {
             // Reads through a prewarmer scope populate PreBlockCaches, so plain parallel reads are the warm-up.
-            Parallel.ForEach(Partitioner.Create(0, cells.Length), parallelOptions, range =>
+            Parallel.ForEach(Partitioner.Create(0, cellCount), parallelOptions, range =>
             {
                 IReadOnlyTxProcessorSource env = _envPool.Get();
                 try
@@ -304,6 +312,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugError("Error warming discovered storage reads", ex);
             return false;
+        }
+        finally
+        {
+            // StorageCell holds an Address reference; clear so the pooled array does not keep it alive.
+            ArrayPool<StorageCell>.Shared.Return(cells, clearArray: true);
         }
     }
 
