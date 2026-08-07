@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using Evm.T8n.Errors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -35,6 +36,24 @@ public class InputData
             for (int i = 0; i < Txs.Length; i++)
             {
                 Transaction transaction = (Transaction)Txs[i].ToTransaction();
+
+                if (transaction.Type.SupportsFrames())
+                {
+                    FrameTransactionForRpc frameTransactionForRpc = (FrameTransactionForRpc)Txs[i];
+                    transaction.SenderAddress = frameTransactionForRpc.From;
+                    transaction.ChainId ??= chainId;
+                    // There is no RLP round-trip on this path, so the gas limit the decoder would have
+                    // derived from the frames has to be derived here too. Otherwise the JSON `gas` field
+                    // (or its absence) decides the limit and t8n executes the transaction differently
+                    // from any client that decoded the same bytes.
+                    transaction.GasLimit = FrameTxValidation.SumFrameGasLimits(transaction.Frames);
+                    SignFrameTransaction(transaction, TransactionMetaDataList[i]);
+                    transaction.Hash = transaction.CalculateHash();
+
+                    transactions.Add(transaction);
+                    continue;
+                }
+
                 transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
 
                 SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc)Txs[i]);
@@ -64,6 +83,66 @@ public class InputData
         else if (txLegacy.R.HasValue && txLegacy.S.HasValue && txLegacy.V.HasValue)
         {
             transaction.Signature = new Signature(txLegacy.R.Value, txLegacy.S.Value, txLegacy.V.Value.ToUInt64(null));
+        }
+    }
+
+    private static void SignFrameTransaction(Transaction transaction, TransactionMetaData transactionMetaData)
+    {
+        PrivateKey? privateKey = transactionMetaData.SecretKey is null ? null : new PrivateKey(transactionMetaData.SecretKey);
+
+        if (privateKey is not null)
+        {
+            if (transaction.SenderAddress is null)
+            {
+                transaction.SenderAddress = privateKey.Address;
+            }
+            else if (transaction.SenderAddress != privateKey.Address)
+            {
+                throw new T8nException("frame transaction sender does not match secretKey", T8nErrorCodes.ErrorJson);
+            }
+        }
+
+        if (transaction.SenderAddress is null)
+        {
+            throw new T8nException("frame transaction requires a sender or a secretKey", T8nErrorCodes.ErrorJson);
+        }
+
+        if (privateKey is null || transaction.FrameSignatures is null)
+        {
+            return;
+        }
+
+        Ecdsa ecdsa = new();
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(transaction);
+
+        for (int i = 0; i < transaction.FrameSignatures.Length; i++)
+        {
+            TxFrameSignature signature = transaction.FrameSignatures[i];
+            if (!signature.Signature.IsEmpty || signature.Scheme == TxFrameSignature.SchemeArbitrary)
+            {
+                continue;
+            }
+
+            // TxFrameSignatureDecoder elides the signature bytes of canonical-hash entries only, so an
+            // explicit-digest entry's bytes are part of the sigHash preimage: filling one here would
+            // invalidate every canonical signature already produced in this loop.
+            if (signature.Scheme != TxFrameSignature.SchemeSecp256k1 || !signature.SignsCanonicalHash)
+            {
+                throw new T8nException($"cannot fill frame signature {i}: only canonical-hash secp256k1 entries are fillable",
+                    T8nErrorCodes.ErrorJson);
+            }
+
+            if (signature.Signer is not null && signature.Signer != privateKey.Address)
+            {
+                throw new T8nException("frame signature signer does not match secretKey", T8nErrorCodes.ErrorJson);
+            }
+
+            Signature ecdsaSignature = ecdsa.Sign(privateKey, in sigHash);
+            byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            vrs[0] = ecdsaSignature.RecoveryId;
+            ecdsaSignature.Bytes.CopyTo(vrs.AsSpan(1));
+
+            transaction.FrameSignatures[i] = new TxFrameSignature(signature.Scheme, signature.Signer, signature.Msg, vrs);
         }
     }
 }

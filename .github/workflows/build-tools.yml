@@ -46,3 +46,11 @@ jobs:
       - name: Build ${{ matrix.project }}
         working-directory: tools
         run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}
+
+      # Only Evm's tests are wired up here; Kute and StatsAnalyzer also carry test projects and are
+      # still built but not run. nethermind-tests.yml cannot host any of them because its matrix is
+      # hardcoded to src/Nethermind.
+      - name: Test ${{ matrix.project }}
+        if: matrix.project == 'Evm/Evm.slnx'
+        working-directory: tools
+        run: dotnet test --project Evm.Test/Evm.Test.csproj -c ${{ matrix.config }}
