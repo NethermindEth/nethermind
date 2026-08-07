@@ -547,9 +547,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_AtomicBatch_ApprovalScopeOnBatchFrame_ReturnsMalformedTransaction()
     {
-        // ethereum/EIPs#12109: approval scope on an atomic-batch frame is rejected before any frame runs
-        // (replacing the old runtime batch-unroll), so the sponsor is not charged and the nonce is intact.
-        // The processor enforces this itself: it is reachable without a static validator (e.g. eth_call).
+        // EIP-8141: approval scope on an atomic-batch frame is rejected before any frame runs. The processor
+        // enforces this itself since it is reachable without static validation (e.g. eth_call).
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
         DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
 

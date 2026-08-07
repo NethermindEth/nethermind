@@ -73,8 +73,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             totalFrameGas = accumulated;
 
-            // ethereum/EIPs#12109: a frame belonging to an atomic batch (flagged, or following a flagged
-            // frame) must not carry approval scope; enforced here so unvalidated entry points cannot mint ETH.
+            // Enforced here, not only in static validation, so unvalidated entry points (e.g. eth_call)
+            // cannot mint ETH: EIP-8141 forbids approval scope on a frame belonging to an atomic batch.
             if ((frame.IsAtomicBatch || prevIsAtomicBatch) && frame.AllowedApproveScope != 0)
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("approval scope on atomic batch frame");
@@ -262,10 +262,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                             frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.GasUsed, []);
                         }
                     }
-                    // A batch frame's successful EIP-3529 refunds are discarded with its state, so the
-                    // refund counter rolls back to its pre-batch value. The approval context (payer,
-                    // sender_approved) needs no rollback: ethereum/EIPs#12109 forbids approval scope on
-                    // batch frames, rejected before execution, so no in-batch frame can have set it.
+                    // Refunds from the reverted batch are discarded with its state, so roll the counter back.
+                    // No payer/sender_approved rollback is needed: EIP-8141 forbids approval scope on batch frames.
                     refundCounter = batchStartRefund;
 
                     int terminal = i;

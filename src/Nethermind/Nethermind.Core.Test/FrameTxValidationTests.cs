@@ -91,9 +91,8 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModeVerify)],
             FrameTxValidation.AtomicBatchFollowedByVerifyFrame);
 
-        // ethereum/EIPs#12109: frames belonging to an atomic batch must not carry approval scope,
-        // where "belongs" means the frame is flagged or its predecessor is (covering the terminating
-        // frame). Both APPROVE_PAYMENT and APPROVE_EXECUTION are forbidden.
+        // EIP-8141: a frame belonging to an atomic batch (flagged, or the terminating frame following
+        // a flagged one) must not carry approval scope.
         yield return Case("ApprovePaymentOnBatchFrame_ApprovalScopeInAtomicBatch",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag)), DefaultModeFrame()],
             FrameTxValidation.ApprovalScopeInAtomicBatch);
