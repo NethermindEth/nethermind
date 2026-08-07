@@ -860,7 +860,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .AfterPeerIsAdded(peerB)
             .WaitForNewSuggestedBlockGate(BatchSyncDynamicTimeout)
             .BestSuggestedHeaderIs(peerB.HeadHeader, 2000)
-            .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
+            // The new block must extend the chain. PeerB is already at block 6, so
+            // adding up to 6 is a no-op and the tail would re-assert a header the
+            // gate above already delivered.
+            .After(() => peerB.AddHighDifficultyBlocksUpTo(7, 0, 1))
             .AfterNewBlockMessage(peerB.HeadBlock, peerB)
             .BestSuggestedHeaderIs(peerB.HeadHeader, BatchSyncDynamicTimeout)
             .StopAsync();
