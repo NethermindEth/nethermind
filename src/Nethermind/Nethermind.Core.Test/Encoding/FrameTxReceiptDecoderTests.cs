@@ -12,11 +12,8 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>
-/// Round-trips of the EIP-8141 receipt payload <c>[cumulative_gas_used, payer,
-/// [[status, gas_used, logs], ...]]</c>. The wire form is spec-literal: no top-level status and no
-/// bloom. EIP8141-GAP: the decoder derives StatusCode from the frame statuses and unions frame logs
-/// into Logs so bloom calculation and log indexing keep working — asserted here as the pinned
-/// behavior.
+/// Round-trips of the EIP-8141 receipt payload (no top-level status or bloom on the wire): the
+/// decoder derives StatusCode from the frame statuses and unions the frame logs into Logs.
 /// </summary>
 [TestFixture]
 public class FrameTxReceiptDecoderTests
@@ -35,20 +32,17 @@ public class FrameTxReceiptDecoderTests
         AssertFrameReceiptsEqual(decoded.FrameReceipts!, receipt.FrameReceipts!);
         Assert.That(decoded.StatusCode, Is.EqualTo(expectedStatus),
             "the transaction status is absent from the wire and must be derived from the frame statuses");
-        // Decoded Logs must be the in-order union of frame logs.
         AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
     }
 
-    // Storage persists the union Logs and the per-frame logs as independent fields (unlike the wire
-    // form, which rebuilds the union from the frame logs on decode). The union here is deliberately
-    // NOT the frame-order concatenation, pinning that the decoder reads Logs back verbatim.
+    // Storage keeps the union Logs and the per-frame logs as independent fields; the union here is
+    // deliberately not the frame-order concatenation, pinning that Logs is read back verbatim.
     [Test]
     public void StorageRoundtrip_PreservesPayerFrameReceiptsAndUnionLogs(
         [Values(true, false)] bool compactEncoding)
     {
         LogEntry unionLog = Log(0x01);
         LogEntry frameOnlyLog = Log(0x02);
-        // Union omits frameOnlyLog, so it diverges from the frame-order concatenation on purpose.
         TxReceipt frameReceipt = CreateStorageFrameReceipt(
             [unionLog],
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [unionLog]),
@@ -75,11 +69,8 @@ public class FrameTxReceiptDecoderTests
             "the stored union must stay the union, not get rebuilt from frame logs");
     }
 
-    // Regression: ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts. A
-    // frame-tx receipt used to leave the reader mid-sequence, breaking the next receipt. It sits
-    // between two regular ones so any misalignment surfaces on a neighbour. Runs over both storage
-    // decoders and both AllowExtraBytes settings: the realign must hold regardless, and the two
-    // decoders guarded it on opposite conditions before the fix.
+    // ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts; a frame-tx receipt
+    // used to leave the reader mid-sequence and corrupt the next one, so it sits between two regulars.
     [Test]
     public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours(
         [Values(true, false)] bool compactEncoding,
@@ -103,8 +94,8 @@ public class FrameTxReceiptDecoderTests
         IReceiptRefDecoder refDecoder = (IReceiptRefDecoder)decoder;
         byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
 
-        // Loop bound matches ReceiptsIterator: iterate while Position is below the content length
-        // from ReadSequenceLength. TxReceiptStructRef is a ref struct, so capture asserted fields.
+        // Iterate while Position is below the sequence content length. TxReceiptStructRef is a ref
+        // struct, so capture the asserted fields into a tuple.
         RlpReader reader = new(encoded);
         int length = reader.ReadSequenceLength();
         int count = 0;
@@ -128,8 +119,8 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
         Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
         Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender!.ToString()), "frame sender");
-        // Decoder-assigned TxType, seen only by callers that skip recovery; on eth_getLogs
-        // ReceiptsRecovery.RecoverReceiptData overwrites it from the matching transaction.
+        // TxType here is decoder-assigned and only observed by callers that skip recovery; on
+        // eth_getLogs recovery overwrites it from the matching transaction.
         Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
         AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs!);
 
@@ -214,8 +205,7 @@ public class FrameTxReceiptDecoderTests
             FrameReceipts = frameReceipts,
         };
 
-    // Applies the storage-only fixups a frame receipt gets before persistence: success status,
-    // recovered sender, verbatim union Logs, and matching bloom.
+    // Storage-only fixups a frame receipt gets before persistence: status, sender, union Logs, bloom.
     private static TxReceipt CreateStorageFrameReceipt(LogEntry[] unionLogs, params TxFrameReceipt[] frameReceipts)
     {
         TxReceipt receipt = CreateReceipt(frameReceipts);
