@@ -922,6 +922,101 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// Regression test for #12692: under EIP-7928 the block-access-list path must route its tx
+    /// processors through the simulate adapter, so the simulate gas accounting still runs. Without
+    /// the adapter the reported block <c>gasUsed</c> is left at 0 even though the call executed
+    /// successfully.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_reports_block_gas_used_on_bal_path()
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance);
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+
+        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+
+        // Explicit Gas avoids the EIP-8037 block-gas default (#12692 item 1); zero gas price keeps
+        // the funded transfer unambiguously successful.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 1000, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+        Assert.That(result.Data![0].GasUsed, Is.GreaterThan(0));
+    }
+
+    /// <summary>
+    /// Regression test for #12692: under EIP-7928 the block-access-list path must honour
+    /// <c>validation:false</c>. Routing its tx processors through the simulate adapter makes the BAL
+    /// path pick <c>Trace</c> (skipping sender validation) instead of always calling <c>Execute</c>,
+    /// so a call carrying a stale nonce still simulates successfully when validation is off.
+    /// </summary>
+    [TestCase(true, ErrorCodes.NonceTooHigh, TestName = "validation=true rejects wrong nonce on BAL path")]
+    [TestCase(false, null, TestName = "validation=false skips nonce validation on BAL path")]
+    public async Task eth_simulateV1_honours_validation_flag_on_bal_path(bool validation, int? expectedErrorCode)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance);
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+
+        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+
+        // Funded sender, zero gas price (no fee pre-validation), but a nonce far ahead of the account's:
+        // only skipped validation (Trace) lets it through.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = 99 }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        if (expectedErrorCode is null)
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+            Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+        }
+        else
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode.Value));
+        }
+    }
+
+    /// <summary>
     /// Regression test: blob tx rejected when <c>maxFeePerBlobGas</c> is below the <c>blobBaseFee</c>
     /// block override. The decorated calculator must be used for validation, not the static
     /// <c>BlobGasCalculator.TryCalculateFeePerBlobGas</c> which reads from the raw header.

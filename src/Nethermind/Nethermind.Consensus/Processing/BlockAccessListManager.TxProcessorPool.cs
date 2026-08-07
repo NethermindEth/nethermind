@@ -229,8 +229,10 @@ public partial class BlockAccessListManager
         private int ClampBalIndex(uint balIndex)
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
+        // The parallel pool always uses the default adapter: the stateful simulate adapter is
+        // sequential-only, and simulate never drives this parallel manager (it attaches no BAL).
         private TxProcessorWithWorldState NewProcessor()
-            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _codeInfoRepositoryFactory);
+            => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager, _txProcessorFactory, _codeInfoRepositoryFactory, adapterFactory: null);
 
         private TxProcessorWithWorldState RentProcessor()
         {
@@ -338,9 +340,10 @@ public partial class BlockAccessListManager
             IWorldState stateProvider,
             ILogManager logManager,
             ITransactionProcessorFactory txProcessorFactory,
-            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
+            CodeInfoRepositoryFactory codeInfoRepositoryFactory,
+            ITransactionProcessorAdapterFactory? adapterFactory)
         {
-            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory);
+            _txProcessorWithWorldState = new(false, blockHashProvider, specProvider, stateProvider, logManager, txProcessorFactory, codeInfoRepositoryFactory, adapterFactory);
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
@@ -372,7 +375,7 @@ public partial class BlockAccessListManager
     {
         public readonly TracedAccessWorldState WorldState;
         public readonly ITransactionProcessor TxProcessor;
-        public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
+        public readonly ITransactionProcessorAdapter TxProcessorAdapter;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
 
@@ -383,7 +386,8 @@ public partial class BlockAccessListManager
             IWorldState stateProvider,
             ILogManager logManager,
             ITransactionProcessorFactory txProcessorFactory,
-            CodeInfoRepositoryFactory codeInfoRepositoryFactory)
+            CodeInfoRepositoryFactory codeInfoRepositoryFactory,
+            ITransactionProcessorAdapterFactory? adapterFactory)
         {
 
             VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
@@ -396,7 +400,7 @@ public partial class BlockAccessListManager
             WorldState = new TracedAccessWorldState(worldState, parallel);
             ICodeInfoRepository codeInfoRepository = codeInfoRepositoryFactory(WorldState);
             TxProcessor = txProcessorFactory.Create(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
-            TxProcessorAdapter = new(TxProcessor);
+            TxProcessorAdapter = adapterFactory is null ? new ExecuteTransactionProcessorAdapter(TxProcessor) : adapterFactory.Create(TxProcessor);
         }
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
