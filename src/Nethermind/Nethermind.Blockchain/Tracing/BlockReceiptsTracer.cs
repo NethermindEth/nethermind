@@ -139,7 +139,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
             GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
             EffectiveGasPrice = effectiveGasPrice,
             Sender = transaction.SenderAddress,
-            ContractAddress = transaction.CreatesContract ? recipient : null,
+            ContractAddress = transaction.CreatesTopLevelContract ? recipient : null,
             TxHash = transaction.Hash,
             PostTransactionState = stateRoot
         };

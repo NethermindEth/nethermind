@@ -86,7 +86,7 @@ namespace Nethermind.Core
         /// determines. Reporting a top-level contract address for one names an account that was never
         /// created, and every site that derives it independently invents a different address.
         /// </remarks>
-        public bool CreatesContract => IsContractCreation && Type != TxType.FrameTx;
+        public bool CreatesTopLevelContract => IsContractCreation && !SupportsFrames;
 
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
         public bool HasAuthorizationList =>
