@@ -35,7 +35,7 @@ METRIC_FIELDS: dict[str, tuple[str, ...]] = {
 STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(:-?\d+)?")
 
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
-                    "timings.csv")
+                    "timings.csv", "parity-diffs.json")
 
 
 class CorpusResultsError(Exception):
