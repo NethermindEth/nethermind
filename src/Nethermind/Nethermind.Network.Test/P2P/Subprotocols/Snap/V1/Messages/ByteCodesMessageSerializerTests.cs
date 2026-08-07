@@ -10,16 +10,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class ByteCodesMessageSerializerTests
     {
-        [Test]
-        public void Roundtrip()
+        [TestCase(1L, "ca01c884deadc0de82feed")]
+        [TestCase(long.MaxValue, "d2887fffffffffffffffc884deadc0de82feed")]
+        public void Roundtrip(long requestId, string expectedData)
         {
             ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
 
-            ByteCodesMessage message = new(new ByteArrayListAdapter(data));
+            using ByteCodesMessage message = new(new ByteArrayListAdapter(data)) { RequestId = requestId };
 
             ByteCodesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message);
+            // The message encodes as [requestId, codes].
+            SerializerTester.TestZero(serializer, message, expectedData);
         }
 
         [Test]
