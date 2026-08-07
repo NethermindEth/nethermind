@@ -433,6 +433,34 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_FrameDataCopy_UsesMemOffsetDataOffsetLengthFrameIndexOrder()
+    {
+        // frameData[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
+        // Operand order (top to bottom) is memOffset, dataOffset, length, frameIndex — matching
+        // CALLDATACOPY plus the trailing frameIndex. Asymmetric operands catch a reversed pop order.
+        byte[] frameData = new byte[32];
+        for (int i = 0; i < frameData.Length; i++) frameData[i] = (byte)i;
+
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(1).PushData(8).PushData(4).PushData(0) // frameIndex, length, dataOffset, memOffset (deepest to top)
+            .Op(Instruction.FRAMEDATACOPY)
+            .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: Recipient, data: frameData),
+            Frame(TxFrame.ModeDefault, target: Observer));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        byte[] expected = new byte[32];
+        frameData.AsSpan(4, 8).CopyTo(expected); // copied bytes land in the high-order end of the word
+        AssertStorage(Observer, 0, new UInt256(expected, isBigEndian: true));
+    }
+
+    [Test]
     public void Execute_SigParam_ReadsArbitrarySignatureMetadata()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -451,6 +479,33 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, TxFrameSignature.SchemeArbitrary);
         AssertStorage(Observer, 1, UInt256.Zero);
         AssertStorage(Observer, 2, 3);
+    }
+
+    [Test]
+    public void Execute_SigParamCopy_UsesMemOffsetDataOffsetLengthOrder()
+    {
+        // signature bytes[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
+        // Operand order (top to bottom) is memOffset, dataOffset, length — matching CALLDATACOPY and
+        // FRAMEDATACOPY. Asymmetric operands catch a reversed pop order.
+        byte[] signatureBytes = new byte[32];
+        for (int i = 0; i < signatureBytes.Length; i++) signatureBytes[i] = (byte)i;
+
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(8).PushData(4).PushData(0)   // length, dataOffset, memOffset (deepest to top)
+            .PushData(0x04).PushData(0)            // param (copy form), signatureIndex on top
+            .Op(Instruction.SIGPARAM)
+            .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, signatureBytes)];
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        byte[] expected = new byte[32];
+        signatureBytes.AsSpan(4, 8).CopyTo(expected); // copied bytes land in the high-order end of the word
+        AssertStorage(Observer, 0, new UInt256(expected, isBigEndian: true));
     }
 
     [Test]
@@ -562,16 +617,12 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_AtomicBatch_PaymentApprovalInsideFailedBatch_UnrollsPayerAndInvalidatesTransaction()
+    public void Execute_AtomicBatch_ApprovalScopeOnBatchFrame_ReturnsMalformedTransaction()
     {
-        // ethereum/EIPs#11955: a failed batch unrolls ALL effects of an APPROVE it contained. The
-        // payer debit and sender nonce are reverted by Restore, and the payer/sender_approved context
-        // is rolled back to its pre-batch value too, so the payer never survives an uncollected charge.
-        // Payment was only approved inside the batch, so after the unroll payer == None and the
-        // terminal payer gate rejects the whole transaction — the sponsor is not charged.
+        // EIP-8141: approval scope on an atomic-batch frame is rejected before any frame runs. The processor
+        // enforces this itself since it is reachable without static validation (e.g. eth_call).
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
         DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
-        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
 
         Transaction tx = FrameTx(nonce: 0,
             new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
@@ -582,7 +633,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.False);
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged when the batch unrolls its payment approval");
+        Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged");
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "the sender nonce is not consumed");
     }
 

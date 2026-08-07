@@ -108,6 +108,21 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModePostTx)],
             FrameTxValidation.AtomicBatchFollowedByPostTxFrame);
 
+        // EIP-8141: a frame belonging to an atomic batch (flagged, or the terminating frame following
+        // a flagged one) must not carry approval scope.
+        yield return Case("ApprovePaymentOnBatchFrame_ApprovalScopeInAtomicBatch",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag)), DefaultModeFrame()],
+            FrameTxValidation.ApprovalScopeInAtomicBatch);
+        yield return Case("ApproveExecutionOnBatchFrame_ApprovalScopeInAtomicBatch",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: (byte)(TxFrame.ApproveExecution | TxFrame.AtomicBatchFlag)), DefaultModeFrame()],
+            FrameTxValidation.ApprovalScopeInAtomicBatch);
+        yield return Case("ApprovalOnBatchTerminatingFrame_ApprovalScopeInAtomicBatch",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(flags: TxFrame.ApprovePayment)],
+            FrameTxValidation.ApprovalScopeInAtomicBatch);
+        yield return Case("BatchWithoutApprovalScope_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
+            null);
+
         // total_frame_gas accumulated across frames must not overflow 2^64 - 1
         yield return Case("TotalFrameGasOverflows_FrameGasOverflow",
             static tx => tx.Frames = [Frame(gasLimit: ulong.MaxValue), Frame(gasLimit: 1)],
