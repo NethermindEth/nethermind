@@ -190,7 +190,9 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
     private FrameTxFieldsTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        FrameTxValidation.IsWellFormed(transaction, out string? error) ? ValidationResult.Success : error!;
+        FrameTxValidation.IsWellFormed(transaction, releaseSpec.IsEip7906Enabled, out string? error)
+            ? ValidationResult.Success
+            : error!;
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator
