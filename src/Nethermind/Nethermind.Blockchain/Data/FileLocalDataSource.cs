@@ -119,7 +119,10 @@ namespace Nethermind.Blockchain.Data
 
             if (_fileSystem.File.Exists(FilePath))
             {
-                DateTime lastWriteTime = _fileSystem.File.GetLastWriteTime(FilePath);
+                // UTC, to match the file-deleted branch below. The local representation lags
+                // UtcNow on negative-offset timezones, which suppressed reloads after a
+                // delete-then-recreate for the length of the offset.
+                DateTime lastWriteTime = _fileSystem.File.GetLastWriteTimeUtc(FilePath);
                 if (lastWriteTime > _lastChange)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Trying to load local data from file: {FilePath} updated on {lastWriteTime:hh:mm:ss:ffff} after last read {_lastChange:hh:mm:ss:ffff}.");
