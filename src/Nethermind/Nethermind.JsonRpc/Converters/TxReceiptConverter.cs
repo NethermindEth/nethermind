@@ -31,7 +31,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
                 JsonSerializer.Serialize(writer, receipt.Type, options);
             }
             writer.WritePropertyName("root");
-            ByteArrayConverter.Convert(writer, (receipt.Root ?? Keccak.Zero).Bytes);
+            JsonSerializer.Serialize(writer, receipt.Root ?? Keccak.Zero, options);
             writer.WritePropertyName("status");
             JsonSerializer.Serialize(writer, receipt.Status, options);
 
