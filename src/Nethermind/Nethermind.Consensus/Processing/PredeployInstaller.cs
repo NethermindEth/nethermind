@@ -22,18 +22,19 @@ namespace Nethermind.Consensus.Processing;
 /// each predeploy's activation and none afterwards. The nonce probe is what carries a predeploy whose
 /// canonical code is empty — a protocol-managed storage namespace such as EIP-8272's — since its code
 /// matches from the start. The predeploy nonce is 1, matching the EIP-2935/4788/7002/7251 predeploy
-/// convention, and an existing higher nonce is preserved rather than lowered, so the resulting state
-/// root and the EIP-7928 block-level access list agree across clients.
+/// convention, so the resulting state root and the EIP-7928 block-level access list agree across
+/// clients. Whether an existing higher nonce is preserved or overwritten is per-predeploy, because
+/// only EIP-8272 specifies <c>max(existing_nonce, 1)</c>.
 /// </remarks>
 public static class PredeployInstaller
 {
-    private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong Nonce, Func<IReleaseSpec, bool> IsActive);
+    private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false);
 
     private static readonly Predeploy[] Predeploys =
     [
         new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 1, static spec => spec.IsEip8141Enabled),
         new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
-        new(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, 1, static spec => spec.IsEip8272Enabled),
+        new(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, 1, static spec => spec.IsEip8272Enabled, PreservesHigherNonce: true),
     ];
 
     /// <summary>
@@ -82,8 +83,12 @@ public static class PredeployInstaller
             }
 
             writeState.CreateAccountIfNotExists(predeploy.Address, UInt256.Zero);
-            writeState.InsertCode(predeploy.Address, code, spec);
-            writeState.SetNonce(predeploy.Address, Math.Max(nonce, predeploy.Nonce));
+            if (!code.IsEmpty)
+            {
+                writeState.InsertCode(predeploy.Address, code, spec);
+            }
+
+            writeState.SetNonce(predeploy.Address, predeploy.PreservesHigherNonce ? Math.Max(nonce, predeploy.Nonce) : predeploy.Nonce);
         }
     }
 }

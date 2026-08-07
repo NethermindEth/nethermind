@@ -313,6 +313,10 @@ public class BlockProcessorTests
             .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
         yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray())
             .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
+        // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
+        // code-only idempotency probe would never fire it.
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray())
+            .SetName("Installs_eip8272_recent_root_predeploy_once_and_captures_it_in_bal");
     }
 
     [TestCaseSource(nameof(PredeployInstallCases)), MaxTime(Timeout.MaxTestTime)]
@@ -344,8 +348,12 @@ public class BlockProcessorTests
         Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(1));
-            Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
+            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(code.Length == 0 ? 0 : 1));
+            if (code.Length != 0)
+            {
+                Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
+            }
+
             Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(1));
             Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(1ul));
         }
@@ -358,47 +366,6 @@ public class BlockProcessorTests
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(1ul));
         Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");
-    }
-
-    /// <summary>
-    /// The EIP-8272 predeploy is a storage namespace with empty canonical code, so its activation
-    /// account update is the nonce alone. A code-only idempotency probe would never fire it.
-    /// </summary>
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Installs_eip8272_recent_root_namespace_predeploy_once_and_captures_it_in_bal()
-    {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true });
-        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch(specProvider: specProvider);
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
-
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        InstallExecutionRequestPredeploys(stateProvider, spec);
-        stateProvider.Commit(spec);
-        stateProvider.CommitTree(0);
-
-        Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
-        (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stateProvider.GetNonce(Eip8272Constants.RecentRootAddress), Is.EqualTo(1ul));
-            Assert.That(stateProvider.GetCode(Eip8272Constants.RecentRootAddress), Is.Empty);
-        }
-
-        GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
-        Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(installChanges!.NonceChanges, Has.Count.EqualTo(1));
-            Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(1ul));
-            Assert.That(installChanges.CodeChanges, Is.Empty);
-        }
-
-        Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
-        (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
-
-        Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(Eip8272Constants.RecentRootAddress), Is.Null,
-            "a re-install must not churn state or the BAL once the nonce is already present");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

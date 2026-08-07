@@ -23,7 +23,9 @@ public static class Eip8272Constants
 
     /// <summary>The runtime code installed at <see cref="RecentRootAddress"/> when EIP-8272 activates.</summary>
     /// <remarks>
-    /// The spec leaves <c>RECENT_ROOT_CODE</c> TBD, and the predeploy is only ever a protocol-managed
+    /// Provisional: <c>RECENT_ROOT_CODE</c> is TBD in the spec's constants table, and unlike the address
+    /// there is no reference implementation value to mirror.
+    /// The predeploy is only ever a protocol-managed
     /// storage namespace: recent-root entries are written natively and no call ever enters the account.
     /// Empty code keeps the activation account state minimal and matches the only existing implementation.
     /// </remarks>
