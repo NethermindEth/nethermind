@@ -47,12 +47,13 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         CancellationToken token
     )
-        => await LookupCore(targetHash, k, findNeighbourOp, null, token);
+        => await LookupCore(targetHash, k, findNeighbourOp, null, null, token);
 
     public async IAsyncEnumerable<TNode> LookupNodes(
         TKadKey targetHash,
         int maxResults,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
+        Action? onNodeAdded,
         [EnumeratorCancellation] CancellationToken token
     )
     {
@@ -97,7 +98,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             Exception? error = null;
             try
             {
-                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, cts.Token);
+                _ = await LookupCore(targetHash, maxResults, findNeighbourOp, Publish, onNodeAdded, cts.Token);
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
@@ -135,6 +136,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         int k,
         Func<TNode, CancellationToken, Task<TNode[]?>> findNeighbourOp,
         Func<TNode, bool>? publishNode,
+        Action? onNodeAdded,
         CancellationToken token
     )
     {
@@ -259,7 +261,10 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 TNode[]? ret = await findNeighbourOp(node, cts.Token);
                 if (ret is null) return null;
 
-                nodeHealthTracker.OnIncomingMessageFrom(node);
+                if (nodeHealthTracker.OnIncomingMessageFrom(node))
+                {
+                    onNodeAdded?.Invoke();
+                }
 
                 return ret;
             }

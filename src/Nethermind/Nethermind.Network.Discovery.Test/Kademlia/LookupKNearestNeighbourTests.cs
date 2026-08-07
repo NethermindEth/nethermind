@@ -172,6 +172,7 @@ public class LookupKNearestNeighbourTests
                 await Task.Delay(Timeout.Infinite, findToken);
                 return [];
             },
+            null,
             token).GetAsyncEnumerator(token);
 
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
@@ -195,10 +196,30 @@ public class LookupKNearestNeighbourTests
                 requests++;
                 return Task.FromResult<int[]?>([]);
             },
+            null,
             token).ToListAsync(token);
 
         Assert.That(result, Is.EqualTo(new[] { Seed1 }));
         Assert.That(requests, Is.Zero);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_nodes_should_report_lookup_scoped_table_adds(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<int, int, int> lookup, _, INodeHealthTracker<int> health) =
+            CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1]);
+        health.OnIncomingMessageFrom(Seed1).Returns(true);
+        int addedNodes = 0;
+
+        _ = await lookup.LookupNodes(
+            Self,
+            8,
+            (_, _) => Task.FromResult<int[]?>([]),
+            () => addedNodes++,
+            token).ToListAsync(token);
+
+        Assert.That(addedNodes, Is.EqualTo(1));
     }
 
     [Test]

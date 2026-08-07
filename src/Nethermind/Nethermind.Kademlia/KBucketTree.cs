@@ -267,6 +267,31 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         }
     }
 
+    public RoutingTableStats GetStats()
+    {
+        int bucketCount = 0;
+        int nodeCount = 0;
+        lock (_lock)
+        {
+            CountBuckets(_root);
+        }
+
+        return new RoutingTableStats(nodeCount, bucketCount);
+
+        void CountBuckets(TreeNode node)
+        {
+            if (node.IsLeaf)
+            {
+                bucketCount++;
+                nodeCount += node.Bucket.Count;
+                return;
+            }
+
+            CountBuckets(node.Left!);
+            CountBuckets(node.Right!);
+        }
+    }
+
     private IEnumerable<RoutingTableBucket<TNode, TKadKey>> DoIterateBucketRandomHashes(TreeNode node, int depth)
     {
         if (node.IsLeaf)

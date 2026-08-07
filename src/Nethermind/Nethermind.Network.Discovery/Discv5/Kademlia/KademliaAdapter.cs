@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Collections.Pooled;
 using Nethermind.Core.Caching;
@@ -293,6 +294,7 @@ public sealed class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} {(hasSession ? "with existing session" : "without session")}, bytes: {packet.Length}.");
             await discoveryHandler.SendAsync(packet, receiver.DiscoveryAddress, token);
+            RecordSent(message);
             return pendingNonceKey;
         }
         catch
@@ -311,6 +313,7 @@ public sealed class KademliaAdapter(
 
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, receiver.DiscoveryAddress, token);
+        RecordSent(message);
     }
 
     [SkipLocalsInit]
@@ -394,6 +397,7 @@ public sealed class KademliaAdapter(
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash.ValueHash256, endpoint), session);
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {requestedEnrSequence}.");
         await discoveryHandler.SendAsync(handshakePacket, endpoint, token);
+        RecordSent("Handshake");
     }
 
     private async Task HandleOrdinary(IPEndPoint endpoint, Packet packet, CancellationToken token)
@@ -491,6 +495,7 @@ public sealed class KademliaAdapter(
         {
             if (Logger.IsTrace) Logger.Trace($"Resending discv5 WHOAREYOU challenge to {endpoint}.");
             await discoveryHandler.SendAsync(existingChallenge.Packet, endpoint, token);
+            RecordSent("WhoAreYou");
             return;
         }
 
@@ -505,7 +510,13 @@ public sealed class KademliaAdapter(
         SetSentChallenge(challengeKey, packet);
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 WHOAREYOU challenge to {endpoint}, known ENR seq: {enrSequence}, bytes: {packet.Length}.");
         await discoveryHandler.SendAsync(packet, endpoint, token);
+        RecordSent("WhoAreYou");
     }
+
+    private static void RecordSent(Discv5Message message) => RecordSent(message.MessageType.ToString());
+
+    private static void RecordSent(string messageType)
+        => Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv5", messageType));
 
     private ulong GetChallengeEnrSequence(ValueHash256 nodeId, IPEndPoint endpoint)
     {
@@ -904,7 +915,35 @@ public sealed class KademliaAdapter(
             DiscoveryV5App.IsDiscoveryAddressAcceptable(node.DiscoveryAddress.Address, allowNonRoutable);
 
     internal static bool HasDiscoveryEndpoint(NodeRecord record, IPEndPoint endpoint)
-        => record.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) && discoveryEndpoint.Equals(endpoint);
+    {
+        IPAddress endpointAddress = endpoint.Address;
+        if (endpointAddress.AddressFamily == AddressFamily.InterNetworkV6 && !endpointAddress.IsIPv4MappedToIPv6)
+        {
+            return record.GetObj<IPAddress>(EnrContentKey.Ip6)?.Equals(endpointAddress) == true &&
+                   HasIPv6Port(record, endpoint.Port);
+        }
+
+        IPAddress endpointIpV4 = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
+        return record.GetObj<IPAddress>(EnrContentKey.Ip)?.MapToIPv4().Equals(endpointIpV4) == true &&
+               HasPort(record, EnrContentKey.Udp, endpoint.Port);
+    }
+
+    private static bool HasIPv6Port(NodeRecord record, int expectedPort)
+    {
+        int? port = GetValidPort(record, EnrContentKey.Udp6);
+        return port is not null
+            ? port == expectedPort
+            : HasPort(record, EnrContentKey.Udp, expectedPort);
+    }
+
+    private static bool HasPort(NodeRecord record, string portKey, int expectedPort)
+        => GetValidPort(record, portKey) == expectedPort;
+
+    private static int? GetValidPort(NodeRecord record, string portKey)
+    {
+        int? port = record.GetValue<int>(portKey);
+        return port is > 0 && (uint)port.Value <= ushort.MaxValue ? port.Value : null;
+    }
 
     internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;

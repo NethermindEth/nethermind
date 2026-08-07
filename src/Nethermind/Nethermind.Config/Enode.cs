@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 
@@ -37,38 +36,27 @@ namespace Nethermind.Config
                 throw new ArgumentException($"Invalid enode value '{enodeString}'");
             }
 
-            string[] enodeParts = enodeString.Split(':');
-            string[] enodeParts2 = enodeParts[1].Split('@');
             _nodeKey = new PublicKey(parsed.UserInfo);
-            string host = parsed.Host;
+            string host = TrimIpV6Brackets(parsed.Host);
 
             if (parsed.Port == -1)
             {
                 throw GetPortException(host);
             }
 
-            string[] portParts = enodeParts[2].Split("?discport=");
-
-            switch (portParts.Length)
+            Port = parsed.Port;
+            if (parsed.Query.Length == 0)
             {
-                case 1:
-                    if (int.TryParse(portParts[0], out int port))
-                    {
-                        Port = port;
-                        DiscoveryPort = port;
-                    }
-                    else throw GetPortException(host);
-                    break;
-                case 2:
-                    if (int.TryParse(portParts[0], out int listeningPort) && int.TryParse(portParts[1], out int discoveryPort))
-                    {
-                        Port = listeningPort;
-                        DiscoveryPort = discoveryPort;
-                    }
-                    else throw GetPortException(host);
-                    break;
-                default:
-                    throw GetPortException(host);
+                DiscoveryPort = Port;
+            }
+            else if (parsed.Query.StartsWith("?discport=", StringComparison.Ordinal) &&
+                     int.TryParse(parsed.Query["?discport=".Length..], out int discoveryPort))
+            {
+                DiscoveryPort = discoveryPort;
+            }
+            else
+            {
+                throw GetPortException(host);
             }
 
             try
@@ -85,16 +73,22 @@ namespace Nethermind.Config
 
         public static IPAddress? GetHostIpFromDnsAddresses(params IPAddress[] hostAddresses)
         {
+            IPAddress? mappedIpv4 = null;
             for (int index = 0; index < hostAddresses.Length; index++)
             {
                 IPAddress hostAddress = hostAddresses[index];
-                if (Equals(hostAddress, hostAddress.MapToIPv4()))
+                if (hostAddress.AddressFamily == AddressFamily.InterNetwork)
                 {
                     return hostAddress;
                 }
+
+                if (hostAddress.IsIPv4MappedToIPv6 && mappedIpv4 is null)
+                {
+                    mappedIpv4 = hostAddress.MapToIPv4();
+                }
             }
 
-            return hostAddresses.FirstOrDefault()?.MapToIPv4();
+            return mappedIpv4 ?? (hostAddresses.Length == 0 ? null : hostAddresses[0]);
         }
 
         public PublicKey PublicKey => _nodeKey;
@@ -103,14 +97,26 @@ namespace Nethermind.Config
         public int Port { get; }
         public int DiscoveryPort { get; }
         public string Info => DiscoveryPort == Port
-            ? $"enode://{_nodeKey.ToString(false)}@{FormattedHostIp}:{Port}"
-            : $"enode://{_nodeKey.ToString(false)}@{FormattedHostIp}:{Port}?discport={DiscoveryPort}";
+            ? $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}"
+            : $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}?discport={DiscoveryPort}";
 
         public override string ToString() => Info;
 
-        private IPAddress FormattedHostIp => HostIp.IsIPv4MappedToIPv6 ? HostIp.MapToIPv4() : HostIp;
+        private string FormattedHost
+        {
+            get
+            {
+                IPAddress hostIp = HostIp.IsIPv4MappedToIPv6 ? HostIp.MapToIPv4() : HostIp;
+                return hostIp.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{hostIp}]" : hostIp.ToString();
+            }
+        }
 
         public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
             Uri.TryCreate(enodeString, new UriCreationOptions(), out parsed) && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase);
+
+        private static string TrimIpV6Brackets(string host) =>
+            host.Length > 1 && host[0] == '[' && host[^1] == ']'
+                ? host[1..^1]
+                : host;
     }
 }

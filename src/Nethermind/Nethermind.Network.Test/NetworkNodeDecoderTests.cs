@@ -70,6 +70,17 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public void Can_do_ipv6_enode_with_discovery_port_roundtrip()
+        {
+            NetworkNode node = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("fd00:beef:cafe::11"), 30303, 30304))
+            {
+                Reputation = 100L
+            };
+
+            AssertRoundtripPreservesFields(node);
+        }
+
+        [Test]
         public void Can_do_enr_roundtrip()
         {
             NetworkNodeDecoder networkNodeDecoder = new();

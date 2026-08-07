@@ -210,6 +210,8 @@ public class NodeHealthTrackerTests
         public IEnumerable<RoutingTableBucket<int, int>> IterateBuckets() =>
             throw new NotSupportedException();
 
+        public RoutingTableStats GetStats() => new(Size, 1);
+
         public int GetByHash(int nodeId) => throw new NotSupportedException();
 
         public void LogDebugInfo() => throw new NotSupportedException();

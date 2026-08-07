@@ -48,7 +48,8 @@ public interface IKademlia<TKey, TNode>
     /// <param name="key">Protocol-specific lookup key.</param>
     /// <param name="token">Cancellation token for the lookup.</param>
     /// <param name="maxResults">Optional maximum number of candidates to emit. Defaults to <see cref="KademliaConfig{TNode}.KSize"/>.</param>
-    IAsyncEnumerable<TNode> LookupNodes(TKey key, CancellationToken token, int? maxResults = null);
+    /// <param name="onNodeAdded">Optional callback invoked when this lookup newly admits a node to the routing table. It may be called concurrently by lookup workers.</param>
+    IAsyncEnumerable<TNode> LookupNodes(TKey key, CancellationToken token, int? maxResults = null, Action? onNodeAdded = null);
 
     /// <summary>
     /// Returns the closest routing-table entries to <paramref name="target"/> without traversing the network.

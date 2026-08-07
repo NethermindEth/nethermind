@@ -5,6 +5,7 @@ namespace Nethermind.Kademlia;
 
 public interface INodeHealthTracker<TNode>
 {
-    void OnIncomingMessageFrom(TNode sender);
+    /// <returns><c>true</c> when the node was newly added to the routing table.</returns>
+    bool OnIncomingMessageFrom(TNode sender);
     void OnRequestFailed(TNode node);
 }
