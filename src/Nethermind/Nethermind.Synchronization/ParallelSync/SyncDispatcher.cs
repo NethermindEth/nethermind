@@ -68,20 +68,33 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             UpdateState(Feed.CurrentState);
 
+            using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
             try
             {
                 _activeTasks.AddCount(1);
-                using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
                 await DispatchLoop(linkedSource.Token);
             }
             finally
             {
-                // Shutdown waits on Feed.FeedTask, which only completes once the feed is finished, and this
-                // loop is the feed's only consumer. The loop's own cancellation handler misses every exit
-                // where nothing throws - cancellation seen by the `while` condition, an exhausted
-                // _activeTasks count, or a faulted loop - so finish the feed here instead.
-                Feed.Finish();
-                SignalActiveTask();
+                // Cancel first: in-flight dispatches then skip response handling, so they cannot
+                // race the feed teardown that Finish triggers (ActivatedSyncFeed disposes on Finished).
+                linkedSource.Cancel();
+
+                try
+                {
+                    // Shutdown waits on Feed.FeedTask, which only completes once the feed is finished,
+                    // and this loop is the feed's only consumer. The loop's own cancellation handler
+                    // misses every exit that is not a cancelled await - cancellation observed by the
+                    // `while` condition, an exhausted _activeTasks count, or a non-cancellation fault -
+                    // so finish the feed here.
+                    Feed.Finish();
+                }
+                finally
+                {
+                    // The signal must not depend on feed subscribers: a throw above would otherwise
+                    // leave DisposeAsync waiting out its full timeout.
+                    SignalActiveTask();
+                }
             }
         }
 

@@ -45,6 +45,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
         private readonly AllocationAllowances _allocationAllowances;
 
+        // Internal so the RemovePeer race regression test can plant an already-disposed source.
         internal readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
 
         private readonly INodeStatsManager _stats;
@@ -325,6 +326,7 @@ namespace Nethermind.Synchronization.Peers
                 catch (ObjectDisposedException)
                 {
                     // The refresh continuation disposed the source between the lookup and the cancel.
+                    if (_logger.IsTrace) _logger.Trace($"Refresh of {syncPeer.Node:c} completed while the peer was being removed.");
                 }
             }
         }

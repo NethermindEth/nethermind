@@ -323,7 +323,7 @@ public class SyncDispatcherTests
         // to completion and it is the `while` condition, not a cancelled await, that ends the loop.
         using CancellationTokenSource cts = new();
         TestSyncFeed syncFeed = new(onPrepareRequest: cts.Cancel);
-        SyncDispatcher<TestBatch> dispatcher = new(
+        await using SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig(),
             syncFeed,
             new TestDownloader(),
