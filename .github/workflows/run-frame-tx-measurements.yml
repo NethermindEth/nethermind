@@ -27,9 +27,9 @@ jobs:
     timeout-minutes: 120
     steps:
       # One source of truth for the output path: the `runner` context is not
-      # available in a job-level `env`, so it is exported here instead. This runs
-      # before the checkout so that the `if: always()` steps below never observe
-      # it unset, which would upload the runner's whole filesystem.
+      # available in a job-level `env`, so it is exported here instead. It runs
+      # before the checkout, and the `if: always()` steps below still guard on it
+      # being set, because an unset value would make them address the runner's root.
       - name: Resolve the output directory
         run: echo "OUTPUT_DIR=${RUNNER_TEMP}/frame-tx-measurements" >> "${GITHUB_ENV}"
 
@@ -74,7 +74,7 @@ jobs:
           exit "${status}"
 
       - name: Publish the reported figures to the run summary
-        if: always()
+        if: always() && env.OUTPUT_DIR != ''
         run: |
           set -uo pipefail
           for report in "${OUTPUT_DIR}"/*.txt; do
@@ -90,7 +90,7 @@ jobs:
           done
 
       - name: Upload the measurement output
-        if: always()
+        if: always() && env.OUTPUT_DIR != ''
         uses: actions/upload-artifact@v7
         with:
           name: frame-tx-measurements
