@@ -225,7 +225,6 @@ public static class BaseFlatPersistence
     public struct AccountIterator(ISortedView view) : IPersistence.IFlatIterator
     {
         private ValueHash256 _currentKey = default;
-        private byte[]? _currentValue = null;
 
         public bool MoveNext()
         {
@@ -237,12 +236,13 @@ public static class BaseFlatPersistence
             // Build 32-byte ValueHash256 from 20-byte key (zero-padded)
             _currentKey = ValueKeccak.Zero;
             view.CurrentKey.CopyTo(_currentKey.BytesAsSpan);
-            _currentValue = view.CurrentValue.ToArray();
             return true;
         }
 
         public ValueHash256 CurrentKey => _currentKey;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+
+        // Not copied: valid only until the next MoveNext, per IFlatIterator contract.
+        public ReadOnlySpan<byte> CurrentValue => view.CurrentValue;
 
         public void Dispose() => view.Dispose();
     }
@@ -251,7 +251,6 @@ public static class BaseFlatPersistence
     {
         // 16-byte suffix to match
         private ValueHash256 _currentKey = default;
-        private byte[]? _currentValue = null;
 
         public bool MoveNext()
         {
@@ -266,21 +265,26 @@ public static class BaseFlatPersistence
 
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(slotOffset, StorageSlotKeySize));
-                ReadOnlySpan<byte> slotValue = rlpWrapSlots
-                    ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
-                    : view.CurrentValue;
+                ReadOnlySpan<byte> slotValue = DecodeCurrentValue();
                 // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
                 // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a
                 // bad value that would build wrong trie nodes.
                 if (slotValue.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
-                _currentValue = slotValue.ToArray();
                 return true;
             }
             return false;
         }
 
         public ValueHash256 CurrentKey => _currentKey;
-        public ReadOnlySpan<byte> CurrentValue => _currentValue;
+
+        // Re-derived per access instead of copied per slot; valid only until the next MoveNext,
+        // per IFlatIterator contract.
+        public ReadOnlySpan<byte> CurrentValue => DecodeCurrentValue();
+
+        private readonly ReadOnlySpan<byte> DecodeCurrentValue() =>
+            rlpWrapSlots
+                ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
+                : view.CurrentValue;
 
         public void Dispose() => view.Dispose();
     }
