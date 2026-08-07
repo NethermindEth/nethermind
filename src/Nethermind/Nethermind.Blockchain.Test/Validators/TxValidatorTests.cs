@@ -848,13 +848,12 @@ public class TxValidatorTests
         }
     }
 
-    // EIP-7594 (ethereum/EIPs#11985): a blob-carrying frame tx (EIP-8141) is bound by the same per-tx
-    // blob-count limit (BLOB_COUNT_LIMIT = 6) and versioned-hash version byte (0x01) as a type-3 blob tx,
-    // matching EELS validate_frame_transaction.
+    // EIP-7594/EIP-8141: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
+    // versioned-hash version byte (0x01) as a type-3 blob tx.
     private static IEnumerable<int> FrameTxWithinBlobCountLimitCases()
     {
         yield return 1;
-        yield return (int)Bogota.Instance.MaxBlobsPerTx; // BLOB_COUNT_LIMIT
+        yield return (int)Bogota.Instance.MaxBlobsPerTx;
     }
 
     [TestCaseSource(nameof(FrameTxWithinBlobCountLimitCases))]

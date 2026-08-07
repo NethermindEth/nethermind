@@ -52,8 +52,6 @@ public class FrameTxSignatureValidatorTests
     [Test]
     public void Validate_Secp256k1BlobCarryingTx_ReturnsTrueAndResolvesSigner()
     {
-        // A blob-carrying frame tx: the blob fields are in the sig-hash preimage (EIP-8141 /
-        // EELS #3047), so a signature computed over that hash validates and resolves the signer.
         Transaction tx = CreateFrameTx();
         tx.MaxFeePerBlobGas = 3;
         tx.BlobVersionedHashes = [BlobVersionedHash(0x01), BlobVersionedHash(0x02)];
@@ -66,8 +64,7 @@ public class FrameTxSignatureValidatorTests
     [Test]
     public void Validate_BlobFieldTamperedAfterSigning_ReturnsFalse()
     {
-        // The signature commits to the blob fields; mutating one after signing must invalidate it,
-        // proving the sig-hash preimage covers max_fee_per_blob_gas and blob_versioned_hashes.
+        // Mutating a blob field after signing must invalidate the signature, proving the preimage covers it.
         Transaction tx = CreateFrameTx();
         tx.MaxFeePerBlobGas = 3;
         tx.BlobVersionedHashes = [BlobVersionedHash(0x01)];
