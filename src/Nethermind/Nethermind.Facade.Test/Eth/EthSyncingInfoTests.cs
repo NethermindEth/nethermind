@@ -79,6 +79,34 @@ namespace Nethermind.Facade.Test.Eth
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedResult));
         }
 
+        /// <summary>
+        /// CL-driven forward sync keeps Head close to BestSuggestedHeader while the beacon tip
+        /// (BestSuggestedBeaconHeader) remains far ahead. eth_syncing must use that beacon tip
+        /// or it reports false for the entire catch-up (see #12673).
+        /// </summary>
+        [Test]
+        public void GetFullInfo_WhenHeadTracksSuggestedButBeaconTipIsAhead_ReportsSyncing()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            syncProgressResolver.IsFastBlocksBodiesFinished().Returns(true);
+            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(true);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(10005UL).TestObject);
+            blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(130000UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(10000UL).TestObject).TestObject);
+
+            EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, new SyncConfig(),
+                new StaticSelector(SyncMode.WaitingForBlock), syncProgressResolver, LimboLogs.Instance);
+
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
+
+            Assert.That(syncingResult.IsSyncing, Is.True);
+            Assert.That(syncingResult.CurrentBlock, Is.EqualTo(10000UL));
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(130000UL));
+            Assert.That(syncingResult.SyncMode, Is.EqualTo(SyncMode.WaitingForBlock));
+        }
+
         [TestCase(false, true, true)]
         [TestCase(true, false, true)]
         [TestCase(false, false, true)]
