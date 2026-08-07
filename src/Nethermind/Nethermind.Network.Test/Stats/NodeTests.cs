@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Net;
+using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
@@ -201,6 +202,23 @@ namespace Nethermind.Network.Test.Stats
 
             node = GetNode("::ffff:127.0.0.1");
             Assert.That(node.ToString(format), Is.EqualTo(expectedFormat));
+        }
+
+        [Test]
+        public void To_string_brackets_native_ipv6_enode_host()
+        {
+            Node node = new(TestItem.PublicKeyA, "fd00:beef:cafe::11", 30303);
+
+            string enode = node.ToString(Node.Format.ENode);
+
+            Assert.That(enode, Does.Contain("@[fd00:beef:cafe::11]:30303"));
+            Assert.That(Enode.IsEnode(enode, out _), Is.True);
+            Enode reparsed = new(enode);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse("fd00:beef:cafe::11")));
+                Assert.That(reparsed.Port, Is.EqualTo(30303));
+            }
         }
 
         [Test]

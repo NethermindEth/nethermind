@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -58,10 +58,11 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test]
-        public void Can_do_enode_with_discovery_port_roundtrip()
+        [TestCase("8.8.8.8")]
+        [TestCase("fd00:beef:cafe::11")]
+        public void Can_do_enode_with_discovery_port_roundtrip(string host)
         {
-            NetworkNode node = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("8.8.8.8"), 30303, 30304))
+            NetworkNode node = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse(host), 30303, 30304))
             {
                 Reputation = 100L
             };
