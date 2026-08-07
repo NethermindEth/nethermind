@@ -105,7 +105,6 @@ public class TxPriorityContractTests
     }
 
     [Test]
-    [Explicit]
     public async Task whitelist_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
         using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst
@@ -129,7 +128,6 @@ public class TxPriorityContractTests
     }
 
     [Test]
-    [Explicit]
     public async Task priority_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
         using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst
@@ -158,7 +156,6 @@ public class TxPriorityContractTests
     }
 
     [Test]
-    [Explicit]
     public async Task mingas_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
     {
         using TxPermissionContractBlockchainWithBlocksAndLocalData chain = fileFirst
