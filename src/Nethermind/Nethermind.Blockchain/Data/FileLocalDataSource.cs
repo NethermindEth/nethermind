@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Data
         private readonly int _interval;
         private DateTime _lastChange = DateTime.MinValue;
         private bool _hasLoadedFile;
-        private readonly Lock _loadLock = new();
+        private int _isLoading;
         public string FilePath { get; private set; }
 
         public FileLocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain.Data
             _interval = interval;
             SetupWatcher(filePath.GetApplicationResourcePath());
             LoadFile();
+            StartWatching();
         }
 
         protected virtual T DefaultValue => default;
@@ -68,9 +69,16 @@ namespace Nethermind.Blockchain.Data
                 // file name is valid
                 FilePath = filePath;
                 if (_logger.IsInfo) _logger.Info($"Watching file for changes: {filePath}.");
-                _timer = new Timer(_interval) { Enabled = true };
-                _timer.Elapsed += async (o, e) => await LoadFileAsync();
             }
+        }
+
+        // Started only once the initial load has run, so polling cannot race it.
+        private void StartWatching()
+        {
+            if (FilePath is null) return;
+
+            _timer = new Timer(_interval) { Enabled = true };
+            _timer.Elapsed += async (o, e) => await LoadFileAsync();
         }
 
         private async Task LoadFileAsync()
@@ -119,12 +127,14 @@ namespace Nethermind.Blockchain.Data
 
         private void LoadFileCore()
         {
-            bool changed = false;
+            // The reload timer does not serialise its callbacks. Overlapping loads could publish
+            // the content of one and the write time of the other, pairing stale content with a
+            // matching timestamp, which then reads as current. Skip instead of queueing: the file
+            // is polled again on the next tick anyway.
+            if (Interlocked.CompareExchange(ref _isLoading, 1, 0) != 0) return;
 
-            // The reload timer does not serialise its callbacks. Without this, two overlapping
-            // loads can publish the data of one and the write time of the other, which pairs
-            // stale content with a matching timestamp and suppresses every later reload.
-            lock (_loadLock)
+            bool changed = false;
+            try
             {
                 if (_fileSystem.File.Exists(FilePath))
                 {
@@ -152,9 +162,13 @@ namespace Nethermind.Blockchain.Data
                     changed = true;
                 }
             }
+            finally
+            {
+                Volatile.Write(ref _isLoading, 0);
+            }
 
-            // Raised outside the lock: subscribers read the current Data rather than a snapshot,
-            // so event order does not matter, and their work must not block the next reload.
+            // Raised after the guard is released: subscribers read the current Data rather than a
+            // snapshot, so event order does not matter, and their work must not block a reload.
             if (changed)
             {
                 Changed?.Invoke(this, EventArgs.Empty);

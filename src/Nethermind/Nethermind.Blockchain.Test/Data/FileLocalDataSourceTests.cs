@@ -37,8 +37,6 @@ public class FileLocalDataSourceTests
         using TempPath tempFile = TempPath.GetTempFile();
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
         int interval = 30;
-        // Not disposed: SemaphoreSlim allocates a wait handle only once AvailableWaitHandle is
-        // read, and disposing it would race a reload tick that outlives the source's Dispose.
         SemaphoreSlim handle = new(0);
         using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, interval);
         int changedRaised = 0;
