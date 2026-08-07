@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
-from corpus_parity import MAX_DIVERGENCE_INDEXES, PARITY_COUNTER_FIELDS, PARITY_LABEL_FIELDS
+from corpus_parity import PARITY_COUNTER_FIELDS, PARITY_LABEL_FIELDS
 
 # metric name -> aggregate fields copied into the sanitized summary
 METRIC_FIELDS: dict[str, tuple[str, ...]] = {
@@ -128,8 +128,13 @@ def _validate_parity(path: Path) -> None:
         if not isinstance(data[field], str) or not (0 < len(data[field]) <= 128):
             raise CorpusResultsError(f"{path.name}: {field} is not a short string")
     divergences = data["divergences"]
-    if not isinstance(divergences, list) or len(divergences) > MAX_DIVERGENCE_INDEXES:
-        raise CorpusResultsError(f"{path.name}: divergences is not a bounded list")
+    # Bound against the report's own record count, not the producer's runtime cap: staging runs in
+    # a separate process from the replay, so an env-tuned cap is not visible here and hard-coding
+    # the default would reject a report that legitimately enumerated more.
+    if not isinstance(divergences, list) or len(divergences) > data["total"]:
+        raise CorpusResultsError(
+            f"{path.name}: divergences ({len(divergences) if isinstance(divergences, list) else 'n/a'}) "
+            f"exceeds the record count ({data['total']})")
     for entry in divergences:
         if not isinstance(entry, dict) or set(entry) != {"index", "kind"} \
                 or isinstance(entry["index"], bool) or not isinstance(entry["index"], int) or entry["index"] < 1 \
