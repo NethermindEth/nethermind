@@ -20,8 +20,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
-    private const int StorageReadBatchSize = 256;
-
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -47,6 +45,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
+
+    private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
@@ -120,6 +120,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _hintBalTask = null;
     }
 
+    private bool NeedsStateTrieWarmup(Address address)
+    {
+        ReadOnlyBlockAccessList? bal = _warmupWriteSet;
+        return bal is null || bal.GetAccountChanges(address)?.HasStateChanges == true;
+    }
+
+    private void QueueStateTrieWarmup(Address address, int sequenceId)
+    {
+        if (NeedsStateTrieWarmup(address)
+            && _warmer.PushAddressJob(this, address, sequenceId))
+            Interlocked.Increment(ref _outstandingWarmups);
+    }
+
     // Exposed for tests to observe when the wait loop is entered.
     internal Action? OnWaitingForWarmups;
 
@@ -176,26 +189,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (promote) _snapshotBundle.PromoteAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
-        {
-            if (_warmer.PushAddressJob(this, address, _hintSequenceId))
-                Interlocked.Increment(ref _outstandingWarmups);
-        }
+            QueueStateTrieWarmup(address, _hintSequenceId);
     }
 
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
+        CancelHintBal();
+
         int accountCount = bal.AccountChanges.Count;
+        _warmupWriteSet = accountCount == 0 ? null : bal;
         if (accountCount == 0) return Task.CompletedTask;
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
-        CancelHintBal();
-
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
         int snapshot = _hintSequenceId;
-        bool shouldWarmTrie = sink?.ShouldWarmTrie ?? true;
 
         return _hintBalTask = Task.Run(() =>
         {
@@ -215,7 +225,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (shouldWarmTrie && _snapshotBundle.ShouldQueuePrewarm(address)
+                    if (ac.HasStateChanges
+                        && _snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
@@ -231,7 +242,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                    if (shouldWarmTrie && storageChangeCount > 0)
+                    if (storageChangeCount > 0)
                     {
                         FlatStorageTree storageWarmer = new(
                             this,
@@ -280,7 +291,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 accountChanges.Dispose();
             }
-        }, token);
+        });
     }
 
     private void RunSinkSlotReads(
@@ -320,48 +331,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
         // that never see a BAL never allocate the dedicated reader threads.
         WarmReadPool pool = _warmReadPool.Value;
+        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
 
-        if (sink.ShouldWarmTrie)
-        {
-            int individualWorkers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
-            pool.Run(idx, individualWorkers, j =>
-            {
-                if (_pausePrewarmer) return;
-                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-                ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-            }, parallelOptions.CancellationToken);
-            return;
-        }
-
-        int batchCount = (idx + StorageReadBatchSize - 1) / StorageReadBatchSize;
-        int batchWorkers = Math.Min(pool.MaxConcurrency, batchCount);
-
-        pool.Run(batchCount, batchWorkers, batchIndex =>
+        pool.Run(idx, workers, j =>
         {
             if (_pausePrewarmer) return;
-
-            int start = batchIndex * StorageReadBatchSize;
-            int end = Math.Min(start + StorageReadBatchSize, idx);
-            SlotRead[] reads = new SlotRead[end - start];
-            int readCount = 0;
-
-            for (int j = start; j < end; j++)
-            {
-                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-                StorageCell cell = new(address, in slot);
-                if (!sink.StillNeeded(in cell)) continue;
-                reads[readCount++] = new SlotRead(cell, selfDestructIdx);
-            }
-
-            if (readCount == 0) return;
-
-            SlotValue?[] values = new SlotValue?[readCount];
-            _snapshotBundle.GetSlots(reads.AsSpan(0, readCount), values);
-            for (int j = 0; j < readCount; j++)
-            {
-                StorageCell cell = reads[j].Cell;
-                sink.OnStorageRead(in cell, values[j]?.ToEvmBytes() ?? StorageTree.ZeroBytes);
-            }
+            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         }, parallelOptions.CancellationToken);
     }
 
@@ -412,9 +388,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (IsDisposed || _pausePrewarmer) return;
         // The managed Address is materialized only after the dedupe bloom passes, so the
         // allocation happens at most once per account per block.
-        if (_snapshotBundle.ShouldQueuePrewarm(address)
-            && _warmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId))
-            Interlocked.Increment(ref _outstandingWarmups);
+        if (_snapshotBundle.ShouldQueuePrewarm(address))
+            QueueStateTrieWarmup(address.ToAddress(), _hintSequenceId);
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
