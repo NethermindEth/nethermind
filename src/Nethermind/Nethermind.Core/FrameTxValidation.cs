@@ -25,6 +25,7 @@ public static class FrameTxValidation
     public const string AtomicBatchOnLastFrame = "the last frame must not have the atomic batch flag set";
     public const string AtomicBatchOnVerifyFrame = "the atomic batch flag must not be set on a VERIFY frame";
     public const string AtomicBatchFollowedByVerifyFrame = "an atomic batch frame must not be followed by a VERIFY frame";
+    public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
@@ -106,6 +107,12 @@ public static class FrameTxValidation
                 }
             }
 
+            if (BelongsToAtomicBatch(frames, i) && (frame.Flags & TxFrame.ApproveScopeMask) != 0)
+            {
+                error = ApprovalScopeInAtomicBatch;
+                return false;
+            }
+
             if (frame.Mode == TxFrame.ModeVerify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
             {
                 if (frame.Flags != 0 || !frame.Value.IsZero || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
@@ -175,6 +182,12 @@ public static class FrameTxValidation
         }
 
         return true;
+
+        // EIP-8141: a frame belongs to a batch when flagged, or when it is the terminating frame
+        // immediately after a flagged one (approval scope is forbidden on either).
+        static bool BelongsToAtomicBatch(TxFrame[] frames, int i) =>
+            (frames[i].Flags & TxFrame.AtomicBatchFlag) != 0
+            || (i > 0 && (frames[i - 1].Flags & TxFrame.AtomicBatchFlag) != 0);
     }
 
     /// <summary>
