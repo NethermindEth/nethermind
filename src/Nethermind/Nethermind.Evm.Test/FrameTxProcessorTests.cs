@@ -850,21 +850,24 @@ public class FrameTxProcessorTests
     /// <summary>Commits a recent root for <paramref name="slot"/> so a reference to it validates.</summary>
     private RecentRootReference CommitReference(ulong slot)
     {
-        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 salt = TestItem.KeccakA.ValueHash256;
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot),
-            RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
+        // Written through the production path so the test cannot keep passing against a stale encoding.
+        RecentRootStore.Write(_stateProvider, Observer, salt, root, slot, Spec);
         _stateProvider.Commit(Spec);
-        return new RecentRootReference(sourceId, slot, root);
+        return new RecentRootReference(RecentRootStore.SourceId(Observer, salt), slot, root);
     }
 
-    // A declared reference is only satisfied by the commitment the predeploy holds for that slot. The
-    // committed case also proves the reference's intrinsic gas is charged.
-    [TestCase(1_000UL, false, true, TestName = "a committed reference inside the window executes")]
-    [TestCase(1_001UL, false, false, TestName = "a reference to the current slot is not yet referenceable")]
-    [TestCase(9_193UL, false, false, TestName = "a reference older than the usable window has been overwritten")]
-    [TestCase(1_000UL, true, false, TestName = "a reference to a different root at a committed slot fails")]
-    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, bool expectedExecuted)
+    // EIP-8272: a declared reference is only satisfied by the commitment the predeploy actually holds
+    // for that slot, so an uncommitted or out-of-window reference invalidates the transaction. The
+    // committed case also proves the reference's intrinsic gas is charged, since the transaction pays
+    // more than the same transaction declaring nothing.
+    [TestCase(1_000UL, false, 1_001UL, true, TestName = "a committed reference inside the window executes")]
+    [TestCase(1_001UL, false, 1_001UL, false, TestName = "a reference to the current slot is not yet referenceable")]
+    [TestCase(9_193UL, false, 1_001UL, false, TestName = "a reference older than the usable window has been overwritten")]
+    [TestCase(1_000UL, true, 1_001UL, false, TestName = "a reference to a different root at a committed slot fails")]
+    [TestCase(1_000UL, false, null, false, TestName = "a header carrying no slot number cannot place a reference in the window")]
+    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, ulong? headSlot, bool expectedExecuted)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
 
@@ -875,7 +878,7 @@ public class FrameTxProcessorTests
             : committed];
 
         CallOutputTracer referencingTracer = new();
-        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: HeadSlot);
+        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: headSlot);
 
         Assert.That(referencing.TransactionExecuted, Is.EqualTo(expectedExecuted));
         if (!expectedExecuted)
@@ -887,7 +890,7 @@ public class FrameTxProcessorTests
         }
 
         CallOutputTracer plainTracer = new();
-        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: HeadSlot);
+        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: headSlot);
 
         Assert.That(unreferencing.TransactionExecuted, Is.True);
         Assert.That(referencingTracer.GasSpent, Is.GreaterThan(plainTracer.GasSpent),
