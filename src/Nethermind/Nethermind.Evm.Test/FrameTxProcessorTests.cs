@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -631,6 +632,43 @@ public class FrameTxProcessorTests
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
         Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged");
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "the sender nonce is not consumed");
+    }
+
+    /// <summary>A sponsored frame transaction estimates against the budget its frames fix, not against
+    /// the sender's balance.</summary>
+    /// <remarks>
+    /// The regular estimation path bounds the search by what the sender can afford at the fee cap, which
+    /// is zero here, and searches over a gas limit the frame processor never reads. Both are wrong for a
+    /// frame transaction: the payer is chosen by the frames, and the budget is fixed by them.
+    /// </remarks>
+    [Test]
+    public void EstimateGas_SponsoredFrameTx_ReturnsTheFrameBudgetForAZeroBalanceSender()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution));
+        DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Observer, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, target: Recipient));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        TransactionResult probe = _transactionProcessor.CallAndRestore(tx, gasTracer);
+        Assert.That(probe.TransactionExecuted, Is.True, probe.ErrorDescription ?? probe.Error.ToString());
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        ulong estimate = estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong budget), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, Is.Null, "a zero-balance sender must not cap a sponsored estimate");
+            Assert.That(estimate, Is.EqualTo(budget));
+        }
     }
 
     [Test]

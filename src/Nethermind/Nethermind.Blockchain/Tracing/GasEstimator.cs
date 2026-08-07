@@ -74,6 +74,9 @@ public class GasEstimator(
         IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
         tx.SenderAddress ??= Address.Zero;
 
+        if (tx.SupportsFrames)
+            return EstimateFrameTx(tx, spec, gasTracer);
+
         UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress!);
 
         if (CheckFunds(tx, spec, gasTracer, senderBalance, out UInt256 available) is { } fundsResult)
@@ -93,6 +96,23 @@ public class GasEstimator(
 
         return BinarySearchEstimate(tx, header, spec, gasTracer, bounds, errorMargin, token);
     }
+
+    /// <summary>The gas an EIP-8141 frame transaction reserves, or the probe's failure.</summary>
+    /// <remarks>
+    /// A frame transaction has no <c>gas_limit</c> field: its budget is the intrinsic cost plus the
+    /// per-frame limits it signs over, so a caller cannot lower it and there is nothing to search for.
+    /// Binary search would also be blind here, since the processor derives the budget from the frames
+    /// and ignores <see cref="Transaction.GasLimit"/> — every probe succeeds regardless of the value
+    /// under test. The affordability gates are skipped for the same reason they would be wrong: the
+    /// frames choose the payer, which need not be the sender, and a payer too poor to cover the
+    /// reservation already fails the probe.
+    /// </remarks>
+    private static EstimationResult EstimateFrameTx(Transaction tx, IReleaseSpec spec, EstimateGasTracer gasTracer) =>
+        gasTracer is { StatusCode: StatusCode.Success, OutOfGas: false, TopLevelRevert: false }
+            ? FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas)
+                ? EstimationResult.Success(maxGas)
+                : EstimationResult.Failure(CannotEstimateGasExceeded)
+            : EstimationResult.Failure(GetError(gasTracer));
 
     private static EstimationResult? ValidateErrorMargin(ulong errorMargin) =>
         errorMargin switch
