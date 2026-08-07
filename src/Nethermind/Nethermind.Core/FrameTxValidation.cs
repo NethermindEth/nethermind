@@ -104,10 +104,7 @@ public static class FrameTxValidation
                 }
             }
 
-            // EIP-8141: the terminating frame (the one after the last flagged frame) also belongs to the
-            // batch, so approval scope is forbidden on it as well as on flagged frames.
-            if (((frame.Flags & TxFrame.AtomicBatchFlag) != 0 || (i > 0 && (frames[i - 1].Flags & TxFrame.AtomicBatchFlag) != 0))
-                && (frame.Flags & TxFrame.ApproveScopeMask) != 0)
+            if (BelongsToAtomicBatch(frames, i) && (frame.Flags & TxFrame.ApproveScopeMask) != 0)
             {
                 error = ApprovalScopeInAtomicBatch;
                 return false;
@@ -182,6 +179,12 @@ public static class FrameTxValidation
         }
 
         return true;
+
+        // EIP-8141: a frame belongs to a batch when flagged, or when it is the terminating frame
+        // immediately after a flagged one (approval scope is forbidden on either).
+        static bool BelongsToAtomicBatch(TxFrame[] frames, int i) =>
+            (frames[i].Flags & TxFrame.AtomicBatchFlag) != 0
+            || (i > 0 && (frames[i - 1].Flags & TxFrame.AtomicBatchFlag) != 0);
     }
 
     /// <summary>
