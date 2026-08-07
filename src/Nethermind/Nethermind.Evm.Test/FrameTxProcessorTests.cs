@@ -752,6 +752,226 @@ public class FrameTxProcessorTests
         Assert.That(actual, Is.EqualTo(expected), message ?? $"storage slot {slot} of {address}");
     }
 
+    // A keyed transaction consumes the whole set at payment approval and leaves the account nonce alone.
+    [Test]
+    public void Execute_KeyedNonce_ConsumesEverySelectedKeyAndChargesFirstUse()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        UInt256[] keys = [1, 7];
+
+        Transaction firstUse = FrameTx(nonce: 0, SelfVerifyFrame());
+        firstUse.NonceKeys = keys;
+        CallOutputTracer firstUseTracer = new();
+        TransactionResult result = Process(firstUse, tracer: firstUseTracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetNonce(Sender), Is.Zero,
+            "a keyed transaction must not advance the account nonce");
+        foreach (UInt256 key in keys)
+        {
+            Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Is.EqualTo(UInt256.One));
+        }
+
+        Transaction reuse = FrameTx(nonce: 1, SelfVerifyFrame());
+        reuse.NonceKeys = keys;
+        CallOutputTracer reuseTracer = new();
+
+        Assert.That(Process(reuse, tracer: reuseTracer).TransactionExecuted, Is.True);
+        Assert.That(firstUseTracer.GasSpent - reuseTracer.GasSpent,
+            Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas),
+            "only the first use of each key is surcharged");
+    }
+
+    // The sequence is per key, so every selected key must currently sit at nonce_seq.
+    [TestCase(0UL, 1UL, false, TestName = "a nonce sequence behind a consumed key is too low")]
+    [TestCase(1UL, 1UL, true, TestName = "a nonce sequence matching every selected key executes")]
+    [TestCase(2UL, 1UL, false, TestName = "a nonce sequence ahead of an unconsumed key is too high")]
+    public void Execute_KeyedNonce_RequiresEverySelectedKeyAtTheSequence(ulong nonceSeq, ulong consumedSeq, bool expectedExecuted)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        UInt256[] keys = [1, 7];
+        KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, keys, consumedSeq - 1);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonceSeq, SelfVerifyFrame());
+        tx.NonceKeys = keys;
+
+        Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
+    }
+
+    [Test]
+    public void Execute_KeyedNonce_RecordsTheNonceManagerSlotInBal()
+    {
+        // EIP-7928: a keyed nonce lives in NONCE_MANAGER storage rather than in the account nonce, so the
+        // slot it consumes must reach the BAL. A parallel validator reads the pre-state through the block
+        // access list, and an omitted slot makes it reject a block every sequential node accepts.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        UInt256[] keys = [1, 7];
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.NonceKeys = keys;
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AccountChangesAtIndex? managerChanges = tracedState.GetGeneratingBlockAccessList()!
+            .GetAccountChanges(Eip8250Constants.NonceManagerAddress);
+        Assert.That(managerChanges, Is.Not.Null, "the nonce manager is accessed and recorded in the BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(managerChanges.HasStorageChange(KeyedNonceManager.StorageSlot(Sender, key).Index), Is.True,
+                    $"the slot consumed for key {key} must be in the BAL");
+            }
+
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "a keyed set leaves the account nonce alone");
+        }
+    }
+
+    // The property the set semantics exist for: one advanced key makes the whole set unusable.
+    [Test]
+    public void Execute_KeyedNonce_PartiallyAdvancedSetIsNotReplayable()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        KeyedNonceManager.ConsumeNonceSet(_stateProvider, Sender, [(UInt256)1], nonceSeq: 0);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.NonceKeys = [1, 7];
+
+        Assert.That(Process(tx).TransactionExecuted, Is.False,
+            "key 1 is at sequence 1 while key 7 is still at 0, so no sequence satisfies the set");
+    }
+
+    // Key 0 is the account nonce itself, so the singleton set must advance that nonce and owe no
+    // first-use surcharge — the property that makes the EIP-8250 envelope a superset of EIP-8141's.
+    [Test]
+    public void Execute_KeyedNonce_LegacyKeyBehavesAsTheAccountNonce()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction keyed = FrameTx(nonce: 0, SelfVerifyFrame());
+        keyed.NonceKeys = [UInt256.Zero];
+
+        CallOutputTracer keyedTracer = new();
+        Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+
+        CallOutputTracer plainTracer = new();
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer).TransactionExecuted, Is.True);
+        Assert.That(keyedTracer.GasSpent - plainTracer.GasSpent,
+            Is.LessThan((long)Eip8250Constants.KeyedNonceFirstUseGas),
+            "the legacy key owes no first-use surcharge");
+    }
+
+    // EIP-8250 "Nonce consumption": approval effects are journaled outside the atomic-batch snapshot,
+    // so a payment approval taken inside a batch survives the batch unrolling and the transaction still
+    // has a payer. The pre-8250 envelope keeps EIP-8141's unroll (see the sibling test above).
+    [Test]
+    public void Execute_AtomicBatch_KeyedPaymentApprovalInsideFailedBatch_SurvivesTheUnroll()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
+        DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        UInt256[] keys = [1, 7];
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag), target: Observer),
+            Frame(TxFrame.ModeSender, target: Recipient));
+        tx.NonceKeys = keys;
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True, "the payer recorded inside the batch survives the unroll");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Observer), Is.LessThan(1.Ether), "the sponsor is charged");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.Zero, "a keyed transaction leaves the account nonce alone");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                    Is.EqualTo(UInt256.One), "the nonce set stays consumed");
+            }
+        }
+    }
+
+    // The default code approves without running APPROVE, so the same first-use surcharge has to be
+    // charged there or a codeless sender grows NONCE_MANAGER state for free.
+    [Test]
+    public void Execute_KeyedNonce_DefaultCodeApproval_ChargesFirstUse()
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        UInt256[] keys = [1, 7];
+
+        CallOutputTracer firstUseTracer = new();
+        Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 0, keys), tracer: firstUseTracer).TransactionExecuted, Is.True);
+        foreach (UInt256 key in keys)
+        {
+            Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Is.EqualTo(UInt256.One));
+        }
+
+        CallOutputTracer reuseTracer = new();
+        Assert.That(Process(SelfSignedSelfVerifyTx(nonce: 1, keys), tracer: reuseTracer).TransactionExecuted, Is.True);
+        Assert.That(firstUseTracer.GasSpent - reuseTracer.GasSpent,
+            Is.EqualTo((long)keys.Length * Eip8250Constants.KeyedNonceFirstUseGas),
+            "the default-code approval owes the surcharge the APPROVE opcode charges");
+    }
+
+    /// <summary>A codeless-sender self-verify transaction carrying the canonical-hash signature default code requires at index 0.</summary>
+    private static Transaction SelfSignedSelfVerifyTx(ulong nonce, UInt256[]? nonceKeys = null)
+    {
+        Transaction tx = FrameTx(nonce, SelfVerifyFrame());
+        tx.NonceKeys = nonceKeys;
+        // compute_sig_hash commits to the signature entries (bytes of empty-msg entries elided),
+        // so the entry must be present when the hash is computed and signed.
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyA, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
+        return tx;
+    }
+
+    // An unchecked increment wraps the account nonce to zero, making every prior transaction from
+    // that sender replayable. The EIP-8250 envelope is already refused a sequence at the ceiling
+    // during stateful validity, so only the pre-8250 envelope reaches payment approval here.
+    [Test]
+    public void Execute_PaymentApprovalAtTheNonceCeiling_PerformsNoApprovalEffects()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        _stateProvider.SetNonce(Sender, Eip8250Constants.MaxNonceSeq);
+        _stateProvider.Commit(Spec);
+        UInt256 balanceBefore = _stateProvider.GetBalance(Sender);
+
+        Transaction tx = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, SelfVerifyFrame());
+
+        Assert.That(Process(tx).TransactionExecuted, Is.False, "no payer approved");
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(Eip8250Constants.MaxNonceSeq));
+        Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(balanceBefore), "max cost was not collected");
+
+        Transaction keyed = FrameTx(nonce: Eip8250Constants.MaxNonceSeq, SelfVerifyFrame());
+        keyed.NonceKeys = [UInt256.Zero];
+        Assert.That(Process(keyed).Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+    }
+
     private static UInt256 AddressAsWord(Address address) => new(address.Bytes, isBigEndian: true);
 
     private static byte[] ApproveCode(byte scope) =>

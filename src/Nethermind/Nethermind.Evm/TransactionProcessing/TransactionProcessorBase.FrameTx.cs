@@ -23,20 +23,55 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
+    /// <summary>Checks a frame transaction's nonce against the sender's state, under either nonce shape.</summary>
+    /// <remarks>
+    /// With <see cref="Transaction.NonceKeys"/> every selected key must currently sit at
+    /// <see cref="Transaction.Nonce"/>, so the set is consumed as a unit and a partially advanced set is not
+    /// replayable. A malformed set is rejected as malformed, not as a nonce mismatch: it names no sequence.
+    /// </remarks>
+    private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
+    {
+        UInt256[]? nonceKeys = tx.NonceKeys;
+        if (nonceKeys is null)
+        {
+            UInt256 accountNonce = WorldState.GetNonce(sender);
+            return accountNonce == tx.Nonce
+                ? TransactionResult.Ok
+                : (tx.Nonce < accountNonce
+                    ? TransactionResult.ErrorType.TransactionNonceTooLow
+                    : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce mismatch");
+        }
+
+        if (KeyedNonceManager.IsNonceSetValid(WorldState, sender, nonceKeys, tx.Nonce))
+        {
+            return TransactionResult.Ok;
+        }
+
+        // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
+        if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
+        }
+
+        if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
+        }
+
+        ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
+        return (tx.Nonce < current
+            ? TransactionResult.ErrorType.TransactionNonceTooLow
+            : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce sequence mismatch");
+    }
+
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;
         Snapshot txSnapshot = WorldState.TakeSnapshot();
 
         // Pre-flight: nonce and protocol-validated signatures.
-        UInt256 accountNonce = WorldState.GetNonce(sender);
-        if (accountNonce != tx.Nonce)
-        {
-            TransactionResult.ErrorType nonceError = tx.Nonce < accountNonce
-                ? TransactionResult.ErrorType.TransactionNonceTooLow
-                : TransactionResult.ErrorType.TransactionNonceTooHigh;
-            return nonceError.WithDetail("frame transaction nonce mismatch");
-        }
+        TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
+        if (!nonceResult) return nonceResult;
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         // EIP-7928: resolved without recording an account access - a tx that never takes the P256
@@ -106,7 +141,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             in maxCost,
             in tx.MaxPriorityFeePerGas,
             tx.DecodedMaxFeePerGas,
-            tx.MaxFeePerBlobGas.GetValueOrDefault());
+            tx.MaxFeePerBlobGas.GetValueOrDefault(),
+            tx.NonceKeys);
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
@@ -256,15 +292,29 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                             frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.GasUsed, []);
                         }
                     }
-                    // EIP-8141 (ethereum/EIPs#11955): a failed batch unrolls ALL effects of any APPROVE
-                    // it contained. Restore reverts the payer debit and sender nonce (world state); the
-                    // approval context (payer, sender_approved) and refund counter are not world state,
-                    // so roll them back to their pre-batch values too. Without this, the payer field
-                    // would survive a reverted charge and the terminal gate would refund uncollected
-                    // funds. If the payer was only set inside the batch, it is now unset again and the
-                    // gate below rejects the transaction.
-                    frameContext.Payer = batchStartPayer;
-                    frameContext.SenderApproved = batchStartSenderApproved;
+                    // EIP-8250 "Nonce consumption": nonce consumption, max-cost collection and payer
+                    // recording are journaled outside the atomic-batch snapshot and MUST NOT be reverted
+                    // by restoring it, so a payment approval taken inside the batch is re-applied over
+                    // the restore. Under the pre-8250 envelope EIP-8141 (ethereum/EIPs#11955) still
+                    // unrolls ALL effects of any APPROVE the batch contained: Restore reverts the payer
+                    // debit and sender nonce, and the approval context, which is not world state, is
+                    // rolled back to its pre-batch value so the payer never survives a reverted charge.
+                    // A payer left insolvent by the restore cannot be charged either way, so it falls
+                    // back to the unroll and the gate below rejects the transaction.
+                    if (frameContext.NonceKeys is { } batchNonceKeys
+                        && batchStartPayer is null
+                        && frameContext.Payer is { } batchPayer
+                        && WorldState.GetBalance(batchPayer) >= frameContext.MaxCost)
+                    {
+                        WorldState.SubtractFromBalance(batchPayer, frameContext.MaxCost, spec);
+                        KeyedNonceManager.ConsumeNonceSet(WorldState, frameContext.Sender, batchNonceKeys, frameContext.Nonce);
+                    }
+                    else
+                    {
+                        frameContext.Payer = batchStartPayer;
+                        frameContext.SenderApproved = batchStartSenderApproved;
+                    }
+
                     refundCounter = batchStartRefund;
 
                     int terminal = i;
@@ -537,6 +587,29 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
             }
 
+            // The default code approves without running EVM code, so it owes the surcharge APPROVE
+            // charges — but only where APPROVE would charge it. The opcode reaches the surcharge
+            // only past a null payer, a prior execution approval and a solvent payer, and
+            // ApplyApproval discards the approval for those same reasons, so charging ahead of them
+            // would bill the frame for a consumption that never happens.
+            if ((allowedScope & TxFrame.ApprovePayment) != 0
+                && frameContext.Payer is null
+                && ((allowedScope & TxFrame.ApproveExecution) != 0 || frameContext.SenderApproved)
+                && WorldState.GetBalance(resolvedTarget) >= frameContext.MaxCost
+                && frameContext.NonceKeys is { } nonceKeys)
+            {
+                ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
+                if (surcharge > frame.GasLimit)
+                {
+                    // An error frame reports its whole gas limit on the EVM path; halting for free
+                    // here would price the same failure differently.
+                    gasUsed = frame.GasLimit;
+                    return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                }
+
+                gasUsed = surcharge;
+            }
+
             frameContext.ApprovalScopeSignal = allowedScope;
             return DefaultCodeSuccess();
         }
@@ -591,10 +664,27 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // frame approves payment.
             if (WorldState.GetBalance(resolvedTarget) < frameContext.MaxCost) return;
 
+            // EIP-8250: the account nonce cannot advance past MAX_NONCE_SEQ, and an approval that
+            // cannot consume its nonce performs no approval effects at all.
+            UInt256[]? keys = frameContext.NonceKeys;
+            if ((keys is null || (keys.Length == 1 && keys[0].IsZero))
+                && WorldState.GetNonce(frameContext.Sender) >= Eip8250Constants.MaxNonceSeq)
+            {
+                return;
+            }
+
             // Charge the max cost up front from the payer and consume the sender nonce; unused
             // gas is refunded to the payer at the end of the transaction.
             WorldState.SubtractFromBalance(resolvedTarget, frameContext.MaxCost, spec);
-            WorldState.IncrementNonce(frameContext.Sender);
+            if (frameContext.NonceKeys is { } nonceKeys)
+            {
+                KeyedNonceManager.ConsumeNonceSet(WorldState, frameContext.Sender, nonceKeys, frameContext.Nonce);
+            }
+            else
+            {
+                WorldState.IncrementNonce(frameContext.Sender);
+            }
+
             frameContext.Payer = resolvedTarget;
         }
     }
