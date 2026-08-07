@@ -2199,18 +2199,90 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null)
+        // MAX_VERIFY_GAS is a public-mempool DoS bound, not a validity rule: a prefix over the ceiling is
+        // still consensus-valid, so the pool must refuse it at ingress rather than the validator.
+        [TestCase(100_000UL, false, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
+        [TestCase(100_001UL, false, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
+        [TestCase(100_000UL, true, false, TestName = "signature verification cost pushes the prefix over the ceiling")]
+        [TestCase(93_300UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
+        public void Frame_transaction_prefix_is_bounded_by_max_verify_gas(ulong verifyGasLimit, bool withP256Signature, bool expectedAccepted)
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+            peer.Id.Returns(TestItem.PublicKeyA);
+            _txPool.AddPeer(peer);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: verifyGasLimit);
+            if (withP256Signature)
+            {
+                // 6 700 gas, so it decides the outcome on its own at a 93 300-gas prefix.
+                frameTx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, new byte[TxFrameSignature.P256SignatureLength])];
+                frameTx.Hash = frameTx.CalculateHash();
+            }
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(expectedAccepted ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxVerifyGasTooHigh));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
+
+            // Propagation is what the bound exists to stop, so the non-broadcast half is asserted too.
+            if (expectedAccepted)
+            {
+                peer.Received().SendNewTransaction(frameTx);
+            }
+            else
+            {
+                peer.DidNotReceive().SendNewTransaction(frameTx);
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_verify_gas_limit_of_zero_lifts_the_bound()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 30_000_000);
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
+        public void Frame_transaction_execution_gas_is_outside_the_verify_budget()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            // The validation prefix ends at the frame that approves payment; the execution frame after it
+            // is paid for out of the transaction's own gas and must not count against the budget.
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 100_000);
+            frameTx.Frames =
+            [
+                frameTx.Frames![0],
+                new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 5_000_000, UInt256.Zero, default),
+            ];
+            frameTx.Hash = frameTx.CalculateHash();
+
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000)
         {
             List<TxFrame> frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: verifyGasLimit, UInt256.Zero, default),
             ];
 
             if (deadline is not null)
             {
                 byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
                 BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
+                // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
+                frames.Insert(0, new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
             }
 
             Transaction tx = new()
