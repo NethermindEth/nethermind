@@ -60,7 +60,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         {
             capabilities.Add(SnapCapability);
             // snap/2 drops GetTrieNodes/TrieNodes (EIP-8189)
-            // we shouldnt advertise snap/2 if we need tri nodes
+            // we should not advertise snap/2 if we need TrieNodes
             bool canAdvertiseSnap2 = syncingState ? _canBalHeal : _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
             if (canAdvertiseSnap2)
             {
