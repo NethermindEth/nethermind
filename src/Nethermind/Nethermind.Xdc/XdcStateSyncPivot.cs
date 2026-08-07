@@ -25,9 +25,14 @@ public class XdcStateSyncPivot(
     private readonly IStateReader _stateReader = stateReader;
     private readonly Queue<XdcBlockHeader> _targets = new();
     private XdcBlockHeader? _pivotHeader;
+    private BlockHeader? _firstPivotHeader;
     private bool _initialized;
 
     private readonly IXdcStateSyncSnapshotManager _syncSnapshotManager = syncSnapshotManager;
+
+    public BlockHeader? FirstPivotHeader => _firstPivotHeader;
+
+    public event EventHandler<BlockHeaderEventArgs>? FirstPivotSet;
 
     public BlockHeader? GetPivotHeader()
     {
@@ -75,5 +80,10 @@ public class XdcStateSyncPivot(
         }
 
         _pivotHeader = pivotHeader;
+        if (_firstPivotHeader is null)
+        {
+            _firstPivotHeader = pivotHeader;
+            FirstPivotSet?.Invoke(this, new BlockHeaderEventArgs(pivotHeader));
+        }
     }
 }
