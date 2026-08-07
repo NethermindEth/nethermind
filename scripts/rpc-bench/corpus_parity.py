@@ -157,7 +157,11 @@ def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
     if not isinstance(envelope, dict) or envelope.get("id") != index:
         return "invalid_response", ""
     if "error" in envelope:
-        return "rpc_error", ""
+        error = envelope["error"]
+        code = error.get("code") if isinstance(error, dict) else None
+        # The code is a protocol-level integer, never call content — recording it is what
+        # distinguishes "this call legitimately reverts" from "the node is shedding load".
+        return (f"rpc_error:{code}" if isinstance(code, int) else "rpc_error"), ""
     result = envelope.get("result")
     if not isinstance(result, str) or not result.startswith("0x") or len(result) % 2 != 0:
         return "invalid_response", ""
@@ -201,13 +205,13 @@ def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str 
     # A node under concurrent load can drop or truncate a response, which would otherwise be
     # indistinguishable from a real defect. Re-run those records one at a time, unloaded: a
     # record that only fails under concurrency is a load artifact, not a divergence.
-    suspect = [i for i, (category, _) in enumerate(settled) if category in RETRYABLE_CATEGORIES]
+    suspect = [i for i, (category, _) in enumerate(settled) if _base_category(category) in RETRYABLE_CATEGORIES]
     if suspect:
         print(f"  {what}: re-running {len(suspect)} non-clean record(s) serially", flush=True)
         recovered = 0
         for position in suspect:
             retried = _post(rpc_url, position + 1, params_list[position])
-            if retried[0] not in RETRYABLE_CATEGORIES:
+            if _base_category(retried[0]) not in RETRYABLE_CATEGORIES:
                 recovered += 1
             settled[position] = retried
         if recovered:
@@ -228,7 +232,7 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     failures: dict[str, int] = {}
     error_count = 0
     for category, result in _replay(rpc_url, params_list, "baseline"):
-        if category == "rpc_error":
+        if _base_category(category) == "rpc_error":
             error_count += 1
             results.append(ERROR_MARKER)
             continue
@@ -290,7 +294,7 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
     disputed = [
         i for i, (category, actual) in enumerate(replayed)
         if not (category is None and actual == baseline_results[i])
-        and not (category == "rpc_error" and baseline_results[i] == ERROR_MARKER)
+        and not (_base_category(category) == "rpc_error" and baseline_results[i] == ERROR_MARKER)
     ]
     if disputed:
         print(f"  compare: re-verifying {len(disputed)} disagreement(s) serially", flush=True)
@@ -305,13 +309,13 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
 
     for index, (category, actual) in enumerate(replayed, start=1):
         expected = baseline_results[index - 1]
-        if category == "transport_failure":
+        if _base_category(category) == "transport_failure":
             report["candidate_transport_failures"] += 1
             diverge(index, "candidate_transport_failure")
-        elif category == "invalid_response":
+        elif _base_category(category) == "invalid_response":
             report["candidate_invalid_responses"] += 1
             diverge(index, "candidate_invalid_response")
-        elif category == "rpc_error":
+        elif _base_category(category) == "rpc_error":
             if expected == ERROR_MARKER:
                 report["both_rpc_errors"] += 1
             else:
@@ -374,6 +378,11 @@ def _progress(done: int, total: int, started: float, what: str) -> None:
           f"{rate:.0f} req/s, ~{eta / 60:.1f} min left", flush=True)
 
 
+def _base_category(category: str | None) -> str | None:
+    """Strip the ':code' suffix so existing outcome comparisons stay exact."""
+    return category.split(":", 1)[0] if category else category
+
+
 def _timed_post(url: str, index: int, params: list) -> tuple[float, str]:
     """POST one eth_call and return (elapsed_ms, outcome). Never raises."""
     started = time.perf_counter()
@@ -398,6 +407,7 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
     head, chain_id = _node_identity(rpc_url)
 
     grid: list[list[float | None]] = [[None] * passes for _ in range(total_records)]
+    status: list[list[str]] = [[""] * passes for _ in range(total_records)]
     outcomes: dict[str, int] = {}
     lock = threading.Lock()
     started_at = time.perf_counter()
@@ -412,6 +422,7 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
         elapsed, outcome = _timed_post(rpc_url, record + 1, params_list[record])
         with lock:
             grid[record][current_pass] = elapsed
+            status[record][current_pass] = outcome
             outcomes[outcome] = outcomes.get(outcome, 0) + 1
 
     schedule = [(p * total_records + i, i, p) for p in range(passes) for i in range(total_records)]
@@ -425,11 +436,16 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["record_index"] + [f"pass_{p + 1}_ms" for p in range(passes)])
+        header = ["record_index"]
+        for p in range(passes):
+            header += [f"pass_{p + 1}_ms", f"pass_{p + 1}_status"]
+        writer.writerow(header)
         for record in range(total_records):
-            writer.writerow([record + 1] + [
-                "" if v is None else f"{v:.3f}" for v in grid[record]
-            ])
+            row: list[str] = [str(record + 1)]
+            for p in range(passes):
+                value = grid[record][p]
+                row += ["" if value is None else f"{value:.3f}", status[record][p]]
+            writer.writerow(row)
 
     achieved = issued / wall if wall > 0 else 0.0
     summary = ", ".join(f"{k}={v}" for k, v in sorted(outcomes.items()))
@@ -438,6 +454,12 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
     print(f"  wall {wall:.1f}s, achieved {achieved:.1f} rps"
           + (f" (target {rps:g})" if rps > 0 else " (unpaced)"))
     print(f"  outcomes: {summary}")
+    failed = sum(v for k, v in outcomes.items() if k != "ok")
+    if failed:
+        share = failed / issued * 100
+        print(f"  WARNING: {failed}/{issued} ({share:.1f}%) did not return a result — "
+              f"latency percentiles over this matrix are NOT comparable to a clean run, "
+              f"because failures return early and pull every percentile down", flush=True)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

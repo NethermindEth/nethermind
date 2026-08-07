@@ -170,17 +170,33 @@ class CorpusParityTests(unittest.TestCase):
             corpus_parity.timings(str(corpus), server.url, str(out_csv),
                                   passes=4, rps=0.0, concurrency=4)
         rows = list(csv.reader(out_csv.read_text(encoding="utf-8").splitlines()))
-        # header + one row per record; one column per pass, all populated
-        self.assertEqual(rows[0], ["record_index", "pass_1_ms", "pass_2_ms", "pass_3_ms", "pass_4_ms"])
+        # header + one row per record; each pass contributes a duration AND an outcome, so a
+        # failing run can never be mistaken for a fast one by a reader of the matrix alone.
+        self.assertEqual(rows[0], ["record_index",
+                                   "pass_1_ms", "pass_1_status", "pass_2_ms", "pass_2_status",
+                                   "pass_3_ms", "pass_3_status", "pass_4_ms", "pass_4_status"])
         self.assertEqual(len(rows), 4)
         for position, row in enumerate(rows[1:], start=1):
             self.assertEqual(row[0], str(position))
-            self.assertEqual(len(row), 5)
-            for cell in row[1:]:
-                self.assertGreaterEqual(float(cell), 0.0)
+            self.assertEqual(len(row), 9)
+            for pass_index in range(4):
+                self.assertGreaterEqual(float(row[1 + pass_index * 2]), 0.0)
+                self.assertEqual(row[2 + pass_index * 2], "ok")
         self.assertNotIn(SENTINEL, out_csv.read_text(encoding="utf-8"))
         self.assertNotIn(SENTINEL, out.getvalue())
         self.assertIn("3 records x 4 passes = 12 requests", out.getvalue())
+
+    def test_timings_records_failures_per_record_and_warns(self):
+        """A load-shedding node must be visible in the matrix, not just in a stdout aggregate."""
+        corpus = self.write_corpus(4)
+        out_csv = self.dir / "timings.csv"
+        with RpcServer(lambda i: ("error",) if i % 2 == 0 else "0x00") as server,                 contextlib.redirect_stdout(io.StringIO()) as out:
+            corpus_parity.timings(str(corpus), server.url, str(out_csv), passes=1, rps=0.0, concurrency=2)
+        rows = list(csv.reader(out_csv.read_text(encoding="utf-8").splitlines()))
+        statuses = [row[2] for row in rows[1:]]
+        self.assertTrue(any(s.startswith("rpc_error") for s in statuses), statuses)
+        self.assertIn("ok", statuses)
+        self.assertIn("did not return a result", out.getvalue())
 
     def test_timings_paces_to_the_requested_rate(self):
         corpus = self.write_corpus(5)
