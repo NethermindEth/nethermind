@@ -331,6 +331,13 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
+        // Cap for the allocation retry backoff. A shallow-sleep wake-up is time-based and never fires
+        // _signal, so this retry delay is the only path that notices it, and AllocateAndRun passes an
+        // unbounded budget that would otherwise let the backoff grow without limit.
+        private const int MaxAllocationWaitTimeMs = 1000;
+
+        internal static int GetAllocationWaitTime(int tryCount) => (int)Math.Min(10L * tryCount, MaxAllocationWaitTimeMs);
+
         public async Task<SyncPeerAllocation> Allocate(
             IPeerAllocationStrategy peerAllocationStrategy,
             AllocationContexts allocationContexts = AllocationContexts.All,
@@ -365,7 +372,7 @@ namespace Nethermind.Synchronization.Peers
                                       || elapsedMilliseconds > timeoutMilliseconds;
                 if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
 
-                int waitTime = 10 * tryCount++;
+                int waitTime = GetAllocationWaitTime(tryCount++);
                 waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
 
                 if (waitTime > 0)

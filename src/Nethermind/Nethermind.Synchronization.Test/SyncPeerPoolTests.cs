@@ -135,6 +135,16 @@ public class SyncPeerPoolTests
             throw new NotImplementedException();
     }
 
+    // Peer wake-up from shallow sleep is time-based and does not signal waiting allocations,
+    // so the retry delay must stay bounded or a long-peerless node reacts arbitrarily late.
+    [TestCase(1, 10)]
+    [TestCase(50, 500)]
+    [TestCase(100, 1000)]
+    [TestCase(10_000, 1000)]
+    [TestCase(int.MaxValue, 1000)]
+    public void Allocate_retry_backoff_is_capped(int tryCount, int expectedWaitTime) =>
+        Assert.That(SyncPeerPool.GetAllocationWaitTime(tryCount), Is.EqualTo(expectedWaitTime));
+
     [Test]
     public async Task Cannot_add_when_not_started()
     {
