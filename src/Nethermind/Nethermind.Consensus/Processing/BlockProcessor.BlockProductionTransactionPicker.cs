@@ -60,6 +60,11 @@ namespace Nethermind.Consensus.Processing
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
+                if (transactionsInBlock.Contains(currentTx))
+                {
+                    return args.Set(TxAction.Skip, "Transaction already in block");
+                }
+
                 // A frame transaction's GasLimit is only the sum of its frame gas limits, so gating on it alone would
                 // let the produced block exceed its own gas limit. A transaction that cannot be priced never fits.
                 ulong txGasBudget = !currentTx.SupportsFrames
@@ -71,11 +76,6 @@ namespace Nethermind.Consensus.Processing
                 if (txGasBudget > gasRemaining)
                 {
                     return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {txGasBudget} > {gasRemaining}");
-                }
-
-                if (transactionsInBlock.Contains(currentTx))
-                {
-                    return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
                 if (currentTx.IsAboveInitCode(spec))
