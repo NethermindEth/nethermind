@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -26,6 +27,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -2197,6 +2199,102 @@ namespace Nethermind.TxPool.Test
             {
                 peer.DidNotReceive().SendNewTransaction(frameTx);
             }
+        }
+
+        // A protocol-validated signature is invalid for every future chain state, so pooling one and
+        // gossiping it costs peers work they must repeat and can only end in a peer-side rejection.
+        [TestCase(FrameSignatureDefect.None, true)]
+        [TestCase(FrameSignatureDefect.HighS, false)]
+        [TestCase(FrameSignatureDefect.LegacyRecoveryId, false)]
+        [TestCase(FrameSignatureDefect.ForeignSigner, false)]
+        public void Frame_transaction_signatures_are_verified_at_ingress(FrameSignatureDefect defect, bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            frameTx.FrameSignatures = [FrameSignature(frameTx, defect)];
+            frameTx.Hash = frameTx.CalculateHash();
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+        }
+
+        // The pool must reach the same verdict as the processor: the EVM resolves P256VERIFY through the
+        // code-info repository, so gating it on a fork flag here would refuse — and disconnect the peer
+        // over — a transaction the processor accepts.
+        [TestCase(true, false, true, TestName = "P256VERIFY reached through EIP-7951")]
+        [TestCase(false, true, true, TestName = "P256VERIFY reached through RIP-7212")]
+        [TestCase(false, false, false, TestName = "P256VERIFY absent from the active precompiles")]
+        public void Frame_transaction_with_a_valid_p256_signature_is_pooled(bool eip7951, bool rip7212, bool expectedAccepted)
+        {
+            OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip7951Enabled = eip7951, IsRip7212Enabled = rip7212 };
+            _txPool = CreatePool(null, new TestSpecProvider(spec));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            frameTx.FrameSignatures = [P256Signature(frameTx)];
+            frameTx.Hash = frameTx.CalculateHash();
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result == AcceptTxResult.Accepted, Is.EqualTo(expectedAccepted), result.ToString());
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
+            }
+        }
+
+        private static TxFrameSignature P256Signature(Transaction tx)
+        {
+            using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            ECPoint q = key.ExportParameters(false).Q;
+            byte[] publicKey = [.. q.X!, .. q.Y!];
+            Address signer = new(Keccak.Compute(publicKey).Bytes[12..]);
+
+            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, default)];
+            byte[] signature = key.SignHash(FrameTxSigHash.ComputeValue(tx).Bytes);
+
+            UInt256 s = new(signature.AsSpan(32, 32), isBigEndian: true);
+            if (s > SecP256r1Curve.HalfN)
+            {
+                (SecP256r1Curve.N - s).ToBigEndian(signature.AsSpan(32, 32));
+            }
+
+            byte[] raw = [.. signature, .. publicKey];
+            return new TxFrameSignature(TxFrameSignature.SchemeP256, signer, default, raw);
+        }
+
+        public enum FrameSignatureDefect { None, HighS, LegacyRecoveryId, ForeignSigner }
+
+        private static TxFrameSignature FrameSignature(Transaction tx, FrameSignatureDefect defect)
+        {
+            PrivateKey key = defect == FrameSignatureDefect.ForeignSigner ? TestItem.PrivateKeyB : TestItem.PrivateKeyA;
+            Address signer = TestItem.PrivateKeyA.Address;
+            // compute_sig_hash covers the entry's scheme/signer/msg and elides only the raw bytes, so
+            // the hash is taken with the entry already installed.
+            tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, default)];
+            Signature signature = new Ecdsa().Sign(key, FrameTxSigHash.ComputeValue(tx));
+
+            byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            bytes[0] = signature.RecoveryId;
+            signature.Bytes.CopyTo(bytes.AsSpan(1));
+
+            switch (defect)
+            {
+                case FrameSignatureDefect.HighS:
+                    bytes[0] ^= 1;
+                    UInt256 s = new(bytes.AsSpan(33, 32), isBigEndian: true);
+                    (SecP256k1Curve.N - s).ToBigEndian(bytes.AsSpan(33, 32));
+                    break;
+                case FrameSignatureDefect.LegacyRecoveryId:
+                    bytes[0] += 27;
+                    break;
+            }
+
+            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, bytes);
         }
 
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null)
