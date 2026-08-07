@@ -7,6 +7,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -410,6 +411,50 @@ namespace Nethermind.Blockchain.Test
             Assert.That(selectedTransactions, Has.Length.EqualTo(2));
             Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
             Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+        }
+
+        // EIP-8141: a frame transaction's GasLimit is only the sum of its frame gas limits, so the picker must gate on
+        // max_gas or the produced block exceeds its own gas limit. The mandatory cost of the single frame below is
+        // FRAME_TX_INTRINSIC_COST + FRAME_TX_PER_FRAME_COST = 15,475, and each non-zero calldata byte adds 16 to the
+        // standard cost against 40 to the EIP-7623 floor, so the last case fits the block on its standard cost alone.
+        [TestCase(100_000UL, 0, false)]
+        [TestCase(115_000UL, 0, true)]
+        [TestCase(10_000UL, 4000, true)]
+        public void Frame_transaction_is_gated_on_its_max_gas(ulong frameGasLimit, int frameDataLength, bool expectedSkipped)
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+
+            byte[] frameData = Enumerable.Repeat((byte)1, frameDataLength).ToArray();
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                Nonce = 0,
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
+                FrameSignatures = [],
+                GasLimit = frameGasLimit,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+            };
+            frameTx.Hash = frameTx.CalculateHash();
+
+            Block block = Build.A.Block.WithGasLimit(130_000).WithTransactions([frameTx]).TestObject;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Bogota.Instance);
+            BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
+
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider);
+
+            if (expectedSkipped)
+            {
+                Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+                Assert.That(args.Reason, Does.StartWith("Not enough gas in block"));
+            }
+            else
+            {
+                Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add), args.Reason);
+            }
         }
 
         private static Transaction[] RunBlockProduction(

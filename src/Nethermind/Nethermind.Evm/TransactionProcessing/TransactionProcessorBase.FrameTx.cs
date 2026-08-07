@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
@@ -57,22 +56,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}");
         }
 
-        // Spec gas: tx_gas_limit = intrinsic + per-frame + calldata + signature verification
-        // + sum(frame.gas_limit); the sum is overflow-checked so the processor does not depend
-        // on static validation having run.
-        ulong intrinsicGas = CalculateFrameTxIntrinsicGas(tx, frames, spec, out ulong floorGas);
-        ulong totalFrameGas = 0;
+        // The frame gas sum is overflow-checked so the processor does not depend on static validation
+        // having run.
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
+        }
+
         bool prevIsAtomicBatch = false;
         foreach (TxFrame frame in frames)
         {
-            ulong accumulated = totalFrameGas + frame.GasLimit;
-            if (accumulated < totalFrameGas)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("total frame gas overflows");
-            }
-
-            totalFrameGas = accumulated;
-
             // Enforced here, not only in static validation, so unvalidated entry points (e.g. eth_call)
             // cannot mint ETH: EIP-8141 forbids approval scope on a frame belonging to an atomic batch.
             if ((frame.IsAtomicBatch || prevIsAtomicBatch) && frame.AllowedApproveScope != 0)
@@ -82,16 +75,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             prevIsAtomicBatch = frame.IsAtomicBatch;
         }
-
-        ulong txGasLimit = intrinsicGas + totalFrameGas;
-        if (txGasLimit < intrinsicGas)
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
-        }
-
-        // max_gas: frames reserving less than the calldata floor raise the reservation rather than
-        // invalidate the transaction. The headroom is reserved and refunded, never spendable.
-        txGasLimit = Math.Max(txGasLimit, floorGas);
 
         // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
         // max_fee_per_gas plus blob cost, not the effective price, so it is not under-reserved.
@@ -386,62 +369,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         return logs;
-    }
-
-    /// <summary>
-    /// FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST + calldata cost of frame data
-    /// and signature fields + per-scheme signature verification cost.
-    /// </summary>
-    /// <remarks>
-    /// The rate and token weighting behind <paramref name="floorGas"/> are resolved from the spec, as
-    /// <see cref="IntrinsicGasCalculator.CalculateFloorCost"/> does, so a frame transaction's floor
-    /// cannot diverge from an ordinary transaction's under the same fork.
-    /// </remarks>
-    /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
-    private static ulong CalculateFrameTxIntrinsicGas(Transaction tx, TxFrame[] frames, IReleaseSpec spec, out ulong floorGas)
-    {
-        ulong tokens = 0;
-        ulong dataLength = 0;
-        foreach (TxFrame frame in frames)
-        {
-            tokens += CountCalldataTokens(frame.Data.Span, spec);
-            dataLength += (ulong)frame.Data.Length;
-        }
-
-        ulong signatureVerificationCost = 0;
-        TxFrameSignature[]? signatures = tx.FrameSignatures;
-        if (signatures is not null)
-        {
-            foreach (TxFrameSignature signature in signatures)
-            {
-                tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
-                tokens += CountCalldataTokens(signature.Msg.Span, spec);
-                tokens += CountCalldataTokens(signature.Signature.Span, spec);
-                dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
-                              + (ulong)signature.Msg.Length
-                              + (ulong)signature.Signature.Length;
-                signatureVerificationCost += signature.Scheme switch
-                {
-                    TxFrameSignature.SchemeArbitrary => Eip8141Constants.ArbitraryVerificationGasCost,
-                    TxFrameSignature.SchemeSecp256k1 => Eip8141Constants.Secp256k1VerificationGasCost,
-                    TxFrameSignature.SchemeP256 => Eip8141Constants.P256VerificationGasCost,
-                    _ => 0,
-                };
-            }
-        }
-
-        ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
-                             + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
-                             + signatureVerificationCost;
-        ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
-        floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
-        return mandatoryGas + tokens * GasCostOf.TxDataZero;
-    }
-
-    private static ulong CountCalldataTokens(ReadOnlySpan<byte> data, IReleaseSpec spec)
-    {
-        int zeros = data.CountZeros();
-        return (ulong)zeros + (ulong)(data.Length - zeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
