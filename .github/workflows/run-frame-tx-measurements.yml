@@ -13,6 +13,10 @@ on:
           - mempool
         default: both
 
+# Deliberately deviates from the repo default: the group carries no `github.ref`
+# and in-progress runs are not cancelled, so dispatches queue instead of
+# contending for the single shared measurement runner. Do not "fix" this back to
+# the PR-workflow default -- two concurrent runs would distort each other's numbers.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
