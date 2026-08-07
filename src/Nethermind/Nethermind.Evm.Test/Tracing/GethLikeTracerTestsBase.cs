@@ -14,7 +14,7 @@ public abstract class GethLikeTracerTestsBase : VirtualMachineTestsBase
     protected byte[] ClearSstoreCode()
     {
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), [1]);
         TestState.Commit(Spec);
 
         return Prepare.EvmCode
@@ -57,7 +57,7 @@ public abstract class GethLikeTracerTestsBase : VirtualMachineTestsBase
         TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
 
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
+        TestState.Set(new StorageCell(Recipient, 0), [1]);
         TestState.Commit(Spec);
 
         return Prepare.EvmCode
