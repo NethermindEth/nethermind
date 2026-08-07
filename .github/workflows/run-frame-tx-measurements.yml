@@ -1,0 +1,86 @@
+name: Run Frame Transaction Measurements
+
+on:
+  workflow_dispatch:
+    inputs:
+      harness:
+        description: Which measurement harness to run
+        required: true
+        type: choice
+        options:
+          - both
+          - verify
+          - mempool
+        default: both
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Measure the frame-transaction validation prefix
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Run measurement harnesses
+        id: measure
+        working-directory: src/Nethermind
+        env:
+          HARNESS: ${{ inputs.harness }}
+        run: |
+          set -euo pipefail
+          output_dir="${RUNNER_TEMP}/frame-tx-measurements"
+          mkdir -p "${output_dir}"
+
+          run_harness() {
+            local project=$1 fixture=$2
+            if [[ ! -f "${project}/${fixture}.cs" ]]; then
+              echo "::error::${fixture} is not present on ${GITHUB_REF_NAME}. Dispatch this workflow against a ref that carries the harness."
+              exit 1
+            fi
+            echo "::group::${fixture}"
+            dotnet test --project "${project}/${project}.csproj" -c release -- \
+              --filter "FullyQualifiedName~${fixture}" \
+              | tee "${output_dir}/${fixture}.txt"
+            echo "::endgroup::"
+          }
+
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "verify" ]]; then
+            run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement
+          fi
+          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
+            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement
+          fi
+
+          echo "output_dir=${output_dir}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish the reported figures to the run summary
+        if: always()
+        run: |
+          set -euo pipefail
+          output_dir="${RUNNER_TEMP}/frame-tx-measurements"
+          for report in "${output_dir}"/*.txt; do
+            [[ -f "${report}" ]] || continue
+            {
+              echo "## $(basename "${report}" .txt)"
+              echo '```'
+              cat "${report}"
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+          done
+
+      - name: Upload the measurement output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frame-tx-measurements
+          path: ${{ runner.temp }}/frame-tx-measurements/
+          if-no-files-found: warn
+          retention-days: 30
