@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Collections.Pooled;
 using Nethermind.Core.Caching;
@@ -904,7 +905,35 @@ public sealed class KademliaAdapter(
             DiscoveryV5App.IsDiscoveryAddressAcceptable(node.DiscoveryAddress.Address, allowNonRoutable);
 
     internal static bool HasDiscoveryEndpoint(NodeRecord record, IPEndPoint endpoint)
-        => record.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) && discoveryEndpoint.Equals(endpoint);
+    {
+        IPAddress endpointAddress = endpoint.Address;
+        if (endpointAddress.AddressFamily == AddressFamily.InterNetworkV6 && !endpointAddress.IsIPv4MappedToIPv6)
+        {
+            return record.GetObj<IPAddress>(EnrContentKey.Ip6)?.Equals(endpointAddress) == true &&
+                   HasIPv6Port(record, endpoint.Port);
+        }
+
+        IPAddress endpointIpV4 = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
+        return record.GetObj<IPAddress>(EnrContentKey.Ip)?.MapToIPv4().Equals(endpointIpV4) == true &&
+               HasPort(record, EnrContentKey.Udp, endpoint.Port);
+    }
+
+    private static bool HasIPv6Port(NodeRecord record, int expectedPort)
+    {
+        int? port = GetValidPort(record, EnrContentKey.Udp6);
+        return port is not null
+            ? port == expectedPort
+            : HasPort(record, EnrContentKey.Udp, expectedPort);
+    }
+
+    private static bool HasPort(NodeRecord record, string portKey, int expectedPort)
+        => GetValidPort(record, portKey) == expectedPort;
+
+    private static int? GetValidPort(NodeRecord record, string portKey)
+    {
+        int? port = record.GetValue<int>(portKey);
+        return port is > 0 && (uint)port.Value <= ushort.MaxValue ? port.Value : null;
+    }
 
     internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -50,7 +51,21 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             localIp = IPAddress.Loopback;
         }
 
-        return new IIPResolver.NethermindIp(localIp, await ResolveExternalIp(cancellationToken));
+        IPAddress? configuredExternalIp = TryGetExternalIpOverride(_networkConfig.ExternalIp, nameof(NetworkConfig.ExternalIp), expectedFamily: null);
+        IPAddress? configuredExternalIpV4 = TryGetExternalIpOverride(_networkConfig.ExternalIpV4, nameof(NetworkConfig.ExternalIpV4), AddressFamily.InterNetwork);
+        IPAddress? configuredExternalIpV6 = TryGetExternalIpOverride(_networkConfig.ExternalIpV6, nameof(NetworkConfig.ExternalIpV6), AddressFamily.InterNetworkV6);
+
+        IPAddress externalIp = configuredExternalIp
+            ?? configuredExternalIpV4
+            ?? configuredExternalIpV6
+            ?? await ResolveExternalIp(cancellationToken);
+
+        if (!IsUnspecified(externalIp))
+        {
+            ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
+        }
+
+        return new IIPResolver.NethermindIp(localIp, externalIp, configuredExternalIpV4, configuredExternalIpV6);
     }
 
     private async Task<IPAddress> ResolveExternalIp(CancellationToken cancellationToken)
@@ -88,7 +103,6 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     {
         IEnumerable<IIPSource> GetIPSources()
         {
-            yield return new NetworkConfigExternalIPSource(_networkConfig, logManager);
             yield return new WebIPSource("http://ipv4.icanhazip.com", logManager);
             yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", logManager);
             yield return new WebIPSource("http://checkip.amazonaws.com", logManager);
@@ -115,6 +129,58 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
 
         return IPAddress.Any;
     }
+
+    private IPAddress? TryGetExternalIpOverride(string? ipOverride, string configName, AddressFamily? expectedFamily)
+    {
+        if (ipOverride is null)
+        {
+            return null;
+        }
+
+        if (!IPAddress.TryParse(ipOverride, out IPAddress? ipAddress))
+        {
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} has incorrect format.");
+            return null;
+        }
+
+        IPAddress? normalizedIp = NormalizeExternalIpOverride(ipAddress, expectedFamily);
+        if (normalizedIp is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} cannot be used as an external IP.");
+            return null;
+        }
+
+        if (_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride}");
+        return normalizedIp;
+    }
+
+    private static IPAddress? NormalizeExternalIpOverride(IPAddress ipAddress, AddressFamily? expectedFamily)
+    {
+        if (IsUnspecified(ipAddress))
+        {
+            return null;
+        }
+
+        return expectedFamily switch
+        {
+            AddressFamily.InterNetwork => ipAddress.AddressFamily switch
+            {
+                AddressFamily.InterNetwork => ipAddress,
+                AddressFamily.InterNetworkV6 when ipAddress.IsIPv4MappedToIPv6 => ipAddress.MapToIPv4(),
+                _ => null
+            },
+            AddressFamily.InterNetworkV6 => ipAddress.AddressFamily == AddressFamily.InterNetworkV6 && !ipAddress.IsIPv4MappedToIPv6
+                ? ipAddress
+                : null,
+            _ => ipAddress
+        };
+    }
+
+    private static bool IsUnspecified(IPAddress ipAddress)
+        => ipAddress.Equals(IPAddress.Any)
+           || ipAddress.Equals(IPAddress.IPv6Any)
+           || ipAddress.Equals(IPAddress.None)
+           || ipAddress.Equals(IPAddress.IPv6None);
 
     private async Task<IPAddress> InitializeLocalIp()
     {
