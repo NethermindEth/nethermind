@@ -53,7 +53,7 @@ PARITY_LABEL_FIELDS = ("baseline_client", "candidate_client")
 
 # Reports also carry the 1-based corpus indexes of divergent records (capped) so the corpus
 # OWNER can look the calls up in their copy — an index is positional metadata, not content.
-MAX_DIVERGENCE_INDEXES = 200
+MAX_DIVERGENCE_INDEXES = int(os.environ.get("RPC_BENCH_MAX_DIVERGENCE_INDEXES", "200"))
 
 # Baseline outcome marker for a call the baseline client rejected with a JSON-RPC error.
 # Deliberately not valid hex so it can never collide with a result string; the error
@@ -254,8 +254,45 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
         print(f"baseline rpc_error indexes (first {min(len(error_indexes), 40)}): {' '.join(error_indexes[:40])}")
 
 
+# Opt-in: characterise each divergence word by word. This derives from response bytes, so it is
+# off unless a path is given, and it stores a bounded structural summary (lengths, which 32-byte
+# words differ, their values) rather than whole responses.
+MAX_DIFF_WORDS = 8
+
+
+def _describe_divergence(index: int, expected: str, actual: str) -> dict:
+    """Word-level characterisation of one baseline/candidate disagreement."""
+    exp = expected[2:] if expected.startswith("0x") else expected
+    act = actual[2:] if actual.startswith("0x") else actual
+    entry: dict = {
+        "index": index,
+        "baseline_bytes": len(exp) // 2,
+        "candidate_bytes": len(act) // 2,
+        "baseline_all_zero": bool(exp) and set(exp) == {"0"},
+        "candidate_all_zero": bool(act) and set(act) == {"0"},
+    }
+    words = []
+    for word in range(max(len(exp), len(act)) // 64 + 1):
+        a, b = exp[word * 64:(word + 1) * 64], act[word * 64:(word + 1) * 64]
+        if a == b or (not a and not b):
+            continue
+        item = {"word": word, "baseline": a, "candidate": b}
+        # Numeric delta: a fee- or balance-shaped difference shows up as a clean integer gap.
+        try:
+            if a and b:
+                item["delta"] = str(int(b or "0", 16) - int(a or "0", 16))
+        except ValueError:
+            pass
+        words.append(item)
+        if len(words) >= MAX_DIFF_WORDS:
+            break
+    entry["differing_words"] = words
+    entry["total_differing_words"] = len(words)
+    return entry
+
+
 def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
-            baseline_client: str, candidate_client: str) -> bool:
+            baseline_client: str, candidate_client: str, diffs_path: str | None = None) -> bool:
     """Replay the corpus against a candidate node and diff against the stored baseline."""
     params_list = load_corpus(corpus)
     try:
@@ -281,6 +318,8 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
     report = {field: 0 for field in PARITY_COUNTER_FIELDS}
     report["total"] = len(params_list)
     divergences: list[dict[str, int | str]] = []
+
+    diff_records: list[dict] = []
 
     def diverge(index: int, kind: str) -> None:
         if len(divergences) < MAX_DIVERGENCE_INDEXES:
@@ -339,6 +378,8 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         else:
             report["content_mismatches"] += 1
             diverge(index, "content_mismatch")
+            if diffs_path:
+                diff_records.append(_describe_divergence(index, expected, actual))
 
     document = {"baseline_client": baseline_client, "candidate_client": candidate_client,
                 "divergences": divergences, **report}
@@ -481,6 +522,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     compare_parser.add_argument("--report", required=True, help="counts-only report destination (safe to publish)")
     compare_parser.add_argument("--baseline-client", required=True)
     compare_parser.add_argument("--candidate-client", required=True)
+    compare_parser.add_argument("--diffs", default=None,
+                                help="optional: characterise each content mismatch word by word "
+                                     "(derived from response bytes — opt in deliberately)")
 
     timings_parser = subparsers.add_parser(
         "timings", help="replay the corpus N times and write a record x pass latency matrix")
@@ -505,7 +549,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         clean = compare(
             arguments.corpus, arguments.rpc_url, arguments.state, arguments.report,
-            arguments.baseline_client, arguments.candidate_client,
+            arguments.baseline_client, arguments.candidate_client, arguments.diffs,
         )
         return 0 if clean else 1
     except CorpusParityError as error:
