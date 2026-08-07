@@ -921,6 +921,16 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
+    /// <summary>Builds a chain on the Amsterdam fork with the EIP-7928 block-access-list path active.</summary>
+    private static async Task<TestRpcBlockchain> BuildAmsterdamBalChain()
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance);
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        // Pin the EIP-7928 premise so a spec change can't silently turn these into non-BAL tests.
+        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+        return await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+    }
+
     /// <summary>
     /// Regression test for #12692: under EIP-7928 the block-access-list path must route its tx
     /// processors through the simulate adapter, so the simulate gas accounting still runs. Without
@@ -930,11 +940,7 @@ public class EthSimulateTestsBlocksAndTransactions
     [Test]
     public async Task eth_simulateV1_reports_block_gas_used_on_bal_path()
     {
-        OverridableReleaseSpec spec = new(Amsterdam.Instance);
-        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
-        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
-
-        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
 
         // Explicit Gas avoids the EIP-8037 block-gas default (#12692 item 1); zero gas price keeps
         // the funded transfer unambiguously successful.
@@ -975,11 +981,7 @@ public class EthSimulateTestsBlocksAndTransactions
     [TestCase(false, null, TestName = "validation=false skips nonce validation on BAL path")]
     public async Task eth_simulateV1_honours_validation_flag_on_bal_path(bool validation, int? expectedErrorCode)
     {
-        OverridableReleaseSpec spec = new(Amsterdam.Instance);
-        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
-        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
-
-        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
 
         // Funded sender, zero gas price (no fee pre-validation), but a nonce far ahead of the account's:
         // only skipped validation (Trace) lets it through.
@@ -1026,14 +1028,12 @@ public class EthSimulateTestsBlocksAndTransactions
     [Test]
     public async Task eth_simulateV1_enforces_gas_cap_across_calls_on_bal_path()
     {
-        OverridableReleaseSpec spec = new(Amsterdam.Instance);
-        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
-        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
 
-        Assert.That(spec.BlockLevelAccessListsEnabled, Is.True);
-
-        // GasCap covers barely more than one 21k transfer: after the first call the remaining budget
-        // is below intrinsic gas, so the second call's clamped gas limit is rejected.
+        // Under Amsterdam (EIP-2780) the intrinsic for this value-free transfer is TX_BASE_COST 12000 +
+        // cold-account 2600 = 14600. With GasCap 20000 the first call leaves 5400 < 14600, so the second
+        // call — clamped to the remaining budget — is rejected below intrinsic. (Pinned so a reprice that
+        // pushes two calls under the cap can't silently make this pass without exercising the clamp.)
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =

@@ -3,9 +3,11 @@
 
 namespace Nethermind.Evm.TransactionProcessing;
 
-/// <summary>Builds the <see cref="ITransactionProcessorAdapter"/> wrapping a given tx processor.</summary>
+/// <summary>Builds the <see cref="ITransactionProcessorAdapter"/> wrapping the block-access-list pool's tx processors.</summary>
 /// <remarks>
-/// Registered explicitly per scope (default <see cref="ExecuteTransactionProcessorAdapter"/> on the block-processing
-/// path, the simulate adapter on the <c>eth_simulate</c> path), so callers select the adapter behaviour by scope.
+/// The block-processing scope registers the default (<see cref="ExecuteTransactionProcessorAdapter"/>); a scope that
+/// needs different per-transaction behaviour on the EIP-7928 BAL path registers its own. This does not cover scopes
+/// that merely override <see cref="ITransactionProcessorAdapter"/> (trace, proof, block production, …) — those still
+/// get the default here on the BAL path.
 /// </remarks>
 public delegate ITransactionProcessorAdapter TransactionProcessorAdapterFactory(ITransactionProcessor transactionProcessor);

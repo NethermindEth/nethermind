@@ -28,7 +28,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         ProcessingOptions.ForceProcessing
         | ProcessingOptions.IgnoreParentNotOnMainChain
         | ProcessingOptions.MarkAsProcessed
-        | ProcessingOptions.StoreReceipts;
+        | ProcessingOptions.StoreReceipts
+        // Keep the EIP-7928 BAL manager on its sequential path: the stateful SimulateTransactionProcessorAdapter
+        // must never run on the parallel pool. (Simulate also attaches no BlockAccessList, which already forces
+        // this, but the flag makes the guarantee explicit and independent of that.)
+        | ProcessingOptions.ForceSequentialBlockAccessList;
 
     private void PrepareState(
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
