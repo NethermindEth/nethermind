@@ -151,6 +151,10 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
+            // EIP8141: blob-carrying frame txs live in the blob pool, so its inserts/removals must feed the
+            // same delegation and frame-expiry bookkeeping as the normal pool.
+            _blobTransactions.Inserted += OnInsertedTx;
+            _blobTransactions.Removed += OnRemovedTx;
             if (_blobTransactions.Count > 0)
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
@@ -358,7 +362,7 @@ namespace Nethermind.TxPool
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = txs[i];
-                    if (tx.SupportsBlobs)
+                    if (tx.CarriesBlobs)
                     {
                         continue;
                     }
@@ -411,7 +415,7 @@ namespace Nethermind.TxPool
                     eip7702Txs++;
                 }
 
-                if (blockTx.SupportsBlobs)
+                if (blockTx.CarriesBlobs)
                 {
                     blobTxs++;
                     blobs += (long)blockTx.GetBlobCount();
@@ -493,7 +497,13 @@ namespace Nethermind.TxPool
             }
 
             ulong timestamp = block.Timestamp;
-            Transaction[] snapshot = _transactions.GetSnapshot();
+            // Blob-carrying frame txs live in the blob pool, so both pools are scanned.
+            EvictExpiredFrameTransactions(_transactions.GetSnapshot(), timestamp);
+            EvictExpiredFrameTransactions(_blobTransactions.GetSnapshot(), timestamp);
+        }
+
+        private void EvictExpiredFrameTransactions(Transaction[] snapshot, ulong timestamp)
+        {
             for (int i = 0; i < snapshot.Length; i++)
             {
                 Transaction tx = snapshot[i];
@@ -647,7 +657,7 @@ namespace Nethermind.TxPool
                 // null-assignment (which would be missing the just-added tx).
                 if (accepted)
                 {
-                    if (tx.SupportsBlobs)
+                    if (tx.CarriesBlobs)
                         _blobTransactionSnapshot = null;
                     else
                         _transactionSnapshot = null;
@@ -704,7 +714,7 @@ namespace Nethermind.TxPool
         {
             bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
-            TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
+            TxDistinctSortedPool relevantPool = (tx.CarriesBlobs ? _blobTransactions : _transactions);
 
             relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
             tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
@@ -724,7 +734,7 @@ namespace Nethermind.TxPool
             if (tx.Hash == removed?.Hash)
             {
                 // it means it was added and immediately evicted - pool was full of better txs
-                if (!isPersistentBroadcast || tx.SupportsBlobs || !_broadcaster.Broadcast(tx, true))
+                if (!isPersistentBroadcast || tx.CarriesBlobs || !_broadcaster.Broadcast(tx, true))
                 {
                     // we are adding only to persistent broadcast - not good enough for standard pool,
                     // but can be good enough for TxBroadcaster pool - for local txs only
@@ -741,7 +751,7 @@ namespace Nethermind.TxPool
             Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
             Interlocked.Increment(ref _pendingTransactionsAdded);
             if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
-            if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
+            if (tx.CarriesBlobs) { Metrics.PendingBlobTransactionsAdded++; }
 
             if (removed is not null)
             {
@@ -879,7 +889,7 @@ namespace Nethermind.TxPool
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
                 updateTx(transactions, tx, null, lastElement);
                 // evict all following txs to prevent nonce gaps between blob tx
-                evictNextTxs |= tx.SupportsBlobs;
+                evictNextTxs |= tx.CarriesBlobs;
             }
         }
 
@@ -966,7 +976,11 @@ namespace Nethermind.TxPool
 
         public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob
             ? _blobTransactions.ContainsKey(hash)
-            : _transactions.ContainsKey(hash) || _broadcaster.ContainsTx(hash);
+            // EIP-8141: a blob-carrying frame tx lives in the blob pool; a plain frame tx in the normal
+            // pool. Without the instance we cannot tell them apart by type alone, so check both for type 6.
+            : _transactions.ContainsKey(hash)
+                || (txType == TxType.FrameTx && _blobTransactions.ContainsKey(hash))
+                || _broadcaster.ContainsTx(hash);
 
         public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
             _transactions.TryGetValue(hash, out transaction)
@@ -1055,6 +1069,8 @@ namespace Nethermind.TxPool
             _headBlocksChannel.Writer.Complete();
             _transactions.Inserted -= OnInsertedTx;
             _transactions.Removed -= OnRemovedTx;
+            _blobTransactions.Inserted -= OnInsertedTx;
+            _blobTransactions.Removed -= OnRemovedTx;
 
             await _retryCache.DisposeAsync();
             await _headProcessing;

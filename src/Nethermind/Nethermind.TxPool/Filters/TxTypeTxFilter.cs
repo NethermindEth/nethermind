@@ -13,7 +13,9 @@ public class TxTypeTxFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobT
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        TxDistinctSortedPool otherTxTypePool = tx.SupportsBlobs ? txs : blobTxs;
+        // EIP-8141: route on the instance-level blob gate so a blob-carrying frame tx is treated as a
+        // blob-pool member (conflicts with the sender's normal-pool txs), mirroring type-3 routing.
+        TxDistinctSortedPool otherTxTypePool = tx.CarriesBlobs ? txs : blobTxs;
         if (otherTxTypePool.ContainsBucket(tx.SenderAddress!)) // as unknownSenderFilter will run before this one
         {
             Metrics.PendingTransactionsConflictingTxType++;

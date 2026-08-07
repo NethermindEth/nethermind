@@ -415,8 +415,10 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void CanAddTransaction_skips_blob_carrying_frame_transaction()
         {
-            // EIP8141: block production does not yet meter blob-carrying frame txs against the block
-            // blob budget, so the picker excludes them conservatively to avoid self-invalidating a block.
+            // EIP8141: blob-carrying frame txs are routed to the blob pool and metered against the block
+            // blob budget by the blob-selection path, so they do not reach this normal-pool picker in the
+            // standard flow. The picker still excludes any that arrive here (defense in depth): without a
+            // resolvable EIP-7594 sidecar they cannot be produced with a complete blobs bundle.
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
