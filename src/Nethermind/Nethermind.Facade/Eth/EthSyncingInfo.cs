@@ -29,7 +29,14 @@ namespace Nethermind.Facade.Eth
 
         public SyncingResult GetFullInfo()
         {
-            (bool isSyncing, ulong headNumberOrZero, ulong bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
+            // CL-driven catch-up keeps Head close to BestSuggestedHeader while the beacon tip
+            // (BestSuggestedBeaconHeader) remains far ahead. Include that tip so eth_syncing does
+            // not report false for the entire forward sync (#12673). Same widening as TaikoEthSyncingInfo.
+            ulong headNumberOrZero = _blockTree.Head?.Number ?? 0;
+            ulong suggestedHeader = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
+            ulong beaconSuggestedHeader = _blockTree.BestSuggestedBeaconHeader?.Number ?? 0;
+            ulong bestSuggestedNumber = Math.Max(suggestedHeader, beaconSuggestedHeader);
+            bool isSyncing = bestSuggestedNumber == 0 || bestSuggestedNumber > headNumberOrZero + (ulong)MaxDistanceForSynced;
             SyncMode syncMode = _syncModeSelector.Current;
 
             if (_logger.IsTrace) _logger.Trace($"Start - EthSyncingInfo - BestSuggestedNumber: {bestSuggestedNumber}, HeadNumberOrZero: {headNumberOrZero}, IsSyncing: {isSyncing} {_syncConfig}. LowestInsertedBodyNumber: {_syncPointers.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_syncPointers.LowestInsertedReceiptBlockNumber}");
