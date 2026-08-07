@@ -781,18 +781,37 @@ public class SyncPeerPoolTests
         Assert.That(result, Is.SameAs(shouldFind ? requested : null));
     }
 
-    [Test]
-    public async Task Fetch_header_reports_a_peer_answering_with_a_different_block()
+    public enum PeerAnswer { RequestedBlock, DifferentBlock, Nothing }
+
+    /// <summary>
+    /// Substituting another block is a protocol breach and costs the peer its connection, but not having the
+    /// block is the normal answer while a head is unknown and must leave the peer alone.
+    /// </summary>
+    [TestCase(PeerAnswer.RequestedBlock, false)]
+    [TestCase(PeerAnswer.DifferentBlock, true)]
+    [TestCase(PeerAnswer.Nothing, false)]
+    public async Task Fetch_header_only_reports_a_peer_answering_with_a_different_block(PeerAnswer answer, bool shouldReport)
     {
         await using Context ctx = new();
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
 
         BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
-        peers[0].HeaderToReturn = Build.A.BlockHeader.WithNumber(20).TestObject;
+        switch (answer)
+        {
+            case PeerAnswer.RequestedBlock:
+                peers[0].HeaderToReturn = requested;
+                break;
+            case PeerAnswer.DifferentBlock:
+                peers[0].HeaderToReturn = Build.A.BlockHeader.WithNumber(20).TestObject;
+                break;
+            case PeerAnswer.Nothing:
+                peers[0].HeadHeaderUnavailable = true;
+                break;
+        }
 
         await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
 
-        Assert.That(peers[0].DisconnectRequested, Is.True);
+        Assert.That(peers[0].DisconnectRequested, Is.EqualTo(shouldReport));
     }
 
     [Test]
