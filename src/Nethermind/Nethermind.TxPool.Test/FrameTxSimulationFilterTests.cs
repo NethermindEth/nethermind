@@ -120,14 +120,14 @@ public class FrameTxSimulationFilterTests
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {
         FrameTxPayerFilter filter = new(state, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState filteringState = new(tx, state);
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx)
     {
         FrameTxSimulationFilter filter = new(state, simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState filteringState = new(tx, state);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }
