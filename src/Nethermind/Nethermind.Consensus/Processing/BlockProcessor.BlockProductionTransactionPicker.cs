@@ -68,11 +68,8 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                // EIP8141: blob-carrying frame transactions sit in the normal pool and are not yet
-                // metered against the block blob budget during production (deferred: blob-pool routing
-                // and blob-budget selection). Now that they count towards header.BlobGasUsed, an
-                // unguarded producer could exceed MaxBlobGasPerBlock and self-invalidate the block.
-                // Exclude them conservatively until block production tracks their blob gas.
+                // EIP-8141: block production does not yet meter blob-carrying frame txs against the block
+                // blob budget, so exclude them conservatively rather than risk exceeding MaxBlobGasPerBlock.
                 if (currentTx.Type == TxType.FrameTx && currentTx.BlobVersionedHashes is { Length: > 0 })
                 {
                     return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");

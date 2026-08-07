@@ -348,8 +348,7 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            // EIP-8141: a blob-carrying frame transaction (type 6) follows EIP-4844 too, so gate on the
-            // presence of blob hashes rather than the type-level SupportsBlobs (which is type-3 only).
+            // EIP-8141: gate on blob hashes, not the type-3-only SupportsBlobs, so blob-carrying frame txs also count.
             if (transaction.BlobVersionedHashes is not { Length: > 0 })
             {
                 continue;

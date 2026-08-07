@@ -112,8 +112,7 @@ public class FrameTxDecoderTests
     [Test]
     public void ComputeSigHash_MaxFeePerBlobGasChanges_HashChanges()
     {
-        // The blob fields are the last two elements of the signing preimage (matching EELS #3047's
-        // FrameTransaction layout); the signature must commit to them.
+        // The blob fields are part of the signing preimage, so the signature must commit to them.
         Transaction first = CreateFrameTx();
         first.MaxFeePerBlobGas = 7;
         Transaction second = CreateFrameTx();

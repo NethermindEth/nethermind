@@ -171,10 +171,8 @@ public static class FrameTxValidation
             return false;
         }
 
-        // The per-transaction blob-count limit (EIP-7594) and the versioned-hash version byte that EELS
-        // validate_frame_transaction applies to blob-carrying frame txs require the release spec, so they
+        // The EIP-7594 blob-count limit and versioned-hash version byte need the release spec, so they
         // are enforced by FrameTxFieldsTxValidator rather than in this stateless check.
-
         return true;
     }
 

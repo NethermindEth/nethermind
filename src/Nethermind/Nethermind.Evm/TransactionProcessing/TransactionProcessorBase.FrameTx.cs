@@ -84,17 +84,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // invalidate the transaction. The headroom is reserved and refunded, never spendable.
         txGasLimit = Math.Max(txGasLimit, floorGas);
 
-        // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
-        // max_fee_per_gas plus the blob fee, not the effective price, so it is not under-reserved.
-        // Settlement below still charges the effective price, so the payer's net gas cost is unchanged.
-        // Overflow-checked like BuyGas: premium <= max fee and spentGas <= txGasLimit, so bounding
-        // this product also bounds the settlement products (spentCost, fees) below.
-        //
-        // EIP-8141 (spec ~L492-499, ethereum/EIPs#11985): a blob-carrying frame tx follows EIP-4844 —
-        // the payer covers blob_gas × blob_base_fee, which is charged and burned (never refunded).
-        // Parity with EELS #3047: the blob leg of max_cost is priced at the actual blob_base_fee, not
-        // max_fee_per_blob_gas. The escrow the payer sees mid-transaction must match EELS, and the
-        // burned blob fee cancels against this term in the refund below.
+        // max_cost (TXPARAM 0x06) reserves at max_fee_per_gas plus the blob fee, not the effective
+        // price, so it is not under-reserved; settlement below charges the effective price. Bounded
+        // like BuyGas: premium <= max fee and spentGas <= txGasLimit, so this product also bounds the
+        // settlement products (spentCost, fees) below.
+        // EIP-8141/EIP-4844: the blob leg is priced at the actual blob_base_fee (not max_fee_per_blob_gas)
+        // so the mid-tx escrow the payer sees is correct; the burned blob fee cancels in the refund below.
         UInt256 blobFee = UInt256.Zero;
         if (tx.BlobVersionedHashes is { Length: > 0 })
         {
@@ -330,10 +325,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
         // pay the beneficiary premium. The base-fee share stays deducted (burned).
-        // EIP-8141/EIP-4844: the blob fee (blob_gas × blob_base_fee) is also charged and burned — it
-        // is excluded from the refund regardless of frame outcome. Both charged legs are bounded by
-        // max_cost (spentCost <= txGasLimit × maxFeePerGas, blobFee is max_cost's blob leg), so the
-        // subtraction cannot underflow.
+        // EIP-8141/EIP-4844: the blob fee is also charged and burned, excluded from the refund. Both
+        // legs are bounded by max_cost (spentCost <= gas leg, blobFee is the blob leg), so no underflow.
         UInt256 spentCost = (UInt256)spentGas * effectiveGasPrice;
         UInt256 chargedCost = spentCost + blobFee;
         if (maxCost > chargedCost)
@@ -341,10 +334,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.AddToBalance(payer, maxCost - chargedCost, spec);
         }
 
-        // EIP-4844 fee-collector chains (e.g. Gnosis) collect the burned blob fee instead of losing
-        // it, consistent with the regular path's PayFees; elsewhere the fee is simply burned.
-        // The EIP-1559 base-fee share of a frame tx is not routed to the collector (only burned); no
-        // chain enables both frame txs and the fee collector, so this stays deferred.
+        // EIP-4844 fee-collector chains (e.g. Gnosis) collect the burned blob fee, as in PayFees;
+        // elsewhere it is burned. The base-fee share stays burned as no chain enables both features.
         if (!blobFee.IsZero && spec.IsEip4844FeeCollectorEnabled && spec.FeeCollector is not null)
         {
             WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, blobFee, spec);

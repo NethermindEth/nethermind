@@ -75,10 +75,8 @@ namespace Nethermind.TxPool
             overflow |= UInt256.AddOverflow(currentCost, maxTxCost, out cumulativeCost);
             overflow |= UInt256.AddOverflow(cumulativeCost, (UInt256)tx.Value, out cumulativeCost);
 
-            // EIP-8141: a blob-carrying frame transaction (type 6) also reserves the blob fee, so gate
-            // on the presence of blob hashes rather than the type-level SupportsBlobs (type-3 only).
-            // Priced at max_fee_per_blob_gas, an upper bound on the processor's escrow, so mempool
-            // affordability never admits a tx the processor cannot charge.
+            // EIP-8141: gate on blob hashes, not the type-3-only SupportsBlobs, so blob-carrying frame txs
+            // reserve the blob fee too; priced at max_fee_per_blob_gas, an upper bound on the processor's escrow.
             if (tx.BlobVersionedHashes is { Length: > 0 })
             {
                 overflow |= UInt256.MultiplyOverflow(Eip4844Constants.GasPerBlob, (UInt256)tx.BlobVersionedHashes.Length, out UInt256 blobGas);

@@ -197,8 +197,8 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
-        // EIP-7594 (ethereum/EIPs#11985): a blob-carrying frame tx is bound by the same per-tx blob-count
-        // limit and versioned-hash version byte as a type-3 blob tx (EELS validate_frame_transaction).
+        // EIP-7594: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
+        // versioned-hash version byte as a type-3 blob tx.
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
         if (blobVersionedHashes is { Length: > 0 })
         {

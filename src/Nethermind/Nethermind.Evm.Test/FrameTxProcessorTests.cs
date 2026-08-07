@@ -145,9 +145,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_BlobCarryingFrameTx_ChargesAndBurnsBlobFee()
     {
-        // EIP-8141 (spec ~L492-499): a blob-carrying frame tx follows EIP-4844 — the payer covers the
-        // blob fee, which is burned. With base fee 0 the whole gas premium goes to the beneficiary, so
-        // the only value that leaves the payer for good is the burned blob fee. Parity: EELS #3047.
+        // EIP-8141/EIP-4844: the payer covers the burned blob fee. With base fee 0 the whole gas premium
+        // goes to the beneficiary, so the only value that leaves the payer for good is the burned blob fee.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlobVersionedHashes = [new byte[32]];
@@ -195,9 +194,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_TxParamMaxCost_BlobCarryingFrameTx_ReservesBlobLegAtBlobBaseFeeNotMaxFee()
     {
-        // TXPARAM 0x06 (max_cost) is consensus-visible mid-transaction and also gates payer solvency.
-        // For a blob-carrying frame tx the blob leg of max_cost is reserved at the actual blob_base_fee,
-        // not max_fee_per_blob_gas, so it must equal the blobless gas leg plus blob_gas × blob_base_fee.
+        // The blob leg of max_cost (TXPARAM 0x06) is reserved at the actual blob_base_fee, not
+        // max_fee_per_blob_gas, so it equals the gas leg plus blob_gas × blob_base_fee.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
             .PushData(0x06).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
