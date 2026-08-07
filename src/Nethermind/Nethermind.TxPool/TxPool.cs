@@ -166,6 +166,9 @@ namespace Nethermind.TxPool
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new MalformedTxFilter(_specProvider, validator, ecdsa, _logger),
+                // EIP-8141: MAX_VERIFY_GAS is a state-free structural DoS gate, so it runs right after
+                // MalformedTxFilter (sender recovered, frame array well-formed) and before any state read.
+                new FrameTxVerifyGasFilter(_logger),
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),

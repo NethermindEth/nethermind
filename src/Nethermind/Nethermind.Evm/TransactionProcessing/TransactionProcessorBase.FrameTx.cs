@@ -344,13 +344,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
                 tokens += CountCalldataTokens(signature.Msg.Span, spec);
                 tokens += CountCalldataTokens(signature.Signature.Span, spec);
-                signatureVerificationCost += signature.Scheme switch
-                {
-                    TxFrameSignature.SchemeArbitrary => Eip8141Constants.ArbitraryVerificationGasCost,
-                    TxFrameSignature.SchemeSecp256k1 => Eip8141Constants.Secp256k1VerificationGasCost,
-                    TxFrameSignature.SchemeP256 => Eip8141Constants.P256VerificationGasCost,
-                    _ => 0,
-                };
+                signatureVerificationCost += Eip8141Constants.SignatureVerificationGasCost(signature.Scheme);
             }
         }
 
