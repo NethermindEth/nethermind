@@ -213,11 +213,11 @@ public class FileLocalDataSourceTests
         using FileLocalDataSource<string[]> fileLocalDataSource = new("file", new EthereumJsonSerializer(), fileSystem, LimboLogs.Instance, interval);
         SemaphoreSlim handle = new(0);
         fileLocalDataSource.Changed += (sender, args) => handle.Release();
-        state.File = state.File with { Exists = true };
-        Assert.That(await readStarted.WaitAsync(Timeout.MaxWaitTime), Is.True, "the reload never started");
-
         try
         {
+            state.File = state.File with { Exists = true };
+            Assert.That(await readStarted.WaitAsync(Timeout.MaxWaitTime), Is.True, "the reload never started");
+
             // The read must stay blocked while the count is taken, so this cannot move earlier.
             await Task.Delay(20 * interval);
             Assert.That(Volatile.Read(ref reads), Is.EqualTo(1), "the ticks behind the reload must skip it");
