@@ -3,8 +3,10 @@
 
 using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -26,7 +28,6 @@ using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
-using System.Linq;
 using NSubstitute;
 using NSubstitute.Core;
 using NUnit.Framework;
@@ -230,7 +231,7 @@ public class SszMiddlewareTests
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
         _engineModule.engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
-        _engineModule.engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
+        _engineModule.engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
         byte[] body = version == 4 ? BuildForkchoiceV4Request() : BuildForkchoiceRequest();
@@ -247,7 +248,32 @@ public class SszMiddlewareTests
         await _engineModule.Received(v1Calls).engine_forkchoiceUpdatedV1(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
         await _engineModule.Received(v2Calls).engine_forkchoiceUpdatedV2(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
         await _engineModule.Received(v3Calls).engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
-        await _engineModule.Received(v4Calls).engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>());
+        await _engineModule.Received(v4Calls).engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>());
+    }
+
+    [Test]
+    public async Task Forkchoice_v4_passes_custody_columns()
+    {
+        ForkchoiceUpdatedV1Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+        };
+        _engineModule.engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
+
+        BitArray custodyColumns = new(128);
+        custodyColumns.Set(0, true);
+        custodyColumns.Set(3, true);
+        custodyColumns.Set(127, true);
+        DefaultHttpContext ctx = MakePostContext("/engine/v2/forkchoice", BuildForkchoiceV4Request(custodyColumns), fork: "amsterdam");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_forkchoiceUpdatedV4(
+            Arg.Any<ForkchoiceStateV1>(),
+            Arg.Any<PayloadAttributes?>(),
+            Arg.Is<BitArray>(actual => BitsEqual(actual, custodyColumns)));
     }
 
     [Test]
@@ -685,18 +711,35 @@ public class SszMiddlewareTests
         return body;
     }
 
-    // V4 wire adds CustodyColumns (a second variable list), so the fixed section is
-    // 96 (ForkchoiceState) + 4 (PayloadAttributes offset) + 4 (CustodyColumns offset) = 104 bytes.
-    private static byte[] BuildForkchoiceV4Request()
+    private static byte[] BuildForkchoiceV4Request(BitArray? custodyColumns = null) =>
+        ForkchoiceUpdatedRequestWire.Encode(new ForkchoiceUpdatedRequestWire
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = Keccak.Zero,
+            },
+            PayloadAttributes = [],
+            CustodyColumns = custodyColumns is null ? [] : [new SszCustodyColumns { Bits = custodyColumns }],
+        });
+
+    private static bool BitsEqual(BitArray actual, BitArray expected)
     {
-        byte[] body = new byte[104];
-        Buffer.BlockCopy(TestItem.KeccakA.Bytes.ToArray(), 0, body, 0, 32);
-        Buffer.BlockCopy(TestItem.KeccakB.Bytes.ToArray(), 0, body, 32, 32);
-        Buffer.BlockCopy(Keccak.Zero.Bytes.ToArray(), 0, body, 64, 32);
-        // Both lists are empty; both offsets point just past the fixed section.
-        BitConverter.TryWriteBytes(body.AsSpan(96, 4), (uint)104);
-        BitConverter.TryWriteBytes(body.AsSpan(100, 4), (uint)104);
-        return body;
+        if (actual.Length != expected.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < actual.Length; i++)
+        {
+            if (actual[i] != expected[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static byte[] BuildHashListRequest(byte[][] hashes)

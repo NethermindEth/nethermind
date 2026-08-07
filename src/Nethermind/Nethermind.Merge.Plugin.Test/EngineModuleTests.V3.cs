@@ -446,6 +446,7 @@ public partial class EngineModuleTests
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IEngineRequestsTracker>(),
+                Substitute.For<IBlobCustodyTracker>(),
                 chain.SpecProvider,
                 new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
                 Substitute.For<ILogManager>()));

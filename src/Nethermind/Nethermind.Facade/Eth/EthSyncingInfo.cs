@@ -29,6 +29,11 @@ namespace Nethermind.Facade.Eth
 
         public SyncingResult GetFullInfo()
         {
+            if (!_syncConfig.SynchronizationEnabled)
+            {
+                return SyncingResult.NotSyncing;
+            }
+
             (bool isSyncing, ulong headNumberOrZero, ulong bestSuggestedNumber) = _blockTree.IsSyncing(maxDistanceForSynced: MaxDistanceForSynced);
             SyncMode syncMode = _syncModeSelector.Current;
 
