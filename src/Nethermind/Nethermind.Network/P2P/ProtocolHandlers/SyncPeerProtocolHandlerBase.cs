@@ -151,6 +151,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         async Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             Hash256? requestedHash = hash ?? _remoteHeadBlockHash;
+            if (requestedHash is null) return null;
 
             GetBlockHeadersMessage msg = new();
             msg.StartBlockHash = requestedHash;
@@ -165,7 +166,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             BlockHeader? header = headersSpan.Length == 0 ? null : headersSpan[0];
             if (header is null) return null;
 
-            if (requestedHash is not null && header.Hash != requestedHash)
+            if (header.Hash != requestedHash)
             {
                 Disconnect(DisconnectReason.UnexpectedHeaderHash, "header hash inconsistent with request");
                 return null;
