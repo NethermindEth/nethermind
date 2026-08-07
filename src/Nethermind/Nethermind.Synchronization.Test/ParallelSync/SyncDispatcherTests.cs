@@ -50,6 +50,8 @@ public class SyncDispatcherTests
             public override UInt256? TotalDifficulty => totalDifficulty;
         }
 
+        public int AvailablePeers => _peerSemaphore.CurrentCount;
+
         public void Free(SyncPeerAllocation syncPeerAllocation) =>
             _peerSemaphore.Release();
 
@@ -160,8 +162,12 @@ public class SyncDispatcherTests
         public void UnlockResponse() =>
             _responseLock.Set();
 
+        public int HandleResponseCallCount => Volatile.Read(ref _handleResponseCallCount);
+        private int _handleResponseCallCount;
+
         public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
         {
+            Interlocked.Increment(ref _handleResponseCallCount);
             _handleResponseCalled.TrySetResult();
             _responseLock.WaitOne();
             if (response.Result is null)
@@ -311,6 +317,43 @@ public class SyncDispatcherTests
         syncFeed.UnlockResponse();
         await disposeTask.WaitAsync(cancellationToken);
         await executorTask.WaitAsync(cancellationToken);
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Cancelled_in_flight_dispatch_skips_its_response_and_frees_its_allocation(CancellationToken cancellationToken)
+    {
+        // The dispatch loop cancels its token on every exit, including the routine feed-finish exit
+        // on a live node. The cancelled dispatch must not handle its response into a finishing feed,
+        // and it must still free its allocation - a leaked slot retires the peer for the lifetime
+        // of the connection.
+        TestSyncPeerPool pool = new(peerCount: 2);
+        TestSyncFeed syncFeed = new(max: 16);
+        await using SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig { MaxProcessingThreads = 1 },
+            syncFeed,
+            new TestDownloader(),
+            pool,
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+
+        // The first dispatch takes the single processing permit and blocks inside HandleResponse;
+        // the second finishes downloading and waits for the permit, holding its peer allocation.
+        syncFeed.LockResponse();
+        syncFeed.Activate();
+        Task dispatcherTask = dispatcher.Start(cancellationToken);
+        await syncFeed.WaitForHandleResponse().WaitAsync(cancellationToken);
+
+        syncFeed.Finish();
+        await dispatcherTask.WaitAsync(cancellationToken);
+
+        syncFeed.UnlockResponse();
+        await dispatcher.DisposeAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.AvailablePeers, Is.EqualTo(2), "every allocation must return to the pool");
+            Assert.That(syncFeed.HandleResponseCallCount, Is.EqualTo(1), "the cancelled dispatch must not handle its response");
+        }
     }
 
     [Test, CancelAfter(30_000)]
