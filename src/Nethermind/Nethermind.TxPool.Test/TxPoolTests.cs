@@ -2080,6 +2080,70 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void SubmitTx_FrameTransactions_SharingSimulatedPayer_BoundByPayerBalance_ReleasedOnRemoval()
+        {
+            // Distinct senders share one third-party sponsor as payer. The sponsored prefix is opaque, so
+            // the payer is resolved by validation-prefix simulation rather than natively; the exposure
+            // gate then bounds the sponsor's summed pending cost to its balance, and removing the first
+            // tx releases the reservation so a third is admitted.
+            Address sponsor = TestItem.AddressD;
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(sponsor));
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+
+            UInt256 maxCost = (UInt256)1.GWei * 1_000_000;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA.Address, sponsor);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB.Address, sponsor);
+            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC.Address, sponsor);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult thirdResult = _txPool.SubmitTx(third, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted), "first sponsored frame tx is within the sponsor's balance");
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.PayerExposureExceeded), "the summed exposure of both txs exceeds the sponsor's balance");
+                Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx released the reservation");
+            }
+        }
+
+        // A frame tx whose only_verify|pay prefix names <paramref name="sponsor"/> as payer. The prefix
+        // is opaque to native resolution, so the payer is resolved by validation-prefix simulation.
+        private Transaction SponsoredFrameTx(Address sender, Address sponsor)
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = sender,
+                Frames =
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsor, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+                ],
+                FrameSignatures =
+                [
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsor, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty),
+                ],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);
@@ -2536,7 +2600,8 @@ namespace Nethermind.TxPool.Test
             IIncomingTxFilter incomingTxFilter = null,
             IBlobTxStorage txStorage = null,
             bool thereIsPriorityContract = false,
-            IEthereumEcdsa ethereumEcdsa = null)
+            IEthereumEcdsa ethereumEcdsa = null,
+            IFrameTxPrefixSimulator frameTxPrefixSimulator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -2560,7 +2625,8 @@ namespace Nethermind.TxPool.Test
                 ShouldGossip.Instance,
                 incomingTxFilter,
                 new HeadTxValidator(),
-                thereIsPriorityContract);
+                thereIsPriorityContract,
+                frameTxPrefixSimulator);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

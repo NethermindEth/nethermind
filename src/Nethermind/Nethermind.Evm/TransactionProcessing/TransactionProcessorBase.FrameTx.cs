@@ -26,6 +26,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
+        if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
+        {
+            return SimulateFrameValidationPrefix(tx, tracer, header, spec);
+        }
+
         Address sender = tx.SenderAddress!;
         Snapshot txSnapshot = WorldState.TakeSnapshot();
 
@@ -322,6 +327,162 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>
+    /// EIP-8141 mempool admission: simulate the validation prefix against read-only head state,
+    /// resolving the payer and enforcing the trace/opcode rules under the <c>MAX_VERIFY_GAS</c> bound.
+    /// </summary>
+    /// <remarks>
+    /// Reuses the frame execution machinery (<see cref="ExecuteFrame"/>, <see cref="ApplyApproval"/>)
+    /// rather than reimplementing opcode semantics. The per-opcode rules and the <c>SLOAD</c>-scope
+    /// rule are enforced by the <c>FrameTxValidationTracer</c> the caller supplies (checked by the
+    /// caller after this returns); this method enforces the structural rules (no <c>ATOMIC_BATCH</c>
+    /// in the prefix, no <c>VERIFY</c> frame after it), the cumulative <c>MAX_VERIFY_GAS</c> gas bound,
+    /// and payer resolution — halting once the payer is set (ethereum/EIPs#12007 rule 7). State is
+    /// always restored. Nonce equality is intentionally not required: a future-nonce frame tx is
+    /// admissible, and the validation prefix does not read the account nonce.
+    /// EIP8141 follow-ups (design note §4): result caching keyed by the dependency set, head-change
+    /// re-simulation indexing, a wall-clock cancellation guard, and a multi-simulation admission
+    /// budget are deferred; the per-transaction gas bound is the DoS bound implemented here.
+    /// </remarks>
+    private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, BlockHeader header, IReleaseSpec spec)
+    {
+        Address sender = tx.SenderAddress!;
+        Snapshot txSnapshot = WorldState.TakeSnapshot();
+        try
+        {
+            // Acceptance algorithm step 2: validate all protocol signatures before touching state.
+            ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+            IPrecompile? p256Precompile = _codeInfoRepository.GetCachedCodeInfo(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec, out _).Precompile;
+            if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
+            }
+
+            TxFrame[] frames = tx.Frames!;
+            UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
+
+            // Signature-verification work counts against MAX_VERIFY_GAS.
+            ulong verifyGasUsed = 0;
+            foreach (TxFrameSignature signature in tx.FrameSignatures ?? [])
+            {
+                verifyGasUsed += Eip8141Constants.SignatureVerificationGasCost(signature.Scheme);
+            }
+            if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
+            }
+
+            // max_cost (TXPARAM 0x06) at basefee=max, as the main path computes it: the APPROVE payment
+            // charge reserves it and gates payer solvency.
+            ulong intrinsicGas = CalculateFrameTxIntrinsicGas(tx, frames, spec);
+            ulong totalFrameGas = 0;
+            foreach (TxFrame frame in frames)
+            {
+                ulong accumulated = totalFrameGas + frame.GasLimit;
+                if (accumulated < totalFrameGas)
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("total frame gas overflows");
+                }
+
+                totalFrameGas = accumulated;
+            }
+
+            ulong txGasLimit = intrinsicGas + totalFrameGas;
+            if (txGasLimit < intrinsicGas)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
+            }
+
+            ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
+            UInt256 maxCost = (UInt256)txGasLimit * tx.DecodedMaxFeePerGas + (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault();
+
+            FrameTxContext frameContext = new(
+                sender, tx.Nonce, frames, tx.FrameSignatures ?? [], sigHash,
+                in maxCost, in tx.MaxPriorityFeePerGas, tx.DecodedMaxFeePerGas, tx.MaxFeePerBlobGas.GetValueOrDefault());
+
+            using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
+            if (spec.UseHotAndColdStorage)
+            {
+                if (spec.AddCoinbaseToTxAccessList) accessTracker.WarmUp(header.GasBeneficiary!);
+                accessTracker.WarmUp(sender);
+            }
+
+            for (int i = 0; i < frames.Length; i++)
+            {
+                TxFrame frame = frames[i];
+
+                // Only VERIFY-mode frames form the validation prefix; reaching a non-VERIFY frame
+                // before the payer is set means the prefix ended without payment (rule 8).
+                if (frame.Mode != TxFrame.ModeVerify)
+                {
+                    break;
+                }
+
+                // Rule 5: no frame in the validation prefix may set the atomic-batch flag.
+                if (frame.IsAtomicBatch)
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("atomic batch flag in validation prefix");
+                }
+
+                frameContext.CurrentFrameIndex = i;
+                WorldState.ResetTransient();
+
+                // Cap the frame's gas so cumulative validation work cannot exceed MAX_VERIFY_GAS even
+                // for an opaque prefix whose declared gas_limits were never structurally bounded.
+                ulong remainingVerifyGas = Eip8141Constants.MaxVerifyGas - verifyGasUsed;
+                ulong frameGasLimit = Math.Min(frame.GasLimit, remainingVerifyGas);
+                // When the frame's declared gas_limit exceeds the remaining budget, cumulative prefix
+                // gas already tops MAX_VERIFY_GAS; running under the cap tells whether that budget is hit.
+                bool capped = frameGasLimit < frame.GasLimit;
+                TxFrame boundedFrame = capped
+                    ? new TxFrame(frame.Mode, frame.Flags, frame.Target, frameGasLimit, frame.Value, frame.Data)
+                    : frame;
+
+                Address resolvedTarget = frame.Target ?? sender;
+                Address caller = Eip8141Constants.EntryPointAddress;
+
+                VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
+                    caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
+
+                TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: true, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed);
+
+                verifyGasUsed += frameGasUsed;
+
+                if (substate.ShouldRevert || substate.IsError)
+                {
+                    // Attribute the failure to the budget only when the frame was capped and did not
+                    // explicitly REVERT: an explicit revert (e.g. a signature mismatch) returns unused gas
+                    // and is a genuine within-budget rejection, whereas a capped frame that ran out of gas
+                    // exhausted the cap, so its validation work exceeds MAX_VERIFY_GAS (spec §Structural Rules 6).
+                    return capped && !substate.ShouldRevert
+                        ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS")
+                        : TransactionResult.ErrorType.MalformedTransaction.WithDetail("validation prefix frame reverted");
+                }
+
+                frameContext.MarkFrameSucceeded(i);
+                ApplyApproval(frameContext, resolvedTarget, spec);
+
+                // Rule 7: stop as soon as the payer is set and its VERIFY frame completed.
+                if (frameContext.Payer is not null)
+                {
+                    if (tracer is IFrameTxReceiptTracer receiptTracer)
+                    {
+                        receiptTracer.ReportFrameTxReceipt(frameContext.Payer, []);
+                    }
+
+                    return TransactionResult.Ok;
+                }
+            }
+
+            // The prefix completed without ever setting a payer.
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix never set a payer");
+        }
+        finally
+        {
+            WorldState.Restore(txSnapshot);
+        }
+    }
+
+    /// <summary>
     /// FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST + calldata cost of frame data
     /// and signature fields (EIP-7623 token pricing) + per-scheme signature verification cost.
     /// EIP8141: whether the EIP-7623 floor applies to frame transactions is unspecified; the
@@ -413,7 +574,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             in frameTracker,
             in snapshot);
 
-        TransactionSubstate substate = VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
+        // Instruction tracing is off by default (the common frame-execution path); it is switched on
+        // for the validation-prefix simulator's tracer, which enforces the banned-opcode rules.
+        TransactionSubstate substate = tracer.IsTracingInstructions
+            ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
+            : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
         ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
         gasUsed = frame.GasLimit - remainingGas;

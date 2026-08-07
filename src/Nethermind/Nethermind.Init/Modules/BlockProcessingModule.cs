@@ -83,6 +83,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
             .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
+
+            // EIP-8141: simulate opaque frame-tx validation prefixes at admission over the read-only
+            // processing env; consumed optionally by the tx pool (ethereum/EIPs#12007).
+            .AddSingleton<IFrameTxPrefixSimulator, FrameTxPrefixSimulator>()
             .Add<BlockchainProcessorFacade>()
 
             .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
