@@ -199,14 +199,14 @@ public class FileLocalDataSourceTests
         const int interval = 10;
         DateTime utcT0 = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         MockFileState state = new(new MockFile(Exists: false, GenerateStringJson("A"), utcT0, utcT0));
-        using ManualResetEventSlim finishRead = new(false);
+        TaskCompletionSource finishRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
         SemaphoreSlim readStarted = new(0);
         int reads = 0;
         IFileSystem fileSystem = CreateFileSystem(state, onOpenRead: () =>
         {
             Interlocked.Increment(ref reads);
             readStarted.Release();
-            finishRead.Wait();
+            finishRead.Task.GetAwaiter().GetResult();
         });
 
         // The file appears only after construction, so the blocking read happens on a tick.
@@ -216,10 +216,18 @@ public class FileLocalDataSourceTests
         state.File = state.File with { Exists = true };
         Assert.That(await readStarted.WaitAsync(Timeout.MaxWaitTime), Is.True, "the reload never started");
 
-        await Task.Delay(20 * interval);
-        Assert.That(Volatile.Read(ref reads), Is.EqualTo(1), "the ticks behind the reload must skip it");
+        try
+        {
+            // The read must stay blocked while the count is taken, so this cannot move earlier.
+            await Task.Delay(20 * interval);
+            Assert.That(Volatile.Read(ref reads), Is.EqualTo(1), "the ticks behind the reload must skip it");
+        }
+        finally
+        {
+            // A failing assert would otherwise leave the blocked reload parked for the whole run.
+            finishRead.TrySetResult();
+        }
 
-        finishRead.Set();
         await WaitForData(fileLocalDataSource, ["A"], handle);
     }
 
@@ -260,6 +268,7 @@ public class FileLocalDataSourceTests
 
         // Corroborating only: the guard is released before Changed is raised, so a stale event
         // could still be in flight. The identity assert above is what catches the regression.
+        // The count cannot drift, because an absent file never reports a change here.
         state.File = state.File with { Exists = true };
         Assert.That(await WaitForCondition(handle, () => Volatile.Read(ref changedRaised) > 0), Is.True);
         Assert.That(Volatile.Read(ref changedRaised), Is.EqualTo(1), "only the load may report a change");
