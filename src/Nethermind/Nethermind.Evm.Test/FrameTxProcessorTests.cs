@@ -768,18 +768,19 @@ public class FrameTxProcessorTests
     // for that slot, so an uncommitted or out-of-window reference invalidates the transaction. The
     // committed case also proves the reference's intrinsic gas is charged, since the transaction pays
     // more than the same transaction declaring nothing.
-    [TestCase(1_000UL, false, true, TestName = "a committed reference inside the window executes")]
-    [TestCase(1_001UL, false, false, TestName = "a reference to the current slot is not yet referenceable")]
-    [TestCase(9_193UL, false, false, TestName = "a reference older than the usable window has been overwritten")]
-    [TestCase(1_000UL, true, false, TestName = "a reference to a different root at a committed slot fails")]
-    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, bool expectedExecuted)
+    [TestCase(1_000UL, false, 1_001UL, true, TestName = "a committed reference inside the window executes")]
+    [TestCase(1_001UL, false, 1_001UL, false, TestName = "a reference to the current slot is not yet referenceable")]
+    [TestCase(9_193UL, false, 1_001UL, false, TestName = "a reference older than the usable window has been overwritten")]
+    [TestCase(1_000UL, true, 1_001UL, false, TestName = "a reference to a different root at a committed slot fails")]
+    [TestCase(1_000UL, false, null, false, TestName = "a header carrying no slot number cannot place a reference in the window")]
+    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, ulong? headSlot, bool expectedExecuted)
     {
-        const ulong HeadSlot = 1_001;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 salt = TestItem.KeccakA.ValueHash256;
+        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, salt);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
-            RecentRootStore.EntryHash(sourceId, committedSlot, root).Bytes.WithoutLeadingZeros().ToArray());
+        // Written through the production path so the test cannot keep passing against a stale encoding.
+        RecentRootStore.Write(_stateProvider, Observer, salt, root, committedSlot, Spec);
         _stateProvider.Commit(Spec);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
@@ -787,7 +788,7 @@ public class FrameTxProcessorTests
             declareOtherRoot ? TestItem.KeccakC.ValueHash256 : root)];
 
         CallOutputTracer referencingTracer = new();
-        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: HeadSlot);
+        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: headSlot);
 
         Assert.That(referencing.TransactionExecuted, Is.EqualTo(expectedExecuted));
         if (!expectedExecuted)
@@ -800,7 +801,7 @@ public class FrameTxProcessorTests
         }
 
         CallOutputTracer plainTracer = new();
-        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: HeadSlot);
+        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: headSlot);
 
         Assert.That(unreferencing.TransactionExecuted, Is.True);
         Assert.That(referencingTracer.GasSpent, Is.GreaterThan(plainTracer.GasSpent),
