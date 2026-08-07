@@ -493,7 +493,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the protocol-defined behavior instead of the EVM.
         if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            return ExecuteDefaultCode(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out gasUsed);
+            return ExecuteDefaultCode(frame, resolvedTarget, caller, frameContext, in accessTracker, spec, tracer, out gasUsed);
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
@@ -563,7 +563,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// </summary>
     /// <param name="accessTracker">Cross-frame log/warm journal; the transfer log is appended to
     /// its log list so it reaches the frame receipt and the transaction log union.</param>
-    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
     {
         gasUsed = 0;
 

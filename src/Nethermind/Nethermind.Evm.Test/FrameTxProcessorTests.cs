@@ -885,6 +885,51 @@ public class FrameTxProcessorTests
         Assert.That(Process(tx).TransactionExecuted, Is.False);
     }
 
+    // A batch that unrolls entirely inside the body leaves the assertion to run against the state the
+    // unroll restored, which is the ordering the prefix snapshot has to survive.
+    [Test]
+    public void Execute_AtomicBatchInTheBodyUnrolls_PostTxStillAsserts()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, Observer, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, target: Recipient),
+            Frame(TxFrame.ModePostTx, target: Observer));
+
+        CallOutputTracer tracer = new();
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
+            "the POST_TX write halts against the state the unroll restored");
+        AssertStorage(Observer, 0, UInt256.Zero, "the batch write is gone and the assertion added none");
+    }
+
+    // The static rules admit several assertions, so a failure in a later one must unwind the whole body
+    // rather than only what ran after the first.
+    [Test]
+    public void Execute_SecondPostTxFrameFails_UnwindsTheWholeBody()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Sender),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        CallOutputTracer tracer = new();
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        AssertStorage(Observer, 0, UInt256.Zero, "a failure in the second assertion unwinds the body the first one passed on");
+    }
+
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
