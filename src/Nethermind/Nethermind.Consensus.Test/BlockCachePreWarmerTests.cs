@@ -17,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
@@ -73,6 +74,12 @@ public class BlockCachePreWarmerTests
             worldState.Set(new StorageCell(TestItem.AddressA, 1), new byte[] { 0x42 });
             worldState.Set(new StorageCell(TestItem.AddressA, 2), new byte[] { 0x43 });
             worldState.Set(new StorageCell(TestItem.AddressB, 10), new byte[] { 0x99 });
+            // Contract reading a slot whose index is the value of slot 0: PUSH0 SLOAD SLOAD POP STOP
+            byte[] sloadChainCode = [0x5F, 0x54, 0x54, 0x50, 0x00];
+            worldState.CreateAccount(TestItem.AddressE, 0);
+            worldState.InsertCode(TestItem.AddressE, Keccak.Compute(sloadChainCode), sloadChainCode, Osaka.Instance);
+            worldState.Set(new StorageCell(TestItem.AddressE, 0), [5]);
+            worldState.Set(new StorageCell(TestItem.AddressE, 5), [7]);
             worldState.Commit(Osaka.Instance);
             worldState.CommitTree(0);
             _genesisStateRoot = worldState.StateRoot;
@@ -798,6 +805,52 @@ public class BlockCachePreWarmerTests
         finally
         {
             DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void SelectDiscoveryCandidates_PicksHeavyCallsSkippingWarmedAndCreates()
+    {
+        Transaction belowThreshold = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block belowThresholdBlock = Build.A.Block.WithTransactions(belowThreshold).TestObject;
+
+        Assert.That(BlockCachePreWarmer.SelectDiscoveryCandidates(belowThresholdBlock, speculativelyWarmed: null), Is.Null);
+
+        Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction heavyCreate = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(null)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction heavyWarmed = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+            .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        Block block = Build.A.Block.WithTransactions(heavy, heavyCreate, heavyWarmed, belowThreshold).TestObject;
+
+        List<Transaction>? candidates = BlockCachePreWarmer.SelectDiscoveryCandidates(
+            block, speculativelyWarmed: new HashSet<Hash256> { heavyWarmed.Hash! });
+
+        Assert.That(candidates, Is.EqualTo(new[] { heavy }));
+    }
+
+    [Test]
+    public void DiscoverAndWarmStorage_WarmsValueDependentReads()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
+
+            preWarmer.DiscoverAndWarmStorage([heavy], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True,
+                    "the directly-read slot is warmed");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out _), Is.True,
+                    "the slot whose index is slot 0's value requires a second discovery round");
+            }
         }
     }
 
