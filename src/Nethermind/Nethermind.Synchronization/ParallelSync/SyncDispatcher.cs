@@ -76,6 +76,11 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             finally
             {
+                // Shutdown waits on Feed.FeedTask, which only completes once the feed is finished, and this
+                // loop is the feed's only consumer. The loop's own cancellation handler misses every exit
+                // where nothing throws - cancellation seen by the `while` condition, an exhausted
+                // _activeTasks count, or a faulted loop - so finish the feed here instead.
+                Feed.Finish();
                 SignalActiveTask();
             }
         }

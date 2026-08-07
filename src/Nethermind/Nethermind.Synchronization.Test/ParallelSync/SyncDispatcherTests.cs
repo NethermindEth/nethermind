@@ -34,6 +34,9 @@ public class SyncDispatcherTests
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default)
         {
+            // Mirrors SyncPeerPool.Allocate: a cancelled token reports a failed allocation, it does not throw.
+            if (cancellationToken.IsCancellationRequested) return SyncPeerAllocation.FailedAllocation;
+
             await Task.Yield();
             await _peerSemaphore.WaitAsync(cancellationToken);
             ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
@@ -138,7 +141,7 @@ public class SyncDispatcherTests
         }
     }
 
-    private class TestSyncFeed(bool isMultiFeed = true, int max = 64) : SyncFeed<TestBatch>
+    private class TestSyncFeed(bool isMultiFeed = true, int max = 64, Action? onPrepareRequest = null) : SyncFeed<TestBatch>
     {
         public int Max { get; } = max;
         public int HighestRequested { get; private set; }
@@ -196,6 +199,8 @@ public class SyncDispatcherTests
 
         public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)
         {
+            onPrepareRequest?.Invoke();
+
             TestBatch testBatch;
             if (_returned.TryDequeue(out TestBatch? returned))
             {
@@ -306,6 +311,32 @@ public class SyncDispatcherTests
         syncFeed.UnlockResponse();
         await disposeTask.WaitAsync(cancellationToken);
         await executorTask.WaitAsync(cancellationToken);
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Feed_is_finished_when_the_loop_exits_without_an_await_throwing(CancellationToken cancellationToken)
+    {
+        // Shutdown waits on ISyncFeed.FeedTask (Synchronizer.DisposeAsync), and the dispatch loop is the
+        // feed's only consumer - a loop that returns without finishing the feed turns that wait into a
+        // guaranteed timeout. Cancelling from inside PrepareRequest reproduces the exit where nothing
+        // throws: the peer pool reports a failed allocation for a cancelled token, so the iteration runs
+        // to completion and it is the `while` condition, not a cancelled await, that ends the loop.
+        using CancellationTokenSource cts = new();
+        TestSyncFeed syncFeed = new(onPrepareRequest: cts.Cancel);
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+
+        syncFeed.Activate();
+        Assert.That(syncFeed.FeedTask.IsCompleted, Is.False, "an activated feed must have a pending FeedTask");
+
+        await dispatcher.Start(cts.Token).WaitAsync(cancellationToken);
+
+        Assert.That(syncFeed.FeedTask.IsCompleted, Is.True, "the dispatch loop must finish the feed on every exit path");
     }
 
     [Test]
