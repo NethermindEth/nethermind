@@ -39,8 +39,11 @@ public class PowForwardHeaderProvider(
 
     protected const int MinCachedHeaderBatchSize = 32;
 
+    // Strict improvement, to match ImprovementRequirementSatisfied. An equal-TD peer would be
+    // allocated and then rejected with no weakness report, and selection is sticky, so the
+    // feed could spin on that peer indefinitely.
     private IPeerAllocationStrategy _bestPeerAllocationStrategy =
-        new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.Better);
 
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;

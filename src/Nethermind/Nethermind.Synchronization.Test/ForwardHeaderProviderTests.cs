@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Specs;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -265,6 +266,48 @@ public partial class ForwardHeaderProviderTests
         Assert.That(headers2, Is.Not.Null);
 
         await syncPeer.Received(1).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Does_not_allocate_peer_that_cannot_improve_chain()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        IPeerAllocationStrategy? strategy = null;
+        ctx.PeerPool
+            .Allocate(Arg.Do<IPeerAllocationStrategy>(s => strategy = s), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(SyncPeerAllocation.FailedAllocation));
+
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await ctx.ForwardHeaderProvider.GetBlockHeaders(0, 128, CancellationToken.None);
+        Assert.That(strategy, Is.Not.Null);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithTotalDifficulty(10_000_000).TestObject);
+        blockTree.Head.Returns(Build.A.Block.WithDifficulty(100_000).TestObject);
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+
+        PeerInfo equalTdPeer = BuildInitializedPeer(TestItem.PublicKeyA, 10_000_000);
+        PeerInfo betterTdPeer = BuildInitializedPeer(TestItem.PublicKeyB, 12_100_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The provider only proceeds on strict TD improvement (ImprovementRequirementSatisfied),
+            // and a uselessly allocated peer is never reported weak, so it stays selectable forever.
+            Assert.That(strategy!.Allocate(null, [equalTdPeer], stats, blockTree), Is.Null);
+            Assert.That(strategy.Allocate(null, [equalTdPeer, betterTdPeer], stats, blockTree), Is.SameAs(betterTdPeer));
+            Assert.That(strategy.Allocate(null, [betterTdPeer], stats, blockTree), Is.SameAs(betterTdPeer));
+        }
+    }
+
+    private static PeerInfo BuildInitializedPeer(PublicKey publicKey, UInt256 totalDifficulty)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.IsInitialized.Returns(true);
+        syncPeer.TotalDifficulty.Returns(totalDifficulty);
+        syncPeer.HeadNumber.Returns(10UL);
+        syncPeer.Node.Returns(new Node(publicKey, "127.0.0.1", 30303));
+        return new PeerInfo(syncPeer);
     }
 
     private class SlowSealValidator : ISealValidator
