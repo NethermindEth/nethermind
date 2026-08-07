@@ -76,9 +76,15 @@ public class SyncPeerPoolTests
                 HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty() : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
 
         /// <summary>
-        /// Header this peer answers header requests with, whatever hash was asked for. Defaults to an arbitrary one.
+        /// Header this peer answers header requests with, whatever hash was asked for. When unset, head-header
+        /// requests are answered with an arbitrary header and by-hash requests with an empty list.
         /// </summary>
         public BlockHeader? HeaderToReturn { get; set; }
+
+        /// <summary>
+        /// Makes the peer answer head-header requests with nothing, as a peer that does not have the block does.
+        /// </summary>
+        public bool HeadHeaderUnavailable { get; set; }
 
         public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
@@ -98,7 +104,7 @@ public class SyncPeerPoolTests
             }
 
             IsInitialized = true;
-            return await Task.FromResult(HeaderToReturn ?? Build.A.BlockHeader.TestObject);
+            return await Task.FromResult(HeadHeaderUnavailable ? null : HeaderToReturn ?? Build.A.BlockHeader.TestObject);
         }
 
         public void NotifyOfNewBlock(Block block, SendBlockMode mode)
@@ -772,7 +778,25 @@ public class SyncPeerPoolTests
 
         BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
 
-        Assert.That(result?.Hash, Is.EqualTo(shouldFind ? requested.Hash : null));
+        Assert.That(result, Is.SameAs(shouldFind ? requested : null));
+    }
+
+    [Test]
+    public async Task Fetch_header_falls_back_to_an_allocated_peer_when_no_head_header_is_returned()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        foreach (SimpleSyncPeerMock peer in peers)
+        {
+            peer.HeaderToReturn = requested;
+            peer.HeadHeaderUnavailable = true;
+        }
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.SameAs(requested));
     }
 
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)
