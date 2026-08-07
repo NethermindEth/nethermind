@@ -17,7 +17,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -424,7 +423,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 
         byte[] txCode = Prepare.EvmCode.Call(catchAddress, 60000).STOP().Done;
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, txCode);
-        using NativeCallTracer tracer = new(tx, Amsterdam.Instance, GetGethTraceOptions(WithLog));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
         using GethLikeTxTrace trace = Execute(tracer, txCode, MainnetSpecProvider.CancunActivation).BuildResult();
 
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
