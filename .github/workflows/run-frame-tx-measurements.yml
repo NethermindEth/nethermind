@@ -26,13 +26,15 @@ jobs:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 120
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
       # One source of truth for the output path: the `runner` context is not
-      # available in a job-level `env`, so it is exported here instead.
+      # available in a job-level `env`, so it is exported here instead. This runs
+      # before the checkout so that the `if: always()` steps below never observe
+      # it unset, which would upload the runner's whole filesystem.
       - name: Resolve the output directory
         run: echo "OUTPUT_DIR=${RUNNER_TEMP}/frame-tx-measurements" >> "${GITHUB_ENV}"
+
+      - name: Check out repository
+        uses: actions/checkout@v6
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -54,7 +56,7 @@ jobs:
             echo "::group::${fixture}"
             dotnet test --project "${project}/${project}.csproj" -c release -- \
               --no-ansi --filter "FullyQualifiedName~${fixture}" \
-              | tee "${OUTPUT_DIR}/${fixture}.txt" || rc=$?
+              2>&1 | tee "${OUTPUT_DIR}/${fixture}.txt" || rc=$?
             echo "::endgroup::"
             return "${rc}"
           }
@@ -82,7 +84,7 @@ jobs:
               echo '```'
               # Only the reported figures, so the summary stays well inside its 1 MiB
               # cap and no stray backtick from test output breaks the fence.
-              grep '^RESULT' "${report}" || echo 'no RESULT lines; see the uploaded artifact'
+              grep 'RESULT' "${report}" || echo 'no RESULT lines; see the uploaded artifact'
               echo '```'
             } >> "${GITHUB_STEP_SUMMARY}"
           done
