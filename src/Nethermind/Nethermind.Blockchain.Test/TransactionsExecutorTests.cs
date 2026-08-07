@@ -412,6 +412,40 @@ namespace Nethermind.Blockchain.Test
             Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
         }
 
+        // EIP-8141: the pool exempts frame transactions from EIP-3607, so without the same exemption
+        // here a smart account's own transaction is admitted and gossiped but never built into a block.
+        [TestCase(TxType.EIP1559, "Sender is contract", TestName = "CanAddTransaction_ContractSender_OrdinaryTx_Skipped")]
+        [TestCase(TxType.FrameTx, null, TestName = "CanAddTransaction_ContractSender_FrameTx_Added")]
+        public void CanAddTransaction_ContractSender_ExemptsOnlyFrameTransactions(TxType txType, string? expectedSkipReason)
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            IReleaseSpec spec = Prague.Instance;
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+            byte[] code = [0x00];
+            stateProvider.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, spec);
+
+            Transaction tx = new()
+            {
+                Type = txType,
+                SenderAddress = TestItem.AddressA,
+                Nonce = 0,
+                GasLimit = GasCostOf.Transaction,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+                Frames = txType == TxType.FrameTx ? [] : null,
+                FrameSignatures = txType == TxType.FrameTx ? [] : null,
+            };
+
+            Block block = Build.A.Block.WithGasLimit(GasCostOf.Transaction * 2).TestObject;
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(spec));
+
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), stateProvider);
+
+            Assert.That(args.Action, Is.EqualTo(expectedSkipReason is null ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
+            if (expectedSkipReason is not null) Assert.That(args.Reason, Is.EqualTo(expectedSkipReason));
+        }
+
         private static Transaction[] RunBlockProduction(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
