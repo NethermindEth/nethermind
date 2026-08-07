@@ -163,21 +163,18 @@ public class Eth68ProtocolHandler(ISession session,
                 : (sizes[index], (TxType)types[index]);
             int txSize = txShape.Size;
 
-            bool oversized = txSize > TransactionsMessage.MaxPacketSize;
-            if (ShouldSendCurrentRequest(txSize, packetSizeLeft, toRequestCount))
+            // Oversized transactions cannot fit the response budget, so let the responder truncate them by request order.
+            bool countsTowardPacketSize = txSize <= TransactionsMessage.MaxPacketSize;
+            if (ShouldSendCurrentRequest(countsTowardPacketSize, txSize, packetSizeLeft, toRequestCount))
             {
                 SendHashesToRequest();
             }
 
-            hashesToRequest ??= new ArrayPoolList<Hash256>(oversized ? 1 : requestCapacity);
+            hashesToRequest ??= new ArrayPoolList<Hash256>(requestCapacity);
             hashesToRequest.Add(hash);
             toRequestCount++;
 
-            if (oversized)
-            {
-                SendHashesToRequest();
-            }
-            else
+            if (countsTowardPacketSize)
             {
                 packetSizeLeft -= txSize;
             }
@@ -262,9 +259,9 @@ public class Eth68ProtocolHandler(ISession session,
         _ => false,
     };
 
-    private static bool ShouldSendCurrentRequest(int txSize, int packetSizeLeft, int toRequestCount) =>
+    private static bool ShouldSendCurrentRequest(bool countsTowardPacketSize, int txSize, int packetSizeLeft, int toRequestCount) =>
         toRequestCount >= MaxPooledTransactionHashesPerRequest
-        || (txSize > packetSizeLeft && toRequestCount > 0);
+        || (countsTowardPacketSize && txSize > packetSizeLeft && toRequestCount > 0);
 
     private ArrayPoolListRef<int> AddMarkUnknownHashes(
         ReadOnlySpan<Hash256> hashes,
@@ -279,16 +276,17 @@ public class Eth68ProtocolHandler(ISession session,
             if (!_txPool.IsKnown(hash))
             {
                 (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
+                // Delivered transactions must match their first announcement even when that announcement was not requestable.
+                if (!TxShapeAnnouncements.TryGet(hash, out _))
+                {
+                    TxShapeAnnouncements.Set(hash, txShape);
+                }
+
                 if (!CanRequestPooledTransaction(txShape.Type)
                     || txShape.Size <= 0
                     || txShape.Size > (txShape.Type.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
                 {
                     continue;
-                }
-
-                if (!TxShapeAnnouncements.TryGet(hash, out _))
-                {
-                    TxShapeAnnouncements.Set(hash, txShape);
                 }
 
                 if (!registerForRetry || _txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
