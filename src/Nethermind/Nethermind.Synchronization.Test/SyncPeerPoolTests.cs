@@ -782,6 +782,20 @@ public class SyncPeerPoolTests
     }
 
     [Test]
+    public async Task Fetch_header_reports_a_peer_answering_with_a_different_block()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        peers[0].HeaderToReturn = Build.A.BlockHeader.WithNumber(20).TestObject;
+
+        await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(peers[0].DisconnectRequested, Is.True);
+    }
+
+    [Test]
     public async Task Fetch_header_falls_back_to_an_allocated_peer_when_no_head_header_is_returned()
     {
         await using Context ctx = new();
