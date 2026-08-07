@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
         private readonly AllocationAllowances _allocationAllowances;
 
-        private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
+        internal readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
 
         private readonly INodeStatsManager _stats;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
@@ -318,7 +318,14 @@ namespace Nethermind.Synchronization.Peers
 
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
             {
-                initCancelTokenSource?.Cancel();
+                try
+                {
+                    initCancelTokenSource?.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The refresh continuation disposed the source between the lookup and the cancel.
+                }
             }
         }
 

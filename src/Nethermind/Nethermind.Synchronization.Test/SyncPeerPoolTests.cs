@@ -146,6 +146,34 @@ public class SyncPeerPoolTests
         Assert.That(SyncPeerPool.GetAllocationWaitTime(tryCount), Is.EqualTo(expectedWaitTime));
 
     [Test]
+    public async Task Can_remove_peer_whose_refresh_token_is_already_disposed()
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
+        peer.SetHeaderResponseTime(5000);
+        ctx.Pool.AddPeer(peer);
+
+        Assert.That(
+            () => ctx.Pool._refreshCancelTokens.ContainsKey(peer.Node.Id),
+            Is.True.After(10_000, 10),
+            "guard: the refresh must register its cancellation source first");
+
+        // The refresh continuation disposes the source concurrently with RemovePeer's cancel;
+        // model the lost race by planting an already-disposed source. The slow header response
+        // parks the real refresh so nothing removes the planted entry.
+        CancellationTokenSource disposedSource = new();
+        disposedSource.Dispose();
+        ctx.Pool._refreshCancelTokens[peer.Node.Id] = disposedSource;
+
+        Assert.That(() => ctx.Pool.RemovePeer(peer), Throws.Nothing);
+        Assert.That(
+            ctx.Pool._refreshCancelTokens[peer.Node.Id],
+            Is.SameAs(disposedSource),
+            "guard: the planted source must still be registered, or the cancel path was never exercised");
+    }
+
+    [Test]
     public async Task Cannot_add_when_not_started()
     {
         await using Context ctx = new();
