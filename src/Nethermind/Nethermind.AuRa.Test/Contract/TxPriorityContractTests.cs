@@ -356,7 +356,11 @@ public class TxPriorityContractTests
         {
             if (FileFirst)
             {
-                await AddFile();
+                // The data stores do not exist yet, so only write the file here. The stores
+                // load it when they start. Subscribing to their Loaded events at this point
+                // dereferences null.
+                WriteFile(LocalData);
+                FileSemaphore.Release();
             }
 
             await base.AddBlocksOnStart();
