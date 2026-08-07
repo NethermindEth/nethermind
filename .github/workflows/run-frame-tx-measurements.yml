@@ -17,6 +17,9 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   measure:
     name: Measure the frame-transaction validation prefix
@@ -26,52 +29,60 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      # One source of truth for the output path: the `runner` context is not
+      # available in a job-level `env`, so it is exported here instead.
+      - name: Resolve the output directory
+        run: echo "OUTPUT_DIR=${RUNNER_TEMP}/frame-tx-measurements" >> "${GITHUB_ENV}"
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
       - name: Run measurement harnesses
-        id: measure
         working-directory: src/Nethermind
         env:
           HARNESS: ${{ inputs.harness }}
         run: |
-          set -euo pipefail
-          output_dir="${RUNNER_TEMP}/frame-tx-measurements"
-          mkdir -p "${output_dir}"
+          set -uo pipefail
+          mkdir -p "${OUTPUT_DIR}"
 
           run_harness() {
-            local project=$1 fixture=$2
-            if [[ ! -f "${project}/${fixture}.cs" ]]; then
+            local project=$1 fixture=$2 rc=0
+            if [[ -z "$(find "${project}" -name "${fixture}.cs" -print -quit)" ]]; then
               echo "::error::${fixture} is not present on ${GITHUB_REF_NAME}. Dispatch this workflow against a ref that carries the harness."
-              exit 1
+              return 1
             fi
             echo "::group::${fixture}"
             dotnet test --project "${project}/${project}.csproj" -c release -- \
-              --filter "FullyQualifiedName~${fixture}" \
-              | tee "${output_dir}/${fixture}.txt"
+              --no-ansi --filter "FullyQualifiedName~${fixture}" \
+              | tee "${OUTPUT_DIR}/${fixture}.txt" || rc=$?
             echo "::endgroup::"
+            return "${rc}"
           }
 
+          # Each harness is attempted even when an earlier one fails, so a run never
+          # reports a partial set of figures as if it were the whole set.
+          status=0
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "verify" ]]; then
-            run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement
+            run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement || status=1
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
-            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement
+            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement || status=1
           fi
 
-          echo "output_dir=${output_dir}" >> "${GITHUB_OUTPUT}"
+          exit "${status}"
 
       - name: Publish the reported figures to the run summary
         if: always()
         run: |
-          set -euo pipefail
-          output_dir="${RUNNER_TEMP}/frame-tx-measurements"
-          for report in "${output_dir}"/*.txt; do
+          set -uo pipefail
+          for report in "${OUTPUT_DIR}"/*.txt; do
             [[ -f "${report}" ]] || continue
             {
               echo "## $(basename "${report}" .txt)"
               echo '```'
-              cat "${report}"
+              # Only the reported figures, so the summary stays well inside its 1 MiB
+              # cap and no stray backtick from test output breaks the fence.
+              grep '^RESULT' "${report}" || echo 'no RESULT lines; see the uploaded artifact'
               echo '```'
             } >> "${GITHUB_STEP_SUMMARY}"
           done
@@ -81,6 +92,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: frame-tx-measurements
-          path: ${{ runner.temp }}/frame-tx-measurements/
+          path: ${{ env.OUTPUT_DIR }}/
           if-no-files-found: warn
           retention-days: 30
