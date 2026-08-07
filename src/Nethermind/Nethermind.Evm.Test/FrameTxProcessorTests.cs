@@ -558,16 +558,12 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_AtomicBatch_PaymentApprovalInsideFailedBatch_UnrollsPayerAndInvalidatesTransaction()
+    public void Execute_AtomicBatch_ApprovalScopeOnBatchFrame_ReturnsMalformedTransaction()
     {
-        // ethereum/EIPs#11955: a failed batch unrolls ALL effects of an APPROVE it contained. The
-        // payer debit and sender nonce are reverted by Restore, and the payer/sender_approved context
-        // is rolled back to its pre-batch value too, so the payer never survives an uncollected charge.
-        // Payment was only approved inside the batch, so after the unroll payer == None and the
-        // terminal payer gate rejects the whole transaction — the sponsor is not charged.
+        // EIP-8141: approval scope on an atomic-batch frame is rejected before any frame runs. The processor
+        // enforces this itself since it is reachable without static validation (e.g. eth_call).
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
         DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
-        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
 
         Transaction tx = FrameTx(nonce: 0,
             new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
@@ -578,7 +574,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.False);
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-        Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged when the batch unrolls its payment approval");
+        Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged");
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "the sender nonce is not consumed");
     }
 
