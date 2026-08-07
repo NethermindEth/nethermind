@@ -12,6 +12,12 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.TransactionProcessing;
 
 /// <summary>State helper for <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed nonces: NONCE_MANAGER slot derivation and per-key nonce reads/consumption.</summary>
+/// <remarks>
+/// Every read and write goes through <see cref="IWorldState"/> rather than around it, so the NONCE_MANAGER
+/// accesses enter the EIP-7928 block access list. A keyed nonce is consensus state a validator must be able
+/// to prefetch, unlike a precompile result, and a slot missing from the list makes a parallel validator
+/// reject a block every sequential node accepts.
+/// </remarks>
 public static class KeyedNonceManager
 {
     private const int SlotPreimageLength = 2 * 32;

@@ -1345,6 +1345,47 @@ public class FrameTxProcessorTests
         Assert.That(Process(tx).TransactionExecuted, Is.EqualTo(expectedExecuted));
     }
 
+    [Test]
+    public void Execute_KeyedNonce_RecordsTheNonceManagerSlotInBal()
+    {
+        // EIP-7928: a keyed nonce lives in NONCE_MANAGER storage rather than in the account nonce, so the
+        // slot it consumes must reach the BAL. A parallel validator reads the pre-state through the block
+        // access list, and an omitted slot makes it reject a block every sequential node accepts.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        UInt256[] keys = [1, 7];
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.NonceKeys = keys;
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AccountChangesAtIndex? managerChanges = tracedState.GetGeneratingBlockAccessList()!
+            .GetAccountChanges(Eip8250Constants.NonceManagerAddress);
+        Assert.That(managerChanges, Is.Not.Null, "the nonce manager is accessed and recorded in the BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(managerChanges.HasStorageChange(KeyedNonceManager.StorageSlot(Sender, key).Index), Is.True,
+                    $"the slot consumed for key {key} must be in the BAL");
+            }
+
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "a keyed set leaves the account nonce alone");
+        }
+    }
+
     // The property the set semantics exist for: one advanced key makes the whole set unusable.
     [Test]
     public void Execute_KeyedNonce_PartiallyAdvancedSetIsNotReplayable()
@@ -1380,29 +1421,25 @@ public class FrameTxProcessorTests
             "the legacy key owes no first-use surcharge");
     }
 
-    // EIP-8250 "Nonce consumption": approval effects are journaled outside the atomic-batch snapshot,
-    // so a payment approval taken inside a batch survives the batch unrolling and the transaction still
-    // has a payer. The pre-8250 envelope keeps EIP-8141's unroll (see the sibling test above).
+    // EIP-8250 L174/L269: a payment approve's effects — payer and nonce consumption — are journaled outside the EIP-8141 atomic-batch snapshot, so an approval taken before a batch survives that batch unrolling.
     [Test]
-    public void Execute_AtomicBatch_KeyedPaymentApprovalInsideFailedBatch_SurvivesTheUnroll()
+    public void Execute_AtomicBatch_KeyedPaymentApprovalBeforeFailedBatch_SurvivesTheUnroll()
     {
-        DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
-        DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
         UInt256[] keys = [1, 7];
 
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            Frame(TxFrame.ModeDefault, flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag), target: Observer),
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Recipient),
             Frame(TxFrame.ModeSender, target: Recipient));
         tx.NonceKeys = keys;
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True, "the payer recorded inside the batch survives the unroll");
+        Assert.That(result.TransactionExecuted, Is.True, "the payer approved before the batch survives its unroll");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_stateProvider.GetBalance(Observer), Is.LessThan(1.Ether), "the sponsor is charged");
             Assert.That(_stateProvider.GetNonce(Sender), Is.Zero, "a keyed transaction leaves the account nonce alone");
             foreach (UInt256 key in keys)
             {
