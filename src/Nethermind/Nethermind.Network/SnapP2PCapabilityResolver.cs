@@ -4,15 +4,20 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Network;
 
 /// <summary>
-/// Advertises snap (and snap/2 when enabled) while the node serves snap data or still needs to snap-sync its own state.
+/// Advertises snap while the node serves snap data or still needs to
+/// snap-sync its own state.
 /// </summary>
 /// <remarks>
 /// Replaces the former <c>SnapCapabilitySwitcher</c>: instead of adding the capability on start and removing it
@@ -26,16 +31,25 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     private readonly ISyncConfig _syncConfig;
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly IStateSyncPivot _stateSyncPivot;
+    private readonly ISpecProvider _specProvider;
+    private readonly IFlatDbConfig _flatDbConfig;
     private readonly ILogger _logger;
-
+    private bool _canBalHeal;
     public event Action? Changed;
 
-    public SnapP2PCapabilityResolver(ISyncConfig syncConfig, ISyncModeSelector syncModeSelector, ILogManager logManager)
+    public SnapP2PCapabilityResolver(ISyncConfig syncConfig, ISyncModeSelector syncModeSelector, IStateSyncPivot stateSyncPivot, ISpecProvider specProvider, IFlatDbConfig flatDbConfig, ILogManager logManager)
     {
         _syncConfig = syncConfig;
         _syncModeSelector = syncModeSelector;
+        _stateSyncPivot = stateSyncPivot;
+        _specProvider = specProvider;
+        _flatDbConfig = flatDbConfig;
+        _canBalHeal = ComputeCanBalHeal(_stateSyncPivot.FirstPivotHeader);
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
+
         _syncModeSelector.Changed += OnSyncModeChanged;
+        _stateSyncPivot.FirstPivotSet += OnFirstPivotSet;
     }
 
     public void Resolve(ISet<Capability> capabilities)
@@ -45,8 +59,23 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         if (serving || syncingState)
         {
             capabilities.Add(SnapCapability);
-            capabilities.Add(Snap2Capability);
+            // snap/2 drops GetTrieNodes/TrieNodes (EIP-8189)
+            // we shouldnt advertise snap/2 if we need tri nodes
+            bool canAdvertiseSnap2 = syncingState ? _canBalHeal : _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
+            if (canAdvertiseSnap2)
+            {
+                capabilities.Add(Snap2Capability);
+            }
         }
+    }
+
+    private bool ComputeCanBalHeal(BlockHeader? firstPivotHeader)
+    {
+        if(!_syncConfig.SnapSync || !_flatDbConfig.Enabled) return false;
+
+        if(firstPivotHeader == null) return false;
+
+        return _specProvider.GetSpec(firstPivotHeader).BlockLevelAccessListsEnabled;
     }
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
@@ -63,5 +92,15 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         Changed?.Invoke();
     }
 
-    public void Dispose() => _syncModeSelector.Changed -= OnSyncModeChanged;
+    private void OnFirstPivotSet(object? sender, BlockHeaderEventArgs e)
+    {
+        _canBalHeal = ComputeCanBalHeal(e.Header);
+        Changed?.Invoke();
+    }
+
+    public void Dispose()
+    {
+        _syncModeSelector.Changed -= OnSyncModeChanged;
+        _stateSyncPivot.FirstPivotSet -= OnFirstPivotSet;
+    }
 }
