@@ -79,7 +79,7 @@ namespace Nethermind.Merge.Plugin
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
             LoadFinalTotalDifficulty();
 
-            if (_terminalBlockNumber is not null || _finalTotalDifficulty is not null)
+            if (_terminalBlockNumber is not null || HasLocalChainCrossedTerminalTotalDifficulty())
                 _hasEverReachedTerminalDifficulty = true;
 
             if (_terminalBlockNumber is null)
@@ -113,13 +113,43 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
+        /// <summary>
+        /// Checks whether this node's own chain has crossed the terminal total difficulty.
+        /// </summary>
+        /// <remarks>
+        /// Config-declared <see cref="IMergeConfig.FinalTotalDifficulty"/> (shipped in archive configs for
+        /// post-merge TD bookkeeping and gossip policy) means the network merged, not that this node's chain
+        /// crossed TTD — a fresh archive DB must still full-sync the pre-merge range without a CL. Only local
+        /// evidence counts here: a post-TTD sync pivot, a merged-at-genesis chain, or a local best header at
+        /// or above TTD.
+        /// </remarks>
+        private bool HasLocalChainCrossedTerminalTotalDifficulty()
+        {
+            UInt256? terminalTotalDifficulty = TerminalTotalDifficulty;
+            if (terminalTotalDifficulty is null)
+                return false;
+
+            // pivot post TTD, so the node syncs a post-merge chain segment
+            if (_syncConfig.PivotTotalDifficultyParsed != 0 && _syncConfig.PivotTotalDifficultyParsed >= terminalTotalDifficulty)
+                return true;
+
+            // networks with the merge in genesis
+            if (_chainSpec?.Genesis is not null && _chainSpec.Genesis.Difficulty >= terminalTotalDifficulty)
+                return true;
+
+            // BestSuggestedHeader excludes beacon-inserted headers, so it reflects the locally synced chain
+            return (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? _blockTree.Head?.Header.TotalDifficulty) >= terminalTotalDifficulty;
+        }
+
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e) => TryUpdateTerminalBlock(e.Block.Header);
 
         private void LoadFinalizedBlockHash() => _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
         {
-            if (_terminalBlockExplicitSpecified || TransitionFinished || !header.IsTerminalBlock(_specProvider))
+            // Config-known FinalTotalDifficulty must not block recording the locally observed terminal block,
+            // so this checks the finalized hash (EIP-3675 step 3) rather than TransitionFinished.
+            if (_terminalBlockExplicitSpecified || _finalizedBlockHash != Keccak.Zero || !header.IsTerminalBlock(_specProvider))
             {
                 return false;
             }
@@ -223,7 +253,11 @@ namespace Nethermind.Merge.Plugin
         private bool IsPostMergeGenesis(BlockHeader header) =>
             header.IsGenesis && _chainSpec?.Parameters?.TerminalTotalDifficulty?.IsZero == true;
 
-        public bool HasEverReachedTerminalBlock() => _hasEverReachedTerminalDifficulty;
+        // Re-evaluates local evidence so a crossing is detected even when TryUpdateTerminalBlock never ran
+        // (e.g. a CL-driven crossing on a DB that predates terminal-block persistence). The field itself is
+        // only set in Initialize and TryUpdateTerminalBlock, which keeps the TerminalBlockReached event
+        // firing exactly once at a live crossing.
+        public bool HasEverReachedTerminalBlock() => _hasEverReachedTerminalDifficulty || HasLocalChainCrossedTerminalTotalDifficulty();
 
         public event EventHandler? TerminalBlockReached;
 
