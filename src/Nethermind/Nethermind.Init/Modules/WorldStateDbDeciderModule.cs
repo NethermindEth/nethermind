@@ -12,9 +12,9 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Modules;
 
@@ -66,7 +66,13 @@ internal class WorldStateDbDeciderModule : Module
                 (policy, flatFactory, patriciaFactory) =>
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
-                        : (IFullStateFinder)patriciaFactory());
+                        : (IFullStateFinder)patriciaFactory())
+
+            .AddSingleton<IBalHealing, FlatStateActivationPolicy, Func<FlatBalHealing>>(
+                (policy, flatFactory) =>
+                    policy.ShouldTurnOnFlatDb()
+                        ? flatFactory()
+                        : NoopBalHealing.Instance);
 
     private sealed class ImportFallbackStateBoundary(
         FlatStateBoundary flat,

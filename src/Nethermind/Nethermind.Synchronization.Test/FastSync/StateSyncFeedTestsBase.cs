@@ -243,7 +243,7 @@ public abstract class StateSyncFeedTestsBase(
 
         private readonly IDb _codeDb;
         private readonly IReadOnlyKeyValueStore _stateDb;
-        private readonly ISnapServer _snapServer;
+        private readonly SnapServer _snapServer;
 
         private Hash256[]? _filter;
         private readonly Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? _executorResultFunction;
