@@ -4,7 +4,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -46,14 +49,14 @@ public class TxPoolInfoProviderTests
         Assert.That(info.Pending.Count, Is.EqualTo(1));
         Assert.That(info.Queued.Count, Is.EqualTo(1));
 
-        KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> pending = info.Pending.First();
+        KeyValuePair<AddressAsKey, IDictionary<string, Transaction>> pending = info.Pending.First();
         Assert.That(pending.Key.Value, Is.EqualTo(_address));
         Assert.That(pending.Value.Count, Is.EqualTo(3));
         VerifyNonceAndTransactions(pending.Value, 3);
         VerifyNonceAndTransactions(pending.Value, 4);
         VerifyNonceAndTransactions(pending.Value, 5);
 
-        KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> queued = info.Queued.First();
+        KeyValuePair<AddressAsKey, IDictionary<string, Transaction>> queued = info.Queued.First();
         Assert.That(queued.Key.Value, Is.EqualTo(_address));
         Assert.That(queued.Value.Count, Is.EqualTo(4));
         VerifyNonceAndTransactions(queued.Value, 1);
@@ -77,8 +80,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        Assert.That(info.Pending[_address].Keys, Is.EqualTo(new ulong[] { 0 }));
-        Assert.That(info.Queued[_address].Keys, Is.EqualTo(new ulong[] { 2 }));
+        Assert.That(info.Pending[_address].Keys, Is.EqualTo(new[] { "0" }));
+        Assert.That(info.Queued[_address].Keys, Is.EqualTo(new[] { "2" }));
     }
 
     [Test]
@@ -129,8 +132,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(scenario.ExpectedPending), "pending nonces are those continuous with the account nonce");
-        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(scenario.ExpectedQueued), "queued nonces are those beyond a gap from the account nonce");
+        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(Keys(scenario.ExpectedPending)), "pending nonces are those continuous with the account nonce");
+        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(Keys(scenario.ExpectedQueued)), "queued nonces are those beyond a gap from the account nonce");
     }
 
     [Test]
@@ -152,8 +155,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(new ulong[] { 0 }));
-        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(new ulong[] { 2 }));
+        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(new[] { "0" }));
+        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(new[] { "2" }));
     }
 
     [Test]
@@ -226,8 +229,42 @@ public class TxPoolInfoProviderTests
         Assert.That(counts.Queued, Is.EqualTo(1), "nonce 5 is queued behind the gap");
     }
 
-    private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce) =>
-        Assert.That(transactionNonce[nonce].Nonce, Is.EqualTo(nonce));
+    /// <summary>
+    /// A sender's <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> transactions consume unrelated
+    /// keyed sequences, so all of them are includable and none is queued. Keying the map by sequence would collapse
+    /// them into one entry and make <c>txpool_content</c> disagree with <c>txpool_status</c>.
+    /// </summary>
+    [Test]
+    public void Keyed_transactions_of_one_sender_are_all_pending_and_listed_separately()
+    {
+        Transaction[] keyed = [KeyedTransaction([1]), KeyedTransaction([2]), KeyedTransaction([3])];
+        _stateReader.GetNonce(_address).Returns(7UL);
+        _txPool.GetPendingTransactionsBySender()
+            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, keyed } });
+
+        TxPoolInfo info = _infoProvider.GetInfo();
+        TxPoolCounts counts = _infoProvider.GetCounts();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.Pending[_address], Has.Count.EqualTo(keyed.Length));
+            Assert.That(info.Queued, Is.Empty);
+            Assert.That(counts.Pending, Is.EqualTo(keyed.Length));
+            Assert.That(counts.Queued, Is.Zero);
+        }
+    }
+
+    private Transaction KeyedTransaction(UInt256[] nonceKeys) =>
+        Build.A.Transaction
+            .WithType(TxType.FrameTx)
+            .WithNonce(0)
+            .WithNonceKeys(nonceKeys)
+            .WithSenderAddress(_address)
+            .WithHash(Keccak.Compute(nonceKeys[0].ToBigEndian()))
+            .TestObject;
+
+    private void VerifyNonceAndTransactions(IDictionary<string, Transaction> transactionNonce, ulong nonce) =>
+        Assert.That(transactionNonce[Key(nonce)].Nonce, Is.EqualTo(nonce));
 
     private Transaction[] GetTransactions() =>
         BuildTransactions([1, 2, 3, 4, 5, 8, 9]);
@@ -238,6 +275,15 @@ public class TxPoolInfoProviderTests
         for (int i = 0; i < nonces.Length; i++)
             result[i] = Build.A.Transaction.WithNonce(nonces[i]).WithSenderAddress(_address).TestObject;
         return result;
+    }
+
+    private static string Key(ulong nonce) => nonce.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string[] Keys(ulong[] nonces)
+    {
+        string[] keys = new string[nonces.Length];
+        for (int i = 0; i < nonces.Length; i++) keys[i] = Key(nonces[i]);
+        return keys;
     }
 
     public record SenderScenario(uint AccountNonce, ulong[] TxNonces, ulong[] ExpectedPending, ulong[] ExpectedQueued);
