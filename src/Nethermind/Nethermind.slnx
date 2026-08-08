@@ -16,6 +16,7 @@
     <Project Path="Nethermind.CensorshipDetector.Plugin/Nethermind.CensorshipDetector.Plugin.csproj" />
   </Folder>
   <Folder Name="/Plugins/OpcodeTracing/">
+    <Project Path="Nethermind.OpcodeTracing.Plugin.Test/Nethermind.OpcodeTracing.Plugin.Test.csproj" />
     <Project Path="Nethermind.OpcodeTracing.Plugin/Nethermind.OpcodeTracing.Plugin.csproj" />
   </Folder>
   <Folder Name="/Plugins/Hive/">
