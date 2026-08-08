@@ -70,12 +70,9 @@ internal class KeyedNonceFilterTests
 
     [Test]
     public void Leaves_the_account_nonce_domain_to_the_account_nonce_filters() =>
-        // [0] aliases the account nonce, so this filter must not answer for it even though the declared
-        // sequence (0) does not match the sender's account nonce.
         Assert.That((bool)Accept(KeyedTx([UInt256.Zero], 0), StateWith(0)), Is.True);
 
     [Test]
     public void Rejects_a_key_set_that_is_not_well_formed() =>
-        // Repeated keys are not strictly increasing, so the set has no canonical encoding.
         Assert.That((bool)Accept(KeyedTx([NonceKey, NonceKey], 0), StateWith(0)), Is.False);
 }
