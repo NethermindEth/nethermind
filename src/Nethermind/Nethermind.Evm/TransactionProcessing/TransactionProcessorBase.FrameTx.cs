@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -124,6 +125,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
+        long totalFrameStateGasUsed = 0;
         // EIP-3529 storage refunds accumulate into a single transaction-scoped counter (ethereum/EIPs#11940).
         long refundCounter = 0;
 
@@ -150,6 +152,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         StackAccessTracker batchTracker = default;
         int batchStartIndex = 0;
         long batchStartRefund = 0;
+        long batchStartStateGas = 0;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -165,6 +168,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchTracker.TakeSnapshot();
                 batchStartIndex = i;
                 batchStartRefund = refundCounter;
+                batchStartStateGas = totalFrameStateGasUsed;
             }
 
             // Transient storage (TSTORE/TLOAD) is discarded between frames (spec: Cross-frame
@@ -188,12 +192,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
             int frameLogStart = accessTracker.Logs.Count;
-            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed);
+            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
             totalFrameGasUsed += frameGasUsed;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
             if (frameSucceeded)
             {
+                totalFrameStateGasUsed += frameStateGas;
                 frameContext.MarkFrameSucceeded(i);
                 // A reverted frame's refunds are discarded with its state; only successful frames
                 // contribute (ethereum/EIPs#11940). An in-batch contribution is unwound below.
@@ -266,6 +271,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                             frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.GasUsed, []);
                         }
                     }
+
+                    // The unrolled frames' writes are gone with the snapshot, so their state charges
+                    // are not owed either; the counter only grows, so the batch-start value undoes them.
+                    totalFrameStateGasUsed = batchStartStateGas;
                     // Refunds from the reverted batch are discarded with its state, so roll the counter back.
                     // No payer/sender_approved rollback is needed: EIP-8141 forbids approval scope on batch frames.
                     refundCounter = batchStartRefund;
@@ -301,11 +310,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
         ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
+        ulong blockStateGas = (ulong)totalFrameStateGasUsed;
+        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(grossGas, blockStateGas, floorGas);
         // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
         // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
         // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
-        // tx's real spent gas into the header.
-        tx.BlockGasUsed = spentGas;
+        // tx's real regular gas into the header.
+        tx.BlockGasUsed = blockRegularGas;
         Address payer = frameContext.Payer;
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
@@ -356,7 +367,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
             // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
             LogEntry[] txLogs = ConcatFrameLogs(frameReceipts);
-            GasConsumed gasConsumed = new(spentGas, spentGas, spentGas);
+            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
             tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], txLogs);
         }
 
@@ -444,8 +455,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         return (ulong)zeros + (ulong)(data.Length - zeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
+        stateGasUsed = 0;
+
         // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
         UInt256 value = frame.Value;
         if (!value.IsZero && WorldState.GetBalance(caller) < value)
@@ -502,6 +515,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
         gasUsed = frame.GasLimit - remainingGas;
+        stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas));
 
         if (substate.ShouldRevert || substate.IsError)
         {
