@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -417,11 +418,48 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        tokens += CountNonceCalldataTokens(tx, spec);
+
         return (ulong)Eip8141Constants.IntrinsicGasCost
                + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                + tokens * GasCostOf.TxDataZero
                + signatureVerificationCost;
     }
+
+    /// <summary>
+    /// Tokens in EIP-8250's <c>nonce_calldata</c> — <c>rlp(nonce_keys) || rlp(nonce_seq)</c> — which the EIP
+    /// prices exactly as EIP-8141 prices frame and signature data.
+    /// </summary>
+    /// <remarks>
+    /// The key set replaces the EIP-8141 <c>nonce</c> field rather than joining it, so a payload that still
+    /// carries the plain nonce adds no data bytes and is priced at the EIP-8141 figure.
+    /// </remarks>
+    private static ulong CountNonceCalldataTokens(Transaction tx, IReleaseSpec spec)
+    {
+        // A key set carried before the EIP-8250 transition is not consumed as one either: ExecuteFrameTx
+        // takes the plain-nonce path, so the payload is priced at the EIP-8141 figure.
+        if (tx.NonceKeys is not { } nonceKeys || !spec.IsEip8250Enabled)
+        {
+            return 0;
+        }
+
+        // A set over the limit is rejected before it can execute (KeyedNonceManager.AreNonceKeysWellFormed),
+        // so it is never priced; bounding it here is what keeps the buffer below a compile-time size.
+        if (nonceKeys.Length > Eip8250Constants.MaxNonceKeys)
+        {
+            return 0;
+        }
+
+        Span<byte> buffer = stackalloc byte[MaxNonceCalldataLength];
+        Span<byte> nonceCalldata = buffer[..FrameTxNonceCalldata.Length(tx)];
+        RlpWriter writer = new(nonceCalldata);
+        FrameTxNonceCalldata.Encode(tx, ref writer);
+        return CountCalldataTokens(nonceCalldata, spec);
+    }
+
+    /// <summary>Upper bound on <c>nonce_calldata</c>: a full set of 32-byte keys (33 bytes each) behind a three-byte
+    /// long-form sequence header, plus a nine-byte sequence number.</summary>
+    private const int MaxNonceCalldataLength = 3 + Eip8250Constants.MaxNonceKeys * 33 + 9;
 
     private static ulong CountCalldataTokens(ReadOnlySpan<byte> data, IReleaseSpec spec)
     {
