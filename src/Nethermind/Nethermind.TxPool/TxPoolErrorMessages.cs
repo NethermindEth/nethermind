@@ -29,4 +29,5 @@ public static class TxPoolErrorMessages
     public const string DelegationAuthorityHasPendingTx = "delegation authority has pending transaction";
     public const string NodeIsSyncing = "node is syncing";
     public const string FrameTxExpired = "frame transaction expired";
+    public const string KeyedNonceUnmet = "keyed nonce sequence not current";
 }

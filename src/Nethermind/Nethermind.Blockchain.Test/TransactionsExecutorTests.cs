@@ -477,6 +477,8 @@ namespace Nethermind.Blockchain.Test
             public bool AccountExists(Address address) => true;
 
             public bool IsDeadAccount(Address address) => false;
+
+            public ReadOnlySpan<byte> Get(in StorageCell storageCell) => Bytes.ZeroByteSpan;
         }
     }
 }
