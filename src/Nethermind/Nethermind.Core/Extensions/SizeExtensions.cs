@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 
 namespace Nethermind.Core.Extensions;
 
@@ -23,10 +24,27 @@ public static class SizeExtensions
             {
                 return "0" + suf[0];
             }
+
+            // Integer/decimal arithmetic only (no Math.Log/Pow over double):
+            // this assembly is linked into the zkEVM guest, which targets a
+            // core without an FPU, and System.Decimal is software integer math.
             long bytes = Math.Abs(@this);
-            int place = Math.Min(suf.Length - 1, Convert.ToInt32(Math.Floor(Math.Log(bytes, useSi ? 1000 : 1024))));
-            double num = Math.Round(bytes / Math.Pow(useSi ? 1000 : 1024, place), precision);
-            return string.Concat(Math.Sign(@this) * num, addSpace ? " " : "", suf[place]);
+            long unit = useSi ? 1000L : 1024L;
+            int place = 0;
+            long divisor = 1;
+            while (place < suf.Length - 1 && bytes >= divisor * unit)
+            {
+                divisor *= unit;
+                place++;
+            }
+
+            decimal num = Math.Sign(@this) * Math.Round((decimal)bytes / divisor, precision);
+            // decimal keeps the scale it was rounded to, so 1025 would render "1.0KiB" where the
+            // previous double math rendered "1KiB". The '#' placeholders drop trailing zeros and
+            // reproduce the old output exactly. Invariant culture keeps the '.' separator (and the
+            // tests meaningful) regardless of machine locale.
+            return string.Concat(num.ToString(precision > 0 ? "0." + new string('#', precision) : "0",
+                CultureInfo.InvariantCulture), addSpace ? " " : "", suf[place]);
         }
     }
 

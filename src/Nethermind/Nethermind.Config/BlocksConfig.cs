@@ -66,7 +66,17 @@ namespace Nethermind.Config
         public int MempoolPreWarmConcurrency { get; set; } = 0;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
+#if ZK_EVM
+        // No 0.25 initializer: storing a double constant is the only FPU instruction this ctor
+        // would contribute to the rv64ima guest image. This DELIBERATELY diverges from the
+        // DefaultValue = "0.25" documented on IBlocksConfig - the guest reads 0 instead. That is
+        // sound only because the sole consumer is block production, which never runs in the guest;
+        // anything else reading this in a guest build would silently get a different number rather
+        // than fail, so a new consumer must revisit this.
+        public double SingleBlockImprovementOfSlot { get; set; }
+#else
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
+#endif
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
 
