@@ -19,6 +19,11 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
+            if (KeyedNonceFilter.UsesKeyedNonce(tx))
+            {
+                return AcceptTxResult.Accepted;
+            }
+
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
             bool nonceGapsAllowed = isLocal || !_txs.IsFull();
             if (nonceGapsAllowed && !tx.CarriesBlobs)

@@ -16,6 +16,11 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
+            if (KeyedNonceFilter.UsesKeyedNonce(tx))
+            {
+                return AcceptTxResult.Accepted;
+            }
+
             // As we have limited number of transaction that we store in mem pool its fairly easy to fill it up with
             // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space
             // efficiently. One call to get account from state is not that costly and it only happens after previous checks.

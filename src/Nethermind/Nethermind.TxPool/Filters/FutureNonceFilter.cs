@@ -12,6 +12,11 @@ public class FutureNonceFilter(ITxPoolConfig txPoolConfig) : IIncomingTxFilter
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
+        if (KeyedNonceFilter.UsesKeyedNonce(tx))
+        {
+            return AcceptTxResult.Accepted;
+        }
+
         int relevantMaxPendingTxsPerSender = (tx.CarriesBlobs
             ? _txPoolConfig.MaxPendingBlobTxsPerSender
             : _txPoolConfig.MaxPendingTxsPerSender);

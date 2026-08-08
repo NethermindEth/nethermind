@@ -32,7 +32,7 @@ public static class KeyedNonceManager
         return new StorageCell(Eip8250Constants.NonceManagerAddress, index);
     }
 
-    public static ulong CurrentNonceSeq(IWorldState state, Address sender, in UInt256 nonceKey)
+    public static ulong CurrentNonceSeq(IReadOnlyStateProvider state, Address sender, in UInt256 nonceKey)
     {
         if (nonceKey.IsZero)
         {
@@ -44,7 +44,7 @@ public static class KeyedNonceManager
         return stored > Eip8250Constants.MaxNonceSeq ? ulong.MaxValue : (ulong)stored;
     }
 
-    public static bool IsFirstUse(IWorldState state, Address sender, in UInt256 nonceKey) =>
+    public static bool IsFirstUse(IReadOnlyStateProvider state, Address sender, in UInt256 nonceKey) =>
         !nonceKey.IsZero && CurrentNonceSeq(state, sender, nonceKey) == 0;
 
     /// <summary>The state-growth surcharge <c>APPROVE</c> owes for the keys this set uses for the first time.</summary>
@@ -82,6 +82,11 @@ public static class KeyedNonceManager
         }
     }
 
+    /// <summary>Whether <paramref name="nonceKeys"/> selects protocol-managed nonce domains rather than the sender's account nonce.</summary>
+    /// <remarks>The set <c>[0]</c> aliases the account nonce, so only it keeps the account-nonce semantics every other transaction type has.</remarks>
+    public static bool UsesKeyedDomain(ReadOnlySpan<UInt256> nonceKeys) =>
+        nonceKeys.Length != 1 || !nonceKeys[0].IsZero;
+
     /// <summary>Checks whether <paramref name="nonceKeys"/> is a well-formed <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> nonce-key set.</summary>
     /// <remarks>
     /// Well-formed means: length in <c>[1, <see cref="Eip8250Constants.MaxNonceKeys"/>]</c>; key 0 appears only as the
@@ -118,7 +123,7 @@ public static class KeyedNonceManager
     /// <paramref name="nonceSeq"/> is below <see cref="Eip8250Constants.MaxNonceSeq"/>, and every key in the set is
     /// currently at <paramref name="nonceSeq"/> (per <see cref="CurrentNonceSeq"/>). Safe to call on undecoded/untrusted input.
     /// </remarks>
-    public static bool IsNonceSetValid(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
+    public static bool IsNonceSetValid(IReadOnlyStateProvider state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {
         if (!AreNonceKeysWellFormed(nonceKeys))
         {

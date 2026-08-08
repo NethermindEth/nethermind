@@ -49,6 +49,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxNoPayer { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8250 transactions received that were ignored because a selected nonce key is not at the declared sequence.")]
+        public static long PendingTransactionsKeyedNonceUnmet { get; set; }
+
+        [CounterMetric]
         [Description(
             "Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
         public static long PendingTransactionsNonceGap { get; set; }

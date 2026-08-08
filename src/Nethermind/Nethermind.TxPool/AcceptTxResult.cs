@@ -131,6 +131,12 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
+        /// <summary>
+        /// An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c> in the head state.
+        /// Unlike an account nonce this is an exact match in both directions, so the transaction is neither old nor future.
+        /// </summary>
+        public static readonly AcceptTxResult KeyedNonceUnmet = new(22, TxPoolErrorMessages.KeyedNonceUnmet);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;
