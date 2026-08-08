@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -806,6 +808,20 @@ public class FrameTxProcessorTests
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
 
         return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
+    }
+
+    [Test]
+    public void Execute_TracingInstructions_RecordsFrameOpcodes()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.PushData(1).PushData(2).Op(Instruction.ADD).Op(Instruction.POP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(tracer.BuildResult().Entries.Select(static e => e.Opcode), Does.Contain(nameof(Instruction.ADD)));
     }
 
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
