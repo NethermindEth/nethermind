@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -806,6 +807,31 @@ public class FrameTxProcessorTests
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
 
         return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
+    }
+
+    /// <summary>Every frame's execution reaches an instruction tracer, so <c>debug_traceTransaction</c>
+    /// reports steps for a frame transaction.</summary>
+    /// <remarks>
+    /// Asserted on both frames because the outer loop runs each one through its own top-level VM state:
+    /// a trace covering only the validation prefix would still be non-empty.
+    /// </remarks>
+    [Test]
+    public void Execute_InstructionTracer_ReceivesTheStepsOfEveryFrame()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer));
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        GethTxTraceEntry[] entries = [.. tracer.BuildResult().Entries];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.APPROVE)), "the validation prefix is traced");
+            Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.SSTORE)), "the execution frame is traced");
+        }
     }
 
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)

@@ -498,7 +498,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             in snapshot,
             isStatic: isStatic);
 
-        TransactionSubstate substate = VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
+        // The parameterless overload hard-codes OffFlag, which silences instruction tracing for every
+        // frame; the interpreter specialisation is picked here instead, as on the standard path.
+        TransactionSubstate substate = tracer.IsTracingInstructions
+            ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
+            : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
         ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
         gasUsed = frame.GasLimit - remainingGas;
