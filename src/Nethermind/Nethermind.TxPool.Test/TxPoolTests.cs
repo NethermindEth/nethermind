@@ -2455,7 +2455,42 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
-        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000)
+        /// <summary>
+        /// Block production takes the ready-filtered bucket snapshot, so a sender holding several
+        /// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed transactions must see all of them
+        /// there. Filtering on the account nonce instead drops the whole bucket, which is what kept keyed transactions
+        /// out of blocks.
+        /// </summary>
+        [Test]
+        public void Keyed_transactions_of_one_sender_are_all_ready_for_block_production()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip8250Enabled = true }));
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sender, UInt256.MaxValue, AccountNonceUnrelatedToKeyedSequences);
+
+            Transaction[] keyed =
+            [
+                BuildFrameTx(nonce: 0, sender, deadline: null, nonceKeys: [1]),
+                BuildFrameTx(nonce: 0, sender, deadline: null, nonceKeys: [2]),
+            ];
+
+            foreach (Transaction tx in keyed)
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            IDictionary<AddressAsKey, Transaction[]> ready = _txPool.GetPendingTransactionsBySender(filterToReadyTx: true);
+
+            Assert.That(ready.TryGetValue(sender, out Transaction[] readyForSender), Is.True,
+                "a bucket whose lowest entry is keyed must not be filtered out wholesale");
+            Assert.That(readyForSender, Has.Length.EqualTo(keyed.Length));
+        }
+
+        /// <summary>The sender's account nonce, deliberately unequal to the sequence the keyed transactions declare.</summary>
+        private const ulong AccountNonceUnrelatedToKeyedSequences = 7;
+
+        private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000, UInt256[] nonceKeys = null)
         {
             List<TxFrame> frames =
             [
@@ -2477,6 +2512,7 @@ namespace Nethermind.TxPool.Test
                 Nonce = nonce,
                 SenderAddress = sender,
                 Frames = [.. frames],
+                NonceKeys = nonceKeys,
                 FrameSignatures = [],
                 GasLimit = 1_000_000,
                 GasPrice = maxPriorityFeePerGas ?? 1.GWei,

@@ -223,8 +223,18 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
             _transactions.GetBucketSnapshot(filterToReadyTx ?
-                (data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)) :
+                (data => data.first.CanPayBaseFee(baseFee) && IsNonceReady(data.first, data.key)) :
                 null);
+
+        /// <summary>Whether <paramref name="tx"/> carries the nonce its sender can consume in the next block.</summary>
+        /// <remarks>
+        /// An <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed set does not use the account
+        /// nonce, so readiness is per-key currency instead.
+        /// </remarks>
+        private bool IsNonceReady(Transaction tx, Address sender) =>
+            KeyedNonceManager.UsesKeyedNonce(tx)
+                ? IsKeyedNonceCurrent(tx)
+                : tx.Nonce == _accounts.GetNonce(sender);
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
