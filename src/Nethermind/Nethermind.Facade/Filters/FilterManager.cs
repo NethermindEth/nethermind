@@ -49,6 +49,7 @@ namespace Nethermind.Facade.Filters
             mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
             _filterStore.FilterRemoved += OnFilterRemoved;
+            _filterStore.QueuedItemCount = CountQueuedItems;
             txPool.NewPending += OnNewPendingTransaction;
             txPool.RemovedPending += OnRemovedPendingTransaction;
         }
@@ -59,6 +60,23 @@ namespace Nethermind.Facade.Filters
             if (_blockHashes.TryRemove(id, out _)) return;
             if (_logs.TryRemove(id, out _)) return;
             _pendingTransactions.TryRemove(id, out _);
+        }
+
+        /// <summary>
+        /// Sums the results currently queued across all filters.
+        /// </summary>
+        /// <remarks>
+        /// Computed on demand from the live queues rather than tracked incrementally, so it cannot drift
+        /// under the concurrent enqueue/poll/remove races on these lock-free collections. Called only from
+        /// <see cref="FilterStore.SaveFilter"/> (filter creation), which is rare relative to the store/poll paths.
+        /// </remarks>
+        private long CountQueuedItems()
+        {
+            long total = 0;
+            foreach (KeyValuePair<int, ConcurrentQueue<FilterLog>> entry in _logs) total += entry.Value.Count;
+            foreach (KeyValuePair<int, ConcurrentQueue<Hash256>> entry in _blockHashes) total += entry.Value.Count;
+            foreach (KeyValuePair<int, ConcurrentQueue<Option<Hash256>>> entry in _pendingTransactions) total += entry.Value.Count;
+            return total;
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
