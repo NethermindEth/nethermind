@@ -108,6 +108,11 @@ public partial class BlockProcessor(
             if (!processed) block.DisposeAccountChanges();
         }
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+        // EIP-7805 (FOCIL): IL satisfaction is a signal, not a rejection — the block is still
+        // committed and the CL reacts to the INCLUSION_LIST_UNSATISFIED newPayload status.
+        block.IsInclusionListSatisfied = blockValidator.ValidateInclusionList(block, suggestedBlock, _stateProvider, options);
+        suggestedBlock.IsInclusionListSatisfied = block.IsInclusionListSatisfied;
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);

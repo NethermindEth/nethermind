@@ -58,6 +58,10 @@ public class BlockchainProcessorTests
 
             internal readonly HashSet<Hash256> Processed = [];
 
+            // The block instance actually handed to the branch processor, so tests can assert transient
+            // (non-RLP) data like the inclusion list survived recovery-queue resolution.
+            internal readonly ConcurrentDictionary<Hash256, Block> ProcessedBlockByHash = new();
+
             private readonly ConcurrentHashSet<Hash256> _allowedToFail = [];
 
             private readonly HashSet<Hash256> _rootProcessed = [];
@@ -99,6 +103,7 @@ public class BlockchainProcessorTests
                 }
 
                 Processed.AddRange(suggestedBlocks.Select(x => x.Hash!));
+                foreach (Block suggested in suggestedBlocks) ProcessedBlockByHash[suggested.Hash!] = suggested;
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 int nextBlock = 0;
@@ -272,6 +277,16 @@ public class BlockchainProcessorTests
         public ProcessingTestContext AndRecoveryQueueLimitHasBeenReached()
         {
             _processor.SoftMaxRecoveryQueueSizeInTx = 0;
+            return this;
+        }
+
+        public ProcessingTestContext InclusionListPreservedFor(Block block)
+        {
+            Assert.That(_branchProcessor.ProcessedBlockByHash.TryGetValue(block.Hash!, out Block? processed), Is.True,
+                $"Block {block.ToString(Block.Format.Short)} was not processed");
+            Assert.That(processed!.InclusionListTransactions, Is.Not.Null,
+                "Inclusion list was dropped before validation (recovery-queue re-resolve stripped it)");
+            Assert.That(processed.InclusionListTransactions!, Has.Length.EqualTo(block.InclusionListTransactions!.Length));
             return this;
         }
 
@@ -777,6 +792,22 @@ public class BlockchainProcessorTests
             .ProcessedSkipped(_block3D6).IsDeletedAsInvalid()
             .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
             .FullyProcessed(_blockB2D4).BecomesNewHead();
+
+    // At the recovery-queue limit an IL-bearing block must keep its full instance, not a hash-only
+    // BlockRef re-resolved from the DB, or the transient (non-RLP) inclusion list is lost before validation.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Inclusion_list_survives_recovery_queue_backlog()
+    {
+        Transaction ilTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block ilBlock = Build.A.Block.WithNumber(1).WithNonce(111).WithParent(_block0).WithDifficulty(2)
+            .WithInclusionListTransactions([ilTx]).TestObject;
+
+        When.ProcessingBlocks
+            .AndRecoveryQueueLimitHasBeenReached()
+            .FullyProcessed(_block0).BecomesGenesis()
+            .FullyProcessed(ilBlock).BecomesNewHead()
+            .InclusionListPreservedFor(ilBlock);
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]

@@ -28,6 +28,7 @@ using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.AuRa.Test;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.Transactions;
 using Builders = Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Merge.AuRa.Test;
@@ -221,6 +222,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
+            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             BlockProducer = postMergeBlockProducer;
