@@ -46,10 +46,8 @@ public static class BlobGasCalculator
         ulong blobCount = 0UL;
         foreach (Transaction tx in transactions)
         {
-            if (tx.SupportsBlobs)
-            {
-                blobCount += (ulong)tx.GetBlobCount();
-            }
+            // EIP-8141: count from blob hashes, not the type-3-only SupportsBlobs, so blob-carrying frame txs also count.
+            blobCount += (ulong)tx.GetBlobCount();
         }
 
         return CalculateBlobGas(blobCount);

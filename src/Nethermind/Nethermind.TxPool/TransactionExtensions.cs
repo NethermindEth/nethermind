@@ -75,10 +75,11 @@ namespace Nethermind.TxPool
             overflow |= UInt256.AddOverflow(currentCost, maxTxCost, out cumulativeCost);
             overflow |= UInt256.AddOverflow(cumulativeCost, (UInt256)tx.Value, out cumulativeCost);
 
-            if (tx.SupportsBlobs)
+            // EIP-8141: gate on blob hashes, not the type-3-only SupportsBlobs, so blob-carrying frame txs
+            // reserve the blob fee too; priced at max_fee_per_blob_gas, an upper bound on the processor's escrow.
+            if (tx.BlobVersionedHashes is { Length: > 0 })
             {
-                // if tx.SupportsBlobs and has BlobVersionedHashes = null, it will throw on earlier step of validation, in TxValidator
-                overflow |= UInt256.MultiplyOverflow(Eip4844Constants.GasPerBlob, (UInt256)tx.BlobVersionedHashes!.Length, out UInt256 blobGas);
+                overflow |= UInt256.MultiplyOverflow(Eip4844Constants.GasPerBlob, (UInt256)tx.BlobVersionedHashes.Length, out UInt256 blobGas);
                 overflow |= UInt256.MultiplyOverflow(blobGas, tx.MaxFeePerBlobGas ?? UInt256.MaxValue, out UInt256 blobGasCost);
                 overflow |= UInt256.AddOverflow(cumulativeCost, blobGasCost, out cumulativeCost);
             }

@@ -68,6 +68,13 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
+                // EIP-8141: block production does not yet meter blob-carrying frame txs against the block
+                // blob budget, so exclude them conservatively rather than risk exceeding MaxBlobGasPerBlock.
+                if (currentTx.Type == TxType.FrameTx && currentTx.BlobVersionedHashes is { Length: > 0 })
+                {
+                    return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");
+                }
+
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 if (currentTx.IsAboveInitCode(spec))
                 {
@@ -116,7 +123,7 @@ namespace Nethermind.Consensus.Processing
                         return false;
                     }
 
-                    if (transaction.SupportsBlobs && (
+                    if (transaction.BlobVersionedHashes is { Length: > 0 } && (
                         !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
                         senderBalance < (maxFee += blobBaseFee)))
                     {
