@@ -74,7 +74,9 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
                 }
 
-                if (!ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                bool isFrameTx = currentTx.Type == TxType.FrameTx;
+
+                if (!isFrameTx && !ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
@@ -85,10 +87,13 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
                 }
 
-                UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                if (!isFrameTx)
                 {
-                    return args;
+                    UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
+                    if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                    {
+                        return args;
+                    }
                 }
 
                 OnAddingTransaction(args);
