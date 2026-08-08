@@ -63,6 +63,7 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
         private CancellationTokenSource _rangeBroadcastCts = new();
         private Task _rangeBroadcastTask = Task.CompletedTask;
+        private readonly Lock _rangeBroadcastLock = new();
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
         private const int NewOldestBlockRangeUpdateFrequency = 10000;
@@ -498,18 +499,25 @@ namespace Nethermind.Synchronization
             if (_pool.PeerCount == 0)
                 return;
 
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
-            CancellationTokenSource cts = _rangeBroadcastCts = new();
+            // NewHeadBlock (block-processing thread) and NewOldestBlock (history-pruning background task)
+            // both funnel here, so the swap of _rangeBroadcastCts / _rangeBroadcastTask must be serialised;
+            // otherwise a concurrent CancelDisposeAndClear can dispose the source before Task.Run reads its
+            // token, throwing ObjectDisposedException, or leave a freshly created source orphaned.
+            lock (_rangeBroadcastLock)
+            {
+                CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+                CancellationTokenSource cts = _rangeBroadcastCts = new();
 
-            if (_rangeBroadcastTask.IsCompleted)
-            {
-                _rangeBroadcastTask = Task.Run(() => RangeBroadcast(earliest, latest, cts), cts.Token);
-            }
-            else
-            {
-                _rangeBroadcastTask.ContinueWith(
-                    t => RangeBroadcast(earliest, latest, cts),
-                    TaskContinuationOptions.RunContinuationsAsynchronously);
+                if (_rangeBroadcastTask.IsCompleted)
+                {
+                    _rangeBroadcastTask = Task.Run(() => RangeBroadcast(earliest, latest, cts), cts.Token);
+                }
+                else
+                {
+                    _rangeBroadcastTask.ContinueWith(
+                        t => RangeBroadcast(earliest, latest, cts),
+                        TaskContinuationOptions.RunContinuationsAsynchronously);
+                }
             }
         }
 
