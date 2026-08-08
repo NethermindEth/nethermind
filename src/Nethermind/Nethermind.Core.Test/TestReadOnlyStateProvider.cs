@@ -34,7 +34,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
     public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell) =>
-        _storage.TryGetValue(storageCell, out byte[]? value) ? value : Bytes.ZeroByteSpan;
+        _storage.TryGetValue(storageCell, out byte[]? value) ? value : default;
 
     public void Set(in StorageCell storageCell, byte[] value) => _storage[storageCell] = value;
 
