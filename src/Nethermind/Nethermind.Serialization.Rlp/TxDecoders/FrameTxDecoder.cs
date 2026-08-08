@@ -96,15 +96,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.Encode(transaction.ChainId ?? 0);
-        if (transaction.NonceKeys is { } nonceKeys)
-        {
-            writer.StartSequence(NonceKeysContentLength(nonceKeys));
-            foreach (UInt256 nonceKey in nonceKeys)
-            {
-                writer.Encode(nonceKey);
-            }
-        }
-        writer.Encode(transaction.Nonce);
+        FrameTxNonceCalldata.Encode(transaction, ref writer);
         writer.Encode(transaction.SenderAddress);
         TxFrameDecoder.Instance.EncodeArray(ref writer, transaction.Frames);
         TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, transaction.FrameSignatures, elideCanonicalSignatureBytes);
@@ -117,8 +109,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
         bool isEip155Enabled = false, ulong chainId = 0) =>
         Rlp.LengthOf(transaction.ChainId ?? 0)
-        + (transaction.NonceKeys is { } nonceKeys ? Rlp.LengthOfSequence(NonceKeysContentLength(nonceKeys)) : 0)
-        + Rlp.LengthOf(transaction.Nonce)
+        + FrameTxNonceCalldata.Length(transaction)
         + Rlp.LengthOf(transaction.SenderAddress)
         + TxFrameDecoder.Instance.GetArrayLength(transaction.Frames)
         + TxFrameSignatureDecoder.Instance.GetArrayLength(transaction.FrameSignatures, elideCanonicalSignatureBytes: forSigning)
@@ -165,7 +156,41 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         return buffer[..count].ToArray();
     }
 
-    private static int NonceKeysContentLength(UInt256[] nonceKeys)
+    [DoesNotReturn, StackTraceHidden]
+    private static Address ThrowMissingSender() => throw new RlpException("frame transaction sender must be a 20-byte address");
+}
+
+/// <summary>
+/// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see>'s <c>nonce_calldata</c> —
+/// <c>rlp(nonce_keys) || rlp(nonce_seq)</c>, the key sequence being absent on a plain-nonce transaction.
+/// </summary>
+/// <remarks>
+/// Shared by the payload encoder and the intrinsic-gas path, which prices exactly these bytes: pricing an
+/// independently written copy is what let the charge drift from the wire encoding.
+/// </remarks>
+public static class FrameTxNonceCalldata
+{
+    public static void Encode<TWriter>(Transaction transaction, ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        if (transaction.NonceKeys is { } nonceKeys)
+        {
+            writer.StartSequence(KeysContentLength(nonceKeys));
+            foreach (UInt256 nonceKey in nonceKeys)
+            {
+                writer.Encode(nonceKey);
+            }
+        }
+
+        writer.Encode(transaction.Nonce);
+    }
+
+    /// <summary>Length in bytes of what <see cref="Encode{TWriter}"/> writes for <paramref name="transaction"/>.</summary>
+    public static int Length(Transaction transaction) =>
+        (transaction.NonceKeys is { } nonceKeys ? Rlp.LengthOfSequence(KeysContentLength(nonceKeys)) : 0)
+        + Rlp.LengthOf(transaction.Nonce);
+
+    internal static int KeysContentLength(UInt256[] nonceKeys)
     {
         int contentLength = 0;
         foreach (UInt256 nonceKey in nonceKeys)
@@ -175,7 +200,4 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
         return contentLength;
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static Address ThrowMissingSender() => throw new RlpException("frame transaction sender must be a 20-byte address");
 }

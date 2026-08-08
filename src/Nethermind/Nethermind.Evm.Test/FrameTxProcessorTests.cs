@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -724,6 +725,86 @@ public class FrameTxProcessorTests
             Assert.That(beneficiaryChanges.NonceChange, Is.Null);
             Assert.That(beneficiaryChanges.CodeChange, Is.Null);
         }
+    }
+
+    /// <remarks>
+    /// EIP-8250 prices <c>rlp(nonce_keys) || rlp(nonce_seq)</c> as transaction data, so the key set costs
+    /// exactly the bytes it adds to the payload. Charging nothing for it settles a block one client accepts
+    /// and another rejects, which is what the expected deltas below pin: <c>c1 07 | 01</c> is three non-zero
+    /// bytes, and <c>c3 82 01 00 | 01</c> is four non-zero bytes and one zero byte.
+    /// </remarks>
+    [TestCaseSource(nameof(NonceCalldataCases))]
+    public void Execute_KeyedNoncePayload_ChargesItsCalldataCost(UInt256[] nonceKeys, ulong expectedExtraGas)
+    {
+        ((TestSpecProvider)_specProvider).GenesisSpec = new WithKeyedNonces(Eip8141Prototype.Instance);
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        CallOutputTracer plain = new();
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame()), tracer: plain).TransactionExecuted, Is.True);
+
+        Transaction keyed = FrameTx(nonce: 1, SelfVerifyFrame());
+        keyed.NonceKeys = nonceKeys;
+        CallOutputTracer keyedTracer = new();
+        Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
+
+        Assert.That(keyedTracer.GasSpent - plain.GasSpent, Is.EqualTo(expectedExtraGas));
+    }
+
+    /// <remarks>
+    /// EIP-8141 and EIP-8250 have independent transitions, so an 8141-on / 8250-off window is representable.
+    /// There the key set is not consumed as one either — the transaction takes the plain-nonce path — so charging
+    /// for it would price a field the fork does not recognise.
+    /// </remarks>
+    [Test]
+    public void Execute_KeyedNoncePayloadBeforeTheKeyedNonceFork_IsChargedTheFrameTxFigure()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        CallOutputTracer plain = new();
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame()), tracer: plain).TransactionExecuted, Is.True);
+
+        Transaction keyed = FrameTx(nonce: 1, SelfVerifyFrame());
+        keyed.NonceKeys = [(UInt256)7];
+        CallOutputTracer keyedTracer = new();
+        Assert.That(Process(keyed, tracer: keyedTracer).TransactionExecuted, Is.True);
+
+        Assert.That(keyedTracer.GasSpent, Is.EqualTo(plain.GasSpent));
+    }
+
+    private static IEnumerable<TestCaseData> NonceCalldataCases()
+    {
+        const ulong nonZeroByte = 16;
+        const ulong zeroByte = 4;
+
+        yield return new TestCaseData(new UInt256[] { 7 }, 3 * nonZeroByte)
+            .SetName("Execute_KeyedNoncePayload_ChargesASingleByteKey");
+        // c3 82 01 00 | 01: four non-zero bytes and one zero byte.
+        yield return new TestCaseData(new UInt256[] { 0x0100 }, 4 * nonZeroByte + zeroByte)
+            .SetName("Execute_KeyedNoncePayload_ChargesAKeyCarryingAZeroByte");
+        // Two 32-byte keys make the content 66 bytes, past the 55-byte threshold, so the sequence header
+        // takes its long form (f8 42) instead of the single byte every shorter set produces.
+        yield return new TestCaseData(FullWidthKeys(2), (2 + 2 * 33 + 1) * nonZeroByte)
+            .SetName("Execute_KeyedNoncePayload_ChargesALongFormSequenceHeader");
+        yield return new TestCaseData(FullWidthKeys(Eip8250Constants.MaxNonceKeys), (3 + Eip8250Constants.MaxNonceKeys * 33 + 1) * nonZeroByte)
+            .SetName("Execute_KeyedNoncePayload_ChargesTheLargestAdmissibleSet");
+    }
+
+    /// <summary>The prototype fork with EIP-8250 scheduled: the charge only applies where keyed nonces are consumed.</summary>
+    private sealed class WithKeyedNonces(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
+    {
+        public override bool IsEip8250Enabled => true;
+    }
+
+    /// <summary>A strictly increasing set of <paramref name="count"/> keys, each occupying all 32 bytes with no zero byte.</summary>
+    private static UInt256[] FullWidthKeys(int count)
+    {
+        UInt256[] keys = new UInt256[count];
+        for (int i = 0; i < count; i++)
+        {
+            keys[i] = UInt256.MaxValue - (UInt256)(count - 1 - i);
+        }
+
+        return keys;
     }
 
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
