@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core;
 
@@ -23,11 +24,11 @@ public static class Eip8272Constants
 
     /// <summary>The runtime code installed at <see cref="RecentRootAddress"/> when EIP-8272 activates.</summary>
     /// <remarks>
-    /// Provisional: <c>RECENT_ROOT_CODE</c> is TBD in the spec's constants table, and unlike the address
-    /// there is no reference implementation value to mirror.
-    /// The predeploy is only ever a protocol-managed
-    /// storage namespace: recent-root entries are written natively and no call ever enters the account.
-    /// Empty code keeps the activation account state minimal and matches the only existing implementation.
+    /// Provisional: <c>RECENT_ROOT_CODE</c> is TBD in the spec's constants table, so this is the candidate
+    /// proposed in ethereum/EIPs#12131 — the specified write operation assembled verbatim, reading the
+    /// current slot through the <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>
+    /// <c>SLOTNUM</c> opcode.
     /// </remarks>
-    public static ReadOnlyMemory<byte> RecentRootCode { get; } = ReadOnlyMemory<byte>.Empty;
+    public static ReadOnlyMemory<byte> RecentRootCode { get; } = Bytes.FromHexString(
+        "0x341536604014166100105760006000fd5b33600052602060006020376034600c20807f8f42481679c8e6fefa040974b3c905e0ce3f2e464ba93acdb074a41181617efc6040524b606852606052602060206088376068604020817fbdc897da2177d260ff5f4be5d4b2aad43f89c3347a305b584fa5a2546d053daa60a852611fff4b1660d05260c852604860a8205500");
 }
