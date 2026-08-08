@@ -47,6 +47,7 @@ public class GasEstimator(
     private const string TransactionExecutionFails = "Transaction execution fails";
     private const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
+    private const string FrameTxGasLimitOverflows = "frame transaction gas limit overflows";
 
     public ulong Estimate(
         Transaction tx,
@@ -74,6 +75,9 @@ public class GasEstimator(
         IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
         tx.SenderAddress ??= Address.Zero;
 
+        if (tx.SupportsFrames)
+            return EstimateFrameTx(tx, header, spec, gasTracer);
+
         UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress!);
 
         if (CheckFunds(tx, spec, gasTracer, senderBalance, out UInt256 available) is { } fundsResult)
@@ -92,6 +96,31 @@ public class GasEstimator(
         EstimationBounds bounds = CapByAllowance(new EstimationBounds(leftBound, rightBound, intrinsicGas), available, feeCap);
 
         return BinarySearchEstimate(tx, header, spec, gasTracer, bounds, errorMargin, token);
+    }
+
+    /// <summary>The gas an EIP-8141 frame transaction reserves, or the probe's failure.</summary>
+    /// <remarks>
+    /// A frame transaction has no <c>gas_limit</c> field: its budget is the intrinsic cost plus the
+    /// per-frame limits it signs over, so a caller cannot lower it and there is nothing to search for.
+    /// Binary search would also be blind here, since the processor derives the budget from the frames
+    /// and ignores <see cref="Transaction.GasLimit"/> — every probe succeeds regardless of the value
+    /// under test. The affordability gates are skipped for the same reason they would be wrong: the
+    /// frames choose the payer, which need not be the sender, and a payer too poor to cover the
+    /// reservation already fails the probe. The tracer's per-action out-of-gas and revert flags are not
+    /// consulted: each frame runs as its own top-level action, so they describe the last frame rather than
+    /// the transaction, and a frame that fails still reserves the same budget.
+    /// </remarks>
+    private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer)
+    {
+        if (gasTracer.StatusCode != StatusCode.Success)
+            return EstimationResult.Failure(GetError(gasTracer));
+
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
+            return EstimationResult.Failure(FrameTxGasLimitOverflows);
+
+        return maxGas > Math.Min(header.GasLimit, spec.GetTxGasLimitCap())
+            ? EstimationResult.Failure(CannotEstimateGasExceeded)
+            : EstimationResult.Success(maxGas);
     }
 
     private static EstimationResult? ValidateErrorMargin(ulong errorMargin) =>
