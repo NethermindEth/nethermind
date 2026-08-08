@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -34,7 +33,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
     public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell) =>
-        _storage.TryGetValue(storageCell, out byte[]? value) ? value : Bytes.ZeroByteSpan;
+        _storage.TryGetValue(storageCell, out byte[]? value) ? value : default;
 
     public void Set(in StorageCell storageCell, byte[] value) => _storage[storageCell] = value;
 

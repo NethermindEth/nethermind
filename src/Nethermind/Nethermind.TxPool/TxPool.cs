@@ -836,8 +836,6 @@ namespace Nethermind.TxPool
             {
                 if (KeyedNonceFilter.UsesKeyedNonce(tx))
                 {
-                    // EIP-8250: a keyed set carries no ordering, so the transaction is includable right
-                    // now or never. It is also not a predecessor of anything, hence no bottleneck chaining.
                     if (!IsKeyedNonceCurrent(tx))
                     {
                         MarkForEviction(tx, true);
@@ -939,7 +937,6 @@ namespace Nethermind.TxPool
                 Transaction? tx = null;
                 foreach (Transaction txn in transactions)
                 {
-                    // A keyed set is not ordered against the account nonce, so it is the head of its own domain.
                     if (KeyedNonceFilter.UsesKeyedNonce(txn) ? IsKeyedNonceCurrent(txn) : txn.Nonce == currentNonce)
                     {
                         tx = txn;
