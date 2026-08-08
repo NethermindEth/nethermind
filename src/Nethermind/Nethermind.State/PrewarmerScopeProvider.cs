@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -51,14 +54,16 @@ public class PrewarmerScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
+    public bool SupportsConcurrentScopes => baseProvider.SupportsConcurrentScopes;
+
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
     {
         IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
         if (!isPrewarmer) preBlockCaches.MainScope = scope;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, metrics);
+        return new ScopeWrapper(baseProvider, baseBlock, scope, preBlockCaches, logManager, isPrewarmer, metrics);
     }
 
-    private sealed class ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
+    private sealed class ScopeWrapper(IWorldStateScopeProvider baseProvider, BlockHeader? baseBlock, IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, ILogManager logManager, bool isPrewarmer, LocalMetrics metrics) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
@@ -73,6 +78,28 @@ public class PrewarmerScopeProvider(
         private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
 
+        // The prefetcher needs an isolated read scope over the same parent; only providers whose
+        // scopes can coexist (flat's pooled snapshot bundles) support that. The trie store's scope
+        // is a global gate that must not be nested mid-block.
+        private readonly bool _stridePrefetchEnabled = !isPrewarmer && baseProvider.SupportsConcurrentScopes;
+
+        // Per contract per block; bounded so a block touching many contracts cannot accumulate
+        // reader threads.
+        private const int MaxStridePrefetchers = 4;
+
+        // Reader threads issue blocking, latency-bound storage reads, so we run more than one per
+        // core (2×CPU) to hide individual RocksDB fetch latency, capped at 32. The budget is shared
+        // across the concurrently engaged prefetchers rather than granted per prefetcher, so a block
+        // striding several contracts stays within one bounded thread set instead of 2×CPU threads
+        // per contract.
+        private static readonly int PrefetcherReaderConcurrency =
+            Math.Max(1, Math.Min(2 * Environment.ProcessorCount, 32) / MaxStridePrefetchers);
+
+        private readonly ConcurrentDictionary<AddressAsKey, StorageStridePrefetcher> _stridePrefetchers = new();
+        private readonly CancellationTokenSource _prefetchCts = new();
+        private readonly Lock _prefetchScopeLock = new();
+        private IWorldStateScopeProvider.IScope? _prefetchScope;
+
         public void Dispose()
         {
             if (_measureMetric && _writeBatchTime != 0)
@@ -81,6 +108,11 @@ public class PrewarmerScopeProvider(
             }
             // Unregister before teardown so no new warm hints target a disposing scope.
             if (!isPrewarmer) preBlockCaches.MainScope = null;
+
+            // Joins reader threads and releases their private scope.
+            StopStridePrefetchers();
+            _prefetchCts.Dispose();
+
             baseScope.Dispose();
         }
 
@@ -91,10 +123,71 @@ public class PrewarmerScopeProvider(
                 storageCache,
                 address,
                 isPrewarmer,
-                _metrics);
+                _metrics,
+                _stridePrefetchEnabled ? GetOrCreateStridePrefetcher(address) : null);
+
+        private StorageStridePrefetcher? GetOrCreateStridePrefetcher(Address address)
+        {
+            // Past the scope's first block (token cancelled at flush/commit) a prefetcher could
+            // never engage; skip the detector entirely instead of feeding dead instances.
+            if (_prefetchCts.IsCancellationRequested) return null;
+
+            AddressAsKey key = address;
+            if (_stridePrefetchers.TryGetValue(key, out StorageStridePrefetcher? existing)) return existing;
+
+            // Only prefetchers still reading count against the cap. A broken one has stopped issuing
+            // reads but stays in the map so its (exited) readers are still joined before the shared
+            // scope is disposed; excluding it here keeps a broken slot from locking out a later
+            // striding contract for the rest of the block. Scanning is bounded (≤ MaxStridePrefetchers
+            // live entries plus a few broken ones) and only runs once the fast Count check trips.
+            if (_stridePrefetchers.Count >= MaxStridePrefetchers && CountActiveStridePrefetchers() >= MaxStridePrefetchers)
+            {
+                return null;
+            }
+
+            // The readers must NOT touch this wrapper's base scope: its storage trees are memoized
+            // per address, so they would share the live tree the executing thread reads and (at the
+            // block-end flush) writes through, bypassing the reader-exclusion gates the backend
+            // applies to its own background readers. A separate scope over the same parent gives
+            // them an isolated, parent-state-only view; it is opened lazily on engagement so blocks
+            // without a striding contract pay nothing.
+            return _stridePrefetchers.GetOrAdd(
+                key,
+                k => new StorageStridePrefetcher(
+                    () => GetOrCreatePrefetchScope().CreateStorageTree(k.Value),
+                    storageCache,
+                    k.Value,
+                    _prefetchCts.Token,
+                    PrefetcherReaderConcurrency));
+        }
+
+        private int CountActiveStridePrefetchers()
+        {
+            int active = 0;
+            foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
+            {
+                if (!kv.Value.IsBroken) active++;
+            }
+            return active;
+        }
+
+        private IWorldStateScopeProvider.IScope GetOrCreatePrefetchScope()
+        {
+            lock (_prefetchScopeLock)
+            {
+                // A private, never-flushed LocalMetrics: the block's own instance is single-threaded
+                // by contract, while this scope is shared by the concurrent prefetch readers.
+                return _prefetchScope ??= baseProvider.BeginScope(baseBlock, new LocalMetrics());
+            }
+        }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            // The batch is about to land this block's writes in the live scope, after which
+            // parent-state prefetches are no longer useful; stop the readers here, mirroring how
+            // the flat scope cancels its own background warmers around write batches.
+            StopStridePrefetchers();
+
             if (!_measureMetric)
             {
                 return baseScope.StartWriteBatch(estimatedAccountNum);
@@ -111,6 +204,11 @@ public class PrewarmerScopeProvider(
 
         public void Commit(ulong blockNumber)
         {
+            // Prefetched values are only valid for this block's parent state; a reader surviving
+            // into the next block would repopulate the freshly cleared cache with stale values.
+            // Join here, strictly inside the block lifecycle.
+            StopStridePrefetchers();
+
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
@@ -120,6 +218,72 @@ public class PrewarmerScopeProvider(
             long sw = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
+        }
+
+        private void StopStridePrefetchers()
+        {
+            // Unconditional: the scope's parent anchor is only valid for the first block it
+            // processes, and sync batches push many blocks through one scope. Once anything has
+            // flushed or committed here, later blocks must not engage against the stale anchor —
+            // even when no prefetcher was created yet (a storage-free first block would otherwise
+            // leave the token live). Cancelling synchronously here is what makes stragglers refuse
+            // to repopulate the cache after the block moves on; only the reader join is deferred.
+            _prefetchCts.Cancel();
+
+            List<Task>? readers = null;
+            if (!_stridePrefetchers.IsEmpty)
+            {
+                foreach (KeyValuePair<AddressAsKey, StorageStridePrefetcher> kv in _stridePrefetchers)
+                {
+                    Task[] prefetcherReaders = kv.Value.StopAndGetReaders();
+                    if (prefetcherReaders.Length > 0)
+                    {
+                        (readers ??= []).AddRange(prefetcherReaders);
+                    }
+                }
+                _stridePrefetchers.Clear();
+            }
+
+            IWorldStateScopeProvider.IScope? scope;
+            lock (_prefetchScopeLock)
+            {
+                scope = _prefetchScope;
+                _prefetchScope = null;
+            }
+
+            if (scope is null) return; // Nothing engaged: no private scope was ever opened.
+
+            if (readers is null)
+            {
+                // Readers already exited (or none were live); disposing the scope cannot race them.
+                scope.Dispose();
+                return;
+            }
+
+            // Join the readers and release their private scope on a background continuation. A
+            // synchronous join would stall block-end on the tail latency of an in-flight,
+            // uncancellable storage read — exactly on the striding blocks this targets. The token is
+            // already cancelled, so no straggler can publish into the next block's cache; deferring
+            // only delays disposing the readers' isolated scope until they have all returned.
+            IWorldStateScopeProvider.IScope scopeToDispose = scope;
+            Task.WhenAll(readers).ContinueWith(
+                static (_, state) =>
+                {
+                    try
+                    {
+                        ((IWorldStateScopeProvider.IScope)state!).Dispose();
+                    }
+                    catch
+                    {
+                        // Best-effort: the isolated scope is reached here only after all its readers
+                        // returned. A disposal that races provider/harness teardown must not surface
+                        // as a faulted, unobserved task.
+                    }
+                },
+                scopeToDispose,
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
         }
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -215,7 +379,8 @@ public class PrewarmerScopeProvider(
         SeqlockCache<StorageCell, byte[]> preBlockCache,
         Address address,
         bool isPrewarmer,
-        LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
+        LocalMetrics metrics,
+        StorageStridePrefetcher? stridePrefetcher = null) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache = preBlockCache;
@@ -230,6 +395,8 @@ public class PrewarmerScopeProvider(
 
         public byte[] Get(in UInt256 index)
         {
+            stridePrefetcher?.OnRead(in index);
+
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
