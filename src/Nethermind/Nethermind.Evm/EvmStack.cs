@@ -73,13 +73,15 @@ public ref struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static EvmWord CreateWordFromUInt64(ulong value)
     {
-        if (Vector256.IsHardwareAccelerated)
+        // Gate on Vector128: ARM64 accelerates only Vector128, but Vector256.Create still lowers
+        // to two hardware Vector128.Create ops there, so it must keep the intrinsic path.
+        if (Vector128.IsHardwareAccelerated)
         {
             return Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
         }
 
-        // Without SIMD (e.g. the zkVM guest) Vector256.Create degrades to a software element loop,
-        // which dominates the small-PUSH opcodes; build the word with four plain stores instead.
+        // Without any SIMD (e.g. the zkVM guest) Vector256.Create degrades to a software element
+        // loop, which dominates the small-PUSH opcodes; build the word with four plain stores instead.
         //
         // Safety: EvmWord is Vector256<byte>, i.e. exactly WordSize (32) bytes with no references,
         // so reinterpreting it as four ulongs is in-bounds and GC-safe, and all four are written

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Globalization;
 
 namespace Nethermind.Core.Extensions;
 
@@ -40,9 +41,10 @@ public static class SizeExtensions
             decimal num = Math.Sign(@this) * Math.Round((decimal)bytes / divisor, precision);
             // decimal keeps the scale it was rounded to, so 1025 would render "1.0KiB" where the
             // previous double math rendered "1KiB". The '#' placeholders drop trailing zeros and
-            // reproduce the old output exactly.
-            return string.Concat(num.ToString(precision > 0 ? "0." + new string('#', precision) : "0"),
-                addSpace ? " " : "", suf[place]);
+            // reproduce the old output exactly. Invariant culture keeps the '.' separator (and the
+            // tests meaningful) regardless of machine locale.
+            return string.Concat(num.ToString(precision > 0 ? "0." + new string('#', precision) : "0",
+                CultureInfo.InvariantCulture), addSpace ? " " : "", suf[place]);
         }
     }
 

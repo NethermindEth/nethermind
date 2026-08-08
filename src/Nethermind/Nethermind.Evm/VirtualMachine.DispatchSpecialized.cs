@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 #if ZK_EVM
+using System.Diagnostics;
 using Nethermind.Evm.GasPolicy;
 #endif
 using Nethermind.Evm.Tracing;
@@ -289,9 +289,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     : TGasPolicy.IsOutOfGas(in gas);
                 // The two lines above and the OnAfterInstructionTrace skip below hand-inline what
                 // EthereumGasPolicy.IsOutOfGas/OnAfterInstructionTrace do today (return gas.OutOfGas;
-                // and nothing). Nothing in the type system ties them together, so assert the
-                // equivalence in debug builds - a policy edit then fails a test rather than silently
-                // producing a guest that disagrees with the host.
+                // and nothing). Nothing in the type system ties them together: the IsOutOfGas half is
+                // asserted below, but OnAfterInstructionTrace being an empty body is an UNCHECKED
+                // invariant - if it ever gains one, this skip must be revisited by hand.
                 Debug.Assert(outOfGas == TGasPolicy.IsOutOfGas(in gas),
                     "ZK_EVM out-of-gas fast path diverged from TGasPolicy.IsOutOfGas");
                 if (outOfGas)
