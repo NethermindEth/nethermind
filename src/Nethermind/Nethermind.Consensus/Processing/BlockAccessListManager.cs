@@ -47,6 +47,7 @@ public partial class BlockAccessListManager(
     IBlocksConfig blocksConfig,
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
     CodeInfoRepositoryFactory codeInfoRepositoryFactory,
+    TransactionProcessorAdapterFactory txProcessorAdapterFactory,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
@@ -60,10 +61,10 @@ public partial class BlockAccessListManager(
     private Task? _balWarmupTask;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory));
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory, txProcessorAdapterFactory));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager,
-            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory));
+            transactionProcessorFactory ?? new TransactionProcessorFactory<EthereumGasPolicy>(), codeInfoRepositoryFactory, txProcessorAdapterFactory));
     private const int GasValidationChunkSize = 8;
     private ulong? _gasRemaining;
     private bool _isBuilding;

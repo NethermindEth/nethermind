@@ -21,6 +21,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using NSubstitute;
@@ -369,7 +370,8 @@ public class BlockhashProviderTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            static worldState => new EthereumCodeInfoRepository(worldState),
+            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor));
         balManager.PrepareForProcessing(current, spec, ProcessingOptions.None);
         balManager.SetBlockExecutionContext(new BlockExecutionContext(current.Header, spec));
         balManager.Setup(current);

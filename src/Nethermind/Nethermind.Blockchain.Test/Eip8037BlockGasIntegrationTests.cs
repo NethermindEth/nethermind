@@ -12,6 +12,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -46,7 +47,8 @@ public class Eip8037BlockGasIntegrationTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            static worldState => new EthereumCodeInfoRepository(worldState),
+            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor));
     }
 
     private static (BlockAccessListManager, Block) BuildAmsterdamBlock(ulong blockGasLimit, params Transaction[] txs)
@@ -212,7 +214,8 @@ public class Eip8037BlockGasIntegrationTests
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            static worldState => new EthereumCodeInfoRepository(worldState),
+            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor));
 
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)

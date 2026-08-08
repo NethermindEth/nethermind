@@ -74,6 +74,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
                 worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))
+            .AddScoped<TransactionProcessorAdapterFactory>(CreateExecuteAdapter)
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
@@ -145,6 +146,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 .AddScoped<IProducedBlockSuggester, ProducedBlockSuggester>();
         }
     }
+
+    private static ITransactionProcessorAdapter CreateExecuteAdapter(ITransactionProcessor transactionProcessor)
+        => new ExecuteTransactionProcessorAdapter(transactionProcessor);
 
     private class StandardBlockValidationModule : Module, IBlockValidationModule
     {

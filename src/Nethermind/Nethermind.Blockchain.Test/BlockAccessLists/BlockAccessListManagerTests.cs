@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -37,6 +38,7 @@ public class BlockAccessListManagerTests
             new BlocksConfig(), // ParallelExecution / ParallelExecutionBatchRead default to true
             Substitute.For<IWithdrawalProcessorFactory>(),
             static worldState => new EthereumCodeInfoRepository(worldState),
+            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor),
             // Enables parallel execution (and thus BAL read warmup), mirroring the production DI path.
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 

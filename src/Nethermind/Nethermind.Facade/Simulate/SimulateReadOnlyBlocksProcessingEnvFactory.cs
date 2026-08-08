@@ -65,6 +65,11 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .Intercept<ITransactionProcessor>(SkipSenderCodeCheckTransactionProcessorFactory.Apply)
             .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderCodeCheckTransactionProcessorFactory(inner))
             .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
+            // Wrap each EIP-7928 BAL tx processor in the simulate adapter too, so the BAL path gets the same
+            // GasCap / accounting / validation behaviours as the main path (see SimulateTransactionProcessorAdapter
+            // for why this is sequential-only-safe).
+            .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
+                txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
