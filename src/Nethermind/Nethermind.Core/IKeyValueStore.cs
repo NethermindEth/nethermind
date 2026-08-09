@@ -122,7 +122,7 @@ namespace Nethermind.Core
         byte[]? FirstKey { get; }
         byte[]? LastKey { get; }
 
-        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None);
     }
 
     /// <summary>

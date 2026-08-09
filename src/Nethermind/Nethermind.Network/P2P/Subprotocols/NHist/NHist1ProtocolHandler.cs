@@ -33,7 +33,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     public static string Code => Protocol.NHist;
     public override byte ProtocolVersion => Version;
     public override string ProtocolCode => Code;
-    public override int MessageIdSpaceSize => 5;
+    public override int MessageIdSpaceSize => 7;
 
     private const string DisconnectMessage = "Serving windowed flat history is not implemented in this node.";
     private const string TooManyInFlightMessage = "Too many concurrent nhist requests in flight for this peer.";
@@ -44,11 +44,16 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
     private readonly MessageDictionary<GetHistoryRangeAtHeightMessage, HistoryRangeAtHeightMessage> _getHistoryRangeRequests;
     private readonly MessageDictionary<GetChangesetsMessage, ChangesetsMessage> _getChangesetsRequests;
+    private readonly MessageDictionary<GetHistoryRowsMessage, HistoryRowsMessage> _getHistoryRowsRequests;
 
     private int _inFlightRequests;
     private long _windowState;
 
     public HistoryServingScope[] PeerServedScopes { get; private set; } = [];
+
+    public bool PeerSupportsFullClone { get; private set; }
+
+    public byte PeerRowFormatVersion { get; private set; }
 
     public NHist1ProtocolHandler(
         ISession session,
@@ -61,13 +66,19 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     {
         _getHistoryRangeRequests = new(this);
         _getChangesetsRequests = new(this);
+        _getHistoryRowsRequests = new(this);
         HistoryServer = historyServer;
         CanServe = historyServer.CanServe;
     }
 
     public override void Init()
     {
-        Send(new NHistStatusMessage { Scopes = [.. HistoryServer.ServedScopes] });
+        Send(new NHistStatusMessage
+        {
+            Scopes = [.. HistoryServer.ServedScopes],
+            SupportsFullClone = HistoryServer.CanServeFullClone,
+            RowFormatVersion = HistoryServer.RowFormatVersion
+        });
         NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
     }
 
@@ -85,6 +96,8 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 NHistStatusMessage statusMessage = Deserialize<NHistStatusMessage>(message.Content);
                 ReportIn(statusMessage, size);
                 PeerServedScopes = statusMessage.Scopes;
+                PeerSupportsFullClone = statusMessage.SupportsFullClone;
+                PeerRowFormatVersion = statusMessage.RowFormatVersion;
                 return true;
             case NHist1MessageCode.GetHistoryRangeAtHeight:
                 if (ShouldServeNHist())
@@ -103,6 +116,15 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 ChangesetsMessage changesetsMessage = Deserialize<ChangesetsMessage>(message.Content);
                 ReportIn(changesetsMessage, size);
                 Handle(changesetsMessage, size);
+                return true;
+            case NHist1MessageCode.GetHistoryRows:
+                if (ShouldServeNHist())
+                    ScheduleOrReleaseQuota<GetHistoryRowsMessage, HistoryRowsMessage>(message, Handle);
+                return true;
+            case NHist1MessageCode.HistoryRows:
+                HistoryRowsMessage rowsMessage = Deserialize<HistoryRowsMessage>(message.Content);
+                ReportIn(rowsMessage, size);
+                Handle(rowsMessage, size);
                 return true;
             default:
                 return false;
@@ -184,6 +206,8 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
     private void Handle(ChangesetsMessage msg, long size) => _getChangesetsRequests.Handle(msg.RequestId, msg, size);
 
+    private void Handle(HistoryRowsMessage msg, long size) => _getHistoryRowsRequests.Handle(msg.RequestId, msg, size);
+
     private async ValueTask<HistoryRangeAtHeightMessage> Handle(GetHistoryRangeAtHeightMessage getMessage, CancellationToken cancellationToken)
     {
         IOwnedReadOnlyList<HistoryRangeEntry>? entries = null;
@@ -252,6 +276,56 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             Interlocked.Decrement(ref _inFlightRequests);
         }
     }
+
+    private async ValueTask<HistoryRowsMessage> Handle(GetHistoryRowsMessage getMessage, CancellationToken cancellationToken)
+    {
+        IOwnedReadOnlyList<HistoryRowEntry>? entries = null;
+        try
+        {
+            using GetHistoryRowsMessage message = getMessage;
+            long byteLimit = NHistMessageLimits.ClampResponseBytes(message.ResponseBytes);
+            byte[]? cursor = message.Cursor.Length == 0 ? null : message.Cursor;
+            byte[]? nextCursor;
+            bool refused;
+            (entries, nextCursor, refused) = HistoryServer.GetHistoryRows(
+                message.Column, message.StartKey, message.EndKey, cursor, byteLimit, NHistMessageLimits.MaxResponseRowEntries, cancellationToken);
+
+            long responseBytes = 0;
+            for (int i = 0; i < entries.Count; i++) responseBytes += entries[i].Key.Length + entries[i].Value.Length;
+            await ThrottleForServedBytesAsync(responseBytes, cancellationToken);
+
+            HistoryRowsMessage response = new()
+            {
+                RequestId = message.RequestId,
+                Entries = entries,
+                NextCursor = nextCursor,
+                Refused = refused
+            };
+            entries = null;
+            return response;
+        }
+        catch
+        {
+            entries?.Dispose();
+            throw;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _inFlightRequests);
+        }
+    }
+
+    public async Task<HistoryRowsMessage> GetHistoryRows(
+        HistoryRowColumn column, byte[] startKey, byte[] endKey, byte[]? cursor, CancellationToken token) =>
+        await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
+            SendRequest(new GetHistoryRowsMessage
+            {
+                Column = column,
+                StartKey = startKey,
+                EndKey = endKey,
+                Cursor = cursor ?? [],
+                ResponseBytes = bytesLimit
+            }, _getHistoryRowsRequests, token));
 
     public async Task<HistoryRangeAtHeightMessage> GetHistoryRangeAtHeight(
         ValueHash256 startKey, ValueHash256 endKey, ulong height, byte[]? cursor, CancellationToken token) =>

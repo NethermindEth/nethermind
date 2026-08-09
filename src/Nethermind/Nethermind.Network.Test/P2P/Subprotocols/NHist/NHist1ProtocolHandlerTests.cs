@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -245,6 +246,109 @@ public class NHist1ProtocolHandlerTests
             session.Received(1).DeliverMessage(Arg.Is<NHistStatusMessage>(m => m.Scopes.Length == 1 && m.Scopes[0].Equals(scope)));
             Assert.That(initialized, Is.True, "Init must notify protocol initialization so the session marks nhist1 usable");
         }
+    }
+
+    [Test]
+    public void Init_SendsStatusMessageWithSupportsFullCloneAndRowFormatVersion()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+        historyServer.CanServeFullClone.Returns(true);
+        historyServer.RowFormatVersion.Returns((byte)3);
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<IMessageSerializationService>(),
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            historyServer);
+
+        handler.Init();
+
+        session.Received(1).DeliverMessage(Arg.Is<NHistStatusMessage>(m => m.SupportsFullClone && m.RowFormatVersion == 3));
+    }
+
+    [Test]
+    public void GetHistoryRows_forwards_request_to_history_server()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+        historyServer.GetHistoryRows(Arg.Any<HistoryRowColumn>(), Arg.Any<byte[]>(), Arg.Any<byte[]>(), Arg.Any<byte[]?>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns((ArrayPoolList<HistoryRowEntry>.Empty(), (byte[]?)null, false));
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRowsMessageSerializer()),
+            SerializerInfo.Create(new HistoryRowsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            historyServer);
+
+        using GetHistoryRowsMessage request = new()
+        {
+            RequestId = 1,
+            Column = HistoryRowColumn.Code,
+            StartKey = [0],
+            EndKey = [0xFF],
+            Cursor = [],
+            ResponseBytes = 4321
+        };
+
+        Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRows);
+
+        historyServer.Received(1).GetHistoryRows(
+            HistoryRowColumn.Code,
+            Arg.Is<byte[]>(b => b.SequenceEqual(request.StartKey)),
+            Arg.Is<byte[]>(b => b.SequenceEqual(request.EndKey)),
+            Arg.Any<byte[]?>(),
+            request.ResponseBytes,
+            NHistMessageLimits.MaxResponseRowEntries,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public void GetHistoryRows_WhenServerRefuses_ResponseCarriesRefusedTrue()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+        historyServer.GetHistoryRows(Arg.Any<HistoryRowColumn>(), Arg.Any<byte[]>(), Arg.Any<byte[]>(), Arg.Any<byte[]?>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns((ArrayPoolList<HistoryRowEntry>.Empty(), (byte[]?)null, true));
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        HistoryRowsMessage? captured = null;
+        session.When(s => s.DeliverMessage(Arg.Any<HistoryRowsMessage>())).Do(call => captured = call.Arg<HistoryRowsMessage>());
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRowsMessageSerializer()),
+            SerializerInfo.Create(new HistoryRowsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            historyServer);
+
+        using GetHistoryRowsMessage request = new() { RequestId = 1, Column = HistoryRowColumn.AccountHistory, StartKey = [0], EndKey = [0xFF], Cursor = [] };
+
+        Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRows);
+
+        Assert.That(captured, Is.Not.Null);
+        Assert.That(captured!.Refused, Is.True, "a windowed-source refusal must reach the wire as Refused=true, not an ambiguous empty result");
     }
 
     [Test]

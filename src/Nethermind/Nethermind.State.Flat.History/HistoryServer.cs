@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -19,9 +20,12 @@ public sealed class HistoryServer : IHistoryServer
     private const int BlockBytes = sizeof(ulong);
     private const int MinEntryChargeBytes = 32;
     private static readonly HistoryServingScope[] NoScopes = [];
+    private static readonly HistoryRowColumn[] VersionedRowColumns =
+        [HistoryRowColumn.AccountHistory, HistoryRowColumn.StorageHistory, HistoryRowColumn.StorageClears, HistoryRowColumn.AvailableBlocks];
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly IDb _persistedAccounts;
+    private readonly IDb _code;
     private readonly HistoryAvailability _availability;
     private readonly HistoryRowFormat _rowFormat;
     private readonly IStateHistoryCaptureStatus _captureStatus;
@@ -33,6 +37,7 @@ public sealed class HistoryServer : IHistoryServer
     public HistoryServer(
         IColumnsDb<FlatDbColumns> db,
         IColumnsDb<FlatHistoryColumns> history,
+        [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbConfig config,
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
@@ -41,6 +46,7 @@ public sealed class HistoryServer : IHistoryServer
     {
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(codeDb);
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(availability);
         ArgumentNullException.ThrowIfNull(rowFormat);
@@ -48,6 +54,7 @@ public sealed class HistoryServer : IHistoryServer
         ArgumentNullException.ThrowIfNull(scopeGate);
         _history = history;
         _persistedAccounts = db.GetColumnDb(FlatDbColumns.Account);
+        _code = codeDb;
         _config = config;
         _availability = availability;
         _rowFormat = rowFormat;
@@ -62,6 +69,12 @@ public sealed class HistoryServer : IHistoryServer
     }
 
     public bool CanServe => _config.HistoryEnabled;
+
+    private bool IsWindowed => _config.HistoryRetentionBlocks > 0 || _availability.TryGetGlobalFloor(out _);
+
+    public bool CanServeFullClone => CanServe && !IsWindowed;
+
+    public byte RowFormatVersion => _rowFormat.FormatVersion;
 
     public IReadOnlyList<HistoryServingScope> ServedScopes => Volatile.Read(ref _servedScopes);
 
@@ -309,4 +322,92 @@ public sealed class HistoryServer : IHistoryServer
         bound.AsSpan(keyLength, BlockBytes).Fill(0xFF);
         return bound;
     }
+
+    public (IOwnedReadOnlyList<HistoryRowEntry> Entries, byte[]? NextCursor, bool Refused) GetHistoryRows(
+        HistoryRowColumn column,
+        byte[] startKey,
+        byte[] endKey,
+        byte[]? cursor,
+        long byteLimit,
+        int maxEntries,
+        CancellationToken cancellationToken)
+    {
+        if (!CanServe || (Array.IndexOf(VersionedRowColumns, column) >= 0 && IsWindowed)) return Refuse();
+
+        IDb? source = ResolveColumn(column);
+        if (source is not ISortedKeyValueStore sorted) return Refuse();
+
+        byteLimit = Math.Clamp(byteLimit, 1, IHistoryServer.HardResponseByteLimit);
+
+        int scopeEpoch = _scopeGate.EnterScope();
+        try
+        {
+            if (Array.IndexOf(VersionedRowColumns, column) >= 0 && IsWindowed) return Refuse();
+
+            return ScanRows(column, sorted, startKey, endKey, cursor, byteLimit, maxEntries, cancellationToken);
+        }
+        finally
+        {
+            _scopeGate.ExitScope(scopeEpoch);
+        }
+    }
+
+    private (IOwnedReadOnlyList<HistoryRowEntry> Entries, byte[]? NextCursor, bool Refused) ScanRows(
+        HistoryRowColumn column, ISortedKeyValueStore sorted, byte[] startKey, byte[] endKey, byte[]? cursor, long byteLimit, int maxEntries, CancellationToken cancellationToken)
+    {
+        byte[] from = cursor is { Length: > 0 } ? RawRowKeys.NextKeyAfter(cursor) : startKey;
+
+        ArrayPoolList<HistoryRowEntry> results = new(16);
+        try
+        {
+            long consumed = 0;
+            byte[]? lastEmittedKey = cursor;
+            bool exhausted = true;
+
+            using ISortedView view = sorted.GetViewBetween(from, endKey, ReadFlags.HintCacheMiss);
+            while (view.MoveNext())
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    results.Dispose();
+                    return Refuse();
+                }
+
+                ReadOnlySpan<byte> key = view.CurrentKey;
+                if (column == HistoryRowColumn.AvailableBlocks && key.Length != BlockBytes) continue;
+
+                if (consumed >= byteLimit || results.Count >= maxEntries)
+                {
+                    exhausted = false;
+                    break;
+                }
+
+                ReadOnlySpan<byte> value = view.CurrentValue;
+                byte[] keyArray = key.ToArray();
+                results.Add(new HistoryRowEntry(keyArray, value.ToArray()));
+                consumed += key.Length + Math.Max(value.Length, MinEntryChargeBytes);
+                lastEmittedKey = keyArray;
+            }
+
+            return (results, exhausted ? null : lastEmittedKey, false);
+        }
+        catch
+        {
+            results.Dispose();
+            throw;
+        }
+    }
+
+    private static (IOwnedReadOnlyList<HistoryRowEntry> Entries, byte[]? NextCursor, bool Refused) Refuse() =>
+        (ArrayPoolList<HistoryRowEntry>.Empty(), null, true);
+
+    private IDb? ResolveColumn(HistoryRowColumn column) => column switch
+    {
+        HistoryRowColumn.AccountHistory => _history.GetColumnDb(FlatHistoryColumns.AccountHistory),
+        HistoryRowColumn.StorageHistory => _history.GetColumnDb(FlatHistoryColumns.StorageHistory),
+        HistoryRowColumn.StorageClears => _history.GetColumnDb(FlatHistoryColumns.StorageClears),
+        HistoryRowColumn.AvailableBlocks => _history.GetColumnDb(FlatHistoryColumns.AvailableBlocks),
+        HistoryRowColumn.Code => _code,
+        _ => null,
+    };
 }

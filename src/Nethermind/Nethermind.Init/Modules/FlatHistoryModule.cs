@@ -43,6 +43,9 @@ public class FlatHistoryModule : Module
             .Bind<IFlatPersistenceCaptureHook, HistoryWriter>()
             .Bind<IStateHistoryCaptureStatus, HistoryWriter>()
             .Bind<IHistoryPivotSeeder, HistoryWriter>()
+            .AddSingleton<BlockTreeCloneHeaderSource>()
+            .Bind<ICloneHeaderSource, BlockTreeCloneHeaderSource>()
+            .AddSingleton<ArchiveCloneVerifier>()
             .AddDecorator<IFlatDbManager>((ctx, inner) => new HistoricalFlatDbManager(
                 inner,
                 ctx.Resolve<IPersistenceManager>(),
