@@ -23,8 +23,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
+    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore, ISelfDescribingReceiptRetention
     {
+        private static readonly ReceiptArrayStorageDecoder SelfDescribingStorageDecoder = new(compactEncoding: false);
+
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptsRecovery _receiptsRecovery;
@@ -836,6 +838,27 @@ namespace Nethermind.Blockchain.Receipts
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
                 return _receiptsDb.KeyExists(blockNumPrefixed) || _receiptsDb.KeyExists(blockHash);
             }
+        }
+
+        [SkipLocalsInit]
+        public bool TryRetainSelfDescribing(Block block)
+        {
+            TxReceipt[] receipts = Get(block, recover: true, recoverSender: true);
+            if (block.Transactions.Length != receipts.Length)
+            {
+                return false;
+            }
+
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
+
+            using ArrayPoolSpan<byte> rlp = SelfDescribingStorageDecoder.EncodeToArrayPoolSpan(receipts, behaviors);
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
+            _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+
+            _receiptsCache.Set(block.Hash, receipts);
+            return true;
         }
 
         public void EnsureCanonical(Block block) => EnsureCanonical(block, null);

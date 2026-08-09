@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -27,6 +28,7 @@ public sealed class HistoryServer : IHistoryServer
     private readonly HistoryScopeGate _scopeGate;
     private readonly ChangesetSidecarStore? _changesetSidecar;
     private readonly IFlatDbConfig _config;
+    private HistoryServingScope[] _servedScopes = NoScopes;
 
     public HistoryServer(
         IColumnsDb<FlatDbColumns> db,
@@ -54,31 +56,35 @@ public sealed class HistoryServer : IHistoryServer
         _changesetSidecar = config.HistoryChangesetSidecarEnabled
             ? new ChangesetSidecarStore(history.GetColumnDb(FlatHistoryColumns.ChangesetSidecar))
             : null;
+
+        _availability.Changed += RefreshServedScopes;
+        RefreshServedScopes();
     }
 
     public bool CanServe => _config.HistoryEnabled;
 
-    public IReadOnlyList<HistoryServingScope> ServedScopes
+    public IReadOnlyList<HistoryServingScope> ServedScopes => Volatile.Read(ref _servedScopes);
+
+    private void RefreshServedScopes() => Volatile.Write(ref _servedScopes, ComputeServedScopes());
+
+    private HistoryServingScope[] ComputeServedScopes()
     {
-        get
+        if (!CanServe || !_availability.TryGetWatermark(out ulong watermark)) return NoScopes;
+
+        _availability.TryGetGlobalFloor(out ulong floor);
+        IReadOnlyList<ScopeFloor> slices = _availability.GetScopes();
+        if (slices.Count == 0) return [new HistoryServingScope(ValueKeccak.Zero, ValueKeccak.MaxValue, floor, watermark)];
+
+        HistoryServingScope[] result = new HistoryServingScope[slices.Count + 1];
+        result[0] = new HistoryServingScope(ValueKeccak.Zero, ValueKeccak.MaxValue, floor, watermark);
+        for (int i = 0; i < slices.Count; i++)
         {
-            if (!CanServe || !_availability.TryGetWatermark(out ulong watermark)) return NoScopes;
-
-            _availability.TryGetGlobalFloor(out ulong floor);
-            IReadOnlyList<ScopeFloor> slices = _availability.GetScopes();
-            if (slices.Count == 0) return [new HistoryServingScope(ValueKeccak.Zero, ValueKeccak.MaxValue, floor, watermark)];
-
-            HistoryServingScope[] result = new HistoryServingScope[slices.Count + 1];
-            result[0] = new HistoryServingScope(ValueKeccak.Zero, ValueKeccak.MaxValue, floor, watermark);
-            for (int i = 0; i < slices.Count; i++)
-            {
-                ScopeFloor slice = slices[i];
-                ValueHash256 sliceStart = PadAccountKey(slice.Key);
-                result[i + 1] = new HistoryServingScope(sliceStart, sliceStart, slice.Floor, watermark);
-            }
-
-            return result;
+            ScopeFloor slice = slices[i];
+            ValueHash256 sliceStart = PadAccountKey(slice.Key);
+            result[i + 1] = new HistoryServingScope(sliceStart, sliceStart, slice.Floor, watermark);
         }
+
+        return result;
     }
 
     private static ValueHash256 PadAccountKey(byte[] accountKey)

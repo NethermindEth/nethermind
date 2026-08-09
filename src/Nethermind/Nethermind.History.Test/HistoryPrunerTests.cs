@@ -19,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Db;
+using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
@@ -290,6 +291,8 @@ public class HistoryPrunerTests
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
+            Substitute.For<IFlatDbConfig>(),
+            Substitute.For<ILogIndexStorage>(),
             LimboLogs.Instance);
 
         if (shouldThrow)

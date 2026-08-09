@@ -70,6 +70,8 @@ public sealed class HistoryAvailability
     private ScopeFloor[]? _cachedScopes;
     private int _scopeGeneration;
 
+    public event Action? Changed;
+
     public HistoryAvailability(IDb availableBlocks)
     {
         ArgumentNullException.ThrowIfNull(availableBlocks);
@@ -219,6 +221,8 @@ public sealed class HistoryAvailability
         {
             WriteGlobalFloorUnderLock(floor);
         }
+
+        Changed?.Invoke();
     }
 
     /// <summary>
@@ -229,13 +233,23 @@ public sealed class HistoryAvailability
     /// </summary>
     public bool TryRaiseGlobalFloor(ulong newFloor)
     {
+        bool raised;
         lock (_floorLock)
         {
             TryGetGlobalFloor(out ulong current);
-            if (newFloor <= current) return false;
-            WriteGlobalFloorUnderLock(newFloor);
-            return true;
+            raised = newFloor > current;
+            if (raised)
+            {
+                WriteGlobalFloorUnderLock(newFloor);
+            }
         }
+
+        if (raised)
+        {
+            Changed?.Invoke();
+        }
+
+        return raised;
     }
 
     /// <summary>
@@ -247,14 +261,24 @@ public sealed class HistoryAvailability
     /// </summary>
     public bool TryLowerGlobalFloor(ulong newFloor)
     {
+        bool lowered;
         lock (_floorLock)
         {
             bool hasFloor = TryGetGlobalFloor(out ulong current);
-            if (hasFloor && newFloor >= current) return false;
-            WriteGlobalFloorUnderLock(newFloor);
-            InvalidateFloorCache();
-            return true;
+            lowered = !hasFloor || newFloor < current;
+            if (lowered)
+            {
+                WriteGlobalFloorUnderLock(newFloor);
+                InvalidateFloorCache();
+            }
         }
+
+        if (lowered)
+        {
+            Changed?.Invoke();
+        }
+
+        return lowered;
     }
 
     /// <summary>Resets the refuse-fast-path cache so the next <see cref="IsBelowGlobalFloor"/> call re-reads the
@@ -279,6 +303,8 @@ public sealed class HistoryAvailability
         {
             WriteScopeRecordUnderLock(accountKey, floor);
         }
+
+        Changed?.Invoke();
     }
 
     public bool TryGetScopeFloor(ReadOnlySpan<byte> accountKey, out ulong floor)
@@ -302,13 +328,22 @@ public sealed class HistoryAvailability
     /// does not already exist.</summary>
     public bool TryRaiseScopeFloor(ReadOnlySpan<byte> accountKey, ulong newFloor)
     {
+        bool raised;
         lock (_floorLock)
         {
-            if (!TryGetScopeFloor(accountKey, out ulong current)) return false;
-            if (newFloor <= current) return false;
-            WriteScopeRecordUnderLock(accountKey, newFloor);
-            return true;
+            raised = TryGetScopeFloor(accountKey, out ulong current) && newFloor > current;
+            if (raised)
+            {
+                WriteScopeRecordUnderLock(accountKey, newFloor);
+            }
         }
+
+        if (raised)
+        {
+            Changed?.Invoke();
+        }
+
+        return raised;
     }
 
     /// <summary>Deletes a scope record - an address removed from the operator's allow-list reverts to the all-keys
@@ -322,6 +357,8 @@ public sealed class HistoryAvailability
             _availableBlocks.Remove(key);
             InvalidateScopeCache();
         }
+
+        Changed?.Invoke();
     }
 
     private void WriteScopeRecordUnderLock(ReadOnlySpan<byte> accountKey, ulong floor)
@@ -480,6 +517,8 @@ public sealed class HistoryAvailability
         BinaryPrimitives.WriteUInt64BigEndian(value, watermark);
         _availableBlocks.PutSpan(WatermarkKey, value);
         _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
+
+        Changed?.Invoke();
     }
 }
 
