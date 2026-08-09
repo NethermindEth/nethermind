@@ -2329,8 +2329,8 @@ namespace Nethermind.TxPool.Test
         [TestCase(100_000UL, false, true, TestName = "prefix exactly at MAX_VERIFY_GAS is accepted")]
         [TestCase(100_001UL, false, false, TestName = "prefix one gas over MAX_VERIFY_GAS is rejected")]
         [TestCase(100_000UL, true, false, TestName = "signature verification cost pushes the prefix over the ceiling")]
-        [TestCase(93_300UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
-        public void Frame_transaction_prefix_is_bounded_by_max_verify_gas(ulong verifyGasLimit, bool withP256Signature, bool expectedAccepted)
+        [TestCase(97_200UL, true, true, TestName = "prefix plus signature cost exactly at the ceiling is accepted")]
+        public void Frame_transaction_prefix_is_bounded_by_max_verify_gas(ulong verifyGasLimit, bool withSignature, bool expectedAccepted)
         {
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, new TestSpecProvider(Bogota.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
@@ -2339,10 +2339,12 @@ namespace Nethermind.TxPool.Test
             _txPool.AddPeer(peer);
 
             Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: verifyGasLimit);
-            if (withP256Signature)
+            if (withSignature)
             {
-                // 6 700 gas, so it decides the outcome on its own at a 93 300-gas prefix.
-                frameTx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, new byte[TxFrameSignature.P256SignatureLength])];
+                // A secp256k1 entry verifies for 2 800 gas, so it decides the outcome on its own at a
+                // 97 200-gas prefix. It has to be a signature that verifies: the pool rejects one that
+                // does not before the budget is ever compared.
+                frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
                 frameTx.Hash = frameTx.CalculateHash();
             }
 
