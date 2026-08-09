@@ -10,4 +10,6 @@ public static class NHist1MessageCode
     public const int GetChangesets = 0x02;
     public const int Changesets = 0x03;
     public const int Status = 0x04;
+    public const int GetHistoryRows = 0x05;
+    public const int HistoryRows = 0x06;
 }

@@ -44,12 +44,15 @@ public class HistoryServerTests
         _flatColumns.Dispose();
     }
 
+    private IDb _codeDb = null!;
+
     private HistoryServer CreateServer(FlatDbConfig config) => CreateServer(config, new TestCaptureStatus());
 
     private HistoryServer CreateServer(FlatDbConfig config, TestCaptureStatus captureStatus)
     {
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        return new HistoryServer(_flatColumns, _historyColumns, config, availability, rowFormat, captureStatus, new HistoryScopeGate());
+        _codeDb = new SnapshotableMemDb();
+        return new HistoryServer(_flatColumns, _historyColumns, _codeDb, config, availability, rowFormat, captureStatus, new HistoryScopeGate());
     }
 
     [Test]
@@ -602,5 +605,232 @@ public class HistoryServerTests
         copy[0] = (byte)(index % 256);
         copy[1] = (byte)(index / 256);
         return copy;
+    }
+
+    [Test]
+    public void GetHistoryRows_UnwindowedNode_StreamsRawAccountHistoryRowsInAscendingKeyOrder()
+    {
+        for (int i = 0; i < Addresses.Length; i++)
+        {
+            HistoryColumnsWriter.RecordAccount(_historyColumns, Addresses[i], block: 1, new Account((ulong)i + 1, (ulong)(i + 1) * 100));
+        }
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 1);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, byte[]? cursor, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.AccountHistory, [0x00], Enumerable.Repeat((byte)0xFF, 64).ToArray(), null, 1_000_000, NoEntryCap, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused, Is.False, "an unwindowed (full) archive must serve a full clone request");
+            Assert.That(entries.Count, Is.EqualTo(Addresses.Length), "every raw on-disk row in range must stream out, unmerged with anything else");
+            Assert.That(cursor, Is.Null, "a fully-drained scan must not hand back a continuation cursor");
+            for (int i = 1; i < entries.Count; i++)
+            {
+                int comparison = string.CompareOrdinal(Convert.ToHexString(entries[i - 1].Key), Convert.ToHexString(entries[i].Key));
+                Assert.That(comparison, Is.LessThan(0),
+                    "rows must stream in ascending on-disk key order, matching the shard/bulk-write import pipeline's expectations");
+            }
+        }
+
+        entries.Dispose();
+    }
+
+    [Test]
+    public void GetHistoryRows_WindowedNode_RefusesVersionedColumnsIncludingAvailableBlocks()
+    {
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, TestItem.AddressA, block: 5, new Account(5, 500));
+        HistoryColumnsWriter.MarkBlockV3(_historyColumns, 5, ValueKeccak.Compute("root"u8));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 5);
+        HistoryColumnsWriter.SetGlobalFloor(_historyColumns, 1);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 10 });
+
+        byte[] maxKey = Enumerable.Repeat((byte)0xFF, 64).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertRefused(server.GetHistoryRows(HistoryRowColumn.AccountHistory, [0x00], maxKey, null, 1_000_000, NoEntryCap, CancellationToken.None));
+            AssertRefused(server.GetHistoryRows(HistoryRowColumn.StorageHistory, [0x00], maxKey, null, 1_000_000, NoEntryCap, CancellationToken.None));
+            AssertRefused(server.GetHistoryRows(HistoryRowColumn.StorageClears, [0x00], maxKey, null, 1_000_000, NoEntryCap, CancellationToken.None));
+            AssertRefused(server.GetHistoryRows(HistoryRowColumn.AvailableBlocks, [0x00], maxKey, null, 1_000_000, NoEntryCap, CancellationToken.None));
+        }
+
+        return;
+
+        static void AssertRefused((IOwnedReadOnlyList<HistoryRowEntry> Entries, byte[]? Cursor, bool Refused) result)
+        {
+            Assert.That(result.Refused, Is.True, "a windowed source must refuse a full-clone request for a versioned column, including AvailableBlocks, which the pruner also deletes below the floor");
+            result.Entries.Dispose();
+        }
+    }
+
+    [Test]
+    public void GetHistoryRows_WindowedNode_StillServesCode()
+    {
+        HistoryColumnsWriter.MarkBlockV3(_historyColumns, 5, ValueKeccak.Compute("root"u8));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 5);
+        HistoryColumnsWriter.SetGlobalFloor(_historyColumns, 1);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 10 });
+        _codeDb.Set(new byte[] { 1, 2, 3 }, new byte[] { 0xAB });
+
+        byte[] maxKey = Enumerable.Repeat((byte)0xFF, 32).ToArray();
+
+        (IOwnedReadOnlyList<HistoryRowEntry> code, _, bool codeRefused) = server.GetHistoryRows(
+            HistoryRowColumn.Code, [0x00], maxKey, null, 1_000_000, NoEntryCap, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeRefused, Is.False, "code is content-addressed and never pruned, so it must remain servable even when windowed");
+            Assert.That(code.Count, Is.EqualTo(1));
+        }
+
+        code.Dispose();
+    }
+
+    [Test]
+    public void IsWindowed_RetentionConfiguredAloneWithNoFloorPublished_Refuses()
+    {
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, TestItem.AddressA, block: 5, new Account(5, 500));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 5);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 10 });
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, _, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.AccountHistory, [0x00], Enumerable.Repeat((byte)0xFF, 64).ToArray(), null, 1_000_000, NoEntryCap, CancellationToken.None);
+
+        Assert.That(refused, Is.True, "configured retention alone, even with no floor ever published yet, must count as windowed");
+        entries.Dispose();
+    }
+
+    [Test]
+    public void IsWindowed_FloorPublishedHistoricallyWithNoCurrentRetentionConfigured_Refuses()
+    {
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, TestItem.AddressA, block: 5, new Account(5, 500));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 5);
+        HistoryColumnsWriter.SetGlobalFloor(_historyColumns, 1);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 0 });
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, _, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.AccountHistory, [0x00], Enumerable.Repeat((byte)0xFF, 64).ToArray(), null, 1_000_000, NoEntryCap, CancellationToken.None);
+
+        Assert.That(refused, Is.True, "a floor published historically must be refused even if retention is unset in the current config - rows below it are already gone from disk");
+        entries.Dispose();
+    }
+
+    [Test]
+    public void GetHistoryRows_response_never_exceeds_soft_cap_and_cursor_resumes_correctly()
+    {
+        for (int i = 0; i < Addresses.Length; i++)
+        {
+            HistoryColumnsWriter.RecordAccount(_historyColumns, Addresses[i], block: 1, new Account((ulong)i + 1, (ulong)(i + 1) * 100));
+        }
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 1);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
+        byte[] maxKey = Enumerable.Repeat((byte)0xFF, 64).ToArray();
+
+        List<byte[]> collectedKeys = [];
+        byte[]? cursor = null;
+        int pagesRemaining = Addresses.Length + 1;
+        do
+        {
+            Assert.That(--pagesRemaining, Is.GreaterThan(0), "the cursor must eventually drain, not loop forever");
+            (IOwnedReadOnlyList<HistoryRowEntry> page, byte[]? next, bool refused) = server.GetHistoryRows(
+                HistoryRowColumn.AccountHistory, [0x00], maxKey, cursor, byteLimit: 1, NoEntryCap, CancellationToken.None);
+            Assert.That(refused, Is.False);
+            foreach (HistoryRowEntry entry in page) collectedKeys.Add(entry.Key);
+            page.Dispose();
+            cursor = next;
+        } while (cursor is not null);
+
+        Assert.That(collectedKeys.Count, Is.EqualTo(Addresses.Length),
+            "resuming with the returned cursor repeatedly must surface every row exactly once under a tight byte cap - a raw count, not deduplicated, so a resume bug that repeats a key cannot hide behind Distinct()");
+    }
+
+    [Test]
+    public void GetHistoryRows_NullCursor_ScansFromStartKey()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, TestItem.AddressA, block: 1, new Account(1, 100));
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 1);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, byte[]? cursor, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.AccountHistory, [0x00], Enumerable.Repeat((byte)0xFF, 64).ToArray(), null, 1_000_000, NoEntryCap, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused, Is.False);
+            Assert.That(entries.Count, Is.EqualTo(1));
+            Assert.That(cursor, Is.Null, "a single-row scan that fits entirely in one page must not hand back a cursor");
+        }
+
+        entries.Dispose();
+    }
+
+    [Test]
+    public void GetHistoryRows_Cancelled_ReturnsRefusedTrue_NeverAnEmptyResultWithNoCursor()
+    {
+        for (int i = 0; i < Addresses.Length; i++)
+        {
+            HistoryColumnsWriter.RecordAccount(_historyColumns, Addresses[i], block: 1, new Account((ulong)i + 1, (ulong)(i + 1) * 100));
+        }
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 1);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, byte[]? cursor, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.AccountHistory, [0x00], Enumerable.Repeat((byte)0xFF, 64).ToArray(), null, 1_000_000, NoEntryCap, cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused, Is.True, "a cancelled scan must report Refused=true, never look like a clean, complete, empty result");
+            Assert.That(entries.Count, Is.EqualTo(0));
+        }
+
+        entries.Dispose();
+    }
+
+    [Test]
+    public void GetHistoryRows_AvailableBlocks_FiltersOutReservedKeysStructurally()
+    {
+        HistoryColumnsWriter.MarkBlock(_historyColumns, 5, ValueKeccak.Compute("root"u8));
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 5);
+
+        IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        availableBlocks.Set("history:some-reserved-key"u8, new byte[] { 1 });
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, _, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.AvailableBlocks, new byte[8], Enumerable.Repeat((byte)0xFF, 32).ToArray(), null, 1_000_000, NoEntryCap, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused, Is.False);
+            Assert.That(entries.Count, Is.EqualTo(1), "only the real 8-byte per-block marker key must be served; reserved (non-8-byte) keys must never reach the wire as if they were block markers");
+            Assert.That(entries[0].Key.Length, Is.EqualTo(8));
+        }
+
+        entries.Dispose();
+    }
+
+    [Test]
+    public void GetHistoryRows_WhenHistoryDisabled_Refuses()
+    {
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = false });
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, byte[]? cursor, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.Code, [0x00], [0xFF], null, 1_000_000, NoEntryCap, CancellationToken.None);
+
+        Assert.That(refused, Is.True);
+        entries.Dispose();
     }
 }

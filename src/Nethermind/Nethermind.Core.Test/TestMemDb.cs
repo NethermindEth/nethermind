@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Bytes = Nethermind.Core.Extensions.Bytes;
@@ -106,7 +107,7 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
             return max;
         }
     }
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
     {
         ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
 

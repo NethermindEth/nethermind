@@ -23,11 +23,28 @@ public readonly record struct HistoryRangeEntry(byte[] Key, ulong Block, ReadOnl
 
 public readonly record struct ChangesetChunkEntry(ulong Block, uint ChunkIndex, bool IsLastChunkForBlock, ReadOnlyMemory<byte> Payload);
 
+public enum HistoryRowColumn : byte
+{
+    AccountHistory,
+    StorageHistory,
+    StorageClears,
+    AvailableBlocks,
+    Code,
+}
+
+public readonly record struct HistoryRowEntry(byte[] Key, ReadOnlyMemory<byte> Value);
+
 public interface IHistoryServer
 {
     const long HardResponseByteLimit = 2_000_000;
 
+    const int MaxRowKeyBytes = 128;
+
     bool CanServe { get; }
+
+    bool CanServeFullClone { get; }
+
+    byte RowFormatVersion { get; }
 
     IReadOnlyList<HistoryServingScope> ServedScopes { get; }
 
@@ -46,6 +63,15 @@ public interface IHistoryServer
         long byteLimit,
         int maxChunks,
         CancellationToken cancellationToken);
+
+    (IOwnedReadOnlyList<HistoryRowEntry> Entries, byte[]? NextCursor, bool Refused) GetHistoryRows(
+        HistoryRowColumn column,
+        byte[] startKey,
+        byte[] endKey,
+        byte[]? cursor,
+        long byteLimit,
+        int maxEntries,
+        CancellationToken cancellationToken);
 }
 
 public sealed class NullHistoryServer : IHistoryServer
@@ -55,6 +81,10 @@ public sealed class NullHistoryServer : IHistoryServer
     private NullHistoryServer() { }
 
     public bool CanServe => false;
+
+    public bool CanServeFullClone => false;
+
+    public byte RowFormatVersion => 2;
 
     public IReadOnlyList<HistoryServingScope> ServedScopes => [];
 
@@ -68,4 +98,8 @@ public sealed class NullHistoryServer : IHistoryServer
         await Task.CompletedTask;
         yield break;
     }
+
+    public (IOwnedReadOnlyList<HistoryRowEntry> Entries, byte[]? NextCursor, bool Refused) GetHistoryRows(
+        HistoryRowColumn column, byte[] startKey, byte[] endKey, byte[]? cursor, long byteLimit, int maxEntries, CancellationToken cancellationToken) =>
+        (ArrayPoolList<HistoryRowEntry>.Empty(), null, true);
 }

@@ -106,6 +106,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<NHist.GetChangesetsMessage, NHist.GetChangesetsMessageSerializer>()
             .AddMessageSerializer<NHist.ChangesetsMessage, NHist.ChangesetsMessageSerializer>()
             .AddMessageSerializer<NHist.NHistStatusMessage, NHist.NHistStatusMessageSerializer>()
+            .AddMessageSerializer<NHist.GetHistoryRowsMessage, NHist.GetHistoryRowsMessageSerializer>()
+            .AddMessageSerializer<NHist.HistoryRowsMessage, NHist.HistoryRowsMessageSerializer>()
 
             // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
             // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.

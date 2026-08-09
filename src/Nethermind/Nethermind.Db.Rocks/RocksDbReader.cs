@@ -121,9 +121,10 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = _readOptionsFactory();
+        if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
 
         IntPtr iterateLowerBound = IntPtr.Zero;
         IntPtr iterateUpperBound = IntPtr.Zero;

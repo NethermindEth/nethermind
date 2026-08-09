@@ -172,8 +172,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) =>
-        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) =>
+        _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily, flags);
 
     public IKeyValueStoreSnapshot CreateSnapshot()
     {

@@ -17,6 +17,8 @@ public class NHistStatusMessageSerializer : NHistSerializerBase<NHistStatusMessa
 
         message.RequestId = ctx.DecodeLong();
         message.Scopes = ctx.DecodeArray(static (ref RlpReader c) => DecodeScope(ref c), limit: NHistMessageLimits.ServedScopesRlpLimit);
+        message.SupportsFullClone = ctx.DecodeBool();
+        message.RowFormatVersion = ctx.DecodeByte();
 
         return message;
     }
@@ -48,12 +50,17 @@ public class NHistStatusMessageSerializer : NHistSerializerBase<NHistStatusMessa
             writer.Encode(scope.FloorBlock);
             writer.Encode(scope.WatermarkBlock);
         }
+
+        writer.Encode(message.SupportsFullClone);
+        writer.Encode(message.RowFormatVersion);
     }
 
     public override int GetLength(NHistStatusMessage message, out int contentLength)
     {
         contentLength = Rlp.LengthOf(message.RequestId);
         contentLength += Rlp.LengthOfSequence(ScopesContentLength(message.Scopes));
+        contentLength += Rlp.LengthOf(message.SupportsFullClone);
+        contentLength += Rlp.LengthOf(message.RowFormatVersion);
 
         return Rlp.LengthOfSequence(contentLength);
     }
