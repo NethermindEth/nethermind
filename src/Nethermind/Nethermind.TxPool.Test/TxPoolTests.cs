@@ -2080,6 +2080,41 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8141: a frame transaction's GasLimit is only the sum of its frame gas limits, so the pool must gate on
+        // max_gas or it admits transactions that can never fit in a block. The mandatory cost of the single frame below
+        // is FRAME_TX_INTRINSIC_COST + FRAME_TX_PER_FRAME_COST = 15,475, and each non-zero calldata byte adds 16 to the
+        // standard cost against 40 to the EIP-7623 floor, so the last case is admissible on its standard cost alone.
+        [TestCase(100_000UL, 0, true)]
+        [TestCase(115_000UL, 0, false)]
+        [TestCase(10_000UL, 4000, false)]
+        public void SubmitTx_FrameTransaction_IsGatedOnMaxGas(ulong frameGasLimit, int frameDataLength, bool expectedAccepted)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            _headInfo.BlockGasLimit = 130_000;
+
+            byte[] frameData = Enumerable.Repeat((byte)1, frameDataLength).ToArray();
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.PrivateKeyA.Address,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
+                FrameSignatures = [],
+                GasLimit = frameGasLimit,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            frameTx.Hash = frameTx.CalculateHash();
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            Assert.That(result, expectedAccepted
+                ? Is.EqualTo(AcceptTxResult.Accepted)
+                : Is.EqualTo(AcceptTxResult.GasLimitExceeded));
+        }
+
         // EIP-8141: expired frame txs must be evicted on the new head; deadline == timestamp is still valid
         // (the predeploy reverts only on strictly greater-than).
         [TestCase(1_000UL, 1_500UL, 0, TestName = "deadline in the past is dropped")]
