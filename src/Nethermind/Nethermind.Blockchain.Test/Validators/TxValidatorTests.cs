@@ -21,6 +21,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -845,5 +846,33 @@ public class TxValidatorTests
                 ExpectedResult = false
             };
         }
+    }
+}
+
+/// <summary>The EIP-7906 fork gate on the <c>POST_TX</c> frame mode.</summary>
+/// <remarks>
+/// Before the fork the mode is undefined, and a node treating such a frame as DEFAULT would execute
+/// it with write access, which the assertion semantics forbid.
+/// </remarks>
+[TestFixture]
+public class FrameTxPostTxModeGateTests
+{
+    [TestCase(false, ExpectedResult = true, TestName = "PostTx frame is admitted once EIP-7906 is enabled")]
+    [TestCase(true, ExpectedResult = false, TestName = "PostTx frame is rejected before EIP-7906")]
+    public bool IsWellFormed_PostTxFrame_IsGatedOnTheFork(bool beforeTheFork)
+    {
+        OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip7906Enabled = !beforeTheFork };
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModePostTx, 0, TestItem.AddressB, gasLimit: 100_000, UInt256.Zero, default),
+            ],
+        };
+
+        return FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, spec);
     }
 }

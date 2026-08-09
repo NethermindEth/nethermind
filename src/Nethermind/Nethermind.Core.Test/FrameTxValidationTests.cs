@@ -22,7 +22,7 @@ public class FrameTxValidationTests
     {
         Transaction tx = CreateValidFrameTx(mutate);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled: true, out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
@@ -48,9 +48,20 @@ public class FrameTxValidationTests
         yield return Case("NullSender_MissingSender",
             static tx => tx.SenderAddress = null, FrameTxValidation.MissingSender);
 
-        // assert frame.mode < 3
-        yield return Case("FrameModeThree_InvalidMode",
-            static tx => tx.Frames = [Frame(mode: 3)], FrameTxValidation.InvalidMode);
+        // assert frame.mode < 4 (EIP-7906 widened it from 3)
+        yield return Case("FrameModeFour_InvalidMode",
+            static tx => tx.Frames = [Frame(mode: 4)], FrameTxValidation.InvalidMode);
+
+        // POST_TX frames form a trailing suffix; the approval scope they may carry is enforced at the
+        // opcode, so an unexercised permission bit is not an envelope defect.
+        yield return Case("PostTxSuffix_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx), Frame(mode: TxFrame.ModePostTx)], null);
+        yield return Case("PostTxFollowedByDefault_PostTxNotTrailing",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx), DefaultModeFrame()],
+            FrameTxValidation.PostTxNotTrailing);
+        yield return Case("PostTxAllowedToApprove_Valid",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx, flags: TxFrame.ApprovePayment)],
+            null);
 
         // assert frame.flags < 8
         yield return Case("FrameFlagsEight_InvalidFlags",
@@ -87,9 +98,15 @@ public class FrameTxValidationTests
         yield return Case("AtomicBatchFlagOnVerifyFrame_AtomicBatchOnVerifyFrame",
             static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
             FrameTxValidation.AtomicBatchOnVerifyFrame);
+        yield return Case("AtomicBatchFlagOnPostTxFrame_AtomicBatchOnPostTxFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx, flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModePostTx)],
+            FrameTxValidation.AtomicBatchOnPostTxFrame);
         yield return Case("AtomicBatchFollowedByVerifyFrame_AtomicBatchFollowedByVerifyFrame",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModeVerify)],
             FrameTxValidation.AtomicBatchFollowedByVerifyFrame);
+        yield return Case("AtomicBatchFollowedByPostTxFrame_AtomicBatchFollowedByPostTxFrame",
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModePostTx)],
+            FrameTxValidation.AtomicBatchFollowedByPostTxFrame);
 
         // EIP-8141: a frame belonging to an atomic batch (flagged, or the terminating frame following
         // a flagged one) must not carry approval scope.

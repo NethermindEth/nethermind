@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -36,6 +37,7 @@ namespace Nethermind.Evm.Test;
 public class FrameTxProcessorTests
 {
     private ISpecProvider _specProvider;
+    private OverridableReleaseSpec _spec;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private IDisposable _worldStateCloser;
@@ -49,7 +51,9 @@ public class FrameTxProcessorTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        // Switched on here so a test can turn it back off and assert the fork gate rather than the feature.
+        _spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true };
+        _specProvider = new TestSpecProvider(_spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -806,6 +810,175 @@ public class FrameTxProcessorTests
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
 
         return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
+    }
+
+    // The difference from a VERIFY revert: the body unwinds but the transaction stays valid and pays.
+    [TestCase(false, ExpectedResult = StatusCode.Success, TestName = "Execute_PostTxAsserts_TransactionSucceeds")]
+    [TestCase(true, ExpectedResult = StatusCode.Failure, TestName = "Execute_PostTxReverts_TransactionFailsButIsIncluded")]
+    public byte Execute_PostTxFrame_DecidesTheTransactionOutcomeWithoutInvalidatingIt(bool assertionFails)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, assertionFails
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        UInt256 balanceBefore = _stateProvider.GetBalance(Sender);
+        CallOutputTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert must not invalidate the transaction");
+        AssertStorage(Observer, 0, assertionFails ? UInt256.Zero : UInt256.One,
+            "the execution body is kept exactly when the assertion holds");
+        Assert.That(_stateProvider.GetBalance(Sender), Is.LessThan(balanceBefore), "the payer pays for what ran");
+        return tracer.StatusCode;
+    }
+
+    // A write halts the static frame, and that halt is an assertion failure like any other.
+    [Test]
+    public void Execute_PostTxFrameWritesState_HaltsAndUnwindsTheBody()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        CallOutputTracer tracer = new();
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        AssertStorage(Recipient, 0, UInt256.Zero, "a POST_TX frame cannot write");
+        AssertStorage(Observer, 0, UInt256.Zero, "the halted assertion unwound the body");
+    }
+
+    // EIP-7906 forbids the APPROVE call, not the permission bits: a POST_TX frame carrying a scope it
+    // never exercises is a valid envelope, so rejecting it before execution would fork off a client
+    // that admits it.
+    [Test]
+    public void Execute_PostTxCarriesAnUnusedApprovalScope_Succeeds()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModePostTx, TxFrame.ApprovePayment, target: Recipient));
+
+        CallOutputTracer tracer = new();
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // Asserted through gas rather than status: every rejection of an APPROVE inside a POST_TX frame
+    // fails the assertion, but only an exceptional halt burns the frame's whole gas limit, and the
+    // difference is consensus-visible in the frame receipt.
+    [Test]
+    public void Execute_PostTxCallsApprove_HaltsExceptionally()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, ApproveCode(TxFrame.ApprovePayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        CallOutputTracer approving = new();
+        Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, TxFrame.ApprovePayment, target: Recipient)),
+            tracer: approving);
+
+        CallOutputTracer reverting = new();
+        Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Observer)),
+            tracer: reverting);
+
+        Assert.That(approving.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(approving.GasSpent - reverting.GasSpent, Is.GreaterThan(100_000L),
+            "an exceptional halt consumes the assertion frame's whole gas limit");
+    }
+
+    // The unwind stops at the validation prefix: that state is what the transaction is charged for.
+    [Test]
+    public void Execute_PostTxReverts_KeepsTheValidationPrefix()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        Assert.That(Process(tx).TransactionExecuted, Is.True);
+        Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL),
+            "the sender nonce bump is part of the prefix that payment approval committed");
+    }
+
+    // An unrolled batch truncates the journal past the prefix snapshot the approving frame inside it
+    // took, and the failed assertion below then unwinds to it — a restore into the future.
+    [Test]
+    public void Execute_AtomicBatchUnrollsTheApprovingFrame_InvalidatesTheTransaction()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, (byte)(TxFrame.ApproveExecutionAndPayment | TxFrame.AtomicBatchFlag),
+                target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, target: Recipient),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        Assert.That(Process(tx).TransactionExecuted, Is.False);
+    }
+
+    // A batch that unrolls entirely inside the body leaves the assertion to run against the state the
+    // unroll restored, which is the ordering the prefix snapshot has to survive.
+    [Test]
+    public void Execute_AtomicBatchInTheBodyUnrolls_PostTxStillAsserts()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, Observer, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, target: Recipient),
+            Frame(TxFrame.ModePostTx, target: Observer));
+
+        CallOutputTracer tracer = new();
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
+            "the POST_TX write halts against the state the unroll restored");
+        AssertStorage(Observer, 0, UInt256.Zero, "the batch write is gone and the assertion added none");
+    }
+
+    // The static rules admit several assertions, so a failure in a later one must unwind the whole body
+    // rather than only what ran after the first.
+    [Test]
+    public void Execute_SecondPostTxFrameFails_UnwindsTheWholeBody()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Sender),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        CallOutputTracer tracer = new();
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        AssertStorage(Observer, 0, UInt256.Zero, "a failure in the second assertion unwinds the body the first one passed on");
     }
 
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
