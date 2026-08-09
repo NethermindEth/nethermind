@@ -223,6 +223,94 @@ public static class FrameTxValidation
             || (i > 0 && (frames[i - 1].Flags & TxFrame.AtomicBatchFlag) != 0);
     }
 
+    /// <summary>The gas charged for verifying a signature of the given EIP-8141 scheme.</summary>
+    public static ulong SignatureVerificationGas(byte scheme) => scheme switch
+    {
+        TxFrameSignature.SchemeArbitrary => Eip8141Constants.ArbitraryVerificationGasCost,
+        TxFrameSignature.SchemeSecp256k1 => Eip8141Constants.Secp256k1VerificationGasCost,
+        TxFrameSignature.SchemeP256 => Eip8141Constants.P256VerificationGasCost,
+        _ => 0,
+    };
+
+    /// <summary>
+    /// An upper bound on the public-mempool validation work of <paramref name="transaction"/>: the gas limits
+    /// of its validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the frame layout alone, so no state is read. Each layout of EIP-8141 "Public
+    /// Mempool-recognized Validation Prefixes" ends in a <c>VERIFY</c> frame targeting the sender, whose
+    /// approval is protocol-defined, so the prefix provably ends there. Under any other layout approval
+    /// depends on code at an attacker-chosen target, so the whole frame list is charged. Signature
+    /// validation counts against the same budget per EIP-8141 "Validation Prefix".
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to price.</param>
+    public static ulong ValidationWorkGas(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int counted = RecognizedPrefixLength(frames, transaction.SenderAddress) ?? frames.Length;
+
+        ulong total = 0;
+        for (int i = 0; i < counted; i++)
+        {
+            total = Saturating(total, frames[i].GasLimit);
+        }
+
+        foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
+        {
+            total = Saturating(total, SignatureVerificationGas(signature.Scheme));
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
+    /// mempool, or <c>null</c> when the layout matches none of them.
+    /// </summary>
+    private static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
+    {
+        int next = 0;
+        if (next < frames.Length && IsExpiryVerify(frames[next])) next++;
+        if (next < frames.Length && IsDeploy(frames[next])) next++;
+
+        if (next < frames.Length && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecutionAndPayment, sender))
+        {
+            return next + 1;
+        }
+
+        if (next + 1 < frames.Length
+            && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecution, sender)
+            && IsPay(frames[next + 1]))
+        {
+            return next + 2;
+        }
+
+        return null;
+    }
+
+    private static ulong Saturating(ulong total, ulong addend) =>
+        addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
+
+    private static bool IsExpiryVerify(TxFrame frame) =>
+        frame.Mode == TxFrame.ModeVerify
+        && frame.Flags == TxFrame.ApproveScopeNone
+        && frame.Target == Eip8141Constants.ExpiryVerifierAddress;
+
+    private static bool IsDeploy(TxFrame frame) =>
+        frame.Mode == TxFrame.ModeDefault && frame.Flags == TxFrame.ApproveScopeNone;
+
+    /// <remarks>
+    /// Comparing the whole <see cref="TxFrame.Flags"/> byte rather than the approve scope also enforces
+    /// the EIP-8141 structural rule that no prefix frame carries <c>ATOMIC_BATCH_FLAG</c>.
+    /// </remarks>
+    private static bool IsSelfTargetedVerify(TxFrame frame, byte flags, Address? sender) =>
+        frame.Mode == TxFrame.ModeVerify
+        && frame.Flags == flags
+        && (frame.Target is null || frame.Target == sender);
+
+    private static bool IsPay(TxFrame frame) =>
+        frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
+
     /// <summary>
     /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.
     /// </summary>
