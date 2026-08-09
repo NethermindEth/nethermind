@@ -2218,6 +2218,33 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void Frame_transaction_from_a_contract_sender_is_not_rejected_by_eip3607()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            // A smart-account sender is the normal case for a frame transaction: its code runs in the
+            // validation prefix and authorises the transaction there.
+            _stateProvider.InsertCode(TestItem.AddressA, "A"u8.ToArray(), Bogota.Instance);
+
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.AddressA, deadline: null);
+            AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast);
+
+            // A legacy transaction from the same sender under the same spec pins that the exemption is
+            // by transaction type, not a disabled filter.
+            Transaction legacyTx = Build.A.Transaction
+                .WithGasLimit(TxGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            AcceptTxResult legacyResult = _txPool.SubmitTx(legacyTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(legacyResult, Is.EqualTo(AcceptTxResult.SenderIsContract));
+            }
+        }
+
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null)
         {
             List<TxFrame> frames =
