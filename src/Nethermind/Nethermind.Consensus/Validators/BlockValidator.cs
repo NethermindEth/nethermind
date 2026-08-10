@@ -348,7 +348,8 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            if (!transaction.SupportsBlobs)
+            // EIP-8141: gate on blob hashes, not the type-3-only SupportsBlobs, so blob-carrying frame txs also count.
+            if (transaction.BlobVersionedHashes is not { Length: > 0 })
             {
                 continue;
             }
