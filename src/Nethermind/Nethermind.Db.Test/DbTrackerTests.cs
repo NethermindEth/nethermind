@@ -79,40 +79,27 @@ public class DbTrackerTests
 
     [Parallelizable(ParallelScope.None)]
     [Test]
-    public void PausedProcessingDefersUpdate()
+    public void PausedProcessingDefersUpdateWithinHoldoff()
     {
-        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
-        (IContainer container, Action updateAction, FakeDb fakeDb) = ConfigureMetricUpdater((builder) => builder.AddSingleton<IBlockProcessingQueue>(queue));
+        (IContainer container, Action updateAction, DbMonitoringModule.DbTracker tracker) = ConfigurePausedMetricUpdater();
         using IContainer _ = container;
 
-        updateAction!();
-        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
-
-        container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
-        queue.IsEmpty.Returns(false);
-        queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
-
-        fakeDb.SetMetric(new IDbMeta.DbMetric { TotalReads = 11 });
+        tracker.LastDbMetricsUpdate = Environment.TickCount64 - 2 * 60 * 1000;
+        Metrics.DbReads["TestDb"] = 0;
 
         updateAction!();
 
-        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(0));
     }
 
     [Parallelizable(ParallelScope.None)]
     [Test]
-    public void PausedProcessingStillUpdatesOnceStale()
+    public void PausedProcessingUpdatesOnceStalerThanHoldoff()
     {
-        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
-        (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater((builder) => builder
-            .AddSingleton<IBlockProcessingQueue>(queue)
-            .AddSingleton<IMetricsConfig>(new MetricsConfig { DbMetricIntervalSeconds = 0 }));
-        using IContainer _disposable = container;
+        (IContainer container, Action updateAction, DbMonitoringModule.DbTracker tracker) = ConfigurePausedMetricUpdater();
+        using IContainer _ = container;
 
-        container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
-        queue.IsEmpty.Returns(false);
-        queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
-
+        tracker.LastDbMetricsUpdate = Environment.TickCount64 - 11 * 60 * 1000;
         Metrics.DbReads["TestDb"] = 0;
 
         updateAction!();
@@ -127,12 +114,24 @@ public class DbTrackerTests
         IDbFactory fakeDbFactory = Substitute.For<IDbFactory>();
         fakeDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(new FakeDb(new IDbMeta.DbMetric { TotalReads = 42 }));
 
-        (IContainer container, _) = BuildTrackerContainer(fakeDbFactory);
+        (IContainer container, _) = BuildTrackerContainer(fakeDbFactory, new MetricsConfig { Enabled = true });
         using IContainer _disposable = container;
 
         container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
 
         Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(42));
+    }
+
+    private (IContainer, Action, DbMonitoringModule.DbTracker) ConfigurePausedMetricUpdater()
+    {
+        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
+        (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater((builder) => builder.AddSingleton<IBlockProcessingQueue>(queue));
+
+        container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
+        queue.IsEmpty.Returns(false);
+        queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
+
+        return (container, updateAction, container.Resolve<DbMonitoringModule.DbTracker>());
     }
 
     [Test]

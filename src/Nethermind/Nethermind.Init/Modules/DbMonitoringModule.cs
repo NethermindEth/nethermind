@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -48,9 +49,10 @@ public class DbMonitoringModule : Module
         private const int PausedUpdateHoldoffMultiplier = 10;
 
         private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
-        private readonly ConcurrentDictionary<string, bool> _failingDbs = new();
+        private readonly HashSet<string> _failingDbs = [];
+        private readonly Lock _publishLock = new();
         private readonly int _intervalSec;
-        private readonly bool _enabled;
+        private readonly bool _publishOnCreation;
         private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
         private volatile bool _stopped;
@@ -62,9 +64,9 @@ public class DbMonitoringModule : Module
             _intervalSec = metricsConfig.DbMetricIntervalSeconds;
             _logger = logManager.GetClassLogger<DbTracker>();
             _sharedBlockCache = sharedBlockCache;
-            _enabled = metricsConfig.EnableDbSizeMetrics;
+            _publishOnCreation = metricsConfig.Enabled && metricsConfig.EnableDbSizeMetrics;
 
-            if (_enabled)
+            if (metricsConfig.EnableDbSizeMetrics)
             {
                 monitoringService.AddMetricsUpdateAction(UpdateDbMetrics);
             }
@@ -72,10 +74,16 @@ public class DbMonitoringModule : Module
 
         public void AddDb(string name, IDbMeta dbMeta)
         {
-            if (_createdDbs.TryAdd(name, dbMeta) && _enabled)
+            if (_createdDbs.TryAdd(name, dbMeta) && _publishOnCreation)
             {
                 PublishDbMetrics(name, dbMeta);
             }
+        }
+
+        internal long LastDbMetricsUpdate
+        {
+            get => _lastDbMetricsUpdate;
+            set => _lastDbMetricsUpdate = value;
         }
 
         public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta() => _createdDbs;
@@ -96,22 +104,28 @@ public class DbMonitoringModule : Module
             if (_stopped) return;
             try
             {
-                long sinceLastUpdate = Environment.TickCount64 - _lastDbMetricsUpdate;
-
-                if (sinceLastUpdate < _intervalSec * 1000L)
+                if (_lastDbMetricsUpdate != 0)
                 {
-                    // Update based on configured interval
-                    return;
-                }
+                    long sinceLastUpdate = Environment.TickCount64 - _lastDbMetricsUpdate;
 
-                if (Paused && sinceLastUpdate < _intervalSec * 1000L * PausedUpdateHoldoffMultiplier) return;
+                    if (sinceLastUpdate < _intervalSec * 1000L)
+                    {
+                        // Update based on configured interval
+                        return;
+                    }
+
+                    if (Paused && sinceLastUpdate < _intervalSec * 1000L * PausedUpdateHoldoffMultiplier) return;
+                }
 
                 foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
                 {
                     PublishDbMetrics(kv.Key, kv.Value);
                 }
 
-                Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
+                lock (_publishLock)
+                {
+                    Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
+                }
 
                 _lastDbMetricsUpdate = Environment.TickCount64;
             }
@@ -128,26 +142,29 @@ public class DbMonitoringModule : Module
 
         private void PublishDbMetrics(string name, IDbMeta dbMeta)
         {
-            try
+            lock (_publishLock)
             {
-                // Note: At the moment, the metric for a columns db is combined across column.
-                IDbMeta.DbMetric dbMetric = dbMeta.GatherMetric();
-                Db.Metrics.DbSize[name] = dbMetric.Size;
-                Db.Metrics.DbBlockCacheSize[name] = dbMetric.CacheSize;
-                Db.Metrics.DbMemtableSize[name] = dbMetric.MemtableSize;
-                Db.Metrics.DbIndexFilterSize[name] = dbMetric.IndexSize;
-                Db.Metrics.DbReads[name] = dbMetric.TotalReads;
-                Db.Metrics.DbWrites[name] = dbMetric.TotalWrites;
-                if (_failingDbs.TryRemove(name, out _) && _logger.IsInfo)
-                    _logger.Info($"DB metric collection recovered for '{name}'");
-            }
-            catch (Exception e)
-            {
-                // Remove stale entries so Prometheus does not report old values indefinitely.
-                RemoveStaleMetricEntry(name);
-                // Log only on the first failure of a streak; recovery is logged when GatherMetric succeeds again.
-                if (_failingDbs.TryAdd(name, true) && _logger.IsWarn)
-                    _logger.Warn($"Failed to gather metrics for DB '{name}': {e.Message}");
+                try
+                {
+                    // Note: At the moment, the metric for a columns db is combined across column.
+                    IDbMeta.DbMetric dbMetric = dbMeta.GatherMetric();
+                    Db.Metrics.DbSize[name] = dbMetric.Size;
+                    Db.Metrics.DbBlockCacheSize[name] = dbMetric.CacheSize;
+                    Db.Metrics.DbMemtableSize[name] = dbMetric.MemtableSize;
+                    Db.Metrics.DbIndexFilterSize[name] = dbMetric.IndexSize;
+                    Db.Metrics.DbReads[name] = dbMetric.TotalReads;
+                    Db.Metrics.DbWrites[name] = dbMetric.TotalWrites;
+                    if (_failingDbs.Remove(name) && _logger.IsInfo)
+                        _logger.Info($"DB metric collection recovered for '{name}'");
+                }
+                catch (Exception e)
+                {
+                    // Remove stale entries so Prometheus does not report old values indefinitely.
+                    RemoveStaleMetricEntry(name);
+                    // Log only on the first failure of a streak; recovery is logged when GatherMetric succeeds again.
+                    if (_failingDbs.Add(name) && _logger.IsWarn)
+                        _logger.Warn($"Failed to gather metrics for DB '{name}': {e.Message}");
+                }
             }
         }
 
