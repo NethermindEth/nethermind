@@ -25,8 +25,10 @@ public interface ISiblingNodeRegistry
     Task ProxyDetectAsync(int port, Stream requestBody, Stream responseBody, CancellationToken cancellationToken);
 }
 
+/// <summary>A discovered sibling node: its localhost JSON-RPC port and hex chain id.</summary>
 public readonly record struct SiblingNode(int Port, string ChainId);
 
+/// <inheritdoc cref="ISiblingNodeRegistry"/>
 public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(30);
@@ -53,12 +55,12 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
     {
         _logger = logManager.GetClassLogger<SiblingNodeRegistry>();
         HashSet<int> ownPorts = [.. jsonRpcUrlCollection.Keys];
-        _probePorts = config.SiblingProbePorts
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(p => int.TryParse(p, out int port) ? port : 0)
-            .Where(p => p > 0 && !ownPorts.Contains(p))
-            .Distinct()
-            .ToArray();
+        HashSet<int> ports = [];
+        foreach (string part in config.SiblingProbePorts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (int.TryParse(part, out int port) && port > 0 && !ownPorts.Contains(port)) ports.Add(port);
+        }
+        _probePorts = [.. ports];
     }
 
     public async Task<IReadOnlyList<SiblingNode>> GetSiblingsAsync(CancellationToken cancellationToken)
@@ -70,19 +72,26 @@ public sealed class SiblingNodeRegistry : ISiblingNodeRegistry, IDisposable
         {
             if (DateTimeOffset.UtcNow - _refreshedAt < CacheDuration) return _siblings;
 
-            SiblingNode?[] probed = await Task.WhenAll(_probePorts.Select(p => ProbeAsync(p, cancellationToken)));
+            Task<SiblingNode?>[] probes = new Task<SiblingNode?>[_probePorts.Length];
+            for (int i = 0; i < _probePorts.Length; i++) probes[i] = ProbeAsync(_probePorts[i], cancellationToken);
+            SiblingNode?[] probed = await Task.WhenAll(probes);
             DateTimeOffset now = DateTimeOffset.UtcNow;
             foreach (SiblingNode? sibling in probed)
             {
                 if (sibling is not null) _lastSeen[sibling.Value.Port] = (sibling.Value, now);
             }
 
-            foreach (int port in _lastSeen.Keys.Where(p => now - _lastSeen[p].LastSeen > SiblingGracePeriod).ToArray())
+            List<int> expired = [];
+            foreach (KeyValuePair<int, (SiblingNode Node, DateTimeOffset LastSeen)> entry in _lastSeen)
             {
-                _lastSeen.Remove(port);
+                if (now - entry.Value.LastSeen > SiblingGracePeriod) expired.Add(entry.Key);
             }
+            foreach (int port in expired) _lastSeen.Remove(port);
 
-            _siblings = _lastSeen.Values.Select(entry => entry.Node).OrderBy(s => s.Port).ToArray();
+            List<SiblingNode> siblings = new(_lastSeen.Count);
+            foreach (KeyValuePair<int, (SiblingNode Node, DateTimeOffset LastSeen)> entry in _lastSeen) siblings.Add(entry.Value.Node);
+            siblings.Sort(static (a, b) => a.Port.CompareTo(b.Port));
+            _siblings = siblings;
             _refreshedAt = now;
             return _siblings;
         }

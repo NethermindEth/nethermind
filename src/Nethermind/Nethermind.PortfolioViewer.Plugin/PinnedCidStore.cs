@@ -11,8 +11,16 @@ namespace Nethermind.PortfolioViewer.Plugin;
 /// pins and never the user's unrelated pinset.</summary>
 public interface IPinnedCidStore
 {
+    /// <summary>Records a CID this plugin pinned, and persists if it was not already tracked.</summary>
     void Add(string cid);
+
+    /// <summary>Stops tracking a single CID (e.g. after it has been successfully unpinned) and persists.</summary>
+    void Remove(string cid);
+
+    /// <summary>Returns a point-in-time snapshot of the tracked CIDs.</summary>
     IReadOnlyCollection<string> Snapshot();
+
+    /// <summary>Stops tracking every CID and deletes the backing file.</summary>
     void Clear();
 }
 
@@ -36,6 +44,11 @@ public sealed class PinnedCidStore : IPinnedCidStore
     public void Add(string cid)
     {
         if (_cids.TryAdd(cid, 0)) Save();
+    }
+
+    public void Remove(string cid)
+    {
+        if (_cids.TryRemove(cid, out _)) Save();
     }
 
     public IReadOnlyCollection<string> Snapshot() => Materialize();

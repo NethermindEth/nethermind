@@ -1643,12 +1643,15 @@
         // ---------- NFTs (ERC-721 / ERC-1155, node-data only) ----------
         // Owned token ids come from tokenOfOwnerByIndex for ERC721Enumerable, or from
         // owner-filtered Transfer logs for plain ERC-721 and ERC-1155 (then confirmed via
-        // ownerOf / balanceOf). Only fully on-chain metadata (data: URIs, e.g. Nouns) is
-        // rendered — external URIs are never fetched, so no request leaves the node.
+        // ownerOf / balanceOf). On-chain metadata (data: URIs, e.g. Nouns) renders with no
+        // network request. Off-chain metadata/art (IPFS or HTTP URIs) is fetched only when the
+        // user opts in: IPFS goes through the node's own gateway proxy (same-origin), HTTP only
+        // if the remote-gateway/HTTPS sources are enabled — so by default nothing leaves the node.
         // Note: log discovery needs the node to retain historical logs; a node pruned of
         // old receipts will surface only recently-acquired ids.
         const nftCache = new Map();        // `${address}|${chainId}|${collection}` -> { count, ids, thumbs }
         const collectionKind = new Map();  // `${chainId}|${collection}` -> 'enum721'|'plain721'|'erc1155'|'none'
+        const NFT_REDISCOVER_MS = 5 * 60 * 1000; // upper bound on how long held-id ownership can be stale
         const nodeLogFloor = new Map();    // chainId -> BigInt: lowest block eth_getLogs serves (0n = full history)
         const openCollectionRenderers = new Set(); // re-render callbacks for open collection lightboxes (art-source changes)
         const artCache = new Map();        // `${chainId}|${collection}|${id}` -> fetched thumb, so reopening art is instant
@@ -1667,6 +1670,9 @@
         // IndexedDB is unavailable every call resolves to null/no-op. HTTPS tokenURIs (re-revealable) aren't stored.
         const IDB_NAME = 'portfolio-cache';
         let idbPromise;
+        // A resolved tokenURI's content is immutable, but the contract's id->tokenURI mapping is not (reveals,
+        // dynamic NFTs), so persisted metadata is re-read after this window rather than trusted forever.
+        const META_TTL_MS = 7 * 24 * 3600 * 1000;
         function idbOpen() {
             if (idbPromise !== undefined) return idbPromise;
             idbPromise = new Promise((resolve) => {
@@ -1944,12 +1950,13 @@
                 if (c) { applyArtSource(c, collection); result[i] = c; } else miss.push(i);
             });
             if (!miss.length) return result;
-            // then the persistent metadata cache (immutable tokenURIs) — a soft refresh reopens without re-fetching
+            // then the persistent metadata cache — accept an entry only within META_TTL_MS, so a changed tokenURI
+            // (reveal / dynamic NFT) is eventually re-read even though each resolved CID is itself immutable
             const persisted = await idbGetManyMeta(miss.map((i) => keyBase + ids[i]));
             const stillMiss = [];
             miss.forEach((i, k) => {
                 const m = persisted[k];
-                if (m) { applyArtSource(m, collection); result[i] = m; artCache.set(keyBase + ids[i], m); }
+                if (m && Date.now() - (m.cachedAt || 0) < META_TTL_MS) { applyArtSource(m, collection); result[i] = m; artCache.set(keyBase + ids[i], m); }
                 else stillMiss.push(i);
             });
             miss = stillMiss;
@@ -1994,7 +2001,7 @@
                     // persist across reloads only for content-addressed tokenURIs, which can't change (HTTPS
                     // metadata may be re-revealed, so it stays session-only)
                     const mk = artKind(thumb.metaUri);
-                    if (mk === 'on-chain' || mk === 'IPFS') idbPutMeta(keyBase + ids[miss[k]], thumb);
+                    if (mk === 'on-chain' || mk === 'IPFS') idbPutMeta(keyBase + ids[miss[k]], { ...thumb, cachedAt: Date.now() });
                 }
             });
             return result;
@@ -2676,9 +2683,10 @@
                             const erc721Count = balCached?.bal && balCached.bal !== null ? Number(balCached.bal.replace(/,/g, '')) : null;
 
                             const kind = await detectKind(node, collection);
-                            // re-discover only when the ERC-721 count changes; ERC-1155 has no
-                            // cheap count signal, so discover once and keep
-                            const sig = kind === 'erc1155' ? 'x' : erc721Count;
+                            // An ERC-721 count change forces re-discovery; but an equal count can still hide an
+                            // out+in swap, and ERC-1155 has no cheap count signal at all, so a coarse time bucket
+                            // periodically re-discovers held ids regardless (bounding staleness to NFT_REDISCOVER_MS).
+                            const sig = (kind === 'erc1155' ? 'x' : String(erc721Count)) + '@' + Math.floor(Date.now() / NFT_REDISCOVER_MS);
                             if (nftCache.get(key)?.sig === sig) continue;
 
                             let ids = [];

@@ -40,7 +40,7 @@ public class DetectionScannerTests
         _logFinder = Substitute.For<ILogFinder>();
         _blockFinder = Substitute.For<IBlockFinder>();
         _scheduler = new CapturingScheduler();
-        _scanner = new DetectionScanner(_scheduler, _logFinder, _blockFinder, _cache, LimboLogs.Instance);
+        _scanner = new DetectionScanner(_scheduler, _logFinder, _blockFinder, _cache, LimboLogs.Instance, (ulong)ChainId);
     }
 
     [TearDown]
@@ -68,9 +68,12 @@ public class DetectionScannerTests
 
         DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
         Assert.That(entry, Is.Not.Null);
-        Assert.That(entry!.Complete, Is.True);
-        Assert.That(entry.ScannedFrom, Is.EqualTo(0));
-        Assert.That(entry.Contracts, Is.EquivalentTo(new[] { Token.ToString() }), "ERC-20 kept, ERC-721 (4 topics) dropped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Complete, Is.True);
+            Assert.That(entry.ScannedFrom, Is.EqualTo(0));
+            Assert.That(entry.Contracts, Is.EquivalentTo(new[] { Token.ToString() }), "ERC-20 kept, ERC-721 (4 topics) dropped");
+        }
     }
 
     [Test]
@@ -85,9 +88,12 @@ public class DetectionScannerTests
         await _scheduler.RunAll();
 
         DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
-        Assert.That(entry!.Complete, Is.True);
-        Assert.That(entry.NftContracts, Does.Contain(Nft.ToString()));
-        Assert.That(entry.Contracts, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Complete, Is.True);
+            Assert.That(entry.NftContracts, Does.Contain(Nft.ToString()));
+            Assert.That(entry.Contracts, Is.Empty);
+        }
     }
 
     [Test]
@@ -116,10 +122,13 @@ public class DetectionScannerTests
         await _scheduler.RunAll();
 
         DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
-        Assert.That(entry!.Head, Is.EqualTo(100), "covered range extended to the new head");
-        Assert.That(entry.Complete, Is.True, "still complete downward");
-        Assert.That(entry.Contracts, Does.Contain(newToken.ToString()), "token received since the last scan is detected");
-        Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contracts retained");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Head, Is.EqualTo(100), "covered range extended to the new head");
+            Assert.That(entry.Complete, Is.True, "still complete downward");
+            Assert.That(entry.Contracts, Does.Contain(newToken.ToString()), "token received since the last scan is detected");
+            Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contracts retained");
+        }
     }
 
     [Test]
@@ -138,11 +147,57 @@ public class DetectionScannerTests
         await _scheduler.RunNext(); // forward chunk pre-empted after finding newToken
 
         DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
-        Assert.That(entry!.Head, Is.EqualTo(5), "upper bound not advanced on cancellation");
-        Assert.That(entry.Complete, Is.True);
-        Assert.That(entry.Contracts, Does.Contain(newToken.ToString()), "contract found before pre-emption is persisted, not discarded");
-        Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contract retained");
-        Assert.That(_scheduler.Count, Is.EqualTo(1), "the forward chunk was rescheduled to retry");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Head, Is.EqualTo(5), "upper bound not advanced on cancellation");
+            Assert.That(entry.Complete, Is.True);
+            Assert.That(entry.Contracts, Does.Contain(newToken.ToString()), "contract found before pre-emption is persisted, not discarded");
+            Assert.That(entry.Contracts, Does.Contain(Token.ToString()), "previously detected contract retained");
+            Assert.That(_scheduler.Count, Is.EqualTo(1), "the forward chunk was rescheduled to retry");
+        }
+    }
+
+    [Test]
+    public void Ignores_scan_for_a_foreign_chain_id()
+    {
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+
+        _scanner.RequestScan(ChainId + 1, Account); // scanner only serves its local chain (ChainId)
+
+        Assert.That(_scheduler.Count, Is.Zero, "no scan scheduled for a non-local chain id");
+        _logFinder.DidNotReceive().FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Forward_phase_rescans_a_reorg_overlap_below_the_last_head()
+    {
+        // fully covered up to block 1000; the chain advanced by one block
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([], [], 0, 1000, true, 0));
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1001).TestObject);
+        long fromBlock = -1;
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns(ci => { fromBlock = (long)(ci.Arg<LogFilter>().FromBlock.BlockNumber ?? 0); return (IEnumerable<FilterLog>)[]; });
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunNext();
+
+        Assert.That(fromBlock, Is.LessThanOrEqualTo(1000), "forward pass re-scans blocks at/below the old head so a shallow reorg is caught");
+    }
+
+    [Test]
+    public async Task Forward_phase_below_retained_history_advances_to_head()
+    {
+        // covered up to block 5, but the node was offline and blocks above 5 are now below the receipts floor
+        _cache.Put(ChainId, Account.ToString(), new DetectionEntry([], [], 0, 5, true, 0));
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1_000_000).TestObject);
+        _logFinder.FindLogs(Arg.Any<LogFilter>(), Arg.Any<CancellationToken>())
+            .Returns(_ => throw new ResourceNotFoundException("receipts unavailable"));
+
+        _scanner.RequestScan(ChainId, Account);
+        await _scheduler.RunNext();
+
+        DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
+        Assert.That(entry!.Head, Is.EqualTo(1_000_000), "covered head advances past the unavailable gap instead of retrying it forever");
     }
 
     [Test]
@@ -167,9 +222,12 @@ public class DetectionScannerTests
         await _scheduler.RunNext(); // one chunk, pre-empted mid-scan
 
         DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
-        Assert.That(entry!.Complete, Is.False, "not marked complete on cancellation");
-        Assert.That(entry.ScannedFrom, Is.EqualTo(20_001), "cursor not advanced (range will be retried)");
-        Assert.That(_scheduler.Count, Is.EqualTo(1), "the chunk was rescheduled to retry later");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Complete, Is.False, "not marked complete on cancellation");
+            Assert.That(entry.ScannedFrom, Is.EqualTo(20_001), "cursor not advanced (range will be retried)");
+            Assert.That(_scheduler.Count, Is.EqualTo(1), "the chunk was rescheduled to retry later");
+        }
     }
 
     [Test]
@@ -191,8 +249,11 @@ public class DetectionScannerTests
         await _scheduler.RunNext(); // first chunk pre-empted -> shrink, retry rescheduled
         await _scheduler.RunNext(); // retry runs at the smaller size
 
-        Assert.That(widths[0], Is.EqualTo(4_999), "first chunk uses the base size (5000 blocks)");
-        Assert.That(widths[^1], Is.LessThan(widths[0]), "chunk shrank after the cancellation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(widths[0], Is.EqualTo(4_999), "first chunk uses the base size (5000 blocks)");
+            Assert.That(widths[^1], Is.LessThan(widths[0]), "chunk shrank after the cancellation");
+        }
     }
 
     [Test]
@@ -222,8 +283,11 @@ public class DetectionScannerTests
 
         DetectionEntry? entry = _cache.Get(ChainId, Account.ToString());
         Assert.That(entry, Is.Not.Null);
-        Assert.That(entry!.Complete, Is.True);
-        Assert.That(entry.Contracts, Does.Contain(Token.ToString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry!.Complete, Is.True);
+            Assert.That(entry.Contracts, Does.Contain(Token.ToString()));
+        }
     }
 
     // Captures scheduled tasks instead of running them, so tests drive execution deterministically

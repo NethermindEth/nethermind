@@ -26,7 +26,7 @@ public interface IDetectionScanner
 /// chunks chained until retained history is covered, so a deep scan can't affect validator performance.
 /// </remarks>
 public sealed class DetectionScanner(
-    IBackgroundTaskScheduler scheduler, ILogFinder logFinder, IBlockFinder blockFinder, IDetectionCache cache, ILogManager logManager)
+    IBackgroundTaskScheduler scheduler, ILogFinder logFinder, IBlockFinder blockFinder, IDetectionCache cache, ILogManager logManager, ulong localChainId)
     : IDetectionScanner
 {
     // ERC-20/ERC-721 Transfer, and ERC-1155 TransferSingle/TransferBatch event signatures
@@ -40,6 +40,9 @@ public sealed class DetectionScanner(
     private const int MinChunkBlocks = 250;
     private const int MaxChunkBlocks = 250_000;
     private const int MaxContractsPerScan = 2_000;  // combined erc20+nft cap that ends a scan (distinct from the cache's per-list cap)
+    // Re-scan this many blocks below the last covered head on each forward pass, so a shallow reorg that replaced
+    // blocks at/just under the old head still surfaces its contracts (re-scanning is idempotent — the sets union).
+    private const int ForwardReorgOverlapBlocks = 64;
     private static readonly TimeSpan ChunkTimeout = TimeSpan.FromSeconds(15);
 
     private readonly ILogger _logger = logManager.GetClassLogger<DetectionScanner>();
@@ -55,6 +58,9 @@ public sealed class DetectionScanner(
 
     public void RequestScan(long chainId, Address account)
     {
+        // the scanner only ever queries the local chain, so ignore requests carrying any other chain id —
+        // this keeps an unauthenticated caller from filling the queue with junk-id (un-deduplicated) scans
+        if (chainId < 0 || (ulong)chainId != localChainId) return;
         long head = (long)(blockFinder.Head?.Number ?? 0);
         DetectionEntry? entry = cache.Get(chainId, account.ToString());
         // skip only if history is fully covered AND no new blocks arrived; else re-scan the forward gap
@@ -86,7 +92,7 @@ public sealed class DetectionScanner(
             // the downward history walk.
             if (existing is not null && curHead > existing.Head)
             {
-                long flo = existing.Head + 1;
+                long flo = Math.Max(0, existing.Head + 1 - ForwardReorgOverlapBlocks);
                 long fhi = Math.Min(curHead, flo + chunk - 1);
                 HashSet<string> fErc20 = [.. existing.Contracts];
                 HashSet<string> fNfts = [.. existing.NftContracts];
@@ -99,6 +105,15 @@ public sealed class DetectionScanner(
                     // pre-empted mid-chunk — keep contracts found so far (don't advance the upper bound), shrink, retry
                     Shrink(key);
                     Persist(chainId, account, fErc20, fNfts, existing.ScannedFrom, existing.Head, existing.Complete);
+                    Schedule(req);
+                    return Task.CompletedTask;
+                }
+                catch (ResourceNotFoundException e)
+                {
+                    // forward gap is below retained receipts (node was offline past the floor) — skip it and
+                    // resume from the current head, since those blocks are pruned and can't be scanned
+                    if (_logger.IsDebug) _logger.Debug($"Token detection forward gap unavailable for {account}: {e.Message}");
+                    Persist(chainId, account, fErc20, fNfts, existing.ScannedFrom, curHead, existing.Complete);
                     Schedule(req);
                     return Task.CompletedTask;
                 }

@@ -16,9 +16,16 @@ public sealed record DetectionEntry(
 /// scan is never repeated. Keyed by chain id and lower-cased address.</summary>
 public interface IDetectionCache
 {
+    /// <summary>Returns the cached entry for the account on the chain, or <c>null</c> if none is stored.</summary>
     DetectionEntry? Get(long chainId, string address);
+
+    /// <summary>Stores (replacing any existing) the entry for the account on the chain and persists it.</summary>
     void Put(long chainId, string address, DetectionEntry entry);
+
+    /// <summary>Removes the cached entry for the account on the chain, if present, and persists.</summary>
     void Remove(long chainId, string address);
+
+    /// <summary>Removes every cached entry and deletes the backing file.</summary>
     void Clear();
 }
 
@@ -63,15 +70,22 @@ public sealed class DetectionCache : IDetectionCache
     {
         if (entry.Contracts.Count > _maxContractsPerEntry)
         {
-            entry = entry with { Contracts = entry.Contracts.Take(_maxContractsPerEntry).ToArray() };
+            entry = entry with { Contracts = Cap(entry.Contracts, _maxContractsPerEntry) };
         }
         if (entry.NftContracts.Count > _maxContractsPerEntry)
         {
-            entry = entry with { NftContracts = entry.NftContracts.Take(_maxContractsPerEntry).ToArray() };
+            entry = entry with { NftContracts = Cap(entry.NftContracts, _maxContractsPerEntry) };
         }
         _entries[Key(chainId, address)] = entry;
         EvictIfNeeded();
         RequestSave();
+    }
+
+    private static string[] Cap(IReadOnlyList<string> items, int max)
+    {
+        string[] capped = new string[max];
+        for (int i = 0; i < max; i++) capped[i] = items[i];
+        return capped;
     }
 
     public void Remove(long chainId, string address)

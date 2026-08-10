@@ -3,8 +3,12 @@
 
 namespace Nethermind.PortfolioViewer.Plugin;
 
+/// <inheritdoc cref="IPortfolioViewerConfig"/>
 public class PortfolioViewerConfig : IPortfolioViewerConfig
 {
+    /// <inheritdoc/>
     public bool Enabled { get; set; } = false;
+
+    /// <inheritdoc/>
     public string SiblingProbePorts { get; set; } = "8545,8546,8547,8548,8549,8550";
 }

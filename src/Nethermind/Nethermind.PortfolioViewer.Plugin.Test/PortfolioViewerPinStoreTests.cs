@@ -22,7 +22,8 @@ public class PortfolioViewerPinStoreTests
     [TearDown]
     public void TearDown()
     {
-        try { Directory.Delete(_dir, recursive: true); } catch { /* best-effort cleanup */ }
+        // let a failed cleanup fail the test rather than silently leaving state that contaminates later runs
+        if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
     }
 
     [Test]
@@ -33,11 +34,27 @@ public class PortfolioViewerPinStoreTests
         store.Add("cidA"); // duplicate is a no-op
         store.Add("cidB");
 
-        Assert.That(store.Snapshot(), Is.EquivalentTo(new[] { "cidA", "cidB" }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Snapshot(), Is.EquivalentTo(new[] { "cidA", "cidB" }));
+            // a fresh instance rehydrates from disk, so unpin-all after a restart still removes exactly our pins
+            Assert.That(new PinnedCidStore(_dir, LimboLogs.Instance).Snapshot(), Is.EquivalentTo(new[] { "cidA", "cidB" }));
+        }
+    }
 
-        // a fresh instance rehydrates from disk, so unpin-all after a restart still removes exactly our pins
-        PinnedCidStore reloaded = new(_dir, LimboLogs.Instance);
-        Assert.That(reloaded.Snapshot(), Is.EquivalentTo(new[] { "cidA", "cidB" }));
+    [Test]
+    public void Remove_StopsTrackingASingleCid_AndPersists()
+    {
+        PinnedCidStore store = new(_dir, LimboLogs.Instance);
+        store.Add("cidA");
+        store.Add("cidB");
+        store.Remove("cidA");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Snapshot(), Is.EquivalentTo(new[] { "cidB" }), "only the removed CID is dropped");
+            Assert.That(new PinnedCidStore(_dir, LimboLogs.Instance).Snapshot(), Is.EquivalentTo(new[] { "cidB" }), "removal persists across instances");
+        }
     }
 
     [Test]
@@ -47,7 +64,10 @@ public class PortfolioViewerPinStoreTests
         store.Add("cidA");
         store.Clear();
 
-        Assert.That(store.Snapshot(), Is.Empty);
-        Assert.That(new PinnedCidStore(_dir, LimboLogs.Instance).Snapshot(), Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Snapshot(), Is.Empty);
+            Assert.That(new PinnedCidStore(_dir, LimboLogs.Instance).Snapshot(), Is.Empty);
+        }
     }
 }

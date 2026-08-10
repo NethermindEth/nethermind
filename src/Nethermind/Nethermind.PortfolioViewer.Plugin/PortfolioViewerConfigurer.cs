@@ -12,6 +12,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Find;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -25,7 +26,7 @@ namespace Nethermind.PortfolioViewer.Plugin;
 /// </remarks>
 public sealed class PortfolioViewerConfigurer(
     IPortfolioViewerConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
-    ILogFinder logFinder, IBlockFinder blockFinder, ILogManager logManager) : IJsonRpcServiceConfigurer
+    ILogFinder logFinder, IBlockFinder blockFinder, ISpecProvider specProvider, ILogManager logManager) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
     {
@@ -35,7 +36,7 @@ public sealed class PortfolioViewerConfigurer(
         services.AddSingleton<ISiblingNodeRegistry, SiblingNodeRegistry>();
         services.AddSingleton<IDetectionCache>(cache);
         services.AddSingleton<IPinnedCidStore>(new PinnedCidStore(initConfig.BaseDbPath, logManager));
-        services.AddSingleton<IDetectionScanner>(new DetectionScanner(scheduler, logFinder, blockFinder, cache, logManager));
+        services.AddSingleton<IDetectionScanner>(new DetectionScanner(scheduler, logFinder, blockFinder, cache, logManager, specProvider.ChainId));
         services.AddTransient<IStartupFilter, PortfolioViewerStartupFilter>();
     }
 }
@@ -67,6 +68,15 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     private static readonly HttpClient IpfsClient = new() { Timeout = TimeSpan.FromSeconds(30) };
     // Bounded so an unresolvable CID doesn't hang the request; the UI retries, re-triggering the node's fetch.
     private static readonly TimeSpan IpfsGetTimeout = TimeSpan.FromSeconds(10);
+
+    // Media types the gateway response may keep; anything else is served as an opaque download so a hostile
+    // HTML/SVG/XML CID can't be treated as an active document under this origin. SVG is allowed but neutralised
+    // by the CSP sandbox + nosniff set on every response (it renders in <img> but can't script).
+    private static readonly HashSet<string> SafeIpfsMediaTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/apng", "image/bmp", "image/svg+xml",
+        "video/mp4", "video/webm", "video/ogg", "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "application/json",
+    };
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
@@ -157,20 +167,39 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         return !Uri.TryCreate(origin, UriKind.Absolute, out Uri? parsed) || parsed.Authority != context.Request.Host.Value;
     }
 
+    // A browser tags any cross-site load (fetch, img, etc.) with Sec-Fetch-Site: cross-site, so this blocks a
+    // foreign page from driving the local gateway while leaving same-origin loads and direct navigation alone.
+    private static bool IsCrossSiteFetch(HttpContext context) =>
+        string.Equals(context.Request.Headers["Sec-Fetch-Site"], "cross-site", StringComparison.Ordinal);
+
     // A CID (optionally with a subpath); rejects any '.'/'..' segment so it can't escape the '/ipfs/' URL prefix.
-    private static bool IsSafeIpfsRef(string s) =>
-        s.Length is > 0 and <= 256
-        && s.All(c => char.IsLetterOrDigit(c) || c is '/' or '.' or '-' or '_')
-        && !s.Split('/').Any(segment => segment is "." or "..");
+    private static bool IsSafeIpfsRef(string s)
+    {
+        if (s.Length is 0 or > 256) return false;
+        int segmentStart = 0;
+        for (int i = 0; i <= s.Length; i++)
+        {
+            if (i == s.Length || s[i] == '/')
+            {
+                int len = i - segmentStart;
+                if (len == 1 && s[segmentStart] == '.') return false;
+                if (len == 2 && s[segmentStart] == '.' && s[segmentStart + 1] == '.') return false;
+                segmentStart = i + 1;
+                continue;
+            }
+            char c = s[i];
+            if (!char.IsLetterOrDigit(c) && c is not ('.' or '-' or '_')) return false;
+        }
+        return true;
+    }
 
     private async Task ServeNodesAsync(HttpContext context)
     {
         IReadOnlyList<SiblingNode> nodes = await siblings.GetSiblingsAsync(context.RequestAborted);
+        List<NodeInfo> payload = new(nodes.Count);
+        foreach (SiblingNode node in nodes) payload.Add(new NodeInfo(node.Port, node.ChainId));
         context.Response.ContentType = "application/json";
-        await JsonSerializer.SerializeAsync(
-            context.Response.Body,
-            nodes.Select(n => new { port = n.Port, chainId = n.ChainId }),
-            cancellationToken: context.RequestAborted);
+        await JsonSerializer.SerializeAsync(context.Response.Body, payload, JsonOpts, context.RequestAborted);
     }
 
     // Forwards to the local IPFS gateway so the browser renders off-chain NFT art same-origin.
@@ -183,6 +212,11 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             return;
         }
+        if (IsCrossSiteFetch(context))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         cts.CancelAfter(IpfsGetTimeout);
@@ -191,8 +225,15 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
             using HttpResponseMessage resp = await IpfsClient.GetAsync(
                 $"{IpfsGateway}/ipfs/{rel}", HttpCompletionOption.ResponseHeadersRead, cts.Token);
             context.Response.StatusCode = (int)resp.StatusCode;
-            if (resp.Content.Headers.ContentType is not null)
-                context.Response.ContentType = resp.Content.Headers.ContentType.ToString();
+            // Serve gateway bytes as inert content: an HTML/SVG CID must not execute with same-origin access to
+            // the viewer's storage/RPC. Block MIME sniffing, sandbox the response as a document, and only keep an
+            // allowlisted media type — anything else becomes an opaque download.
+            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            context.Response.Headers.ContentSecurityPolicy = "default-src 'none'; sandbox";
+            string? mediaType = resp.Content.Headers.ContentType?.MediaType;
+            context.Response.ContentType = mediaType is not null && SafeIpfsMediaTypes.Contains(mediaType)
+                ? resp.Content.Headers.ContentType!.ToString()
+                : "application/octet-stream";
             // IPFS is content-addressed, so a resolved response never changes — cache it permanently
             if (resp.IsSuccessStatusCode)
                 context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
@@ -227,8 +268,14 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     {
         try
         {
+            // pin/add succeeds even when the CID is already pinned, so it can't tell us whether we created the
+            // pin. Skip anything already pinned (possibly by the operator) and record only pins we newly add, so
+            // unpin-all never removes a pin the operator created independently.
+            using (HttpResponseMessage ls = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/ls?arg={Uri.EscapeDataString(cid)}&type=recursive", content: null))
+            {
+                if (ls.IsSuccessStatusCode) return; // already pinned — leave ownership with whoever created it
+            }
             using HttpResponseMessage resp = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/add?arg={Uri.EscapeDataString(cid)}", content: null);
-            // track only pins we added, so unpin-all reclaims exactly these
             if (resp.IsSuccessStatusCode) pins.Add(cid);
         }
         // best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved
@@ -248,13 +295,20 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     {
         IReadOnlyCollection<string> ours = pins.Snapshot();
         if (ours.Count == 0) return;
+        bool unpinnedAny = false;
         foreach (string cid in ours)
         {
+            // drop each CID from the store only after its unpin succeeds, so a failure is retained for a later
+            // retry and a pin added concurrently (after the snapshot) is never forgotten
+            try
+            {
+                using HttpResponseMessage resp = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/rm?arg={Uri.EscapeDataString(cid)}", content: null);
+                if (resp.IsSuccessStatusCode) { pins.Remove(cid); unpinnedAny = true; }
+            }
             // best-effort per pin: no local Kubo RPC (5001), or already unpinned
-            try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/pin/rm?arg={Uri.EscapeDataString(cid)}", content: null); }
             catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
         }
-        pins.Clear();
+        if (!unpinnedAny) return;
         try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); }
         catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
     }
@@ -309,4 +363,6 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     }
 
     private sealed record DetectPost(long ChainId, string Address);
+
+    private readonly record struct NodeInfo(int Port, string ChainId);
 }

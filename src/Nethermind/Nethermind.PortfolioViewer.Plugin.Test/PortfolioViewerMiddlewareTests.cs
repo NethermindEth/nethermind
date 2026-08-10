@@ -31,8 +31,11 @@ public class PortfolioViewerMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatusCode));
         if (expectedStatusCode == StatusCodes.Status200OK)
         {
-            Assert.That(ctx.Response.ContentType, Does.StartWith("text/html"));
-            Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain("Nethermind Portfolio"));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Response.ContentType, Does.StartWith("text/html"));
+                Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain("Nethermind Portfolio"));
+            }
         }
     }
 
@@ -45,9 +48,12 @@ public class PortfolioViewerMiddlewareTests
 
         await CreateMiddleware().InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.StartWith(expectedContentType));
-        Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain(expectedContent));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(ctx.Response.ContentType, Does.StartWith(expectedContentType));
+            Assert.That(Encoding.UTF8.GetString(responseBody.ToArray()), Does.Contain(expectedContent));
+        }
     }
 
     [Test]
@@ -76,8 +82,11 @@ public class PortfolioViewerMiddlewareTests
             Substitute.For<IPinnedCidStore>());
         await middleware.InvokeAsync(ctx);
 
-        Assert.That(nextCalled, Is.True);
-        Assert.That(ctx.Response.HasStarted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nextCalled, Is.True);
+            Assert.That(ctx.Response.HasStarted, Is.False);
+        }
     }
 
     [TestCase(false, StatusCodes.Status200OK)]
@@ -94,10 +103,13 @@ public class PortfolioViewerMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatusCode));
         if (expectedStatusCode == StatusCodes.Status200OK)
         {
-            Assert.That(ctx.Response.ContentType, Is.EqualTo("application/json"));
             string body = Encoding.UTF8.GetString(responseBody.ToArray());
-            Assert.That(body, Does.Contain(SiblingPort.ToString()));
-            Assert.That(body, Does.Contain(SiblingChainId));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Response.ContentType, Is.EqualTo("application/json"));
+                Assert.That(body, Does.Contain(SiblingPort.ToString()));
+                Assert.That(body, Does.Contain(SiblingChainId));
+            }
         }
     }
 

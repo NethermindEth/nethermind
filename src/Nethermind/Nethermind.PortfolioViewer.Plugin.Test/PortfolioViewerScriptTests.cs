@@ -153,21 +153,21 @@ public class PortfolioViewerScriptTests
     public void LooksLikeSpam_FlagsPromoUrlAndAbsurdTokens()
     {
         using V8ScriptEngine engine = CreateEngine();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(engine.Evaluate("looksLikeSpam('claim at reward.xyz', 18, null)"), Is.True, "url-ish");
             Assert.That(engine.Evaluate("looksLikeSpam('AIRDROP $50', 18, null)"), Is.True, "promo words");
             Assert.That(engine.Evaluate("looksLikeSpam('OK', 0, '0x' + (9n*10n**33n).toString(16))"), Is.True, "airdrop-scale balance");
             Assert.That(engine.Evaluate("looksLikeSpam('USDC', 6, '0x64')"), Is.False, "legit stablecoin");
             Assert.That(engine.Evaluate("looksLikeSpam('PEPE', 18, '0x' + (4200n*10n**18n).toString(16))"), Is.False, "legit token");
-        });
+        }
     }
 
     [Test]
     public void CurrencySymbol_ShortensDisambiguatedSymbolsExceptInTheFullForm()
     {
         using V8ScriptEngine engine = CreateEngine();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             // dollar-family: full symbol carries the country prefix, per-row collapses to '$'
             engine.Execute("currency='MXN'");
@@ -180,7 +180,7 @@ public class PortfolioViewerScriptTests
             engine.Execute("currency='EUR'");
             Assert.That(engine.Evaluate("currencySymbol(false)"), Is.EqualTo("€"));
             Assert.That(engine.Evaluate("currencySymbol(true)"), Is.EqualTo("€"));
-        });
+        }
     }
 
     [Test]
@@ -210,12 +210,12 @@ public class PortfolioViewerScriptTests
             })()
             """);
         string json = (string)task.Result;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(json, Does.Contain("\"chunks\":[500,500,200]"), "split into server-safe sub-batches");
             Assert.That(json, Does.Contain("\"len\":1200"), "every call answered");
             Assert.That(json, Does.Contain("\"ordered\":true"), "results stay in input order");
-        });
+        }
     }
 
     [Test]
@@ -226,11 +226,11 @@ public class PortfolioViewerScriptTests
         object xaut = engine.Evaluate("priceProbe(CHAINS[1], '0x68749665ff8d2d112fa859aa293f07a622782f38').calls[0][1][0].to.toLowerCase()");
         // DAI is in the registry — its first call must use the registry latestRoundData(base,quote) selector
         object dai = engine.Evaluate("priceProbe(CHAINS[1], '0x6b175474e89094c44da98b954eedeac495271d0f').calls[0][1][0].data.slice(0,10)");
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(xaut, Is.EqualTo("0x214ed9da11d2fbe465a6fc601a91e62ebec1a0d6"), "XAUt → XAU/USD standalone feed");
             Assert.That(dai, Is.EqualTo("0xbcfd032d"), "DAI → registry latestRoundData(base,quote)");
-        });
+        }
     }
 
     [Test]
@@ -561,13 +561,13 @@ public class PortfolioViewerScriptTests
     public void MediaType_UsesFormatHintForExtensionlessUrls()
     {
         using V8ScriptEngine engine = CreateEngine();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(engine.Evaluate("String(mediaType('https://arweave.net/abc', 'MP4') ?? '')"), Is.EqualTo("video"), "arweave mp4 via format");
             Assert.That(engine.Evaluate("String(mediaType('ipfs://cid', 'WAV') ?? '')"), Is.EqualTo("audio"), "ipfs wav via format");
             Assert.That(engine.Evaluate("String(mediaType('https://arweave.net/abc', 'GLB') ?? '')"), Is.EqualTo(""), "glb ignored");
             Assert.That(engine.Evaluate("String(mediaType('https://arweave.net/abc') ?? '')"), Is.EqualTo(""), "no ext, no hint");
-        });
+        }
     }
 
     [Test]
@@ -597,14 +597,14 @@ public class PortfolioViewerScriptTests
     public void IsNodeSyncing_JudgesByHeadAge()
     {
         using V8ScriptEngine engine = CreateEngine();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(engine.Evaluate("isNodeSyncing(false, { number: '0x0' })"), Is.True, "genesis head");
             Assert.That(engine.Evaluate("isNodeSyncing(false, { number: '0x10', timestamp: '0x' + Math.floor(Date.now()/1000 - 10).toString(16) })"),
                 Is.False, "fresh head is synced");
             Assert.That(engine.Evaluate("isNodeSyncing(false, { number: '0x10', timestamp: '0x' + Math.floor(Date.now()/1000 - 99999).toString(16) })"),
                 Is.True, "stale head is behind the tip");
-        });
+        }
     }
 
     // token-info lightbox per-unit price: 2dp at/above 1.00, extra precision below so cheap tokens aren't "0.00"
