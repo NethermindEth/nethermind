@@ -1064,4 +1064,167 @@ public class FrameTxProcessorTests
             GasPrice = 1, // max_priority_fee_per_gas
             DecodedMaxFeePerGas = 1,
         };
+
+    // --- EIP-7906 TXTRACE / TXDIFF / EVENTDATACOPY ---
+
+    // The opcodes only exist inside a POST_TX frame; here one runs in the VERIFY prefix, which must
+    // exceptional-halt and invalidate the transaction like any other VERIFY halt.
+    [Test]
+    public void Execute_TxTraceOutsidePostTxFrame_HaltsExceptionally()
+    {
+        DeploySmartSender(Prepare.EvmCode
+            .PushData(0).PushData(0).Op(Instruction.TXTRACE)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
+
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted, Is.False);
+    }
+
+    // A POST_TX frame reads the transaction's storage diff for a body-frame write: the recorded
+    // net change (after = 99, before = 0), the per-address slot count, and the change-flags bitmask.
+    [Test]
+    public void Execute_TxDiff_ReadsStorageDiffAndChangeFlags()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, PostTxAssertAll(
+            (Txdiff(0x01, Observer, 5), To32(99)),      // slot_value_after
+            (Txdiff(0x00, Observer, 5), To32(0)),       // slot_value_before
+            (Txdiff(0x06, Observer, 0), To32(1)),       // address_slots_count
+            (Txdiff(0x0A, Observer, 0), To32(0b0100)))); // change flags: storage only
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // Negative control: the assertion machinery genuinely fails a wrong expectation, so a success above
+    // is evidence the opcode returned the right value rather than that the assertion can never fail.
+    [Test]
+    public void Execute_TxDiff_WrongExpectation_FailsTheAssertion()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, PostTxAssertAll((Txdiff(0x01, Observer, 5), To32(100))));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+    }
+
+    // TXTRACE enumerates the diff by index: the single changed slot, its address/key/before/after, and
+    // the aggregate counts (one slot changed, nothing deployed).
+    [Test]
+    public void Execute_TxTrace_EnumeratesStorageChangesAndCounts()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, PostTxAssertAll(
+            (Txtrace(0x01, 0), To32(1)),                       // slots_changed
+            (Txtrace(0x02, 0), To32(0)),                       // contracts_deployed
+            (Txtrace(0x06, 0), To32(AddressAsWord(Observer))), // slot-change address at index 0
+            (Txtrace(0x07, 0), To32(5)),                       // slot key
+            (Txtrace(0x08, 0), To32(0)),                       // slot value before
+            (Txtrace(0x09, 0), To32(99))));                    // slot value after
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // Events: TXTRACE reads the log a body frame emitted (address, topic, data length) and EVENTDATACOPY
+    // copies its non-indexed data into memory. The logs come from the shared frame-transaction log buffer.
+    [Test]
+    public void Execute_TxTraceAndEventDataCopy_ReadTransactionLogs()
+    {
+        UInt256 data = 123456789;
+        UInt256 topic = 777;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(data).PushData(0).Op(Instruction.MSTORE)          // mem[0..32] = data
+            .PushData(topic).PushData(32).PushData(0).Op(Instruction.LOG1) // LOG1(offset 0, len 32, topic)
+            .Op(Instruction.STOP).Done);
+        DeployContract(Recipient, PostTxAssertAll(
+            (Txtrace(0x0C, 0), To32(1)),                        // events_count
+            (Txtrace(0x0D, 0), To32(AddressAsWord(Observer))),  // event address
+            (Txtrace(0x0E, 0), To32(1)),                        // topic count
+            (Txtrace(0x0F, 0), To32(topic)),                    // topic0
+            (Txtrace(0x13, 0), To32(32)),                       // data length
+            (Txdiff(0x08, Observer, 0), To32(1)),               // address_events_count
+            // EVENTDATACOPY(eventIndex 0, memOffset 0, dataOffset 0, length 32) then MLOAD(0).
+            (Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(0)
+                .Op(Instruction.EVENTDATACOPY).PushData(0).Op(Instruction.MLOAD).Done, To32(data))));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // TXTRACE stack order is (param, index) with param on top.
+    private static byte[] Txtrace(byte param, UInt256 index)
+        => Prepare.EvmCode.PushData(index).PushData((UInt256)param).Op(Instruction.TXTRACE).Done;
+
+    // TXDIFF stack order is (param, address, in3) with param on top.
+    private static byte[] Txdiff(byte param, Address address, UInt256 in3)
+        => Prepare.EvmCode.PushData(in3).PushData(address).PushData((UInt256)param).Op(Instruction.TXDIFF).Done;
+
+    private static byte[] To32(in UInt256 value)
+    {
+        byte[] bytes = new byte[32];
+        value.ToBigEndian(bytes);
+        return bytes;
+    }
+
+    /// <summary>
+    /// Builds POST_TX assertion bytecode: each <paramref name="asserts"/> entry runs a value-producing
+    /// snippet then compares its 32-byte result to the expected word, reverting on any mismatch and
+    /// stopping (assertion holds) only if all match. Failure is observed via the frame receipt status.
+    /// </summary>
+    private static byte[] PostTxAssertAll(params (byte[] producer, byte[] expected32)[] asserts)
+    {
+        int total = 0;
+        foreach ((byte[] producer, _) in asserts) total += producer.Length + 39;
+        int failDest = total + 1; // JUMPDEST sits right after the trailing STOP
+
+        System.Collections.Generic.List<byte> code = [];
+        foreach ((byte[] producer, byte[] expected32) in asserts)
+        {
+            code.AddRange(producer);
+            code.Add((byte)Instruction.PUSH32);
+            code.AddRange(expected32);
+            code.Add((byte)Instruction.EQ);
+            code.Add((byte)Instruction.ISZERO);
+            code.Add((byte)Instruction.PUSH2);
+            code.Add((byte)(failDest >> 8));
+            code.Add((byte)(failDest & 0xff));
+            code.Add((byte)Instruction.JUMPI);
+        }
+        code.Add((byte)Instruction.STOP);
+        code.Add((byte)Instruction.JUMPDEST);
+        code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.PUSH0);
+        code.Add((byte)Instruction.REVERT);
+        return code.ToArray();
+    }
+
+    private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx)
+    {
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        CallOutputTracer tracer = new();
+        TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        return (result, tracer);
+    }
 }

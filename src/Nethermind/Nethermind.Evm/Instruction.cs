@@ -167,6 +167,11 @@ public enum Instruction : byte
     FRAMEPARAM = 0xb3,
     SIGPARAM = 0xb4,
 
+    // EIP-7906 transaction assertions
+    TXTRACE = 0xb5,
+    TXDIFF = 0xb6,
+    EVENTDATACOPY = 0xb7,
+
     DUPN = 0xe6,
     SWAPN = 0xe7,
     EXCHANGE = 0xe8,
