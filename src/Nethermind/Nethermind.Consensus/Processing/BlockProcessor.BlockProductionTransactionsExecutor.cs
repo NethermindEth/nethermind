@@ -26,7 +26,8 @@ namespace Nethermind.Consensus.Processing
             IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
             ILogManager logManager,
-            IBlockAccessListManager balManager)
+            IBlockAccessListManager balManager,
+            ITxPool txPool)
             : IBlockProductionTransactionsExecutor
         {
             private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
@@ -119,6 +120,7 @@ namespace Nethermind.Consensus.Processing
                     {
                         balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
+                        DropIfFrameTxCanNeverPay(currentTx, result);
                     }
                 }
 
@@ -127,6 +129,28 @@ namespace Nethermind.Consensus.Processing
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+            }
+
+            /// <summary>
+            /// Evicts an EIP-8141 frame transaction whose frames were rejected outright, so the producer
+            /// runs its validation prefix at most once.
+            /// </summary>
+            /// <remarks>
+            /// A frame transaction only charges a fee once a frame approves payment. One whose prefix never
+            /// approves therefore leaves the producer with the whole prefix burned and nothing collected, and
+            /// because nothing evicts it, every later block repeats that work — the cost is bounded by the
+            /// number of blocks the transaction is pooled for, not by the block gas limit.
+            /// Only <see cref="TransactionResult.ErrorType.MalformedTransaction"/> is evicted: every other
+            /// error either clears on its own (a nonce gap, a base fee above the transaction's cap) or is
+            /// already handled by the pool's own eviction passes. The sender may resubmit once the state the
+            /// prefix depends on has changed.
+            /// </remarks>
+            private void DropIfFrameTxCanNeverPay(Transaction tx, in TransactionResult result)
+            {
+                if (!tx.SupportsFrames || result.Error != TransactionResult.ErrorType.MalformedTransaction) return;
+
+                txPool.RemoveTransaction(tx.Hash);
+                if (_logger.IsDebug) _logger.Debug($"Evicted frame transaction {tx.ToShortString()} from the pool: {result.ErrorDescription}.");
             }
         }
     }

@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,6 +28,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.State;
 
@@ -356,7 +358,7 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
 
             BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB - 1);
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance, NullBlockAccessListManager.Instance);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance, NullBlockAccessListManager.Instance, NullTxPool.Instance);
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());
@@ -524,6 +526,111 @@ namespace Nethermind.Blockchain.Test
             Assert.That(args.Reason, Does.Contain("frame"));
         }
 
+        public enum FramePrefix { Approves, NeverApproves, BelowBaseFee }
+
+        // EIP-8141: a frame transaction pays only once a frame approves payment, so a prefix that never
+        // approves burns its whole budget for free. Nothing else evicts it, so without this the producer
+        // repeats that work on every block it builds. A fee cap under the base fee must survive: it clears
+        // on its own once the base fee falls.
+        [TestCase(FramePrefix.NeverApproves, true, TestName = "A prefix that can never approve is evicted after one attempt")]
+        [TestCase(FramePrefix.Approves, false, TestName = "A prefix that approves is included, not evicted")]
+        [TestCase(FramePrefix.BelowBaseFee, false, TestName = "A fee cap under the base fee is not an eviction reason")]
+        public void Frame_transaction_that_can_never_pay_is_evicted_from_the_pool(FramePrefix prefix, bool expectedEvicted)
+        {
+            const int blocks = 3;
+            ISpecProvider specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+            IReleaseSpec spec = specProvider.GenesisSpec;
+
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 100.Ether);
+            stateProvider.InsertCode(TestItem.AddressA, prefix == FramePrefix.Approves
+                    ? Prepare.EvmCode.PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done
+                    : Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
+                spec);
+            stateProvider.Commit(spec);
+            stateProvider.CommitTree(0);
+
+            const ulong verifyGas = 100_000;
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
+                FrameSignatures = [],
+                GasLimit = verifyGas,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+            };
+            frameTx.Hash = frameTx.CalculateHash();
+
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+                BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine,
+                new EthereumCodeInfoRepository(stateProvider), LimboLogs.Instance);
+            CountingTxProcessorAdapter adapter = new(new BuildUpTransactionProcessorAdapter(transactionProcessor));
+
+            // Stands in for the pool feeding block production: once the executor evicts the transaction,
+            // the source stops offering it, which is what turns one eviction into one execution.
+            bool evicted = false;
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.RemoveTransaction(frameTx.Hash).Returns(_ => evicted = true);
+
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                adapter,
+                stateProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider),
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance,
+                txPool);
+
+            int included = 0;
+            for (int i = 0; i < blocks && !evicted; i++)
+            {
+                Block block = Build.A.Block
+                    .WithNumber(1 + i)
+                    .WithBaseFeePerGas(prefix == FramePrefix.BelowBaseFee ? 10 : UInt256.Zero)
+                    .WithGasLimit(30_000_000)
+                    .WithTransactions(frameTx)
+                    .TestObject;
+
+                BlockReceiptsTracer receiptsTracer = new();
+                receiptsTracer.StartNewBlockTrace(block);
+                txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+                txExecutor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
+                receiptsTracer.EndBlockTrace();
+
+                if (block.Header.TxRoot != Keccak.EmptyTreeHash) included++;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                // Without reaching execution the eviction assertion below would hold for the wrong reason.
+                Assert.That(adapter.Attempts, Is.GreaterThan(0), "the transaction never reached execution");
+                Assert.That(evicted, Is.EqualTo(expectedEvicted));
+                Assert.That(included, Is.EqualTo(prefix == FramePrefix.Approves ? 1 : 0));
+                // One attempt after an eviction, one after an inclusion (the nonce has moved on), and one
+                // per block for the transaction that stays pooled: that last one is the cost being fixed.
+                Assert.That(adapter.Attempts, Is.EqualTo(prefix == FramePrefix.BelowBaseFee ? blocks : 1));
+            }
+        }
+
+        private sealed class CountingTxProcessorAdapter(ITransactionProcessorAdapter inner) : ITransactionProcessorAdapter
+        {
+            public int Attempts { get; private set; }
+
+            public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+            {
+                Attempts++;
+                return inner.Execute(transaction, txTracer);
+            }
+
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
+                inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
+
         private static Transaction[] RunBlockProduction(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
@@ -536,7 +643,8 @@ namespace Nethermind.Blockchain.Test
                 stateProvider,
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
                 LimboLogs.Instance,
-                NullBlockAccessListManager.Instance);
+                NullBlockAccessListManager.Instance,
+                NullTxPool.Instance);
 
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.StartNewBlockTrace(blockToProduce);
