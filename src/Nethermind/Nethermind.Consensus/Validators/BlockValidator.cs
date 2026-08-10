@@ -348,8 +348,6 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            // EIP-8141: a blob-carrying frame transaction (type 6) follows EIP-4844 too, so gate on the
-            // instance-level blob predicate rather than the type-level SupportsBlobs (which is type-3 only).
             if (!transaction.CarriesBlobs)
             {
                 continue;

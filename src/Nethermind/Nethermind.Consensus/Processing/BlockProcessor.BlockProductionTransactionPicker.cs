@@ -65,12 +65,8 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                // EIP8141: blob-carrying frame transactions are routed to the blob pool and metered against
-                // the block blob budget by the blob-selection path in TxPoolTxSource (like type-3), so they
-                // never reach this normal-pool picker in the standard flow. This guard stays as defense in
-                // depth: a frame tx arriving here still carries no resolvable EIP-7594 sidecar, so producing
-                // it would count towards header.BlobGasUsed yet leave the block's blobs bundle incomplete.
-                // Exclude it until the sidecar wire format lands and its blob data can be published.
+                // EIP-8141: defense in depth — a blob-carrying frame tx here has no resolvable EIP-7594
+                // sidecar, so producing it would leave the block's blobs bundle incomplete.
                 if (currentTx.Type == TxType.FrameTx && currentTx.CarriesBlobs)
                 {
                     return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");

@@ -151,8 +151,8 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            // EIP8141: blob-carrying frame txs live in the blob pool, so its inserts/removals must feed the
-            // same delegation and frame-expiry bookkeeping as the normal pool.
+            // EIP-8141: blob-carrying frame txs live in the blob pool, so it needs the same insert/removal
+            // bookkeeping (delegations, frame expiry) as the normal pool.
             _blobTransactions.Inserted += OnInsertedTx;
             _blobTransactions.Removed += OnRemovedTx;
             if (_blobTransactions.Count > 0)
@@ -499,7 +499,6 @@ namespace Nethermind.TxPool
             }
 
             ulong timestamp = block.Timestamp;
-            // Blob-carrying frame txs live in the blob pool, so both pools are scanned.
             EvictExpiredFrameTransactions(_transactions.GetSnapshot(), timestamp);
             EvictExpiredFrameTransactions(_blobTransactions.GetSnapshot(), timestamp);
         }
@@ -978,8 +977,7 @@ namespace Nethermind.TxPool
 
         public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob
             ? _blobTransactions.ContainsKey(hash)
-            // EIP-8141: a blob-carrying frame tx lives in the blob pool; a plain frame tx in the normal
-            // pool. Without the instance we cannot tell them apart by type alone, so check both for type 6.
+            // EIP-8141: a type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
             : _transactions.ContainsKey(hash)
                 || (txType == TxType.FrameTx && _blobTransactions.ContainsKey(hash))
                 || _broadcaster.ContainsTx(hash);
