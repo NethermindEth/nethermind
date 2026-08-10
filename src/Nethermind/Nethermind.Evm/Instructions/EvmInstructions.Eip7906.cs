@@ -170,15 +170,15 @@ public static unsafe partial class EvmInstructions
             case 0x03:
                 return stack.PushUInt256<TTracingInst>(state.GetBalance(address));
             case 0x04:
-            {
-                ValueHash256 hash = account?.CodeChange is not null ? ValueKeccak.Compute(account.PreTxCode ?? []) : state.GetCodeHash(address);
-                return stack.Push32Bytes<TTracingInst>(in hash);
-            }
+                {
+                    ValueHash256 hash = account?.CodeChange is not null ? ValueKeccak.Compute(account.PreTxCode ?? []) : state.GetCodeHash(address);
+                    return stack.Push32Bytes<TTracingInst>(in hash);
+                }
             default:
-            {
-                ValueHash256 hash = state.GetCodeHash(address);
-                return stack.Push32Bytes<TTracingInst>(in hash);
-            }
+                {
+                    ValueHash256 hash = state.GetCodeHash(address);
+                    return stack.Push32Bytes<TTracingInst>(in hash);
+                }
         }
     }
 

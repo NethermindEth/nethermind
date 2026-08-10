@@ -1153,7 +1153,7 @@ public class FrameTxProcessorTests
             (Txtrace(0x0F, 0), To32(topic)),                    // topic0
             (Txtrace(0x13, 0), To32(32)),                       // data length
             (Txdiff(0x08, Observer, 0), To32(1)),               // address_events_count
-            // EVENTDATACOPY(eventIndex 0, memOffset 0, dataOffset 0, length 32) then MLOAD(0).
+                                                                // EVENTDATACOPY(eventIndex 0, memOffset 0, dataOffset 0, length 32) then MLOAD(0).
             (Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(0)
                 .Op(Instruction.EVENTDATACOPY).PushData(0).Op(Instruction.MLOAD).Done, To32(data))));
 
