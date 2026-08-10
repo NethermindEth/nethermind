@@ -78,33 +78,19 @@ public class DbTrackerTests
     }
 
     [Parallelizable(ParallelScope.None)]
-    [Test]
-    public void PausedProcessingDefersUpdateWithinHoldoff()
+    [TestCase(2 * 60 * 1000, 0L)]
+    [TestCase(11 * 60 * 1000, 10L)]
+    public void PausedProcessingHonoursHoldoff(int stalenessMs, long expectedReads)
     {
         (IContainer container, Action updateAction, DbMonitoringModule.DbTracker tracker) = ConfigurePausedMetricUpdater();
         using IContainer _ = container;
 
-        tracker.LastDbMetricsUpdate = Environment.TickCount64 - 2 * 60 * 1000;
+        tracker.LastDbMetricsUpdate = Environment.TickCount64 - stalenessMs;
         Metrics.DbReads["TestDb"] = 0;
 
         updateAction!();
 
-        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(0));
-    }
-
-    [Parallelizable(ParallelScope.None)]
-    [Test]
-    public void PausedProcessingUpdatesOnceStalerThanHoldoff()
-    {
-        (IContainer container, Action updateAction, DbMonitoringModule.DbTracker tracker) = ConfigurePausedMetricUpdater();
-        using IContainer _ = container;
-
-        tracker.LastDbMetricsUpdate = Environment.TickCount64 - 11 * 60 * 1000;
-        Metrics.DbReads["TestDb"] = 0;
-
-        updateAction!();
-
-        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(expectedReads));
     }
 
     [Parallelizable(ParallelScope.None)]

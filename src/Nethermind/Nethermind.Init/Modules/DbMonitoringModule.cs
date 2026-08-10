@@ -122,9 +122,10 @@ public class DbMonitoringModule : Module
                     PublishDbMetrics(kv.Key, kv.Value);
                 }
 
+                long sharedBlockCacheUsage = _sharedBlockCache.Value.GetUsage();
                 lock (_publishLock)
                 {
-                    Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
+                    Db.Metrics.DbBlockCacheSize["Shared"] = sharedBlockCacheUsage;
                 }
 
                 _lastDbMetricsUpdate = Environment.TickCount64;
