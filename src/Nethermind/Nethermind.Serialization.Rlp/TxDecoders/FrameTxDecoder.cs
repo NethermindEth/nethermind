@@ -58,7 +58,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         int start = decoderContext.Position;
         decoderContext.ReadSequenceLength();
-        bool isWrapper = decoderContext.IsSequenceNext();
+        // Guard the peek: a truncated payload (e.g. an empty type-6 list from a peer) leaves Position at
+        // the end, and IsSequenceNext reads Data[Position] unchecked. Keep it an RlpException path.
+        bool isWrapper = decoderContext.Position < decoderContext.Length && decoderContext.IsSequenceNext();
         decoderContext.Position = start;
         return isWrapper;
     }
@@ -155,7 +157,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             writer.StartSequence(wrapperContentLength);
             writer.StartSequence(payloadContentLength);
-            EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: false);
+            // Key eliding on forSigning like payloadContentLength above, so the declared length and the
+            // bytes written cannot drift if InMempoolForm and forSigning ever co-occur.
+            EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
             ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper);
         }
     }
