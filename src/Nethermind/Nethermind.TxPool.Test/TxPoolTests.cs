@@ -2057,8 +2057,7 @@ namespace Nethermind.TxPool.Test
         {
             // MAX_VERIFY_GAS disabled: this covers payer resolution, not the verify-gas bound.
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance));
-            // A default-code self_verify frame tx: the sender pays for itself, so its payer resolves
-            // natively and it reaches the pool end-to-end (the earlier balance filters see the funded sender).
+            // A default-code self_verify frame tx: the sender is its own payer, resolved natively.
             Transaction frameTx = new()
             {
                 Type = TxType.FrameTx,

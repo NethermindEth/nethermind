@@ -215,14 +215,9 @@ namespace Nethermind.Core
         public TxFrameSignature[]? FrameSignatures { get; set; }
 
         /// <summary>
-        /// Fee-payer resolved at mempool admission for an EIP-8141 frame transaction; <c>null</c>
-        /// until resolved or when it cannot be resolved natively. In-memory only (not encoded).
+        /// Fee-payer resolved at mempool admission for an EIP-8141 frame transaction; <c>null</c> until
+        /// resolved or when it cannot be resolved natively. In-memory only (not encoded).
         /// </summary>
-        /// <remarks>
-        /// A frame transaction chooses its payer via <c>APPROVE</c> inside the transaction, so it is
-        /// resolved by <c>FrameTxPayerResolver</c> at admission rather than being a transaction field.
-        /// https://eips.ethereum.org/EIPS/eip-8141
-        /// </remarks>
         public Address? PayerAddress { get; set; }
 
         /// <summary>

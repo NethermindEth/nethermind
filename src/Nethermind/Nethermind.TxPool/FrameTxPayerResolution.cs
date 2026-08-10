@@ -7,39 +7,25 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
-/// <summary>
-/// Outcome of resolving an EIP-8141 frame transaction's fee-payer at mempool admission.
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </summary>
 internal enum FrameTxPayerOutcome
 {
-    /// <summary>A legible validation prefix that sets a payer natively.</summary>
+    /// <summary>Payer set natively from a legible validation prefix.</summary>
     Resolved,
 
-    /// <summary>A legible validation prefix that provably never sets a payer (an invalid transaction).</summary>
+    /// <summary>Legible prefix that provably never sets a payer (an invalid transaction).</summary>
     NoPayer,
 
     /// <summary>
-    /// The prefix reaches deployed code the pool cannot evaluate natively, or names a third party the
-    /// pool cannot yet authenticate (an unverified signature shape); deferred to a later simulation layer.
+    /// Reaches deployed code the pool cannot evaluate natively, or names a third party it cannot yet
+    /// authenticate; deferred to a later simulation layer.
     /// </summary>
     RequiresSimulation,
 }
 
 /// <summary>
-/// State a legible payer resolution depends on, per EIP-8141 "Direct Evaluation of Protocol-Defined
-/// Frames": the sender's code hash and nonce, the payer's code hash and balance, and — when an
-/// expiry verifier frame is present — the <c>EXPIRY_VERIFIER</c> code hash and the frame's deadline.
+/// Chain-head state a legible payer resolution depends on, captured so a later layer can revalidate
+/// admission on head changes without re-execution.
 /// </summary>
-/// <remarks>
-/// Captured so a later revalidation layer can re-check admission on head changes without
-/// re-execution. Indexing pending transactions by this set is deferred; the fields are recorded now.
-/// In this foundational slice the only natively-resolved prefix is default-code <c>self_verify</c>,
-/// so <see cref="Payer"/>, <see cref="PayerCodeHash"/> and <see cref="PayerBalance"/> currently mirror
-/// the sender; they gain independent values once third-party (sponsored) resolution lands with
-/// signature verification.
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </remarks>
 internal readonly struct FrameTxDependencySet(
     ValueHash256 senderCodeHash,
     ulong senderNonce,
@@ -53,21 +39,16 @@ internal readonly struct FrameTxDependencySet(
     public ValueHash256 SenderCodeHash { get; } = senderCodeHash;
     public ulong SenderNonce { get; } = senderNonce;
 
-    /// <summary>The resolved payer whose code and balance the resolution depends on; <c>null</c> when unresolved.</summary>
+    /// <summary>The resolved payer; <c>null</c> when unresolved.</summary>
     public Address? Payer { get; } = payer;
     public ValueHash256 PayerCodeHash { get; } = payerCodeHash;
     public UInt256 PayerBalance { get; } = payerBalance;
 
-    /// <summary>True when an expiry verifier frame is present, adding the deadline and block timestamp as dependencies.</summary>
     public bool DependsOnExpiry { get; } = dependsOnExpiry;
     public ulong ExpiryDeadline { get; } = expiryDeadline;
     public ValueHash256 ExpiryVerifierCodeHash { get; } = expiryVerifierCodeHash;
 }
 
-/// <summary>
-/// Result of <see cref="FrameTxPayerResolver.Resolve"/>: the payer outcome and the state dependency
-/// set captured while resolving it.
-/// </summary>
 internal readonly struct FrameTxPayerResolution(FrameTxPayerOutcome outcome, Address? payer, in FrameTxDependencySet dependencies)
 {
     public FrameTxPayerOutcome Outcome { get; } = outcome;

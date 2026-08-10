@@ -14,12 +14,6 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>
-/// Native payer resolution over EIP-8141 legible validation prefixes: the default-code
-/// <c>self_verify</c> shape resolves to the sender, deployed code and unverified third-party
-/// payers (sponsored <c>only_verify | pay</c>) defer to simulation, and a prefix that never
-/// approves payment resolves to no payer.
-/// </summary>
 public class FrameTxPayerResolverTests
 {
     private static readonly Address Sender = TestItem.AddressA;
@@ -49,7 +43,6 @@ public class FrameTxPayerResolverTests
 
     private static IEnumerable<TestCaseData> OutcomeCases()
     {
-        // Self relay: a default-code EOA pays for itself.
         yield return Case("SelfVerify_DefaultCodeSender_PayerIsSender",
             state =>
             {
@@ -57,8 +50,7 @@ public class FrameTxPayerResolverTests
                 return FrameTx([SelfVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
-        // Sponsored relay (only_verify | pay) names a third party as payer on a signature the pool
-        // does not verify; deferred to the verification/simulation layer rather than resolved natively.
+        // The sponsor's pay-frame signature is unverified at admission, so a third party is never named natively.
         yield return Case("OnlyVerifyPay_DefaultCodeSponsor_RequiresSimulation",
             state =>
             {
@@ -67,12 +59,11 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // A never-before-seen default-code sender still resolves (empty code hash).
+        // A never-seen sender still resolves: the zeroed account reads as default (empty) code.
         yield return Case("SelfVerify_NonExistentSender_PayerIsSender",
             _ => FrameTx([SelfVerifyFrame()], [Secp(Sender)]),
             FrameTxPayerOutcome.Resolved, Sender);
 
-        // only_verify approves the sender but no pay frame follows: payment is never approved.
         yield return Case("OnlyVerifyWithoutPay_NoPayer",
             state =>
             {
@@ -80,8 +71,8 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
-        // The lone-only_verify proof is code-independent: a deployed sender cannot approve payment on a
-        // frame whose allowed scope excludes it, so a following-frame-less prefix is still NoPayer.
+        // NoPayer is code-independent: even a deployed sender cannot approve payment on a prefix with no
+        // following pay frame.
         yield return Case("OnlyVerifyWithoutPay_DeployedCodeSender_NoPayer",
             state =>
             {
@@ -89,7 +80,6 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
-        // A leading DEFAULT frame is not a recognized legible prefix.
         yield return Case("DefaultFrameFirst_RequiresSimulation",
             state =>
             {
@@ -97,7 +87,6 @@ public class FrameTxPayerResolverTests
                 return FrameTx([Frame(TxFrame.ModeDefault), SelfVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // A deployed smart-account sender must be simulated.
         yield return Case("SelfVerify_DeployedCodeSender_RequiresSimulation",
             state =>
             {
@@ -105,7 +94,6 @@ public class FrameTxPayerResolverTests
                 return FrameTx([SelfVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // A code-carrying pay target is a paymaster (canonical hash unpinned / non-canonical).
         yield return Case("OnlyVerifyPay_DeployedCodePaymaster_RequiresSimulation",
             state =>
             {
@@ -114,9 +102,7 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // A signature-shape mismatch in a legible frame is not a native proof of invalidity: the
-        // hoisted-list vs VERIFY-frame-data placement is an open cross-client divergence, so the
-        // verdict is deferred to execution rather than dropped at admission.
+        // A wrong signature shape isn't proof of invalidity (its placement is unsettled), so it's deferred, not dropped.
         yield return Case("SelfVerify_WrongSignatureScheme_RequiresSimulation",
             state =>
             {
@@ -124,8 +110,7 @@ public class FrameTxPayerResolverTests
                 return FrameTx([SelfVerifyFrame()], [new TxFrameSignature(TxFrameSignature.SchemeP256, Sender, default, new byte[128])]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // An empty hoisted signature list (the ethrex devnet shape carrying the signature in the
-        // VERIFY frame data) is deferred, not dropped — the mempool must not pre-judge the divergence.
+        // An empty top-level signature list is deferred, not dropped: where the signature belongs is unsettled.
         yield return Case("SelfVerify_EmptySignatureList_RequiresSimulation",
             state =>
             {
@@ -133,8 +118,6 @@ public class FrameTxPayerResolverTests
                 return FrameTx([SelfVerifyFrame()], []);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
-        // A sponsored pay frame is deferred regardless of the (unverified) sponsor signature shape:
-        // the pool never draws a native conclusion about a third-party payer from an unverified signature.
         yield return Case("OnlyVerifyPay_SponsorSignatureShape_RequiresSimulation",
             state =>
             {
@@ -151,7 +134,6 @@ public class FrameTxPayerResolverTests
                 return FrameTx([ExpiryFrame(9999), SelfVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
-        // A prefix consisting only of an expiry frame never sets a payer.
         yield return Case("ExpiryFrameOnly_NoPayer",
             state =>
             {
@@ -184,8 +166,8 @@ public class FrameTxPayerResolverTests
     [Test]
     public void Resolve_Sponsored_DoesNotNamePayerFromUnverifiedSignature()
     {
-        // A forged pay-frame signature must not resolve to an arbitrary victim: the pool does not
-        // verify frame signatures at admission, so a third-party payer is never named natively.
+        // A forged pay-frame signature must not resolve to an arbitrary victim: frame signatures are
+        // unverified at admission, so a third-party payer is never named natively.
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(Sender, wei: 0, nonce: 1);
         state.CreateAccount(Sponsor, wei: Eth(3), nonce: 0);
