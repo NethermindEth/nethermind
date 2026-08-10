@@ -4,12 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -21,23 +20,12 @@ public class RecentRootStoreTests
     private static readonly ValueHash256 Salt = TestItem.KeccakA.ValueHash256;
     private static readonly ValueHash256 Root = TestItem.KeccakB.ValueHash256;
     private static readonly ValueHash256 OtherRoot = TestItem.KeccakC.ValueHash256;
-    private static readonly IReleaseSpec Spec = Amsterdam.Instance;
-
-    [Test]
-    public void SourceId_is_deterministic_and_distinct_per_input()
-    {
-        ValueHash256 baseline = RecentRootStore.SourceId(Source, Salt);
-
-        Assert.That(RecentRootStore.SourceId(Source, Salt), Is.EqualTo(baseline));
-        Assert.That(RecentRootStore.SourceId(TestItem.AddressB, Salt), Is.Not.EqualTo(baseline));
-        Assert.That(RecentRootStore.SourceId(Source, OtherRoot), Is.Not.EqualTo(baseline));
-    }
 
     [Test]
     public void EntryHash_is_deterministic_and_distinct_per_input()
     {
-        ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-        ValueHash256 otherSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
+        ValueHash256 sourceId = SourceId(Source, Salt);
+        ValueHash256 otherSource = SourceId(TestItem.AddressB, Salt);
         ValueHash256 baseline = RecentRootStore.EntryHash(sourceId, 100, Root);
 
         Assert.That(RecentRootStore.EntryHash(sourceId, 100, Root), Is.EqualTo(baseline));
@@ -49,8 +37,8 @@ public class RecentRootStoreTests
     [Test]
     public void StorageKey_is_deterministic_and_distinct_per_input()
     {
-        ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-        ValueHash256 otherSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
+        ValueHash256 sourceId = SourceId(Source, Salt);
+        ValueHash256 otherSource = SourceId(TestItem.AddressB, Salt);
         ValueHash256 baseline = RecentRootStore.StorageKey(sourceId, 5);
 
         Assert.That(RecentRootStore.StorageKey(sourceId, 5), Is.EqualTo(baseline));
@@ -61,7 +49,7 @@ public class RecentRootStoreTests
     [Test]
     public void EntryHash_and_StorageKey_use_distinct_domains()
     {
-        ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+        ValueHash256 sourceId = SourceId(Source, Salt);
 
         Assert.That(
             RecentRootStore.EntryHash(sourceId, 5, Root),
@@ -75,8 +63,8 @@ public class RecentRootStoreTests
         using (scope)
         {
             const ulong writeSlot = 100_000;
-            RecentRootStore.Write(state, Source, Salt, Root, writeSlot, Spec);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, Source, Salt, Root, writeSlot);
+            ValueHash256 sourceId = SourceId(Source, Salt);
 
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + 1), Is.True);
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot), Is.False);
@@ -97,8 +85,8 @@ public class RecentRootStoreTests
         {
             const ulong writeSlot = 1000;
             const ulong currentSlot = 1001;
-            RecentRootStore.Write(state, Source, Salt, Root, writeSlot, Spec);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, Source, Salt, Root, writeSlot);
+            ValueHash256 sourceId = SourceId(Source, Salt);
 
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, currentSlot), Is.True);
         }
@@ -112,9 +100,9 @@ public class RecentRootStoreTests
         {
             const ulong writeSlot = 1000;
             const ulong currentSlot = 1001;
-            RecentRootStore.Write(state, Source, Salt, Root, writeSlot, Spec);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-            ValueHash256 wrongSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
+            Write(state, Source, Salt, Root, writeSlot);
+            ValueHash256 sourceId = SourceId(Source, Salt);
+            ValueHash256 wrongSource = SourceId(TestItem.AddressB, Salt);
 
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, OtherRoot, currentSlot), Is.False);
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot - 1, Root, currentSlot), Is.False);
@@ -130,8 +118,8 @@ public class RecentRootStoreTests
         {
             const ulong writtenSlot = 5;
             ulong aliasedSlot = writtenSlot + Eip8272Constants.RecentRootLength;
-            RecentRootStore.Write(state, Source, Salt, Root, writtenSlot, Spec);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, Source, Salt, Root, writtenSlot);
+            ValueHash256 sourceId = SourceId(Source, Salt);
 
             Assert.That(
                 RecentRootStore.StorageKey(sourceId, aliasedSlot % Eip8272Constants.RecentRootLength),
@@ -140,6 +128,27 @@ public class RecentRootStoreTests
             // The stored entry commits to writtenSlot, so a reference to the aliased slot cannot match.
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, aliasedSlot, Root, aliasedSlot + 1), Is.False);
         }
+    }
+
+    // The predeploy derives source_id as keccak256(msg.sender-left-padded-to-32 || salt); mirror it here
+    // to build test inputs for the read-path assertions above.
+    private static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
+    {
+        Span<byte> input = stackalloc byte[32 + 32];
+        sourceAddress.Bytes.CopyTo(input.Slice(32 - Address.Size, Address.Size));
+        salt.Bytes.CopyTo(input.Slice(32));
+        return ValueKeccak.Compute(input);
+    }
+
+    // Populates recent-root storage the way the RECENT_ROOT_ADDRESS predeploy would, through the public
+    // key derivations, so the read-path assertions have a committed entry to validate against.
+    private static void Write(IWorldState state, Address source, in ValueHash256 salt, in ValueHash256 root, ulong slot)
+    {
+        ValueHash256 sourceId = SourceId(source, salt);
+        StorageCell cell = new(
+            Eip8272Constants.RecentRootAddress,
+            RecentRootStore.StorageKey(sourceId, slot % Eip8272Constants.RecentRootLength).ToUInt256());
+        state.Set(cell, RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
     }
 
     private static IWorldState CreateState(out IDisposable scope)

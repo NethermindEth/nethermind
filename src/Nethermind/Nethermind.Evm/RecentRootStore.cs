@@ -6,26 +6,16 @@ using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
 /// <summary>Key/commitment derivations and the pre-state reference check for <see href="https://eips.ethereum.org/EIPS/eip-8272">EIP-8272</see> recent roots.</summary>
+/// <remarks>Recent-root storage is written by the <c>RECENT_ROOT_ADDRESS</c> predeploy bytecode during ordinary execution, not by the client, so this type only derives keys and validates references against already-written state.</remarks>
 public static class RecentRootStore
 {
     private const int HashLength = 32;
-    private const int AddressLength = Address.Size;
     private const int SlotLength = sizeof(ulong);
-
-    // Consensus-critical, spec-ambiguous: 32-byte-padded address matches the only existing implementation (spec text says 20 bytes).
-    public static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
-    {
-        Span<byte> input = stackalloc byte[HashLength + HashLength];
-        sourceAddress.Bytes.CopyTo(input.Slice(HashLength - AddressLength, AddressLength));
-        salt.Bytes.CopyTo(input.Slice(HashLength));
-        return ValueKeccak.Compute(input);
-    }
 
     public static ValueHash256 EntryHash(in ValueHash256 sourceId, ulong slot, in ValueHash256 root)
     {
@@ -65,14 +55,6 @@ public static class RecentRootStore
         Span<byte> padded = stackalloc byte[HashLength];
         stored.CopyTo(padded.Slice(HashLength - stored.Length));
         return new ValueHash256(padded) == EntryHash(sourceId, slot, root);
-    }
-
-    public static void Write(IWorldState state, Address sourceAddress, in ValueHash256 salt, in ValueHash256 root, ulong currentSlot, IReleaseSpec spec)
-    {
-        ValueHash256 sourceId = SourceId(sourceAddress, salt);
-        StorageCell cell = RingBufferCell(sourceId, currentSlot % Eip8272Constants.RecentRootLength);
-        ValueHash256 entryHash = EntryHash(sourceId, currentSlot, root);
-        state.Set(cell, entryHash.Bytes.WithoutLeadingZeros().ToArray());
     }
 
     private static StorageCell RingBufferCell(in ValueHash256 sourceId, ulong ringIndex) =>
