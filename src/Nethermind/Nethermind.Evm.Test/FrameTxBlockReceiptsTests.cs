@@ -89,8 +89,6 @@ public class FrameTxBlockReceiptsTests
         }
     }
 
-    // A blob-carrying frame tx pays the blob fee and counts towards the block's blob gas, so its receipt
-    // must report blobGasUsed/blobGasPrice; a blobless frame tx reports neither.
     [Test]
     public void GetGasInfo_BlobCarryingFrameTx_ReportsBlobGas()
     {
