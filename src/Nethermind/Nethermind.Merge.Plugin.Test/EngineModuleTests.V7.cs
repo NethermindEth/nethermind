@@ -442,6 +442,18 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task GetInclusionListV1_before_Bogota_is_unsupported_fork()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ResultWrapper<InclusionListBytes> result = await rpc.engine_getInclusionListV1();
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+    }
+
     private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList, ulong targetGasLimit = 30_000_000UL) => new()
     {
         Timestamp = Timestamper.UnixTime.Seconds,

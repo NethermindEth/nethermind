@@ -112,11 +112,9 @@ public partial struct PayloadAttributesWire : ISszPayloadAttributesWire
     public ulong TargetGasLimit { get; set; }
 }
 
-// EIP-7805 (FOCIL) inclusion-list transaction lists below are bounded by
-// Eip7805Constants.MaxTransactionsPerInclusionList. That SszList limit only affects hash-tree-root
-// (which the REST wire never computes — its bytes aren't merkleized), so it acts purely as a
-// transport decode bound derived from MAX_BYTES_PER_INCLUSION_LIST, pending a formal FOCIL SSZ
-// transport spec.
+// EIP-7805 (FOCIL): the SszList limit below only affects hash-tree-root (which the REST wire never
+// computes — its bytes aren't merkleized), so it acts purely as a transport decode bound pending a
+// formal FOCIL SSZ transport spec.
 [SszContainer]
 public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
 {
@@ -127,7 +125,9 @@ public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
     public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
     public ulong TargetGasLimit { get; set; }
-    [SszList(Eip7805Constants.MaxTransactionsPerInclusionList)] public SszTransaction[]? InclusionListTransactions { get; set; }
+    // FCU-V5 carries the flattened aggregate (bounded on the JSON path by ExceedsAggregateInclusionListBound),
+    // so use the aggregate entry bound — the per-member cap would reject aggregates the JSON path accepts.
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
 }
 
 [SszContainer]
