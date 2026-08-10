@@ -16,10 +16,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -320,7 +322,7 @@ namespace Nethermind.Network.Test
 
             ISession session = Substitute.For<ISession>();
             session.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303)); // plain (non-static, non-trusted)
-            ctx.PeerManager.OnP2PProtocolInitialized(session, eligibleForNHistServingSlot: false);
+            ctx.PeerManager.OnP2PProtocolInitialized(session);
 
             if (shouldDisconnect)
             {
@@ -336,7 +338,8 @@ namespace Nethermind.Network.Test
         public async Task Over_capacity_nhist_peer_is_kept_in_a_serving_slot_until_the_budget_runs_out()
         {
             await using Context ctx = new(maxActivePeers: 5);
-            ctx.NetworkConfig.NHistServingPeerSlots = 2;
+            ctx.SyncConfig.HistoryServingEnabled = true;
+            ctx.SyncConfig.HistoryServingPeerSlots = 2;
             PrivateKeyGenerator keyGenerator = new();
             for (int i = 0; i < 6; i++)
             {
@@ -344,20 +347,44 @@ namespace Nethermind.Network.Test
                 ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
             }
 
-            ISession first = Substitute.For<ISession>();
-            first.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
-            ISession second = Substitute.For<ISession>();
-            second.Node.Returns(new Node(TestItem.PublicKeyB, "1.2.3.5", 30303));
-            ISession third = Substitute.For<ISession>();
-            third.Node.Returns(new Node(TestItem.PublicKeyC, "1.2.3.6", 30303));
+            ISession first = CreateInboundNHistSession(TestItem.PublicKeyA, "1.2.3.4");
+            ISession second = CreateInboundNHistSession(TestItem.PublicKeyB, "1.2.3.5");
+            ISession third = CreateInboundNHistSession(TestItem.PublicKeyC, "1.2.3.6");
 
-            ctx.PeerManager.OnP2PProtocolInitialized(first, eligibleForNHistServingSlot: true);
-            ctx.PeerManager.OnP2PProtocolInitialized(second, eligibleForNHistServingSlot: true);
-            ctx.PeerManager.OnP2PProtocolInitialized(third, eligibleForNHistServingSlot: true);
+            ctx.PeerManager.OnP2PProtocolInitialized(first);
+            ctx.PeerManager.OnP2PProtocolInitialized(second);
+            ctx.PeerManager.OnP2PProtocolInitialized(third);
 
             first.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
             second.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
             third.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+        }
+
+        [Test]
+        public async Task Over_capacity_nhist_peer_gets_no_slot_when_serving_is_not_enabled()
+        {
+            await using Context ctx = new(maxActivePeers: 5);
+            ctx.SyncConfig.HistoryServingEnabled = false;
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < 6; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
+            }
+
+            ISession session = CreateInboundNHistSession(TestItem.PublicKeyA, "1.2.3.4");
+            ctx.PeerManager.OnP2PProtocolInitialized(session);
+
+            session.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+        }
+
+        private static ISession CreateInboundNHistSession(PublicKey publicKey, string host)
+        {
+            ISession session = Substitute.For<ISession>();
+            session.Node.Returns(new Node(publicKey, host, 30303));
+            session.Direction.Returns(ConnectionDirection.In);
+            session.HasAgreedCapability(new Capability(Protocol.NHist, NHistVersions.NHist1)).Returns(true);
+            return session;
         }
 
         [TestCase(true, ConnectionDirection.In)]
@@ -785,6 +812,7 @@ namespace Nethermind.Network.Test
             public PeerManager PeerManager { get; set; }
             public IPeerPool PeerPool { get; }
             public INetworkConfig NetworkConfig { get; }
+            public SyncConfig SyncConfig { get; } = new();
             public IStaticNodesManager StaticNodesManager { get; }
             public TestNodeSource TestNodeSource { get; }
             public List<Session> Sessions { get; } = [];
@@ -812,7 +840,7 @@ namespace Nethermind.Network.Test
                 CreatePeerManager();
             }
 
-            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, SyncConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
 
             public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 

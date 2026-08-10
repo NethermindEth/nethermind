@@ -58,11 +58,15 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     private int _inFlightRequests;
     private long _windowState;
 
-    public HistoryServingScope[] PeerServedScopes { get; private set; } = [];
+    private sealed record PeerStatus(HistoryServingScope[] Scopes, bool SupportsFullClone, byte RowFormatVersion);
 
-    public bool PeerSupportsFullClone { get; private set; }
+    private PeerStatus? _peerStatus;
 
-    public byte PeerRowFormatVersion { get; private set; }
+    public HistoryServingScope[] PeerServedScopes => Volatile.Read(ref _peerStatus)?.Scopes ?? [];
+
+    public bool PeerSupportsFullClone => Volatile.Read(ref _peerStatus)?.SupportsFullClone ?? false;
+
+    public byte PeerRowFormatVersion => Volatile.Read(ref _peerStatus)?.RowFormatVersion ?? 0;
 
     public NHist1ProtocolHandler(
         ISession session,
@@ -107,9 +111,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             case NHist1MessageCode.Status:
                 NHistStatusMessage statusMessage = Deserialize<NHistStatusMessage>(message.Content);
                 ReportIn(statusMessage, size);
-                PeerServedScopes = statusMessage.Scopes;
-                PeerSupportsFullClone = statusMessage.SupportsFullClone;
-                PeerRowFormatVersion = statusMessage.RowFormatVersion;
+                Volatile.Write(ref _peerStatus, new PeerStatus(statusMessage.Scopes, statusMessage.SupportsFullClone, statusMessage.RowFormatVersion));
                 if (Logger.IsInfo) Logger.Info($"nhist1 status from {Session}: SupportsFullClone={statusMessage.SupportsFullClone}, row format {statusMessage.RowFormatVersion}, scopes {statusMessage.Scopes.Length}.");
                 return true;
             case NHist1MessageCode.GetHistoryRangeAtHeight:

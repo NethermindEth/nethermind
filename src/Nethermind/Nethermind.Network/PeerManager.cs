@@ -21,7 +21,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
@@ -37,6 +39,7 @@ namespace Nethermind.Network
     {
         private readonly ILogger _logger;
         private readonly INetworkConfig _networkConfig;
+        private readonly ISyncConfig _syncConfig;
         private readonly IRlpxHost _rlpxHost;
         private readonly IEnode _enode;
         private readonly INodeStatsManager _stats;
@@ -73,6 +76,7 @@ namespace Nethermind.Network
             IPeerPool peerPool,
             INodeStatsManager stats,
             INetworkConfig networkConfig,
+            ISyncConfig syncConfig,
             IEnode enode,
             ILogManager logManager)
         {
@@ -81,6 +85,7 @@ namespace Nethermind.Network
             _enode = enode;
             _stats = stats;
             _networkConfig = networkConfig;
+            _syncConfig = syncConfig;
             _onHandshakeComplete = OnHandshakeComplete;
             _onSessionDisconnected = OnDisconnected;
             _outgoingConnectParallelism = networkConfig.NumConcurrentOutgoingConnects;
@@ -882,26 +887,31 @@ namespace Nethermind.Network
                 => _logger.Trace($"PROCESS OUTGOING {id}");
         }
 
-        public void OnP2PProtocolInitialized(ISession session, bool eligibleForNHistServingSlot)
+        public void OnP2PProtocolInitialized(ISession session)
         {
             // The margin-admitted overflow is shed here, now that the P2P protocol can carry a proper
             // disconnect message. Static and trusted peers are must-keep and exempt from the capacity cap.
             if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount > MaxActivePeers)
             {
-                if (eligibleForNHistServingSlot && TryReserveNHistServingSlot(session)) return;
+                if (TryReserveNHistServingSlot(session)) return;
 
                 session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{ActivePeersCount}");
             }
         }
 
+        private int NHistServingSlots => _syncConfig.HistoryServingEnabled == true ? _syncConfig.HistoryServingPeerSlots : 0;
+
         private bool TryReserveNHistServingSlot(ISession session)
         {
-            int slots = _networkConfig.NHistServingPeerSlots;
+            int slots = NHistServingSlots;
             if (slots <= 0) return false;
+            if (session.Direction != ConnectionDirection.In) return false;
+            if (!session.HasAgreedCapability(new Capability(Protocol.NHist, NHistVersions.NHist1))) return false;
 
             lock (_nhistServingSessions)
             {
                 _nhistServingSessions.RemoveAll(static s => s.IsClosing);
+                if (_nhistServingSessions.Contains(session)) return true;
                 if (_nhistServingSessions.Count >= slots) return false;
 
                 _nhistServingSessions.Add(session);
@@ -928,7 +938,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
+            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin + NHistServingSlots)
             {
                 if (_logger.IsTrace) TraceHardLimitDisconnect();
                 session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");
@@ -1173,6 +1183,11 @@ namespace Nethermind.Network
 
         private void OnDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
+            lock (_nhistServingSessions)
+            {
+                _nhistServingSessions.Remove(session);
+            }
+
             lock (_sessionLock)
             {
                 ToggleSessionEventListeners(session, false);

@@ -49,9 +49,6 @@ public interface INetworkConfig : IConfig
     [ConfigItem(Description = "The max allowed number of connected peers.", DefaultValue = "50")]
     int MaxActivePeers { get; set; }
 
-    [ConfigItem(Description = $"Reserved connection slots, on top of `{nameof(MaxActivePeers)}`, for inbound peers that advertise the nhist/1 capability while this node serves flat history. Lets history consumers connect to a full serving node without any pre-arrangement. 0 disables the reservation.", DefaultValue = "8", HiddenFromDocs = true)]
-    int NHistServingPeerSlots { get; set; }
-
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "5000")]
     int PeersPersistenceInterval { get; set; }
 

@@ -20,7 +20,6 @@ namespace Nethermind.Network.Config
         [Obsolete]
         public int ActivePeersMaxCount { get => MaxActivePeers; set => MaxActivePeers = value; }
         public int MaxActivePeers { get; set; } = 50;
-        public int NHistServingPeerSlots { get; set; } = 8;
         public int PriorityPeersMaxCount { get; set; } = 0;
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
         public int PeersUpdateInterval { get; set; } = 250;

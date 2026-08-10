@@ -8,7 +8,6 @@ using System.Numerics;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Db;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -72,7 +71,7 @@ public class ProtocolsManagerTests
             Substitute.For<INetworkStorage>(),
             [],
             [],
-            new SyncConfig(), new FlatDbConfig(), LimboLogs.Instance);
+            LimboLogs.Instance);
 
         rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(session));
 
@@ -128,7 +127,7 @@ public class ProtocolsManagerTests
             Substitute.For<INetworkStorage>(),
             [],
             [new DefaultP2PCapabilityResolver(), .. resolvers],
-            new SyncConfig(), new FlatDbConfig(), LimboLogs.Instance);
+            LimboLogs.Instance);
 
     private sealed class FakeCapabilityResolver(Action<ISet<Capability>> resolve) : IP2PCapabilityResolver
     {
@@ -223,7 +222,7 @@ public class ProtocolsManagerTests
                 _peerStorage,
                 BuildProtocolHandlerFactories(),
                 [new DefaultP2PCapabilityResolver()],
-                new SyncConfig(), new FlatDbConfig(), LimboLogs.Instance);
+                LimboLogs.Instance);
         }
 
         private IProtocolHandlerFactory[] BuildProtocolHandlerFactories() => [

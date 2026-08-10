@@ -16,15 +16,13 @@ public class NHistP2PCapabilityResolver(ISyncConfig syncConfig, IFlatDbConfig fl
 
     public event Action? Changed { add { } remove { } }
 
-    public static bool AdvertisesServing(ISyncConfig syncConfig, IFlatDbConfig flatDbConfig) =>
-        syncConfig.HistoryServingEnabled == true
-        || (flatDbConfig.HistoryEnabled && flatDbConfig.HistoryRetentionBlocks > 0);
-
     public void Resolve(ISet<Capability> capabilities)
     {
         // The protocol only activates when both HELLOs carry the capability, so consumers
         // (clone and windowed-backfill clients) must advertise it too, not only servers.
-        if (AdvertisesServing(syncConfig, flatDbConfig) || flatDbConfig.HistoryArchiveCloneEnabled)
+        bool consumes = flatDbConfig.HistoryArchiveCloneEnabled
+            || (flatDbConfig.HistoryEnabled && flatDbConfig.HistoryRetentionBlocks > 0);
+        if (syncConfig.HistoryServingEnabled == true || consumes)
         {
             capabilities.Add(NHistCapability);
         }

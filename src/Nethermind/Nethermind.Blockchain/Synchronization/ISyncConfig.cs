@@ -169,6 +169,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Per-peer cap, in bytes per second, on nhist/1 history serving. Values below 1MiB are raised to 1MiB. Raise on a dedicated feeder to speed up archive clones and windowed backfills.", DefaultValue = "8388608", HiddenFromDocs = true)]
     long HistoryServingMaxBytesPerSecond { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Reserved inbound connection slots, on top of the general peer limit, for peers that negotiated nhist/1 while this node serves history. Lets history consumers connect to a full serving node without any pre-arrangement. 0 disables the reservation.", DefaultValue = "8", HiddenFromDocs = true)]
+    int HistoryServingPeerSlots { get; set; }
+
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
     ulong SnapServingMaxDepth { get; set; }
 

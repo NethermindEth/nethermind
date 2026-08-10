@@ -10,7 +10,6 @@ using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -28,7 +27,7 @@ namespace Nethermind.Network
     public class ProtocolsManager : IProtocolsManager, IProtocolRegistrar
     {
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
-        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
+        private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<string, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ITxPool _txPool;
         private readonly INodeStatsManager _stats;
@@ -40,8 +39,6 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
         private readonly IProtocolHandlerFactory[] _factories;
         private readonly IP2PCapabilityResolver[] _capabilityResolvers;
-        private readonly ISyncConfig _syncConfig;
-        private readonly IFlatDbConfig _flatDbConfig;
         private readonly Lock _capabilitiesLock = new();
         private Capability[]? _cachedCapabilities;
         private readonly EventHandler<SessionEventArgs> _onSessionCreated;
@@ -59,12 +56,8 @@ namespace Nethermind.Network
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             IProtocolHandlerFactory[] factories,
             IP2PCapabilityResolver[] capabilityResolvers,
-            ISyncConfig syncConfig,
-            IFlatDbConfig flatDbConfig,
             ILogManager logManager)
         {
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _flatDbConfig = flatDbConfig ?? throw new ArgumentNullException(nameof(flatDbConfig));
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
@@ -104,12 +97,7 @@ namespace Nethermind.Network
                 _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
             }
 
-            if (session.Node is not null
-                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations)
-                && registrations is not null)
-            {
-                registrations.TryRemove(session.SessionId, out _);
-            }
+            _hangingSatelliteProtocols.TryRemove(session.SessionId, out _);
 
             PublicKey? handlerKey = null;
             if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
@@ -219,21 +207,19 @@ namespace Nethermind.Network
                 {
                     sessionSyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                     if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
-                    if (handler.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite registered on this session's sync peer {session}.");
+                    if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
                 }
                 else
                 {
-                    _hangingSatelliteProtocols.AddOrUpdate(session.Node,
-                        _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
+                    _hangingSatelliteProtocols.AddOrUpdate(session.SessionId,
+                        _ => new ConcurrentDictionary<string, ProtocolHandlerBase> { [handler.ProtocolCode] = handler },
                         (_, dict) =>
                         {
-                            dict[session.SessionId] = handler;
+                            dict[handler.ProtocolCode] = handler;
                             return dict;
                         });
 
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
-                    if (handler.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite waiting for this session's sync peer {session}.");
+                    if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol waiting for the sync peer of {session}.");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
@@ -271,32 +257,10 @@ namespace Nethermind.Network
             bool isValid = _protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, args);
             if (isValid)
             {
-                _peerManager.OnP2PProtocolInitialized(session, IsEligibleForNHistServingSlot(args.Capabilities));
+                _peerManager.OnP2PProtocolInitialized(session);
             }
 
             if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
-        }
-
-        private bool IsEligibleForNHistServingSlot(IReadOnlyList<Capability> remoteCapabilities)
-        {
-            if (!NHistP2PCapabilityResolver.AdvertisesServing(_syncConfig, _flatDbConfig)) return false;
-
-            for (int i = 0; i < remoteCapabilities.Count; i++)
-            {
-                if (remoteCapabilities[i].ProtocolCode == Protocol.NHist) return true;
-            }
-
-            return false;
-        }
-
-        private void RegisterSessionSatellite(ISession session, SyncPeerProtocolHandlerBase syncPeer, string protocolCode)
-        {
-            if (!session.TryGetProtocolHandler(protocolCode, out IProtocolHandler satellite)) return;
-            if (satellite is not ProtocolHandlerBase satelliteBase) return;
-
-            syncPeer.RegisterSatelliteProtocol(protocolCode, satelliteBase);
-            if (satelliteBase.IsPriority) syncPeer.IsPriority = true;
-            if (protocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite registered on sync peer {session} from the session's own handlers.");
         }
 
         private void OnSyncPeerProtocolInitialized(ISession session, SyncPeerProtocolHandlerBase handler, SyncPeerProtocolInitializedEventArgs args)
@@ -316,24 +280,13 @@ namespace Nethermind.Network
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))
                 {
-                    RegisterSessionSatellite(session, handler, Protocol.Snap);
-                    RegisterSessionSatellite(session, handler, Protocol.NHist);
-
-                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
+                    if (_hangingSatelliteProtocols.TryRemove(session.SessionId, out ConcurrentDictionary<string, ProtocolHandlerBase> handlerDictionary))
                     {
-                        foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
+                        foreach (KeyValuePair<string, ProtocolHandlerBase> registration in handlerDictionary)
                         {
-                            if (registration.Value.Session.IsClosing) continue;
-
-                            handler.RegisterSatelliteProtocol(registration.Value);
+                            handler.RegisterSatelliteProtocol(registration.Key, registration.Value);
                             if (registration.Value.IsPriority) handler.IsPriority = true;
-                            if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
-                            if (registration.Value.ProtocolCode == Protocol.NHist && _logger.IsInfo)
-                            {
-                                _logger.Info(registration.Key == session.SessionId
-                                    ? $"nhist satellite registered on sync peer {session} from parking."
-                                    : $"nhist satellite parked under session {registration.Key} registered on sync peer {session} (session {session.SessionId}) for the same node.");
-                            }
+                            if (_logger.IsDebug) _logger.Debug($"{registration.Key} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                         }
                     }
 

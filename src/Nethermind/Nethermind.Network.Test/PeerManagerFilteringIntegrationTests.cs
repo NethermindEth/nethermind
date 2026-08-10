@@ -51,7 +51,7 @@ public class PeerManagerFilteringIntegrationTests
         CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), staticNodesManager, testNodeSource);
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         IPeerPool peerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
-        PeerManager peerManager = new(trackingMock, peerPool, stats, networkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+        PeerManager peerManager = new(trackingMock, peerPool, stats, networkConfig, new Nethermind.Blockchain.Synchronization.SyncConfig(), new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
 
         try
         {
@@ -160,7 +160,7 @@ public class PeerManagerFilteringIntegrationTests
             CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), StaticNodesManager, TestNodeSource);
             ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
             PeerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
-            PeerManager = new PeerManager(RlpxMock, PeerPool, stats, networkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+            PeerManager = new PeerManager(RlpxMock, PeerPool, stats, networkConfig, new Nethermind.Blockchain.Synchronization.SyncConfig(), new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
         }
 
         public async ValueTask DisposeAsync()
