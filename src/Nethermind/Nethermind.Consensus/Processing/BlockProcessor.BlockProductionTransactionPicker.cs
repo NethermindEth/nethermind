@@ -65,6 +65,13 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
+                // EIP-8141: block production does not yet meter blob-carrying frame txs against the block
+                // blob budget, so exclude them conservatively rather than risk exceeding MaxBlobGasPerBlock.
+                if (currentTx.Type == TxType.FrameTx && currentTx.BlobVersionedHashes is { Length: > 0 })
+                {
+                    return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");
+                }
+
                 // A frame transaction's GasLimit is only the sum of its frame gas limits, so gating on it alone would
                 // let the produced block exceed its own gas limit. A transaction that cannot be priced never fits.
                 ulong txGasBudget = !currentTx.SupportsFrames
@@ -76,13 +83,6 @@ namespace Nethermind.Consensus.Processing
                 if (txGasBudget > gasRemaining)
                 {
                     return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {txGasBudget} > {gasRemaining}");
-                }
-
-                // EIP-8141: block production does not yet meter blob-carrying frame txs against the block
-                // blob budget, so exclude them conservatively rather than risk exceeding MaxBlobGasPerBlock.
-                if (currentTx.Type == TxType.FrameTx && currentTx.BlobVersionedHashes is { Length: > 0 })
-                {
-                    return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");
                 }
 
                 if (currentTx.IsAboveInitCode(spec))
