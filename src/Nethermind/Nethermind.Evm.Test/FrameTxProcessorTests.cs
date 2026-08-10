@@ -1163,6 +1163,20 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
+    // A count param (here TXTRACE 0x00) marks in2 "must be 0"; a non-zero index exceptional-halts, which
+    // in a POST_TX frame surfaces as a failed transaction. The zero case is the control.
+    [TestCase(0, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceCountParam_ZeroIndex_Succeeds")]
+    [TestCase(1, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceCountParam_NonZeroIndex_HaltsExceptionally")]
+    public byte Execute_TxTraceCountParam_IndexMustBeZero(int index)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.PushData((UInt256)index).PushData(0).Op(Instruction.TXTRACE).Op(Instruction.STOP).Done);
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        return tracer.StatusCode;
+    }
+
     // TXTRACE stack order is (param, index) with param on top.
     private static byte[] Txtrace(byte param, UInt256 index)
         => Prepare.EvmCode.PushData(index).PushData((UInt256)param).Op(Instruction.TXTRACE).Done;
