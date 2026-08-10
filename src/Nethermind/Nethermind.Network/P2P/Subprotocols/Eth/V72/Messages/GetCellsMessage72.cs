@@ -16,11 +16,16 @@ public class GetCellsMessage72(
         : this(hashes, cellMask, false) =>
         RequestId = requestId;
 
+    internal GetCellsMessage72(long requestId, Hash256[] hashes, byte[] cellMask, int wireHashCount)
+        : this(requestId, hashes, cellMask) =>
+        WireHashCount = wireHashCount;
+
     public override int PacketType => Eth72MessageCode.GetCells;
     public override string Protocol => "eth";
 
     public Hash256[] Hashes { get; } = hashes;
     public byte[] CellMask { get; } = cellMask;
+    internal int WireHashCount { get; } = hashes.Length;
 
     public override string ToString() => $"{nameof(GetCellsMessage72)}({RequestId}, {Hashes.Length})";
 }

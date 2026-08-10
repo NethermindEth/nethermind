@@ -86,14 +86,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
                 writer.Encode((byte)networkWrapper.Version);
             }
 
-            if (networkWrapper.Blobs.Length == 0 && !rlpBehaviors.HasFlag(RlpBehaviors.Storage))
-            {
-                writer.WriteByte(Rlp.EmptyListByte);
-            }
-            else
-            {
-                writer.Encode(networkWrapper.Blobs);
-            }
+            writer.Encode(networkWrapper.Blobs);
             writer.Encode(networkWrapper.Commitments);
             writer.Encode(networkWrapper.Proofs);
 

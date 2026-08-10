@@ -447,6 +447,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         {
             if (IsCurrentState(hash, state)
                 && IsActivePeer(peer)
+                && !IsCellValidationQuarantined(state)
                 && !state.AmbiguousFailureSources.Contains(peer.Id))
             {
                 if (state.Announcements.TryGetValue(peer.Id, out BlobCellMask previousMask))
@@ -572,6 +573,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         lock (state.Lock)
         {
             if (!IsCurrentState(hash, state))
+            {
+                return false;
+            }
+
+            if (IsCellValidationQuarantined(state))
             {
                 return false;
             }
@@ -902,9 +908,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return null;
         }
 
-        if (!_txPool.ValidateTxForBlobSampling(transaction))
+        AcceptTxResult validationResult = _txPool.ValidateTxForBlobSampling(transaction);
+        if (!validationResult)
         {
-            return null;
+            return validationResult;
         }
 
         BlobCellMask attachedCellMask = BlobCellMask.Empty;
@@ -925,6 +932,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         {
             if (IsCurrentState(hash, state)
                 && IsActivePeer(peer)
+                && !IsCellValidationQuarantined(state)
                 && !state.Submitted
                 && !state.AmbiguousFailureSources.Contains(peer.Id))
             {
@@ -1004,6 +1012,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         {
             if (IsCurrentState(hash, state)
                 && IsActivePeer(peer)
+                && !IsCellValidationQuarantined(state)
                 && !state.Submitting
                 && !state.ApplyingRecordedCells
                 && !state.AmbiguousFailureSources.Contains(peer.Id))
@@ -1084,7 +1093,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             bool invalidProofTuple = mergeResult == BlobCellMergeResult.InvalidCells;
             bool retrySubmission = mergeResult == BlobCellMergeResult.TransactionUnavailable;
             bool retry;
-            bool removePoisonedTransaction = false;
+            bool quarantineCellValidation = false;
             lock (state.Lock)
             {
                 state.ApplyingRecordedCells = false;
@@ -1095,7 +1104,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
                 if (invalidProofTuple)
                 {
-                    removePoisonedTransaction = RecordAmbiguousFailure(state, invalidCellSource);
+                    quarantineCellValidation = RecordAmbiguousFailure(state, invalidCellSource);
                     ReleaseCells(state);
                     state.Cells = null;
                     retry = false;
@@ -1124,15 +1133,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
             if (invalidProofTuple)
             {
-                if (removePoisonedTransaction)
+                if (quarantineCellValidation)
                 {
-                    TryRemoveState(hash, state);
-                    _txPool.RemoveTransaction(hash);
-                    _txPool.ForgetRejectedBlobTransaction(hash);
                     return false;
                 }
 
-                TryRequestCells(hash, pending.CellMask, invalidCellSource ?? pending.SourcePeerId);
+                TryRequestCells(hash, pending.CellMask, invalidCellSource ?? pending.LastSourcePeerId);
                 return false;
             }
 
@@ -1662,6 +1668,11 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         string? error,
         SparseBlobAttachFailureSource failureSource)
     {
+        if (failureSource == SparseBlobAttachFailureSource.Cells && cells.Sources.Length > 1)
+        {
+            failureSource = SparseBlobAttachFailureSource.Ambiguous;
+        }
+
         bool sameSourceFailure = failureSource == SparseBlobAttachFailureSource.Ambiguous
             && transactionPeer is not null
             && cells.IsFromSinglePeer(transactionPeer.Id);
@@ -1686,7 +1697,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return null;
         }
 
-        PublicKey retryFallbackPeerId = cells.SourcePeerId;
+        PublicKey retryFallbackPeerId = cells.LastSourcePeerId;
         ISparseBlobPoolPeer? transactionRetryPeer = null;
         ISparseBlobPoolPeer? peerToDisconnect = null;
         PublicKey? peerToRemove = null;
@@ -1727,8 +1738,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             }
             else
             {
-                _peers.TryGetValue(cells.SourcePeerId, out peerToDisconnect);
-                peerToRemove = cells.SourcePeerId;
+                _peers.TryGetValue(cells.LastSourcePeerId, out peerToDisconnect);
+                peerToRemove = cells.LastSourcePeerId;
                 disconnectDetails = error ?? "invalid sparse blob cells";
                 ReleaseCells(state);
                 state.Cells = null;
@@ -1805,6 +1816,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         return state.AmbiguousCellValidationFailures >= MaxAmbiguousValidationFailures;
     }
+
+    private static bool IsCellValidationQuarantined(TrackedSparseBlobTx state) =>
+        state.AmbiguousCellValidationFailures >= MaxAmbiguousValidationFailures;
 
     private void OnMaintenanceElapsed(object? sender, EventArgs eventArgs)
     {

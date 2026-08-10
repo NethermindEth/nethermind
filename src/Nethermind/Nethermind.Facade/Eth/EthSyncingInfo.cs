@@ -31,6 +31,7 @@ namespace Nethermind.Facade.Eth
         {
             if (!_syncConfig.SynchronizationEnabled)
             {
+                // A node configured not to synchronize cannot be actively syncing, regardless of peer head distance.
                 return SyncingResult.NotSyncing;
             }
 

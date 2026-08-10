@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
@@ -62,7 +63,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         {
                             if (wrapper.Version != requiredVersion || !wrapper.HasFullBlobs())
                             {
-                                break;
+                                continue;
                             }
                             blob = wrapper.Blobs[indexOfBlob];
                             proof = proofSelector(wrapper.Proofs, indexOfBlob)!;
@@ -106,7 +107,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                     {
                         if (!wrapper.HasFullBlobs())
                         {
-                            break;
+                            continue;
                         }
 
                         blobs[i] = wrapper.Blobs[indexOfBlob];
@@ -532,7 +533,15 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                 continue;
             }
 
-            if (!TryGetFlattenedCellsForBlob(candidate.Wrapper, candidate.BlobIndex, selectedMask, out byte[][]? selectedCells))
+            byte[][] selectedProofs = BlobCellsHelper.SelectProofs(candidate.Wrapper, candidate.BlobIndex, selectedMask);
+            bool proofsAreValid = selectedProofs.Length == selectedMask.Count;
+            for (int i = 0; proofsAreValid && i < selectedProofs.Length; i++)
+            {
+                proofsAreValid = selectedProofs[i] is { Length: Ckzg.BytesPerProof };
+            }
+
+            if (!proofsAreValid
+                || !TryGetFlattenedCellsForBlob(candidate.Wrapper, candidate.BlobIndex, selectedMask, out byte[][]? selectedCells))
             {
                 availableMask = default;
                 cells = default;
@@ -540,7 +549,6 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                 return false;
             }
 
-            byte[][] selectedProofs = BlobCellsHelper.SelectProofs(candidate.Wrapper, candidate.BlobIndex, selectedMask);
             int selectedPosition = 0;
             int targetPosition = 0;
             foreach (int cellIndex in aggregateMask.EnumerateSetBits())
@@ -555,17 +563,11 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             }
 
             remainingMask = remainingMask.Except(selectedMask);
-            if (remainingMask.IsEmpty)
-            {
-                availableMask = aggregateMask;
-                return true;
-            }
         }
 
-        availableMask = default;
-        cells = default;
-        proofs = default;
-        return false;
+        Debug.Assert(remainingMask.IsEmpty);
+        availableMask = aggregateMask;
+        return true;
     }
 
     protected static bool TryGetFlattenedCellsForBlob(
@@ -574,6 +576,12 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         BlobCellMask requestedMask,
         [NotNullWhen(true)] out byte[][]? cells)
     {
+        if ((uint)blobIndex >= (uint)wrapper.Commitments.Length)
+        {
+            cells = default;
+            return false;
+        }
+
         BlobCellMask availableMask = wrapper.GetAvailableCellMask() & requestedMask;
         if (availableMask.IsEmpty)
         {
@@ -585,10 +593,25 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 
         if (wrapper.HasFullBlobs())
         {
-            cells = new byte[cellsPerBlob][];
+            if (wrapper.Blobs.Length != wrapper.Commitments.Length
+                || wrapper.Blobs[blobIndex] is not { Length: Ckzg.BytesPerBlob } blob)
+            {
+                cells = default;
+                return false;
+            }
+
             using ArrayPoolSpan<byte> allCells = new(Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob);
-            ReadOnlySpan<byte> blob = wrapper.Blobs[blobIndex];
-            KzgPolynomialCommitments.ComputeCells(blob, allCells.Slice(0, allCells.Length));
+            try
+            {
+                KzgPolynomialCommitments.ComputeCells(blob, allCells.Slice(0, allCells.Length));
+            }
+            catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
+            {
+                cells = default;
+                return false;
+            }
+
+            cells = new byte[cellsPerBlob][];
             int i = 0;
             foreach (int cellIndex in availableMask.EnumerateSetBits())
             {
@@ -598,14 +621,17 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             return true;
         }
 
-        if (wrapper.Cells is null)
+        int sourceCellsPerBlob = wrapper.CellMask.Count;
+        if (wrapper.Cells is not { } sourceCells
+            || sourceCellsPerBlob == 0
+            || wrapper.Commitments.Length > int.MaxValue / sourceCellsPerBlob
+            || sourceCells.Length != wrapper.Commitments.Length * sourceCellsPerBlob)
         {
             cells = default;
             return false;
         }
 
         cells = new byte[cellsPerBlob][];
-        int sourceCellsPerBlob = wrapper.CellMask.Count;
         int sourceOffset = blobIndex * sourceCellsPerBlob;
         int sourcePosition = 0;
         int targetPosition = 0;
@@ -613,7 +639,13 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             if (availableMask.Contains(cellIndex))
             {
-                cells[targetPosition++] = wrapper.Cells[sourceOffset + sourcePosition];
+                if (sourceCells[sourceOffset + sourcePosition] is not { Length: Ckzg.BytesPerCell } cell)
+                {
+                    cells = default;
+                    return false;
+                }
+
+                cells[targetPosition++] = cell;
             }
 
             sourcePosition++;

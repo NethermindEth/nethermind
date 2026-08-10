@@ -48,7 +48,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
         writer.Encode(tx.GetLength());
-        writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        writer.Encode((byte)(tx.GetProofVersion() ?? default));
         EncodeAvailableCellMask(tx, ref writer);
         writer.Encode(GetConsensusEncodingSize(tx));
         writer.Encode(ConsensusEncodingSizeFormatVersion);
@@ -118,7 +118,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
     private static BlobCellMask GetAvailableCellMask(Transaction tx) =>
         tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             ? wrapper.GetAvailableCellMask()
-            : BlobCellMask.Empty;
+            : tx is LightTransaction lightTx
+                ? lightTx.BlobCellMask
+                : BlobCellMask.Empty;
 
     private static int GetConsensusEncodingSize(Transaction tx) =>
         tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() > 0

@@ -529,7 +529,7 @@ public class Eth72ProtocolHandler(
     private Task<CellsMessage72> Handle(GetCellsMessage72 getCellsMessage, CancellationToken cancellationToken)
     {
         using GetCellsMessage72 message = getCellsMessage;
-        if (ShouldDisconnectForCellRequestAbuse(message.Hashes.Length))
+        if (ShouldDisconnectForCellRequestAbuse(message.WireHashCount))
         {
             return Task.FromResult(new CellsMessage72(message.RequestId, [], [], EmptyCellMaskBytes));
         }

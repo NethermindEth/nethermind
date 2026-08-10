@@ -280,7 +280,11 @@ public class Eth72MessageSerializerTests
         serializer.Serialize(buffer, message);
 
         using GetCellsMessage72 deserialized = serializer.Deserialize(buffer);
-        Assert.That(deserialized.Hashes.Length, Is.EqualTo(Eth72ProtocolHandler.MaxCellsRequestHashes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Hashes.Length, Is.EqualTo(Eth72ProtocolHandler.MaxCellsRequestHashes));
+            Assert.That(deserialized.WireHashCount, Is.EqualTo(hashes.Length));
+        }
     }
 
     [Test]
@@ -291,7 +295,7 @@ public class Eth72MessageSerializerTests
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -302,7 +306,7 @@ public class Eth72MessageSerializerTests
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -317,7 +321,7 @@ public class Eth72MessageSerializerTests
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
     }
 
     [TestCase(0)]

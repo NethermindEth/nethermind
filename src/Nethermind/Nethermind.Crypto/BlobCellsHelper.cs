@@ -22,6 +22,10 @@ public static class BlobCellsHelper
     /// Validates sparse-cell shape and KZG proofs against the wrapper commitments.
     /// </summary>
     /// <returns><c>true</c> when the sparse cells are well formed and cryptographically valid.</returns>
+    /// <remarks>
+    /// For a non-V1 wrapper, a <c>true</c> result only means that sparse-cell fields are absent; no KZG
+    /// verification is performed. Callers must check <see cref="ShardBlobNetworkWrapper.Version"/> first.
+    /// </remarks>
     public static bool ValidateCells(ShardBlobNetworkWrapper wrapper)
     {
         if (wrapper.Version is not ProofVersion.V1)

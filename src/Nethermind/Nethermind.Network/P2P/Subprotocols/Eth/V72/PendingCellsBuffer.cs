@@ -31,7 +31,7 @@ internal readonly struct PendingCellsBuffer
     public byte[][] Cells { get; }
     public PendingCellsSource[] Sources { get; }
     public int ByteLength { get; }
-    public PublicKey SourcePeerId => Sources[^1].PeerId;
+    public PublicKey LastSourcePeerId => Sources[^1].PeerId;
 
     public bool IsFromSinglePeer(PublicKey peerId)
         => Sources.Length == 1 && Sources[0].PeerId == peerId;

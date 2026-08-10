@@ -55,6 +55,29 @@ public class LightTxDecoderTests
     }
 
     [Test]
+    public void should_preserve_sparse_metadata_when_reencoding_light_transaction()
+    {
+        Transaction tx = BuildBlobTx();
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        Array.Fill(emptyBlobs, []);
+        tx.NetworkWrapper = wrapper with { Blobs = emptyBlobs, CellMask = cellMask, Cells = cells };
+        tx.ClearLengthCache();
+
+        LightTransaction first = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+        LightTransaction second = LightTxDecoder.Decode(LightTxDecoder.Encode(first));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.ProofVersion, Is.EqualTo(first.ProofVersion));
+            Assert.That(second.BlobCellMask, Is.EqualTo(first.BlobCellMask));
+            Assert.That(second.GetConsensusEncodingSize(), Is.EqualTo(first.GetConsensusEncodingSize()));
+        }
+    }
+
+    [Test]
     public void should_not_treat_legacy_sparse_network_size_as_consensus_encoding_size()
     {
         Transaction tx = BuildBlobTx();

@@ -175,14 +175,37 @@ public class Eth68ProtocolHandlerTests
         _transactionPool.Received().SubmitTx(Arg.Is<Transaction>(received => received.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
     }
 
-    [TestCase(-9, true)]
-    [TestCase(-8, false)]
-    [TestCase(8, false)]
-    [TestCase(9, true)]
-    public void Should_tolerate_geth_blob_size_estimate(int sizeDifference, bool shouldDisconnect)
+    [Test]
+    public void Should_accept_geth_blob_size_estimate()
     {
         RecreateHandlerWithBlobSupport();
-        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs);
+        int gethSizeEstimate = tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength);
+        Assert.That(gethSizeEstimate, Is.Not.EqualTo(tx.GetLength()));
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { gethSizeEstimate },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        _transactionPool.Received().SubmitTx(Arg.Is<Transaction>(received => received.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
+    }
+
+    [TestCase(-8)]
+    [TestCase(8)]
+    public void Should_reject_inexact_blob_size_estimate(int sizeDifference)
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)tx.Type },
             new ArrayPoolList<int>(1) { tx.GetLength() + sizeDifference },
@@ -193,7 +216,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
-        _session.Received(shouldDisconnect ? 1 : 0).InitiateDisconnect(
+        _session.Received(1).InitiateDisconnect(
             DisconnectReason.BackgroundTaskFailure,
             "invalid pooled tx type or size");
     }

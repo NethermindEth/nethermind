@@ -931,6 +931,29 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().ValidateTxForBlobSampling(Arg.Any<Transaction>());
     }
 
+    [Test]
+    public void should_disconnect_peer_when_sparse_transaction_fails_sampling_validation()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+        Transaction elidedTx = BuildElidedBlobTransaction(tx);
+        _transactionPool.ValidateTxForBlobSampling(Arg.Any<Transaction>()).Returns(AcceptTxResult.Invalid);
+
+        AnnounceBlobTransaction(tx.Hash!, elidedTx.GetLength(), TxType.Blob);
+        long requestId = GetLastGetPooledTransactionsRequestId(tx.Hash!);
+        using PooledTransactionsMessage66 response = new(
+            requestId,
+            new PooledTransactionsMessage65(new[] { elidedTx }.ToPooledList()));
+
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        _session.Received(1).InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+        _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void should_disconnect_if_pooled_blob_tx_shape_differs_from_eth72_announcement(bool wrongSize)
@@ -962,7 +985,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [TestCase(BlobAnnouncementSize.ElidedWire)]
-    [TestCase(BlobAnnouncementSize.GethEstimateBoundary)]
+    [TestCase(BlobAnnouncementSize.GethEstimate)]
     [TestCase(BlobAnnouncementSize.Consensus)]
     public void should_accept_compatible_pooled_blob_tx_size_announcements(BlobAnnouncementSize announcementSize)
     {
@@ -976,7 +999,7 @@ public class Eth72ProtocolHandlerTests
         int announcedSize = announcementSize switch
         {
             BlobAnnouncementSize.ElidedWire => elidedTx.GetLength(),
-            BlobAnnouncementSize.GethEstimateBoundary => elidedTx.GetLength() + 8,
+            BlobAnnouncementSize.GethEstimate => GetGethBlobTransactionSizeEstimate(elidedTx),
             BlobAnnouncementSize.Consensus => elidedTx.GetLength(shouldCountBlobs: false),
             _ => throw new ArgumentOutOfRangeException(nameof(announcementSize), announcementSize, null)
         };
@@ -1070,6 +1093,30 @@ public class Eth72ProtocolHandlerTests
 
         using GetCellsMessage72 abusiveRequest = new(1004, [HashFromInt(4)], requestedMask.ToBytes());
         HandleZeroMessage(abusiveRequest, Eth72MessageCode.GetCells);
+
+        _session.Received(1).InitiateDisconnect(
+            DisconnectReason.UselessPeer,
+            Arg.Is<string>(details => details.Contains("request-to-announce ratio exceeded", StringComparison.Ordinal)));
+    }
+
+    [Test]
+    public void should_account_for_discarded_get_cells_hashes_when_enforcing_request_ratio()
+    {
+        HandleIncomingStatusMessage();
+        typeof(Eth72ProtocolHandler)
+            .GetField("_requestRatioWarmupEndsAt", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(_handler, DateTimeOffset.MinValue);
+        typeof(Eth72ProtocolHandler)
+            .GetField("_blobAnnouncementsReceived", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(_handler, 13L);
+        Hash256[] hashes = new Hash256[Eth72ProtocolHandler.MaxCellsRequestHashes + 1];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = HashFromInt(i);
+        }
+
+        using GetCellsMessage72 request = new(1000, hashes, BlobCellMask.FromIndices([1]).ToBytes());
+        HandleZeroMessage(request, Eth72MessageCode.GetCells);
 
         _session.Received(1).InitiateDisconnect(
             DisconnectReason.UselessPeer,
@@ -2311,7 +2358,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void registry_should_forget_poisoned_transaction_after_independent_ambiguous_failure_limit()
+    public void registry_should_quarantine_ambiguous_cell_validation_without_evicting_transaction()
     {
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
         TestSparseBlobPeer[] peers =
@@ -2327,7 +2374,6 @@ public class Eth72ProtocolHandlerTests
             LimboLogs.Instance);
         _transactionPool.MergeBlobCells(tx.Hash!, cellMask, Arg.Any<byte[][]>())
             .Returns(BlobCellMergeResult.InvalidCells);
-        _transactionPool.RemoveTransaction(tx.Hash!).Returns(true);
 
         for (int i = 0; i < peers.Length; i++)
         {
@@ -2336,8 +2382,16 @@ public class Eth72ProtocolHandlerTests
             Assert.That(registry.TryApplyRecordedCells(tx.Hash!), Is.False);
         }
 
-        _transactionPool.Received(1).RemoveTransaction(tx.Hash!);
-        _transactionPool.Received(1).ForgetRejectedBlobTransaction(tx.Hash!);
+        TestSparseBlobPeer latePeer = new(TestItem.PublicKeyB);
+        registry.AddPeer(latePeer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.RecordAnnouncement(latePeer, tx.Hash!, cellMask), Is.False);
+            Assert.That(registry.RecordCells(latePeer, tx.Hash!, cellMask, cells), Is.False);
+        }
+        _transactionPool.DidNotReceive().RemoveTransaction(tx.Hash!);
+        _transactionPool.DidNotReceive().ForgetRejectedBlobTransaction(tx.Hash!);
     }
 
     [Test]
@@ -3166,7 +3220,7 @@ public class Eth72ProtocolHandlerTests
         registry.AddPeer(peer);
         registry.RecordAnnouncement(peer, tx.Hash!, BlobCellMask.Full);
 
-        Assert.That(registry.RecordTransaction(peer, tx), Is.Null);
+        Assert.That(registry.RecordTransaction(peer, tx), Is.EqualTo(AcceptTxResult.Invalid));
 
         Assert.That(registry.HasRecordedTransaction(tx.Hash!), Is.False);
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
@@ -3358,6 +3412,39 @@ public class Eth72ProtocolHandlerTests
                 firstMask | secondMask,
                 firstCells.Length + secondCells.Length)),
             TxHandlingOptions.None);
+    }
+
+    [Test]
+    public void registry_should_not_blame_last_source_for_multi_source_shape_failure()
+    {
+        Transaction tx = BuildSparseBlobTransaction(out _, out _, out byte[][] fullCells);
+        BlobCellMask firstMask = BlobCellMask.FromIndices([4]);
+        BlobCellMask secondMask = BlobCellMask.FromIndices([9]);
+        byte[] firstCell = BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, firstMask, 1)[0];
+        byte[] secondCell = BlobCellsHelper.SelectFlattenedCells(fullCells, BlobCellMask.Full, secondMask, 1)[0];
+        using SparseBlobPoolPeerRegistry registry = new(
+            _transactionPool,
+            new BlobCustodyTracker(),
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            maxAdmissionDelay: TimeSpan.Zero);
+        TestSparseBlobPeer transactionPeer = new(TestItem.PublicKeyB);
+        TestSparseBlobPeer firstCellPeer = new(TestItem.PublicKeyC);
+        TestSparseBlobPeer lastCellPeer = new(TestItem.PublicKeyD);
+        registry.AddPeer(transactionPeer);
+        registry.AddPeer(firstCellPeer);
+        registry.AddPeer(lastCellPeer);
+
+        Assert.That(registry.RecordCells(firstCellPeer, tx.Hash!, firstMask, [firstCell, firstCell]), Is.True);
+        Assert.That(registry.RecordCells(lastCellPeer, tx.Hash!, secondMask, [secondCell, secondCell]), Is.True);
+        Assert.That(registry.RecordTransaction(transactionPeer, tx), Is.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactionPeer.Disconnects, Is.Empty);
+            Assert.That(firstCellPeer.Disconnects, Is.Empty);
+            Assert.That(lastCellPeer.Disconnects, Is.Empty);
+        }
     }
 
     [Test]
@@ -4253,8 +4340,17 @@ public class Eth72ProtocolHandlerTests
     public enum BlobAnnouncementSize
     {
         ElidedWire,
-        GethEstimateBoundary,
+        GethEstimate,
         Consensus
+    }
+
+    private static int GetGethBlobTransactionSizeEstimate(Transaction transaction)
+    {
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
+        int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs);
+        return transaction.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength);
     }
 
     private void AnnounceBlobTransaction(Hash256 hash, int announcedSize, TxType announcedType)

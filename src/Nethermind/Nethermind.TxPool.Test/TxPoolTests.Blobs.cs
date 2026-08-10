@@ -16,6 +16,7 @@ using Nethermind.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -1407,7 +1408,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_use_later_candidate_when_first_matching_blob_hash_lacks_requested_cells([Values(true, false)] bool isPersistentStorage)
+        public void should_use_later_full_candidate_when_first_matching_blob_hash_is_sparse([Values(true, false)] bool isPersistentStorage)
         {
             TxPoolConfig txPoolConfig = new()
             {
@@ -1458,6 +1459,17 @@ namespace Nethermind.TxPool.Test
             Assert.That(cells.Length, Is.EqualTo(requestedMask.Count));
             Assert.That(proofs, Is.Not.Null);
             Assert.That(proofs.Length, Is.EqualTo(requestedMask.Count));
+
+            byte[] requestedHash = txWithSparseCells.BlobVersionedHashes[0];
+            Assert.That(_txPool.TryGetBlobAndProofV1(requestedHash, out byte[] fullBlob, out byte[][] fullProofs), Is.True);
+            Assert.That(fullBlob, Is.EqualTo(((ShardBlobNetworkWrapper)txWithFullBlob.NetworkWrapper!).Blobs[0]));
+            Assert.That(fullProofs, Has.Length.EqualTo(Ckzg.CellsPerExtBlob));
+
+            byte[][] batchBlobs = new byte[1][];
+            ReadOnlyMemory<byte[]>[] batchProofs = new ReadOnlyMemory<byte[]>[1];
+            Assert.That(_txPool.TryGetBlobsAndProofsV1([requestedHash], batchBlobs, batchProofs), Is.EqualTo(1));
+            Assert.That(batchBlobs[0], Is.EqualTo(fullBlob));
+            Assert.That(batchProofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
         }
 
         [Test]
@@ -1549,7 +1561,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_accept_valid_sparse_sidecar_after_invalid_proofs_without_poisoning_hash_cache()
+        public void should_accept_valid_sparse_sidecar_after_invalid_proofs_without_poisoning_retry_caches()
         {
             _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
@@ -1564,8 +1576,14 @@ namespace Nethermind.TxPool.Test
             Transaction invalid = CloneSparseBlobTransaction(template, 0, cellMask);
             ((ShardBlobNetworkWrapper)invalid.NetworkWrapper!).Cells![0][0] ^= 1;
             Transaction valid = CloneSparseBlobTransaction(template, 0, cellMask);
+            IMessageHandler<PooledTransactionRequestMessage> firstPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            IMessageHandler<PooledTransactionRequestMessage> alternatePeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            IMessageHandler<PooledTransactionRequestMessage> latePeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
 
+            Assert.That(_txPool.NotifyAboutTx(invalid.Hash!, firstPeer), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(_txPool.NotifyAboutTx(invalid.Hash!, alternatePeer), Is.EqualTo(AnnounceResult.Delayed));
             Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+            Assert.That(_txPool.NotifyAboutTx(invalid.Hash!, latePeer), Is.EqualTo(AnnounceResult.Delayed));
             Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
@@ -1650,6 +1668,65 @@ namespace Nethermind.TxPool.Test
                 Assert.That(availableMask, Is.EqualTo(requestedMask));
                 Assert.That(cells, Has.Length.EqualTo(requestedMask.Count));
                 Assert.That(proofs, Has.Length.EqualTo(requestedMask.Count));
+            }
+        }
+
+        [TestCase(true, false)]
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        public void should_return_unavailable_for_malformed_blob_cell_candidate(bool fullBlobs, bool truncateProofs)
+        {
+            IComparer<Transaction> comparer = new TransactionComparerProvider(GetOsakaSpecProvider(), _blockTree).GetDefaultComparer();
+            BlobTxDistinctSortedPool blobPool = new(4, comparer, LimboLogs.Instance);
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+            byte[] requestedBlobVersionedHash = [.. tx.BlobVersionedHashes![0]];
+            requestedBlobVersionedHash[^1] ^= 1;
+            tx.BlobVersionedHashes = [tx.BlobVersionedHashes[0], requestedBlobVersionedHash];
+            byte[][] commitments = [wrapper.Commitments[0], wrapper.Commitments[0]];
+            byte[][] proofs = truncateProofs ? wrapper.Proofs : [.. wrapper.Proofs, .. wrapper.Proofs];
+
+            if (fullBlobs)
+            {
+                byte[][] blobs = truncateProofs
+                    ? [wrapper.Blobs[0], wrapper.Blobs[0]]
+                    : wrapper.Blobs;
+                tx.NetworkWrapper = wrapper with { Blobs = blobs, Commitments = commitments, Proofs = proofs };
+            }
+            else
+            {
+                BlobCellMask cellMask = BlobCellMask.FromIndices([1]);
+                Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] sparseCells), Is.True);
+                tx.NetworkWrapper = wrapper with
+                {
+                    Blobs = [],
+                    Commitments = commitments,
+                    Proofs = proofs,
+                    CellMask = cellMask,
+                    Cells = sparseCells,
+                };
+            }
+
+            tx.ClearLengthCache();
+            Assert.That(blobPool.TryInsert(tx.Hash, tx, out _), Is.True);
+
+            bool found = blobPool.TryGetBlobCellsAndProofsV1(
+                requestedBlobVersionedHash,
+                BlobCellMask.FromIndices([1]),
+                out BlobCellMask availableMask,
+                out byte[][] cells,
+                out byte[][] cellProofs);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.False);
+                Assert.That(availableMask, Is.EqualTo(BlobCellMask.Empty));
+                Assert.That(cells, Is.Null);
+                Assert.That(cellProofs, Is.Null);
             }
         }
 

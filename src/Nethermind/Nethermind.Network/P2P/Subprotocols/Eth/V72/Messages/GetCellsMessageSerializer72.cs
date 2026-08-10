@@ -62,7 +62,7 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         byte[] cellMask = ctx.DecodeByteArray(size: BlobCellMask.FixedByteLength);
 
         ctx.Check(checkPosition);
-        return new GetCellsMessage72(requestId, hashes, cellMask);
+        return new GetCellsMessage72(requestId, hashes, cellMask, hashCount);
     }
 
     public int GetLength(GetCellsMessage72 message, out int contentLength)

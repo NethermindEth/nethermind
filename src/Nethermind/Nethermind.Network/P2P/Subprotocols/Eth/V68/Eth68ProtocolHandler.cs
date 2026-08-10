@@ -16,6 +16,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -43,8 +44,6 @@ public class Eth68ProtocolHandler(ISession session,
     : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     private const int MaxPooledTransactionHashesPerRequest = 256;
-    // Limit blob size-estimate compatibility to RLP prefix-width differences.
-    private const int BlobTransactionSizeEstimateTolerance = 8;
 
     protected readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     protected readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
@@ -413,9 +412,21 @@ public class Eth68ProtocolHandler(ISession session,
     protected static bool MatchesAnnouncedSize(Transaction tx, int announcedSize)
     {
         int actualSize = tx.GetLength();
-        return tx.SupportsBlobs
-            ? Math.Abs(actualSize - announcedSize) <= BlobTransactionSizeEstimateTolerance
-            : actualSize == announcedSize;
+        return actualSize == announcedSize
+            || tx.SupportsBlobs
+            && tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            && GetGethBlobTransactionSizeEstimate(tx, wrapper) == announcedSize;
+    }
+
+    // geth estimates the network wrapper as the canonical transaction plus a separately wrapped sidecar.
+    // https://github.com/ethereum/go-ethereum/blob/fdce1ff22f2c2bde0e6a8d1921168f4b7036781f/core/txpool/blobpool/blobpool.go#L174-L201
+    private static int GetGethBlobTransactionSizeEstimate(Transaction tx, ShardBlobNetworkWrapper wrapper)
+    {
+        int sidecarContentLength = checked(
+            Rlp.LengthOf(wrapper.Blobs)
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs));
+        return checked(tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength));
     }
 
     protected virtual bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize) =>
