@@ -64,26 +64,75 @@ public class DbTrackerTests
     }
 
     [Parallelizable(ParallelScope.None)]
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TestUpdateDbMetric(bool isProcessing)
+    [Test]
+    public void TestUpdateDbMetric()
+    {
+        (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater();
+        using IContainer _disposable = container;
+
+        Metrics.DbReads["TestDb"] = 0;
+
+        updateAction!();
+
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
+    }
+
+    [Parallelizable(ParallelScope.None)]
+    [Test]
+    public void PausedProcessingDefersUpdate()
     {
         IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
         (IContainer container, Action updateAction, FakeDb fakeDb) = ConfigureMetricUpdater((builder) => builder.AddSingleton<IBlockProcessingQueue>(queue));
         using IContainer _ = container;
 
-        Metrics.DbReads["TestDb"] = 0;
+        updateAction!();
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
 
-        if (isProcessing)
-        {
-            container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
-            queue.IsEmpty.Returns(false);
-            queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
-        }
+        container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
+        queue.IsEmpty.Returns(false);
+        queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
+
+        fakeDb.SetMetric(new IDbMeta.DbMetric { TotalReads = 11 });
 
         updateAction!();
 
-        Assert.That(Metrics.DbReads["TestDb"], isProcessing ? Is.EqualTo(0) : Is.EqualTo(10));
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
+    }
+
+    [Parallelizable(ParallelScope.None)]
+    [Test]
+    public void PausedProcessingStillUpdatesOnceStale()
+    {
+        IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
+        (IContainer container, Action updateAction, FakeDb _) = ConfigureMetricUpdater((builder) => builder
+            .AddSingleton<IBlockProcessingQueue>(queue)
+            .AddSingleton<IMetricsConfig>(new MetricsConfig { DbMetricIntervalSeconds = 0 }));
+        using IContainer _disposable = container;
+
+        container.Resolve<IBlockProcessingQueue>(); // Only setup is something requested the block processing queue.
+        queue.IsEmpty.Returns(false);
+        queue.BlockAdded += Raise.EventWith<BlockEventArgs>(new BlockEventArgs(Build.A.Block.TestObject));
+
+        Metrics.DbReads["TestDb"] = 0;
+
+        updateAction!();
+
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(10));
+    }
+
+    [Parallelizable(ParallelScope.None)]
+    [Test]
+    public void PublishesMetricsWhenDbIsCreated()
+    {
+        IDbFactory fakeDbFactory = Substitute.For<IDbFactory>();
+        fakeDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(new FakeDb(new IDbMeta.DbMetric { TotalReads = 42 }));
+
+        (IContainer container, _) = BuildTrackerContainer(fakeDbFactory);
+        using IContainer _disposable = container;
+
+        container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
+
+        Assert.That(Metrics.DbReads["TestDb"], Is.EqualTo(42));
     }
 
     [Test]

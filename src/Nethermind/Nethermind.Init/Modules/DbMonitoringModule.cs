@@ -45,9 +45,12 @@ public class DbMonitoringModule : Module
 
     public class DbTracker : IDisposable
     {
+        private const int PausedUpdateHoldoffMultiplier = 10;
+
         private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
-        private readonly HashSet<string> _failingDbs = [];
+        private readonly ConcurrentDictionary<string, bool> _failingDbs = new();
         private readonly int _intervalSec;
+        private readonly bool _enabled;
         private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
         private volatile bool _stopped;
@@ -59,14 +62,21 @@ public class DbMonitoringModule : Module
             _intervalSec = metricsConfig.DbMetricIntervalSeconds;
             _logger = logManager.GetClassLogger<DbTracker>();
             _sharedBlockCache = sharedBlockCache;
+            _enabled = metricsConfig.EnableDbSizeMetrics;
 
-            if (metricsConfig.EnableDbSizeMetrics)
+            if (_enabled)
             {
                 monitoringService.AddMetricsUpdateAction(UpdateDbMetrics);
             }
         }
 
-        public void AddDb(string name, IDbMeta dbMeta) => _createdDbs.TryAdd(name, dbMeta);
+        public void AddDb(string name, IDbMeta dbMeta)
+        {
+            if (_createdDbs.TryAdd(name, dbMeta) && _enabled)
+            {
+                PublishDbMetrics(name, dbMeta);
+            }
+        }
 
         public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta() => _createdDbs;
 
@@ -86,37 +96,19 @@ public class DbMonitoringModule : Module
             if (_stopped) return;
             try
             {
-                if (Paused) return;
+                long sinceLastUpdate = Environment.TickCount64 - _lastDbMetricsUpdate;
 
-                if (Environment.TickCount64 - _lastDbMetricsUpdate < _intervalSec * 1000)
+                if (sinceLastUpdate < _intervalSec * 1000L)
                 {
                     // Update based on configured interval
                     return;
                 }
 
+                if (Paused && sinceLastUpdate < _intervalSec * 1000L * PausedUpdateHoldoffMultiplier) return;
+
                 foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
                 {
-                    try
-                    {
-                        // Note: At the moment, the metric for a columns db is combined across column.
-                        IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric();
-                        Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
-                        Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
-                        Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
-                        Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
-                        Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
-                        Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
-                        if (_failingDbs.Remove(kv.Key) && _logger.IsInfo)
-                            _logger.Info($"DB metric collection recovered for '{kv.Key}'");
-                    }
-                    catch (Exception e)
-                    {
-                        // Remove stale entries so Prometheus does not report old values indefinitely.
-                        RemoveStaleMetricEntry(kv.Key);
-                        // Log only on the first failure of a streak; recovery is logged when GatherMetric succeeds again.
-                        if (_failingDbs.Add(kv.Key) && _logger.IsWarn)
-                            _logger.Warn($"Failed to gather metrics for DB '{kv.Key}': {e.Message}");
-                    }
+                    PublishDbMetrics(kv.Key, kv.Value);
                 }
 
                 Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
@@ -131,6 +123,31 @@ public class DbMonitoringModule : Module
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("Error during updating db metrics", e);
+            }
+        }
+
+        private void PublishDbMetrics(string name, IDbMeta dbMeta)
+        {
+            try
+            {
+                // Note: At the moment, the metric for a columns db is combined across column.
+                IDbMeta.DbMetric dbMetric = dbMeta.GatherMetric();
+                Db.Metrics.DbSize[name] = dbMetric.Size;
+                Db.Metrics.DbBlockCacheSize[name] = dbMetric.CacheSize;
+                Db.Metrics.DbMemtableSize[name] = dbMetric.MemtableSize;
+                Db.Metrics.DbIndexFilterSize[name] = dbMetric.IndexSize;
+                Db.Metrics.DbReads[name] = dbMetric.TotalReads;
+                Db.Metrics.DbWrites[name] = dbMetric.TotalWrites;
+                if (_failingDbs.TryRemove(name, out _) && _logger.IsInfo)
+                    _logger.Info($"DB metric collection recovered for '{name}'");
+            }
+            catch (Exception e)
+            {
+                // Remove stale entries so Prometheus does not report old values indefinitely.
+                RemoveStaleMetricEntry(name);
+                // Log only on the first failure of a streak; recovery is logged when GatherMetric succeeds again.
+                if (_failingDbs.TryAdd(name, true) && _logger.IsWarn)
+                    _logger.Warn($"Failed to gather metrics for DB '{name}': {e.Message}");
             }
         }
 
