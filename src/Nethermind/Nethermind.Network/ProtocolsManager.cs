@@ -264,10 +264,33 @@ namespace Nethermind.Network
             bool isValid = _protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, args);
             if (isValid)
             {
-                _peerManager.OnP2PProtocolInitialized(session);
+                _peerManager.OnP2PProtocolInitialized(session, IsEligibleForNHistServingSlot(args.Capabilities));
             }
 
             if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
+        }
+
+        private bool IsEligibleForNHistServingSlot(IReadOnlyList<Capability> remoteCapabilities)
+        {
+            bool advertisesNHist = false;
+            Capability[] advertised = GetAdvertisedCapabilities();
+            for (int i = 0; i < advertised.Length; i++)
+            {
+                if (advertised[i].ProtocolCode == Protocol.NHist)
+                {
+                    advertisesNHist = true;
+                    break;
+                }
+            }
+
+            if (!advertisesNHist) return false;
+
+            for (int i = 0; i < remoteCapabilities.Count; i++)
+            {
+                if (remoteCapabilities[i].ProtocolCode == Protocol.NHist) return true;
+            }
+
+            return false;
         }
 
         private void OnSyncPeerProtocolInitialized(ISession session, SyncPeerProtocolHandlerBase handler, SyncPeerProtocolInitializedEventArgs args)

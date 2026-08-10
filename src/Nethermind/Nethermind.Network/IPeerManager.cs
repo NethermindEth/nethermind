@@ -16,6 +16,6 @@ namespace Nethermind.Network
         int ActivePeersCount { get; }
         int ConnectedPeersCount { get; }
 
-        void OnP2PProtocolInitialized(ISession session);
+        void OnP2PProtocolInitialized(ISession session, bool eligibleForNHistServingSlot);
     }
 }

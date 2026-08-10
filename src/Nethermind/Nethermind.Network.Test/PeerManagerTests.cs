@@ -320,7 +320,7 @@ namespace Nethermind.Network.Test
 
             ISession session = Substitute.For<ISession>();
             session.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303)); // plain (non-static, non-trusted)
-            ctx.PeerManager.OnP2PProtocolInitialized(session);
+            ctx.PeerManager.OnP2PProtocolInitialized(session, eligibleForNHistServingSlot: false);
 
             if (shouldDisconnect)
             {
@@ -330,6 +330,34 @@ namespace Nethermind.Network.Test
             {
                 session.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
             }
+        }
+
+        [Test]
+        public async Task Over_capacity_nhist_peer_is_kept_in_a_serving_slot_until_the_budget_runs_out()
+        {
+            await using Context ctx = new(maxActivePeers: 5);
+            ctx.NetworkConfig.NHistServingPeerSlots = 2;
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < 6; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
+            }
+
+            ISession first = Substitute.For<ISession>();
+            first.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+            ISession second = Substitute.For<ISession>();
+            second.Node.Returns(new Node(TestItem.PublicKeyB, "1.2.3.5", 30303));
+            ISession third = Substitute.For<ISession>();
+            third.Node.Returns(new Node(TestItem.PublicKeyC, "1.2.3.6", 30303));
+
+            ctx.PeerManager.OnP2PProtocolInitialized(first, eligibleForNHistServingSlot: true);
+            ctx.PeerManager.OnP2PProtocolInitialized(second, eligibleForNHistServingSlot: true);
+            ctx.PeerManager.OnP2PProtocolInitialized(third, eligibleForNHistServingSlot: true);
+
+            first.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            second.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
+            third.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
         }
 
         [TestCase(true, ConnectionDirection.In)]

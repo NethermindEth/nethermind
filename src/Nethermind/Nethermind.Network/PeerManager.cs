@@ -45,6 +45,7 @@ namespace Nethermind.Network
         private readonly IPeerPool _peerPool;
         private readonly Lock _sessionLock = new();
         private readonly List<PeerStats> _candidates;
+        private readonly List<ISession> _nhistServingSessions = [];
         private readonly RateLimiter _outgoingConnectionRateLimiter;
 
         private int _pending;
@@ -881,13 +882,31 @@ namespace Nethermind.Network
                 => _logger.Trace($"PROCESS OUTGOING {id}");
         }
 
-        public void OnP2PProtocolInitialized(ISession session)
+        public void OnP2PProtocolInitialized(ISession session, bool eligibleForNHistServingSlot)
         {
             // The margin-admitted overflow is shed here, now that the P2P protocol can carry a proper
             // disconnect message. Static and trusted peers are must-keep and exempt from the capacity cap.
             if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount > MaxActivePeers)
             {
+                if (eligibleForNHistServingSlot && TryReserveNHistServingSlot(session)) return;
+
                 session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{ActivePeersCount}");
+            }
+        }
+
+        private bool TryReserveNHistServingSlot(ISession session)
+        {
+            int slots = _networkConfig.NHistServingPeerSlots;
+            if (slots <= 0) return false;
+
+            lock (_nhistServingSessions)
+            {
+                _nhistServingSessions.RemoveAll(static s => s.IsClosing);
+                if (_nhistServingSessions.Count >= slots) return false;
+
+                _nhistServingSessions.Add(session);
+                if (_logger.IsInfo) _logger.Info($"Keeping inbound nhist peer {session} in a history-serving slot ({_nhistServingSessions.Count}/{slots}).");
+                return true;
             }
         }
 
