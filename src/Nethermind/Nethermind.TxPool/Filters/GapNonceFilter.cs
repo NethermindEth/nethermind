@@ -21,7 +21,7 @@ namespace Nethermind.TxPool.Filters
         {
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
             bool nonceGapsAllowed = isLocal || !_txs.IsFull();
-            if (!tx.SupportsBlobs && nonceGapsAllowed)
+            if (nonceGapsAllowed && !tx.SupportsBlobs)
             {
                 return AcceptTxResult.Accepted;
             }
