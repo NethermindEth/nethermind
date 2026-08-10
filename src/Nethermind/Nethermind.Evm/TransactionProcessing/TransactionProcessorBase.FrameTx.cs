@@ -485,8 +485,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             in snapshot,
             isStatic: isStatic);
 
-        // The parameterless overload hard-codes OffFlag, which silences instruction tracing for every
-        // frame; the interpreter specialisation is picked here instead, as on the standard path.
+        // Select the instruction-tracing specialisation explicitly: the parameterless ExecuteTransaction
+        // overload hard-codes OffFlag and would drop per-instruction tracing for a frame.
         TransactionSubstate substate = tracer.IsTracingInstructions
             ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
             : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
