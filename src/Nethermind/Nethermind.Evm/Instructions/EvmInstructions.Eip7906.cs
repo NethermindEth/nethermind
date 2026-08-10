@@ -17,6 +17,7 @@ namespace Nethermind.Evm;
 /// EIP-7906 transaction-assertion opcodes: TXTRACE, TXDIFF and EVENTDATACOPY. All three are valid
 /// only inside a POST_TX frame; anywhere else they exceptional-halt. They read the transaction's
 /// state diff from the in-flight BAL slice and its logs from the shared frame-transaction log buffer.
+/// Each opcode multiplexes on a leading <c>param</c> byte and routes to a per-category helper.
 /// https://eips.ethereum.org/EIPS/eip-7906
 /// </summary>
 public static unsafe partial class EvmInstructions
@@ -33,83 +34,83 @@ public static unsafe partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 param, out UInt256 index)) return EvmExceptionType.StackUnderflow;
         if (param > 0x15) return EvmExceptionType.BadInstruction;
 
-        BlockAccessListAtIndex slice = view.Slice;
-        switch (param.u0)
+        byte p = (byte)param.u0;
+        return p switch
         {
-            case 0x00: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.BalanceAddresses.Length);
-            case 0x01: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.Slots.Length);
-            case 0x02: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.DeployedAddresses.Length);
+            0x00 => stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.BalanceAddresses.Length),
+            0x01 => stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.Slots.Length),
+            0x02 => stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.DeployedAddresses.Length),
+            >= 0x03 and <= 0x05 => TxTraceBalance<TTracingInst>(view, p, in index, ref stack),
+            >= 0x06 and <= 0x09 => TxTraceStorage<TTracingInst>(view, p, in index, ref stack),
+            0x0A or 0x0B => TxTraceDeployment<TTracingInst>(view, p, in index, ref stack),
+            0x0C => stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.Logs.Length),
+            >= 0x0D and <= 0x13 => TxTraceEvent<TTracingInst>(view, p, in index, ref stack),
+            0x14 => stack.PushUInt256<TTracingInst>(ctx.MaxCost),
+            0x15 => stack.PushAddress<TTracingInst>(ctx.Payer ?? Address.Zero),
+            _ => EvmExceptionType.BadInstruction,
+        };
+    }
 
-            case 0x03: // balance-change address
-            case 0x04: // balance before
-            case 0x05: // balance after (as of the opcode call; equal to the recorded post-value)
-            {
-                if (index >= (UInt256)(ulong)view.BalanceAddresses.Length) return EvmExceptionType.BadInstruction;
-                Address address = view.BalanceAddresses[(int)index.u0];
-                if (param.u0 == 0x03) return stack.PushAddress<TTracingInst>(address);
-                AccountChangesAtIndex account = slice.GetAccountChanges(address)!;
-                UInt256 value = param.u0 == 0x04
-                    ? account.PreTxBalance ?? default
-                    : account.BalanceChange?.Value ?? account.PreTxBalance ?? default;
-                return stack.PushUInt256<TTracingInst>(value);
-            }
+    // 0x03 address / 0x04 balance before / 0x05 balance after, indexed by balance-change position.
+    private static EvmExceptionType TxTraceBalance<TTracingInst>(Eip7906DiffView view, byte param, in UInt256 index, ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        if (index >= (UInt256)(ulong)view.BalanceAddresses.Length) return EvmExceptionType.BadInstruction;
+        Address address = view.BalanceAddresses[(int)index.u0];
+        if (param == 0x03) return stack.PushAddress<TTracingInst>(address);
 
-            case 0x06: // slot-change address
-            case 0x07: // slot key
-            case 0x08: // slot value before
-            case 0x09: // slot value after
-            {
-                if (index >= (UInt256)(ulong)view.Slots.Length) return EvmExceptionType.BadInstruction;
-                Eip7906DiffView.SlotRef slot = view.Slots[(int)index.u0];
-                if (param.u0 == 0x06) return stack.PushAddress<TTracingInst>(slot.Address);
-                if (param.u0 == 0x07) return stack.PushUInt256<TTracingInst>(slot.Key);
-                AccountChangesAtIndex account = slice.GetAccountChanges(slot.Address)!;
-                if (param.u0 == 0x08)
-                    return stack.PushUInt256<TTracingInst>(account.TryGetPreTxStorage(slot.Key, out UInt256 before) ? before : default);
-                if (!account.TryGetStorageChange(slot.Key, out StorageChange? change)) return EvmExceptionType.BadInstruction;
-                EvmWord after = change.Value.Value;
-                return stack.Push32Bytes<TTracingInst>(ref Unsafe.As<EvmWord, byte>(ref after));
-            }
+        AccountChangesAtIndex account = view.Slice.GetAccountChanges(address)!;
+        UInt256 value = param == 0x04
+            ? account.PreTxBalance ?? default
+            : account.BalanceChange?.Value ?? account.PreTxBalance ?? default;
+        return stack.PushUInt256<TTracingInst>(value);
+    }
 
-            case 0x0A: // deployed contract address
-            case 0x0B: // deployed contract code hash
-            {
-                if (index >= (UInt256)(ulong)view.DeployedAddresses.Length) return EvmExceptionType.BadInstruction;
-                Address address = view.DeployedAddresses[(int)index.u0];
-                if (param.u0 == 0x0A) return stack.PushAddress<TTracingInst>(address);
-                ValueHash256 codeHash = slice.GetAccountChanges(address)!.CodeChange!.Value.CodeHash;
-                return stack.Push32Bytes<TTracingInst>(in codeHash);
-            }
+    // 0x06 address / 0x07 key / 0x08 value before / 0x09 value after, indexed by slot-change position.
+    private static EvmExceptionType TxTraceStorage<TTracingInst>(Eip7906DiffView view, byte param, in UInt256 index, ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        if (index >= (UInt256)(ulong)view.Slots.Length) return EvmExceptionType.BadInstruction;
+        Eip7906DiffView.SlotRef slot = view.Slots[(int)index.u0];
+        if (param == 0x06) return stack.PushAddress<TTracingInst>(slot.Address);
+        if (param == 0x07) return stack.PushUInt256<TTracingInst>(slot.Key);
 
-            case 0x0C: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.Logs.Length);
+        AccountChangesAtIndex account = view.Slice.GetAccountChanges(slot.Address)!;
+        if (param == 0x08)
+            return stack.PushUInt256<TTracingInst>(account.TryGetPreTxStorage(slot.Key, out UInt256 before) ? before : default);
+        if (!account.TryGetStorageChange(slot.Key, out StorageChange? change)) return EvmExceptionType.BadInstruction;
+        EvmWord after = change.Value.Value;
+        return stack.Push32Bytes<TTracingInst>(ref Unsafe.As<EvmWord, byte>(ref after));
+    }
 
-            case 0x0D: // event address
-            case 0x0E: // event topic count
-            case 0x0F: // event topic 0..3 (0x0F..0x12)
-            case 0x10:
-            case 0x11:
-            case 0x12:
-            case 0x13: // event data length
-            {
-                if (index >= (UInt256)(ulong)view.Logs.Length) return EvmExceptionType.BadInstruction;
-                LogEntry log = view.Logs[(int)index.u0];
-                switch (param.u0)
-                {
-                    case 0x0D: return stack.PushAddress<TTracingInst>(log.Address);
-                    case 0x0E: return stack.PushUInt32<TTracingInst>((uint)log.Topics.Length);
-                    case 0x13: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)log.Data.Length);
-                    default:
-                        int topic = (int)(param.u0 - 0x0F);
-                        // A missing topic exceptional-halts (the spec states this for topic 0).
-                        if (topic >= log.Topics.Length) return EvmExceptionType.BadInstruction;
-                        return stack.PushBytes<TTracingInst>(log.Topics[topic].Bytes);
-                }
-            }
+    // 0x0A deployed address / 0x0B deployed code hash, indexed by deployment position.
+    private static EvmExceptionType TxTraceDeployment<TTracingInst>(Eip7906DiffView view, byte param, in UInt256 index, ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        if (index >= (UInt256)(ulong)view.DeployedAddresses.Length) return EvmExceptionType.BadInstruction;
+        Address address = view.DeployedAddresses[(int)index.u0];
+        if (param == 0x0A) return stack.PushAddress<TTracingInst>(address);
 
-            case 0x14: return stack.PushUInt256<TTracingInst>(ctx.MaxCost);
-            case 0x15: return stack.PushAddress<TTracingInst>(ctx.Payer ?? Address.Zero);
+        ValueHash256 codeHash = view.Slice.GetAccountChanges(address)!.CodeChange!.Value.CodeHash;
+        return stack.Push32Bytes<TTracingInst>(in codeHash);
+    }
 
-            default: return EvmExceptionType.BadInstruction;
+    // 0x0D address / 0x0E topic count / 0x0F..0x12 topics / 0x13 data length, indexed by event position.
+    private static EvmExceptionType TxTraceEvent<TTracingInst>(Eip7906DiffView view, byte param, in UInt256 index, ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        if (index >= (UInt256)(ulong)view.Logs.Length) return EvmExceptionType.BadInstruction;
+        LogEntry log = view.Logs[(int)index.u0];
+        switch (param)
+        {
+            case 0x0D: return stack.PushAddress<TTracingInst>(log.Address);
+            case 0x0E: return stack.PushUInt32<TTracingInst>((uint)log.Topics.Length);
+            case 0x13: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)log.Data.Length);
+            default:
+                int topic = param - 0x0F;
+                // A missing topic exceptional-halts (the spec states this for topic 0).
+                if (topic >= log.Topics.Length) return EvmExceptionType.BadInstruction;
+                return stack.PushBytes<TTracingInst>(log.Topics[topic].Bytes);
         }
     }
 
@@ -128,64 +129,73 @@ public static unsafe partial class EvmInstructions
         if (address is null) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 in3)) return EvmExceptionType.StackUnderflow;
 
-        IReleaseSpec spec = vm.Spec;
-        IWorldState state = vm.WorldState;
         AccountChangesAtIndex? account = view.Slice.GetAccountChanges(address);
-
-        switch (param.u0)
+        byte p = (byte)param.u0;
+        return p switch
         {
-            case 0x00: // slot value before
-            case 0x01: // slot value after
-            {
-                StorageCell cell = new(address, in in3);
-                if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in cell, StorageAccessType.SLOAD, spec))
-                    return EvmExceptionType.OutOfGas;
-                if (param.u0 == 0x00 && account is not null && account.TryGetPreTxStorage(in3, out UInt256 before))
-                    return stack.PushUInt256<TTracingInst>(before);
-                // "after", or an unmodified slot's "before": the current live value.
-                ReadOnlySpan<byte> value = state.Get(in cell);
-                return value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
-            }
+            0x00 or 0x01 => TxDiffStorage<TGasPolicy, TTracingInst>(vm, ref gas, p, address, in in3, account, ref stack),
+            >= 0x02 and <= 0x05 => TxDiffAccount<TGasPolicy, TTracingInst>(vm, ref gas, p, address, account, ref stack),
+            _ => TxDiffAddressView<TGasPolicy, TTracingInst>(ref gas, p, view, address, in in3, account, ref stack),
+        };
+    }
 
-            case 0x02: // balance before
-            case 0x03: // balance after
-            case 0x04: // code hash before
-            case 0x05: // code hash after
-            {
-                if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
-                    return EvmExceptionType.OutOfGas;
-                switch (param.u0)
-                {
-                    case 0x02:
-                        return stack.PushUInt256<TTracingInst>(account?.BalanceChange is not null ? account.PreTxBalance ?? default : state.GetBalance(address));
-                    case 0x03:
-                        return stack.PushUInt256<TTracingInst>(state.GetBalance(address));
-                    case 0x04:
-                    {
-                        ValueHash256 hash = account?.CodeChange is not null ? ValueKeccak.Compute(account.PreTxCode ?? []) : state.GetCodeHash(address);
-                        return stack.Push32Bytes<TTracingInst>(in hash);
-                    }
-                    default:
-                    {
-                        ValueHash256 hash = state.GetCodeHash(address);
-                        return stack.Push32Bytes<TTracingInst>(in hash);
-                    }
-                }
-            }
+    // 0x00 slot value before / 0x01 slot value after, EIP-2929 storage-warm/cold priced.
+    private static EvmExceptionType TxDiffStorage<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Address address, in UInt256 key, AccountChangesAtIndex? account, ref EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        StorageCell cell = new(address, in key);
+        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in cell, StorageAccessType.SLOAD, vm.Spec))
+            return EvmExceptionType.OutOfGas;
+        if (param == 0x00 && account is not null && account.TryGetPreTxStorage(key, out UInt256 before))
+            return stack.PushUInt256<TTracingInst>(before);
+        // "after", or an unmodified slot's "before": the current live value.
+        ReadOnlySpan<byte> value = vm.WorldState.Get(in cell);
+        return value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
+    }
 
-            default: // 0x06..0x0A: per-address views and flags, flat priced, no access-list interaction.
+    // 0x02 balance before / 0x03 balance after / 0x04 code hash before / 0x05 code hash after,
+    // EIP-2929 account-warm/cold priced.
+    private static EvmExceptionType TxDiffAccount<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Address address, AccountChangesAtIndex? account, ref EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+            return EvmExceptionType.OutOfGas;
+        IWorldState state = vm.WorldState;
+        switch (param)
+        {
+            case 0x02:
+                return stack.PushUInt256<TTracingInst>(account?.BalanceChange is not null ? account.PreTxBalance ?? default : state.GetBalance(address));
+            case 0x03:
+                return stack.PushUInt256<TTracingInst>(state.GetBalance(address));
+            case 0x04:
             {
-                TGasPolicy.Consume<TxTraceGasCost>(ref gas);
-                switch (param.u0)
-                {
-                    case 0x06: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)(account?.StorageChangeCount ?? 0));
-                    case 0x07: return PushGlobalSlotIndex<TTracingInst>(view, address, in3, ref stack);
-                    case 0x08: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)CountEventsFrom(view, address));
-                    case 0x09: return PushGlobalEventIndex<TTracingInst>(view, address, in3, ref stack);
-                    default: return stack.PushUInt32<TTracingInst>(ChangeFlags(account)); // 0x0A
-                }
+                ValueHash256 hash = account?.CodeChange is not null ? ValueKeccak.Compute(account.PreTxCode ?? []) : state.GetCodeHash(address);
+                return stack.Push32Bytes<TTracingInst>(in hash);
+            }
+            default:
+            {
+                ValueHash256 hash = state.GetCodeHash(address);
+                return stack.Push32Bytes<TTracingInst>(in hash);
             }
         }
+    }
+
+    // 0x06..0x0A: per-address views and change flags, flat priced, no access-list interaction.
+    private static EvmExceptionType TxDiffAddressView<TGasPolicy, TTracingInst>(ref TGasPolicy gas, byte param, Eip7906DiffView view, Address address, in UInt256 in3, AccountChangesAtIndex? account, ref EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume<TxTraceGasCost>(ref gas);
+        return param switch
+        {
+            0x06 => stack.PushUInt256<TTracingInst>((UInt256)(ulong)(account?.StorageChangeCount ?? 0)),
+            0x07 => PushGlobalSlotIndex<TTracingInst>(view, address, in3, ref stack),
+            0x08 => stack.PushUInt256<TTracingInst>((UInt256)(ulong)CountEventsFrom(view, address)),
+            0x09 => PushGlobalEventIndex<TTracingInst>(view, address, in3, ref stack),
+            _ => stack.PushUInt32<TTracingInst>(ChangeFlags(account)), // 0x0A
+        };
     }
 
     /// <summary>EVENTDATACOPY (0xb7): copy a log's non-indexed data into memory (CALLDATACOPY semantics).</summary>
@@ -261,7 +271,9 @@ public static unsafe partial class EvmInstructions
         return true;
     }
 
-    private static EvmExceptionType PushGlobalSlotIndex<TTracingInst>(Eip7906DiffView view, Address address, UInt256 localIndex, ref EvmStack stack)
+    // Maps an address-local slot index to its global position in the TXTRACE slot table (an address's
+    // slots are contiguous there because it is sorted by address then key).
+    private static EvmExceptionType PushGlobalSlotIndex<TTracingInst>(Eip7906DiffView view, Address address, in UInt256 localIndex, ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
         Eip7906DiffView.SlotRef[] slots = view.Slots;
@@ -276,7 +288,8 @@ public static unsafe partial class EvmInstructions
         return stack.PushUInt256<TTracingInst>((UInt256)(ulong)(first + (int)localIndex.u0));
     }
 
-    private static EvmExceptionType PushGlobalEventIndex<TTracingInst>(Eip7906DiffView view, Address address, UInt256 localIndex, ref EvmStack stack)
+    // Maps an address-local event index to its global position in the emission-ordered log list.
+    private static EvmExceptionType PushGlobalEventIndex<TTracingInst>(Eip7906DiffView view, Address address, in UInt256 localIndex, ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
         LogEntry[] logs = view.Logs;
@@ -297,6 +310,7 @@ public static unsafe partial class EvmInstructions
         return count;
     }
 
+    // EIP-7906 change-flags bitmask: nonce (0b0001), balance (0b0010), storage (0b0100), code (0b1000).
     private static uint ChangeFlags(AccountChangesAtIndex? account)
     {
         if (account is null) return 0;
