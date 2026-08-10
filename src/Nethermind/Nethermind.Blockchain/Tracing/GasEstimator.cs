@@ -100,15 +100,10 @@ public class GasEstimator(
 
     /// <summary>The gas an EIP-8141 frame transaction reserves, or the probe's failure.</summary>
     /// <remarks>
-    /// A frame transaction has no <c>gas_limit</c> field: its budget is the intrinsic cost plus the
-    /// per-frame limits it signs over, so a caller cannot lower it and there is nothing to search for.
-    /// Binary search would also be blind here, since the processor derives the budget from the frames
-    /// and ignores <see cref="Transaction.GasLimit"/> — every probe succeeds regardless of the value
-    /// under test. The affordability gates are skipped for the same reason they would be wrong: the
-    /// frames choose the payer, which need not be the sender, and a payer too poor to cover the
-    /// reservation already fails the probe. The tracer's per-action out-of-gas and revert flags are not
-    /// consulted: each frame runs as its own top-level action, so they describe the last frame rather than
-    /// the transaction, and a frame that fails still reserves the same budget.
+    /// A frame transaction has no <c>gas_limit</c> to search: the processor derives the budget from the
+    /// signed per-frame limits and ignores <see cref="Transaction.GasLimit"/>. Affordability gates are
+    /// skipped because the payer is frame-chosen rather than the sender; the tracer's out-of-gas and
+    /// revert flags are not consulted because each frame runs as its own top-level action.
     /// </remarks>
     private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer)
     {
