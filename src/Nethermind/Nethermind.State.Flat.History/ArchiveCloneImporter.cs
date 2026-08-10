@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.History;
 public sealed class ArchiveCloneImporter
 {
     private const int BlockBytes = sizeof(ulong);
-    private const int MaxConcurrentStreams = 3;
+    private const int MaxConcurrentStreams = IHistoryServer.MaxInFlightRequestsPerPeer - 1;
     private const int RefusedRetryLimit = 5;
     private static readonly TimeSpan RefusedRetryDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressLogInterval = TimeSpan.FromSeconds(30);
@@ -252,7 +252,7 @@ public sealed class ArchiveCloneImporter
         {
             double seconds = Stopwatch.GetElapsedTime(Volatile.Read(ref _columnStartTimestamp)).TotalSeconds;
             long bytes = Volatile.Read(ref _columnBytes);
-            _logger.Info($"Archive clone: {column} complete - {Volatile.Read(ref _columnRows):N0} rows, {FormatMB(bytes)} in {seconds / 60:F1} min ({FormatRate(bytes, seconds)}).");
+            _logger.Info($"Archive clone: {column} complete - {Volatile.Read(ref _columnRows):N0} rows, {FormatMB(bytes)} fetched this run in {seconds / 60:F1} min ({FormatRate(bytes, seconds)}).");
         }
     }
 

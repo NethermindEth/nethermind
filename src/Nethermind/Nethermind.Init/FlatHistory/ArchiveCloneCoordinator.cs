@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -27,6 +28,7 @@ namespace Nethermind.Init.FlatHistory;
 public sealed class ArchiveCloneCoordinator : IDisposable
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DiagnosticsInterval = TimeSpan.FromMinutes(1);
 
     private readonly IFlatDbConfig _config;
     private readonly NHistPeerSelector _selector;
@@ -81,11 +83,20 @@ public sealed class ArchiveCloneCoordinator : IDisposable
     private async Task RunLoopAsync()
     {
         CancellationToken token = _cts.Token;
+        long lastDiagnosticsTimestamp = 0;
         while (!token.IsCancellationRequested)
         {
             try
             {
-                if (_selector.TryGetEligibleCloneSource(_rowFormat.FormatVersion, NHistPeerSelector.NoExclusions, out PeerInfo peer, out INHistSyncPeer syncPeer))
+                Action<string>? diagnostics = null;
+                long now = Stopwatch.GetTimestamp();
+                if (_logger.IsInfo && Stopwatch.GetElapsedTime(lastDiagnosticsTimestamp, now) > DiagnosticsInterval)
+                {
+                    lastDiagnosticsTimestamp = now;
+                    diagnostics = reason => _logger.Info($"Archive clone waiting for an eligible source: {reason}.");
+                }
+
+                if (_selector.TryGetEligibleCloneSource(_rowFormat.FormatVersion, NHistPeerSelector.NoExclusions, out PeerInfo peer, out INHistSyncPeer syncPeer, diagnostics))
                 {
                     NHistArchiveCloneSource source = NHistArchiveCloneSource.FromPeer(peer, syncPeer);
                     if (_logger.IsInfo) _logger.Info($"Full archive clone starting from peer {peer} (row format {source.RowFormatVersion}, source watermark {source.Watermark}).");

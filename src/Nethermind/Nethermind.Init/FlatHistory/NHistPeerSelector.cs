@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
@@ -43,13 +44,30 @@ public sealed class NHistPeerSelector(ISyncPeerPool peerPool)
     /// which would otherwise silently corrupt a byte-identical clone - is caught by peer selection, before
     /// <see cref="Nethermind.State.Flat.History.ArchiveCloneImporter"/>'s own defense-in-depth check ever runs.</summary>
     public bool TryGetEligibleCloneSource(byte requiredRowFormatVersion, IReadOnlySet<PublicKey> excluded, out PeerInfo peer, out INHistSyncPeer syncPeer)
+        => TryGetEligibleCloneSource(requiredRowFormatVersion, excluded, out peer, out syncPeer, null);
+
+    public bool TryGetEligibleCloneSource(byte requiredRowFormatVersion, IReadOnlySet<PublicKey> excluded, out PeerInfo peer, out INHistSyncPeer syncPeer, Action<string>? skipDiagnostics)
     {
         foreach (PeerInfo candidate in peerPool.InitializedPeers)
         {
             if (excluded.Contains(candidate.SyncPeer.Node.Id)) continue;
-            if (!candidate.SyncPeer.TryGetSatelliteProtocol(Protocol.NHist, out INHistSyncPeer handler)) continue;
-            if (!handler.PeerSupportsFullClone) continue;
-            if (handler.PeerRowFormatVersion != requiredRowFormatVersion) continue;
+            if (!candidate.SyncPeer.TryGetSatelliteProtocol(Protocol.NHist, out INHistSyncPeer handler))
+            {
+                skipDiagnostics?.Invoke($"peer {candidate.SyncPeer.Node:s} has no nhist satellite protocol registered");
+                continue;
+            }
+
+            if (!handler.PeerSupportsFullClone)
+            {
+                skipDiagnostics?.Invoke($"peer {candidate.SyncPeer.Node:s} advertises SupportsFullClone=false (served scopes: {handler.PeerServedScopes.Length}, peer row format {handler.PeerRowFormatVersion})");
+                continue;
+            }
+
+            if (handler.PeerRowFormatVersion != requiredRowFormatVersion)
+            {
+                skipDiagnostics?.Invoke($"peer {candidate.SyncPeer.Node:s} serves row format {handler.PeerRowFormatVersion} but this node requires {requiredRowFormatVersion}");
+                continue;
+            }
 
             peer = candidate;
             syncPeer = handler;

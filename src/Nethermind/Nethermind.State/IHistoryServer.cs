@@ -40,6 +40,8 @@ public interface IHistoryServer
 
     const int MaxRowKeyBytes = 128;
 
+    const int MaxInFlightRequestsPerPeer = 4;
+
     bool CanServe { get; }
 
     bool CanServeFullClone { get; }

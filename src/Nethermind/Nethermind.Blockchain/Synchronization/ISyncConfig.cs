@@ -166,7 +166,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Whether to serve windowed flat history and changesets over nhist/1. Default is to enable whenever flat history capture and a retention window are both enabled.", DefaultValue = "null", HiddenFromDocs = true)]
     bool? HistoryServingEnabled { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Per-peer cap, in bytes per second, on nhist/1 history serving. Raise on a dedicated feeder to speed up archive clones and windowed backfills.", DefaultValue = "8388608", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Per-peer cap, in bytes per second, on nhist/1 history serving. Values below 1MiB are raised to 1MiB. Raise on a dedicated feeder to speed up archive clones and windowed backfills.", DefaultValue = "8388608", HiddenFromDocs = true)]
     long HistoryServingMaxBytesPerSecond { get; set; }
 
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]

@@ -39,7 +39,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
     private const string DisconnectMessage = "Serving windowed flat history is not implemented in this node.";
     private const string TooManyInFlightMessage = "Too many concurrent nhist requests in flight for this peer.";
-    public const int MaxInFlightRequestsPerPeer = 4;
+    private const int MaxInFlightRequestsPerPeer = IHistoryServer.MaxInFlightRequestsPerPeer;
     private static readonly TimeSpan ServedBytesWindow = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(8);
     private static readonly long TicksPerWindow = (long)(Stopwatch.Frequency * ServedBytesWindow.TotalSeconds);
