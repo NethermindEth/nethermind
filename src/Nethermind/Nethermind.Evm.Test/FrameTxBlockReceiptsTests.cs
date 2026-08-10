@@ -89,6 +89,35 @@ public class FrameTxBlockReceiptsTests
         }
     }
 
+    // A blob-carrying frame tx pays the blob fee and counts towards the block's blob gas, so its receipt
+    // must report blobGasUsed/blobGasPrice; a blobless frame tx reports neither.
+    [Test]
+    public void GetGasInfo_BlobCarryingFrameTx_ReportsBlobGas()
+    {
+        IReleaseSpec spec = Eip8141Prototype.Instance;
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithExcessBlobGas(0).TestObject;
+
+        Transaction blobFrameTx = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+        TxGasInfo blobInfo = blobFrameTx.GetGasInfo(spec, header);
+
+        Transaction bloblessFrameTx = new() { Type = TxType.FrameTx, DecodedMaxFeePerGas = 1 };
+        TxGasInfo bloblessInfo = bloblessFrameTx.GetGasInfo(spec, header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobInfo.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobFrameTx)), "blob frame tx reports its blob gas");
+            Assert.That(blobInfo.BlobGasPrice, Is.Not.Null);
+            Assert.That(bloblessInfo.BlobGasUsed, Is.Null, "a blobless frame tx reports no blob gas");
+            Assert.That(bloblessInfo.BlobGasPrice, Is.Null);
+        }
+    }
+
     /// <summary>
     /// Runs a two-frame transaction (self-verify, then a SENDER frame calling <paramref name="observerCode"/>)
     /// through the real receipts tracer and returns the single receipt it produced.

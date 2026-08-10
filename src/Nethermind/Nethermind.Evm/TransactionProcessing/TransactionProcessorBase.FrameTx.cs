@@ -77,10 +77,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
         }
 
-        // max_gas: frames reserving less than the calldata floor raise the reservation rather than
-        // invalidate the transaction. The headroom is reserved and refunded, never spendable.
-        txGasLimit = Math.Max(txGasLimit, floorGas);
-
         // max_cost (TXPARAM 0x06) reserves at max_fee_per_gas plus the blob fee, not the effective
         // price, so it is not under-reserved; settlement below charges the effective price. Bounded
         // like BuyGas: premium <= max fee and spentGas <= txGasLimit, so this product also bounds the
