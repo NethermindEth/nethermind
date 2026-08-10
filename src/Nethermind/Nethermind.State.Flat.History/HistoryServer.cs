@@ -364,7 +364,7 @@ public sealed class HistoryServer : IHistoryServer
             byte[]? lastEmittedKey = cursor;
             bool exhausted = true;
 
-            using ISortedView view = sorted.GetViewBetween(from, endKey, ReadFlags.HintCacheMiss);
+            using ISortedView view = sorted.GetViewBetween(from, endKey, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
             while (view.MoveNext())
             {
                 if (cancellationToken.IsCancellationRequested)

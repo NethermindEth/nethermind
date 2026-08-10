@@ -181,6 +181,37 @@ public class ArchiveCloneImporterTests
     }
 
     [Test]
+    public async Task CloneAsync_RerunAfterCompletion_SkipsEveryColumnAndRepublishesTheOriginalWatermark()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
+        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        await CreateImporter(source).CloneAsync(CancellationToken.None);
+
+        FakeCloneSource newer = new(_rowFormat.FormatVersion) { Watermark = 99 };
+        await CreateImporter(newer).CloneAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newer.Calls, Is.Empty, "every column carries a done marker after a completed clone, so a re-run must not fetch a single page");
+            Assert.That(_availability.TryGetWatermark(out ulong watermark), Is.True);
+            Assert.That(watermark, Is.EqualTo(5UL), "a re-run against a source that moved forward must republish the stored watermark of the original run - the rows on disk cover nothing newer");
+        }
+    }
+
+    [Test]
+    public async Task CloneAsync_RefusedPage_IsRetriedAndSucceedsWhenTheSourceRecovers()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 2 };
+        source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+
+        await CreateImporter(source).CloneAsync(CancellationToken.None);
+
+        Assert.That(_codeDb.Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+            "a transiently refusing source (server-side deadline, cancellation) must be retried, not treated as fatal");
+    }
+
+    [Test]
     public async Task VerifyAndBan_HealthyClone_BansNobody()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 20 };
@@ -239,6 +270,7 @@ public class ArchiveCloneImporterTests
     private sealed class FakeCloneSource(byte rowFormatVersion) : IArchiveCloneSource
     {
         private readonly Dictionary<HistoryRowColumn, List<(byte[] Key, byte[] Value)>> _rows = [];
+        private readonly Lock _lock = new();
         private int _callCount;
 
         public List<(HistoryRowColumn Column, byte[] StartKey)> Calls { get; } = [];
@@ -250,6 +282,8 @@ public class ArchiveCloneImporterTests
         public ulong Watermark { get; set; }
 
         public int PageSize { get; set; } = int.MaxValue;
+
+        public int RefuseFirstNCalls { get; set; }
 
         public int? ThrowOnCallNumber { get; set; }
 
@@ -267,28 +301,36 @@ public class ArchiveCloneImporterTests
 
         public Task<ArchiveCloneRowPage> GetHistoryRowsAsync(HistoryRowColumn column, byte[] startKey, byte[] endKey, byte[]? cursor, CancellationToken cancellationToken)
         {
-            Calls.Add((column, startKey));
-            _callCount++;
-
-            if (ThrowOnCallNumber == _callCount || ThrowOnColumn == column)
+            lock (_lock)
             {
-                throw new InvalidOperationException("simulated crash mid-clone");
+                Calls.Add((column, startKey));
+                _callCount++;
+
+                if (ThrowOnCallNumber == _callCount || ThrowOnColumn == column)
+                {
+                    throw new InvalidOperationException("simulated crash mid-clone");
+                }
+
+                if (_callCount <= RefuseFirstNCalls)
+                {
+                    return Task.FromResult(new ArchiveCloneRowPage([], null, true));
+                }
+
+                List<(byte[] Key, byte[] Value)> matching = _rows.TryGetValue(column, out List<(byte[] Key, byte[] Value)>? list)
+                    ? list.Where(r => Bytes.BytesComparer.Compare(r.Key, startKey) >= 0 && Bytes.BytesComparer.Compare(r.Key, endKey) <= 0)
+                        .OrderBy(r => r.Key, Bytes.Comparer!)
+                        .ToList()
+                    : [];
+
+                if (cursor is not null)
+                {
+                    matching = matching.Where(r => Bytes.BytesComparer.Compare(r.Key, cursor) > 0).ToList();
+                }
+
+                List<HistoryRowEntry> page = matching.Take(PageSize).Select(r => new HistoryRowEntry(r.Key, r.Value)).ToList();
+                byte[]? nextCursor = page.Count < matching.Count ? page[^1].Key : null;
+                return Task.FromResult(new ArchiveCloneRowPage(page, nextCursor, false));
             }
-
-            List<(byte[] Key, byte[] Value)> matching = _rows.TryGetValue(column, out List<(byte[] Key, byte[] Value)>? list)
-                ? list.Where(r => Bytes.BytesComparer.Compare(r.Key, startKey) >= 0 && Bytes.BytesComparer.Compare(r.Key, endKey) <= 0)
-                    .OrderBy(r => r.Key, Bytes.Comparer!)
-                    .ToList()
-                : [];
-
-            if (cursor is not null)
-            {
-                matching = matching.Where(r => Bytes.BytesComparer.Compare(r.Key, cursor) > 0).ToList();
-            }
-
-            List<HistoryRowEntry> page = matching.Take(PageSize).Select(r => new HistoryRowEntry(r.Key, r.Value)).ToList();
-            byte[]? nextCursor = page.Count < matching.Count ? page[^1].Key : null;
-            return Task.FromResult(new ArchiveCloneRowPage(page, nextCursor, false));
         }
     }
 

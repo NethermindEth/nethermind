@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.RequestSizer;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -38,14 +39,21 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
     private const string DisconnectMessage = "Serving windowed flat history is not implemented in this node.";
     private const string TooManyInFlightMessage = "Too many concurrent nhist requests in flight for this peer.";
-    private const int MaxInFlightRequestsPerPeer = 4;
-    private const long ServedBytesPerWindowCap = 8 * 1024 * 1024;
+    public const int MaxInFlightRequestsPerPeer = 4;
     private static readonly TimeSpan ServedBytesWindow = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(8);
     private static readonly long TicksPerWindow = (long)(Stopwatch.Frequency * ServedBytesWindow.TotalSeconds);
+
+    private readonly long _servedBytesPerWindowCap;
 
     private readonly MessageDictionary<GetHistoryRangeAtHeightMessage, HistoryRangeAtHeightMessage> _getHistoryRangeRequests;
     private readonly MessageDictionary<GetChangesetsMessage, ChangesetsMessage> _getChangesetsRequests;
     private readonly MessageDictionary<GetHistoryRowsMessage, HistoryRowsMessage> _getHistoryRowsRequests;
+    private readonly LatencyBasedRequestSizer _rowsRequestSizer = new(
+        minRequestLimit: 512_000,
+        maxRequestLimit: 3_000_000,
+        lowerWatermark: TimeSpan.FromMilliseconds(2000),
+        upperWatermark: TimeSpan.FromMilliseconds(3500));
 
     private int _inFlightRequests;
     private long _windowState;
@@ -62,7 +70,8 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         IMessageSerializationService serializer,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager,
-        IHistoryServer historyServer)
+        IHistoryServer historyServer,
+        ISyncConfig syncConfig)
         : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
     {
         _getHistoryRangeRequests = new(this);
@@ -70,6 +79,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         _getHistoryRowsRequests = new(this);
         HistoryServer = historyServer;
         CanServe = historyServer.CanServe;
+        _servedBytesPerWindowCap = Math.Max(1024 * 1024, syncConfig.HistoryServingMaxBytesPerSecond);
     }
 
     public override void Init()
@@ -169,7 +179,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
         ReportIn(request, message.Content.ReadableBytes);
 
-        if (!BackgroundTaskScheduler.TryScheduleSyncServe(request, handle))
+        if (!BackgroundTaskScheduler.TryScheduleSyncServe(request, handle, ServeTimeout))
         {
             Interlocked.Decrement(ref _inFlightRequests);
         }
@@ -197,9 +207,14 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             }
         }
 
-        if (servedInWindow > ServedBytesPerWindowCap)
+        if (servedInWindow > _servedBytesPerWindowCap)
         {
-            await Task.Delay(ServedBytesWindow, cancellationToken);
+            long ticksIntoWindow = Stopwatch.GetTimestamp() - nowWindow * TicksPerWindow;
+            TimeSpan remaining = ServedBytesWindow - TimeSpan.FromSeconds((double)ticksIntoWindow / Stopwatch.Frequency);
+            if (remaining > TimeSpan.Zero)
+            {
+                await Task.Delay(remaining, CancellationToken.None);
+            }
         }
     }
 
@@ -318,7 +333,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
     public async Task<HistoryRowsMessage> GetHistoryRows(
         HistoryRowColumn column, byte[] startKey, byte[] endKey, byte[]? cursor, CancellationToken token) =>
-        await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
+        await _rowsRequestSizer.MeasureLatency(bytesLimit =>
             SendRequest(new GetHistoryRowsMessage
             {
                 Column = column,

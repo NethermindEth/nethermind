@@ -55,4 +55,13 @@ public class ArchiveCloneCoordinatorTests
 
         Assert.That(coordinator.Started, Is.True, "Flat.HistoryArchiveCloneEnabled = true must start the background clone attempt");
     }
+
+    [Test]
+    public void Constructor_WhenCloneEnabledOnAWindowedNode_RefusesToStart()
+    {
+        IFlatDbConfig config = new FlatDbConfig { HistoryArchiveCloneEnabled = true, HistoryRetentionBlocks = 432000 };
+
+        Assert.That(() => CreateCoordinator(config), Throws.InstanceOf<Core.Exceptions.InvalidConfigurationException>(),
+            "a full-archive clone target cannot also be a windowed node - both nhist consumers on one peer would breach the per-peer in-flight limit, and a windowed node must never claim full coverage");
+    }
 }

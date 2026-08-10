@@ -58,6 +58,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "On startup, clone the full flat history archive from an eligible connected nhist1 peer (SupportsFullClone advertised, matching RowFormatVersion) via GetHistoryRows instead of building it locally. Requires a static peer already serving a full (unwindowed) archive; peer discovery is out of scope, connect one via StaticPeers.", DefaultValue = "false")]
     bool HistoryArchiveCloneEnabled { get; set; }
 
+    [ConfigItem(Description = "Concurrent shard streams the archive clone keeps in flight against its source peer. Capped at 3 to stay under the nhist/1 per-peer in-flight limit (4) with headroom; the default matches a feeder's background serve concurrency, and raising it past what the source sustains only adds queueing.", DefaultValue = "2")]
+    int HistoryCloneStreamCount { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

@@ -54,7 +54,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         using GetHistoryRangeAtHeightMessage request = new()
         {
@@ -92,7 +93,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         using GetHistoryRangeAtHeightMessage request = new()
         {
@@ -131,7 +133,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         using GetChangesetsMessage request = new() { RequestId = 1, FromBlock = 10, ToBlock = 20, ResponseBytes = 5555 };
 
@@ -161,7 +164,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         using GetChangesetsMessage request = new() { RequestId = 1, FromBlock = 10, ToBlock = 20, ResponseBytes = long.MaxValue };
 
@@ -190,7 +194,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             scheduler,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         for (int i = 0; i < 4; i++)
         {
@@ -235,7 +240,8 @@ public class NHist1ProtocolHandlerTests
             Substitute.For<IMessageSerializationService>(),
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         bool initialized = false;
         handler.ProtocolInitialized += (_, _) => initialized = true;
@@ -266,7 +272,8 @@ public class NHist1ProtocolHandlerTests
             Substitute.For<IMessageSerializationService>(),
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         handler.Init();
 
@@ -294,7 +301,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         using GetHistoryRowsMessage request = new()
         {
@@ -342,7 +350,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         using GetHistoryRowsMessage request = new() { RequestId = 1, Column = HistoryRowColumn.AccountHistory, StartKey = [0], EndKey = [0xFF], Cursor = [] };
 
@@ -370,7 +379,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         HistoryServingScope scope = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 5, 100);
         using NHistStatusMessage statusMessage = new() { Scopes = [scope] };
@@ -403,7 +413,8 @@ public class NHist1ProtocolHandlerTests
             faultySerializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         for (int i = 0; i < 5; i++)
         {
@@ -435,7 +446,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             scheduler,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         for (int i = 0; i < 10; i++)
         {
@@ -470,7 +482,8 @@ public class NHist1ProtocolHandlerTests
             serializer,
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
-            historyServer);
+            historyServer,
+            new SyncConfig());
 
         using GetHistoryRangeAtHeightMessage request = new() { RequestId = 1, Cursor = [] };
 
@@ -491,7 +504,7 @@ public class NHist1ProtocolHandlerTests
             SerializerInfo.Create(new ChangesetsMessageSerializer()));
 
         NHist1ProtocolHandler handler = new(
-            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer);
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig());
 
         GetChangesetsMessage? sent = null;
         session.When(s => s.DeliverMessage(Arg.Any<GetChangesetsMessage>())).Do(call => sent = call.Arg<GetChangesetsMessage>());
@@ -528,7 +541,7 @@ public class NHist1ProtocolHandlerTests
             SerializerInfo.Create(new HistoryRowsMessageSerializer()));
 
         NHist1ProtocolHandler handler = new(
-            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer);
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig());
 
         GetHistoryRowsMessage? sent = null;
         session.When(s => s.DeliverMessage(Arg.Any<GetHistoryRowsMessage>())).Do(call => sent = call.Arg<GetHistoryRowsMessage>());
@@ -568,7 +581,7 @@ public class NHist1ProtocolHandlerTests
             SerializerInfo.Create(new ChangesetsMessageSerializer()));
 
         NHist1ProtocolHandler handler = new(
-            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer);
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig());
 
         INHistSyncPeer syncPeer = handler;
 
@@ -603,7 +616,7 @@ public class NHist1ProtocolHandlerTests
             SerializerInfo.Create(new HistoryRowsMessageSerializer()));
 
         NHist1ProtocolHandler handler = new(
-            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer);
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig());
 
         INHistSyncPeer syncPeer = handler;
 

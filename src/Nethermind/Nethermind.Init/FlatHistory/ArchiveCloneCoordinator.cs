@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -51,6 +52,12 @@ public sealed class ArchiveCloneCoordinator : IDisposable
         HistoryRowFormat rowFormat,
         ILogManager logManager)
     {
+        if (config.HistoryArchiveCloneEnabled && config.HistoryRetentionBlocks > 0)
+        {
+            throw new InvalidConfigurationException(
+                "Flat.HistoryArchiveCloneEnabled clones a FULL archive and cannot be combined with a bounded Flat.HistoryRetentionBlocks window; unset one of the two.", -1);
+        }
+
         _config = config;
         _selector = selector;
         _history = history;
@@ -81,6 +88,7 @@ public sealed class ArchiveCloneCoordinator : IDisposable
                 if (_selector.TryGetEligibleCloneSource(_rowFormat.FormatVersion, NHistPeerSelector.NoExclusions, out PeerInfo peer, out INHistSyncPeer syncPeer))
                 {
                     NHistArchiveCloneSource source = NHistArchiveCloneSource.FromPeer(peer, syncPeer);
+                    if (_logger.IsInfo) _logger.Info($"Full archive clone starting from peer {peer} (row format {source.RowFormatVersion}, source watermark {source.Watermark}).");
                     ArchiveCloneImporter importer = new(
                         source, _history, _codeDb, _metadataDb, _config, _pruner, _availability, _rowFormat, _logManager);
                     await importer.CloneAsync(token);
@@ -88,7 +96,7 @@ public sealed class ArchiveCloneCoordinator : IDisposable
                     return;
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 return;
             }

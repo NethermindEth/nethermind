@@ -2003,6 +2003,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         ReadOptions readOptions = CreateReadOptions();
         if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
+        if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(_perTableDbConfig.ReadAheadSize ?? 256UL.KiB);
 
         IntPtr iterateLowerBound;
         IntPtr iterateUpperBound;
