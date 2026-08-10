@@ -86,9 +86,8 @@ parent; a block is finalised once three consecutive rounds are chained on top of
 ### Round lifecycle
 
 [`XdcHotStuff`](XdcHotStuff.cs) implements `IBlockProducerRunner` and drives one task per round. A round is
-(re)started by a new head block, by `NewRoundSetEvent`, or at startup. Rounds are only driven while the node is
-synced (`IsSynced`, within `MaxSyncDistanceForConsensus` blocks) or on a freshly bootstrapped chain
-(`IsBootstrap`).
+(re)started by a new head block, by a round change, or at startup, and only while the node is synced or
+bootstrapping a fresh chain.
 
 ```
 SetNewRound(N)
@@ -104,9 +103,7 @@ SetNewRound(N)
          └─ BuildAndProposeBlock → XdcBlockProducer → XdcSealer → block tree
 ```
 
-Two guards prevent duplicate work within a round: `_highestSelfMinedRound` (one proposal per round) and
-`_highestVotedRound` (one vote per round). A round restart at the *same* round leaves an in-flight build
-running; only a higher scheduled round cancels it.
+The node proposes at most once and votes at most once per round.
 
 ### Leader selection
 
@@ -129,8 +126,8 @@ the expected leader.
 3. `LockQC` is unset, **or** the block's parent QC round is above `LockQC`'s round, **or** the block descends
    from the locked block (ancestry walk).
 
-Incoming votes are additionally range-limited: more than 7 blocks from the head or 7 rounds from the current
-round and they are dropped ([`OnReceiveVote`](VotesManager.cs)).
+Votes received from peers are additionally dropped when they are too far from the head block or the current
+round.
 
 ### Quorum certificates
 
@@ -138,7 +135,7 @@ round and they are dropped ([`OnReceiveVote`](VotesManager.cs)).
 Vote (BlockRoundInfo + GapNumber, signed)
    │  signature recovered against the gap snapshot's candidate set
    ▼
-XdcPool<Vote> keyed by (round, block hash)
+Vote pool, keyed by (round, block hash)
    │  count ≥ masternodes × CertificateThreshold
    │  signatures re-checked against the epoch's masternodes, deduplicated by signer
    ▼
@@ -148,9 +145,8 @@ QuorumCertificate { ProposedBlockInfo, Signature[], GapNumber }
 QuorumCertificateManager.CommitCertificate
 ```
 
-Votes may arrive before the block they refer to; they are buffered and drained from `NewSuggestedBlock`.
-QC construction is idempotent per round (`_qcBuildStartedByRound`), and pools are pruned outside a
-`PoolHygieneRound` (10-round) retention window.
+Votes may arrive before the block they refer to; they are buffered and drained once the block shows up. Vote
+pools are pruned to a short window of recent rounds.
 
 `CommitCertificate` ([`QuorumCertificateManager`](QuorumCertificateManager.cs)) then:
 
@@ -160,12 +156,11 @@ QC construction is idempotent per round (`_qcBuildStartedByRound`), and pools ar
    `IBlockTree.ForkChoiceUpdated`;
 4. advances the round to `qc.Round + 1`.
 
-It is also invoked for every processed header via `IBlockTree.OnUpdateMainChain`, which is how a syncing node
-rebuilds consensus state from the chain alone.
+It is also invoked for every processed header as the main chain advances, which is how a syncing node rebuilds
+consensus state from the chain alone.
 
-`VerifyCertificate` checks the signature count against `ceil(masternodes × CertificateThreshold)`, verifies and
-deduplicates each signature over the vote hash, and validates that the QC's `GapNumber` matches the gap block
-derived from the epoch switch.
+Certificate verification requires `ceil(masternodes × CertificateThreshold)` distinct valid signatures over the
+vote hash, and that the QC's `GapNumber` matches the gap block implied by the epoch switch.
 
 ### 3-chain finalisation
 
@@ -179,9 +174,8 @@ Round N-2          Round N-1          Round N
      └── committed when QC(D) is processed
 ```
 
-[`FindCommitTarget`](QuorumCertificateManager.cs) requires `round-1 == parent.round` and
-`round-2 == grandparent.round`, and refuses to commit within two blocks of `SwitchBlock`. `TryCommitBlock`
-rejects a target that would move the committed head backwards.
+The rounds must be strictly consecutive — a gap anywhere in the three-block chain blocks the commit — and the
+committed head never moves backwards.
 
 ### Timeouts and liveness
 
@@ -202,25 +196,23 @@ HandleTimeoutVote (own or received)
          └─ ProcessTimeoutCertificate → HighestTC, SetNewRound(round + 1)
 ```
 
-Timeouts whose gap number is more than three epochs from the head are discarded.
+Timeouts referring to an epoch far from the head are discarded.
 
 ### SyncInfo
 
 [`SyncInfoManager`](SyncInfoManager.cs) exchanges `(HighestQC, HighestTC)` so a lagging node can jump to the
 current round without waiting for blocks. Incoming `SyncInfo` is rejected when both certificates are at or
 below what the node already knows, or when either certificate fails verification; otherwise the TC is processed
-and the QC committed. A `IncomingMessageBlockNotFoundException` is tolerated — it just means the node is still
-syncing the referenced block.
+and the QC committed.
 
 ### Fork choice
 
 [`XdcBlockTree`](XdcBlockTree.cs) replaces total-difficulty fork choice, since every XDC block adds difficulty 1
 ([`XdcDifficultyCalculator`](XdcDifficultyCalculator.cs)):
 
-- `Suggest` walks the new block's ancestry and accepts it only if it descends from `HighestCommitBlock`.
-  Blocks at or below the committed height are `AlreadyKnown` if already stored, otherwise `InvalidBlock`.
-- Equal-TD ties are broken by consensus round, then by `IsSelfMined` — never by hash, which the base
-  implementation would otherwise fall back to.
+- A suggested block is accepted only if it descends from `HighestCommitBlock`; anything on a dead fork, or at or
+  below the committed height, is rejected.
+- Equal-TD ties are broken by consensus round, then by whether the node produced the block itself.
 
 ### Forensics
 
@@ -245,23 +237,16 @@ epochBase + EpochLength         Next epoch switch, using the snapshot above
 ```
 
 With `EpochLength = 900` and `Gap = 450` the gap block sits halfway through the epoch, 450 blocks before the
-epoch it configures. [`ISnapshotManager.IsTimeForSnapshot`](ISnapshotManager.cs) is the predicate
-(`number % EpochLength == EpochLength − Gap`, plus `SwitchBlock` itself); the snapshot itself is
-`{ BlockNumber, HeaderHash, NextEpochCandidates }`, RLP-encoded into the `XdcSnapshots` database and cached in
-memory. [`SnapshotManager`](SnapshotManager.cs) reads candidates from the masternode voting contract, ordered
-by stake, or from `GenesisMasterNodes` at genesis. If a snapshot is missing but the gap block was processed and
-its state is available, it is recomputed on demand (`TryRecoverSnapshot`).
+epoch it configures. A snapshot is `{ BlockNumber, HeaderHash, NextEpochCandidates }`, RLP-encoded into the
+`XdcSnapshots` database and cached in memory. [`SnapshotManager`](SnapshotManager.cs) reads candidates from the
+masternode voting contract ordered by stake, or from `GenesisMasterNodes` at genesis, and can recompute a
+missing snapshot on demand as long as the gap block's state is still available.
 
-Epoch-switch detection ([`EpochSwitchManager.IsEpochSwitchAtBlock`](EpochSwitchManager.cs)):
-
-- below `SwitchBlock` (V1): `number % EpochLength == 0`;
-- at `SwitchBlock`: always true;
-- above: true when the parent QC's round is below `round − (round % EpochLength)`, or the QC points at
-  `SwitchBlock`.
-
-`GetEpochSwitchInfo` walks back to the epoch-switch block and caches `EpochSwitchInfo`
-(`Masternodes`, `StandbyNodes`, `Penalties`, epoch switch block info) per header hash. `GetBlockByEpochNumber`
-resolves an epoch number to its switch block using a round→block cache, a short linear scan, then binary search.
+Epoch-switch detection ([`EpochSwitchManager`](EpochSwitchManager.cs)) differs either side of `SwitchBlock`:
+below it, a switch is every `EpochLength`th block; above it, a block starts a new epoch when its parent QC's
+round falls in the previous epoch. [`BaseEpochSwitchManager`](BaseEpochSwitchManager.cs) resolves and caches the
+`EpochSwitchInfo` (masternodes, standby nodes, penalties) for any header by walking back to its epoch-switch
+block.
 
 [`MasternodesCalculator`](MasternodesCalculator.cs) derives the next committee:
 
@@ -271,7 +256,8 @@ penalties  = PenaltyHandler.HandlePenalties(...)
 masternodes = (candidates − penalties).Take(MaxMasternodes)
 ```
 
-At `SwitchBlock + 1` penalties are skipped — the V1→V2 handover uses the raw candidate list.
+The first V2 epoch is the exception: it uses the raw candidate list, since there is no V2 history to penalise
+against yet.
 
 Under `TIPUpgradeReward`, candidates beyond the masternode cap are further split into **protector** and
 **observer** tiers (`MaxProtectorNodes`, `MaxObserverNodes`) for reward purposes.
@@ -307,18 +293,17 @@ transactions observed two epochs back (blocks at heights that are multiples of `
   ([`IMintedRecordContract`](Contracts/IMintedRecordContract.cs)).
 
 Each signer's reward is split 90% to the candidate owner (resolved through the masternode voting contract) and
-10% to `FoundationWalletAddr`; when the owner *is* the foundation wallet, only the foundation share is paid, to
-match the reference client's map semantics.
+10% to `FoundationWalletAddr`.
 
-The per-epoch breakdown is attached to the header and persisted by [`RewardsStore`](RewardsStore.cs) in the
-`XdcRewards` database, which backs `eth_getRewardByHash` and `XDPoS_getRewardByAccount`.
+The per-epoch breakdown is persisted by [`RewardsStore`](RewardsStore.cs) in the `XdcRewards` database, which
+backs `eth_getRewardByHash` and `XDPoS_getRewardByAccount`.
 
 ### Signing transactions
 
 [`SignTransactionManager`](SignTransactionManager.cs) is what makes the above possible. On every processed head
 block whose number is a multiple of `MergeSignRange`, a masternode submits a zero-gas-price transaction to
-`BlockSignerContract` carrying `sign(uint256 blockNumber, bytes32 blockHash)`. Only recent blocks are signed
-(`MergeSignRange × MinePeriod × 2` seconds), and each hash is signed at most once.
+`BlockSignerContract` carrying `sign(uint256 blockNumber, bytes32 blockHash)`. Only recent blocks are signed, so
+a node catching up does not flood the pool replaying old ones.
 
 ---
 
@@ -330,13 +315,13 @@ block whose number is a multiple of `MergeSignRange`, a masternode submits a zer
 | --- | --- |
 | `Validators` | Concatenated masternode addresses; set only on epoch-switch blocks |
 | `Penalties` | Concatenated penalised addresses; set only on epoch-switch blocks |
-| `Validator` | 65-byte ECDSA seal over the header (`RlpBehaviors.ForSealing`) |
+| `Validator` | 65-byte ECDSA seal over the header |
 | `ExtraConsensusData` | Decoded from `ExtraData` |
 | `IsSelfMined` | Local flag used as the last fork-choice tie-break |
 
-`ExtraData` for a V2 block is `[0x02] ++ RLP(ExtraFieldsV2)`, where
-[`ExtraFieldsV2`](Types/ExtraFieldsV2.cs) is `{ BlockRound, QuorumCert }`. Headers below `SwitchBlock` keep the
-V1 clique-style layout (32-byte vanity, packed signer list, 65-byte seal), parsed by `ParseV1Masternodes`.
+`ExtraData` for a V2 block is a consensus-version byte followed by RLP-encoded
+[`ExtraFieldsV2`](Types/ExtraFieldsV2.cs) — `{ BlockRound, QuorumCert }`. Headers below `SwitchBlock` keep the
+V1 clique-style layout: 32-byte vanity, packed signer list, 65-byte seal.
 
 Other header invariants: uncles must be empty ([`MustBeEmptyUnclesValidator`](MustBeEmptyUnclesValidator.cs)),
 difficulty is always 1, `MixHash` is zero, and on epoch-switch blocks the vote nonce must be zero.
@@ -354,8 +339,7 @@ Snapshot            { BlockNumber, HeaderHash, NextEpochCandidates }
 EpochSwitchInfo     { Masternodes, StandbyNodes, Penalties, EpochSwitchBlockInfo, EpochSwitchParentBlockInfo }
 ```
 
-Vote and timeout hashes are the Keccak of their RLP encoding with `RlpBehaviors.ForSealing`; all signatures are
-required to be low-S.
+Votes and timeouts are signed over the Keccak hash of their RLP encoding, and all signatures must be low-S.
 
 ---
 
@@ -372,8 +356,8 @@ required to be low-S.
 | `0xe1` | `TimeoutMsg` | `TimeoutCertificateManager.OnReceiveTimeout` |
 | `0xe2` | `SyncInfoMsg` | `SyncInfoManager.VerifySyncInfo` → `ProcessSyncInfo` |
 
-Votes and timeouts are ignored entirely while the node is syncing (unless it is bootstrapping from genesis).
-Re-broadcast is deduplicated per message hash; the node's own votes and timeouts always go out.
+Votes and timeouts are ignored entirely while the node is syncing (unless it is bootstrapping from genesis), and
+re-broadcast is deduplicated so a message is forwarded to a peer at most once.
 
 [`XdcP2PCapabilityResolver`](XdcP2PCapabilityResolver.cs) replaces the default resolver so the node advertises
 exactly `eth/62`, `eth/63` and `eth/100`.
@@ -416,21 +400,19 @@ those blocks. XDC therefore rebuilds them as part of state sync:
 | Randomize | `RandomizeSMCBinary` | Free |
 | Trading / lending / trading-state | `XDCXAddressBinary`, `XDCXLendingAddressBinary`, `XDCXLendingFinalizedTradeAddressBinary`, `TradingStateAddressBinary` (post-`TipXDCX`) | Free, nonce checks skipped |
 
-[`XdcTransactionProcessor`](XdcTransactionProcessor.cs) implements this by zeroing intrinsic gas, effective gas
-price and gas purchase for those transactions and short-circuiting execution to an empty (successful) receipt.
+"Free" means the transaction pays no gas: [`XdcTransactionProcessor`](XdcTransactionProcessor.cs) skips the gas
+purchase, charges no intrinsic gas, and produces an empty successful receipt.
 
 ### Fees and blacklist
 
 - Post-`TipTrc21Fee`, gas fees are paid to the **candidate owner** of the block beneficiary rather than the
-  beneficiary itself; if the owner cannot be resolved the fee is dropped.
-- Post-`BlackListHFNumber`, transactions with a blacklisted sender or recipient are rejected with
-  `XdcTransactionResult.ContainsBlacklistedAddress`.
+  beneficiary itself.
+- Post-`BlackListHFNumber`, transactions with a blacklisted sender or recipient are rejected.
 
 ### Block execution context
 
-[`XdcBlockProcessor`](XdcBlockProcessor.cs) derives `PrevRandao` as `Keccak(bigEndianBlockNumber)` — matching
-Go's `big.Int.Bytes()`, where zero encodes as empty — and forces blob base fee to zero, since XDC enables the
-`BLOBBASEFEE` opcode without blob transactions.
+[`XdcBlockProcessor`](XdcBlockProcessor.cs) derives `PrevRandao` from the block number rather than a beacon
+value, and forces blob base fee to zero, since XDC enables the `BLOBBASEFEE` opcode without blob transactions.
 
 ### Gas limit and base fee
 
@@ -442,8 +424,7 @@ Go's `big.Int.Bytes()`, where zero encodes as empty — and forces blob base fee
 ### Transaction pool
 
 - [`SignTransactionFilter`](TxPool/SignTransactionFilter.cs) accepts special transactions only from current
-  epoch candidates, and requires a sign transaction's block number to be within two epochs of the head. Accepted
-  special transactions are marked as service transactions.
+  epoch candidates, and only when the signed block is recent.
 - [`XdcTxGossipPolicy`](TxPool/XdcTxGossipPolicy.cs) gossips sign transactions but withholds the other
   special-handling transactions.
 - [`XdcTxFilterPipeline`](TxPool/XdcTxFilterPipeline.cs) lets special transactions bypass the block-producer
@@ -460,9 +441,8 @@ Go's `big.Int.Bytes()`, where zero encodes as empty — and forces blob base fee
 | `XdcSnapshots` | RLP-encoded candidate snapshots, keyed by gap block hash | [`XdcModule`](XdcModule.cs) |
 | `XdcRewards` | JSON epoch-reward breakdowns, keyed by epoch block hash | [`RewardsStore`](RewardsStore.cs) |
 
-Neither database has dedicated RocksDB tuning options, so
-[`XdcRocksDbConfigFactory`](XdcRocksDbConfigFactory.cs) decorates the default factory to skip config validation
-for them.
+Neither has dedicated RocksDB tuning options, which is why
+[`XdcRocksDbConfigFactory`](XdcRocksDbConfigFactory.cs) exists.
 
 [`XdcHeaderStore`](XdcHeaderStore.cs), [`XdcBlockStore`](XdcBlockStore.cs) and
 [`XdcBlockhashStore`](XdcBlockhashStore.cs) exist so that headers round-trip through the XDC RLP decoders
@@ -513,8 +493,8 @@ All XDC parameters live under `engine.XDPoS.params` in the chainspec and are bou
 [`XdcChainSpecBasedSpecProvider`](Spec/XdcChainSpecBasedSpecProvider.cs).
 
 Note that XDC has **two** dimensions of configuration: standard block-number forks (`TipTrc21Fee`,
-`TIPUpgradeReward`, …) and *round*-based V2 configs. `GetXdcSpec(header, round)` resolves both and caches the
-result per `(blockTransition, roundConfig)` pair.
+`TIPUpgradeReward`, …) and *round*-based V2 configs. Both are resolved together, so the effective spec depends
+on the block number *and* the consensus round.
 
 ### Chain-level parameters
 
@@ -553,8 +533,8 @@ result per `(blockTransition, roundConfig)` pair.
 ### `v2Configs` — round-scoped parameters
 
 `v2Configs` is a list ordered by `SwitchRound`; the entry with the greatest `SwitchRound ≤ round` applies. The
-list **must** contain an entry with `SwitchRound: 0` and must not repeat a round — both are validated at load
-time ([`CheckConfig`](Spec/XdcChainSpecEngineParameters.cs)).
+list **must** contain an entry with `SwitchRound: 0` and must not repeat a round — a chainspec that violates
+either fails to load.
 
 | Field | Unit | Description |
 | --- | --- | --- |
@@ -616,9 +596,9 @@ Areas worth covering when changing this module:
 
 - **Consensus logic** — leader selection at epoch boundaries, voting-rule rejection cases, QC/TC threshold
   arithmetic, 3-chain commit and its round-continuity guards.
-- **Fork choice** — `XdcBlockTree.Suggest` against the committed block, equal-TD tie-breaks.
-- **Epoch machinery** — snapshot gap arithmetic, `GetBlockByEpochNumber` across the V1/V2 boundary, snapshot
-  recovery during state sync.
+- **Fork choice** — dead-fork rejection against the committed block, equal-TD tie-breaks.
+- **Epoch machinery** — snapshot gap arithmetic, epoch lookups across the V1/V2 boundary, snapshot recovery
+  during state sync.
 - **Penalties and rewards** — both sides of `TIPUpgradePenalty` / `TIPUpgradeReward`, signing-transaction
   counting across `MergeSignRange`.
 - **Execution** — special-transaction gas and nonce handling, TRC21 fee redirection, blacklist enforcement.
