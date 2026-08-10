@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -62,9 +63,12 @@ public static class VirtualMachineStatics
 
     public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     public static readonly OutOfGasException PrecompileOutOfGasException = new();
+
+    [DoesNotReturn]
+    internal static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
 }
 
-public unsafe partial class VirtualMachine<TGasPolicy>(
+public partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
     ILogManager? logManager) : IVirtualMachine<TGasPolicy>
@@ -96,15 +100,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public IWorldState WorldState => _worldState;
     public ref readonly ValueHash256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
-#if ZK_EVM
-    // Field, not auto-property: the dispatch loop polls this every opcode, and in the huge
-    // RunByteCodeCore body the compiler stops inlining trivial getters, turning the poll into an
-    // out-of-line call per executed opcode on the zkVM guest. Guest-only, so the public API
-    // (and its binary compatibility) is unchanged for every other build.
-    public object ReturnData;
-#else
-    public object ReturnData { get; set; }
-#endif
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;

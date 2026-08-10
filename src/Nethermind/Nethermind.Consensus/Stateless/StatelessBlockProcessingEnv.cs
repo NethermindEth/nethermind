@@ -30,18 +30,12 @@ public class StatelessBlockProcessingEnv(
 {
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
-    // Per-env (i.e. per-block) code cache: within one block it avoids re-reading code and
-    // re-running jump-destination analysis on every CALL, while the first fetch of each code hash
-    // still reads through the world state, so witness-completeness checks keep firing. The
-    // process-wide StaticCodeCache.Instance must not be used here: it would leak code across
-    // blocks and mask deliberately missing witness code (negative validation tests).
+    // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
+    // witness code. The first fetch of each hash still reads through the world state.
     private readonly StaticCodeCache _codeCache = new(CodeCacheCapacity);
 
-    // A single block touches at most a few hundred distinct code hashes, while the node-wide
-    // MemoryAllowance.CodeCacheSize rounds up to 8192 entries - roughly 0.4 MB allocated and zeroed
-    // per env, i.e. per block: an LOH allocation per validated block on the host, memory the bump
-    // allocator never reclaims in the zkVM guest. Overflowing this cache is free of correctness
-    // consequences: the entry is simply re-read and re-analysed.
+    // A block touches a few hundred distinct hashes; MemoryAllowance.CodeCacheSize would round up to
+    // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
     private const int CodeCacheCapacity = 512;
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();

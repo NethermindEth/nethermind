@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Int256;
@@ -7,12 +7,11 @@ namespace Nethermind.Evm;
 
 /// <summary>
 /// zkEVM guest variant of the per-block gas-price metrics: every member is a no-op.
-/// The real implementation (Metrics.GasPrice.std.cs) aggregates prices in floating
-/// point on the per-transaction hot path; the guest targets rv64ima (no FPU), nobody
-/// reads the gauges inside the zkVM, and skipping the three CAS loops per transaction
-/// removes proving cost. Signatures mirror the std file so shared callers
-/// (TransactionProcessor, BlockProcessor executors, ProcessingStats) compile unchanged.
 /// </summary>
+/// <remarks>
+/// The std implementation aggregates in floating point per transaction, but the guest targets rv64ima
+/// (no FPU) and nobody reads the gauges inside the zkVM.
+/// </remarks>
 public partial class Metrics
 {
     internal static long BlockTransactions => 0;

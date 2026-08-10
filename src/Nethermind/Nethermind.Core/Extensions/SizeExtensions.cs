@@ -25,9 +25,7 @@ public static class SizeExtensions
                 return "0" + suf[0];
             }
 
-            // Integer/decimal arithmetic only (no Math.Log/Pow over double):
-            // this assembly is linked into the zkEVM guest, which targets a
-            // core without an FPU, and System.Decimal is software integer math.
+            // Integer/decimal only (no Math.Log/Pow): this assembly links into the zkEVM guest, which has no FPU.
             long bytes = Math.Abs(@this);
             long unit = useSi ? 1000L : 1024L;
             int place = 0;
@@ -39,12 +37,10 @@ public static class SizeExtensions
             }
 
             decimal num = Math.Sign(@this) * Math.Round((decimal)bytes / divisor, precision);
-            // decimal keeps the scale it was rounded to, so 1025 would render "1.0KiB" where the
-            // previous double math rendered "1KiB". The '#' placeholders drop trailing zeros and
-            // reproduce the old output exactly. Invariant culture keeps the '.' separator (and the
-            // tests meaningful) regardless of machine locale.
+            // decimal keeps its rounded scale, so 1025 would render "1.0KiB"; '#' drops the trailing zeros.
+            // Invariant culture keeps '.' regardless of machine locale.
             return string.Concat(num.ToString(precision > 0 ? "0." + new string('#', precision) : "0",
-                CultureInfo.InvariantCulture), addSpace ? " " : "", suf[place]);
+                CultureInfo.InvariantCulture), addSpace ? " " : string.Empty, suf[place]);
         }
     }
 

@@ -55,7 +55,7 @@ build: dotnet-build
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
-		--substitution $(SRC_DIR)/substitutions.zisk.xml \
+		--substitution $(SRC_DIR)/substitutions.xml \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.bflat.manifest \
 		$(ISA_GATES) \
