@@ -8,6 +8,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Eip2930;
 using Nethermind.Specs;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -149,5 +150,122 @@ public class TxPoolSourceTests
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
         Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }).UsingTransactionComparer());
+    }
+
+    [Test]
+    public void GetTransactions_should_filter_transactions_that_are_under_gassed_for_next_fork()
+    {
+        TestSpecProvider specProvider = new(Osaka.Instance)
+        {
+            NextForkSpec = Amsterdam.Instance,
+            ForkOnBlockNumber = 1
+        };
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+
+        AccessList.Builder accessListBuilder = new();
+        accessListBuilder.AddAddress(TestItem.AddressC);
+        for (int i = 0; i < 10; i++)
+        {
+            accessListBuilder.AddStorage((UInt256)i);
+        }
+
+        Transaction underGassedTransaction = Build.A.Transaction
+            .WithType(TxType.AccessList)
+            .WithAccessList(accessListBuilder.Build())
+            .WithGasLimit(42_400)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(underGassedTransaction.SenderAddress!), [underGassedTransaction] }
+        });
+        txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
+
+        ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
+            .WithHeadTxFilter()
+            .Build;
+
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig());
+
+        Transaction[] result = txSource.GetTransactions(new BlockHeader(), long.MaxValue).ToArray();
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void GetTransactions_should_not_let_an_invalid_blob_displace_a_valid_blob()
+    {
+        TestSpecProvider specProvider = new(Osaka.Instance)
+        {
+            NextForkSpec = Amsterdam.Instance,
+            ForkOnBlockNumber = 1
+        };
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+
+        Transaction invalidBlob = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Amsterdam.Instance)
+            .WithAccessList(BuildAccessList())
+            .WithGasLimit(42_400)
+            .WithMaxFeePerGas(2.GWei)
+            .WithMaxPriorityFeePerGas(2.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Transaction validBlob = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Amsterdam.Instance)
+            .WithAccessList(BuildAccessList())
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyB)
+            .TestObject;
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(invalidBlob.SenderAddress!), [new LightTransaction(invalidBlob)] },
+            { new AddressAsKey(validBlob.SenderAddress!), [new LightTransaction(validBlob)] }
+        });
+        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == invalidBlob.Hash), out Arg.Any<Transaction?>())
+            .Returns(x =>
+            {
+                x[1] = invalidBlob;
+                return true;
+            });
+        txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == validBlob.Hash), out Arg.Any<Transaction?>())
+            .Returns(x =>
+            {
+                x[1] = validBlob;
+                return true;
+            });
+        txPool.SupportsBlobs.Returns(true);
+
+        ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
+            .WithHeadTxFilter()
+            .Build;
+
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig { BlockProductionBlobLimit = 1 });
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+
+        Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
+
+        Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
+
+        static AccessList BuildAccessList()
+        {
+            AccessList.Builder accessListBuilder = new();
+            accessListBuilder.AddAddress(TestItem.AddressC);
+            for (int i = 0; i < 10; i++)
+            {
+                accessListBuilder.AddStorage((UInt256)i);
+            }
+
+            return accessListBuilder.Build();
+        }
     }
 }

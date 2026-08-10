@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -44,6 +45,8 @@ namespace Nethermind.Consensus.Producers
         {
             ulong blockNumber = parent.Number + 1;
             IReleaseSpec spec = NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig);
+            IReleaseSpec parentSpec = _specProvider.GetSpec(parent);
+            bool isForkBoundary = !ReferenceEquals(spec, parentSpec);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
                 _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
@@ -52,11 +55,13 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
+            bool IsValidTransactionForNextBlock(Transaction tx) => _txFilterPipeline.Execute(tx, parent, spec)
+                && (!isForkBoundary || IntrinsicGasTxValidator.Instance.IsWellFormed(tx, spec));
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, maxBlobCount);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, IsValidTransactionForNextBlock, gasLimit);
+            Func<Transaction, bool> blobFilter = isForkBoundary ? IsValidBlobForNextBlock : IsValidTransactionForNextBlock;
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, blobFilter, maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -104,6 +109,19 @@ namespace Nethermind.Consensus.Producers
 
             if (_logger.IsTrace) _logger.Trace($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
 
+            bool IsValidBlobForNextBlock(Transaction blobTx)
+            {
+                if (!TryGetFullBlobTx(blobTx, out Transaction? fullBlobTx)
+                    || fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
+                    || spec.BlobProofVersion != wrapper.Version
+                    || wrapper.Blobs.Length != blobTx.BlobVersionedHashes?.Length)
+                {
+                    return false;
+                }
+
+                return IsValidTransactionForNextBlock(fullBlobTx);
+            }
+
             bool ResolveBlob(Transaction blobTx, out Transaction fullBlobTx)
             {
                 if (!TryGetFullBlobTx(blobTx, out fullBlobTx))
@@ -121,6 +139,12 @@ namespace Nethermind.Consensus.Producers
                 if (spec.BlobProofVersion != wrapper.Version)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {wrapper.Version}.");
+                    return false;
+                }
+
+                if (!IsValidTransactionForNextBlock(fullBlobTx))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, it is not valid for the next block.");
                     return false;
                 }
 

@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -215,7 +216,6 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
             Assert.That(_txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.True);
             Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
@@ -225,6 +225,50 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(blobTxFromDb, Is.EqualTo(blobTxAdded).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
             }
+        }
+
+        [Test]
+        public async Task should_revalidate_persistent_blob_transactions_after_fork()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            _txPool = CreatePool(txPoolConfig, provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AccessList.Builder accessListBuilder = new();
+            accessListBuilder.AddAddress(TestItem.AddressC);
+            for (int i = 0; i < 10; i++)
+            {
+                accessListBuilder.AddStorage((UInt256)i);
+            }
+
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithAccessList(accessListBuilder.Build())
+                .WithGasLimit(42_400)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            await AddEmptyBlock();
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }
 
         [Test]

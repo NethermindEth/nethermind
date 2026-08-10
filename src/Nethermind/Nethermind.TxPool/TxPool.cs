@@ -54,6 +54,7 @@ namespace Nethermind.TxPool
         private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly ITxValidator _validator;
         private readonly ITxValidator? _headTxValidator;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
@@ -78,6 +79,7 @@ namespace Nethermind.TxPool
         private readonly ITimer? _timer;
         private ulong _lastBlockNumber = ulong.MaxValue;
         private Hash256? _lastBlockHash;
+        private IReleaseSpec? _lastRevalidatedSpec;
 
         private bool _isDisposed;
         private long _pendingTransactionsAdded = 0;
@@ -114,6 +116,7 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            _validator = validator;
             _headTxValidator = headTxValidator;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
@@ -145,7 +148,10 @@ namespace Nethermind.TxPool
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             if (_blobTransactions.Count > 0)
+            {
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
+                RevalidateTransactionsAtSpecChange();
+            }
 
             _headInfo.HeadChanged += OnHeadChange;
 
@@ -804,6 +810,45 @@ namespace Nethermind.TxPool
         {
             _transactions.UpdatePool(_accounts, _updateBucket);
             _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            RevalidateTransactionsAtSpecChange();
+        }
+
+        private void RevalidateTransactionsAtSpecChange()
+        {
+            IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+            if (ReferenceEquals(_lastRevalidatedSpec, headSpec))
+            {
+                return;
+            }
+
+            _lastRevalidatedSpec = headSpec;
+            foreach (Transaction transaction in _transactions.GetSnapshot())
+            {
+                Revalidate(transaction, headSpec);
+            }
+
+            foreach (Transaction lightTransaction in _blobTransactions.GetSnapshot())
+            {
+                if (lightTransaction.Hash is Hash256 hash
+                    && _blobTransactions.TryGetValue(hash, out Transaction? fullTransaction))
+                {
+                    Revalidate(fullTransaction, headSpec);
+                }
+            }
+        }
+
+        void Revalidate(Transaction transaction, IReleaseSpec headSpec)
+        {
+            if (_validator.IsWellFormed(transaction, headSpec))
+            {
+                return;
+            }
+
+            if (transaction.Hash is Hash256 hash)
+            {
+                _hashCache.DeleteFromLongTerm(hash);
+                RemoveTransaction(hash);
+            }
         }
 
         private void UpdateBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)

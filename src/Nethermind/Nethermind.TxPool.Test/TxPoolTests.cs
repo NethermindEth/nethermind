@@ -16,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -285,6 +286,46 @@ namespace Nethermind.TxPool.Test
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
             }
+        }
+
+        [Test]
+        public async Task should_evict_transactions_that_become_under_gassed_after_fork()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+
+            AccessList.Builder accessListBuilder = new();
+            accessListBuilder.AddAddress(TestItem.AddressC);
+            for (int i = 0; i < 10; i++)
+            {
+                accessListBuilder.AddStorage((UInt256)i);
+            }
+
+            Transaction transaction = Build.A.Transaction
+                .WithType(TxType.AccessList)
+                .WithAccessList(accessListBuilder.Build())
+                .WithGasLimit(42_400)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(transaction);
+
+            _txPool = CreatePool(specProvider: provider);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
+
+            await AddEmptyBlock();
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
         }
 
         [Test]
