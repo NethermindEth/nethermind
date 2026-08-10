@@ -208,12 +208,12 @@ namespace Nethermind.Network
             bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
-                PeerInfo? peer = _syncPool.GetPeer(session.Node);
-                if (peer is not null)
+                if (_syncPeers.TryGetValue(session.SessionId, out SyncPeerProtocolHandlerBase? sessionSyncPeer))
                 {
-                    peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
+                    sessionSyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                     if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
                     if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
+                    if (handler.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite registered directly on sync peer {session}.");
                 }
                 else
                 {
@@ -226,6 +226,7 @@ namespace Nethermind.Network
                         });
 
                     if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
+                    if (handler.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite parked for {session} until its eth sync peer completes.");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
@@ -290,9 +291,12 @@ namespace Nethermind.Network
                     {
                         foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
                         {
+                            if (registration.Key != session.SessionId) continue;
+
                             handler.RegisterSatelliteProtocol(registration.Value);
                             if (registration.Value.IsPriority) handler.IsPriority = true;
                             if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
+                            if (registration.Value.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite registered on sync peer {session} from parking.");
                         }
                     }
 

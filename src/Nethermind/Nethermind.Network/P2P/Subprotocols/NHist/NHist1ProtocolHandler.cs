@@ -90,6 +90,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             SupportsFullClone = HistoryServer.CanServeFullClone,
             RowFormatVersion = HistoryServer.RowFormatVersion
         });
+        if (Logger.IsInfo) Logger.Info($"nhist1 initialized on {Session}: sent status (SupportsFullClone={HistoryServer.CanServeFullClone}, row format {HistoryServer.RowFormatVersion}, scopes {HistoryServer.ServedScopes.Count}).");
         NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
     }
 
@@ -109,6 +110,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 PeerServedScopes = statusMessage.Scopes;
                 PeerSupportsFullClone = statusMessage.SupportsFullClone;
                 PeerRowFormatVersion = statusMessage.RowFormatVersion;
+                if (Logger.IsInfo) Logger.Info($"nhist1 status from {Session}: SupportsFullClone={statusMessage.SupportsFullClone}, row format {statusMessage.RowFormatVersion}, scopes {statusMessage.Scopes.Length}.");
                 return true;
             case NHist1MessageCode.GetHistoryRangeAtHeight:
                 if (ShouldServeNHist())
