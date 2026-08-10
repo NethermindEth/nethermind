@@ -66,7 +66,8 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 // EIP-8141: defense in depth — a blob-carrying frame tx here has no resolvable EIP-7594
-                // sidecar, so producing it would leave the block's blobs bundle incomplete.
+                // sidecar, and the blobs-bundle builders filter on SupportsBlobs (type-6 excluded), so
+                // producing it would leave the block's blobs bundle incomplete.
                 if (currentTx.Type == TxType.FrameTx && currentTx.CarriesBlobs)
                 {
                     return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");

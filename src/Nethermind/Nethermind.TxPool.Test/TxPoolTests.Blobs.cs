@@ -1453,6 +1453,26 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8141: a blob-carrying frame tx must clear the same blob-pool fee floor as a type-3 tx, so one priced
+        // below the current blob base fee is rejected as FeeTooLow rather than admitted via the SupportsBlobs gate.
+        [Test]
+        public void Blob_carrying_frame_tx_below_current_blob_base_fee_is_rejected()
+        {
+            ISpecProvider specProvider = GetBogotaSpecProvider();
+            ChainHeadInfoProvider chainHeadInfoProvider = new(new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, _stateProvider)
+            {
+                CurrentFeePerBlobGas = 100
+            };
+
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, CurrentBlobBaseFeeRequired = true };
+            _txPool = CreatePool(config: txPoolConfig, specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, maxFeePerBlobGas: 99);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FeeTooLow));
+        }
+
         [Test]
         public void type3_blob_tx_routing_is_unchanged_alongside_frame_txs()
         {
@@ -1478,7 +1498,9 @@ namespace Nethermind.TxPool.Test
         }
 
         // EIP-8141: a blob-carrying frame tx lives in the blob pool, so the on-head expiry pass must scan it there
-        // (the blob pool's Inserted/Removed feed the same expiry counter as the normal pool).
+        // (the blob pool's Inserted/Removed feed the same expiry counter as the normal pool). This holds only under
+        // BlobsSupportMode.InMemory: persistent storage's LightTransaction hard-codes TxType.Blob (SupportsFrames
+        // false), so it cannot be evicted until the light record carries the tx type.
         [Test]
         public async Task Expired_blob_carrying_frame_tx_is_evicted_from_blob_pool_on_new_head()
         {
@@ -1531,7 +1553,7 @@ namespace Nethermind.TxPool.Test
 
         private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null)
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null)
         {
             byte[][] versionedHashes = null;
             if (blobCount > 0)
@@ -1566,7 +1588,7 @@ namespace Nethermind.TxPool.Test
                 GasLimit = 1_000_000,
                 GasPrice = 1,
                 DecodedMaxFeePerGas = 1.GWei,
-                MaxFeePerBlobGas = blobCount > 0 ? 1.GWei : UInt256.Zero,
+                MaxFeePerBlobGas = blobCount > 0 ? (maxFeePerBlobGas ?? 1.GWei) : null,
                 Frames = [.. frames],
                 FrameSignatures = [],
                 BlobVersionedHashes = versionedHashes,
