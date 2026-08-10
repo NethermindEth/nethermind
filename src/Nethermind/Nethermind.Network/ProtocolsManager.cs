@@ -10,6 +10,7 @@ using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -39,6 +40,8 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
         private readonly IProtocolHandlerFactory[] _factories;
         private readonly IP2PCapabilityResolver[] _capabilityResolvers;
+        private readonly ISyncConfig _syncConfig;
+        private readonly IFlatDbConfig _flatDbConfig;
         private readonly Lock _capabilitiesLock = new();
         private Capability[]? _cachedCapabilities;
         private readonly EventHandler<SessionEventArgs> _onSessionCreated;
@@ -56,8 +59,12 @@ namespace Nethermind.Network
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             IProtocolHandlerFactory[] factories,
             IP2PCapabilityResolver[] capabilityResolvers,
+            ISyncConfig syncConfig,
+            IFlatDbConfig flatDbConfig,
             ILogManager logManager)
         {
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _flatDbConfig = flatDbConfig ?? throw new ArgumentNullException(nameof(flatDbConfig));
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
@@ -208,39 +215,25 @@ namespace Nethermind.Network
             bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
-                bool registered = false;
                 if (_syncPeers.TryGetValue(session.SessionId, out SyncPeerProtocolHandlerBase? sessionSyncPeer))
                 {
                     sessionSyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
-                    registered = true;
-                }
-
-                PeerInfo? peer = _syncPool.GetPeer(session.Node);
-                if (peer is not null && !ReferenceEquals(peer.SyncPeer, sessionSyncPeer))
-                {
-                    peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
-                    registered = true;
-                }
-
-                if (registered)
-                {
                     if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
                     if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
-                    if (handler.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite registered directly on sync peer {session}.");
+                    if (handler.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite registered on this session's sync peer {session}.");
                 }
-
-                _hangingSatelliteProtocols.AddOrUpdate(session.Node,
-                    _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
-                    (_, dict) =>
-                    {
-                        dict[session.SessionId] = handler;
-                        return dict;
-                    });
-
-                if (!registered)
+                else
                 {
+                    _hangingSatelliteProtocols.AddOrUpdate(session.Node,
+                        _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
+                        (_, dict) =>
+                        {
+                            dict[session.SessionId] = handler;
+                            return dict;
+                        });
+
                     if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
-                    if (handler.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite parked for {session} until its eth sync peer completes.");
+                    if (handler.ProtocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite waiting for this session's sync peer {session}.");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
@@ -286,18 +279,7 @@ namespace Nethermind.Network
 
         private bool IsEligibleForNHistServingSlot(IReadOnlyList<Capability> remoteCapabilities)
         {
-            bool advertisesNHist = false;
-            Capability[] advertised = GetAdvertisedCapabilities();
-            for (int i = 0; i < advertised.Length; i++)
-            {
-                if (advertised[i].ProtocolCode == Protocol.NHist)
-                {
-                    advertisesNHist = true;
-                    break;
-                }
-            }
-
-            if (!advertisesNHist) return false;
+            if (!NHistP2PCapabilityResolver.AdvertisesServing(_syncConfig, _flatDbConfig)) return false;
 
             for (int i = 0; i < remoteCapabilities.Count; i++)
             {
