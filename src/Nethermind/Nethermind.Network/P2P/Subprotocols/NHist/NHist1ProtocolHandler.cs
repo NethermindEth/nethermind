@@ -20,7 +20,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Network.P2P.Subprotocols.NHist;
 
@@ -46,8 +45,6 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     private static readonly long TicksPerWindow = (long)(Stopwatch.Frequency * ServedBytesWindow.TotalSeconds);
 
     private readonly long _servedBytesPerWindowCap;
-    private readonly ISyncPeerPool _syncPeerPool;
-    private int _satelliteRegistrationStarted;
 
     private readonly MessageDictionary<GetHistoryRangeAtHeightMessage, HistoryRangeAtHeightMessage> _getHistoryRangeRequests;
     private readonly MessageDictionary<GetChangesetsMessage, ChangesetsMessage> _getChangesetsRequests;
@@ -74,15 +71,13 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager,
         IHistoryServer historyServer,
-        ISyncConfig syncConfig,
-        ISyncPeerPool syncPeerPool)
+        ISyncConfig syncConfig)
         : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
     {
         _getHistoryRangeRequests = new(this);
         _getChangesetsRequests = new(this);
         _getHistoryRowsRequests = new(this);
         HistoryServer = historyServer;
-        _syncPeerPool = syncPeerPool;
         CanServe = historyServer.CanServe;
         _servedBytesPerWindowCap = Math.Max(1024 * 1024, syncConfig.HistoryServingMaxBytesPerSecond);
     }
@@ -116,10 +111,6 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 PeerSupportsFullClone = statusMessage.SupportsFullClone;
                 PeerRowFormatVersion = statusMessage.RowFormatVersion;
                 if (Logger.IsInfo) Logger.Info($"nhist1 status from {Session}: SupportsFullClone={statusMessage.SupportsFullClone}, row format {statusMessage.RowFormatVersion}, scopes {statusMessage.Scopes.Length}.");
-                if (Interlocked.Exchange(ref _satelliteRegistrationStarted, 1) == 0)
-                {
-                    _ = EnsureSatelliteRegistrationAsync();
-                }
                 return true;
             case NHist1MessageCode.GetHistoryRangeAtHeight:
                 if (ShouldServeNHist())
@@ -151,26 +142,6 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             default:
                 return false;
         }
-    }
-
-    private async Task EnsureSatelliteRegistrationAsync()
-    {
-        for (int attempt = 1; attempt <= 60; attempt++)
-        {
-            if (Session.IsClosing) return;
-
-            PeerInfo? peer = _syncPeerPool.GetPeer(Session.Node);
-            if (peer is not null)
-            {
-                peer.SyncPeer.RegisterSatelliteProtocol(ProtocolCode, this);
-                if (Logger.IsInfo) Logger.Info($"nhist satellite self-registered on the sync peer of {Session} (attempt {attempt}).");
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(2));
-        }
-
-        if (Logger.IsWarn) Logger.Warn($"nhist satellite found no sync peer for {Session} after 2 minutes; the peer cannot be used as a history source until it reconnects.");
     }
 
     private bool ShouldServeNHist()

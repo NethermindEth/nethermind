@@ -307,6 +307,16 @@ namespace Nethermind.Network
             return false;
         }
 
+        private void RegisterSessionSatellite(ISession session, SyncPeerProtocolHandlerBase syncPeer, string protocolCode)
+        {
+            if (!session.TryGetProtocolHandler(protocolCode, out IProtocolHandler satellite)) return;
+            if (satellite is not ProtocolHandlerBase satelliteBase) return;
+
+            syncPeer.RegisterSatelliteProtocol(protocolCode, satelliteBase);
+            if (satelliteBase.IsPriority) syncPeer.IsPriority = true;
+            if (protocolCode == Protocol.NHist && _logger.IsInfo) _logger.Info($"nhist satellite registered on sync peer {session} from the session's own handlers.");
+        }
+
         private void OnSyncPeerProtocolInitialized(ISession session, SyncPeerProtocolHandlerBase handler, SyncPeerProtocolInitializedEventArgs args)
         {
             if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
@@ -324,6 +334,9 @@ namespace Nethermind.Network
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))
                 {
+                    RegisterSessionSatellite(session, handler, Protocol.Snap);
+                    RegisterSessionSatellite(session, handler, Protocol.NHist);
+
                     if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
                     {
                         foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
