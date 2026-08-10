@@ -49,6 +49,9 @@ public class FrameTxProcessorTests
     private static readonly Address Recipient = TestItem.AddressC;
     private static readonly Address Beneficiary = TestItem.AddressE;
 
+    // The gas leg of max_cost (TXPARAM 0x06) for a SelfVerify + one DEFAULT frame at max fee 1, blob-free.
+    private const ulong BlobFreeMaxCost = 415_950;
+
     [SetUp]
     public void Setup()
     {
@@ -174,6 +177,43 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_BlobCarryingFrameTx_OnFeeCollectorChain_CollectsBaseFeeAndBlobFee()
+    {
+        // Regression: on a fee-collector chain that also enables EIP-4844 fee collection (e.g. Gnosis),
+        // both the EIP-1559 base-fee share and the blob fee must be routed to the collector, exactly as
+        // PayFees does on the regular path. A nonzero base fee makes the 1559 leg observable: the fix
+        // credits it to the collector rather than burning it, so nothing is destroyed.
+        Address feeCollector = TestItem.AddressF;
+        _spec.FeeCollector = feeCollector;
+        _spec.IsEip4844FeeCollectorEnabled = true;
+
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = 1000;
+        tx.GasPrice = 1;                 // max_priority_fee_per_gas
+        tx.DecodedMaxFeePerGas = 10;
+
+        const ulong baseFee = 7;
+        CallOutputTracer tracer = new();
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0, baseFeePerGas: baseFee, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        UInt256 spentGas = (UInt256)tracer.GasSpent;
+        UInt256 blobFee = ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
+        Assert.That(blobFee, Is.GreaterThan(UInt256.Zero), "blob fee is nonzero at the minimum blob base fee");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(spentGas), "beneficiary gets the 1-wei premium only");
+            Assert.That(_stateProvider.GetBalance(feeCollector), Is.EqualTo(baseFee * spentGas + blobFee),
+                "the collector receives both the base-fee share and the blob fee");
+            Assert.That(
+                _stateProvider.GetBalance(Sender) + _stateProvider.GetBalance(Beneficiary) + _stateProvider.GetBalance(feeCollector),
+                Is.EqualTo(1.Ether), "no value is burned - both burned legs go to the collector");
+        }
+    }
+
+    [Test]
     public void Execute_BlobFrameTx_MaxFeePerBlobGasBelowBlobBaseFee_Invalid()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -212,10 +252,10 @@ public class FrameTxProcessorTests
         TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        // Gas leg is the same 415_950 the blobless Execute_TxParam_MaxCost case observes (max fee 1).
-        UInt256 expectedMaxCost = 415_950 + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
+        // Gas leg is the blobless Execute_TxParam_MaxCost value the same frame shape observes (max fee 1).
+        UInt256 expectedMaxCost = BlobFreeMaxCost + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
         AssertStorage(Observer, 0, expectedMaxCost);
-        UInt256 maxFeePricedMaxCost = 415_950 + tx.MaxFeePerBlobGas.Value * BlobGasCalculator.CalculateBlobGas(1);
+        UInt256 maxFeePricedMaxCost = BlobFreeMaxCost + tx.MaxFeePerBlobGas.Value * BlobGasCalculator.CalculateBlobGas(1);
         Assert.That(expectedMaxCost, Is.LessThan(maxFeePricedMaxCost),
             "max_cost priced below the max_fee_per_blob_gas reservation, i.e. at the blob base fee");
     }
@@ -396,7 +436,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
     [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
     // Max cost = sum(frame gas) 400000 + intrinsic 15000 + per-frame 475×2 (no calldata/sig).
-    [TestCase((byte)0x06, 415_950UL, TestName = "Execute_TxParam_MaxCost")]
+    [TestCase((byte)0x06, BlobFreeMaxCost, TestName = "Execute_TxParam_MaxCost")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
     [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]

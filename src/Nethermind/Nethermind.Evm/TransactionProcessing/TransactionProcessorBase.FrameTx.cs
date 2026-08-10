@@ -373,11 +373,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.AddToBalance(payer, maxCost - chargedCost, spec);
         }
 
-        // EIP-4844 fee-collector chains (e.g. Gnosis) collect the burned blob fee, as in PayFees;
-        // elsewhere it is burned. The base-fee share stays burned as no chain enables both features.
-        if (!blobFee.IsZero && spec.IsEip4844FeeCollectorEnabled && spec.FeeCollector is not null)
+        // Fee-collector chains (e.g. Gnosis) collect the otherwise-burned legs, exactly as PayFees does:
+        // the EIP-1559 base-fee share and, when EIP-4844 fee collection is enabled, the blob fee.
+        UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
+        UInt256 collectedFees = spec.IsEip1559Enabled ? effectiveBaseFee * (UInt256)spentGas : UInt256.Zero;
+        if (spec.IsEip4844FeeCollectorEnabled)
         {
-            WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, blobFee, spec);
+            collectedFees += blobFee;
+        }
+        if (spec.FeeCollector is not null && !collectedFees.IsZero)
+        {
+            WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
         }
 
         // EIP-1559/EIP-7928: fee accounting touches the beneficiary regardless of premium, so the
@@ -405,9 +411,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if (tracer.IsTracingFees)
         {
-            // As in PayFees, the burnt half is capped at the effective price paid so validation-off
-            // runs with max fee below base fee do not over-report; the burned blob fee is added in.
-            UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
+            // As in PayFees, the burnt/collected half is capped at the effective price paid so
+            // validation-off runs with max fee below base fee do not over-report; blob fee added in.
             tracer.ReportFees(fees, effectiveBaseFee * spentGas + blobFee);
         }
 
