@@ -60,9 +60,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
     {
         RlpReader ctx = new(data);
         UInt256 timestamp = ctx.DecodeUInt256();
-        Address sender = ctx.DecodeAddress()!;
+        Address sender = ctx.DecodeAddress();
         ulong nonce = ctx.DecodeULong();
-        Hash256 hash = ctx.DecodeKeccak()!;
+        Hash256 hash = ctx.DecodeKeccak();
         UInt256 value = ctx.DecodeUInt256();
         ulong gasLimit = ctx.DecodeULong();
         UInt256 gasPrice = ctx.DecodeUInt256();

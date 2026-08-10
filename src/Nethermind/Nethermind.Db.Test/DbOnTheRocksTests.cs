@@ -568,11 +568,7 @@ namespace Nethermind.Db.Test
         };
 
         [Test]
-        public void Can_get_all_on_empty()
-        {
-            List<KeyValuePair<byte[], byte[]>> all = _db.GetAll().ToList();
-            Assert.That(all, Is.Empty);
-        }
+        public void Can_get_all_on_empty() => Assert.That(_db.GetAll(), Is.Empty);
 
         [Test]
         public void Smoke_test_iterator()
