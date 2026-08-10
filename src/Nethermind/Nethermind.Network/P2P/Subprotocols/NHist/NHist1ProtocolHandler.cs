@@ -42,6 +42,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     private const int MaxInFlightRequestsPerPeer = IHistoryServer.MaxInFlightRequestsPerPeer;
     private static readonly TimeSpan ServedBytesWindow = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan RowsResponseTimeout = TimeSpan.FromSeconds(30);
     private static readonly long TicksPerWindow = (long)(Stopwatch.Frequency * ServedBytesWindow.TotalSeconds);
 
     private readonly long _servedBytesPerWindowCap;
@@ -345,7 +346,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 EndKey = endKey,
                 Cursor = cursor ?? [],
                 ResponseBytes = bytesLimit
-            }, _getHistoryRowsRequests, token));
+            }, _getHistoryRowsRequests, token, RowsResponseTimeout));
 
     public async Task<HistoryRangeAtHeightMessage> GetHistoryRangeAtHeight(
         ValueHash256 startKey, ValueHash256 endKey, ulong height, byte[]? cursor, CancellationToken token) =>
@@ -368,14 +369,14 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 ResponseBytes = bytesLimit
             }, _getChangesetsRequests, token));
 
-    private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageDictionary<TIn, TOut> messageDictionary, CancellationToken token)
+    private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageDictionary<TIn, TOut> messageDictionary, CancellationToken token, TimeSpan? timeout = null)
         where TIn : NHistMessageBase
         where TOut : NHistMessageBase
     {
         Request<TIn, TOut> request = new(msg);
         messageDictionary.Send(request);
 
-        return await HandleResponse(request, TransferSpeedType.SnapRanges, static req => req.ToString(), token);
+        return await HandleResponse(request, TransferSpeedType.SnapRanges, static req => req.ToString(), token, timeout);
     }
 
     // INHistSyncPeer: the plain-DTO facing surface a sync-layer consumer reaches through
