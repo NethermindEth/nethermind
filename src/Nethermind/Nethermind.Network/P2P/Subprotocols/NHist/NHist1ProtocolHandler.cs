@@ -39,7 +39,9 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
     private const string DisconnectMessage = "Serving windowed flat history is not implemented in this node.";
     private const string TooManyInFlightMessage = "Too many concurrent nhist requests in flight for this peer.";
+    private const string RowsTimeoutDisconnectMessage = "nhist history row requests keep timing out.";
     private const int MaxInFlightRequestsPerPeer = IHistoryServer.MaxInFlightRequestsPerPeer;
+    private const int MaxConsecutiveRowsTimeouts = 3;
     private static readonly TimeSpan ServedBytesWindow = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan RowsResponseTimeout = TimeSpan.FromSeconds(30);
@@ -57,6 +59,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         upperWatermark: TimeSpan.FromMilliseconds(3500));
 
     private int _inFlightRequests;
+    private int _consecutiveRowsTimeouts;
     private long _windowState;
 
     private sealed record PeerStatus(HistoryServingScope[] Scopes, bool SupportsFullClone, byte RowFormatVersion);
@@ -135,7 +138,8 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 return true;
             case NHist1MessageCode.GetHistoryRows:
                 if (ShouldServeNHist())
-                    ScheduleOrReleaseQuota<GetHistoryRowsMessage, HistoryRowsMessage>(message, Handle);
+                    ScheduleOrReleaseQuota<GetHistoryRowsMessage, HistoryRowsMessage>(message, Handle,
+                        static requestId => new HistoryRowsMessage { RequestId = requestId, Refused = true });
                 return true;
             case NHist1MessageCode.HistoryRows:
                 HistoryRowsMessage rowsMessage = Deserialize<HistoryRowsMessage>(message.Content);
@@ -167,8 +171,8 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         return true;
     }
 
-    private void ScheduleOrReleaseQuota<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle)
-        where TReq : P2PMessage
+    private void ScheduleOrReleaseQuota<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle, Func<long, TRes>? refusalFactory = null)
+        where TReq : NHistMessageBase
         where TRes : P2PMessage
     {
         TReq request;
@@ -184,9 +188,11 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
         ReportIn(request, message.Content.ReadableBytes);
 
+        long requestId = request.RequestId;
         if (!BackgroundTaskScheduler.TryScheduleSyncServe(request, handle, ServeTimeout))
         {
             Interlocked.Decrement(ref _inFlightRequests);
+            if (refusalFactory is not null) Send(refusalFactory(requestId));
         }
     }
 
@@ -337,16 +343,34 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     }
 
     public async Task<HistoryRowsMessage> GetHistoryRows(
-        HistoryRowColumn column, byte[] startKey, byte[] endKey, byte[]? cursor, CancellationToken token) =>
-        await _rowsRequestSizer.MeasureLatency(bytesLimit =>
-            SendRequest(new GetHistoryRowsMessage
+        HistoryRowColumn column, byte[] startKey, byte[] endKey, byte[]? cursor, CancellationToken token)
+    {
+        HistoryRowsMessage response;
+        try
+        {
+            response = await _rowsRequestSizer.MeasureLatency(bytesLimit =>
+                SendRequest(new GetHistoryRowsMessage
+                {
+                    Column = column,
+                    StartKey = startKey,
+                    EndKey = endKey,
+                    Cursor = cursor ?? [],
+                    ResponseBytes = bytesLimit
+                }, _getHistoryRowsRequests, token, RowsResponseTimeout));
+        }
+        catch (TimeoutException)
+        {
+            if (Interlocked.Increment(ref _consecutiveRowsTimeouts) >= MaxConsecutiveRowsTimeouts)
             {
-                Column = column,
-                StartKey = startKey,
-                EndKey = endKey,
-                Cursor = cursor ?? [],
-                ResponseBytes = bytesLimit
-            }, _getHistoryRowsRequests, token, RowsResponseTimeout));
+                if (Logger.IsInfo) Logger.Info($"Disconnecting {Session} after {MaxConsecutiveRowsTimeouts} consecutive nhist row timeouts; a fresh session will be dialed.");
+                Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, RowsTimeoutDisconnectMessage);
+            }
+            throw;
+        }
+
+        Interlocked.Exchange(ref _consecutiveRowsTimeouts, 0);
+        return response;
+    }
 
     public async Task<HistoryRangeAtHeightMessage> GetHistoryRangeAtHeight(
         ValueHash256 startKey, ValueHash256 endKey, ulong height, byte[]? cursor, CancellationToken token) =>

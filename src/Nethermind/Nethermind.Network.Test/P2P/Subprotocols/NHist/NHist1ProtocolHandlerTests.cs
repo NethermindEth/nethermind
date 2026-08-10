@@ -224,6 +224,44 @@ public class NHist1ProtocolHandlerTests
     }
 
     [Test]
+    public void GetHistoryRows_WhenSchedulerQueueIsFull_SendsRefusedResponseInsteadOfSilence()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRowsMessageSerializer()),
+            SerializerInfo.Create(new HistoryRowsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            new RejectingScheduler(),
+            LimboLogs.Instance,
+            historyServer,
+            new SyncConfig());
+
+        using GetHistoryRowsMessage request = new()
+        {
+            RequestId = 77,
+            Column = HistoryRowColumn.Code,
+            StartKey = [0],
+            EndKey = [0xFF],
+            Cursor = [],
+            ResponseBytes = 4321
+        };
+
+        Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRows);
+
+        session.Received(1).DeliverMessage(Arg.Is<HistoryRowsMessage>(m => m.RequestId == 77 && m.Refused && m.Entries.Count == 0));
+        session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
     public void Init_SendsStatusMessageWithServedScopesAndNotifiesProtocolInitialized()
     {
         HistoryServingScope scope = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 5, 100);
