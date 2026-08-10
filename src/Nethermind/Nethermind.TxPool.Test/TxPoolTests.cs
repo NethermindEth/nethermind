@@ -51,6 +51,20 @@ namespace Nethermind.TxPool.Test
         private TestBlockTree _blockTree;
 
         private const int TxGasLimit = 1_000_000;
+        // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
+        private const ulong UnderGassedTransactionGasLimit = 42_400;
+
+        private static AccessList BuildUnderGassedAccessList()
+        {
+            AccessList.Builder accessListBuilder = new();
+            accessListBuilder.AddAddress(TestItem.AddressC);
+            for (int i = 0; i < 10; i++)
+            {
+                accessListBuilder.AddStorage((UInt256)i);
+            }
+
+            return accessListBuilder.Build();
+        }
 
         [OneTimeSetUp]
         public static void OneTimeSetup() => KzgPolynomialCommitments.InitializeAsync().Wait();
@@ -300,27 +314,28 @@ namespace Nethermind.TxPool.Test
                 ForkOnBlockNumber = head.Number + 1
             };
 
-            AccessList.Builder accessListBuilder = new();
-            accessListBuilder.AddAddress(TestItem.AddressC);
-            for (int i = 0; i < 10; i++)
-            {
-                accessListBuilder.AddStorage((UInt256)i);
-            }
-
             Transaction transaction = Build.A.Transaction
                 .WithType(TxType.AccessList)
-                .WithAccessList(accessListBuilder.Build())
-                .WithGasLimit(42_400)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(UnderGassedTransactionGasLimit)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
-            EnsureSenderBalance(transaction);
+            Transaction followUpTransaction = Build.A.Transaction
+                .WithType(TxType.AccessList)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(TxGasLimit)
+                .WithNonce(transaction.Nonce + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             _txPool = CreatePool(specProvider: provider);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.SubmitTx(followUpTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
             }
 
             await AddEmptyBlock();
@@ -2560,7 +2575,8 @@ namespace Nethermind.TxPool.Test
                 ShouldGossip.Instance,
                 incomingTxFilter,
                 new HeadTxValidator(),
-                thereIsPriorityContract);
+                thereIsPriorityContract,
+                specChangeTxValidator: IntrinsicGasTxValidator.Instance);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

@@ -216,6 +216,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
             Assert.That(_txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.True);
             Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
@@ -247,17 +248,10 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, provider);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            AccessList.Builder accessListBuilder = new();
-            accessListBuilder.AddAddress(TestItem.AddressC);
-            for (int i = 0; i < 10; i++)
-            {
-                accessListBuilder.AddStorage((UInt256)i);
-            }
-
             Transaction transaction = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-                .WithAccessList(accessListBuilder.Build())
-                .WithGasLimit(42_400)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(UnderGassedTransactionGasLimit)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)

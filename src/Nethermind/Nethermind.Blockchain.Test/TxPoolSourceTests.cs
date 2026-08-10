@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -28,6 +29,21 @@ namespace Nethermind.Consensus.Producers.Test;
 [Parallelizable(ParallelScope.All)]
 public class TxPoolSourceTests
 {
+    // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
+    private const ulong UnderGassedTransactionGasLimit = 42_400;
+
+    private static AccessList BuildUnderGassedAccessList()
+    {
+        AccessList.Builder accessListBuilder = new();
+        accessListBuilder.AddAddress(TestItem.AddressC);
+        for (int i = 0; i < 10; i++)
+        {
+            accessListBuilder.AddStorage((UInt256)i);
+        }
+
+        return accessListBuilder.Build();
+    }
+
     [TestCaseSource(nameof(BlobTransactionsWithBlobGasLimitPerBlockCombinations))]
     public void GetTransactions_should_respect_customizable_blob_gas_limit(int[] blobCountPerTx, ulong customMaxBlobGasPerBlock, int? customBlobLimit)
     {
@@ -162,19 +178,13 @@ public class TxPoolSourceTests
         };
         TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
 
-        AccessList.Builder accessListBuilder = new();
-        accessListBuilder.AddAddress(TestItem.AddressC);
-        for (int i = 0; i < 10; i++)
-        {
-            accessListBuilder.AddStorage((UInt256)i);
-        }
-
         Transaction underGassedTransaction = Build.A.Transaction
             .WithType(TxType.AccessList)
-            .WithAccessList(accessListBuilder.Build())
-            .WithGasLimit(42_400)
+            .WithAccessList(BuildUnderGassedAccessList())
+            .WithGasLimit(UnderGassedTransactionGasLimit)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
+        IntrinsicGasTxValidator.Instance.IsWellFormed(underGassedTransaction, Amsterdam.Instance);
 
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
@@ -207,20 +217,22 @@ public class TxPoolSourceTests
 
         Transaction invalidBlob = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Amsterdam.Instance)
-            .WithAccessList(BuildAccessList())
-            .WithGasLimit(42_400)
+            .WithAccessList(BuildUnderGassedAccessList())
+            .WithGasLimit(UnderGassedTransactionGasLimit)
             .WithMaxFeePerGas(2.GWei)
             .WithMaxPriorityFeePerGas(2.GWei)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         Transaction validBlob = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Amsterdam.Instance)
-            .WithAccessList(BuildAccessList())
+            .WithAccessList(BuildUnderGassedAccessList())
             .WithGasLimit(100_000)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
+        IntrinsicGasTxValidator.Instance.IsWellFormed(invalidBlob, Amsterdam.Instance);
+        IntrinsicGasTxValidator.Instance.IsWellFormed(validBlob, Amsterdam.Instance);
 
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
@@ -255,17 +267,5 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
 
         Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
-
-        static AccessList BuildAccessList()
-        {
-            AccessList.Builder accessListBuilder = new();
-            accessListBuilder.AddAddress(TestItem.AddressC);
-            for (int i = 0; i < 10; i++)
-            {
-                accessListBuilder.AddStorage((UInt256)i);
-            }
-
-            return accessListBuilder.Build();
-        }
     }
 }

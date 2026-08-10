@@ -13,5 +13,6 @@ namespace Nethermind.TxPool
             IsWellFormed(transaction, releaseSpec);
 
         public const string HeadTxValidatorKey = "HeadTxValidator";
+        public const string SpecChangeTxValidatorKey = "SpecChangeTxValidator";
     }
 }
