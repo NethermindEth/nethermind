@@ -168,13 +168,11 @@ public class BlockAccessListSequentialValidationTests
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
         BlockAccessListManager balManager = new(
             stateProvider,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
-            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance,
+                static worldState => new EthereumCodeInfoRepository(worldState)));
         return (stateProvider, balManager);
     }
 

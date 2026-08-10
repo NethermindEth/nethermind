@@ -32,13 +32,11 @@ public class BlockAccessListManagerTests
 
         public Harness() => Manager = new BlockAccessListManager(
             WorldState,
-            Substitute.For<ISpecProvider>(),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig(), // ParallelExecution / ParallelExecutionBatchRead default to true
             Substitute.For<IWithdrawalProcessorFactory>(),
-            static worldState => new EthereumCodeInfoRepository(worldState),
-            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance,
+                static worldState => new EthereumCodeInfoRepository(worldState)),
             // Enables parallel execution (and thus BAL read warmup), mirroring the production DI path.
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
