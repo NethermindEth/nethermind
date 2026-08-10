@@ -80,7 +80,8 @@ public ref struct EvmStack
         }
 
         // Without SIMD (the zkVM guest) Vector256.Create degrades to a software element loop.
-        // Safety: EvmWord is 32 reference-free bytes, and all four ulongs are written.
+        // Safety: EvmWord is 32 reference-free bytes, and all four ulongs are written. Lane 3
+        // carries the value, matching Vector256.Create(0, 0, 0, value).
         Unsafe.SkipInit(out EvmWord word);
         ref ulong parts = ref Unsafe.As<EvmWord, ulong>(ref word);
         parts = 0;
