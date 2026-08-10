@@ -25,6 +25,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -55,7 +56,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         using GetHistoryRangeAtHeightMessage request = new()
         {
@@ -94,7 +95,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         using GetHistoryRangeAtHeightMessage request = new()
         {
@@ -134,7 +135,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         using GetChangesetsMessage request = new() { RequestId = 1, FromBlock = 10, ToBlock = 20, ResponseBytes = 5555 };
 
@@ -165,7 +166,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         using GetChangesetsMessage request = new() { RequestId = 1, FromBlock = 10, ToBlock = 20, ResponseBytes = long.MaxValue };
 
@@ -195,7 +196,7 @@ public class NHist1ProtocolHandlerTests
             scheduler,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         for (int i = 0; i < 4; i++)
         {
@@ -241,7 +242,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         bool initialized = false;
         handler.ProtocolInitialized += (_, _) => initialized = true;
@@ -273,7 +274,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         handler.Init();
 
@@ -302,7 +303,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         using GetHistoryRowsMessage request = new()
         {
@@ -351,7 +352,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         using GetHistoryRowsMessage request = new() { RequestId = 1, Column = HistoryRowColumn.AccountHistory, StartKey = [0], EndKey = [0xFF], Cursor = [] };
 
@@ -380,7 +381,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         HistoryServingScope scope = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 5, 100);
         using NHistStatusMessage statusMessage = new() { Scopes = [scope] };
@@ -414,7 +415,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         for (int i = 0; i < 5; i++)
         {
@@ -447,7 +448,7 @@ public class NHist1ProtocolHandlerTests
             scheduler,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         for (int i = 0; i < 10; i++)
         {
@@ -483,7 +484,7 @@ public class NHist1ProtocolHandlerTests
             RunImmediatelyScheduler.Instance,
             LimboLogs.Instance,
             historyServer,
-            new SyncConfig());
+            new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         using GetHistoryRangeAtHeightMessage request = new() { RequestId = 1, Cursor = [] };
 
@@ -504,7 +505,7 @@ public class NHist1ProtocolHandlerTests
             SerializerInfo.Create(new ChangesetsMessageSerializer()));
 
         NHist1ProtocolHandler handler = new(
-            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig());
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         GetChangesetsMessage? sent = null;
         session.When(s => s.DeliverMessage(Arg.Any<GetChangesetsMessage>())).Do(call => sent = call.Arg<GetChangesetsMessage>());
@@ -541,7 +542,7 @@ public class NHist1ProtocolHandlerTests
             SerializerInfo.Create(new HistoryRowsMessageSerializer()));
 
         NHist1ProtocolHandler handler = new(
-            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig());
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         GetHistoryRowsMessage? sent = null;
         session.When(s => s.DeliverMessage(Arg.Any<GetHistoryRowsMessage>())).Do(call => sent = call.Arg<GetHistoryRowsMessage>());
@@ -581,7 +582,7 @@ public class NHist1ProtocolHandlerTests
             SerializerInfo.Create(new ChangesetsMessageSerializer()));
 
         NHist1ProtocolHandler handler = new(
-            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig());
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         INHistSyncPeer syncPeer = handler;
 
@@ -616,7 +617,7 @@ public class NHist1ProtocolHandlerTests
             SerializerInfo.Create(new HistoryRowsMessageSerializer()));
 
         NHist1ProtocolHandler handler = new(
-            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig());
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer, new SyncConfig(), Substitute.For<ISyncPeerPool>());
 
         INHistSyncPeer syncPeer = handler;
 
