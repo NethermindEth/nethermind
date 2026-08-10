@@ -507,23 +507,21 @@ namespace Nethermind.Synchronization
             {
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
                 CancellationTokenSource cts = _rangeBroadcastCts = new();
+                // Capture the token now: RangeBroadcast runs on a pool thread and a later swap may already
+                // have disposed the source by the time it reads cancellation, so it must not touch the CTS.
+                CancellationToken token = cts.Token;
 
-                if (_rangeBroadcastTask.IsCompleted)
-                {
-                    _rangeBroadcastTask = Task.Run(() => RangeBroadcast(earliest, latest, cts), cts.Token);
-                }
-                else
-                {
-                    _rangeBroadcastTask.ContinueWith(
-                        t => RangeBroadcast(earliest, latest, cts),
+                _rangeBroadcastTask = _rangeBroadcastTask.IsCompleted
+                    ? Task.Run(() => RangeBroadcast(earliest, latest, token), token)
+                    : _rangeBroadcastTask.ContinueWith(
+                        t => RangeBroadcast(earliest, latest, token),
                         TaskContinuationOptions.RunContinuationsAsynchronously);
-                }
             }
         }
 
-        private void RangeBroadcast(BlockHeader earliest, BlockHeader latest, CancellationTokenSource cts)
+        private void RangeBroadcast(BlockHeader earliest, BlockHeader latest, CancellationToken token)
         {
-            if (cts.IsCancellationRequested)
+            if (token.IsCancellationRequested)
             {
                 return;
             }
@@ -534,7 +532,7 @@ namespace Nethermind.Synchronization
             ParallelUnbalancedWork.For(0, allPeers.Count,
                 (i) =>
                 {
-                    if (cts.IsCancellationRequested)
+                    if (token.IsCancellationRequested)
                     {
                         if (_logger.IsDebug) _logger.Debug("Cancelled broadcasting block range update due to cancellation request.");
                         return;
