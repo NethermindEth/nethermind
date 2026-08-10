@@ -199,6 +199,19 @@ public class ArchiveCloneImporterTests
     }
 
     [Test]
+    public async Task CloneAsync_PageTimeout_IsRetriedAndSucceedsWhenTheSourceRecovers()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, TimeoutFirstNCalls = 2 };
+        source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+
+        await CreateImporter(source).CloneAsync(CancellationToken.None);
+
+        Assert.That(_codeDb.Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+            "a page timeout (a paused or briefly overloaded source) must be retried at page level, not tear the whole stream down");
+    }
+
+    [Test]
     public async Task CloneAsync_RefusedPage_IsRetriedAndSucceedsWhenTheSourceRecovers()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 2 };
@@ -285,6 +298,8 @@ public class ArchiveCloneImporterTests
 
         public int RefuseFirstNCalls { get; set; }
 
+        public int TimeoutFirstNCalls { get; set; }
+
         public int? ThrowOnCallNumber { get; set; }
 
         public HistoryRowColumn? ThrowOnColumn { get; set; }
@@ -309,6 +324,11 @@ public class ArchiveCloneImporterTests
                 if (ThrowOnCallNumber == _callCount || ThrowOnColumn == column)
                 {
                     throw new InvalidOperationException("simulated crash mid-clone");
+                }
+
+                if (_callCount <= TimeoutFirstNCalls)
+                {
+                    throw new TimeoutException("simulated paused source");
                 }
 
                 if (_callCount <= RefuseFirstNCalls)

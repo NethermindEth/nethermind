@@ -347,7 +347,18 @@ public sealed class ArchiveCloneImporter
     {
         for (int attempt = 1; ; attempt++)
         {
-            ArchiveCloneRowPage page = await _source.GetHistoryRowsAsync(column, from, shardEnd, sourceCursor, cancellationToken);
+            ArchiveCloneRowPage page;
+            try
+            {
+                page = await _source.GetHistoryRowsAsync(column, from, shardEnd, sourceCursor, cancellationToken);
+            }
+            catch (TimeoutException) when (attempt < RefusedRetryLimit)
+            {
+                if (_logger.IsInfo) _logger.Info($"Archive clone: {column} shard {shard} page timed out (attempt {attempt}/{RefusedRetryLimit}); the source may be paused, retrying in {RefusedRetryDelay.TotalSeconds:F0}s.");
+                await Task.Delay(RefusedRetryDelay, cancellationToken);
+                continue;
+            }
+
             if (!page.Refused) return page;
 
             if (attempt >= RefusedRetryLimit)
