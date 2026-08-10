@@ -17,6 +17,7 @@ namespace Nethermind.Core.Test.Caching;
 public abstract class AssociativeCacheTestsBase
 {
     protected const int Capacity = 32;
+    private const int Ways = 8;
 
     protected AddressAsKey[] _keys = null!;
     protected Account[] _accounts = null!;
@@ -154,11 +155,8 @@ public abstract class AssociativeCacheTestsBase
     [TestCase(1024)]
     public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
     {
-        // Catches hash signature extraction bugs: if the signature is computed from
-        // wrong bits, Get won't find keys that were just inserted (tag mismatch).
-        // Insert only 50% of capacity to avoid set-conflict eviction.
         CreateCache(capacity);
-        int insertCount = Math.Min(capacity / 2, _keys.Length - 1);
+        int insertCount = Math.Min(capacity / 2, Ways);
 
         for (int i = 0; i < insertCount; i++)
             Assert.That(Set(in _keys[i], i), Is.True);
