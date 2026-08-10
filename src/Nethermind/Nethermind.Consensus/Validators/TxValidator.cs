@@ -337,7 +337,9 @@ public sealed class MaxBlobCountBlobTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction switch
         {
-            { Type: not TxType.Blob } => ValidationResult.Success,
+            // EIP-8141: re-check a blob-carrying frame tx (type 6) against the head spec too, so key on
+            // the instance-level blob predicate rather than the type.
+            { CarriesBlobs: false } => ValidationResult.Success,
             _ => ValidateBlobFields(transaction, releaseSpec)
         };
 

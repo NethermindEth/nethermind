@@ -13,5 +13,5 @@ public class SpecDrivenTxGossipPolicy(IChainHeadInfoProvider chainHeadInfoProvid
         // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 sidecar wrapper with type-3, so
         // it takes part in the announce-by-hash / serve-with-sidecar protocol on the same terms — gossiped
         // only with a current-proof-version sidecar, and withheld while it still lacks one.
-        !tx.SupportsBlobs && !tx.CarriesBlobs || tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion;
+        (!tx.SupportsBlobs && !tx.CarriesBlobs) || tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion;
 }

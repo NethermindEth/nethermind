@@ -13,7 +13,9 @@ internal static class BlobProofsTranslator
 {
     public static bool TryTranslateToCurrentProofVersion(Transaction tx, ProofVersion currentProofVersion)
     {
-        if (tx is not { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper wrapper }
+        // EIP-8141: key on the instance-level blob predicate so a blob-carrying frame tx (type 6) is
+        // translated between proof versions on the same terms as a type-3 blob tx.
+        if (tx is not { CarriesBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper wrapper }
             || wrapper.Version == currentProofVersion)
         {
             return true;
