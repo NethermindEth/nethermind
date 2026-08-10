@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -34,7 +33,7 @@ public static unsafe partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TryGetPostTxView(vm, out Eip7906DiffView view, out FrameTxContext ctx)) return EvmExceptionType.BadInstruction;
+        if (!TryGetPostTxView(vm, out TransactionDiffView view, out FrameTxContext ctx)) return EvmExceptionType.BadInstruction;
 
         TGasPolicy.Consume<TxTraceGasCost>(ref gas);
         if (!stack.PopUInt256(out UInt256 param, out UInt256 index)) return EvmExceptionType.StackUnderflow;
@@ -65,7 +64,7 @@ public static unsafe partial class EvmInstructions
             : EvmExceptionType.BadInstruction;
 
     // 0x03 address / 0x04 balance before / 0x05 balance after, indexed by balance-change position.
-    private static EvmExceptionType TxTraceBalance<TTracingInst>(Eip7906DiffView view, byte param, in UInt256 index, ref EvmStack stack)
+    private static EvmExceptionType TxTraceBalance<TTracingInst>(TransactionDiffView view, byte param, in UInt256 index, ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
         if (index >= (UInt256)(ulong)view.BalanceAddresses.Length) return EvmExceptionType.BadInstruction;
@@ -80,11 +79,11 @@ public static unsafe partial class EvmInstructions
     }
 
     // 0x06 address / 0x07 key / 0x08 value before / 0x09 value after, indexed by slot-change position.
-    private static EvmExceptionType TxTraceStorage<TTracingInst>(Eip7906DiffView view, byte param, in UInt256 index, ref EvmStack stack)
+    private static EvmExceptionType TxTraceStorage<TTracingInst>(TransactionDiffView view, byte param, in UInt256 index, ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
         if (index >= (UInt256)(ulong)view.Slots.Length) return EvmExceptionType.BadInstruction;
-        Eip7906DiffView.SlotRef slot = view.Slots[(int)index.u0];
+        TransactionDiffView.SlotRef slot = view.Slots[(int)index.u0];
         if (param == 0x06) return stack.PushAddress<TTracingInst>(slot.Address);
         if (param == 0x07) return stack.PushUInt256<TTracingInst>(slot.Key);
 
@@ -97,7 +96,7 @@ public static unsafe partial class EvmInstructions
     }
 
     // 0x0A deployed address / 0x0B deployed code hash, indexed by deployment position.
-    private static EvmExceptionType TxTraceDeployment<TTracingInst>(Eip7906DiffView view, byte param, in UInt256 index, ref EvmStack stack)
+    private static EvmExceptionType TxTraceDeployment<TTracingInst>(TransactionDiffView view, byte param, in UInt256 index, ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
         if (index >= (UInt256)(ulong)view.DeployedAddresses.Length) return EvmExceptionType.BadInstruction;
@@ -109,7 +108,7 @@ public static unsafe partial class EvmInstructions
     }
 
     // 0x0D address / 0x0E topic count / 0x0F..0x12 topics / 0x13 data length, indexed by event position.
-    private static EvmExceptionType TxTraceEvent<TTracingInst>(Eip7906DiffView view, byte param, in UInt256 index, ref EvmStack stack)
+    private static EvmExceptionType TxTraceEvent<TTracingInst>(TransactionDiffView view, byte param, in UInt256 index, ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
         if (index >= (UInt256)(ulong)view.Logs.Length) return EvmExceptionType.BadInstruction;
@@ -133,7 +132,7 @@ public static unsafe partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TryGetPostTxView(vm, out Eip7906DiffView view, out _)) return EvmExceptionType.BadInstruction;
+        if (!TryGetPostTxView(vm, out TransactionDiffView view, out _)) return EvmExceptionType.BadInstruction;
 
         // Spec stack order: param on top, address second, in3 (slot key / local index / unused) third.
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
@@ -175,7 +174,7 @@ public static unsafe partial class EvmInstructions
 
     // 0x02 balance before / 0x03 balance after / 0x04 code hash before / 0x05 code hash after,
     // EIP-2929 account-warm/cold priced. Same BAL-recording caveat as TxDiffStorage applies to the live reads.
-    private static EvmExceptionType TxDiffAccount<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Eip7906DiffView view, Address address, AccountChangesAtIndex? account, ref EvmStack stack)
+    private static EvmExceptionType TxDiffAccount<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -202,7 +201,7 @@ public static unsafe partial class EvmInstructions
     }
 
     // 0x06..0x0A: per-address views and change flags, flat priced, no access-list interaction.
-    private static EvmExceptionType TxDiffAddressView<TGasPolicy, TTracingInst>(ref TGasPolicy gas, byte param, Eip7906DiffView view, Address address, in UInt256 in3, AccountChangesAtIndex? account, ref EvmStack stack)
+    private static EvmExceptionType TxDiffAddressView<TGasPolicy, TTracingInst>(ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, in UInt256 in3, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -228,7 +227,7 @@ public static unsafe partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TryGetPostTxView(vm, out Eip7906DiffView view, out _)) return EvmExceptionType.BadInstruction;
+        if (!TryGetPostTxView(vm, out TransactionDiffView view, out _)) return EvmExceptionType.BadInstruction;
 
         // Spec stack order (top to bottom): eventIndex, memOffset, dataOffset, length.
         if (!stack.PopUInt256(out UInt256 eventIndex, out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length))
@@ -281,7 +280,7 @@ public static unsafe partial class EvmInstructions
     /// EIP-7928 transition rather than <c>IsEip7906Enabled</c> alone (a chainspec enabling 7906 without
     /// 7928 gets opcodes that always halt).
     /// </remarks>
-    private static bool TryGetPostTxView<TGasPolicy>(VirtualMachine<TGasPolicy> vm, out Eip7906DiffView view, out FrameTxContext ctx)
+    private static bool TryGetPostTxView<TGasPolicy>(VirtualMachine<TGasPolicy> vm, out TransactionDiffView view, out FrameTxContext ctx)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         view = null!;
@@ -290,7 +289,7 @@ public static unsafe partial class EvmInstructions
         if (frameContext is null || frameContext.CurrentFrame.Mode != TxFrame.ModePostTx) return false;
         ctx = frameContext;
 
-        if (frameContext.PostTxDiffView is Eip7906DiffView cached)
+        if (frameContext.PostTxDiffView is TransactionDiffView cached)
         {
             view = cached;
             return true;
@@ -299,7 +298,7 @@ public static unsafe partial class EvmInstructions
         if (vm.WorldState is not IBlockAccessListSource source || source.GeneratedBlockAccessList is not { } slice)
             return false;
 
-        view = Eip7906DiffView.Build(slice, vm.VmState.AccessTracker.Logs.ToArray());
+        view = TransactionDiffView.Build(slice, vm.VmState.AccessTracker.Logs.ToArray());
         frameContext.PostTxDiffView = view;
         return true;
     }

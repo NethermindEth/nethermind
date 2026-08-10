@@ -24,7 +24,7 @@ namespace Nethermind.Evm;
 /// whole diff per call. Caching is safe because a POST_TX frame is static, so the diff cannot change
 /// once assertions start running.
 /// </remarks>
-internal sealed class Eip7906DiffView
+internal sealed class TransactionDiffView
 {
     public readonly record struct SlotRef(Address Address, UInt256 Key);
 
@@ -49,7 +49,7 @@ internal sealed class Eip7906DiffView
     // Memoized pre-tx code hashes, so repeated TXDIFF(0x04) calls don't re-hash the pre-tx code.
     private Dictionary<AddressAsKey, ValueHash256>? _preTxCodeHashes;
 
-    private Eip7906DiffView(
+    private TransactionDiffView(
         BlockAccessListAtIndex slice,
         Address[] balanceAddresses,
         SlotRef[] slots,
@@ -67,7 +67,7 @@ internal sealed class Eip7906DiffView
         _eventIndices = eventIndices;
     }
 
-    public static Eip7906DiffView Build(BlockAccessListAtIndex slice, LogEntry[] logs)
+    public static TransactionDiffView Build(BlockAccessListAtIndex slice, LogEntry[] logs)
     {
         // slice.AccountChanges also holds read-only accesses (AddAccountRead creates entries); keep only
         // the accounts that actually changed so the sort is proportional to the diff, not the access set.
@@ -102,7 +102,7 @@ internal sealed class Eip7906DiffView
         }
 
         Dictionary<AddressAsKey, int[]> eventIndices = GroupEventIndicesByAddress(logs);
-        return new Eip7906DiffView(slice, [.. balances], [.. slots], [.. deployed], logs, slotRuns, eventIndices);
+        return new TransactionDiffView(slice, [.. balances], [.. slots], [.. deployed], logs, slotRuns, eventIndices);
     }
 
     public bool TryGetSlotRun(Address address, out int start, out int count)
