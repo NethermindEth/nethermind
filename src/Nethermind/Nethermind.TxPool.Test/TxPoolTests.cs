@@ -2446,7 +2446,8 @@ namespace Nethermind.TxPool.Test
             Address sponsor = TestItem.AddressD;
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(sponsor));
-            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
 
             UInt256 maxCost = (UInt256)1.GWei * 1_000_000;
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
@@ -2454,9 +2455,9 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
             EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
 
-            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA.Address, sponsor);
-            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB.Address, sponsor);
-            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC.Address, sponsor);
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
 
             AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
             AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
@@ -2505,30 +2506,47 @@ namespace Nethermind.TxPool.Test
 
         // A frame tx whose only_verify|pay prefix names the sponsor as payer. The prefix is opaque to
         // native resolution, so the payer is resolved by validation-prefix simulation.
-        private Transaction SponsoredFrameTx(Address sender, Address sponsor)
+        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey)
         {
             Transaction tx = new()
             {
                 Type = TxType.FrameTx,
                 ChainId = _specProvider.ChainId,
                 Nonce = 0,
-                SenderAddress = sender,
+                SenderAddress = senderKey.Address,
                 Frames =
                 [
                     new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsor, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
                 ],
                 FrameSignatures =
                 [
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty),
-                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsor, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, default),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, default),
                 ],
                 GasLimit = 1_000_000,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
             };
+            // compute_sig_hash covers each entry's scheme/signer/msg and elides only the raw bytes, so the
+            // signatures are taken with the entries already installed, then their bytes are filled in.
+            ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+            tx.FrameSignatures =
+            [
+                Secp256k1FrameSignature(senderKey, in sigHash, signer: null),
+                Secp256k1FrameSignature(sponsorKey, in sigHash, signer: sponsorKey.Address),
+            ];
             tx.Hash = tx.CalculateHash();
             return tx;
+        }
+
+        private static TxFrameSignature Secp256k1FrameSignature(PrivateKey key, in ValueHash256 sigHash, Address signer)
+        {
+            Signature signature = new Ecdsa().Sign(key, sigHash);
+            byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            bytes[0] = signature.RecoveryId;
+            signature.Bytes.CopyTo(bytes.AsSpan(1));
+            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, bytes);
         }
 
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
