@@ -26,8 +26,6 @@ namespace Nethermind.Consensus.Producers
         protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder
             .AddScoped(txSourceFactory.Create())
             .AddScoped(BlockchainProcessor.Options.Default)
-            // Override the adapter factory (not ITransactionProcessorAdapter directly) so the EIP-7928 BAL pool's
-            // per-worker adapters also build up rather than commit per tx during block production.
             .AddScoped<TransactionProcessorAdapterFactory>(CreateBuildUpAdapter)
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()

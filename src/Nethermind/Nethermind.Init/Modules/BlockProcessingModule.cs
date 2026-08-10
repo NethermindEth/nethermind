@@ -74,9 +74,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
                 worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))
-            // Single source of truth for the per-tx adapter: scopes override the factory only, and both the
-            // scoped ITransactionProcessorAdapter and the EIP-7928 BAL pool's per-worker adapters derive from it,
-            // so they can't drift. Default is Execute; production/trace/proof/simulate register their own factory.
             .AddScoped<TransactionProcessorAdapterFactory>(CreateExecuteAdapter)
             .AddScoped<ITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory>(
                 static (transactionProcessor, adapterFactory) => adapterFactory(transactionProcessor))
