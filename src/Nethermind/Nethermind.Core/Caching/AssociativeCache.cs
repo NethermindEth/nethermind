@@ -349,24 +349,25 @@ public sealed class AssociativeCache<TKey, TValue>
     {
         if (_setCount != 0)
         {
-            long currentEpoch = ClearEpochAndCount(ref _epochAndCount);
+            ClearEpochAndCount(ref _epochAndCount);
 
             if (releaseReferences)
             {
-                ClearEntries(currentEpoch);
+                ClearEntries();
             }
         }
     }
 
     /// <remarks>
-    /// If a concurrent Clear() bumps the epoch again while this scan is in progress,
-    /// entries from our epoch (N+1) that were written between the two bumps will be
-    /// skipped by both scans (neither N+1 nor N+2 matches the other's snapshot).
-    /// Those entries are logically dead (invisible to readers) but remain GC-rooted
-    /// until overwritten by new inserts. This is benign — not a safety issue.
+    /// Preserves entries live in the latest epoch and nulls only stale ones (older epoch).
+    /// The latest epoch is re-read per set under the gate rather than captured at Clear() time:
+    /// a concurrent Clear() may bump the epoch again, and entries written after that later bump
+    /// are live — comparing against a stale snapshot would wrongly null them, dropping live
+    /// entries and corrupting the count. Stale entries left behind by an interrupted pass remain
+    /// GC-rooted until a later pass or an overwriting insert reclaims them; this is benign.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void ClearEntries(long currentEpoch)
+    private void ClearEntries()
     {
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
         ref int gates = ref MemoryMarshal.GetArrayDataReference(_setGates);
@@ -377,15 +378,20 @@ public sealed class AssociativeCache<TKey, TValue>
             AcquireGate(ref gate);
             try
             {
+                // Re-read the latest epoch under the gate: a concurrent Clear() may have bumped
+                // it since this pass started, so entries from that newer epoch are live and must
+                // be preserved. Comparing against a snapshot taken at Clear() time would null them.
+                long latestEpoch = ReadEpoch(ref _epochAndCount);
+
                 int baseIdx = s << WayShift;
                 for (int i = 0; i < Ways; i++)
                 {
                     ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
                     long h = Volatile.Read(ref e.Header);
 
-                    // Skip empty entries and entries written after the epoch bump
+                    // Skip empty entries and entries live in the latest epoch; null only stale ones.
                     if ((h & OccupiedBit) == 0) continue;
-                    if ((h & EpochMask) == currentEpoch) continue;
+                    if ((h & EpochMask) == latestEpoch) continue;
 
                     // Seqlock write: lock → null fields → unlock (clears OccupiedBit)
                     long newSeq = ((h & SeqMask) + SeqInc) & SeqMask;

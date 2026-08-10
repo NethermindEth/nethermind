@@ -228,6 +228,35 @@ public abstract class AssociativeCacheTestsBase
     }
 
     [Test]
+    public void Concurrent_clears_preserve_live_entries_and_exact_count()
+    {
+        // Regression: Clear()'s reference-release pass captured its epoch and nulled every entry
+        // whose epoch differed. When Clear() calls raced, a stale pass would null entries written
+        // after a LATER Clear (a newer epoch) — dropping live entries and orphaning their count.
+        // Capacity keys collide into few 8-way sets (forcing eviction) and frequent concurrent
+        // Clears reproduce the race. Each round ends quiescent, so Count must equal the number of
+        // retrievable entries; a dropped live entry or an orphaned count breaks that equality.
+        for (int round = 0; round < 1000; round++)
+        {
+            CreateCache(Capacity);
+
+            Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+            {
+                for (int i = 0; i < Capacity; i++)
+                    Set(in _keys[i], i);
+                if (iter % 2 == 0)
+                    Clear();
+            });
+
+            int live = 0;
+            for (int i = 0; i < Capacity; i++)
+                if (Get(in _keys[i])) live++;
+
+            Assert.That(GetCount(), Is.EqualTo(live), $"round {round}: Count disagrees with retrievable entries");
+        }
+    }
+
+    [Test]
     public void Concurrent_delete_and_clear_keeps_count_non_negative()
     {
         // Stress test: concurrent Delete + Clear should never produce negative count.
