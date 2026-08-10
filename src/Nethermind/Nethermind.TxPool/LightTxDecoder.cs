@@ -30,7 +30,6 @@ public class LightTxDecoder : TxDecoder<Transaction>
         byte[] bytes = new byte[GetLength(tx)];
         RlpWriter writer = new(bytes);
 
-        writer.Encode((byte)tx.Type);
         writer.Encode(tx.Timestamp);
         writer.Encode(tx.SenderAddress);
         writer.Encode(tx.Nonce);
@@ -44,6 +43,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.PoolIndex);
         writer.Encode(tx.GetLength());
         writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        // Type is appended last so pre-existing type-3 records (written without it) still decode,
+        // defaulting to TxType.Blob via the trailing read below.
+        writer.Encode((byte)tx.Type);
 
         return bytes;
     }
@@ -51,8 +53,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
     public static LightTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
+        // Argument evaluation is left-to-right, so the read order below must match Encode's write order;
+        // proofVersion and type are optional trailing fields, absent on older persisted records.
         return new LightTransaction(
-            type: (TxType)ctx.ReadByte(),
             timestamp: ctx.DecodeUInt256(),
             sender: ctx.DecodeAddress()!,
             nonce: ctx.DecodeULong(),
@@ -65,6 +68,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
             poolIndex: ctx.DecodeULong(),
             size: ctx.DecodePositiveInt(),
-            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
+            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default,
+            type: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (TxType)ctx.ReadByte() : TxType.Blob);
     }
 }
