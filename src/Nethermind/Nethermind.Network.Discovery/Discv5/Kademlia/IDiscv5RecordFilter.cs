@@ -5,14 +5,14 @@ using Nethermind.Network.Enr;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
-/// <summary>Protocol-level ENR acceptance policy of a discv5 instance.</summary>
+/// <summary>ENR acceptance policy applied at a discv5 integration boundary.</summary>
 public interface IDiscv5RecordFilter
 {
-    /// <summary>Returns whether this discv5 instance must drop the record.</summary>
+    /// <summary>Returns whether the integration boundary must exclude the record.</summary>
     bool Excludes(NodeRecord record);
 }
 
-/// <summary>Drops consensus-only ENRs: the execution layer cannot dial beacon nodes over RLPx.</summary>
+/// <summary>Drops consensus-only ENRs from execution peer discovery because beacon nodes cannot be dialed over RLPx.</summary>
 public sealed class ExecutionLayerDiscv5RecordFilter : IDiscv5RecordFilter
 {
     public static ExecutionLayerDiscv5RecordFilter Instance { get; } = new();
@@ -20,7 +20,7 @@ public sealed class ExecutionLayerDiscv5RecordFilter : IDiscv5RecordFilter
     public bool Excludes(NodeRecord record) => DiscoveryV5App.IsConsensusOnlyNodeRecord(record);
 }
 
-/// <summary>Accepts every record; used by consensus-layer discovery, which filters by fork digest downstream.</summary>
+/// <summary>Accepts every record for protocol-level routing and consensus-layer discovery.</summary>
 public sealed class AcceptAllDiscv5RecordFilter : IDiscv5RecordFilter
 {
     public static AcceptAllDiscv5RecordFilter Instance { get; } = new();

@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Collections.Pooled;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -32,7 +33,7 @@ public sealed class KademliaAdapter(
     KademliaConfig<Node> kademliaConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<Hash256> distance,
-    IDiscv5RecordFilter recordFilter,
+    [KeyFilter(KademliaModule.RoutingRecordFilterKey)] IDiscv5RecordFilter recordFilter,
     ILogManager logManager) : KademliaAdapterBase("discv5", logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;

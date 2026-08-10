@@ -17,8 +17,11 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// </summary>
 public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DbNames.DiscoveryV5Nodes)
 {
+    internal const string RoutingRecordFilterKey = "RoutingRecordFilter";
+
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
         .AddSingleton<IDiscv5RecordFilter>(ExecutionLayerDiscv5RecordFilter.Instance)
+        .AddKeyedSingleton<IDiscv5RecordFilter>(RoutingRecordFilterKey, AcceptAllDiscv5RecordFilter.Instance)
         .AddSingleton<IKademliaNodeSource, NodeSource>()
         .AddSingleton<IKademliaAdapter, KademliaAdapter>()
         .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()

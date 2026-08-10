@@ -155,7 +155,7 @@ public class KademliaAdapterTests
                 NodeRecord.FromEnrString(record.ToString()),
                 testCase.ExpectedNodeId,
                 testCase.AllowNonRoutable,
-                ExecutionLayerDiscv5RecordFilter.Instance),
+                AcceptAllDiscv5RecordFilter.Instance),
             Is.EqualTo(testCase.ExpectedResult));
     }
 
@@ -179,7 +179,7 @@ public class KademliaAdapterTests
             new KademliaConfig<Node> { CurrentNodeId = currentNode },
             new CryptoRandom(),
             Hash256KademliaDistance.Instance,
-            ExecutionLayerDiscv5RecordFilter.Instance,
+            AcceptAllDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
     }
 
@@ -223,7 +223,7 @@ public class KademliaAdapterTests
             TestItem.PrivateKeyB.PublicKey.Hash,
             AllowNonRoutable: false,
             IncludeEth2: true,
-            ExpectedResult: false)).SetName("Rejects consensus-only record");
+            ExpectedResult: true)).SetName("Allows consensus-only routing record");
     }
 
     public readonly record struct AcceptableNodeRecordCase(

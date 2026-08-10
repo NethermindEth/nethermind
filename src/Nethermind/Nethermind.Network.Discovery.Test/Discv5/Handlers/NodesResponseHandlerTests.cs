@@ -19,13 +19,14 @@ namespace Nethermind.Network.Discovery.Test.Discv5.Handlers;
 
 public class NodesResponseHandlerTests
 {
-    [TestCase("8.8.8.8", "127.0.0.1", 0)]
-    [TestCase("127.0.0.1", "127.0.0.1", 1)]
-    [TestCase("127.0.0.1", "192.0.2.1", 0)]
-    public void ShouldFilterRecordByReceiverAndRecordAddress(string receiverIp, string recordIp, int expectedCount)
+    [TestCase("8.8.8.8", "127.0.0.1", false, 0)]
+    [TestCase("127.0.0.1", "127.0.0.1", false, 1)]
+    [TestCase("127.0.0.1", "192.0.2.1", false, 0)]
+    [TestCase("8.8.8.8", "8.8.4.4", true, 1)]
+    public void ShouldFilterRecordByReceiverAndRecordAddress(string receiverIp, string recordIp, bool includeEth2, int expectedCount)
     {
         Node receiver = new(TestItem.PublicKeyA, receiverIp, 30303);
-        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse(recordIp));
+        NodeRecord record = CreateEnr(TestItem.PrivateKeyB, IPAddress.Parse(recordIp), includeEth2);
         NodesResponseHandler handler = CreateNodesResponseHandler(receiver, record);
 
         using NodesMsg nodes = new([1], 1, [record]);
@@ -53,7 +54,7 @@ public class NodesResponseHandlerTests
         NodeRecord third = CreateEnr(TestItem.PrivateKeyD, IPAddress.Loopback);
         NodeRecord fourth = CreateEnr(TestItem.PrivateKeyE, IPAddress.Loopback);
         using Distances distances = CreateDistances(receiver, first, second, third, fourth);
-        NodesResponseHandler handler = new(receiver, distances, Hash256KademliaDistance.Instance, ExecutionLayerDiscv5RecordFilter.Instance);
+        NodesResponseHandler handler = new(receiver, distances, Hash256KademliaDistance.Instance, AcceptAllDiscv5RecordFilter.Instance);
 
         using NodesMsg firstBatch = new([1], 2, [first, second, first]);
         using NodesMsg secondBatch = new([2], 2, [third, fourth, second]);
@@ -68,11 +69,15 @@ public class NodesResponseHandlerTests
         AssertUniqueNodeIds(nodes);
     }
 
-    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress) =>
-        TestEnrBuilder.BuildSigned(privateKey, ipAddress, tcpPort: null);
+    private static NodeRecord CreateEnr(PrivateKey privateKey, IPAddress ipAddress, bool includeEth2 = false) =>
+        TestEnrBuilder.BuildSigned(
+            privateKey,
+            ipAddress,
+            tcpPort: null,
+            configureExtras: includeEth2 ? static enr => enr.SetEntry(new TestEth2Entry()) : null);
 
     private static NodesResponseHandler CreateNodesResponseHandler(Node receiver, NodeRecord record) =>
-        new(receiver, CreateDistances(receiver, record), Hash256KademliaDistance.Instance, ExecutionLayerDiscv5RecordFilter.Instance);
+        new(receiver, CreateDistances(receiver, record), Hash256KademliaDistance.Instance, AcceptAllDiscv5RecordFilter.Instance);
 
     private static Distances CreateDistances(Node receiver, params NodeRecord[] records)
     {

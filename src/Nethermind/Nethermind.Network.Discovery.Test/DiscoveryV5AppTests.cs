@@ -196,7 +196,7 @@ public class DiscoveryV5AppTests
     }
 
     [Test]
-    public void Should_Reject_Consensus_Only_Enr()
+    public void Should_Accept_Consensus_Only_Enr()
     {
         NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), includeEth2: true);
         NodeRecord decoded = NodeRecord.FromEnrString(enr.ToString());
@@ -206,8 +206,9 @@ public class DiscoveryV5AppTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.HasEntry(EnrContentKey.Eth2), Is.True);
-            Assert.That(result, Is.False);
-            Assert.That(node, Is.Null);
+            Assert.That(decoded.HasEntry(EnrContentKey.Eth), Is.False);
+            Assert.That(result, Is.True);
+            Assert.That(node, Is.Not.Null);
         }
     }
 
@@ -325,10 +326,11 @@ public class DiscoveryV5AppTests
         Assert.That(node.DiscoveryPort, Is.EqualTo(9001));
     }
 
-    [Test]
-    public void Should_Use_Udp_Port_From_Configured_Enr_Bootnode()
+    [TestCase(false, TestName = "Should_Use_Execution_Configured_Enr_Bootnode")]
+    [TestCase(true, TestName = "Should_Use_Consensus_Only_Configured_Enr_Bootnode")]
+    public void Should_Use_Configured_Enr_Bootnode(bool includeEth2)
     {
-        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 9001, includeTcp: false);
+        NodeRecord enr = CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), udpPort: 9001, includeTcp: false, includeEth2: includeEth2);
         NetworkConfig networkConfig = new()
         {
             Bootnodes = [new NetworkNode(enr.ToString())]
