@@ -59,6 +59,16 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
+        // A following pay frame can name a sponsor if the sender's balance drops below max cost, so the
+        // sender is not resolved natively — defer to simulation.
+        yield return Case("SelfVerifyThenPay_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                DefaultCodeAccount(state, Sponsor);
+                return FrameTx([SelfVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
         // A never-seen sender still resolves: the zeroed account reads as default (empty) code.
         yield return Case("SelfVerify_NonExistentSender_PayerIsSender",
             _ => FrameTx([SelfVerifyFrame()], [Secp(Sender)]),

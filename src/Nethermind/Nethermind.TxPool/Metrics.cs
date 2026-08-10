@@ -45,6 +45,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxSignatureInvalid { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix never approves a payer.")]
+        public static long PendingTransactionsFrameTxNoPayer { get; set; }
+
+        [CounterMetric]
         [Description(
             "Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
         public static long PendingTransactionsNonceGap { get; set; }

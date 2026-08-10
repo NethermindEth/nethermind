@@ -16,8 +16,9 @@ internal enum FrameTxPayerOutcome
     NoPayer,
 
     /// <summary>
-    /// Reaches deployed code the pool cannot evaluate natively, or names a third party it cannot yet
-    /// authenticate; deferred to a later simulation layer.
+    /// Reaches deployed code the pool cannot evaluate natively, or names a third-party payer whose
+    /// resolution needs simulation (canonical-paymaster recognition is not yet pinned down); deferred to
+    /// a later simulation layer.
     /// </summary>
     RequiresSimulation,
 }

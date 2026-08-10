@@ -14,10 +14,12 @@ namespace Nethermind.TxPool;
 /// legible validation prefix from account state (code hash, nonce, balance) without running any code.
 /// </summary>
 /// <remarks>
-/// Only the default-code <c>self_verify</c> prefix (optionally preceded by an <c>expiry_verify</c>
-/// frame) resolves natively to the sender; everything else defers to
-/// <see cref="FrameTxPayerOutcome.RequiresSimulation"/>. A third-party payer is never named natively,
-/// so a forged frame signature cannot resolve to an arbitrary victim.
+/// Only a default-code <c>self_verify</c> prefix with no following payment frame (optionally preceded
+/// by an <c>expiry_verify</c> frame) resolves natively to the sender; everything else defers to
+/// <see cref="FrameTxPayerOutcome.RequiresSimulation"/>. Frame signatures are cryptographically verified
+/// upstream by <see cref="Filters.FrameTxSignatureFilter"/>, which is a precondition of this resolver: a
+/// <see cref="FrameTxPayerOutcome.Resolved"/> payer is only trustworthy given that filter has run, so a
+/// direct caller skipping it would break the guarantee.
 /// </remarks>
 internal static class FrameTxPayerResolver
 {
@@ -84,6 +86,13 @@ internal static class FrameTxPayerResolver
                 return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
             }
 
+            // A following pay frame can override the payer: if the sender's balance drops below max cost
+            // the self approval is skipped and the pay frame names a sponsor, so defer to simulation.
+            if (HasFollowingPaymentFrame(frames, index))
+            {
+                return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
+            }
+
             // A non-matching signature shape isn't proof of invalidity — where the signature belongs is
             // unsettled — so defer the verdict to execution rather than dropping the tx at admission.
             return DefaultCodeApproves(signatures, sender)
@@ -112,7 +121,7 @@ internal static class FrameTxPayerResolver
 
     /// <summary>
     /// Structural check that index-0 is a canonical-hash (empty <c>msg</c>) secp256k1 signature whose
-    /// signer is the sender. Cryptographic verification is a separate deferred gate.
+    /// signer is the sender. Cryptographic verification is a separate upstream gate.
     /// </summary>
     private static bool DefaultCodeApproves(TxFrameSignature[] signatures, Address sender)
     {
@@ -125,6 +134,19 @@ internal static class FrameTxPayerResolver
         return signature.Scheme == TxFrameSignature.SchemeSecp256k1
                && signature.Msg.IsEmpty
                && (signature.Signer ?? sender) == sender;
+    }
+
+    private static bool HasFollowingPaymentFrame(TxFrame[] frames, int verifyIndex)
+    {
+        for (int i = verifyIndex + 1; i < frames.Length; i++)
+        {
+            if ((frames[i].Flags & TxFrame.ApprovePayment) != 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsExpiryVerifyFrame(TxFrame frame) =>
