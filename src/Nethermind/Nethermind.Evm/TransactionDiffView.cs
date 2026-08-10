@@ -16,13 +16,10 @@ namespace Nethermind.Evm;
 /// per frame transaction and shared by its POST_TX frames.
 /// </summary>
 /// <remarks>
-/// The diff data is read straight from the in-flight BAL slice (<see cref="BlockAccessListAtIndex"/>),
-/// which already collapses intermediate writes to one entry per (address, slot) and captures the
-/// transaction-prestate ("before") values. This type fixes the enumeration order the opcodes require
-/// (balances and storage sorted ascending by address then slot key; events in emission order) and
-/// precomputes per-address indexes so the keyed TXDIFF views resolve in O(1) rather than scanning the
-/// whole diff per call. Caching is safe because a POST_TX frame is static, so the diff cannot change
-/// once assertions start running.
+/// Read straight from the in-flight BAL slice, which already net-collapses writes per (address, slot) and
+/// captures the prestate ("before") values. This type only imposes the spec's enumeration order (by
+/// address, then slot key; events in emission order) and precomputes per-address indexes so the keyed
+/// TXDIFF lookups are O(1). Safe to cache: a POST_TX frame is static, so the diff cannot change.
 /// </remarks>
 internal sealed class TransactionDiffView
 {
@@ -152,10 +149,8 @@ internal sealed class TransactionDiffView
         return result;
     }
 
-    // A contract deployment is code appearing where the account previously had none (CREATE/CREATE2).
-    // EDGE CASES (need EIP-7702 / reference-test confirmation, see PR): a 7702 delegation designator on a
-    // fresh EOA also matches this and would surface as a deployment; a redelegation (designator->designator)
-    // does not; and a CREATE returning zero-length code records no code change at all.
+    // Code appearing where the account had none. Approximate: also matches an EIP-7702 designator on a
+    // fresh EOA, and misses a CREATE that returns zero-length code.
     private static bool IsDeployment(AccountChangesAtIndex account)
         => account.CodeChange is not null && (account.PreTxCode is null || account.PreTxCode.Length == 0);
 

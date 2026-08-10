@@ -13,18 +13,11 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// EIP-7906 transaction-assertion opcodes: TXTRACE, TXDIFF and EVENTDATACOPY. All three are valid
-/// only inside a POST_TX frame; anywhere else they exceptional-halt. They read the transaction's
-/// state diff from the in-flight BAL slice and its logs from the shared frame-transaction log buffer.
-/// Each opcode multiplexes on a leading <c>param</c> byte and routes to a per-category helper.
+/// EIP-7906 transaction-assertion opcodes (TXTRACE, TXDIFF, EVENTDATACOPY), valid only inside a POST_TX
+/// frame. They read the tx state diff from the in-flight BAL slice and logs from the shared frame log buffer.
 /// https://eips.ethereum.org/EIPS/eip-7906
 /// </summary>
-/// <remarks>
-/// Unused stack inputs: the spec's parameter tables mark certain <c>in2</c>/<c>in3</c> operands as
-/// "must be 0" but do not define the consequence of a non-zero value. We treat a violation as an
-/// exceptional halt (the strict reading of a normative constraint); this is an interpretation to be
-/// confirmed against the reference tests / the EIP author, and is cheap to relax if they ignore it.
-/// </remarks>
+/// <remarks>Operands the spec marks "must be 0" are treated as reserved: a non-zero value exceptional-halts.</remarks>
 public static unsafe partial class EvmInstructions
 {
     /// <summary>TXTRACE (0xb5): enumerate the transaction's state diff and events by index.</summary>
@@ -39,7 +32,7 @@ public static unsafe partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 param, out UInt256 index)) return EvmExceptionType.StackUnderflow;
         if (param > 0x15) return EvmExceptionType.BadInstruction;
 
-        // Count/scalar params take no index; the spec marks in2 "must be 0" (see the type remarks).
+        // Count params: in2 must be 0.
         byte p = (byte)param.u0;
         return p switch
         {
@@ -120,8 +113,7 @@ public static unsafe partial class EvmInstructions
             case 0x13: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)log.Data.Length);
             default:
                 int topic = param - 0x0F;
-                // A missing topic exceptional-halts (the spec states this for topic 0).
-                if (topic >= log.Topics.Length) return EvmExceptionType.BadInstruction;
+                if (topic >= log.Topics.Length) return EvmExceptionType.BadInstruction; // missing topic halts
                 return stack.PushBytes<TTracingInst>(log.Topics[topic].Bytes);
         }
     }
@@ -146,7 +138,7 @@ public static unsafe partial class EvmInstructions
         return p switch
         {
             0x00 or 0x01 => TxDiffStorage<TGasPolicy, TTracingInst>(vm, ref gas, p, address, in in3, account, ref stack),
-            // Account params take no in3; the spec marks it "must be 0" (see the type remarks).
+            // Account params: in3 must be 0.
             >= 0x02 and <= 0x05 => in3.IsZero
                 ? TxDiffAccount<TGasPolicy, TTracingInst>(vm, ref gas, p, view, address, account, ref stack)
                 : EvmExceptionType.BadInstruction,
@@ -154,10 +146,8 @@ public static unsafe partial class EvmInstructions
         };
     }
 
-    // 0x00 slot value before / 0x01 slot value after, EIP-2929 storage-warm/cold priced.
-    // NOTE: the live read below goes through the recording world state, so it appends a storage read to
-    // the transaction's BAL slice. The EIP is silent on the EIP-7928 interaction here; whether TXDIFF
-    // touches belong in the announced BAL needs pinning against the reference tests (see PR).
+    // 0x00 before / 0x01 after, EIP-2929 storage-priced. The live read records into the BAL slice;
+    // the EIP-7928 interaction is unspecified.
     private static EvmExceptionType TxDiffStorage<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Address address, in UInt256 key, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -172,8 +162,7 @@ public static unsafe partial class EvmInstructions
         return value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
     }
 
-    // 0x02 balance before / 0x03 balance after / 0x04 code hash before / 0x05 code hash after,
-    // EIP-2929 account-warm/cold priced. Same BAL-recording caveat as TxDiffStorage applies to the live reads.
+    // 0x02/0x03 balance, 0x04/0x05 code hash, EIP-2929 account-priced (same BAL-recording caveat as above).
     private static EvmExceptionType TxDiffAccount<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -206,7 +195,7 @@ public static unsafe partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume<TxTraceGasCost>(ref gas);
-        // 0x07 / 0x09 take a local index in in3; 0x06 / 0x08 / 0x0A mark it "must be 0" (see the type remarks).
+        // 0x07/0x09 use in3 as a local index; 0x06/0x08/0x0A require in3 == 0.
         return param switch
         {
             0x06 => in3.IsZero ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)(account?.StorageChangeCount ?? 0)) : EvmExceptionType.BadInstruction,
@@ -266,19 +255,11 @@ public static unsafe partial class EvmInstructions
         return EvmExceptionType.AccessViolation;
     }
 
-    /// <summary>
-    /// Resolves the shared POST_TX diff view for the current frame transaction, building and caching it
-    /// on first use. Returns false — an exceptional halt for the caller — outside a POST_TX frame or when
-    /// the diff source is unavailable.
-    /// </summary>
+    /// <summary>Shared POST_TX diff view for the current frame tx, built once and cached. False (an
+    /// exceptional halt) outside a POST_TX frame or when the BAL diff source is unavailable.</summary>
     /// <remarks>
-    /// The diff source is the EIP-7928 recording world state (<see cref="IBlockAccessListSource"/>), which
-    /// is only constructed on the block-processing path. On read-only re-execution paths that run on a
-    /// plain world state (eth_call, eth_estimateGas, debug/trace re-execution) the cast fails and these
-    /// opcodes halt, so a transaction valid in a block reports as failed when simulated. Making them work
-    /// there needs a non-BAL diff source and is left as a follow-up; activation should also be tied to the
-    /// EIP-7928 transition rather than <c>IsEip7906Enabled</c> alone (a chainspec enabling 7906 without
-    /// 7928 gets opcodes that always halt).
+    /// The diff source is the EIP-7928 recording world state, built only on the block-processing path, so
+    /// read-only re-execution (eth_call, trace) halts here — a non-BAL source is a follow-up.
     /// </remarks>
     private static bool TryGetPostTxView<TGasPolicy>(VirtualMachine<TGasPolicy> vm, out TransactionDiffView view, out FrameTxContext ctx)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -303,10 +284,8 @@ public static unsafe partial class EvmInstructions
         return true;
     }
 
-    // EIP-7906 change-flags bitmask: nonce (0b0001), balance (0b0010), storage (0b0100), code (0b1000).
-    // CAVEAT: balance/storage/code are true net differences (the BAL nulls them when the value returns to
-    // its pre-tx value), but the BAL never nulls a nonce change, so the nonce bit means "nonce was written"
-    // rather than "differs from prestate". Exact net-diff nonce semantics would need a pre-tx nonce record.
+    // Bitmask: nonce 0b0001, balance 0b0010, storage 0b0100, code 0b1000. Balance/storage/code are net
+    // diffs; the nonce bit only means "written" (the BAL never nulls a nonce change).
     private static uint ChangeFlags(AccountChangesAtIndex? account)
     {
         if (account is null) return 0;
