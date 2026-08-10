@@ -44,18 +44,22 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("poacore_validator.json", true)]
     [TestCase("spaceneth", false)]
     [TestCase("archive", false)]
+    [TestCase("archive_clone", true)]
     [TestCase("fast", true)]
     public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.FastSync, fastSyncEnabled);
 
     [TestCase("archive")]
+    [TestCase("archive_clone")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
 
     [TestCase("archive", true)]
+    [TestCase("archive_clone", true)]
     [TestCase("fast", true)]
     [TestCase("spaceneth", false)]
     public void Sync_is_disabled_when_needed(string configWildcard, bool isSyncEnabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.SynchronizationEnabled, isSyncEnabled);
 
     [TestCase("archive", true)]
+    [TestCase("archive_clone", true)]
     [TestCase("fast", true)]
     [TestCase("spaceneth", false)]
     public void Networking_is_disabled_when_needed(string configWildcard, bool isEnabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.NetworkingEnabled, isEnabled);
@@ -92,7 +96,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Eth_stats_disabled_by_default(string configWildcard) => Test<IEthStatsConfig, bool>(configWildcard, static c => c.Enabled, false);
 
     [TestCase("mainnet archive", 4096000000UL)]
-    [TestCase("mainnet ^archive", 1024000000UL)]
+    [TestCase("archive_clone", 4096000000UL)]
+    [TestCase("mainnet ^archive ^archive_clone", 1024000000UL)]
     [TestCase("volta archive", 768000000UL)]
     [TestCase("volta ^archive", 768000000UL)]
     [TestCase("gnosis archive", 1024000000UL)]
@@ -171,8 +176,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Tracer_timeout_default_is_correct(string configWildcard) => Test<IJsonRpcConfig, int>(configWildcard, static c => c.Timeout, 20000);
 
     [TestCase("^mainnet ^validators ^archive", true, true)]
-    [TestCase("mainnet ^fast", false, false)]
+    [TestCase("mainnet ^fast ^archive_clone", false, false)]
     [TestCase("mainnet fast", true, true)]
+    [TestCase("archive_clone", true, true)]
     [TestCase("validators", true, false)]
     public void Fast_sync_settings_as_expected(string configWildcard, bool downloadBodies, bool downloadsReceipts, bool downloadHeaders = true)
     {
@@ -182,6 +188,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     }
 
     [TestCase("archive", false)]
+    [TestCase("archive_clone", true)]
     [TestCase("mainnet.json", true)]
     [TestCase("sepolia.json", true)]
     [TestCase("gnosis.json", true)]
@@ -207,10 +214,11 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Migrations_are_not_enabled_by_default(string configWildcard) => Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
 
     [TestCase("^mainnet ^gnosis ^sepolia", 0UL)]
-    [TestCase("mainnet ^archive", 15537394UL)]
+    [TestCase("mainnet ^archive ^archive_clone", 15537394UL)]
     [TestCase("gnosis ^archive", 25349537UL)]
     [TestCase("sepolia ^archive", 1450409UL)]
     [TestCase("archive", 0UL)]
+    [TestCase("archive_clone", 0UL)]
     public void Barriers_defaults_are_correct(string configWildcard, ulong barrier)
     {
         Test<ISyncConfig, ulong>(configWildcard, static c => c.AncientBodiesBarrier, barrier);
