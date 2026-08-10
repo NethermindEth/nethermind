@@ -21,6 +21,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules
     ) : ModuleFactoryBase<IProofRpcModule>
     {
+        private static ITransactionProcessorAdapter CreateTraceAdapter(ITransactionProcessor transactionProcessor)
+            => new TraceTransactionProcessorAdapter(transactionProcessor);
 
         public override IProofRpcModule Create()
         {
@@ -31,7 +33,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
                 // Standard read only chain setting
                 .AddModule(validationBlockProcessingModules)
-                .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
+                // Override the adapter factory so the scoped adapter and the EIP-7928 BAL pool both trace.
+                .AddScoped<TransactionProcessorAdapterFactory>(CreateTraceAdapter)
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddScoped<IBlockValidator>(Always.Valid) // Why?

@@ -14,8 +14,7 @@ namespace Nethermind.Facade.Simulate;
 /// Stateful and single-threaded: it advances a per-block <c>_currentTxIndex</c> and mutates the shared
 /// <see cref="SimulateRequestState"/> gas counters with unsynchronised <c>-=</c>. It must therefore only ever
 /// drive one transaction stream at a time, in order — i.e. the sequential block-access-list path. Simulate
-/// guarantees this by never attaching a <c>BlockAccessList</c> to its synthesised blocks and by setting
-/// <see cref="ProcessingOptions.ForceSequentialBlockAccessList"/>, both of which keep
+/// guarantees this by never attaching a <c>BlockAccessList</c> to its synthesised blocks, which keeps
 /// <c>BlockAccessListManager.ParallelExecutionEnabled</c> false. Do not register it on a parallel pool.
 /// </remarks>
 public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState) : ITransactionProcessorAdapter
