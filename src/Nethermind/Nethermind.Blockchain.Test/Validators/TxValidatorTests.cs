@@ -882,4 +882,83 @@ public class TxValidatorTests
             };
         }
     }
+
+    // EIP-7594/EIP-8141: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
+    // versioned-hash version byte (0x01) as a type-3 blob tx.
+    private static IEnumerable<int> FrameTxWithinBlobCountLimitCases()
+    {
+        yield return 1;
+        yield return (int)Bogota.Instance.MaxBlobsPerTx;
+    }
+
+    [TestCaseSource(nameof(FrameTxWithinBlobCountLimitCases))]
+    public void IsWellFormed_FrameTxWithinBlobCountLimit_ReturnTrue(int blobCount)
+    {
+        Transaction tx = BuildBlobFrameTx(blobCount);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameTxExceedsBlobCountLimit_ReturnBlobGasLimitExceeded()
+    {
+        int blobCount = (int)Bogota.Instance.MaxBlobsPerTx + 1;
+        Transaction tx = BuildBlobFrameTx(blobCount);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        ValidationResult result = txValidator.IsWellFormed(tx, Bogota.Instance);
+
+        Assert.That(result.AsBool(), Is.False);
+        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxGasLimitExceeded(
+            (ulong)blobCount * Eip4844Constants.GasPerBlob, Bogota.Instance.GasCosts.MaxBlobGasPerTx)));
+    }
+
+    [Test]
+    public void IsWellFormed_FrameTxWithWrongVersionedHashVersionByte_ReturnFalse()
+    {
+        Transaction tx = BuildBlobFrameTx(blobCount: 1, versionByte: 0x02);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        ValidationResult result = txValidator.IsWellFormed(tx, Bogota.Instance);
+
+        Assert.That(result.AsBool(), Is.False);
+        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidBlobVersionedHashVersion));
+    }
+
+    [Test]
+    public void IsWellFormed_FrameTxWithoutMaxFeePerBlobGas_ReturnFalse()
+    {
+        Transaction tx = BuildBlobFrameTx(blobCount: 1);
+        tx.MaxFeePerBlobGas = null;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        ValidationResult result = txValidator.IsWellFormed(tx, Bogota.Instance);
+
+        Assert.That(result.AsBool(), Is.False);
+        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxMissingMaxFeePerBlobGas));
+    }
+
+    private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
+    {
+        byte[][] versionedHashes = new byte[blobCount][];
+        for (int i = 0; i < blobCount; i++)
+        {
+            byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+            hash[0] = versionByte;
+            versionedHashes[i] = hash;
+        }
+
+        return new Transaction
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            DecodedMaxFeePerGas = 100_000,
+            MaxFeePerBlobGas = 1,
+            BlobVersionedHashes = versionedHashes,
+        };
+    }
 }

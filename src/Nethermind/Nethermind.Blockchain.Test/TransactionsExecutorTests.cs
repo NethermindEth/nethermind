@@ -491,6 +491,39 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
+        [Test]
+        public void CanAddTransaction_skips_blob_carrying_frame_transaction()
+        {
+            // EIP8141: block production does not yet meter blob-carrying frame txs against the block
+            // blob budget, so the picker excludes them conservatively to avoid self-invalidating a block.
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
+
+            Transaction frameBlobTx = Build.A.Transaction
+                .WithType(TxType.FrameTx)
+                .WithBlobVersionedHashes(1)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(0)
+                .WithGasLimit(GasCostOf.Transaction)
+                .TestObject;
+
+            Block block = Build.A.Block
+                .WithNumber(1)
+                .WithExcessBlobGas(0)
+                .WithGasLimit(30_000_000)
+                .TestObject;
+
+            BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
+            BlockProcessor.AddingTxEventArgs args =
+                picker.CanAddTransaction(block, frameBlobTx, new HashSet<Transaction>(), stateProvider);
+
+            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+            Assert.That(args.Reason, Does.Contain("frame"));
+        }
+
         private static Transaction[] RunBlockProduction(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,

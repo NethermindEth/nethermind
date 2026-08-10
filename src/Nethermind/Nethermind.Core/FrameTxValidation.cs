@@ -181,6 +181,8 @@ public static class FrameTxValidation
             return false;
         }
 
+        // The EIP-7594 blob-count limit and versioned-hash version byte need the release spec, so they
+        // are enforced by FrameTxFieldsTxValidator rather than in this stateless check.
         return true;
 
         // EIP-8141: a frame belongs to a batch when flagged, or when it is the terminating frame

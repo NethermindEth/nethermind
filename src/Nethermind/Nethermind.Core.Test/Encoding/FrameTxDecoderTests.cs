@@ -109,6 +109,29 @@ public class FrameTxDecoderTests
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
+    [Test]
+    public void ComputeSigHash_MaxFeePerBlobGasChanges_HashChanges()
+    {
+        // The blob fields are part of the signing preimage, so the signature must commit to them.
+        Transaction first = CreateFrameTx();
+        first.MaxFeePerBlobGas = 7;
+        Transaction second = CreateFrameTx();
+        second.MaxFeePerBlobGas = 8;
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    [Test]
+    public void ComputeSigHash_BlobVersionedHashesChange_HashChanges()
+    {
+        Transaction first = CreateFrameTx();
+        first.BlobVersionedHashes = [FilledBytes(32, 0x01)];
+        Transaction second = CreateFrameTx();
+        second.BlobVersionedHashes = [FilledBytes(32, 0x02)];
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateFrameTx()).SetName("Roundtrip_MinimalSingleFrame");
