@@ -1561,7 +1561,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_accept_valid_sparse_sidecar_after_invalid_proofs_without_poisoning_retry_caches()
+        public void should_keep_invalid_blob_proofs_known_until_explicitly_forgotten()
         {
             _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
@@ -1584,6 +1584,10 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.NotifyAboutTx(invalid.Hash!, alternatePeer), Is.EqualTo(AnnounceResult.Delayed));
             Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
             Assert.That(_txPool.NotifyAboutTx(invalid.Hash!, latePeer), Is.EqualTo(AnnounceResult.Delayed));
+            Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+
+            _txPool.ForgetRejectedBlobTransaction(valid.Hash!);
+
             Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
@@ -1850,7 +1854,7 @@ namespace Nethermind.TxPool.Test
             };
             sparseBlobTx.ClearLengthCache();
             Assert.That(_txPool.ValidateTxForBlobSampling(sparseBlobTx), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+            Assert.That(_txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.IncompleteBlobData));
 
             sparseBlobTx.NetworkWrapper = fullWrapper with
             {

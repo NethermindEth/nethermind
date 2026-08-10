@@ -113,6 +113,11 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult InvalidBlobProofs = new(20, TxErrorMessages.InvalidBlobProofs);
 
         /// <summary>
+        /// The blob transaction sidecar does not contain full blobs or any sparse cells.
+        /// </summary>
+        public static readonly AcceptTxResult IncompleteBlobData = new(21, TxErrorMessages.IncompleteBlobData);
+
+        /// <summary>
         /// The node is syncing and cannot accept transactions at this time.
         /// </summary>
         public static readonly AcceptTxResult Syncing = new(503, TxPoolErrorMessages.NodeIsSyncing);

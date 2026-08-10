@@ -15,9 +15,18 @@ internal sealed class BlobProofsTxFilter : IIncomingTxFilter
             return AcceptTxResult.Accepted;
         }
 
-        if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1)
-            || !wrapper.HasFullBlobs() && (wrapper.Cells is not { Length: > 0 } || wrapper.CellMask.IsEmpty)
-            || !IBlobProofsManager.For(wrapper.Version).ValidateProofs(wrapper))
+        if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1))
+        {
+            return AcceptTxResult.InvalidBlobProofs;
+        }
+
+        if (!wrapper.HasFullBlobs()
+            && (wrapper.Cells is not { Length: > 0 } || wrapper.CellMask.IsEmpty))
+        {
+            return AcceptTxResult.IncompleteBlobData;
+        }
+
+        if (!IBlobProofsManager.For(wrapper.Version).ValidateProofs(wrapper))
         {
             return AcceptTxResult.InvalidBlobProofs;
         }

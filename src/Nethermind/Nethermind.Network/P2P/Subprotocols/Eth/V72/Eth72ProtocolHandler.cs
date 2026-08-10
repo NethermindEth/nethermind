@@ -1645,13 +1645,28 @@ public class Eth72ProtocolHandler(
         for (int i = 0; i < count; i++)
         {
             Transaction tx = txs[i];
+            int announcementSize = GetAnnouncementSize(tx);
+            if (announcementSize <= 0)
+            {
+                continue;
+            }
+
             types.Add((byte)tx.Type);
-            sizes.Add(GetAnnouncementSize(tx));
+            sizes.Add(announcementSize);
             hashes.Add(tx.Hash!);
             TxPool.Metrics.PendingTransactionsHashesSent++;
         }
 
-        Send(new NewPooledTransactionHashesMessage72(types, sizes, hashes, cellMask));
+        if (hashes.Count != 0)
+        {
+            Send(new NewPooledTransactionHashesMessage72(types, sizes, hashes, cellMask));
+        }
+        else
+        {
+            types.Dispose();
+            sizes.Dispose();
+            hashes.Dispose();
+        }
     }
 
     private static int GetAnnouncementSize(Transaction tx)

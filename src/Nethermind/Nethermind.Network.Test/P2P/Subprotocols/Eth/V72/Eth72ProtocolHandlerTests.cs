@@ -312,6 +312,18 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_not_announce_blob_tx_without_network_wrapper()
+    {
+        Transaction tx = BuildBlobTransaction(fullProvider: true);
+        tx.NetworkWrapper = null;
+        tx.ClearLengthCache();
+
+        _handler.SendNewTransaction(tx);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage72>());
+    }
+
+    [Test]
     public void should_request_blob_cells_asynchronously_after_announcement()
     {
         RecreateHandler(providerProbabilityPercent: 100);
