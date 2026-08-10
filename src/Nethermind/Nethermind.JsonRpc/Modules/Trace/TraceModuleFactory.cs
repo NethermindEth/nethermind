@@ -25,9 +25,6 @@ public class TraceModuleFactory(
         builder
             .AddModule(validationBlockProcessingModules)
 
-            // More or less standard except for the configurable adapter factory (trace or execute), which both
-            // the scoped ITransactionProcessorAdapter and the EIP-7928 BAL pool derive from.
-            // Note: Not overriding `IReceiptStorage` to null.
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
