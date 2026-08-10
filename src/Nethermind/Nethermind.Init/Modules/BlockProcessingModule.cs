@@ -80,6 +80,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<TransactionProcessorAdapterFactory>(CreateExecuteAdapter)
             .AddScoped<ITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory>(
                 static (transactionProcessor, adapterFactory) => adapterFactory(transactionProcessor))
+            .AddScoped<BalTxProcessorFactory>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()

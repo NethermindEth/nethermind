@@ -12,7 +12,6 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -42,13 +41,10 @@ public class Eip8037BlockGasIntegrationTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         return new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
-            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
     }
 
     private static (BlockAccessListManager, Block) BuildAmsterdamBlock(ulong blockGasLimit, params Transaction[] txs)
@@ -209,13 +205,10 @@ public class Eip8037BlockGasIntegrationTests
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
         BlockAccessListManager balManager = new(
             stateProvider,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
-            static txProcessor => new ExecuteTransactionProcessorAdapter(txProcessor));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
 
         ulong blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100ul;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)

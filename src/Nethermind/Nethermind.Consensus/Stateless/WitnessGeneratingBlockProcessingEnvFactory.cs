@@ -94,14 +94,10 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
             .AddScoped<ICodeCache>(NoopCodeCache.Instance)
             .AddScoped<IBlockAccessListManager>(ctx => new BlockAccessListManager(
                 ctx.Resolve<IWorldState>(),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.Resolve<IBlockhashProvider>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
-                codeInfoRepositoryFactory: ctx.Resolve<CodeInfoRepositoryFactory>(),
-                txProcessorAdapterFactory: ctx.Resolve<TransactionProcessorAdapterFactory>(),
-                transactionProcessorFactory: ctx.Resolve<ITransactionProcessorFactory>()))
+                ctx.Resolve<BalTxProcessorFactory>()))
             .AddModule(validationModules)
             .AddScoped<IWitnessGeneratingBlockProcessingEnv, WitnessGeneratingBlockProcessingEnv>());
 
