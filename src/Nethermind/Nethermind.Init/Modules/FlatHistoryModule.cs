@@ -6,11 +6,13 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Init.FlatHistory;
 using Nethermind.Init.Steps;
 using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Init.Modules;
 
@@ -55,7 +57,19 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
                 ctx.Resolve<HistoryScopeGate>()))
             .AddStep(typeof(SeedFlatHistoryGenesis))
-            .AddStep(typeof(StartHistoryWindowPruner));
+            .AddStep(typeof(StartHistoryWindowPruner))
+            // devp2p client glue for the two peer-fed feeds: peer selection is shared (NHistPeerSelector), the
+            // sinks and coordinators are one per feed since ban/alternate-selection policy and the DI-primitive
+            // (byte requiredRowFormatVersion) they need differ between "any served scope" (import) and "full
+            // clone with a matching row format" (clone).
+            .AddSingleton<NHistPeerSelector>()
+            .AddSingleton<NHistImportPeerSink>()
+            .AddSingleton<NHistArchiveClonePeerSink>(ctx =>
+                new NHistArchiveClonePeerSink(ctx.Resolve<ISyncPeerPool>(), ctx.Resolve<NHistPeerSelector>(), ctx.Resolve<HistoryRowFormat>().FormatVersion))
+            .AddSingleton<WindowBackfillCoordinator>()
+            .AddSingleton<ArchiveCloneCoordinator>()
+            .AddStep(typeof(StartHistoryWindowBackfill))
+            .AddStep(typeof(StartArchiveClone));
 
         builder.RegisterBuildCallback(ctx =>
         {

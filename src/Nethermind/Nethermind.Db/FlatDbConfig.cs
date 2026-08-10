@@ -20,6 +20,7 @@ public class FlatDbConfig : IFlatDbConfig
     public string? HistorySliceAddresses { get; set; }
     public ulong HistoryImportBatchBlocks { get; set; } = 1000;
     public int HistoryImportShardBufferBudgetEntries { get; set; } = 65536;
+    public bool HistoryArchiveCloneEnabled { get; set; } = false;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;

@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,7 +22,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.NHist;
 
-public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInfo
+public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInfo, INHistSyncPeer
 {
     private IHistoryServer HistoryServer { get; }
     private bool CanServe { get; }
@@ -356,5 +357,34 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         messageDictionary.Send(request);
 
         return await HandleResponse(request, TransferSpeedType.SnapRanges, static req => req.ToString(), token);
+    }
+
+    // INHistSyncPeer: the plain-DTO facing surface a sync-layer consumer reaches through
+    // ISyncPeer.TryGetSatelliteProtocol<INHistSyncPeer> — copies entries out of the pooled wire message and
+    // disposes it immediately, so nothing outside this handler ever has to know about IOwnedReadOnlyList lifetime.
+    async Task<NHistChangesetsPage> INHistSyncPeer.GetChangesets(ulong fromBlockInclusive, ulong toBlockInclusive, CancellationToken token)
+    {
+        using ChangesetsMessage response = await GetChangesets(fromBlockInclusive, toBlockInclusive, token);
+        ChangesetChunkEntry[] copy = new ChangesetChunkEntry[response.Chunks.Count];
+        for (int i = 0; i < copy.Length; i++)
+        {
+            ChangesetChunkEntry chunk = response.Chunks[i];
+            copy[i] = new ChangesetChunkEntry(chunk.Block, chunk.ChunkIndex, chunk.IsLastChunkForBlock, chunk.Payload.ToArray());
+        }
+
+        return new NHistChangesetsPage(copy);
+    }
+
+    async Task<NHistRowsPage> INHistSyncPeer.GetHistoryRows(HistoryRowColumn column, byte[] startKey, byte[] endKey, byte[]? cursor, CancellationToken token)
+    {
+        using HistoryRowsMessage response = await GetHistoryRows(column, startKey, endKey, cursor, token);
+        HistoryRowEntry[] copy = new HistoryRowEntry[response.Entries.Count];
+        for (int i = 0; i < copy.Length; i++)
+        {
+            HistoryRowEntry entry = response.Entries[i];
+            copy[i] = new HistoryRowEntry((byte[])entry.Key.Clone(), entry.Value.ToArray());
+        }
+
+        return new NHistRowsPage(copy, response.NextCursor, response.Refused);
     }
 }

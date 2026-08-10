@@ -55,6 +55,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Per-shard sort-buffer budget, in row entries, for the concurrent backfill importer. A shard spills (sorts and writes early, then starts a fresh buffer) once it reaches this many buffered rows, rather than growing unboundedly within a batch.", DefaultValue = "65536")]
     int HistoryImportShardBufferBudgetEntries { get; set; }
 
+    [ConfigItem(Description = "On startup, clone the full flat history archive from an eligible connected nhist1 peer (SupportsFullClone advertised, matching RowFormatVersion) via GetHistoryRows instead of building it locally. Requires a static peer already serving a full (unwindowed) archive; peer discovery is out of scope, connect one via StaticPeers.", DefaultValue = "false")]
+    bool HistoryArchiveCloneEnabled { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

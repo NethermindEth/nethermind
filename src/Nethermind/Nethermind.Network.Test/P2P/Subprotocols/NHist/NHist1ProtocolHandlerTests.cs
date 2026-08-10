@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -476,6 +477,169 @@ public class NHist1ProtocolHandlerTests
         Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRangeAtHeight);
 
         session.Received(1).InitiateDisconnect(DisconnectReason.NHistServerNotImplemented, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task GetChangesets_ClientMethod_RoundTripsThroughHandleMessage()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetChangesetsMessageSerializer()),
+            SerializerInfo.Create(new ChangesetsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer);
+
+        GetChangesetsMessage? sent = null;
+        session.When(s => s.DeliverMessage(Arg.Any<GetChangesetsMessage>())).Do(call => sent = call.Arg<GetChangesetsMessage>());
+
+        Task<ChangesetsMessage> clientTask = handler.GetChangesets(10, 20, CancellationToken.None);
+
+        Assert.That(sent, Is.Not.Null, "the client method must send a GetChangesetsMessage over the session before its task can ever complete");
+
+        using ChangesetsMessage response = new()
+        {
+            RequestId = sent!.RequestId,
+            Chunks = new ArrayPoolList<ChangesetChunkEntry>(1) { new(10, 0, true, new byte[] { 1, 2, 3 }) }
+        };
+        Handle(handler, serializer, response, NHist1MessageCode.Changesets);
+
+        ChangesetsMessage result = await clientTask;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Chunks.Count, Is.EqualTo(1));
+            Assert.That(result.Chunks[0].Block, Is.EqualTo(10UL));
+            Assert.That(result.Chunks[0].Payload.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
+    public async Task GetHistoryRows_ClientMethod_RoundTripsThroughHandleMessage()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRowsMessageSerializer()),
+            SerializerInfo.Create(new HistoryRowsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer);
+
+        GetHistoryRowsMessage? sent = null;
+        session.When(s => s.DeliverMessage(Arg.Any<GetHistoryRowsMessage>())).Do(call => sent = call.Arg<GetHistoryRowsMessage>());
+
+        Task<HistoryRowsMessage> clientTask = handler.GetHistoryRows(HistoryRowColumn.AccountHistory, [1, 2], [3, 4], cursor: null, CancellationToken.None);
+
+        Assert.That(sent, Is.Not.Null);
+
+        using HistoryRowsMessage response = new()
+        {
+            RequestId = sent!.RequestId,
+            Refused = false,
+            Entries = new ArrayPoolList<HistoryRowEntry>(1) { new(new byte[] { 9, 9 }, new byte[] { 7 }) },
+            NextCursor = [5, 5]
+        };
+        Handle(handler, serializer, response, NHist1MessageCode.HistoryRows);
+
+        HistoryRowsMessage result = await clientTask;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Refused, Is.False);
+            Assert.That(result.Entries.Count, Is.EqualTo(1));
+            Assert.That(result.Entries[0].Key, Is.EqualTo(new byte[] { 9, 9 }));
+            Assert.That(result.NextCursor, Is.EqualTo(new byte[] { 5, 5 }));
+        }
+    }
+
+    [Test]
+    public async Task INHistSyncPeer_GetChangesets_CopiesEntriesAndDisposesTheWireMessage()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetChangesetsMessageSerializer()),
+            SerializerInfo.Create(new ChangesetsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer);
+
+        INHistSyncPeer syncPeer = handler;
+
+        GetChangesetsMessage? sent = null;
+        session.When(s => s.DeliverMessage(Arg.Any<GetChangesetsMessage>())).Do(call => sent = call.Arg<GetChangesetsMessage>());
+
+        Task<NHistChangesetsPage> clientTask = syncPeer.GetChangesets(1, 5, CancellationToken.None);
+        Assert.That(sent, Is.Not.Null);
+
+        ArrayPoolList<ChangesetChunkEntry> chunks = new(1) { new(1, 0, true, new byte[] { 4, 5 }) };
+        using ChangesetsMessage response = new() { RequestId = sent!.RequestId, Chunks = chunks };
+        Handle(handler, serializer, response, NHist1MessageCode.Changesets);
+
+        NHistChangesetsPage page = await clientTask;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(page.Chunks.Count, Is.EqualTo(1));
+            Assert.That(page.Chunks[0].Payload.ToArray(), Is.EqualTo(new byte[] { 4, 5 }),
+                "the plain-DTO surface must carry a copy of the payload, independent of the pooled wire message's lifetime");
+        }
+    }
+
+    [Test]
+    public async Task INHistSyncPeer_GetHistoryRows_PreservesRefusedAndCursor()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRowsMessageSerializer()),
+            SerializerInfo.Create(new HistoryRowsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session, CreateNodeStatsManager(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, historyServer);
+
+        INHistSyncPeer syncPeer = handler;
+
+        GetHistoryRowsMessage? sent = null;
+        session.When(s => s.DeliverMessage(Arg.Any<GetHistoryRowsMessage>())).Do(call => sent = call.Arg<GetHistoryRowsMessage>());
+
+        Task<NHistRowsPage> clientTask = syncPeer.GetHistoryRows(HistoryRowColumn.StorageHistory, [1], [2], cursor: null, CancellationToken.None);
+        Assert.That(sent, Is.Not.Null);
+
+        using HistoryRowsMessage response = new()
+        {
+            RequestId = sent!.RequestId,
+            Refused = true,
+            Entries = ArrayPoolList<HistoryRowEntry>.Empty(),
+            NextCursor = null
+        };
+        Handle(handler, serializer, response, NHist1MessageCode.HistoryRows);
+
+        NHistRowsPage page = await clientTask;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(page.Refused, Is.True, "a peer's refusal must survive the INHistSyncPeer translation, not just the raw wire message");
+            Assert.That(page.Entries, Is.Empty);
+            Assert.That(page.NextCursor, Is.Null);
+        }
+    }
+
+    // ZeroProtocolHandlerBase resolves _nodeStats = nodeStats.GetOrAdd(session.Node) at construction time; a bare
+    // Substitute.For<INodeStatsManager>() leaves that null, which only matters for the client-side request
+    // methods (RunLatencyRequestSizer) this file did not exercise until the round-trip tests below - a real
+    // NodeStatsLight is required for those to actually invoke the request and complete.
+    private static INodeStatsManager CreateNodeStatsManager()
+    {
+        INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+        nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(call => new NodeStatsLight(call.Arg<Node>()));
+        return nodeStatsManager;
     }
 
     private static async IAsyncEnumerable<ChangesetChunkEntry> EmptyChangesets()
