@@ -87,14 +87,17 @@ public sealed class TxValidator : ITxValidator
         // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
         // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
         // signature validation happen during processing.
-        // EIP-8141: no type-6 network wrapper is decoded yet, so no sidecar/proof validator is registered.
-        // Add a blob-sidecar and proof-version validator here once the sidecar wire format lands.
+        // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 network wrapper with type-3,
+        // so the same sidecar and proof-version validators run — they are no-ops for a frame tx with no
+        // wrapper (block form or a blobless frame tx).
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
-            FrameTxFieldsTxValidator.Instance
+            FrameTxFieldsTxValidator.Instance,
+            MempoolBlobTxProofVersionValidator.Instance,
+            MempoolBlobTxValidator.Instance
         ]));
     }
 
@@ -355,8 +358,9 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         return transaction switch
         {
             { NetworkWrapper: null } => ValidationResult.Success,
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper),
-            { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
+            // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 wrapper with type-3.
+            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } when transaction.SupportsBlobs || transaction.CarriesBlobs => ValidateBlobs(transaction, wrapper),
+            _ => TxErrorMessages.InvalidTransactionForm,
         };
 
         static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
@@ -381,7 +385,7 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        if (!transaction.SupportsBlobs) return ValidationResult.Success;
+        if (!transaction.SupportsBlobs && !transaction.CarriesBlobs) return ValidationResult.Success;
 
         ProofVersion? version = transaction.GetProofVersion();
         return version is null

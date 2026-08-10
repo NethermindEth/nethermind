@@ -384,7 +384,7 @@ namespace Nethermind.Core
         }
 
         public virtual ProofVersion? GetProofVersion() =>
-            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version
                 : null;
     }

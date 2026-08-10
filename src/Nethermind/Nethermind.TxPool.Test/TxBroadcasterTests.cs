@@ -725,6 +725,49 @@ public class TxBroadcasterTests
     }
 
     [Test]
+    public void Gossips_frame_blob_tx_only_with_current_proof_version_sidecar([Values] ProofVersion proofVersion, [Values] bool versionMatches)
+    {
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        ProofVersion wrapperVersion = versionMatches
+            ? proofVersion
+            : proofVersion == ProofVersion.V1 ? ProofVersion.V0 : ProofVersion.V1;
+
+        // EIP-8141: a blob-carrying frame tx participates in gossip on the same terms as type-3.
+        Transaction frameBlobTx = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+            NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], wrapperVersion),
+        };
+
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTx), Is.EqualTo(versionMatches));
+    }
+
+    [Test]
+    public void Withholds_frame_blob_tx_lacking_a_sidecar()
+    {
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(ProofVersion.V1);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        Transaction frameBlobTxNoWrapper = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+        };
+        Transaction bloblessFrameTx = new() { Type = TxType.FrameTx };
+
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTxNoWrapper), Is.False);
+        // A frame tx with no blobs has nothing to serve as a sidecar; it gossips like any plain tx.
+        Assert.That(gossipPolicy.ShouldGossipTransaction(bloblessFrameTx), Is.True);
+    }
+
+    [Test]
     public async Task Should_not_send_null_tx_when_adding_concurrently_with_timer_swap()
     {
         // Regression for the gossip NRE seen on gnosis+Flat: BroadcastOnce used to lock on the

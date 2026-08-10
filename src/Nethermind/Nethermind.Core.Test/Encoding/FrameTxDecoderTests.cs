@@ -3,8 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using CkzgLib;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -38,6 +42,51 @@ public class FrameTxDecoderTests
         Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
         AssertFramesEqual(decoded.Frames!, tx.Frames!);
         AssertSignaturesEqual(decoded.FrameSignatures!, tx.FrameSignatures!);
+    }
+
+    [Test]
+    public void Roundtrip_NetworkWrapperForm_PreservesWrapperAndConsensusHash([Values] ProofVersion version)
+    {
+        Transaction tx = CreateBlobCarryingFrameTx(version, blobCount: 2);
+
+        Transaction decoded = EncodeDecode(tx, RlpBehaviors.InMempoolForm);
+
+        ShardBlobNetworkWrapper expected = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        ShardBlobNetworkWrapper actual = (ShardBlobNetworkWrapper)decoded.NetworkWrapper!;
+        Assert.That(actual.Version, Is.EqualTo(expected.Version));
+        Assert.That(actual.Blobs, Is.EqualTo(expected.Blobs));
+        Assert.That(actual.Commitments, Is.EqualTo(expected.Commitments));
+        Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
+        Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
+
+        // The wrapped mempool form carries the consensus-form transaction hash, not a form-specific one.
+        Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
+    }
+
+    [Test]
+    public void NetworkWrapper_DoesNotChangeConsensusEncodingOrSigHash([Values] ProofVersion version)
+    {
+        Transaction withWrapper = CreateBlobCarryingFrameTx(version, blobCount: 2);
+
+        // Same transaction fields, wrapper stripped — the consensus form must be byte-identical.
+        Transaction withoutWrapper = EncodeDecode(withWrapper, RlpBehaviors.None);
+        withoutWrapper.NetworkWrapper = null;
+
+        Rlp consensusWithWrapper = _txDecoder.EncodeTx(withWrapper);
+        Rlp consensusWithoutWrapper = _txDecoder.EncodeTx(withoutWrapper);
+        Assert.That(consensusWithWrapper.Bytes, Is.EqualTo(consensusWithoutWrapper.Bytes));
+        Assert.That(FrameTxSigHash.ComputeValue(withWrapper), Is.EqualTo(FrameTxSigHash.ComputeValue(withoutWrapper)));
+    }
+
+    [Test]
+    public void Roundtrip_BloblessFrameTx_InMempoolForm_HasNoWrapper()
+    {
+        Transaction tx = CreateFrameTx();
+
+        Transaction decoded = EncodeDecode(tx, RlpBehaviors.InMempoolForm);
+
+        Assert.That(decoded.NetworkWrapper, Is.Null);
+        Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
     }
 
     [Test]
@@ -158,13 +207,46 @@ public class FrameTxDecoderTests
         yield return new TestCaseData(blobCarrying).SetName("Roundtrip_WithBlobFields");
     }
 
-    private static Transaction EncodeDecode(Transaction tx)
+    private static Transaction EncodeDecode(Transaction tx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.None)];
+        byte[] bytes = new byte[_txDecoder.GetLength(tx, rlpBehaviors)];
         RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, tx);
+        _txDecoder.Encode(ref writer, tx, rlpBehaviors);
         RlpReader reader = new(bytes);
-        return _txDecoder.Decode(ref reader)!;
+        return _txDecoder.Decode(ref reader, rlpBehaviors)!;
+    }
+
+    private static Hash256 ConsensusHash(Transaction tx)
+    {
+        // The consensus form ignores any network wrapper: keccak(type || rlp(tx_payload_body)).
+        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
+        return Keccak.Compute(bytes);
+    }
+
+    private static Transaction CreateBlobCarryingFrameTx(ProofVersion version, int blobCount)
+    {
+        if (!KzgPolynomialCommitments.IsInitialized)
+        {
+            KzgPolynomialCommitments.InitializeAsync().Wait();
+        }
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(version);
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(
+            [.. Enumerable.Range(1, blobCount).Select(i =>
+            {
+                byte[] blob = new byte[Ckzg.BytesPerBlob];
+                blob[0] = (byte)(i % 256);
+                return blob;
+            })]);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+
+        Transaction tx = CreateFrameTx();
+        tx.MaxFeePerBlobGas = 1;
+        tx.BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
+        tx.NetworkWrapper = wrapper;
+        return tx;
     }
 
     private static void AssertFramesEqual(TxFrame[] actual, TxFrame[] expected)

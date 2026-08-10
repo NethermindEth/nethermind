@@ -17,6 +17,14 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// Encoding with <c>forSigning</c> produces the <c>compute_sig_hash</c> form: the raw signature
 /// bytes of canonical-hash (empty msg) entries are elided.
 /// </summary>
+/// <remarks>
+/// A blob-carrying frame transaction has an EIP-7594 network form that wraps the payload as
+/// <c>[tx_payload_body, wrapper_version, blobs, commitments, cell_proofs]</c>, byte-identical to the
+/// EIP-4844 type-3 wrapper. A frame transaction with no blobs uses the plain payload with no wrapper;
+/// the two mempool forms are structurally disjoint (plain = list beginning with the <c>chain_id</c>
+/// scalar, wrapper = list beginning with the <c>tx_payload_body</c> list). The consensus form is
+/// always the plain payload and its signature hash is unchanged by the presence of a wrapper.
+/// </remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()
 {
@@ -31,6 +39,65 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(128, nameof(Transaction.BlobVersionedHashes));
 
     private static readonly byte[][] EmptyVersionedHashes = [];
+
+    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && IsNetworkWrapper(ref decoderContext))
+        {
+            DecodeNetworkWrapper(ref transaction, ref decoderContext, rlpBehaviors);
+            return;
+        }
+
+        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+    }
+
+    // The wrapper form's first element is the tx_payload_body list; the plain payload's first element
+    // is the chain_id scalar. Peek without consuming to pick the branch.
+    private static bool IsNetworkWrapper(ref RlpReader decoderContext)
+    {
+        int start = decoderContext.Position;
+        decoderContext.ReadSequenceLength();
+        bool isWrapper = decoderContext.IsSequenceNext();
+        decoderContext.Position = start;
+        return isWrapper;
+    }
+
+    private void DecodeNetworkWrapper(ref Transaction? transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        int networkWrapperLength = decoderContext.ReadSequenceLength();
+        int networkWrapperCheck = decoderContext.Position + networkWrapperLength;
+        int rlpLength = decoderContext.PeekNextRlpLength();
+        int txSequenceStart = decoderContext.Position;
+        ReadOnlySpan<byte> transactionSequence = decoderContext.Peek(rlpLength);
+
+        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext,
+            (rlpBehaviors | RlpBehaviors.ExcludeHashes) & ~RlpBehaviors.InMempoolForm);
+
+        if (transaction is not null)
+        {
+            transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext);
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
+            {
+                decoderContext.Check(networkWrapperCheck);
+            }
+
+            if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+            {
+                transaction.Hash = CalculateHashForNetworkPayloadForm(transactionSequence);
+            }
+        }
+    }
+
+    private static Hash256 CalculateHashForNetworkPayloadForm(ReadOnlySpan<byte> transactionSequence)
+    {
+        KeccakHash hash = KeccakHash.Create();
+        Span<byte> txType = [(byte)TxType.FrameTx];
+        hash.Update(txType);
+        hash.Update(transactionSequence);
+        return new Hash256(hash.GenerateValueHash());
+    }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -61,26 +128,54 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int contentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-        int sequenceLength = Rlp.LengthOfSequence(contentLength);
+        int payloadContentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        int payloadSequenceLength = Rlp.LengthOfSequence(payloadContentLength);
+
+        // Only a blob-carrying frame tx in mempool form is wrapped; every other form is the plain payload.
+        ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
+            ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
+            : null;
+
+        int wrapperContentLength = wrapper is null ? 0 : payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper);
+        int bodyLength = wrapper is null ? payloadSequenceLength : Rlp.LengthOfSequence(wrapperContentLength);
 
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
         {
-            writer.StartByteArray(sequenceLength + 1, false);
+            writer.StartByteArray(bodyLength + 1, false);
         }
 
         writer.WriteByte((byte)Type);
-        writer.StartSequence(contentLength);
-        EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
+
+        if (wrapper is null)
+        {
+            writer.StartSequence(payloadContentLength);
+            EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
+        }
+        else
+        {
+            writer.StartSequence(wrapperContentLength);
+            writer.StartSequence(payloadContentLength);
+            EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: false);
+            ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper);
+        }
     }
 
     public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
         bool isEip155Enabled = false, ulong chainId = 0)
     {
-        int txPayloadLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        int payloadSequenceLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+
+        ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
+            ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
+            : null;
+
+        int bodyLength = wrapper is null
+            ? payloadSequenceLength
+            : Rlp.LengthOfSequence(payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper));
+
         return rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
-            ? 1 + txPayloadLength
-            : Rlp.LengthOfSequence(1 + txPayloadLength);
+            ? 1 + bodyLength
+            : Rlp.LengthOfSequence(1 + bodyLength);
     }
 
     protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>

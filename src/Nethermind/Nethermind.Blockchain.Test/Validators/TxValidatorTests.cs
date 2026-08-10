@@ -481,6 +481,62 @@ public class TxValidatorTests
     }
 
     [Test]
+    public void IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue()
+    {
+        Transaction tx = BuildBlobCarryingFrameTx(Bogota.Instance.BlobProofVersion);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameBlobTxWithCorruptSidecarProofs_ReturnsFalse()
+    {
+        Transaction tx = BuildBlobCarryingFrameTx(Bogota.Instance.BlobProofVersion);
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        wrapper.Proofs[0].AsSpan().Clear(); // break the KZG cell proof while keeping the length valid
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse()
+    {
+        // Bogota (Osaka-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
+        Transaction tx = BuildBlobCarryingFrameTx(ProofVersion.V0);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+    }
+
+    private static Transaction BuildBlobCarryingFrameTx(ProofVersion version)
+    {
+        if (!KzgPolynomialCommitments.IsInitialized)
+        {
+            KzgPolynomialCommitments.InitializeAsync().Wait();
+        }
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(version);
+        byte[] blob = new byte[Ckzg.BytesPerBlob];
+        blob[0] = 1;
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blob);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+
+        return new Transaction
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            MaxFeePerBlobGas = 1,
+            BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
+            NetworkWrapper = wrapper,
+        };
+    }
+
+    [Test]
     public void IsWellFormed_CreateTxInSetCode_ReturnsFalse()
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction

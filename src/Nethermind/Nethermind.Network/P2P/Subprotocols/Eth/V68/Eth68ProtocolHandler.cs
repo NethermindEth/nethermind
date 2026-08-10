@@ -257,7 +257,7 @@ public class Eth68ProtocolHandler(ISession session,
 
     private bool CanRequestPooledTransaction(TxType txType) => txType switch
     {
-        TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.SetCode => true,
+        TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.SetCode or TxType.FrameTx => true,
         TxType.Blob => _blobSupportEnabled,
         _ => false,
     };
@@ -281,7 +281,9 @@ public class Eth68ProtocolHandler(ISession session,
                 (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
                 if (!CanRequestPooledTransaction(txShape.Type)
                     || txShape.Size <= 0
-                    || txShape.Size > (txShape.Type.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
+                    // EIP-8141: a type-6 announcement carries only its type byte, so a blob-carrying frame
+                    // tx is indistinguishable from a plain one — budget every frame tx at the blob-tx size.
+                    || txShape.Size > (txShape.Type is TxType.Blob or TxType.FrameTx ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
                 {
                     continue;
                 }
