@@ -55,18 +55,23 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     public void Resolve(ISet<Capability> capabilities)
     {
-        bool serving = _syncConfig.SnapServingEnabled == true;
-        bool syncingState = _syncConfig.SnapSync && (_syncModeSelector.Current & SyncMode.Full) == 0;
-        if (serving || syncingState)
+        bool snapServingEnabled = _syncConfig.SnapServingEnabled == true;
+        bool hasCompletedStateSync = (_syncModeSelector.Current & SyncMode.Full) != 0;
+        bool requiresSnapForSync = _syncConfig.SnapSync && !hasCompletedStateSync;
+
+        if (!snapServingEnabled && !requiresSnapForSync) return;
+
+        capabilities.Add(SnapCapability);
+
+        // snap/2 drops GetTrieNodes/TrieNodes (EIP-8189). Only advertise it once we no longer need
+        // trie nodes ourselves - state sync finished, or snap-syncing with a BAL-heal substitute.
+        bool canAdvertiseSnap2 = requiresSnapForSync
+            ? _canBalHeal
+            : hasCompletedStateSync && _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
+
+        if (canAdvertiseSnap2)
         {
-            capabilities.Add(SnapCapability);
-            // snap/2 drops GetTrieNodes/TrieNodes (EIP-8189)
-            // we should not advertise snap/2 if we need TrieNodes
-            bool canAdvertiseSnap2 = syncingState ? _canBalHeal : _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
-            if (canAdvertiseSnap2)
-            {
-                capabilities.Add(Snap2Capability);
-            }
+            capabilities.Add(Snap2Capability);
         }
     }
 
@@ -81,10 +86,6 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {
-        // The snap contribution only tracks the sync mode while we snap-sync our own state and are not also
-        // serving snap; in every other configuration it is constant, so the rebuild is pointless.
-        if (_syncConfig.SnapServingEnabled == true || !_syncConfig.SnapSync) return;
-
         bool wasSyncing = (e.Previous & SyncMode.Full) == 0;
         bool isSyncing = (e.Current & SyncMode.Full) == 0;
         if (wasSyncing == isSyncing) return;

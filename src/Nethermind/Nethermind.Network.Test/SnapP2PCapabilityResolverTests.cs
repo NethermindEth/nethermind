@@ -58,8 +58,17 @@ public class SnapP2PCapabilityResolverTests
     [Test]
     public void Resolve_serving_only_advertises_snap2_from_chain_spec_alone()
     {
-        using SnapP2PCapabilityResolver resolver = CreateResolver(snapServing: true, flatEnabled: false, firstPivotHeader: null);
+        using SnapP2PCapabilityResolver resolver = CreateResolver(snapServing: true, mode: SyncMode.Full, flatEnabled: false, firstPivotHeader: null);
         Assert.That(Resolve(resolver).Contains(Snap2), Is.True);
+    }
+
+    [Test]
+    public void Resolve_serving_withholds_snap2_while_own_state_sync_is_unfinished()
+    {
+        // Plain FastSync (no SnapSync) on a HalfPath layout: SnapServingEnabled ends up true even
+        // though this node still needs snap/1's GetTrieNodes to finish its own state sync.
+        using SnapP2PCapabilityResolver resolver = CreateResolver(snapServing: true, mode: SyncMode.StateNodes, flatEnabled: false);
+        Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
     }
 
     [TestCase(true, true, true, TestName = "Syncing with flat db, BAL chain and known pivot advertises snap/2")]
