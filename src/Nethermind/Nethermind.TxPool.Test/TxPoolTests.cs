@@ -2459,7 +2459,7 @@ namespace Nethermind.TxPool.Test
             // tx releases the reservation so a third is admitted.
             Address sponsor = TestItem.AddressD;
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(sponsor));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(sponsor));
             // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
 
@@ -2492,7 +2492,7 @@ namespace Nethermind.TxPool.Test
         public async Task Frame_transaction_is_evicted_when_its_prefix_stops_validating_against_the_new_head()
         {
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -2500,7 +2500,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.Accepted));
 
-            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
@@ -2511,32 +2511,79 @@ namespace Nethermind.TxPool.Test
         {
             // An exhausted budget says nothing about validity, so it must not turn into a mass eviction.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
-            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
         }
 
         [Test]
-        public async Task Frame_transaction_is_not_revalidated_when_the_block_touched_no_tracked_dependency()
+        public async Task Revalidation_eviction_releases_the_payer_reservation()
         {
+            // A leaked reservation would be permanent: the sponsor could never fund another frame tx.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted), "the evicted transaction must have released its sponsor reservation");
+        }
+
+        [Test]
+        public async Task Reorg_revalidates_frame_transactions_its_change_list_does_not_mention()
+        {
+            // A reorg reports the new branch's changes but not what the abandoned one reverted.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task Frame_transaction_is_not_revalidated_when_the_block_touched_no_tracked_dependency()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            // The first head establishes the sequential baseline; only then is a change list trusted to
+            // describe everything that moved.
+            Block parent = Build.A.Block.WithNumber(1).TestObject;
+            parent.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+            await RaiseBlockAddedToMainAndWaitForNewHead(parent);
             simulator.ClearReceivedCalls();
 
-            Block block = Build.A.Block.WithNumber(1).TestObject;
+            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
             block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
             await RaiseBlockAddedToMainAndWaitForNewHead(block);
 

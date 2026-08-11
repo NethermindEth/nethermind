@@ -295,13 +295,13 @@ namespace Nethermind.TxPool
         {
             if (!tx.SupportsFrames) return;
 
-            AddressAsKey[] accounts = tx.PayerAddress is null || tx.PayerAddress == tx.SenderAddress
-                ? [tx.SenderAddress!]
-                : [tx.SenderAddress!, tx.PayerAddress];
-            if (HasExpiryDeadline(tx))
-            {
-                accounts = [.. accounts, Eip8141Constants.ExpiryVerifierAddress];
-            }
+            bool hasDistinctPayer = tx.PayerAddress is not null && tx.PayerAddress != tx.SenderAddress;
+            bool hasExpiry = HasExpiryDeadline(tx);
+            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (hasExpiry ? 1 : 0)];
+            int next = 0;
+            accounts[next++] = tx.SenderAddress!;
+            if (hasDistinctPayer) accounts[next++] = tx.PayerAddress!;
+            if (hasExpiry) accounts[next] = Eip8141Constants.ExpiryVerifierAddress;
 
             _frameDependencies.Set(tx.Hash!.ValueHash256, accounts);
         }
@@ -351,7 +351,10 @@ namespace Nethermind.TxPool
                     try
                     {
                         ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
-                        if (args.PreviousBlock is not null || !CanUseCache(args.Block, accountChanges))
+                        // A reorg or a non-sequential block reports its own changes but not what the
+                        // abandoned branch reverted, so the list does not describe everything that moved.
+                        bool changeListIsComplete = args.PreviousBlock is null && CanUseCache(args.Block, accountChanges);
+                        if (!changeListIsComplete)
                         {
                             // Non-sequential block or reorganization detected, reset cache
                             _accountCache.Reset();
@@ -359,12 +362,12 @@ namespace Nethermind.TxPool
                         else
                         {
                             // Sequential block, just remove changed accounts from cache
-                            _accountCache.RemoveAccounts(accountChanges);
+                            _accountCache.RemoveAccounts(accountChanges!);
                         }
 
                         // Collected before the change list is disposed; consumed after included and expired
                         // transactions have left the pool.
-                        CollectFrameTxsToRevalidate(accountChanges);
+                        CollectFrameTxsToRevalidate(changeListIsComplete ? accountChanges : null);
                         DisposeBlockAccountChanges(args.Block);
 
                         _lastBlockNumber = args.Block.Number;
@@ -571,15 +574,14 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void CollectFrameTxsToRevalidate(ArrayPoolList<AddressAsKey>? accountChanges)
+        /// <param name="completeAccountChanges">The head's changed accounts, or <c>null</c> when they do not describe everything that moved.</param>
+        private void CollectFrameTxsToRevalidate(ArrayPoolList<AddressAsKey>? completeAccountChanges)
         {
             _frameTxsToRevalidate.Clear();
             if (_frameDependencies.Count == 0) return;
 
-            // A head that reports no per-account change set (a reorg, or a non-sequential block) tells us
-            // nothing about what moved, so every indexed prefix has to be rechecked.
-            if (accountChanges is null) _frameDependencies.CollectAll(_frameTxsToRevalidate);
-            else _frameDependencies.CollectAffected(accountChanges, _frameTxsToRevalidate);
+            if (completeAccountChanges is null) _frameDependencies.CollectAll(_frameTxsToRevalidate);
+            else _frameDependencies.CollectAffected(completeAccountChanges, _frameTxsToRevalidate);
         }
 
         /// <summary>
@@ -605,10 +607,11 @@ namespace Nethermind.TxPool
                 if (!_transactions.TryGetValue(hash, out Transaction? tx) || !tx.SupportsFrames) continue;
 
                 Metrics.FrameTxRevalidations++;
-                if (!TryRevalidateFrameTransaction(tx, headSpec, state))
+                if (!TryRevalidateFrameTransaction(tx, headSpec, state, out bool exposureReleased))
                 {
-                    // Cleared so the Removed handler does not release a reservation this pass already moved.
-                    tx.PayerAddress = null;
+                    // Cleared only when this pass already released the reservation, so the Removed handler
+                    // releases it exactly once — an unreleased reservation would be permanent.
+                    if (exposureReleased) tx.PayerAddress = null;
                     if (RemoveTransaction(tx.Hash))
                     {
                         EvictedPending?.Invoke(this, new TxEventArgs(tx));
@@ -622,8 +625,15 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>Whether <paramref name="tx"/> still resolves a solvent payer against the new head, moving its reservation if the payer changed.</summary>
-        private bool TryRevalidateFrameTransaction(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state)
+        /// <param name="exposureReleased">True when this call already released the reservation the transaction held.</param>
+        /// <remarks>
+        /// The solvency test compares the payer's whole pending exposure against its balance, so an
+        /// over-committed payer sheds transactions one at a time: each eviction releases its reservation,
+        /// and the rest of the sweep re-tests against the reduced total, leaving only the surplus dropped.
+        /// </remarks>
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool exposureReleased)
         {
+            exposureReleased = false;
             if (!FrameTxValidation.TryCalculateMaxCost(tx, headSpec, out UInt256 maxCost)) return false;
 
             // Matches TxFilteringState: a never-seen sender must read back as code-free, not zero-hashed.
@@ -641,7 +651,7 @@ namespace Nethermind.TxPool
                 default:
                     // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
                     if (_frameTxPrefixSimulator is null) return true;
-                    FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx);
+                    FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, _cts.Token);
                     if (!simulated.Accepted) return simulated.Indeterminate;
                     payer = simulated.Payer;
                     break;
@@ -655,8 +665,13 @@ namespace Nethermind.TxPool
             }
 
             if (previousPayer is not null) _payerExposure.Subtract(previousPayer, maxCost);
+            exposureReleased = true;
             tx.PayerAddress = payer;
-            return payer is null || _payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _);
+            if (payer is not null && !_payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _)) return false;
+
+            // The index still maps this transaction to the payer it was admitted with.
+            IndexFrameTxDependencies(tx);
+            return true;
         }
 
         private static UInt256 BalanceOf(IReadOnlyStateProvider state, Address address) =>

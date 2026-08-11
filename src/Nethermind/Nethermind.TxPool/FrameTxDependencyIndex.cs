@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -17,62 +17,74 @@ namespace Nethermind.TxPool;
 /// the index the only correct alternative is re-simulating the whole pool on every head, which is
 /// itself a denial-of-service vector. Account granularity is a conservative superset of the spec's
 /// slot granularity: a write to a sender storage slot also changes that sender's account.
+/// A missed entry is a missed revalidation, so mutation and collection are serialized outright rather
+/// than reasoned about lock-free; frame-transaction churn is far too low for the contention to matter.
 /// </remarks>
 internal sealed class FrameTxDependencyIndex
 {
-    private readonly ConcurrentDictionary<ValueHash256, AddressAsKey[]> _byTx = new();
-    private readonly ConcurrentDictionary<AddressAsKey, ConcurrentDictionary<ValueHash256, bool>> _byAccount = new();
+    private readonly Lock _lock = new();
+    private readonly Dictionary<ValueHash256, AddressAsKey[]> _byTx = [];
+    private readonly Dictionary<AddressAsKey, HashSet<ValueHash256>> _byAccount = [];
 
-    public int Count => _byTx.Count;
+    public int Count
+    {
+        get { lock (_lock) return _byTx.Count; }
+    }
 
     /// <summary>Indexes <paramref name="hash"/> under each of <paramref name="accounts"/>, replacing any earlier entry.</summary>
     public void Set(ValueHash256 hash, AddressAsKey[] accounts)
     {
-        Remove(hash);
-        if (accounts.Length == 0) return;
-
-        _byTx[hash] = accounts;
-        foreach (AddressAsKey account in accounts)
+        lock (_lock)
         {
-            _byAccount.GetOrAdd(account, static _ => new ConcurrentDictionary<ValueHash256, bool>())[hash] = true;
+            RemoveLocked(hash);
+            if (accounts.Length == 0) return;
+
+            _byTx[hash] = accounts;
+            foreach (AddressAsKey account in accounts)
+            {
+                if (!_byAccount.TryGetValue(account, out HashSet<ValueHash256>? hashes))
+                {
+                    _byAccount[account] = hashes = [];
+                }
+
+                hashes.Add(hash);
+            }
         }
     }
 
     public void Remove(ValueHash256 hash)
     {
-        if (!_byTx.TryRemove(hash, out AddressAsKey[]? accounts)) return;
-
-        foreach (AddressAsKey account in accounts)
-        {
-            if (_byAccount.TryGetValue(account, out ConcurrentDictionary<ValueHash256, bool>? hashes))
-            {
-                hashes.TryRemove(hash, out _);
-                // Racy by design: a concurrent Set may re-add to a bucket about to be dropped, so the
-                // removal is conditional on the bucket still being the empty one observed here.
-                if (hashes.IsEmpty)
-                {
-                    ((ICollection<KeyValuePair<AddressAsKey, ConcurrentDictionary<ValueHash256, bool>>>)_byAccount)
-                        .Remove(new KeyValuePair<AddressAsKey, ConcurrentDictionary<ValueHash256, bool>>(account, hashes));
-                }
-            }
-        }
+        lock (_lock) RemoveLocked(hash);
     }
 
     /// <summary>Adds to <paramref name="into"/> every indexed transaction depending on a changed account.</summary>
     public void CollectAffected(IReadOnlyList<AddressAsKey> changedAccounts, HashSet<ValueHash256> into)
     {
-        for (int i = 0; i < changedAccounts.Count; i++)
+        lock (_lock)
         {
-            if (_byAccount.TryGetValue(changedAccounts[i], out ConcurrentDictionary<ValueHash256, bool>? hashes))
+            for (int i = 0; i < changedAccounts.Count; i++)
             {
-                foreach (KeyValuePair<ValueHash256, bool> entry in hashes) into.Add(entry.Key);
+                if (_byAccount.TryGetValue(changedAccounts[i], out HashSet<ValueHash256>? hashes)) into.UnionWith(hashes);
             }
         }
     }
 
-    /// <summary>Adds every indexed transaction, for heads that report no per-account change set.</summary>
+    /// <summary>Adds every indexed transaction, for heads whose change list does not describe everything that moved.</summary>
     public void CollectAll(HashSet<ValueHash256> into)
     {
-        foreach (KeyValuePair<ValueHash256, AddressAsKey[]> entry in _byTx) into.Add(entry.Key);
+        lock (_lock) into.UnionWith(_byTx.Keys);
+    }
+
+    private void RemoveLocked(ValueHash256 hash)
+    {
+        if (!_byTx.Remove(hash, out AddressAsKey[]? accounts)) return;
+
+        foreach (AddressAsKey account in accounts)
+        {
+            if (_byAccount.TryGetValue(account, out HashSet<ValueHash256>? hashes) && hashes.Remove(hash) && hashes.Count == 0)
+            {
+                _byAccount.Remove(account);
+            }
+        }
     }
 }

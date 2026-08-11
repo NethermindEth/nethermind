@@ -148,9 +148,11 @@ public sealed class FrameTxPrefixSimulator(
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            // A malformed opaque prefix must never crash admission: reject and keep the pool up.
+            // A malformed opaque prefix must never crash admission: reject and keep the pool up. A definite
+            // rejection, not a bound — the expected source is the prefix, and retaining one that throws on
+            // every head would let it pin a pool slot indefinitely.
             if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
-            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation error");
+            return FrameTxSimulationResult.Reject("validation-prefix simulation error");
         }
     }
 
