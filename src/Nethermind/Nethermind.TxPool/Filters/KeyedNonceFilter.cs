@@ -34,12 +34,4 @@ internal sealed class KeyedNonceFilter(IReadOnlyStateProvider stateProvider) : I
 
         return AcceptTxResult.Accepted;
     }
-
-    /// <summary>Whether <paramref name="tx"/>'s replay protection lives in <c>NONCE_MANAGER</c> rather than the sender's account nonce.</summary>
-    /// <remarks>
-    /// The account-nonce filters and the sender bucket's nonce ordering are meaningless for such a transaction:
-    /// its sender may be a contract whose account nonce is unrelated to the sequence it consumes.
-    /// </remarks>
-    public static bool UsesKeyedNonce(Transaction tx) =>
-        tx.NonceKeys is { } nonceKeys && KeyedNonceManager.UsesKeyedDomain(nonceKeys);
 }

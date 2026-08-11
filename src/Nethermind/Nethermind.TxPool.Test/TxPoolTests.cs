@@ -2486,6 +2486,84 @@ namespace Nethermind.TxPool.Test
             return tx;
         }
 
+        private const ulong KeyedFrameTxGasLimit = 1_000_000;
+
+        private static ISpecProvider KeyedNonceSpecProvider() =>
+            new TestSpecProvider(new OverridableReleaseSpec(Bogota.Instance) { IsEip8250Enabled = true });
+
+        private Transaction BuildKeyedFrameTx(Address sender, UInt256 nonceKey, ulong seq, UInt256 value, UInt256 maxFee)
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = seq,
+                SenderAddress = sender,
+                NonceKeys = [nonceKey],
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+                FrameSignatures = [],
+                GasLimit = KeyedFrameTxGasLimit,
+                Value = value,
+                GasPrice = maxFee,
+                DecodedMaxFeePerGas = maxFee,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
+        [Test]
+        public async Task Over_value_keyed_tx_does_not_dump_a_valid_plain_tx_from_the_same_sender()
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+
+            Transaction plain = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(1.Ether)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithGasLimit(21_000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Assert.That(_txPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 0, value: 10.Ether, maxFee: 10.GWei);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            EnsureSenderBalance(sender, 5.Ether);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.IsKnown(plain.Hash), Is.True,
+                "a valid plain transaction must survive an over-value keyed transaction sharing its sender bucket");
+        }
+
+        [Test]
+        public async Task Keyed_tx_that_can_no_longer_fund_its_gas_is_evicted_and_may_re_enter()
+        {
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+
+            UInt256 maxFee = 1.GWei;
+            Transaction keyed = BuildKeyedFrameTx(sender, nonceKey: 0xbeef, seq: 0, value: UInt256.Zero, maxFee: maxFee);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            UInt256 gasCost = maxFee * (UInt256)KeyedFrameTxGasLimit;
+            EnsureSenderBalance(sender, gasCost - UInt256.One);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0),
+                    "a keyed transaction the sender can no longer fund must be evicted, not left pending until block production");
+                Assert.That(_txPool.IsKnown(keyed.Hash), Is.False,
+                    "the eviction clears the long-term cache so the transaction can re-enter once the balance recovers");
+            }
+        }
+
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);

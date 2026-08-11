@@ -818,6 +818,21 @@ namespace Nethermind.TxPool
         private bool IsKeyedNonceCurrent(Transaction tx) =>
             KeyedNonceManager.IsNonceSetValid(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce);
 
+        /// <summary>Whether any nonce key <paramref name="tx"/> selects has advanced past its declared sequence in the head state.</summary>
+        /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.</remarks>
+        private bool IsKeyedNonceBehind(Transaction tx)
+        {
+            foreach (UInt256 nonceKey in tx.NonceKeys!)
+            {
+                if (KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey) > tx.Nonce)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private void UpdateGasBottleneckAndMarkForEviction(
             EnhancedSortedSet<Transaction> transactions,
             ulong currentNonce,
@@ -834,18 +849,30 @@ namespace Nethermind.TxPool
 
             foreach (Transaction tx in transactions)
             {
-                if (KeyedNonceFilter.UsesKeyedNonce(tx))
+                if (KeyedNonceManager.UsesKeyedNonce(tx))
                 {
                     if (!IsKeyedNonceCurrent(tx))
                     {
-                        MarkForEviction(tx, true);
+                        MarkForEviction(tx, allowLaterPoolReentrance: !IsKeyedNonceBehind(tx));
                     }
                     else
                     {
-                        UInt256 keyedBottleneck = tx.CalculateEffectiveGasPrice(isEip1559, _headInfo.CurrentBaseFee);
-                        if (tx.GasBottleneck != keyedBottleneck)
+                        ValidationResult keyedValid = _headTxValidator?.IsWellFormed(tx, headSpec) ?? ValidationResult.Success;
+                        if (!keyedValid)
                         {
-                            updateTx(transactions, tx, keyedBottleneck, lastElement);
+                            MarkForEviction(tx, keyedValid.Error == TxErrorMessages.InvalidProofVersion);
+                        }
+                        else if (tx.CheckForNotEnoughBalance(UInt256.Zero, balance, out _))
+                        {
+                            MarkForEviction(tx, allowLaterPoolReentrance: true);
+                        }
+                        else
+                        {
+                            UInt256 keyedBottleneck = tx.CalculateEffectiveGasPrice(isEip1559, _headInfo.CurrentBaseFee);
+                            if (tx.GasBottleneck != keyedBottleneck)
+                            {
+                                updateTx(transactions, tx, keyedBottleneck, lastElement);
+                            }
                         }
                     }
 
@@ -937,7 +964,7 @@ namespace Nethermind.TxPool
                 Transaction? tx = null;
                 foreach (Transaction txn in transactions)
                 {
-                    if (KeyedNonceFilter.UsesKeyedNonce(txn) ? IsKeyedNonceCurrent(txn) : txn.Nonce == currentNonce)
+                    if (KeyedNonceManager.UsesKeyedNonce(txn) ? IsKeyedNonceCurrent(txn) : txn.Nonce == currentNonce)
                     {
                         tx = txn;
                         break;

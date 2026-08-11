@@ -87,6 +87,14 @@ public static class KeyedNonceManager
     public static bool UsesKeyedDomain(ReadOnlySpan<UInt256> nonceKeys) =>
         nonceKeys.Length != 1 || !nonceKeys[0].IsZero;
 
+    /// <summary>Whether <paramref name="tx"/>'s replay protection lives in <c>NONCE_MANAGER</c> rather than the sender's account nonce.</summary>
+    /// <remarks>
+    /// The account-nonce filters and the sender bucket's nonce ordering are meaningless for such a transaction:
+    /// its sender may be a contract whose account nonce is unrelated to the sequence it consumes.
+    /// </remarks>
+    public static bool UsesKeyedNonce(Transaction tx) =>
+        tx.NonceKeys is { } nonceKeys && UsesKeyedDomain(nonceKeys);
+
     /// <summary>Checks whether <paramref name="nonceKeys"/> is a well-formed <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> nonce-key set.</summary>
     /// <remarks>
     /// Well-formed means: length in <c>[1, <see cref="Eip8250Constants.MaxNonceKeys"/>]</c>; key 0 appears only as the

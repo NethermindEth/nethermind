@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Filters;
@@ -12,7 +13,7 @@ public class FutureNonceFilter(ITxPoolConfig txPoolConfig) : IIncomingTxFilter
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (KeyedNonceFilter.UsesKeyedNonce(tx))
+        if (KeyedNonceManager.UsesKeyedNonce(tx))
         {
             return AcceptTxResult.Accepted;
         }
