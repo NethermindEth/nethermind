@@ -77,16 +77,10 @@ public sealed class ArenaManager : IArenaManager
 
     /// <summary>
     /// Initialize from existing arena files and catalog entries.
-    /// Computes allocation frontiers and dead bytes per arena, and removes from
-    /// <paramref name="entries"/> those that reference an arena with no on-disk file.
+    /// Computes allocation frontiers and dead bytes per arena, and returns the ids of
+    /// arenas referenced by the catalog for which no on-disk file exists.
     /// </summary>
-    /// <remarks>
-    /// The caller shares this list with the snapshot load that follows, so the drop has to happen
-    /// here rather than being applied to this manager's bookkeeping alone: an entry left in the list
-    /// would reach <c>Open</c>, which throws for an arena that was never registered, and take the whole
-    /// startup down over a slice that is unreadable either way.
-    /// </remarks>
-    public void Initialize(List<CatalogEntry> entries)
+    public IReadOnlySet<int> Initialize(IReadOnlyList<CatalogEntry> entries)
     {
         using Lock.Scope scope = _lock.EnterScope();
         // Open existing arena files. Defer the per-file metric push until after frontier
@@ -138,8 +132,6 @@ public sealed class ArenaManager : IArenaManager
             liveSizes[aid] = live + entry.Location.Size;
         }
 
-        if (missingArenas.Count > 0) entries.RemoveAll(e => missingArenas.Contains(e.Location.ArenaId));
-
         // Now that frontiers reflect the catalog's high-water mark, push the per-file count + bytes
         // gauges in one go (seeds ReportedFrontier).
         foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
@@ -148,6 +140,8 @@ public sealed class ArenaManager : IArenaManager
             kv.Value.DeadBytes = kv.Value.Frontier - live;
             kv.Value.ReportAdded();
         }
+
+        return missingArenas;
     }
 
     /// <summary>

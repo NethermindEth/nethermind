@@ -6,11 +6,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Storage;
 public unsafe interface IArenaManager : IDisposable
 {
     /// <summary>
-    /// Rehydrate the arena pool from the on-disk files and <paramref name="entries"/>, and drop from
-    /// <paramref name="entries"/> any that reference an arena with no file — those slices cannot be
-    /// served, and the list is shared with the snapshot load that follows.
+    /// Rehydrate the arena pool from the on-disk files and <paramref name="entries"/> and return the
+    /// arena ids referenced by entries for which no on-disk file exists.
     /// </summary>
-    void Initialize(List<CatalogEntry> entries);
+    IReadOnlySet<int> Initialize(IReadOnlyList<CatalogEntry> entries);
 
     /// <summary>
     /// Create an <see cref="ArenaWriter"/> for a new snapshot slice.

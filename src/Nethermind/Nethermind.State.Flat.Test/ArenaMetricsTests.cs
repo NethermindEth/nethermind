@@ -124,7 +124,7 @@ public class ArenaMetricsTests
     }
 
     [Test]
-    public void Initialize_DropsCatalogEntriesWhoseArenaFileIsGone()
+    public void Initialize_ReportsCatalogEntriesWhoseArenaFileIsGone()
     {
         string arenaDir = Path.Combine(_testDir, "arena");
         using ArenaManager arena = new(arenaDir, new FlatDbConfig
@@ -150,9 +150,11 @@ public class ArenaMetricsTests
             PersistedSnapshotArenaPageCacheBytes = 0,
             ArenaFileSizeBytes = 64 * 1024,
         }, LimboLogs.Instance);
-        reopened.Initialize(entries);
+        IReadOnlySet<int> missingArenas = reopened.Initialize(entries);
 
-        // The orphan is unreadable — Open would throw and take startup down with it.
-        Assert.That(entries, Is.EqualTo(new[] { live }));
+        // The orphan is unreadable — the loader filters it before Open, which would otherwise take
+        // startup down with it. Initialization itself does not mutate the caller's catalog list.
+        Assert.That(missingArenas, Is.EquivalentTo(new[] { 65 }));
+        Assert.That(entries, Is.EqualTo(new[] { live, orphan }));
     }
 }
