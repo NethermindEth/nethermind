@@ -86,7 +86,7 @@ jobs:
       - name: Download input
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
         run: |
-          curl -sSL "https://us-southeast-1.linodeobjects.com/zktests/20260714/${{ matrix.input }}" \
+          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260714/${{ matrix.input }}" \
             -o "${{ matrix.input }}"
           echo "${{ matrix.hash }}  ${{ matrix.input }}" | sha256sum --status -c - || \
             { echo "::error::Checksum failed"; exit 1; }
@@ -95,7 +95,7 @@ jobs:
         timeout-minutes: 5
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: |
-          set -uo pipefail
+          set -euo pipefail
           suffix=012500000001000000000000000c00000004000000080000000800000057b05d6900000000
           make run INPUT="${{ matrix.input }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
           grep -q "${{ matrix.output }}$suffix" "$RUNNER_TEMP/run.log" || \
