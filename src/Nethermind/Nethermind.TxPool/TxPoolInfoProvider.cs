@@ -95,11 +95,14 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         queuedTotal += total - senderPending;
     }
 
-    // Streams a two-pointer merge of two nonce-sorted bucket arrays from the standard and
-    // blob pools (TxDistinctSortedPool sorts each bucket by nonce). Pending = txs whose
-    // nonce continues from accountNonce; gap → queued. Mirrors Geth's split.
-    // Note: TxTypeTxFilter prevents a sender from holding both types simultaneously, so
-    // the merge case is rare in practice but the API handles it correctly anyway.
+    /// <summary>Splits a sender's transactions into the <c>pending</c> and <c>queued</c> maps of <c>txpool_contentFrom</c>.</summary>
+    /// <remarks>
+    /// A two-pointer merge of the nonce-sorted standard and blob buckets. An account-nonce transaction stays pending while
+    /// its nonce is contiguous from the account nonce and moves to queued once a gap appears, mirroring Geth's split. An
+    /// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed transaction is always pending: its sequence
+    /// lives in the nonce manager, not the account nonce, so account-nonce contiguity does not apply. A sender cannot hold
+    /// both standard and blob types at once (TxTypeTxFilter), so the two arrays rarely both populate.
+    /// </remarks>
     private static (IDictionary<string, Transaction> pending, IDictionary<string, Transaction> queued)
         SplitByNonce(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
     {
