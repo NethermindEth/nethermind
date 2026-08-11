@@ -51,11 +51,8 @@ public static class InclusionListValidator
         {
             if (included[i]) continue;
 
-            // EIP-8369 classification gate. Profile 1 keeps FOCIL's end-of-payload omission check.
-            // Profile 2's omission is checked by bounded validation replay at the builder-claimed index
-            // (Eip8369.DefaultClaimedInclusionIndex, default = end of payload); the AA-VOPS state-surface
-            // replay (EIP-8250 keyed nonces, EIP-8272 recent roots) is a DEFERRAL, so a Profile-2 entry is
-            // not treated as a violation here. Outside-enforcement entries are never enforced.
+            // EIP-8369 gate: only Profile-1 keeps FOCIL's end-of-payload omission check; Profile-2 enforcement
+            // (bounded claimed-index replay) is deferred to a future EIP-7805 extension, so it and Outside never fail here.
             if (Eip8369.Classify(il[i]) != FocilProfile.One) continue;
 
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;

@@ -19,8 +19,4 @@ public static class Eip8369Constants
 
     /// <summary>Upper bound on a single Profile-2 transaction's VERIFY-budget cost.</summary>
     public const ulong MaxVerifyGasPerTx = 1UL << 20;
-
-    // TBD: unpinned in the informational EIP (candidate 2-4); finalized by the Standards-Track
-    // EIP-7805 extension plus benchmarks. Not yet consumed by any enforcement path.
-    public const int AaVopsSlotCount = 4;
 }

@@ -62,15 +62,4 @@ public static class Eip8369
     /// </summary>
     /// <param name="tx">The Profile-2 frame transaction to price.</param>
     public static ulong Profile2VerifyCost(Transaction tx) => FrameTxValidation.ValidationWorkGas(tx);
-
-    /// <summary>
-    /// The builder-claimed omission index a Profile-2 frame transaction is checked at, defaulting to the
-    /// end of the payload when no valid index is supplied.
-    /// </summary>
-    /// <remarks>
-    /// The wire field carrying a builder-supplied index belongs to the future Standards-Track EIP-7805
-    /// extension; until then the default (end of payload) is always used, which also covers the
-    /// missing / malformed / out-of-range cases EIP-8369 folds into the default.
-    /// </remarks>
-    public static int DefaultClaimedInclusionIndex(Block block) => block.Transactions.Length;
 }
