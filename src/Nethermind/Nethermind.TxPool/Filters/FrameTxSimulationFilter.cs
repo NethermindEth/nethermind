@@ -43,7 +43,9 @@ internal sealed class FrameTxSimulationFilter(
         if (!result.Accepted)
         {
             if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.RejectionReason}.");
-            return AcceptTxResult.FrameSimulationFailed.WithMessage(result.RejectionReason ?? TxPoolErrorMessages.FrameSimulationFailed);
+            // An admission bound the node spent on itself is not the sending peer's fault.
+            return (result.Indeterminate ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.FrameSimulationFailed)
+                .WithMessage(result.RejectionReason ?? TxPoolErrorMessages.FrameSimulationFailed);
         }
 
         tx.PayerAddress = result.Payer;

@@ -33,7 +33,7 @@ public interface IFrameTxPrefixSimulator
 /// Outcome of an <see cref="IFrameTxPrefixSimulator.Simulate"/> call: whether the prefix is admissible
 /// and, when it is, the payer it resolved.
 /// </summary>
-public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, string? rejectionReason)
+public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, string? rejectionReason, bool indeterminate = false)
 {
     /// <summary>True when the prefix validated under the trace/opcode rules and set a payer within the gas bound.</summary>
     public bool Accepted { get; } = accepted;
@@ -44,6 +44,15 @@ public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, st
     /// <summary>Human-readable reason the prefix was rejected; null when accepted.</summary>
     public string? RejectionReason { get; } = rejectionReason;
 
+    /// <summary>
+    /// True when the rejection reflects an admission bound this node spent rather than the prefix itself,
+    /// so it says nothing about validity.
+    /// </summary>
+    public bool Indeterminate { get; } = indeterminate;
+
     public static FrameTxSimulationResult Accept(Address payer) => new(true, payer, null);
     public static FrameTxSimulationResult Reject(string reason) => new(false, null, reason);
+
+    /// <summary>A rejection caused by an admission bound, not by the prefix.</summary>
+    public static FrameTxSimulationResult RejectIndeterminate(string reason) => new(false, null, reason, indeterminate: true);
 }

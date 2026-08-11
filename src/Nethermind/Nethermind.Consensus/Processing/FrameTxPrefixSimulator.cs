@@ -68,27 +68,27 @@ public sealed class FrameTxPrefixSimulator(
         BlockHeader? head = blockFinder.Head?.Header;
         if (head is null)
         {
-            return FrameTxSimulationResult.Reject("no chain head to simulate against");
+            return FrameTxSimulationResult.RejectIndeterminate("no chain head to simulate against");
         }
 
         // Bounded wait: an admission thread must not queue indefinitely behind other peers' simulations.
         if (!Monitor.TryEnter(_lock, _timeout > TimeSpan.Zero ? _timeout : Timeout.InfiniteTimeSpan))
         {
             Metrics.FrameTxSimulationsBusy++;
-            return FrameTxSimulationResult.Reject("validation-prefix simulator busy");
+            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulator busy");
         }
 
         try
         {
             if (_disposed)
             {
-                return FrameTxSimulationResult.Reject("simulator disposed");
+                return FrameTxSimulationResult.RejectIndeterminate("simulator disposed");
             }
 
             if (!HasHeadBudget(head))
             {
                 Metrics.FrameTxSimulationsBudgetExhausted++;
-                return FrameTxSimulationResult.Reject("validation-prefix simulation budget exhausted for this head");
+                return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
             }
 
             long startedAt = Stopwatch.GetTimestamp();
@@ -144,7 +144,7 @@ public sealed class FrameTxPrefixSimulator(
         {
             Metrics.FrameTxSimulations++;
             Metrics.FrameTxSimulationsTimedOut++;
-            return FrameTxSimulationResult.Reject("validation-prefix simulation timed out");
+            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation timed out");
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

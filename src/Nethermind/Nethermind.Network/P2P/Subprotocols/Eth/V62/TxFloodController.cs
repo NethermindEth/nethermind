@@ -82,7 +82,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 if (!accepted)
                 {
-                    if (accepted == AcceptTxResult.Invalid)
+                    if (accepted == AcceptTxResult.FrameSimulationDeferred)
+                    {
+                        // This node declined to do the work; holding that against the peer would disconnect
+                        // honest peers exactly when admission is already shedding load.
+                    }
+                    else if (accepted == AcceptTxResult.Invalid)
                     {
                         disconnectRequest ??= new(
                             DisconnectReason.InvalidTxReceived,
