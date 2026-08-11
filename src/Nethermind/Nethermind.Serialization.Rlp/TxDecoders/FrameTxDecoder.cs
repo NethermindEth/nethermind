@@ -41,8 +41,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64 like every other
         // Nethermind transaction type (codebase-wide ChainId width).
         transaction.ChainId = decoderContext.DecodeULong();
-        // The two shapes are self-describing — `nonce` is an integer and `nonce_keys` a list — so the
-        // fork that admits each is enforced in validation, where the spec is available.
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? DecodeNonceKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
