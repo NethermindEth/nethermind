@@ -24,9 +24,8 @@ public static class Eip8369
 {
     /// <summary>Classifies <paramref name="tx"/> into its EIP-8369 FOCIL enforcement profile.</summary>
     /// <remarks>
-    /// Profile 2 requires all of: a frame transaction, empty <c>blob_versioned_hashes</c>, a recognized
-    /// validation-prefix shape (which also rejects any <c>ATOMIC_BATCH_FLAG</c> in the prefix), no
-    /// VERIFY-mode frame after the prefix, and a VERIFY cost within <see cref="Eip8369Constants.MaxVerifyGasPerTx"/>.
+    /// Profile 2 requires all of: a frame transaction, no blobs, a recognized validation-prefix shape, no
+    /// VERIFY-mode frame after the prefix, and a cost within <see cref="Eip8369Constants.MaxVerifyGasPerTx"/>.
     /// </remarks>
     public static FocilProfile Classify(Transaction tx)
     {

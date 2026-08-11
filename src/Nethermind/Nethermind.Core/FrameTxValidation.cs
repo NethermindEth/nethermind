@@ -260,7 +260,6 @@ public static class FrameTxValidation
     /// <inheritdoc cref="ValidationWorkGas(Transaction)"/> for a caller that has already resolved the
     /// number of validation-prefix frames, so the frame-shape walk is not repeated.
     /// </summary>
-    /// <param name="transaction">The frame transaction to price.</param>
     /// <param name="countedFrames">The number of leading frames to charge, e.g. from <see cref="TryGetValidationPrefixLength"/>.</param>
     internal static ulong ValidationWorkGas(Transaction transaction, int countedFrames)
     {
@@ -281,11 +280,9 @@ public static class FrameTxValidation
     }
 
     /// <summary>
-    /// The number of leading frames forming a recognized EIP-8141 validation prefix (one of the four
-    /// self-verify / deploy shapes, optional expiry-verifier frame included), or <c>false</c> when the
-    /// frame layout matches none of them. Reused by EIP-8369 FOCIL Profile-2 classification.
+    /// The number of leading frames forming a recognized EIP-8141 validation prefix, or <c>false</c>
+    /// when the frame layout matches none of them.
     /// </summary>
-    /// <param name="transaction">The frame transaction to inspect.</param>
     /// <param name="prefixLength">The recognized prefix length; 0 when unrecognized.</param>
     public static bool TryGetValidationPrefixLength(Transaction transaction, out int prefixLength)
     {

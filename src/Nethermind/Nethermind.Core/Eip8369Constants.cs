@@ -4,13 +4,11 @@
 namespace Nethermind.Core;
 
 /// <summary>
-/// Constants of EIP-8369, the informational overlap between EIP-7805 (FOCIL) and EIP-8141 (frame
-/// transactions). Defines which transactions FOCIL enforces and the includer VERIFY-budget bounds.
-/// https://eips.ethereum.org/EIPS/eip-8369
+/// Includer VERIFY-budget bounds of EIP-8369. https://eips.ethereum.org/EIPS/eip-8369
 /// </summary>
 /// <remarks>
-/// Distinct from EIP-8141's public-mempool <c>MAX_VERIFY_GAS</c> (<c>TxPoolConfig.FrameTxMaxVerifyGas</c>,
-/// default 100_000): these bound the inclusion-list includer/validator surface, not mempool ingress.
+/// Distinct from EIP-8141's public-mempool <c>MAX_VERIFY_GAS</c>: these bound the inclusion-list
+/// includer/validator surface, not mempool ingress.
 /// </remarks>
 public static class Eip8369Constants
 {
