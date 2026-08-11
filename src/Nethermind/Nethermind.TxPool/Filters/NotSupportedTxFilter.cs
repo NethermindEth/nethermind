@@ -25,6 +25,16 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
+        // EIP8141-GAP: a blob-carrying frame tx is block-valid, but the pool has no sidecar path for it —
+        // it would land in the non-blob pool and a payload built from it would declare blob gas it cannot
+        // supply blobs for (BlobsBundle skips non-type-3 txs).
+        if (tx.SupportsFrames && tx.BlobVersionedHashes is { Length: > 0 })
+        {
+            Metrics.PendingTransactionsNotSupportedTxType++;
+            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions are not supported in the transaction pool.");
+            return AcceptTxResult.NotSupportedTxType;
+        }
+
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
         // The public-mempool DoS rules (validation-prefix simulation, MAX_VERIFY_GAS, paymaster reservation,
         // failed-APPROVE replay bound, payer-exposure accounting, dependency-set revalidation/eviction ordering)

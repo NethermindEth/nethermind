@@ -34,11 +34,11 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // The exact TXPARAM(0x06) the payer-solvency gate charges against, shared with the processor so
-        // the admission bound and the consensus gate cannot drift.
+        // The upper-bound TXPARAM(0x06), shared with the processor so the admission bound and the
+        // payer-solvency gate cannot drift.
         if (!FrameTxValidation.TryCalculateMaxCost(tx, specProvider.GetCurrentHeadSpec(), out UInt256 maxCost))
         {
-            return AcceptTxResult.Int256Overflow;
+            return AcceptTxResult.Invalid.WithMessage("Frame transaction maximum cost cannot be priced");
         }
 
         UInt256 balance = stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;

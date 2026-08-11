@@ -368,9 +368,9 @@ public static class FrameTxValidation
     /// priced at <c>max_fee_per_gas</c>, plus the blob gas priced at <c>max_fee_per_blob_gas</c>.
     /// </summary>
     /// <remarks>
-    /// The single definition of the quantity the payer-solvency gate charges against and the mempool reserves
-    /// per payer, so the two cannot drift. Priced at the maximum fees, never the effective ones, so it is an
-    /// upper bound on what the payer can be charged.
+    /// The upper-bound form: the gas leg is exactly what execution escrows, while the blob leg is priced at
+    /// <c>max_fee_per_blob_gas</c> where execution escrows at the actual blob base fee. Callers that must not
+    /// under-reserve (the mempool exposure bound, the simulated APPROVE gate) want this form.
     /// </remarks>
     /// <returns><c>false</c> when the transaction cannot be priced or the cost overflows; <paramref name="maxCost"/> is then 0.</returns>
     public static bool TryCalculateMaxCost(Transaction transaction, IReleaseSpec spec, out UInt256 maxCost)

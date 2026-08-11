@@ -106,17 +106,15 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
-    public void Accept_BlobCarryingFrameTx_ReservesTheBlobTerm()
+    public void MaxCost_CountsTheBlobTerm()
     {
-        // The blob leg of TXPARAM(0x06) counts towards the bound, so a large max_fee_per_blob_gas
-        // cannot smuggle unbounded exposure past a gas-only reservation.
+        // A large max_fee_per_blob_gas must not smuggle unbounded exposure past a gas-only reservation.
         Transaction tx = FrameTxCostingExactly(TestCost);
         tx.BlobVersionedHashes = [new byte[32]];
         tx.MaxFeePerBlobGas = 1;
 
-        AcceptTxResult result = Accept(StateWithPayerBalance(TestCost), new PayerExposureCache(), tx);
-
-        Assert.That(result, Is.EqualTo(AcceptTxResult.PayerExposureExceeded));
+        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+        Assert.That(maxCost, Is.EqualTo((UInt256)TestCost + Eip4844Constants.GasPerBlob));
     }
 
     private static TestReadOnlyStateProvider StateWithPayerBalance(int wei)
