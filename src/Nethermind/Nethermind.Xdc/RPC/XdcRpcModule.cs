@@ -541,9 +541,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         // A block is committed only once the three-consecutive-round rule fires, which the block tree tracks as the
         // finalized block. The highest known QC merely certifies a block, so it runs two rounds ahead of the commit.
-        BlockHeader? latestCommittedBlock = tree.FindFinalizedHeader();
-
-        if (latestCommittedBlock is null)
+        if (tree.FinalizedHash is null)
         {
             return ResultWrapper<V2BlockInfo>.Success(new V2BlockInfo
             {
@@ -552,7 +550,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             });
         }
 
-        bool committed = header.Number <= latestCommittedBlock.Number;
+        bool committed = header.Number <= tree.LastFinalizedBlockLevel;
 
         // Get round number from extra consensus data
         ulong round = 0;
