@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -23,6 +24,16 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
+    /// <summary>
+    /// EIP-8141: the blob fields of a blob-carrying frame tx, so <c>eth_getTransactionByHash</c> reports
+    /// the blobs it is charged for. Omitted for a blobless frame tx.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public UInt256? MaxFeePerBlobGas { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[][]? BlobVersionedHashes { get; set; }
+
     [JsonConstructor]
     public FrameTransactionForRpc() { }
 
@@ -31,6 +42,12 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     {
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
+
+        if (transaction.CarriesBlobs)
+        {
+            MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
+            BlobVersionedHashes = transaction.BlobVersionedHashes;
+        }
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
@@ -41,6 +58,11 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         Transaction tx = baseResult.Data;
         tx.Frames = FrameForRpc.ToFrames(Frames);
         tx.FrameSignatures = FrameSignatureForRpc.ToSignatures(Signatures);
+        if (BlobVersionedHashes is not null)
+        {
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+            tx.BlobVersionedHashes = BlobVersionedHashes;
+        }
         return tx;
     }
 

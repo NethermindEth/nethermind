@@ -492,12 +492,10 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void CanAddTransaction_skips_blob_carrying_frame_transaction()
+        public void CanAddTransaction_admits_blob_carrying_frame_transaction()
         {
-            // EIP8141: blob-carrying frame txs are routed to the blob pool and metered against the block
-            // blob budget by the blob-selection path, so they do not reach this normal-pool picker in the
-            // standard flow. The picker still excludes any that arrive here (defense in depth): without a
-            // resolvable EIP-7594 sidecar they cannot be produced with a complete blobs bundle.
+            // EIP8141: a blob-carrying frame tx (type 6) reaches the picker with a sidecar already resolved
+            // by the blob-selection path, so it is produced like a type-3 tx rather than skipped.
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
@@ -522,8 +520,7 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor.AddingTxEventArgs args =
                 picker.CanAddTransaction(block, frameBlobTx, new HashSet<Transaction>(), stateProvider);
 
-            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
-            Assert.That(args.Reason, Does.Contain("frame"));
+            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
         }
 
         private static Transaction[] RunBlockProduction(

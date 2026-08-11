@@ -141,6 +141,58 @@ public class FrameTransactionForRpcTests
     }
 
     [Test]
+    public void FrameTransactionForRpc_SerializesBlobFields_ForBlobCarryingFrameTx()
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        tx.MaxFeePerBlobGas = 123;
+        tx.BlobVersionedHashes = [new byte[32]];
+
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.RootElement.GetProperty("maxFeePerBlobGas").GetString(), Is.EqualTo("0x7b"));
+            Assert.That(doc.RootElement.GetProperty("blobVersionedHashes").GetArrayLength(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_OmitsBlobFields_ForBloblessFrameTx()
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.RootElement.TryGetProperty("maxFeePerBlobGas", out _), Is.False);
+            Assert.That(doc.RootElement.TryGetProperty("blobVersionedHashes", out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_RoundTripsBlobFields()
+    {
+        Transaction original = BuildMinimalFrameTx();
+        original.MaxFeePerBlobGas = 456;
+        original.BlobVersionedHashes = [new byte[32]];
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(original);
+
+        Transaction roundTripped = ((FrameTransactionForRpc)rpc).ToTransaction().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.MaxFeePerBlobGas, Is.EqualTo((UInt256)456));
+            Assert.That(roundTripped.BlobVersionedHashes, Has.Length.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void ReceiptForRpc_FrameTx_ExposesPayer()
     {
         TxReceipt receipt = new()

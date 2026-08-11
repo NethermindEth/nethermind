@@ -1598,7 +1598,85 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8141: a persisted blob-carrying frame tx must reload with its EIP-7594 sidecar after a restart
+        // (the light collection and blob index are rebuilt from storage), so it stays producible and servable.
+        [Test]
+        public void Blob_carrying_frame_tx_sidecar_survives_restart_and_is_servable()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.StorageWithReorgs,
+                PersistentBlobStorageSize = 10,
+                BlobCacheSize = 10,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            BlobTxStorage blobTxStorage = new();
+
+            Transaction frameBlobTx = BuildBlobFrameTxWithSidecar(nonce: 0, blobCount: 1);
+
+            PersistentBlobTxDistinctSortedPool poolBeforeRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
+            Assert.That(poolBeforeRestart.TryInsert(frameBlobTx.Hash, frameBlobTx, out _), Is.True);
+
+            // A fresh pool over the same storage stands in for a node restart.
+            PersistentBlobTxDistinctSortedPool poolAfterRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
+
+            byte[][] blobs = new byte[1][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+            int found = poolAfterRestart.TryGetBlobsAndProofsV1([frameBlobTx.BlobVersionedHashes![0]!], blobs, proofs);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(poolAfterRestart.TryGetValue(frameBlobTx.Hash, out Transaction reloaded), Is.True);
+                Assert.That(reloaded!.Type, Is.EqualTo(TxType.FrameTx));
+                Assert.That(reloaded.NetworkWrapper, Is.InstanceOf<ShardBlobNetworkWrapper>());
+                Assert.That(found, Is.EqualTo(1));
+                Assert.That(blobs[0], Is.Not.Null);
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+            }
+        }
+
         private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
+
+        private Transaction BuildBlobFrameTxWithSidecar(ulong nonce, int blobCount)
+        {
+            if (!KzgPolynomialCommitments.IsInitialized)
+            {
+                KzgPolynomialCommitments.InitializeAsync().Wait();
+            }
+
+            IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
+            byte[][] rawBlobs = new byte[blobCount][];
+            for (int i = 0; i < blobCount; i++)
+            {
+                byte[] blob = new byte[Ckzg.BytesPerBlob];
+                blob[0] = (byte)(i % 256);
+                rawBlobs[i] = blob;
+            }
+
+            ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(rawBlobs);
+            proofsManager.ComputeProofsAndCommitments(wrapper);
+
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                SenderAddress = TestItem.AddressA,
+                Nonce = nonce,
+                GasLimit = 1_000_000,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1.GWei,
+                MaxFeePerBlobGas = 1.GWei,
+                Frames =
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+                ],
+                FrameSignatures = [],
+                BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
+                NetworkWrapper = wrapper,
+            };
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
 
         private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null)
         {

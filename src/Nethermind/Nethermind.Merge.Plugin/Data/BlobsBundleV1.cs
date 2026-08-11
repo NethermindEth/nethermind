@@ -30,7 +30,9 @@ public class BlobsBundleV1
 
         foreach (Transaction? tx in block.Transactions)
         {
-            if (!tx.SupportsBlobs)
+            // EIP-8141: include blob-carrying frame txs (type 6) as well as type-3 txs, so the bundle
+            // carries every blob the header's blob gas accounts for.
+            if (!tx.CarriesBlobs)
             {
                 continue;
             }
