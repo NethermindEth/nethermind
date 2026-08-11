@@ -294,6 +294,25 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Static_peer_is_dialed_even_when_the_active_peer_pool_is_full()
+        {
+            await using Context ctx = new(maxActivePeers: 3);
+            ctx.NetworkConfig.ConnectTimeoutMs = 0;
+            ctx.SetupPersistedPeers(10);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(3, TimeSpan.FromSeconds(30));
+            Assert.That(ctx.PeerPool.ActivePeers.Count, Is.AtLeast(3));
+
+            Node staticNode = new(TestItem.PublicKeyB, "1.2.3.10", 30303) { IsStatic = true };
+            ctx.PeerPool.GetOrAdd(staticNode);
+
+            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(staticNode.Id), Is.True.After(30_000, 100),
+                "a disconnected static peer must be dialed even with zero free peer slots");
+        }
+
+        [Test]
         public async Task MaxActivePeers_is_not_inflated_by_static_or_trusted()
         {
             await using Context ctx = new(maxActivePeers: 20);

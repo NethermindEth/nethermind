@@ -308,6 +308,11 @@ namespace Nethermind.Network
                     CleanupCandidatePeersSafely();
                     await WaitForPeerUpdateRequestAsync();
 
+                    if (_isStarted)
+                    {
+                        await EnsureStaticPeersConnectedAsync(taskChannel);
+                    }
+
                     if (!await CanRunPeerUpdateIterationAsync())
                     {
                         continue;
@@ -425,6 +430,27 @@ namespace Nethermind.Network
             Metrics.PeerCandidateCount = _peerPool.PeerCount;
 
             await _peerUpdateRequested.WaitAsync(_cancellationTokenSource.Token);
+        }
+
+        private async Task EnsureStaticPeersConnectedAsync(Channel<Peer> taskChannel)
+        {
+            DateTime nowUTC = DateTime.UtcNow;
+            foreach (Peer peer in _peerPool.StaticPeers)
+            {
+                if (IsConnected(peer) || peer.IsAwaitingConnection)
+                {
+                    continue;
+                }
+
+                if (peer.Stats.IsConnectionDelayed(nowUTC).Result)
+                {
+                    continue;
+                }
+
+                DeactivatePeerIfDisconnected(peer, "static peer reconnect");
+                if (_logger.IsInfo) _logger.Info($"Static peer {peer.Node:s} is not connected; dialing it regardless of available peer slots.");
+                await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
+            }
         }
 
         private void SignalPeerUpdateNeeded()
