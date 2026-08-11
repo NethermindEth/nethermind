@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 
-internal sealed class NodesResponseHandler(Node receiver, Distances requestedDistances, IKademliaDistance<Hash256> distanceCalculator, IDiscv5RecordFilter recordFilter)
+internal sealed class NodesResponseHandler(Node receiver, Distances requestedDistances, IKademliaDistance<Hash256> distanceCalculator)
     : ResponseHandler<NodesMsg>(MessageType.Nodes), IDisposable
 {
     private const int MaxNodesResponseMessages = 16;
@@ -111,8 +111,7 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
         for (int i = 0; i < nodes.Records.Count && _nodeCount < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
-            if (recordFilter.Excludes(record) ||
-                !Node.TryFromDiscoveryEnr(record, out Node? node) ||
+            if (!Node.TryFromDiscoveryEnr(record, out Node? node) ||
                 !DiscoveryV5App.IsDiscoveryAddressAcceptable(node.DiscoveryAddress.Address, _allowNonRoutableRelays) ||
                 !TryMarkSeen(node.Id.Hash) ||
                 !MatchesRequestedDistance(node, requestedDistances))

@@ -4,7 +4,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
-using Autofac.Features.AttributeFilters;
 using Collections.Pooled;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -33,7 +32,6 @@ public sealed class KademliaAdapter(
     KademliaConfig<Node> kademliaConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<Hash256> distance,
-    [KeyFilter(KademliaModule.RoutingRecordFilterKey)] IDiscv5RecordFilter recordFilter,
     ILogManager logManager) : KademliaAdapterBase("discv5", logManager.GetClassLogger<KademliaAdapter>()), IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
@@ -126,7 +124,7 @@ public sealed class KademliaAdapter(
     {
         Distances distances = GetLookupDistances(receiver, target);
         using FindNodeMsg findNode = new(CreateRequestId(), distances);
-        using NodesResponseHandler responseHandler = new(receiver, distances, _distance, recordFilter);
+        using NodesResponseHandler responseHandler = new(receiver, distances, _distance);
 
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 FINDNODE {findNode.RequestId} to {receiver:s}, distances: {FormatDistances(distances)}.");
         if (!await SendRequest(receiver, findNode, responseHandler, _findNodeTimeout, token))
@@ -539,7 +537,7 @@ public sealed class KademliaAdapter(
                     return;
                 }
 
-                if (IsAcceptableNodeRecord(nodeRecord, nodeId, endpoint.Address.IsLoopbackOrPrivateOrLinkLocal, recordFilter))
+                if (IsAcceptableNodeRecord(nodeRecord, nodeId, endpoint.Address.IsLoopbackOrPrivateOrLinkLocal))
                 {
                     messageRecord = nodeRecord;
                 }
@@ -627,7 +625,7 @@ public sealed class KademliaAdapter(
     protected override async ValueTask<NodeRecord?> RequestRemoteRecord(Node node, ulong requestedSequence, CancellationToken token)
     {
         using FindNodeMsg findNode = new(CreateRequestId(), new Distances([0]));
-        using SelfRecordResponseHandler responseHandler = new(node, requestedSequence, recordFilter);
+        using SelfRecordResponseHandler responseHandler = new(node, requestedSequence);
         if (!await SendRequest(node, findNode, responseHandler, _findNodeTimeout, token))
         {
             return null;
@@ -804,7 +802,7 @@ public sealed class KademliaAdapter(
     private NodeRecord? GetFindNodeRecord(Node node, bool allowNonRoutableRelays)
     {
         NodeRecord? record = node.Enr;
-        return record is not null && IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays, recordFilter)
+        return record is not null && IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutableRelays)
             ? record
             : null;
     }
@@ -898,9 +896,8 @@ public sealed class KademliaAdapter(
         return false;
     }
 
-    internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable, IDiscv5RecordFilter recordFilter)
-        => !recordFilter.Excludes(record) &&
-            Node.TryFromDiscoveryEnr(record, out Node? node) &&
+    internal static bool IsAcceptableNodeRecord(NodeRecord record, ValueHash256 expectedNodeId, bool allowNonRoutable)
+        => Node.TryFromDiscoveryEnr(record, out Node? node) &&
             node.Id.Hash == expectedNodeId &&
             DiscoveryV5App.IsDiscoveryAddressAcceptable(node.DiscoveryAddress.Address, allowNonRoutable);
 

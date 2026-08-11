@@ -20,7 +20,7 @@ public sealed class ExecutionLayerDiscv5RecordFilter : IDiscv5RecordFilter
     public bool Excludes(NodeRecord record) => DiscoveryV5App.IsConsensusOnlyNodeRecord(record);
 }
 
-/// <summary>Accepts every record for protocol-level routing and consensus-layer discovery.</summary>
+/// <summary>Accepts every record.</summary>
 public sealed class AcceptAllDiscv5RecordFilter : IDiscv5RecordFilter
 {
     public static AcceptAllDiscv5RecordFilter Instance { get; } = new();
