@@ -326,7 +326,7 @@ public class DiscoveryV5AppTests
         Assert.That(node.DiscoveryPort, Is.EqualTo(9001));
     }
 
-    [TestCase(false, TestName = "Should_Use_Execution_Configured_Enr_Bootnode")]
+    [TestCase(false, TestName = "Should_Use_Protocol_Neutral_Configured_Enr_Bootnode")]
     [TestCase(true, TestName = "Should_Use_Consensus_Only_Configured_Enr_Bootnode")]
     public void Should_Use_Configured_Enr_Bootnode(bool includeEth2)
     {
