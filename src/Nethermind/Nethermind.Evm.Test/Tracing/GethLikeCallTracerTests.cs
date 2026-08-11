@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
@@ -15,6 +16,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -23,19 +25,20 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLikeCallTracerTests : VirtualMachineTestsBase
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n" };
-    private const string? WithLog = """{"withLog":true}""";
-    private const string? OnlyTopCall = """{"onlyTopCall":true}""";
-    private const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
+    private static readonly IReleaseSpec CancunSpec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.CancunActivation);
+    internal const string? WithLog = """{"withLog":true}""";
+    internal const string? OnlyTopCall = """{"onlyTopCall":true}""";
+    internal const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
 
     private string ExecuteCallTrace(byte[] code, string? tracerConfig = null)
     {
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(tracerConfig));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(tracerConfig));
         using GethLikeTxTrace callTrace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
         return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions);
     }
 
-    private static GethTraceOptions GetGethTraceOptions(string? config) => GethTraceOptions.Default with
+    internal static GethTraceOptions GetGethTraceOptions(string? config) => GethTraceOptions.Default with
     {
         Tracer = NativeCallTracer.CallTracer,
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
@@ -567,7 +570,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
 
         (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(null));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
@@ -594,7 +597,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     public void Test_CallTrace_MarkAsFailed_WithoutEvmError_NoCrash()
     {
         Transaction tx = Build.A.Transaction.WithGasLimit(100000).WithData([0x00]).TestObject;
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(null));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
 
         tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CREATE);
         tracer.ReportActionEnd(40000, TestItem.AddressB, new byte[] { 0xEF });
@@ -626,7 +629,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             .Done;
 
         (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
@@ -642,13 +645,64 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         // SENDER transfer) emits an EIP-7708 transfer log without any ReportAction, so the call
         // stack is empty. debug_traceTransaction with callTracer and withLog must not throw.
         Transaction tx = Build.A.Transaction.TestObject;
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(WithLog));
 
         Assert.That(
             () => tracer.ReportLog(new LogEntry(TestItem.AddressA, [], [])),
             Throws.Nothing);
     }
 
+    private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8037Enabled.Returns(true);
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(null));
+
+        tracer.ReportAction(100000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        if (withSubFrame)
+        {
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+            tracer.ReportActionEnd(30000, ReadOnlyMemory<byte>.Empty);
+        }
+        tracer.ReportActionEnd(withSubFrame ? 10000ul : 40000ul, ReadOnlyMemory<byte>.Empty);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000, 25000, 5000, 30000, 9000), [], []);
+
+        return tracer.BuildResult();
+    }
+
+    [Test]
+    public void Test_CallTrace_Amsterdam_TopFrame_IncludesTwoDimensionalGas()
+    {
+        using GethLikeTxTrace trace = TraceAmsterdamTopCall(withSubFrame: false);
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+        string json = JsonSerializer.Serialize(trace.CustomTracerResult.Value, SerializerOptions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Eip8037Gas, Is.EqualTo(new TwoDimensionalGas(25000, 5000, 9000)));
+            Assert.That(json, Does.Contain("""
+              "regularGasUsed": "0x61a8",
+              "stateGasUsed": "0x1388",
+              "gasRefund": "0x2328",
+            """.ReplaceLineEndings("\n")));
+        }
+    }
+
+    [Test]
+    public void Test_CallTrace_Amsterdam_SubFrames_OmitTwoDimensionalGas()
+    {
+        using GethLikeTxTrace trace = TraceAmsterdamTopCall(withSubFrame: true);
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Eip8037Gas, Is.Not.Null, "top frame carries the two-dimensional gas");
+            Assert.That(frame.Calls, Has.Count.EqualTo(1));
+            Assert.That(frame.Calls[0].Eip8037Gas, Is.Null, "sub-frames must omit the two-dimensional gas");
+        }
+    }
 
     [Test]
     public void Test_CallTrace_DeepNesting_DoesNotThrow()
