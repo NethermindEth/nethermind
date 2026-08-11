@@ -960,6 +960,34 @@ public class TxValidatorTests
         Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxMissingMaxFeePerBlobGas));
     }
 
+    // EIP-8141: a blob-carrying frame tx (type 6) lives in the blob pool and is re-checked against the head
+    // spec via MaxBlobCountBlobTxValidator, exactly like a type-3 blob tx. A blob-schedule fork that lowers the
+    // per-tx blob limit must therefore evict an over-limit type-6 tx, not leave it in place.
+    private static IEnumerable<TestCaseData> HeadRevalidationBlobCountCases()
+    {
+        int max = (int)Bogota.Instance.MaxBlobsPerTx;
+
+        yield return new TestCaseData(BuildBlobFrameTx(blobCount: max))
+        { TestName = "Type-6 within head blob-count limit is retained", ExpectedResult = true };
+        yield return new TestCaseData(BuildBlobFrameTx(blobCount: max + 1))
+        { TestName = "Type-6 above head blob-count limit is evicted", ExpectedResult = false };
+        yield return new TestCaseData(BuildShardBlobTx(blobCount: max))
+        { TestName = "Type-3 within head blob-count limit is retained", ExpectedResult = true };
+        yield return new TestCaseData(BuildShardBlobTx(blobCount: max + 1))
+        { TestName = "Type-3 above head blob-count limit is evicted", ExpectedResult = false };
+    }
+
+    [TestCaseSource(nameof(HeadRevalidationBlobCountCases))]
+    public bool IsWellFormed_HeadRevalidationBlobCount(Transaction tx) =>
+        MaxBlobCountBlobTxValidator.Instance.IsWellFormed(tx, Bogota.Instance).AsBool();
+
+    private static Transaction BuildShardBlobTx(int blobCount) => Build.A.Transaction
+        .WithChainId(TestBlockchainIds.ChainId)
+        .WithMaxFeePerGas(1)
+        .WithMaxFeePerBlobGas(1)
+        .WithShardBlobTxTypeAndFields(blobCount)
+        .SignedAndResolved().TestObject;
+
     private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
     {
         byte[][] versionedHashes = new byte[blobCount][];
