@@ -13,10 +13,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// <summary>
 /// Decodes the EIP-8141 frame transaction payload
 /// <c>[chain_id, nonce, sender, frames, signatures, max_priority_fee_per_gas, max_fee_per_gas,
-/// max_fee_per_blob_gas, blob_versioned_hashes]</c>, or its EIP-8250 form, which replaces
-/// <c>nonce</c> with <c>nonce_keys, nonce_seq</c>.
-/// max_fee_per_blob_gas, blob_versioned_hashes]</c>, optionally followed by the EIP-8272
-/// <c>recent_root_references</c> list.
+/// max_fee_per_blob_gas, blob_versioned_hashes]</c> — in its EIP-8250 form <c>nonce</c> is replaced
+/// by <c>nonce_keys, nonce_seq</c> — optionally followed by the EIP-8272 <c>recent_root_references</c> list.
 /// The sender is explicit in the payload — there is no envelope ECDSA signature and no recovery.
 /// Encoding with <c>forSigning</c> produces the <c>compute_sig_hash</c> form: the raw signature
 /// bytes of canonical-hash (empty msg) entries are elided.
@@ -39,44 +37,20 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static readonly byte[][] EmptyVersionedHashes = [];
 
-    private readonly Func<T> _newTransaction = transactionFactory ?? (static () => new T());
-
     /// <inheritdoc/>
     /// <remarks>
-    /// A frame transaction carries no envelope signature, so what follows the EIP-8141 fields is the
-    /// optional EIP-8272 reference list. A non-list element there is padding: accepting it would decode
-    /// a spurious signature that strict clients drop, diverging on the transaction hash.
+    /// The trailing element of a frame transaction is the optional EIP-8272 reference list, never a
+    /// signature (the sender is explicit). A non-list element there is padding whose acceptance would
+    /// decode a spurious signature that strict clients drop, diverging on the transaction hash.
     /// </remarks>
-    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
-        transaction ??= _newTransaction();
-        transaction.Type = Type;
-
-        int payloadLength = decoderContext.ReadSequenceLength();
-        int lastCheck = decoderContext.Position + payloadLength;
-
-        DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-
-        if (decoderContext.Position < lastCheck)
+        if (!decoderContext.IsSequenceNext())
         {
-            if (!decoderContext.IsSequenceNext())
-            {
-                ThrowTrailingSignature();
-            }
-
-            transaction.RecentRootReferences = decoderContext.DecodeArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
+            ThrowTrailingSignature();
         }
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-        {
-            decoderContext.Check(lastCheck);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-        {
-            CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
-        }
+        transaction.RecentRootReferences = decoderContext.DecodeArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
     }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
@@ -85,8 +59,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64 like every other
         // Nethermind transaction type (codebase-wide ChainId width).
         transaction.ChainId = decoderContext.DecodeULong();
-        // The two shapes are self-describing — `nonce` is an integer and `nonce_keys` a list — so the
-        // fork that admits each is enforced in validation, where the spec is available.
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? DecodeNonceKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
