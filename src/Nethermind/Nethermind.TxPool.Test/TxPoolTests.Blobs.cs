@@ -1532,6 +1532,26 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
         }
 
+        // EIP-8141: a persistent blob pool would store a blob-carrying frame tx via the frame RLP decoder, which drops
+        // the sidecar and reloads a wrapper-less, unproducible LightTransaction. Such txs are therefore rejected at
+        // ingress under the persistent modes and admitted only under BlobsSupportMode.InMemory, where the full tx is kept.
+        [TestCase(BlobsSupportMode.Storage)]
+        [TestCase(BlobsSupportMode.StorageWithReorgs)]
+        public void Blob_carrying_frame_tx_is_rejected_under_persistent_blob_pool(BlobsSupportMode blobsSupport)
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(BuildBlobFrameTx(nonce: 0, blobCount: 1), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+            }
+        }
+
         // EIP-8141: a blob-carrying frame tx counts against the per-sender blob limit (MaxPendingBlobTxsPerSender),
         // not the unlimited normal-pool default, so a nonce beyond that window is rejected as too far in the future.
         [Test]

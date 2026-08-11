@@ -65,12 +65,11 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                // EIP-8141: defense in depth — a blob-carrying frame tx here has no resolvable EIP-7594
-                // sidecar, and the blobs-bundle builders filter on SupportsBlobs (type-6 excluded), so
-                // producing it would leave the block's blobs bundle incomplete.
+                // EIP-8141: blob-frame production is deferred — deliberately skip until a follow-up wires
+                // picker admission together with type-6 support in the blobs-bundle builders.
                 if (currentTx.Type == TxType.FrameTx && currentTx.CarriesBlobs)
                 {
-                    return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");
+                    return args.Set(TxAction.Skip, "Blob-carrying frame transaction production is deferred");
                 }
 
                 // A frame transaction's GasLimit is only the sum of its frame gas limits, so gating on it alone would

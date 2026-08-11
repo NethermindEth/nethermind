@@ -25,6 +25,16 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
+        // EIP-8141: a persistent blob pool stores a blob-carrying frame tx via the frame RLP decoder, which
+        // has no network-wrapper handling and drops the sidecar, reloading a wrapper-less LightTransaction that
+        // is unproducible and unservable. Only BlobsSupportMode.InMemory keeps the full tx intact, so admit it there only.
+        if (tx.SupportsFrames && tx.CarriesBlobs && _txPoolConfig.BlobsSupport.IsPersistentStorage())
+        {
+            Metrics.PendingTransactionsNotSupportedTxType++;
+            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions require in-memory blob support.");
+            return AcceptTxResult.NotSupportedTxType;
+        }
+
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
         // The public-mempool DoS rules (validation-prefix simulation, MAX_VERIFY_GAS, paymaster reservation,
         // failed-APPROVE replay bound, payer-exposure accounting, dependency-set revalidation/eviction ordering)
