@@ -506,8 +506,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // create_evm_from_frame: the frame pays target access plus EIP-8037 NEW_ACCOUNT (value transfer
         // reviving a dead target) from its own gas limit; a charge it cannot afford fails the frame.
+        // EIP-2929 seeds the accessed set with every precompile, which the tracker does not hold.
         ulong entryExecution = spec.UseHotAndColdStorage
-            ? (accessTracker.IsCold(resolvedTarget) ? TGasPolicy.GetColdAccountAccessCost(spec) : Eip8038Constants.WarmAccess)
+            ? (accessTracker.IsCold(resolvedTarget) && !spec.IsPrecompile(resolvedTarget) ? TGasPolicy.GetColdAccountAccessCost(spec) : Eip8038Constants.WarmAccess)
             : 0;
         long entryState = spec.IsEip8037Enabled && !value.IsZero && WorldState.IsDeadAccount(resolvedTarget)
             ? TGasPolicy.GetNewAccountStateCost()

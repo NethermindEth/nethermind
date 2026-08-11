@@ -321,6 +321,27 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_FrameTargetingPrecompile_PaysWarmEntryAccess()
+    {
+        // EIP-2929 seeds the accessed set with every precompile, so a frame entering one is warm.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Address identityPrecompile = Address.FromNumber(4);
+        Assert.That(Spec.IsPrecompile(identityPrecompile), Is.True);
+
+        CallOutputTracer precompileTracer = new();
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: identityPrecompile)),
+            tracer: precompileTracer).TransactionExecuted, Is.True);
+
+        CallOutputTracer coldTracer = new();
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient)),
+            tracer: coldTracer).TransactionExecuted, Is.True);
+
+        Assert.That(coldTracer.GasSpent - precompileTracer.GasSpent,
+            Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+            "a precompile target must pay warm entry access where a cold account pays cold");
+    }
+
+    [Test]
     public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
     {
         // max_fee = max_priority = 2^255 with an even tx gas limit (415_950 here) wraps maxCost to
