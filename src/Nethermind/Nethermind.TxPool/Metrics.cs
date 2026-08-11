@@ -57,6 +57,10 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulationsTimedOut { get; set; }
 
         [CounterMetric]
+        [Description("Number of EIP-8141 frame transactions rejected because the validation-prefix simulator was busy.")]
+        public static long FrameTxSimulationsBusy { get; set; }
+
+        [CounterMetric]
         [Description("Number of EIP-8141 frame transactions rejected because the per-head validation-prefix simulation budget was exhausted.")]
         public static long FrameTxSimulationsBudgetExhausted { get; set; }
 

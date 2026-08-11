@@ -40,8 +40,9 @@ public sealed class FrameTxPrefixSimulator(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FrameTxPrefixSimulator>();
     private readonly object _lock = new();
-    private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(txPoolConfig.FrameTxSimulationTimeoutMs);
-    private readonly long _headBudgetTicks = (long)(txPoolConfig.FrameTxSimulationBudgetPerHeadMs / 1000d * Stopwatch.Frequency);
+    // Negative is clamped to the documented "0 lifts the limit" rather than to an unbounded wait.
+    private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(0, txPoolConfig.FrameTxSimulationTimeoutMs));
+    private readonly long _headBudgetTicks = (long)(Math.Max(0, txPoolConfig.FrameTxSimulationBudgetPerHeadMs) / 1000d * Stopwatch.Frequency);
     private IReadOnlyTxProcessorSource? _source;
     private Hash256? _budgetHead;
     private long _budgetSpentTicks;
@@ -73,6 +74,7 @@ public sealed class FrameTxPrefixSimulator(
         // Bounded wait: an admission thread must not queue indefinitely behind other peers' simulations.
         if (!Monitor.TryEnter(_lock, _timeout > TimeSpan.Zero ? _timeout : Timeout.InfiniteTimeSpan))
         {
+            Metrics.FrameTxSimulationsBusy++;
             return FrameTxSimulationResult.Reject("validation-prefix simulator busy");
         }
 
@@ -83,7 +85,7 @@ public sealed class FrameTxPrefixSimulator(
                 return FrameTxSimulationResult.Reject("simulator disposed");
             }
 
-            if (!TryTakeHeadBudget(head))
+            if (!HasHeadBudget(head))
             {
                 Metrics.FrameTxSimulationsBudgetExhausted++;
                 return FrameTxSimulationResult.Reject("validation-prefix simulation budget exhausted for this head");
@@ -132,20 +134,19 @@ public sealed class FrameTxPrefixSimulator(
 
             return FrameTxSimulationResult.Accept(tracer.Payer);
         }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { Violated: true })
         {
-            // The tracer aborts the interpreter on a rule violation or on the wall-clock bound; only a
-            // genuine caller cancellation propagates.
+            // The tracer aborted the interpreter on a rule violation.
             Metrics.FrameTxSimulations++;
-            if (tracer is { Violated: true })
-            {
-                return FrameTxSimulationResult.Reject(tracer.ViolationReason!);
-            }
-
+            return FrameTxSimulationResult.Reject(tracer.ViolationReason!);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { TimedOut: true })
+        {
+            Metrics.FrameTxSimulations++;
             Metrics.FrameTxSimulationsTimedOut++;
             return FrameTxSimulationResult.Reject("validation-prefix simulation timed out");
         }
-        catch (Exception e)
+        catch (Exception e) when (e is not OperationCanceledException)
         {
             // A malformed opaque prefix must never crash admission: reject and keep the pool up.
             if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
@@ -153,8 +154,15 @@ public sealed class FrameTxPrefixSimulator(
         }
     }
 
-    /// <summary>Whether the per-head simulation time budget still has room, resetting it on a new head.</summary>
-    private bool TryTakeHeadBudget(BlockHeader head)
+    /// <summary>
+    /// Whether the per-head simulation time budget still has room, resetting it on a new head.
+    /// </summary>
+    /// <remarks>
+    /// Checked before the simulation and charged after it, so the budget can overshoot by one simulation.
+    /// A head that stops advancing keeps its exhausted budget; declining is mempool-legal and a node whose
+    /// head has stalled is not usefully gossiping.
+    /// </remarks>
+    private bool HasHeadBudget(BlockHeader head)
     {
         if (_headBudgetTicks <= 0) return true;
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -183,28 +184,44 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
 
-    // The banned list is the security surface of admission: any of these in the validation prefix
-    // rejects the transaction even though the frame goes on to call APPROVE.
-    [TestCase(Instruction.ORIGIN)]
-    [TestCase(Instruction.GASPRICE)]
-    [TestCase(Instruction.BLOCKHASH)]
-    [TestCase(Instruction.COINBASE)]
-    [TestCase(Instruction.TIMESTAMP)]
-    [TestCase(Instruction.NUMBER)]
-    [TestCase(Instruction.PREVRANDAO)]
-    [TestCase(Instruction.GASLIMIT)]
-    [TestCase(Instruction.BASEFEE)]
-    [TestCase(Instruction.BLOBBASEFEE)]
-    [TestCase(Instruction.BALANCE)]
-    [TestCase(Instruction.SELFBALANCE)]
-    [TestCase(Instruction.TLOAD)]
-    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation(Instruction banned)
+    // The banned list is the security surface of admission, so it is swept whole: any of these in the
+    // validation prefix rejects the transaction even though the frame goes on to call APPROVE.
+    private static IEnumerable<TestCaseData> BannedOpcodes()
     {
-        // BALANCE/TLOAD take an operand; a zero on the stack satisfies both and is ignored otherwise.
-        byte[] code = Prepare.EvmCode
-            .PushData(0).Op(banned).Op(Instruction.POP)
+        foreach (Instruction op in new[]
+                 {
+                     Instruction.ORIGIN, Instruction.GASPRICE, Instruction.BLOCKHASH, Instruction.COINBASE,
+                     Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO, Instruction.GASLIMIT,
+                     Instruction.BASEFEE, Instruction.BLOBBASEFEE, Instruction.SELFBALANCE, Instruction.INVALID,
+                 })
+        {
+            yield return new TestCaseData((byte)op, 0).SetName($"banned {op}");
+        }
+
+        foreach (Instruction op in new[] { Instruction.BALANCE, Instruction.BLOBHASH, Instruction.TLOAD, Instruction.SELFDESTRUCT })
+        {
+            yield return new TestCaseData((byte)op, 1).SetName($"banned {op}");
+        }
+
+        foreach (Instruction op in new[] { Instruction.SSTORE, Instruction.TSTORE })
+        {
+            yield return new TestCaseData((byte)op, 2).SetName($"banned {op}");
+        }
+
+        yield return new TestCaseData((byte)Instruction.CREATE, 3).SetName("banned CREATE");
+        yield return new TestCaseData((byte)Instruction.CREATE2, 4).SetName("banned CREATE2");
+        // EIP-7819; matched by raw byte rather than through the Instruction enum, on its own code path.
+        yield return new TestCaseData((byte)0xf6, 3).SetName("banned SETDELEGATE");
+    }
+
+    [TestCaseSource(nameof(BannedOpcodes))]
+    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation(byte banned, int operands)
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < operands; i++) code = code.PushData(0);
+        byte[] deployed = code.Op((Instruction)banned)
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
-        DeployContract(Sender, code, 1.Ether);
+        DeployContract(Sender, deployed, 1.Ether);
 
         (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 

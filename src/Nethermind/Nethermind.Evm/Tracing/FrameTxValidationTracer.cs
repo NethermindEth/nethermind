@@ -50,6 +50,10 @@ public sealed class FrameTxValidationTracer(
     // the same instruction (the stack operands are unavailable to StartOperation).
     private int _targetStackIndex = -1;
 
+    // Depth of the instruction being traced, recorded in StartOperation for the operand callbacks that
+    // do not receive the execution environment.
+    private int _callDepth;
+
     public override bool IsTracingInstructions => true;
     public override bool IsTracingOpLevelStorage => true;
     public override bool IsTracingStack => true;
@@ -61,11 +65,12 @@ public sealed class FrameTxValidationTracer(
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Polled by the interpreter every 1024 opcodes. Aborting on the first violation denies a spammer
-    /// the rest of the <c>MAX_VERIFY_GAS</c> budget per rejected transaction; the deadline bounds work
-    /// the gas schedule alone prices too cheaply.
+    /// Polled by the interpreter every 1024 opcodes. Aborting on a violation denies a spammer the rest of
+    /// the <c>MAX_VERIFY_GAS</c> budget per rejected transaction, but only at call depth 0: unwinding out
+    /// of a child frame would abandon its pooled <c>VmState</c>, and the caller checks
+    /// <see cref="Violated"/> after execution anyway.
     /// </remarks>
-    bool ITxTracer.IsCancelled => Violated || TimedOut || token.IsCancellationRequested;
+    bool ITxTracer.IsCancelled => (Violated && _callDepth == 0) || TimedOut || token.IsCancellationRequested;
 
     /// <summary>True once the wall-clock bound was reached; the transaction is then rejected, not cancelled.</summary>
     public bool TimedOut => _deadline != 0 && Stopwatch.GetTimestamp() > _deadline;
@@ -82,6 +87,7 @@ public sealed class FrameTxValidationTracer(
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         _targetStackIndex = -1;
+        _callDepth = env.CallDepth;
         if (Violated) return;
 
         if ((byte)opcode == SetDelegateOpcode)
