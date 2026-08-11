@@ -71,9 +71,9 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     private bool ComputeCanBalHeal(BlockHeader? firstPivotHeader)
     {
-        if (!_syncConfig.SnapSync || !_flatDbConfig.Enabled) return false;
+        if(!_syncConfig.SnapSync || !_flatDbConfig.Enabled) return false;
 
-        if (firstPivotHeader == null) return false;
+        if(firstPivotHeader == null) return false;
 
         return _specProvider.GetSpec(firstPivotHeader).BlockLevelAccessListsEnabled;
     }
