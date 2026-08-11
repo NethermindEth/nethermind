@@ -12,11 +12,9 @@ namespace Nethermind.TxPool;
 /// of them a single non-canonical paymaster may sponsor at once.
 /// </summary>
 /// <remarks>
-/// EIP-8141 <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c> (ethereum/EIPs#12007, "Non-canonical
-/// paymaster"). The key is the <c>pay</c> frame target, which is derived from the frame layout alone, so
-/// increment and decrement stay symmetric even if the paymaster's code or balance changes while the
-/// transaction is pending. Counting every paymaster rather than only the currently non-canonical ones
-/// keeps that symmetry; the cap itself is applied by <see cref="Filters.FrameTxPaymasterFilter"/>.
+/// EIP-8141 <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>. Keyed on the <c>pay</c> frame target and
+/// counting every paymaster rather than only the currently non-canonical ones, so increment and decrement
+/// stay symmetric even if the paymaster's code changes while the transaction is pending.
 /// </remarks>
 internal sealed class PendingPaymasterCache
 {

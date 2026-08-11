@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -12,17 +13,16 @@ namespace Nethermind.TxPool.Filters;
 /// non-canonical paymaster.
 /// </summary>
 /// <remarks>
-/// A paymaster sponsors many senders, so without a cap one sponsor's balance or code change could
-/// invalidate an unbounded set of pending transactions. EIP-8141 "Non-canonical paymaster" bounds that
-/// set to <see cref="Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster"/> per sponsor
-/// (ethereum/EIPs#12007). Only a <c>pay</c> frame target that carries code is a paymaster: a default-code
-/// sponsor is governed by the per-payer exposure rule alone (<see cref="FrameTxPayerExposureFilter"/>).
-/// The check is a read of the pending count rather than a reservation, so it holds no state a later
-/// rejecting filter would have to release; concurrent submissions naming one paymaster may briefly
-/// exceed the cap, as concurrent delegations may for <see cref="DelegatedAccountFilter"/>.
+/// EIP-8141 "Non-canonical paymaster" bounds the set one sponsor's balance or code change can invalidate
+/// to <see cref="Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster"/>. Only a code-carrying
+/// <c>pay</c> target is a paymaster; a default-code sponsor is bounded by
+/// <see cref="FrameTxPayerExposureFilter"/> alone. The check reads the pending count rather than
+/// reserving, so nothing needs releasing when a later filter rejects, at the cost of concurrent
+/// submissions naming one paymaster briefly exceeding the cap.
 /// </remarks>
 internal sealed class FrameTxPaymasterFilter(
     IReadOnlyStateProvider stateProvider,
+    TxDistinctSortedPool standardPool,
     PendingPaymasterCache paymasters,
     ILogger logger) : IIncomingTxFilter
 {
@@ -39,7 +39,9 @@ internal sealed class FrameTxPaymasterFilter(
             return AcceptTxResult.Accepted;
         }
 
-        int pending = paymasters.GetPendingCount(paymaster);
+        // A replacement takes over the slot of the tx it displaces, so the pending set does not grow
+        // (EIP-8141 decrements on "eviction, replacement, inclusion, or reorg removal").
+        int pending = paymasters.GetPendingCount(paymaster) - (ReplacesPendingTxOfSamePaymaster(tx, paymaster) ? 1 : 0);
         if (pending >= Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster)
         {
             Metrics.PendingTransactionsFrameTxPaymasterLimitReached++;
@@ -55,4 +57,34 @@ internal sealed class FrameTxPaymasterFilter(
     // capped. Exempting a canonical instance additionally requires its balance reservation (EIP8141-GAP).
     private bool IsNonCanonicalPaymaster(Address paymaster) =>
         stateProvider.TryGetAccount(paymaster, out AccountStruct account) && account.HasCode;
+
+    /// <summary>
+    /// Whether a pending transaction from the same sender holds the same nonce and pays through
+    /// <paramref name="paymaster"/>, so <paramref name="tx"/> would replace it rather than join it.
+    /// </summary>
+    /// <remarks>
+    /// Matching on the paymaster too: replacing a tx sponsored elsewhere frees that sponsor's slot while
+    /// still taking one here. Frame txs never carry blobs, so only the standard pool can hold the displaced tx.
+    /// </remarks>
+    private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster)
+    {
+        ReplacementSearch search = new(tx.Nonce, paymaster);
+        standardPool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
+        {
+            // Buckets are visited in ascending nonce order, so stop once past the replaced nonce.
+            if (pending.Nonce < state.Nonce) return true;
+            if (pending.Nonce == state.Nonce)
+                state.Found = state.Paymaster == FrameTxValidation.GetPrefixPaymaster(pending);
+            return false;
+        });
+
+        return search.Found;
+    }
+
+    private struct ReplacementSearch(ulong nonce, Address paymaster)
+    {
+        public readonly ulong Nonce = nonce;
+        public readonly Address Paymaster = paymaster;
+        public bool Found;
+    }
 }

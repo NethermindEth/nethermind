@@ -6,11 +6,17 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -18,13 +24,13 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test;
 
 /// <summary>
-/// EIP-8141 <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>: a frame transaction is rejected once
-/// the code-carrying target of its <c>pay</c> frame already sponsors the maximum pending transactions.
+/// EIP-8141 <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>.
 /// </summary>
 public class FrameTxPaymasterFilterTests
 {
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Paymaster = TestItem.AddressB;
+    private static readonly Address OtherPaymaster = TestItem.AddressC;
 
     [TestCaseSource(nameof(CapCases))]
     public void Accept_CapsOnlyCodeCarryingPaymasters(Func<Transaction> build, bool paymasterHasCode, bool rejected)
@@ -104,6 +110,40 @@ public class FrameTxPaymasterFilterTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
+    [TestCaseSource(nameof(ReplacementCases))]
+    public void Accept_DiscountsOnlyTheTxAReplacementDisplaces(ulong pendingNonce, Address pendingPaymaster, ulong incomingNonce, bool rejected)
+    {
+        TestReadOnlyStateProvider state = new();
+        state.InsertCode([0x60, 0x00], Paymaster);
+        state.InsertCode([0x60, 0x00], OtherPaymaster);
+
+        Transaction pending = FrameTx([OnlyVerifyFrame(), PayFrame(pendingPaymaster)], pendingNonce);
+        PendingPaymasterCache cache = new();
+        cache.Increment(pendingPaymaster);
+        // The incoming tx's own paymaster must be at the cap for the discount to be what decides.
+        if (pendingPaymaster != Paymaster) cache.Increment(Paymaster);
+
+        // A fee bump is the same sender and nonce at a higher price.
+        Transaction incoming = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], incomingNonce, gasPrice: 2);
+        AcceptTxResult result = Accept(state, cache, incoming, Pool(pending));
+
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.NonCanonicalPaymasterLimitReached : AcceptTxResult.Accepted));
+    }
+
+    private static IEnumerable<TestCaseData> ReplacementCases()
+    {
+        yield return new TestCaseData(0ul, Paymaster, 0ul, false)
+            .SetName("Accept_FeeBumpOfSponsoredTx_Accepted");
+
+        // Replacing a tx sponsored elsewhere frees that paymaster's slot, not this one's.
+        yield return new TestCaseData(0ul, OtherPaymaster, 0ul, true)
+            .SetName("Accept_ReplacementNamingAnotherPaymaster_Rejected");
+
+        // A different nonce joins the pending set rather than displacing it.
+        yield return new TestCaseData(0ul, Paymaster, 1ul, true)
+            .SetName("Accept_SecondNonceFromSameSender_Rejected");
+    }
+
     [Test]
     public void PendingPaymasterCache_CountsUpAndClampsAtZero()
     {
@@ -125,19 +165,46 @@ public class FrameTxPaymasterFilterTests
     private static TestCaseData Case(string name, Func<Transaction> build, bool paymasterHasCode, bool rejected) =>
         new TestCaseData(build, paymasterHasCode, rejected).SetName($"Accept_{name}");
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PendingPaymasterCache cache, Transaction tx)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PendingPaymasterCache cache, Transaction tx, TxDistinctSortedPool? pool = null)
     {
-        FrameTxPaymasterFilter filter = new(state, cache, LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
+        FrameTxPaymasterFilter filter = new(state, pool ?? Pool(), cache, LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
-    private static Transaction FrameTx(TxFrame[] frames) => new()
+    private static TxDistinctSortedPool Pool(params Transaction[] pending)
     {
-        Type = TxType.FrameTx,
-        SenderAddress = Sender,
-        Frames = frames,
-    };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
+
+        TxDistinctSortedPool pool = new(pending.Length + 1,
+            new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer(), LimboLogs.Instance);
+        foreach (Transaction tx in pending)
+        {
+            pool.TryInsert(tx.Hash!, tx);
+        }
+
+        return pool;
+    }
+
+    private static Transaction FrameTx(TxFrame[] frames, ulong nonce = 0, uint gasPrice = 1)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = Sender,
+            Nonce = nonce,
+            Frames = frames,
+            FrameSignatures = [],
+            GasLimit = 1_000_000,
+            GasPrice = gasPrice,
+            DecodedMaxFeePerGas = gasPrice,
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
 
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);

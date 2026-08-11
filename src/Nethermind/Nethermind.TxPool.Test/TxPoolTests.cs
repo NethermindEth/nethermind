@@ -2473,6 +2473,40 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void SubmitTx_FrameTransactions_SharingNonCanonicalPaymaster_BoundByPendingCap_ReleasedOnRemoval()
+        {
+            // Distinct senders share one code-carrying pay target. No canonical paymaster runtime is pinned,
+            // so it is non-canonical and only MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER of its sponsored
+            // transactions may be pending at once (EIP-8141).
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult thirdResult = _txPool.SubmitTx(third, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+                Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx freed the paymaster's slot");
+            }
+        }
+
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000)
         {
             List<TxFrame> frames =
