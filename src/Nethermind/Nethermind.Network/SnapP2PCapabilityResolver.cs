@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
@@ -26,35 +27,47 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     private readonly ISyncConfig _syncConfig;
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
+
+    // BAL healing isn't implemented yet - always false until it lands.
+    private readonly bool _canBalHeal = false;
 
     public event Action? Changed;
 
-    public SnapP2PCapabilityResolver(ISyncConfig syncConfig, ISyncModeSelector syncModeSelector, ILogManager logManager)
+    public SnapP2PCapabilityResolver(ISyncConfig syncConfig, ISyncModeSelector syncModeSelector, ISpecProvider specProvider, ILogManager logManager)
     {
         _syncConfig = syncConfig;
         _syncModeSelector = syncModeSelector;
+        _specProvider = specProvider;
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
         _syncModeSelector.Changed += OnSyncModeChanged;
     }
 
     public void Resolve(ISet<Capability> capabilities)
     {
-        bool serving = _syncConfig.SnapServingEnabled == true;
-        bool syncingState = _syncConfig.SnapSync && (_syncModeSelector.Current & SyncMode.Full) == 0;
-        if (serving || syncingState)
+        bool snapServingEnabled = _syncConfig.SnapServingEnabled == true;
+        bool hasCompletedStateSync = (_syncModeSelector.Current & SyncMode.Full) != 0;
+        bool requiresSnapForSync = _syncConfig.SnapSync && !hasCompletedStateSync;
+
+        if (!snapServingEnabled && !requiresSnapForSync) return;
+
+        capabilities.Add(SnapCapability);
+
+        // snap/2 drops GetTrieNodes/TrieNodes (EIP-8189). Only advertise it once we no longer need
+        // trie nodes ourselves - state sync finished, or snap-syncing with a BAL-heal.
+        bool canAdvertiseSnap2 = requiresSnapForSync
+            ? _canBalHeal
+            : hasCompletedStateSync && _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
+
+        if (canAdvertiseSnap2)
         {
-            capabilities.Add(SnapCapability);
             capabilities.Add(Snap2Capability);
         }
     }
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {
-        // The snap contribution only tracks the sync mode while we snap-sync our own state and are not also
-        // serving snap; in every other configuration it is constant, so the rebuild is pointless.
-        if (_syncConfig.SnapServingEnabled == true || !_syncConfig.SnapSync) return;
-
         bool wasSyncing = (e.Previous & SyncMode.Full) == 0;
         bool isSyncing = (e.Current & SyncMode.Full) == 0;
         if (wasSyncing == isSyncing) return;
