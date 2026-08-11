@@ -59,8 +59,22 @@ public class InclusionListBuilder(ITxPool txPool)
     {
         InclusionListBytes result = new(txs.Count);
         int size = 0;
+        // EIP-8369 includer budget-fill: Profile-1 txs pass through freely; Profile-2 frame txs are
+        // metered against the per-IL VERIFY budget; anything outside enforcement is excluded.
+        ulong verifyBudget = Eip8369Constants.MaxVerifyGasPerIl;
         foreach (Transaction tx in txs)
         {
+            FocilProfile profile = Eip8369.Classify(tx);
+            if (profile == FocilProfile.Outside) continue;
+
+            // Cost is uncomputable / over-budget / doesn't fit → ignore the tx, consume nothing.
+            ulong cost = 0;
+            if (profile == FocilProfile.Two)
+            {
+                cost = Eip8369.Profile2VerifyCost(tx);
+                if (cost > Eip8369Constants.MaxVerifyGasPerTx || cost > verifyBudget) continue;
+            }
+
             ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
             if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
@@ -71,6 +85,8 @@ public class InclusionListBuilder(ITxPool txPool)
 
             size += txBytes.Count;
             result.Add(txBytes);
+            // Charge the VERIFY budget only once the Profile-2 tx is actually admitted to the IL.
+            verifyBudget -= cost;
 
             // No possible tx can fit in the remaining space.
             if (size + Eip7805Constants.MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
