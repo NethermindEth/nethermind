@@ -172,6 +172,8 @@ namespace Nethermind.TxPool
                 new MalformedTxFilter(_specProvider, validator, ecdsa, _logger),
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
+                new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: a structural payerless verdict needs no signature work
+
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
@@ -190,6 +192,10 @@ namespace Nethermind.TxPool
             }
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
+
+            // EIP-8141: resolve and record the frame-tx payer, rejecting provably-payerless prefixes.
+            // Runs last so only otherwise-admissible frame txs are resolved.
+            postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
 
