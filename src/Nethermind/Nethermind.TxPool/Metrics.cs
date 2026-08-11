@@ -53,6 +53,14 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulations { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions revalidated because a new head touched their tracked dependencies.")]
+        public static long FrameTxRevalidations { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions evicted because they no longer satisfy the public mempool rules against the new head.")]
+        public static long FrameTxRevalidationEvictions { get; set; }
+
+        [CounterMetric]
         [Description("Number of EIP-8141 validation-prefix simulations aborted by the per-simulation wall-clock bound.")]
         public static long FrameTxSimulationsTimedOut { get; set; }
 

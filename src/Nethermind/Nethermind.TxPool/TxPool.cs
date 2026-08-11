@@ -10,6 +10,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
@@ -58,6 +59,9 @@ namespace Nethermind.TxPool
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
         private readonly PayerExposureCache _payerExposure = new();
+        private readonly FrameTxDependencyIndex _frameDependencies = new();
+        private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
+        private readonly IFrameTxPrefixSimulator? _frameTxPrefixSimulator;
 
         private readonly ILogger _logger;
 
@@ -127,6 +131,7 @@ namespace Nethermind.TxPool
             _headTxValidator = headTxValidator;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
+            _frameTxPrefixSimulator = frameTxPrefixSimulator;
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
@@ -267,6 +272,7 @@ namespace Nethermind.TxPool
         {
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            IndexFrameTxDependencies(args.Value);
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
@@ -274,6 +280,30 @@ namespace Nethermind.TxPool
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
             ReleasePayerExposure(args.Value);
+            if (args.Value.SupportsFrames) _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
+        }
+
+        /// <summary>
+        /// Records the chain-head accounts a pooled frame transaction's validation prefix depends on.
+        /// </summary>
+        /// <remarks>
+        /// EIP-8141 "Direct Evaluation of Protocol-Defined Frames" names the sender, the payer and the
+        /// expiry verifier as that set. Helper contracts an opaque prefix reaches through <c>CALL*</c> are
+        /// not indexed yet, so a code change at one does not trigger revalidation (EIP8141-GAP).
+        /// </remarks>
+        private void IndexFrameTxDependencies(Transaction tx)
+        {
+            if (!tx.SupportsFrames) return;
+
+            AddressAsKey[] accounts = tx.PayerAddress is null || tx.PayerAddress == tx.SenderAddress
+                ? [tx.SenderAddress!]
+                : [tx.SenderAddress!, tx.PayerAddress];
+            if (HasExpiryDeadline(tx))
+            {
+                accounts = [.. accounts, Eip8141Constants.ExpiryVerifierAddress];
+            }
+
+            _frameDependencies.Set(tx.Hash!.ValueHash256, accounts);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
@@ -332,6 +362,9 @@ namespace Nethermind.TxPool
                             _accountCache.RemoveAccounts(accountChanges);
                         }
 
+                        // Collected before the change list is disposed; consumed after included and expired
+                        // transactions have left the pool.
+                        CollectFrameTxsToRevalidate(accountChanges);
                         DisposeBlockAccountChanges(args.Block);
 
                         _lastBlockNumber = args.Block.Number;
@@ -340,6 +373,7 @@ namespace Nethermind.TxPool
                         ReAddReorganisedTransactions(args.PreviousBlock);
                         RemoveProcessedTransactions(args.Block);
                         RemoveExpiredFrameTransactions(args.Block);
+                        RevalidateFrameTransactions(args.Block);
 
                         if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
                         {
@@ -536,6 +570,97 @@ namespace Nethermind.TxPool
                 }
             }
         }
+
+        private void CollectFrameTxsToRevalidate(ArrayPoolList<AddressAsKey>? accountChanges)
+        {
+            _frameTxsToRevalidate.Clear();
+            if (_frameDependencies.Count == 0) return;
+
+            // A head that reports no per-account change set (a reorg, or a non-sequential block) tells us
+            // nothing about what moved, so every indexed prefix has to be rechecked.
+            if (accountChanges is null) _frameDependencies.CollectAll(_frameTxsToRevalidate);
+            else _frameDependencies.CollectAffected(accountChanges, _frameTxsToRevalidate);
+        }
+
+        /// <summary>
+        /// Re-resolves the validation prefix of the pending frame transactions whose tracked dependencies
+        /// the new block touched, and evicts those that no longer satisfy the public mempool rules.
+        /// </summary>
+        /// <remarks>
+        /// EIP-8141 "Revalidation". Only the dependency-affected subset is rechecked — revalidating the
+        /// whole pool per head would be its own denial-of-service vector. Evicting here is the spec's
+        /// "invalid against the current head first" eviction order: such transactions never compete for
+        /// pool space in the first place. A simulation that fails on a resource bound rather than on the
+        /// prefix leaves the transaction pending.
+        /// </remarks>
+        private void RevalidateFrameTransactions(Block block)
+        {
+            if (_frameTxsToRevalidate.Count == 0 || !_specProvider.GetSpec(block.Header).IsEip8141Enabled) return;
+
+            IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+            IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
+
+            foreach (ValueHash256 hash in _frameTxsToRevalidate)
+            {
+                if (!_transactions.TryGetValue(hash, out Transaction? tx) || !tx.SupportsFrames) continue;
+
+                Metrics.FrameTxRevalidations++;
+                if (!TryRevalidateFrameTransaction(tx, headSpec, state))
+                {
+                    // Cleared so the Removed handler does not release a reservation this pass already moved.
+                    tx.PayerAddress = null;
+                    if (RemoveTransaction(tx.Hash))
+                    {
+                        EvictedPending?.Invoke(this, new TxEventArgs(tx));
+                        Metrics.FrameTxRevalidationEvictions++;
+                        if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {tx.Hash}, invalid against the new head.");
+                    }
+                }
+            }
+
+            _frameTxsToRevalidate.Clear();
+        }
+
+        /// <summary>Whether <paramref name="tx"/> still resolves a solvent payer against the new head, moving its reservation if the payer changed.</summary>
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state)
+        {
+            if (!FrameTxValidation.TryCalculateMaxCost(tx, headSpec, out UInt256 maxCost)) return false;
+
+            // Matches TxFilteringState: a never-seen sender must read back as code-free, not zero-hashed.
+            if (!_accounts.TryGetAccount(tx.SenderAddress!, out AccountStruct senderAccount)) senderAccount = AccountStruct.TotallyEmpty;
+
+            Address? payer;
+            FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, state, senderAccount);
+            switch (resolution.Outcome)
+            {
+                case FrameTxPayerOutcome.NoPayer:
+                    return false;
+                case FrameTxPayerOutcome.Resolved:
+                    payer = resolution.Payer;
+                    break;
+                default:
+                    // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
+                    if (_frameTxPrefixSimulator is null) return true;
+                    FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx);
+                    if (!simulated.Accepted) return simulated.Indeterminate;
+                    payer = simulated.Payer;
+                    break;
+            }
+
+            Address? previousPayer = tx.PayerAddress;
+            if (previousPayer == payer)
+            {
+                // Same payer: only its balance can have invalidated the bound.
+                return payer is null || _payerExposure.GetReserved(payer) <= BalanceOf(state, payer);
+            }
+
+            if (previousPayer is not null) _payerExposure.Subtract(previousPayer, maxCost);
+            tx.PayerAddress = payer;
+            return payer is null || _payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _);
+        }
+
+        private static UInt256 BalanceOf(IReadOnlyStateProvider state, Address address) =>
+            state.TryGetAccount(address, out AccountStruct account) ? account.Balance : UInt256.Zero;
 
         public void AddPeer(ITxPoolPeer peer)
         {
