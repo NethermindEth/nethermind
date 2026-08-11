@@ -18,20 +18,20 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.SupportsBlobs)
+        if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.CarriesBlobs)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob transactions are not supported.");
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP8141-GAP: a blob-carrying frame tx is block-valid, but the pool has no sidecar path for it —
-        // it would land in the non-blob pool and a payload built from it would declare blob gas it cannot
-        // supply blobs for (BlobsBundle skips non-type-3 txs).
-        if (tx.SupportsFrames && tx.BlobVersionedHashes is { Length: > 0 })
+        // EIP-8141: a persistent blob pool stores a blob-carrying frame tx via the frame RLP decoder, which
+        // has no network-wrapper handling and drops the sidecar, reloading a wrapper-less LightTransaction that
+        // is unproducible and unservable. Only BlobsSupportMode.InMemory keeps the full tx intact, so admit it there only.
+        if (tx.SupportsFrames && tx.CarriesBlobs && _txPoolConfig.BlobsSupport.IsPersistentStorage())
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
-            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions are not supported in the transaction pool.");
+            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions require in-memory blob support.");
             return AcceptTxResult.NotSupportedTxType;
         }
 

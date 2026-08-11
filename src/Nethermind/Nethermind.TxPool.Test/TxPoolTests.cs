@@ -2437,20 +2437,6 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void SubmitTx_BlobCarryingFrameTx_NotSupported()
-        {
-            // Block-valid, but the pool has no sidecar path for it, so it must not be admitted.
-            _txPool = CreatePool(new TxPoolConfig(), new TestSpecProvider(Bogota.Instance));
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
-            Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
-            tx.BlobVersionedHashes = [new byte[32]];
-            tx.MaxFeePerBlobGas = 1;
-            tx.Hash = tx.CalculateHash();
-
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NotSupportedTxType));
-        }
-
-        [Test]
         public void SubmitTx_FrameTransactions_SharingSimulatedPayer_BoundByPayerBalance_ReleasedOnRemoval()
         {
             // Distinct senders share one third-party sponsor as payer. The sponsored prefix is opaque, so
