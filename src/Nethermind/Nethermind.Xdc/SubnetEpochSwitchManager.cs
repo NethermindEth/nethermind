@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 
@@ -60,5 +61,5 @@ internal class SubnetEpochSwitchManager(
     }
 
     public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end) =>
-        throw new NotSupportedException("Retrieving epoch switch info for a block range is not supported on subnet chains.");
+        throw new SubnetOperationNotSupportedException("Retrieving epoch switch info for a block range");
 }

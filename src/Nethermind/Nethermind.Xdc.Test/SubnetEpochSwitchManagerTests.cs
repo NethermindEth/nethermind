@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
@@ -129,4 +130,14 @@ internal class SubnetEpochSwitchManagerTests
         Assert.That(() => _epochSwitchManager.GetEpochSwitchInfo(header), Throws.InstanceOf<ArgumentException>());
     }
 
+    // XdcRpcModule.TryGetEpochSwitchInfoBetween catches this exact type to report the range RPCs as unsupported
+    // rather than as an internal error; widening or changing it here silently reintroduces that failure.
+    [Test]
+    public void GetEpochSwitchInfoBetween_Throws_SubnetOperationNotSupported()
+    {
+        XdcSubnetBlockHeader header = Build.A.XdcSubnetBlockHeader().TestObject;
+
+        Assert.That(() => _epochSwitchManager.GetEpochSwitchInfoBetween(header, header),
+            Throws.InstanceOf<SubnetOperationNotSupportedException>());
+    }
 }

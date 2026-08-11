@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -101,13 +102,12 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     }
 
     /// <summary>
-    /// Resolves the epoch switch infos between two headers, turning every failure mode into a caller-facing message.
+    /// Resolves the epoch switch infos between two headers, reporting the unsupported and unavailable cases as a message.
     /// </summary>
     /// <remarks>
-    /// Subnet chains do not support range enumeration and report that as <see cref="NotSupportedException"/>; without
-    /// this guard it would surface to the RPC caller as an unhandled exception rather than an error response.
+    /// Left unhandled, the subnet case reaches the caller as a generic internal error carrying a stack trace, since
+    /// <see cref="SubnetOperationNotSupportedException"/> matches no specific arm of the JSON-RPC exception handler.
     /// </remarks>
-    /// <returns><see langword="true"/> when <paramref name="epochSwitchInfos"/> was resolved; otherwise <see langword="false"/>.</returns>
     private bool TryGetEpochSwitchInfoBetween(
         XdcBlockHeader begin,
         XdcBlockHeader end,
@@ -118,7 +118,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(begin, end);
         }
-        catch (NotSupportedException ex)
+        catch (SubnetOperationNotSupportedException ex)
         {
             epochSwitchInfos = null;
             error = ex.Message;
