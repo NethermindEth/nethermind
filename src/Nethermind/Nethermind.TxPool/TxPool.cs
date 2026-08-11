@@ -208,7 +208,7 @@ namespace Nethermind.TxPool
 
             // EIP-8141: bound each resolved payer's summed pending exposure to its balance; runs
             // after payer resolution/simulation, which records the payer this gate reads.
-            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _payerExposure, _logger));
+            postHashFilters.Add(new FrameTxPayerExposureFilter(_specProvider, chainHeadInfoProvider.ReadOnlyStateProvider, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -725,11 +725,9 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
-            // The exposure filter reserved this frame tx's max cost. Ownership of the reservation
-            // passes to the pool on a successful insert (released later via the Removed event) or is
-            // released explicitly on the non-insert paths below. Should anything throw before the tx
-            // is inserted, it never enters the pool and no Removed fires, so the finally releases the
-            // reservation to avoid a permanent per-payer leak (EIP-8141).
+            // The exposure filter already reserved this frame tx's max cost; the reservation is settled
+            // once the pool owns it (or a Removed event has released it). Anything throwing before that
+            // would leak it permanently, hence the finally.
             bool reservationSettled = false;
             try
             {
@@ -743,8 +741,7 @@ namespace Nethermind.TxPool
                     : worstTx.GasBottleneck;
 
                 bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
-                // Past this point the reservation is owned by the pool, or was already released
-                // synchronously by a Removed event on self-eviction, so the finally must not touch it.
+                // Past here the pool owns the reservation, or a self-eviction Removed already released it.
                 reservationSettled = true;
 
                 if (!inserted)
@@ -759,11 +756,9 @@ namespace Nethermind.TxPool
 
                 if (tx.Hash == removed?.Hash)
                 {
-                    // it means it was added and immediately evicted - pool was full of better txs. The
-                    // self-eviction already raised Removed and released the reservation; a frame tx
-                    // retained only by the persistent broadcaster below therefore contributes nothing
-                    // to its payer's exposure. That local-only under-count is accepted deliberately:
-                    // the broadcaster has no Removed hook, so a reservation held for it would leak.
+                    // it means it was added and immediately evicted - pool was full of better txs.
+                    // A frame tx kept only by the persistent broadcaster below then contributes nothing to
+                    // its payer's exposure: the broadcaster has no Removed hook, so holding one would leak.
                     if (!isPersistentBroadcast || tx.SupportsBlobs || !_broadcaster.Broadcast(tx, true))
                     {
                         // we are adding only to persistent broadcast - not good enough for standard pool,
@@ -836,14 +831,17 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// Releases the pending exposure a resolved frame-tx payer reserved at admission
-        /// (<see cref="FrameTxPayerExposureFilter"/>) once the transaction leaves the pool — covering
-        /// eviction, replacement, inclusion, and reorg removal, which all funnel through the pool
-        /// <c>Removed</c> event, plus the replacement-rejected path that never inserts. A no-op for
-        /// non-frame txs and unresolved payers. EIP-8141 (ethereum/EIPs#12007).
+        /// (<see cref="FrameTxPayerExposureFilter"/>) once the transaction leaves the pool.
         /// </summary>
+        /// <remarks>
+        /// Covers eviction, replacement, inclusion and reorg removal (all funnel through the pool
+        /// <c>Removed</c> event) plus the paths in <see cref="AddCore"/> that never insert. Prices with
+        /// the same shared helper the reservation used so the two amounts cannot disagree.
+        /// </remarks>
         private void ReleasePayerExposure(Transaction tx)
         {
-            if (tx.SupportsFrames && tx.PayerAddress is not null && !tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
+            if (tx.SupportsFrames && tx.PayerAddress is not null
+                && FrameTxValidation.TryCalculateMaxCost(tx, _specProvider.GetCurrentHeadSpec(), out UInt256 maxCost))
             {
                 _payerExposure.Subtract(tx.PayerAddress, maxCost);
             }

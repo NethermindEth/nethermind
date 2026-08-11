@@ -4,10 +4,12 @@
 #nullable enable
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -21,13 +23,15 @@ namespace Nethermind.TxPool.Test;
 public class FrameTxPayerExposureFilterTests
 {
     private static readonly Address Payer = TestItem.AddressB;
+    private static readonly IReleaseSpec Spec = Eip8141Prototype.Instance;
+    private const int TestCost = 100_000;
 
     // The bound is inclusive: a tx whose reserved + max_cost exactly equals the balance is admitted,
-    // matching the spec's strict `available < tx.max_cost` rejection condition (ethereum/EIPs#12007).
-    [TestCase(1000, 0, false, TestName = "single tx within balance")]
-    [TestCase(999, 0, true, TestName = "single tx over balance")]
-    [TestCase(1500, 1000, true, TestName = "summed exposure over balance")]
-    [TestCase(2000, 1000, false, TestName = "summed exposure at inclusive boundary")]
+    // matching the spec's strict `available < tx.max_cost` rejection condition.
+    [TestCase(TestCost, 0, false, TestName = "single tx within balance")]
+    [TestCase(TestCost - 1, 0, true, TestName = "single tx over balance")]
+    [TestCase(TestCost + 50_000 - 1, 50_000, true, TestName = "summed exposure over balance")]
+    [TestCase(TestCost + 50_000, 50_000, false, TestName = "summed exposure at inclusive boundary")]
     public void Accept_GatesOnPayerExposure(int balance, int reserved, bool rejected)
     {
         TestReadOnlyStateProvider state = StateWithPayerBalance(balance);
@@ -35,7 +39,7 @@ public class FrameTxPayerExposureFilterTests
         // Pre-seed a prior payer reservation (as an earlier admitted frame tx would have taken).
         if (reserved > 0) cache.TryReserve(Payer, (UInt256)reserved, UInt256.MaxValue, out _);
 
-        AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(1000));
+        AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(TestCost));
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.PayerExposureExceeded : AcceptTxResult.Accepted));
     }
@@ -43,19 +47,18 @@ public class FrameTxPayerExposureFilterTests
     [Test]
     public void Accept_ReservesOnAdmission_SoConcurrentSecondTxSeesIt()
     {
-        // The filter itself reserves on admission (no external accounting is simulated), so a second
-        // frame tx from the same payer sees the first tx's reservation.
-        TestReadOnlyStateProvider state = StateWithPayerBalance(1500);
+        // The filter itself reserves on admission, so a second frame tx from the same payer sees it.
+        TestReadOnlyStateProvider state = StateWithPayerBalance(TestCost + TestCost / 2);
         PayerExposureCache cache = new();
 
-        AcceptTxResult first = Accept(state, cache, FrameTxCostingExactly(1000));
-        AcceptTxResult second = Accept(state, cache, FrameTxCostingExactly(1000));
+        AcceptTxResult first = Accept(state, cache, FrameTxCostingExactly(TestCost));
+        AcceptTxResult second = Accept(state, cache, FrameTxCostingExactly(TestCost));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(second, Is.EqualTo(AcceptTxResult.PayerExposureExceeded));
-            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)1000), "only the admitted tx is reserved");
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)TestCost), "only the admitted tx is reserved");
         }
     }
 
@@ -63,7 +66,7 @@ public class FrameTxPayerExposureFilterTests
     public void Accept_UnresolvedFramePayer_PassesThrough()
     {
         // FrameTxPayerFilter left the payer null (RequiresSimulation / NoPayer): not gated here.
-        Transaction tx = FrameTxCostingExactly(1000);
+        Transaction tx = FrameTxCostingExactly(TestCost);
         tx.PayerAddress = null;
 
         AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx);
@@ -102,6 +105,20 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
     }
 
+    [Test]
+    public void Accept_BlobCarryingFrameTx_ReservesTheBlobTerm()
+    {
+        // The blob leg of TXPARAM(0x06) counts towards the bound, so a large max_fee_per_blob_gas
+        // cannot smuggle unbounded exposure past a gas-only reservation.
+        Transaction tx = FrameTxCostingExactly(TestCost);
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = 1;
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(TestCost), new PayerExposureCache(), tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.PayerExposureExceeded));
+    }
+
     private static TestReadOnlyStateProvider StateWithPayerBalance(int wei)
     {
         TestReadOnlyStateProvider state = new();
@@ -109,19 +126,30 @@ public class FrameTxPayerExposureFilterTests
         return state;
     }
 
-    /// <summary>A frame tx whose max cost (gas only, <c>MaxFeePerGas * GasLimit</c>) is exactly <paramref name="cost"/>.</summary>
-    private static Transaction FrameTxCostingExactly(int cost) => new()
+    /// <summary>A frame tx whose EIP-8141 <c>TXPARAM(0x06)</c> max cost is exactly <paramref name="cost"/> wei.</summary>
+    private static Transaction FrameTxCostingExactly(int cost)
+    {
+        // At max_fee_per_gas == 1 the cost is the gas budget, so the frame's gas limit is the
+        // requested cost less the spec-priced intrinsic component.
+        FrameTxValidation.TryCalculateGasBudget(FrameTx(0), Spec, out ulong intrinsicGas, out _, out _);
+        return FrameTx((ulong)cost - intrinsicGas);
+    }
+
+    private static Transaction FrameTx(ulong frameGasLimit) => new()
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
-        GasLimit = 1,
-        DecodedMaxFeePerGas = (UInt256)cost,
+        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
+        FrameSignatures = [],
+        DecodedMaxFeePerGas = UInt256.One,
         PayerAddress = Payer,
     };
 
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx)
     {
-        FrameTxPayerExposureFilter filter = new(state, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Spec);
+        FrameTxPayerExposureFilter filter = new(specProvider, state, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }

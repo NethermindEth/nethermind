@@ -510,33 +510,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
             }
 
-            // max_cost (TXPARAM 0x06) at basefee=max, as the main path computes it: the APPROVE payment
-            // charge reserves it and gates payer solvency.
-            if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out _, out _))
+            // max_cost (TXPARAM 0x06) priced at the maximum fees: an upper bound on what execution charges,
+            // so the APPROVE solvency gate here is never laxer than the one the main path applies.
+            if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas budget overflows");
             }
-
-            ulong totalFrameGas = 0;
-            foreach (TxFrame frame in frames)
-            {
-                ulong accumulated = totalFrameGas + frame.GasLimit;
-                if (accumulated < totalFrameGas)
-                {
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("total frame gas overflows");
-                }
-
-                totalFrameGas = accumulated;
-            }
-
-            ulong txGasLimit = intrinsicGas + totalFrameGas;
-            if (txGasLimit < intrinsicGas)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
-            }
-
-            ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
-            UInt256 maxCost = (UInt256)txGasLimit * tx.DecodedMaxFeePerGas + (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault();
 
             FrameTxContext frameContext = new(
                 sender, tx.Nonce, frames, tx.FrameSignatures ?? [], sigHash,

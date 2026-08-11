@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Core;
 
@@ -38,7 +39,6 @@ public static class FrameTxValidation
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
-    public const string BlobHashesNotSupported = "frame transactions must not carry blob versioned hashes";
 
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {
@@ -211,17 +211,8 @@ public static class FrameTxValidation
             }
         }
 
-        // Frame-blob support is off. The decoder always populates both blob fields, so these must be
-        // value checks, not presence checks: reject a blob-carrying frame tx (non-empty hash list) so
-        // the gas-only per-payer exposure bound cannot be bypassed, and reject a blob fee with no
-        // hashes. Admits only the no-hashes, zero-fee shape (EIP8141-GAP).
-        if (transaction.BlobVersionedHashes is { Length: > 0 })
-        {
-            error = BlobHashesNotSupported;
-            return false;
-        }
-
-        if (transaction.MaxFeePerBlobGas is { IsZero: false })
+        // A value check, not a presence check: the decoder always populates both blob fields.
+        if (transaction.BlobVersionedHashes is not { Length: > 0 } && transaction.MaxFeePerBlobGas is { IsZero: false })
         {
             error = BlobFeeWithoutBlobs;
             return false;
@@ -371,6 +362,36 @@ public static class FrameTxValidation
     }
 
     private sealed record FrameGasBudgetMemo(IReleaseSpec Spec, bool Priced, ulong IntrinsicGas, ulong FloorGas, ulong MaxGas) : IIntrinsicGasMemo;
+
+    /// <summary>
+    /// The EIP-8141 <c>TXPARAM(0x06)</c> maximum cost of <paramref name="transaction"/>: its whole gas budget
+    /// priced at <c>max_fee_per_gas</c>, plus the blob gas priced at <c>max_fee_per_blob_gas</c>.
+    /// </summary>
+    /// <remarks>
+    /// The single definition of the quantity the payer-solvency gate charges against and the mempool reserves
+    /// per payer, so the two cannot drift. Priced at the maximum fees, never the effective ones, so it is an
+    /// upper bound on what the payer can be charged.
+    /// </remarks>
+    /// <returns><c>false</c> when the transaction cannot be priced or the cost overflows; <paramref name="maxCost"/> is then 0.</returns>
+    public static bool TryCalculateMaxCost(Transaction transaction, IReleaseSpec spec, out UInt256 maxCost)
+    {
+        maxCost = UInt256.Zero;
+        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas)
+            || UInt256.MultiplyOverflow((UInt256)maxGas, transaction.DecodedMaxFeePerGas, out UInt256 gasCost))
+        {
+            return false;
+        }
+
+        ulong blobGas = (ulong)(transaction.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
+        if (UInt256.MultiplyOverflow((UInt256)blobGas, transaction.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 blobCost)
+            || UInt256.AddOverflow(gasCost, blobCost, out maxCost))
+        {
+            maxCost = UInt256.Zero;
+            return false;
+        }
+
+        return true;
+    }
 
     private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {

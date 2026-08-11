@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -13,15 +14,14 @@ namespace Nethermind.TxPool.Filters;
 /// payer's summed pending maximum cost would exceed the payer's balance.
 /// </summary>
 /// <remarks>
-/// Runs after <see cref="FrameTxPayerFilter"/> has recorded <see cref="Transaction.PayerAddress"/>.
-/// Only natively-resolved payers are gated; unresolved frame txs (payer <c>null</c>) and non-frame
-/// txs pass through. The reservation is taken here atomically at admission and released when the
-/// transaction leaves the pool (or fails to insert), so concurrent submissions for one payer cannot
-/// each pass a stale check (ethereum/EIPs#12007, "a node MUST NOT hold pending frame transactions
-/// whose summed maximum costs exceed the payer's balance").
-/// https://eips.ethereum.org/EIPS/eip-8141
+/// Runs after <see cref="FrameTxPayerFilter"/> has recorded <see cref="Transaction.PayerAddress"/>;
+/// unresolved frame txs (payer <c>null</c>) and non-frame txs pass through. The reservation is taken
+/// atomically at admission and released when the transaction leaves the pool, so concurrent
+/// submissions for one payer cannot each pass a stale check (EIP-8141 "Replacement and Eviction":
+/// summed pending maximum costs must not exceed the payer's balance).
 /// </remarks>
 internal sealed class FrameTxPayerExposureFilter(
+    IChainHeadSpecProvider specProvider,
     IReadOnlyStateProvider stateProvider,
     PayerExposureCache exposure,
     ILogger logger) : IIncomingTxFilter
@@ -34,11 +34,9 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // Max cost approximates TXPARAM(0x06). For a frame tx this is gas-only (MaxFeePerGas·GasLimit):
-        // the top-level Value is always zero (frame value lives on TxFrame.Value) and blob fields are
-        // rejected at validation while frame-blob support is off. The signature-verification add-on
-        // lands with the deferred MAX_VERIFY_GAS slice.
-        if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
+        // The exact TXPARAM(0x06) the payer-solvency gate charges against, shared with the processor so
+        // the admission bound and the consensus gate cannot drift.
+        if (!FrameTxValidation.TryCalculateMaxCost(tx, specProvider.GetCurrentHeadSpec(), out UInt256 maxCost))
         {
             return AcceptTxResult.Int256Overflow;
         }
@@ -46,8 +44,7 @@ internal sealed class FrameTxPayerExposureFilter(
         UInt256 balance = stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
         // Reserve atomically so N concurrent submissions for the same payer cannot each observe a
-        // pre-reservation total and all pass. Released on the pool Removed event, or on the
-        // non-insert path in TxPool.AddCore.
+        // pre-reservation total and all pass.
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved))
         {
             if (logger.IsTrace)

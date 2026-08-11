@@ -2449,15 +2449,16 @@ namespace Nethermind.TxPool.Test
             // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
 
-            UInt256 maxCost = (UInt256)1.GWei * 1_000_000;
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
-            EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
 
             Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
             Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+
+            FrameTxValidation.TryCalculateMaxCost(first, Bogota.Instance, out UInt256 maxCost);
+            EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
 
             AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
             AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
