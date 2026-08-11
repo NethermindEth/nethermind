@@ -244,7 +244,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             roundCells.UnionWith(capture.Cells);
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         _logger.DebugError($"Error discovering storage reads for {tx.Hash}", ex);
                     }
@@ -299,7 +299,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     for (int i = range.Item1; i < range.Item2; i++)
                     {
                         if (((i - range.Item1) & 0x3F) == 0 && cancellationToken.IsCancellationRequested) return;
-                        worldState.Get(in cells[i]);
+                        try
+                        {
+                            worldState.Get(in cells[i]);
+                        }
+                        catch (MissingTrieNodeException)
+                        {
+                        }
                     }
                 }
                 finally
