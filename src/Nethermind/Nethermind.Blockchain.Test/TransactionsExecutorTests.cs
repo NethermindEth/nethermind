@@ -576,7 +576,7 @@ namespace Nethermind.Blockchain.Test
             // the source stops offering it, which is what turns one eviction into one execution.
             bool evicted = false;
             ITxPool txPool = Substitute.For<ITxPool>();
-            txPool.RemoveTransaction(frameTx.Hash).Returns(_ => evicted = true);
+            txPool.EvictTransaction(frameTx).Returns(_ => evicted = true);
 
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
                 adapter,

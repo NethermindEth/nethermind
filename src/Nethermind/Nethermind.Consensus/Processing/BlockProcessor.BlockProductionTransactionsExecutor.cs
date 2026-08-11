@@ -120,7 +120,7 @@ namespace Nethermind.Consensus.Processing
                     {
                         balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
-                        DropIfFrameTxCanNeverPay(currentTx, result);
+                        EvictUnpaidFrameTx(currentTx, result);
                     }
                 }
 
@@ -132,25 +132,27 @@ namespace Nethermind.Consensus.Processing
             }
 
             /// <summary>
-            /// Evicts an EIP-8141 frame transaction whose frames were rejected outright, so the producer
-            /// runs its validation prefix at most once.
+            /// Evicts an EIP-8141 frame transaction whose frames did not approve payment, so the producer runs
+            /// its validation prefix at most once per time the transaction is pooled.
             /// </summary>
             /// <remarks>
-            /// A frame transaction only charges a fee once a frame approves payment. One whose prefix never
-            /// approves therefore leaves the producer with the whole prefix burned and nothing collected, and
-            /// because nothing evicts it, every later block repeats that work — the cost is bounded by the
-            /// number of blocks the transaction is pooled for, not by the block gas limit.
-            /// Only <see cref="TransactionResult.ErrorType.MalformedTransaction"/> is evicted: every other
-            /// error either clears on its own (a nonce gap, a base fee above the transaction's cap) or is
-            /// already handled by the pool's own eviction passes. The sender may resubmit once the state the
-            /// prefix depends on has changed.
+            /// A frame transaction only charges a fee once a frame approves payment. One whose prefix does not
+            /// approve leaves the producer with the whole prefix burned and nothing collected, and because
+            /// nothing else evicts it, every later block repeats that work.
+            /// Only <see cref="TransactionResult.ErrorType.MalformedTransaction"/> is evicted: every other error
+            /// either clears on its own (a nonce gap, a base fee above the transaction's cap) or is already
+            /// handled by the pool's own eviction passes. A structurally invalid prefix (bad signature, approval
+            /// scope on an atomic batch, a gas budget that overflows) never reaches here — static validation
+            /// rejects it at admission. What reaches here failed on chain state (an unfunded payer, a VERIFY
+            /// frame reading storage), so <see cref="ITxPool.EvictTransaction"/> clears the long-term cache and
+            /// the transaction can re-enter once that state changes.
             /// </remarks>
-            private void DropIfFrameTxCanNeverPay(Transaction tx, in TransactionResult result)
+            private void EvictUnpaidFrameTx(Transaction tx, in TransactionResult result)
             {
                 if (!tx.SupportsFrames || result.Error != TransactionResult.ErrorType.MalformedTransaction) return;
 
-                txPool.RemoveTransaction(tx.Hash);
-                if (_logger.IsDebug) _logger.Debug($"Evicted frame transaction {tx.ToShortString()} from the pool: {result.ErrorDescription}.");
+                if (txPool.EvictTransaction(tx) && _logger.IsDebug)
+                    _logger.Debug($"Evicted frame transaction {tx.ToShortString()} from the pool: {result.ErrorDescription}.");
             }
         }
     }
