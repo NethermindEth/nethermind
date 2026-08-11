@@ -374,11 +374,13 @@ namespace Nethermind.TxPool
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = txs[i];
+                    // Un-mark the hash first: a blob-carrying tx (type-3 or type-6 frame) is re-added below only
+                    // from blob storage, and a dropped one must not stay AlreadyKnown or the sender cannot resend.
+                    _hashCache.Delete(tx.Hash!);
                     if (tx.CarriesBlobs)
                     {
                         continue;
                     }
-                    _hashCache.Delete(tx.Hash!);
                     SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
 

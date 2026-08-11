@@ -1571,6 +1571,33 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8141: a reorg drops a blob-carrying frame tx from the pool (under BlobsSupportMode.InMemory no blob
+        // storage brings it back), so its hash must be un-marked as known. Otherwise AlreadyKnownTxFilter would
+        // reject every resubmission until LRU eviction and the sender could never get the tx back into the pool.
+        [Test]
+        public async Task Reorged_blob_carrying_frame_tx_can_be_resubmitted()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Include the tx in block A, then reorg it out to block B; InMemory mode does not re-add it.
+            Block blockA = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
+            Block blockB = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockB, blockA);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
+                    "a blob-carrying frame tx dropped on reorg must not stay AlreadyKnown");
+            }
+        }
+
         private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
 
         private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null)
