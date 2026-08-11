@@ -221,6 +221,8 @@ namespace Nethermind.Core
         /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
         /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
         public UInt256[]? NonceKeys { get; set; }
+
+        /// <summary>
         /// Recent-root references declared by a frame transaction.
         /// https://eips.ethereum.org/EIPS/eip-8272
         /// </summary>
