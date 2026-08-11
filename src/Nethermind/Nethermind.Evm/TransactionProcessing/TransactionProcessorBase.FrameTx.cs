@@ -432,13 +432,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return ExecuteDefaultVerify(frame, resolvedTarget, frameContext, tracer);
         }
 
-        // EIP-8141 frame entry (create_evm_from_frame): within its gas limit the frame pays cold/warm
-        // target access plus EIP-8037 NEW_ACCOUNT state when a value transfer revives a dead target.
-        // The reservoir starts empty so state spills into execution gas; over-budget fails the frame.
         ulong entryExecution = spec.UseHotAndColdStorage
-            ? (accessTracker.IsCold(resolvedTarget) ? Eip8038Constants.ColdAccountAccess : Eip8038Constants.WarmAccess)
+            ? (accessTracker.IsCold(resolvedTarget) && !spec.IsPrecompile(resolvedTarget) ? TGasPolicy.GetColdAccountAccessCost(spec) : Eip8038Constants.WarmAccess)
             : 0;
-        long entryState = !value.IsZero && WorldState.IsDeadAccount(resolvedTarget) ? TGasPolicy.GetNewAccountStateCost() : 0;
+        long entryState = spec.IsEip8037Enabled && !value.IsZero && WorldState.IsDeadAccount(resolvedTarget)
+            ? TGasPolicy.GetNewAccountStateCost()
+            : 0;
         ulong entryCharge = entryExecution + (ulong)entryState;
         if (entryCharge > frame.GasLimit)
         {
