@@ -21,6 +21,7 @@ using Nethermind.Evm;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.TxPool.Comparison;
 
@@ -338,6 +339,81 @@ public class TxPoolSourceTests
             Cells = cells
         };
         tx.ClearLengthCache();
+        return tx;
+    }
+    // EIP-8141: validates the tx-source selection/metering groundwork only — end-to-end production of
+    // blob-frame txs is deferred (the production picker deliberately skips them). A blob-carrying frame tx
+    // routed to the blob pool is metered against the block blob budget like a type-3 tx: selected when
+    // within budget, excluded when it would overflow it. Does not assert the tx is producible.
+    [TestCase(3, 6, true)]
+    [TestCase(3, 2, false)]
+    public void GetTransactions_meters_blob_carrying_frame_tx_against_blob_budget(int blobCount, int blobLimit, bool expectSelected)
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Cancun.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+
+        Transaction frameBlobTx = BuildFrameBlobTxWithSidecar(senderByte: 1, blobCount: blobCount);
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactions().Returns([]);
+        txPool.GetPendingLightBlobTransactionsBySender()
+            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { frameBlobTx.SenderAddress!, [frameBlobTx] } });
+        txPool.SupportsBlobs.Returns(true);
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = blobLimit });
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
+
+        ulong selectedBlobs = result.Aggregate(0UL, (sum, tx) => sum + (ulong)tx.GetBlobCount());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Contains(frameBlobTx), Is.EqualTo(expectSelected));
+            Assert.That(selectedBlobs, Is.EqualTo(expectSelected ? (ulong)blobCount : 0UL));
+            Assert.That(selectedBlobs, Is.LessThanOrEqualTo((ulong)Cancun.Instance.MaxProductionBlobCount(blobLimit)));
+        }
+    }
+
+    private static Transaction BuildFrameBlobTxWithSidecar(byte senderByte, int blobCount)
+    {
+        byte[][] versionedHashes = new byte[blobCount][];
+        byte[][] blobs = new byte[blobCount][];
+        byte[][] commitments = new byte[blobCount][];
+        byte[][] proofs = new byte[blobCount][];
+        for (int i = 0; i < blobCount; i++)
+        {
+            byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
+            hash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+            hash[1] = (byte)i;
+            versionedHashes[i] = hash;
+            blobs[i] = [];
+            commitments[i] = [];
+            proofs[i] = [];
+        }
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = new Address(new byte[19].Concat(new[] { senderByte }).ToArray()),
+            Nonce = 0,
+            GasLimit = 1_000_000,
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFeePerBlobGas = 1000,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            BlobVersionedHashes = versionedHashes,
+            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, ProofVersion.V0),
+        };
+        tx.Hash = tx.CalculateHash();
         return tx;
     }
 }

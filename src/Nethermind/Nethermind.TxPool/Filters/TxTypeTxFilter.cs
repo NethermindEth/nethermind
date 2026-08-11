@@ -13,7 +13,7 @@ public class TxTypeTxFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobT
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        TxDistinctSortedPool otherTxTypePool = tx.SupportsBlobs ? txs : blobTxs;
+        TxDistinctSortedPool otherTxTypePool = tx.CarriesBlobs ? txs : blobTxs;
         if (otherTxTypePool.ContainsBucket(tx.SenderAddress!)) // as unknownSenderFilter will run before this one
         {
             Metrics.PendingTransactionsConflictingTxType++;
