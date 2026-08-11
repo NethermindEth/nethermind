@@ -1177,6 +1177,39 @@ public class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
+    // EIP-7906 requires a TXDIFF param that falls back to live state (0x00-0x05) to be recorded in the
+    // EIP-7928 block access list like any other state-reading opcode, so a rebuilt BAL matches.
+    [TestCase(true, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList")]
+    [TestCase(false, TestName = "Execute_WithoutTxDiff_TheAccountStaysOutOfTheBlockAccessList")]
+    public void Execute_TxDiffLiveRead_IsRecordedInTheBlockAccessList(bool readBalance)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Recipient, readBalance
+            ? [.. Txdiff(0x03, Observer, 0), (byte)Instruction.POP, (byte)Instruction.STOP]
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        (_, CallOutputTracer tracer) = ProcessTraced(
+            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)), out BlockAccessListAtIndex slice);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(slice.HasAccount(Observer), Is.EqualTo(readBalance));
+    }
+
+    // Same reserved-operand rule on TXDIFF: a param keyed only by address (here 0x0A,
+    // account_change_flags) marks in3 "must be 0".
+    [TestCase(0, ExpectedResult = StatusCode.Success, TestName = "Execute_TxDiffAddressParam_ZeroIn3_Succeeds")]
+    [TestCase(1, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxDiffAddressParam_NonZeroIn3_HaltsExceptionally")]
+    public byte Execute_TxDiffAddressParam_In3MustBeZero(int in3)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, [.. Txdiff(0x0A, Observer, (UInt256)in3), (byte)Instruction.STOP]);
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        return tracer.StatusCode;
+    }
+
     // TXTRACE stack order is (param, index) with param on top.
     private static byte[] Txtrace(byte param, UInt256 index)
         => Prepare.EvmCode.PushData(index).PushData((UInt256)param).Op(Instruction.TXTRACE).Done;
@@ -1225,9 +1258,13 @@ public class FrameTxProcessorTests
     }
 
     private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx)
+        => ProcessTraced(tx, out _);
+
+    private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, out BlockAccessListAtIndex slice)
     {
         TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        slice = new BlockAccessListAtIndex();
+        tracedState.SetGeneratingBlockAccessList(slice);
         EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
         EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);

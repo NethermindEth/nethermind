@@ -32,7 +32,6 @@ public static unsafe partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 param, out UInt256 index)) return EvmExceptionType.StackUnderflow;
         if (param > 0x15) return EvmExceptionType.BadInstruction;
 
-        // Count params: in2 must be 0.
         byte p = (byte)param.u0;
         return p switch
         {
@@ -138,7 +137,6 @@ public static unsafe partial class EvmInstructions
         return p switch
         {
             0x00 or 0x01 => TxDiffStorage<TGasPolicy, TTracingInst>(vm, ref gas, p, address, in in3, account, ref stack),
-            // Account params: in3 must be 0.
             >= 0x02 and <= 0x05 => in3.IsZero
                 ? TxDiffAccount<TGasPolicy, TTracingInst>(vm, ref gas, p, view, address, account, ref stack)
                 : EvmExceptionType.BadInstruction,
@@ -146,8 +144,8 @@ public static unsafe partial class EvmInstructions
         };
     }
 
-    // 0x00 before / 0x01 after, EIP-2929 storage-priced. The live read records into the BAL slice;
-    // the EIP-7928 interaction is unspecified.
+    // 0x00 before / 0x01 after, EIP-2929 storage-priced. A live read is recorded in the EIP-7928 block
+    // access list like any other state-reading opcode, as the spec requires.
     private static EvmExceptionType TxDiffStorage<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Address address, in UInt256 key, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -162,7 +160,7 @@ public static unsafe partial class EvmInstructions
         return value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
     }
 
-    // 0x02/0x03 balance, 0x04/0x05 code hash, EIP-2929 account-priced (same BAL-recording caveat as above).
+    // 0x02/0x03 balance, 0x04/0x05 code hash, EIP-2929 account-priced; live reads are BAL-recorded as above.
     private static EvmExceptionType TxDiffAccount<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -195,7 +193,6 @@ public static unsafe partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         TGasPolicy.Consume<TxTraceGasCost>(ref gas);
-        // 0x07/0x09 use in3 as a local index; 0x06/0x08/0x0A require in3 == 0.
         return param switch
         {
             0x06 => in3.IsZero ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)(account?.StorageChangeCount ?? 0)) : EvmExceptionType.BadInstruction,
@@ -284,8 +281,8 @@ public static unsafe partial class EvmInstructions
         return true;
     }
 
-    // Bitmask: nonce 0b0001, balance 0b0010, storage 0b0100, code 0b1000. Balance/storage/code are net
-    // diffs; the nonce bit only means "written" (the BAL never nulls a nonce change).
+    // Bitmask: nonce 0b0001, balance 0b0010, storage 0b0100, code 0b1000. The spec asks for net diffs;
+    // a recorded nonce change is one because nonces only increase and reverts restore the prior value.
     private static uint ChangeFlags(AccountChangesAtIndex? account)
     {
         if (account is null) return 0;

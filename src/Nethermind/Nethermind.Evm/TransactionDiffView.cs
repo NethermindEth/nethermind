@@ -149,10 +149,13 @@ internal sealed class TransactionDiffView
         return result;
     }
 
-    // Code appearing where the account had none. Approximate: also matches an EIP-7702 designator on a
-    // fresh EOA, and misses a CREATE that returns zero-length code.
+    // Spec contracts_deployed: the code hash moved from the empty-code hash to a non-empty hash that is
+    // not an EIP-7702 delegation designator. A CREATE leaving empty code records no CodeChange, so it is
+    // excluded for free.
     private static bool IsDeployment(AccountChangesAtIndex account)
-        => account.CodeChange is not null && (account.PreTxCode is null || account.PreTxCode.Length == 0);
+        => account.CodeChange is { Code: { Length: > 0 } code }
+           && (account.PreTxCode is null || account.PreTxCode.Length == 0)
+           && !Eip7702Constants.IsDelegatedCode(code);
 
     // Ascending uint160: big-endian byte comparison of the 20-byte address matches numeric order.
     private static int CompareAddress(Address a, Address b)
