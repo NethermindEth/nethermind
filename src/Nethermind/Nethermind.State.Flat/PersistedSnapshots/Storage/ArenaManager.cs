@@ -119,6 +119,10 @@ public sealed class ArenaManager : IArenaManager
         foreach (CatalogEntry entry in entries)
         {
             int aid = entry.Location.ArenaId;
+            // The catalog is not rewritten by this recovery path, so reserve every id with a
+            // representable successor; reusing one would make stale entries appear serviceable.
+            if (aid >= _nextArenaId && aid < int.MaxValue)
+                _nextArenaId = aid + 1;
             if (!_arenas.TryGetValue(aid, out ArenaFile? arena))
             {
                 if (missingArenas.Add(aid) && _logger.IsWarn)

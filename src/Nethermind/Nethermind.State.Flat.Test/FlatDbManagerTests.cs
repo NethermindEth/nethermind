@@ -98,6 +98,28 @@ public class FlatDbManagerTests
         return new StateId(blockNumber, new ValueHash256(bytes));
     }
 
+    private (FlatDbManager Manager, StateId SnapshotTo) CreateManagerWithQueuedSnapshot(
+        bool processExitAlreadyCancelled = false)
+    {
+        _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = false };
+        StateId snapshotFrom = CreateStateId(10);
+        StateId snapshotTo = CreateStateId(11);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
+        _persistenceManager.AddToPersistence(snapshotTo).Returns(Task.CompletedTask);
+
+        if (processExitAlreadyCancelled) _cts.Cancel();
+
+        ResourcePool realResourcePool = new(_config);
+        Snapshot snapshot = realResourcePool.CreateSnapshot(
+            snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot, transientResource);
+        return (manager, snapshotTo);
+    }
+
     [Test]
     public async Task HasStateForBlock_FoundInRepository_ReturnsTrue()
     {
@@ -137,50 +159,76 @@ public class FlatDbManagerTests
         Assert.That(result, Is.False);
     }
 
-    [Test]
-    public async Task DisposeAsync_FlushesInMemoryStateToPersistence()
+    [TestCase(1)]
+    [TestCase(2)]
+    public async Task DisposeAsync_CallsFlushOnce(int disposeCalls)
     {
         _persistenceManager.FlushToPersistence().Returns(CreateStateId(10));
 
         FlatDbManager manager = CreateManager();
-        await manager.DisposeAsync();
+        for (int i = 0; i < disposeCalls; i++) await manager.DisposeAsync();
 
         _persistenceManager.Received(1).FlushToPersistence();
     }
 
-    [Test]
-    public async Task DisposeAsync_CalledTwice_FlushesOnce()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedBeforeFlushOnDispose(
+        bool processExitAlreadyCancelled)
     {
-        _persistenceManager.FlushToPersistence().Returns(CreateStateId(10));
+        (FlatDbManager manager, StateId snapshotTo) =
+            CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
+        _persistenceManager.FlushToPersistence().Returns(snapshotTo);
 
-        FlatDbManager manager = CreateManager();
-        await manager.DisposeAsync();
         await manager.DisposeAsync();
 
+        _snapshotRepository.Received(1).AddStateId(snapshotTo);
+        await _persistenceManager.Received(1).AddToPersistence(snapshotTo);
         _persistenceManager.Received(1).FlushToPersistence();
+        Received.InOrder(() =>
+        {
+            _snapshotRepository.AddStateId(snapshotTo);
+            _ = _persistenceManager.AddToPersistence(snapshotTo);
+            _persistenceManager.FlushToPersistence();
+        });
     }
 
     [Test]
-    public async Task AddSnapshot_QueuedCompaction_IsDrainedAndFlushedOnDispose()
+    public async Task DisposeAsync_FlushThrows_AwaitsWorkerCleanup()
     {
-        _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = false };
-        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
-        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
-        _persistenceManager.FlushToPersistence().Returns(CreateStateId(11));
+        TaskCompletionSource populateStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releasePopulate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource flushAttempted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        InvalidOperationException flushFailure = new("Flush failed");
+        _trieNodeCache.When(cache => cache.Add(Arg.Any<TransientResource>())).Do(_ =>
+        {
+            populateStarted.TrySetResult();
+            releasePopulate.Task.GetAwaiter().GetResult();
+        });
 
-        ResourcePool realResourcePool = new(_config);
-        Snapshot snapshot = realResourcePool.CreateSnapshot(
-            CreateStateId(10), CreateStateId(11), ResourcePool.Usage.MainBlockProcessing);
-        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        (FlatDbManager manager, _) = CreateManagerWithQueuedSnapshot();
+        _persistenceManager.FlushToPersistence().Returns(_ =>
+        {
+            flushAttempted.TrySetResult();
+            throw flushFailure;
+        });
 
-        FlatDbManager manager = CreateManager();
-        manager.AddSnapshot(snapshot, transientResource);
-        await manager.DisposeAsync();
+        await populateStarted.Task;
+        Task disposeTask = manager.DisposeAsync().AsTask();
+        await flushAttempted.Task;
+        await Task.Yield();
 
-        // The compactor feeds the persistence queue, so a snapshot queued right before shutdown only
-        // reaches persistence if both drain before the flush.
-        _snapshotRepository.Received(1).AddStateId(Arg.Any<StateId>());
-        _persistenceManager.Received(1).FlushToPersistence();
+        try
+        {
+            Assert.That(disposeTask.IsCompleted, Is.False);
+        }
+        finally
+        {
+            releasePopulate.TrySetResult();
+        }
+
+        await Assert.ThatAsync(async () => await disposeTask,
+            Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo(flushFailure.Message));
     }
 
     [Test]

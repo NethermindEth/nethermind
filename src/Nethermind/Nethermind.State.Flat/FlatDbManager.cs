@@ -52,6 +52,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     // For debugging. Do the compaction synchronously
     private readonly bool _inlineCompaction;
+    private readonly CancellationToken _processExitToken;
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
@@ -90,10 +91,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
-        // Created after the throwing setup above: a ctor throw never constructs the linked CTS (whose
-        // registration on the long-lived ProcessExitSource would otherwise leak, since Autofac does not
-        // dispose a failed-ctor instance).
-        _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
+        // Keep worker cancellation under this manager's control so process-exit cancellation cannot
+        // preempt the ordered channel drain in DisposeAsync. Producer-side waits still observe process exit.
+        _processExitToken = processExitSource.Token;
+        _cancelTokenSource = new();
 
         _compactorJobs = Channel.CreateBounded<StateId>(config.MaxInFlightCompactJob);
         _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
@@ -371,7 +372,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         if (_inlineCompaction)
         {
-            RunCompactJobSync(endBlock, transientResource, _cancelTokenSource.Token).Wait();
+            RunCompactJobSync(endBlock, transientResource, _processExitToken).Wait();
         }
         else
         {
@@ -383,7 +384,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (!_compactorJobs.Writer.TryWrite(endBlock))
             {
-                if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
+                if (_processExitToken.IsCancellationRequested) return; // When cancelled the queue stop
 
                 // Block processing is now stalled waiting for the compactor to drain the queue; measure how long.
                 long stallStart = Stopwatch.GetTimestamp();
@@ -394,7 +395,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
                 while (true)
                 {
-                    using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancelTokenSource.Token);
+                    using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
+                        _processExitToken, _cancelTokenSource.Token);
                     cts.CancelAfter(delay);
 
                     try
@@ -402,7 +404,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                         _compactorJobs.Writer.WriteAsync(endBlock, cts.Token).AsTask().Wait();
                         break;
                     }
-                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException && !_cancelTokenSource.Token.IsCancellationRequested)
+                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException
+                        && !_processExitToken.IsCancellationRequested
+                        && !_cancelTokenSource.Token.IsCancellationRequested)
                     {
                         delay = TimeSpan.FromSeconds(5);
                         if (_logger.IsWarn) _logger.Warn("Compactor job stall! Persistence is too slow for the network.");
@@ -477,23 +481,39 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     {
         if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) == 1) return;
 
-        ClearReadOnlyBundleCache();
+        try
+        {
+            ClearReadOnlyBundleCache();
 
-        _compactorJobs.Writer.Complete();
-        await _compactorTask;
+            _compactorJobs.Writer.TryComplete();
+            await _compactorTask;
 
-        _persistenceJobs.Writer.Complete();
-        await _persistenceTask;
+            _persistenceJobs.Writer.TryComplete();
+            await _persistenceTask;
 
-        FlushCache(CancellationToken.None);
+            FlushCache(CancellationToken.None);
+        }
+        finally
+        {
+            _compactorJobs.Writer.TryComplete();
+            _persistenceJobs.Writer.TryComplete();
+            _populateTrieNodeCacheJobs.Writer.TryComplete();
+            _cancelTokenSource.Cancel();
 
-        _cancelTokenSource.Cancel();
-
-        _populateTrieNodeCacheJobs.Writer.Complete();
-
-        await _populateTrieNodeCacheTask;
-        await _clearBundleCacheTask;
-
-        _cancelTokenSource.Dispose();
+            try
+            {
+                await Task.WhenAll(
+                    _compactorTask,
+                    _persistenceTask,
+                    _populateTrieNodeCacheTask,
+                    _clearBundleCacheTask);
+            }
+            finally
+            {
+                while (_populateTrieNodeCacheJobs.Reader.TryRead(out TransientResource? cachedResource))
+                    cachedResource.ReleaseLease();
+                _cancelTokenSource.Dispose();
+            }
+        }
     }
 }

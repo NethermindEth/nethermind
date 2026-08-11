@@ -21,6 +21,31 @@ public class ArenaMetricsTests
 {
     private string _testDir = null!;
 
+    private static ArenaManager CreateArenaManager(string arenaDir) => new(arenaDir, new FlatDbConfig
+    {
+        PersistedSnapshotArenaPageCacheBytes = 0,
+        ArenaFileSizeBytes = 64 * 1024,
+    }, LimboLogs.Instance);
+
+    private static SnapshotLocation WritePersistedArena(ArenaManager arena, int size = 4096)
+    {
+        using ArenaWriter writer = arena.CreateWriter(size);
+        writer.GetWriter().GetSpan(size).Clear();
+        writer.GetWriter().Advance(size);
+        (SnapshotLocation location, ArenaReservation reservation) = writer.Complete();
+        using (reservation)
+        {
+            reservation.PersistOnShutdown();
+        }
+        return location;
+    }
+
+    private static void PreserveArena(ArenaManager arena, in SnapshotLocation location)
+    {
+        using ArenaReservation reservation = arena.Open(location);
+        reservation.PersistOnShutdown();
+    }
+
     [SetUp]
     public void SetUp()
     {
@@ -124,37 +149,50 @@ public class ArenaMetricsTests
     }
 
     [Test]
-    public void Initialize_ReportsCatalogEntriesWhoseArenaFileIsGone()
+    public void Initialize_ReportsMissingArenaEntriesWithoutReusingTheirIds()
     {
         string arenaDir = Path.Combine(_testDir, "arena");
-        using ArenaManager arena = new(arenaDir, new FlatDbConfig
+        SnapshotLocation liveLocation;
+        using (ArenaManager arena = CreateArenaManager(arenaDir))
         {
-            PersistedSnapshotArenaPageCacheBytes = 0,
-            ArenaFileSizeBytes = 64 * 1024,
-        }, LimboLogs.Instance);
-
-        // Materialise arena 0 so one entry stays serviceable.
-        using (ArenaWriter writer = arena.CreateWriter(4096))
-        {
-            writer.GetWriter().GetSpan(4096).Clear();
-            writer.GetWriter().Advance(4096);
-            writer.Complete();
+            liveLocation = WritePersistedArena(arena);
         }
 
-        CatalogEntry live = new(default, default, new SnapshotLocation(0, 0, 4096), SnapshotTier.PersistedBase);
-        CatalogEntry orphan = new(default, default, new SnapshotLocation(65, 0, 4096), SnapshotTier.PersistedBase);
-        List<CatalogEntry> entries = [live, orphan];
+        CatalogEntry live = new(default, default, liveLocation, SnapshotTier.PersistedBase);
+        CatalogEntry orphan = new(default, default,
+            new SnapshotLocation(liveLocation.ArenaId + 1, 0, liveLocation.Size), SnapshotTier.PersistedBase);
+        CatalogEntry maxIdOrphan = new(default, default,
+            new SnapshotLocation(int.MaxValue, 0, liveLocation.Size), SnapshotTier.PersistedBase);
+        List<CatalogEntry> catalogEntries = [live, orphan, maxIdOrphan];
+        List<CatalogEntry> firstLoad = [.. catalogEntries];
+        SnapshotLocation replacementLocation;
 
-        using ArenaManager reopened = new(arenaDir, new FlatDbConfig
+        using (ArenaManager reopened = CreateArenaManager(arenaDir))
         {
-            PersistedSnapshotArenaPageCacheBytes = 0,
-            ArenaFileSizeBytes = 64 * 1024,
-        }, LimboLogs.Instance);
-        IReadOnlySet<int> missingArenas = reopened.Initialize(entries);
+            IReadOnlySet<int> missingArenas = reopened.Initialize(firstLoad);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(missingArenas, Is.EquivalentTo(new[] { orphan.Location.ArenaId, int.MaxValue }));
+                Assert.That(firstLoad, Is.EqualTo(catalogEntries));
+            }
 
-        // The orphan is unreadable — the loader filters it before Open, which would otherwise take
-        // startup down with it. Initialization itself does not mutate the caller's catalog list.
-        Assert.That(missingArenas, Is.EquivalentTo(new[] { 65 }));
-        Assert.That(entries, Is.EqualTo(new[] { live, orphan }));
+            PreserveArena(reopened, liveLocation);
+            replacementLocation = WritePersistedArena(reopened);
+        }
+
+        Assert.That(replacementLocation.ArenaId, Is.GreaterThan(orphan.Location.ArenaId));
+
+        CatalogEntry replacement = new(default, default, replacementLocation, SnapshotTier.PersistedBase);
+        catalogEntries.Add(replacement);
+        List<CatalogEntry> secondLoad = [.. catalogEntries];
+
+        using ArenaManager restarted = CreateArenaManager(arenaDir);
+        IReadOnlySet<int> missingAfterRestart = restarted.Initialize(secondLoad);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingAfterRestart, Is.EquivalentTo(new[] { orphan.Location.ArenaId, int.MaxValue }));
+            Assert.That(secondLoad, Is.EqualTo(catalogEntries));
+        }
     }
 }
