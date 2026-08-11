@@ -13,15 +13,10 @@ namespace Nethermind.TxPool.Filters;
 /// bounded, read-only EVM, and rejects those whose prefix does not validate.
 /// </summary>
 /// <remarks>
-/// Runs after <see cref="FrameTxPayerFilter"/>. The standard, natively-resolvable prefixes keep the
-/// EVM-free fast path: a transaction whose payer was already resolved (non-null
-/// <see cref="Transaction.PayerAddress"/>) returns immediately without re-resolving or simulating, so
-/// the simulator is never consulted for it. Only a frame tx with an unresolved payer is re-classified
-/// here; a <see cref="FrameTxPayerOutcome.RequiresSimulation"/> outcome is simulated when a simulator
-/// is wired, and on failure the transaction is rejected. When no simulator is wired, or the outcome is
-/// the provably-invalid <see cref="FrameTxPayerOutcome.NoPayer"/>, the transaction passes through
-/// unchanged (Phase-1 behavior). A successful simulation records the resolved payer, feeding the
-/// exposure gate downstream. https://eips.ethereum.org/EIPS/eip-8141 (ethereum/EIPs#12007)
+/// Runs after <see cref="FrameTxPayerFilter"/>, so a natively-resolved payer keeps the EVM-free fast
+/// path and never reaches the simulator. Only a <see cref="FrameTxPayerOutcome.RequiresSimulation"/>
+/// outcome is simulated, and only when a simulator is wired; a successful simulation records the payer
+/// the exposure gate downstream reads. https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 internal sealed class FrameTxSimulationFilter(
     IReadOnlyStateProvider stateProvider,

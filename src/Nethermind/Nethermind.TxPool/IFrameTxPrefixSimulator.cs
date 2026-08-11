@@ -13,20 +13,18 @@ namespace Nethermind.TxPool;
 /// </summary>
 /// <remarks>
 /// Narrow abstraction so <c>Nethermind.TxPool</c> need not reference the read-only processing env in
-/// <c>Nethermind.Consensus</c> (which already references TxPool — a direct reference would cycle). The
-/// implementation, wired at the composition root, runs the prefix in a bounded, read-only EVM under
-/// <c>MAX_VERIFY_GAS</c> and enforces the trace/opcode rules. Injected optionally into the pool
-/// (mirroring the optional incoming-tx filter): when absent, <c>RequiresSimulation</c> frame txs stay
-/// rejected as in Phase 1. https://eips.ethereum.org/EIPS/eip-8141 (ethereum/EIPs#12007)
+/// <c>Nethermind.Consensus</c> (which already references TxPool — a direct reference would cycle).
+/// Injected optionally: when absent, an opaque frame transaction is left unresolved rather than
+/// admitted. https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 public interface IFrameTxPrefixSimulator
 {
     /// <summary>Simulates <paramref name="tx"/>'s validation prefix against the current head.</summary>
     /// <param name="tx">The frame transaction whose validation prefix is simulated.</param>
     /// <param name="token">
-    /// Cancels the (up to <c>MAX_VERIFY_GAS</c>) simulation, which may also block behind other peers'
-    /// serialized simulations. Honored at entry; per-frame cooperative cancellation is a deferred
-    /// follow-up (design note §4). An <see cref="System.OperationCanceledException"/> propagates.
+    /// Cancels the simulation cooperatively (the interpreter polls it) and bounds the wait for the
+    /// serialized processing env. An <see cref="System.OperationCanceledException"/> propagates; the
+    /// implementation's own wall-clock bound surfaces as a rejection instead.
     /// </param>
     FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
 }

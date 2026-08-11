@@ -49,6 +49,18 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxNoPayer { get; set; }
 
         [CounterMetric]
+        [Description("Number of EIP-8141 validation-prefix simulations run at mempool admission.")]
+        public static long FrameTxSimulations { get; set; }
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 validation-prefix simulations aborted by the per-simulation wall-clock bound.")]
+        public static long FrameTxSimulationsTimedOut { get; set; }
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 frame transactions rejected because the per-head validation-prefix simulation budget was exhausted.")]
+        public static long FrameTxSimulationsBudgetExhausted { get; set; }
+
+        [CounterMetric]
         [Description(
             "Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
         public static long PendingTransactionsNonceGap { get; set; }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -123,22 +124,6 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
-    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation()
-    {
-        // TIMESTAMP is banned during the validation prefix outside the expiry verifier frame, even
-        // though the frame still calls APPROVE and would otherwise resolve a payer.
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.TIMESTAMP).Op(Instruction.POP)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
-        DeployContract(Sender, code, 1.Ether);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-
-        (_, FrameTxValidationTracer tracer) = Simulate(tx);
-
-        Assert.That(tracer.Violated, Is.True);
-    }
-
-    [Test]
     public void Simulate_PrefixExceedsMaxVerifyGas_RejectedAsOverBudget()
     {
         // A frame declaring far more than MAX_VERIFY_GAS is capped to the remaining budget; an unbounded
@@ -169,9 +154,8 @@ public class FrameTxValidationPrefixSimulationTests
             .StaticCall(TestItem.AddressC, 50_000)
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
-        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
 
         Assert.That(tracer.Violated, Is.True);
     }
@@ -198,16 +182,152 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+
+    // The banned list is the security surface of admission: any of these in the validation prefix
+    // rejects the transaction even though the frame goes on to call APPROVE.
+    [TestCase(Instruction.ORIGIN)]
+    [TestCase(Instruction.GASPRICE)]
+    [TestCase(Instruction.BLOCKHASH)]
+    [TestCase(Instruction.COINBASE)]
+    [TestCase(Instruction.TIMESTAMP)]
+    [TestCase(Instruction.NUMBER)]
+    [TestCase(Instruction.PREVRANDAO)]
+    [TestCase(Instruction.GASLIMIT)]
+    [TestCase(Instruction.BASEFEE)]
+    [TestCase(Instruction.BLOBBASEFEE)]
+    [TestCase(Instruction.BALANCE)]
+    [TestCase(Instruction.SELFBALANCE)]
+    [TestCase(Instruction.TLOAD)]
+    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation(Instruction banned)
+    {
+        // BALANCE/TLOAD take an operand; a zero on the stack satisfies both and is ignored otherwise.
+        byte[] code = Prepare.EvmCode
+            .PushData(0).Op(banned).Op(Instruction.POP)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    [TestCase(true, TestName = "GAS immediately before a call is permitted")]
+    [TestCase(false, TestName = "bare GAS is banned")]
+    public void Simulate_GasOpcode_OnlyPermittedBeforeACall(bool beforeCall)
+    {
+        DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        Prepare code = Prepare.EvmCode;
+        code = beforeCall
+            // STATICCALL operands with GAS forwarding the remaining gas, the idiom the caveat permits.
+            ? code.PushData(0).PushData(0).PushData(0).PushData(0).PushData(TestItem.AddressC)
+                .Op(Instruction.GAS).Op(Instruction.STATICCALL).Op(Instruction.POP)
+            : code.Op(Instruction.GAS).Op(Instruction.POP);
+        DeployContract(Sender, code
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.Violated, Is.EqualTo(!beforeCall));
+    }
+
+    [Test]
+    public void Simulate_SloadOfSenderStorage_Allowed()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(result.TransactionExecuted, Is.True);
+        }
+    }
+
+    [Test]
+    public void Simulate_SloadOutsideSenderStorage_RecordsViolation()
+    {
+        // A helper contract reading its own storage is the canonical code-carrying paymaster shape;
+        // it adds a mutable-state dependency the pool cannot index, so it is rejected.
+        DeployContract(TestItem.AddressC, Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        byte[] code = Prepare.EvmCode
+            .StaticCall(TestItem.AddressC, 50_000).Op(Instruction.POP)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.Violated, Is.True);
+    }
+
+    [Test]
+    public void Simulate_TimestampInCanonicalExpiryVerifier_Allowed()
+    {
+        DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        byte[] deadline = new byte[Eip8141Constants.ExpiryDataLength];
+        BinaryPrimitives.WriteUInt64BigEndian(deadline, ulong.MaxValue);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, deadline),
+            SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+        }
+    }
+
+    [Test]
+    public void Simulate_ExceedingWallClockBound_AbortsTheInterpreter()
+    {
+        // The gas bound alone prices a prefix by opcode, not by wall clock; the deadline is what caps
+        // work the gas schedule underprices, and it aborts rather than merely recording.
+        DeployContract(Sender, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        FrameTxValidationTracer tracer = Tracer(tx, TimeSpan.FromTicks(1));
+
+        Assert.Throws<OperationCanceledException>(() => Run(tx, tracer));
+        Assert.That(tracer.TimedOut, Is.True);
+    }
+
+    /// <summary>Runs a prefix the tracer may abort mid-execution, returning the tracer either way.</summary>
+    private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx)
+    {
+        FrameTxValidationTracer tracer = Tracer(tx);
+        try
+        {
+            return (Run(tx, tracer), tracer);
+        }
+        catch (OperationCanceledException)
+        {
+            return (default, tracer);
+        }
+    }
+
     private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx)
+    {
+        FrameTxValidationTracer tracer = Tracer(tx);
+        return (Run(tx, tracer), tracer);
+    }
+
+    private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default) =>
+        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, default, timeout);
+
+    private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer)
     {
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
             .WithTransactions(tx)
             .WithGasLimit(30_000_000).TestObject;
-        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec);
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
-        TransactionResult result = _transactionProcessor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
-        return (result, tracer);
+        return _transactionProcessor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
     }
 
     private void DeployContract(Address address, byte[] code, UInt256 balance = default)

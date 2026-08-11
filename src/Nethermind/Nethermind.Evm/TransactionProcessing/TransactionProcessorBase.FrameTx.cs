@@ -471,16 +471,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// </summary>
     /// <remarks>
     /// Reuses the frame execution machinery (<see cref="ExecuteFrame"/>, <see cref="ApplyApproval"/>)
-    /// rather than reimplementing opcode semantics. The per-opcode rules and the <c>SLOAD</c>-scope
-    /// rule are enforced by the <c>FrameTxValidationTracer</c> the caller supplies (checked by the
-    /// caller after this returns); this method enforces the structural rules (no <c>ATOMIC_BATCH</c>
-    /// in the prefix, no <c>VERIFY</c> frame after it), the cumulative <c>MAX_VERIFY_GAS</c> gas bound,
-    /// and payer resolution — halting once the payer is set (ethereum/EIPs#12007 rule 7). State is
-    /// always restored. Nonce equality is intentionally not required: a future-nonce frame tx is
-    /// admissible, and the validation prefix does not read the account nonce.
-    /// EIP8141 follow-ups (design note §4): result caching keyed by the dependency set, head-change
-    /// re-simulation indexing, a wall-clock cancellation guard, and a multi-simulation admission
-    /// budget are deferred; the per-transaction gas bound is the DoS bound implemented here.
+    /// rather than reimplementing opcode semantics. The per-opcode and <c>SLOAD</c>-scope rules belong
+    /// to the caller's <c>FrameTxValidationTracer</c>; this method enforces the structural rules, the
+    /// cumulative <c>MAX_VERIFY_GAS</c> bound, and payer resolution — halting once the payer is set.
+    /// State is always restored. Nonce equality is intentionally not required: a future-nonce frame tx
+    /// is admissible and the validation prefix does not read the account nonce.
     /// </remarks>
     private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, BlockHeader header, IReleaseSpec spec)
     {
