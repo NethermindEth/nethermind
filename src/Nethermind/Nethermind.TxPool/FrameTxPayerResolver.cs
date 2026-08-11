@@ -104,15 +104,9 @@ internal static class FrameTxPayerResolver
                 : Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
-        // only_verify approves execution but not payment; a following frame names a third-party payer
-        // whose signature the pool cannot verify at admission, so it's deferred to simulation. (A lone
-        // only_verify frame is a structural NoPayer, already handled above.)
-        if (FrameTxValidation.IsOnlyVerifyFrame(verifyFrame, sender))
-        {
-            return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
-        }
-
-        // Not a recognized legible prefix (an unrecognized VERIFY shape).
+        // Everything else defers to simulation: an only_verify frame names a third-party payer whose
+        // pay-frame signature the pool cannot verify at admission (a lone only_verify is a structural
+        // NoPayer, already handled above), and any other unrecognized VERIFY shape is likewise opaque.
         return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
     }
 
