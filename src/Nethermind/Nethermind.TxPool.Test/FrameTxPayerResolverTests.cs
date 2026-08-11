@@ -90,12 +90,22 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
-        yield return Case("DefaultFrameFirst_RequiresSimulation",
+        // A leading deploy frame (default mode, no approval scope) is part of the recognized prefix that
+        // Core prices against, so it is skipped like the expiry frame and the self relay still resolves.
+        yield return Case("DeployThenSelfVerify_PayerIsSender",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([Frame(TxFrame.ModeDefault), SelfVerifyFrame()], [Secp(Sender)]);
-            }, FrameTxPayerOutcome.RequiresSimulation, null);
+                return FrameTx([DeployFrame(), SelfVerifyFrame()], [Secp(Sender)]);
+            }, FrameTxPayerOutcome.Resolved, Sender);
+
+        // A lone deploy frame never approves a payer, exactly like a lone only_verify frame.
+        yield return Case("DeployFrameOnly_NoPayer",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([DeployFrame()], [Secp(Sender)]);
+            }, FrameTxPayerOutcome.NoPayer, null);
 
         yield return Case("SelfVerify_DeployedCodeSender_RequiresSimulation",
             state =>
@@ -211,6 +221,29 @@ public class FrameTxPayerResolverTests
         }
     }
 
+    [Test]
+    public void Resolve_DeployPrefix_AgreesWithValidationPricing()
+    {
+        // A [deploy, self_verify] prefix must be classified the same way by admission pricing and payer
+        // resolution: Core prices it as a recognized prefix (charging only the prefix, not the trailing
+        // frame), and the resolver must resolve it natively rather than deferring to simulation.
+        TestReadOnlyStateProvider state = new();
+        DefaultCodeAccount(state, Sender);
+        TxFrame trailing = new(TxFrame.ModeDefault, flags: 0, target: null, gasLimit: 5_000_000, UInt256.Zero, default);
+        Transaction tx = FrameTx([DeployFrame(), SelfVerifyFrame(), trailing], [Secp(Sender)]);
+
+        FrameTxPayerResolution resolution = Resolve(tx, state);
+        ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolution.Outcome, Is.EqualTo(FrameTxPayerOutcome.Resolved));
+            Assert.That(resolution.Payer, Is.EqualTo(Sender));
+            // Recognized-prefix pricing stops at the self_verify frame, excluding the trailing frame's gas.
+            Assert.That(verifyGas, Is.EqualTo(50_000UL + 100_000UL + Eip8141Constants.Secp256k1VerificationGasCost));
+        }
+    }
+
     private static TestCaseData Case(string name, Func<TestReadOnlyStateProvider, Transaction> build, FrameTxPayerOutcome outcome, Address? payer) =>
         new TestCaseData(build, outcome, payer).SetName($"Resolve_{name}");
 
@@ -250,4 +283,6 @@ public class FrameTxPayerResolverTests
     }
 
     private static TxFrame Frame(byte mode) => new(mode, flags: 0, target: null, gasLimit: 50_000, UInt256.Zero, default);
+
+    private static TxFrame DeployFrame() => Frame(TxFrame.ModeDefault);
 }

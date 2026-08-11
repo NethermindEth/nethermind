@@ -285,17 +285,17 @@ public static class FrameTxValidation
     private static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
     {
         int next = 0;
-        if (next < frames.Length && IsExpiryVerify(frames[next])) next++;
-        if (next < frames.Length && IsDeploy(frames[next])) next++;
+        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
+        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
 
-        if (next < frames.Length && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecutionAndPayment, sender))
+        if (next < frames.Length && IsSelfVerifyFrame(frames[next], sender))
         {
             return next + 1;
         }
 
         if (next + 1 < frames.Length
-            && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecution, sender)
-            && IsPay(frames[next + 1]))
+            && IsOnlyVerifyFrame(frames[next], sender)
+            && IsPayFrame(frames[next + 1]))
         {
             return next + 2;
         }
@@ -306,13 +306,27 @@ public static class FrameTxValidation
     private static ulong Saturating(ulong total, ulong addend) =>
         addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
 
-    private static bool IsExpiryVerify(TxFrame frame) =>
+    /// <summary>True if <paramref name="frame"/> is the optional leading EIP-8141 expiry-verifier VERIFY frame.</summary>
+    public static bool IsExpiryVerifyFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == TxFrame.ApproveScopeNone
         && frame.Target == Eip8141Constants.ExpiryVerifierAddress;
 
-    private static bool IsDeploy(TxFrame frame) =>
+    /// <summary>True if <paramref name="frame"/> is a deploy frame: a default-mode frame carrying no approval scope.</summary>
+    public static bool IsDeployFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeDefault && frame.Flags == TxFrame.ApproveScopeNone;
+
+    /// <summary>True if <paramref name="frame"/> is a self-relay VERIFY frame approving both execution and payment for <paramref name="sender"/>.</summary>
+    public static bool IsSelfVerifyFrame(TxFrame frame, Address? sender) =>
+        IsSelfTargetedVerify(frame, TxFrame.ApproveExecutionAndPayment, sender);
+
+    /// <summary>True if <paramref name="frame"/> is a VERIFY frame approving execution only (not payment) for <paramref name="sender"/>.</summary>
+    public static bool IsOnlyVerifyFrame(TxFrame frame, Address? sender) =>
+        IsSelfTargetedVerify(frame, TxFrame.ApproveExecution, sender);
+
+    /// <summary>True if <paramref name="frame"/> is a payment-approving VERIFY frame naming a third-party payer.</summary>
+    public static bool IsPayFrame(TxFrame frame) =>
+        frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
 
     /// <remarks>
     /// Comparing the whole <see cref="TxFrame.Flags"/> byte rather than the approve scope also enforces
@@ -322,9 +336,6 @@ public static class FrameTxValidation
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == flags
         && (frame.Target is null || frame.Target == sender);
-
-    private static bool IsPay(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
 
     /// <summary>
     /// Calculates the gas an EIP-8141 frame transaction reserves: <c>max_gas</c>, the greater of its intrinsic cost

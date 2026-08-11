@@ -15,8 +15,8 @@ namespace Nethermind.TxPool;
 /// </summary>
 /// <remarks>
 /// Only a default-code <c>self_verify</c> prefix with no following payment frame (optionally preceded
-/// by an <c>expiry_verify</c> frame) resolves natively to the sender; everything else defers to
-/// <see cref="FrameTxPayerOutcome.RequiresSimulation"/>. Frame signatures are cryptographically verified
+/// by an <c>expiry_verify</c> and/or a deploy frame) resolves natively to the sender; everything else
+/// defers to <see cref="FrameTxPayerOutcome.RequiresSimulation"/>. Frame signatures are cryptographically verified
 /// upstream by <see cref="Filters.FrameTxSignatureFilter"/>, which is a precondition of this resolver: a
 /// <see cref="FrameTxPayerOutcome.Resolved"/> payer is only trustworthy given that filter has run, so a
 /// direct caller skipping it would break the guarantee.
@@ -42,18 +42,21 @@ internal static class FrameTxPayerResolver
         // Copied out of the in-parameter so the local-function dependency-set builders can close over it.
         ulong senderNonce = senderAccount.Nonce;
 
-        // Optional leading expiry_verify frame: skipped for shape matching, but its deadline and the
-        // EXPIRY_VERIFIER code join the dependency set.
-        int index = 0;
+        // The recognized validation prefix may lead with an optional expiry_verify frame and/or a deploy
+        // frame; both are skipped to reach the VERIFY frame that names the payer, matching the grammar
+        // FrameTxValidation prices admission against so the pricing filter and this verdict cannot drift.
+        int index = PrefixVerifyIndex(frames);
+
+        // A leading expiry_verify frame contributes its deadline and the EXPIRY_VERIFIER code to the
+        // dependency set.
         bool dependsOnExpiry = false;
         ulong expiryDeadline = 0;
         ValueHash256 expiryCodeHash = default;
-        if (IsExpiryVerifyFrame(frames[0]))
+        if (FrameTxValidation.IsExpiryVerifyFrame(frames[0]))
         {
             dependsOnExpiry = true;
             expiryDeadline = BinaryPrimitives.ReadUInt64BigEndian(frames[0].Data.Span);
             expiryCodeHash = state.GetCodeHash(Eip8141Constants.ExpiryVerifierAddress);
-            index = 1;
         }
 
         FrameTxPayerResolution Unresolved(FrameTxPayerOutcome outcome) =>
@@ -78,7 +81,7 @@ internal static class FrameTxPayerResolver
         TxFrame verifyFrame = frames[index];
 
         // Self relay: a self_verify frame approves both sender and payer, so the payer is the sender.
-        if (IsSelfVerify(verifyFrame, sender))
+        if (FrameTxValidation.IsSelfVerifyFrame(verifyFrame, sender))
         {
             // Legible only for a default-code sender; a deployed or EIP-7702-delegated sender runs its
             // own account code and must be simulated.
@@ -104,12 +107,12 @@ internal static class FrameTxPayerResolver
         // only_verify approves execution but not payment; a following frame names a third-party payer
         // whose signature the pool cannot verify at admission, so it's deferred to simulation. (A lone
         // only_verify frame is a structural NoPayer, already handled above.)
-        if (IsOnlyVerify(verifyFrame, sender))
+        if (FrameTxValidation.IsOnlyVerifyFrame(verifyFrame, sender))
         {
             return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
-        // Not a recognized legible prefix (e.g. a deploy frame, or an unrecognized VERIFY shape).
+        // Not a recognized legible prefix (an unrecognized VERIFY shape).
         return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
     }
 
@@ -127,15 +130,31 @@ internal static class FrameTxPayerResolver
             return false;
         }
 
-        int index = IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
-        return IsStructurallyPayerless(frames, sender, index);
+        return IsStructurallyPayerless(frames, sender, PrefixVerifyIndex(frames));
     }
 
-    /// <summary>Structural NoPayer decision over an already-parsed prefix, with the optional leading expiry frame skipped to <paramref name="index"/>.</summary>
+    /// <summary>Structural NoPayer decision over an already-parsed prefix, with the optional leading expiry and deploy frames skipped to <paramref name="index"/>.</summary>
     private static bool IsStructurallyPayerless(TxFrame[] frames, Address sender, int index) =>
-        // Only an expiry frame, or a prefix ending in an only_verify frame, never approves a payer.
+        // Only a leading prefix that never reaches a payment approval — an empty remainder (e.g. a lone
+        // expiry or deploy frame), or a prefix ending in an only_verify frame — never approves a payer.
         index >= frames.Length
-        || (IsOnlyVerify(frames[index], sender) && index + 1 >= frames.Length);
+        || (FrameTxValidation.IsOnlyVerifyFrame(frames[index], sender) && index + 1 >= frames.Length);
+
+    /// <summary>
+    /// The index of the VERIFY frame that names the payer, reached by skipping an optional leading
+    /// expiry_verify frame and an optional deploy frame — the same prefix grammar
+    /// <see cref="FrameTxValidation.ValidationWorkGas"/> prices admission against.
+    /// </summary>
+    private static int PrefixVerifyIndex(TxFrame[] frames)
+    {
+        int index = FrameTxValidation.IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
+        if (index < frames.Length && FrameTxValidation.IsDeployFrame(frames[index]))
+        {
+            index++;
+        }
+
+        return index;
+    }
 
     /// <summary>
     /// Structural check that index-0 is a canonical-hash (empty <c>msg</c>) secp256k1 signature whose
@@ -166,21 +185,4 @@ internal static class FrameTxPayerResolver
 
         return false;
     }
-
-    private static bool IsExpiryVerifyFrame(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeVerify
-        && frame.Flags == 0
-        && frame.Value.IsZero
-        && frame.Target == Eip8141Constants.ExpiryVerifierAddress
-        && frame.Data.Length == Eip8141Constants.ExpiryDataLength;
-
-    private static bool IsSelfVerify(TxFrame frame, Address sender) =>
-        frame.Mode == TxFrame.ModeVerify
-        && frame.Flags == TxFrame.ApproveExecutionAndPayment
-        && (frame.Target is null || frame.Target == sender);
-
-    private static bool IsOnlyVerify(TxFrame frame, Address sender) =>
-        frame.Mode == TxFrame.ModeVerify
-        && frame.Flags == TxFrame.ApproveExecution
-        && (frame.Target is null || frame.Target == sender);
 }
