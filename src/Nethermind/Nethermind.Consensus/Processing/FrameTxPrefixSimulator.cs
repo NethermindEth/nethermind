@@ -109,10 +109,12 @@ public sealed class FrameTxPrefixSimulator(
 
     private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, CancellationToken token)
     {
-        IReadOnlyTxProcessorSource source = _source ??= envFactory.Create();
         FrameTxValidationTracer? tracer = null;
         try
         {
+            // Inside the try: a processing env this node cannot build must reject rather than escape into
+            // the admission path.
+            IReadOnlyTxProcessorSource source = _source ??= envFactory.Create();
             using IReadOnlyTxProcessingScope scope = source.Build(head);
             ITransactionProcessor processor = scope.TransactionProcessor;
             processor.SetBlockExecutionContext(head);
@@ -148,9 +150,12 @@ public sealed class FrameTxPrefixSimulator(
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            // A malformed opaque prefix must never crash admission: reject and keep the pool up.
+            // A malformed opaque prefix must never crash admission: reject and keep the pool up. Failing
+            // before the tracer exists is this node's env, not the prefix, so it decides nothing.
             if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
-            return FrameTxSimulationResult.Reject("validation-prefix simulation error");
+            return tracer is null
+                ? FrameTxSimulationResult.RejectIndeterminate("validation-prefix processing env unavailable")
+                : FrameTxSimulationResult.Reject("validation-prefix simulation error");
         }
     }
 
