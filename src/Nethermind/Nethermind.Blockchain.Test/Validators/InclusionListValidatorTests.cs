@@ -121,6 +121,53 @@ public class InclusionListValidatorTests
         return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
     }
 
+    // EIP-8369 classification gate: a Profile-2 frame tx omitted from the block is not a FOCIL
+    // violation here — its omission is checked by bounded validation replay at the builder-claimed
+    // index, which is a marked deferral — so an ample-gas block stays satisfied.
+    [Test]
+    public void Profile_two_frame_tx_omission_is_not_enforced()
+    {
+        Transaction frameTx = BuildProfileTwoFrameTx();
+        Assert.That(Eip8369.Classify(frameTx), Is.EqualTo(FocilProfile.Two));
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithInclusionListTransactions([frameTx])
+            .TestObject;
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator), Is.True);
+    }
+
+    // A blob-carrying frame tx is Outside FOCIL enforcement and is never enforced.
+    [Test]
+    public void Outside_enforcement_frame_tx_omission_is_not_enforced()
+    {
+        Transaction frameTx = BuildProfileTwoFrameTx();
+        frameTx.BlobVersionedHashes = [new byte[32]];
+        Assert.That(Eip8369.Classify(frameTx), Is.EqualTo(FocilProfile.Outside));
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithInclusionListTransactions([frameTx])
+            .TestObject;
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator), Is.True);
+    }
+
+    private static Transaction BuildProfileTwoFrameTx() => new()
+    {
+        Type = TxType.FrameTx,
+        SenderAddress = TestItem.AddressA,
+        Frames =
+        [
+            new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, 100_000, UInt256.Zero, default),
+            new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, 21_000, UInt256.Zero, default),
+        ],
+        FrameSignatures = [],
+    };
+
     private static Transaction BuildTx(ulong gasLimit = 100_000, ulong nonce = 0, UInt256? gasPrice = null, UInt256? value = null, Address? to = null) =>
         Build.A.Transaction
             .WithGasLimit(gasLimit)
