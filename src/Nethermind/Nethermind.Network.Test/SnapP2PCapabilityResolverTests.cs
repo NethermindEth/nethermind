@@ -3,15 +3,9 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Specs;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -21,62 +15,38 @@ namespace Nethermind.Network.Test;
 [Parallelizable(ParallelScope.All)]
 public class SnapP2PCapabilityResolverTests
 {
-    private static SnapP2PCapabilityResolver CreateResolver(
-        bool snapServing = false, bool snapSync = false, SyncMode mode = SyncMode.StateNodes,
-        bool balEnabled = true, bool flatEnabled = true, BlockHeader? firstPivotHeader = null)
+    [TestCase(true, false, SyncMode.StateNodes, true, TestName = "Serving advertises snap regardless of sync")]
+    [TestCase(false, true, SyncMode.StateNodes, true, TestName = "Snap-syncing state advertises snap")]
+    [TestCase(false, true, SyncMode.Full, false, TestName = "Snap sync finished drops snap")]
+    [TestCase(false, false, SyncMode.StateNodes, false, TestName = "Neither serving nor snap-syncing")]
+    public void Resolve_advertises_snap_when_serving_or_syncing_state(bool snapServing, bool snapSync, SyncMode currentMode, bool expected)
     {
         ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync };
         ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-        syncModeSelector.Current.Returns(mode);
-        IStateSyncPivot stateSyncPivot = Substitute.For<IStateSyncPivot>();
-        stateSyncPivot.FirstPivotHeader.Returns(firstPivotHeader);
-        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = balEnabled });
-        IFlatDbConfig flatDbConfig = new FlatDbConfig { Enabled = flatEnabled };
-        return new SnapP2PCapabilityResolver(syncConfig, syncModeSelector, stateSyncPivot, specProvider, flatDbConfig, LimboLogs.Instance);
-    }
+        syncModeSelector.Current.Returns(currentMode);
+        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector, LimboLogs.Instance);
 
-    private static HashSet<Capability> Resolve(SnapP2PCapabilityResolver resolver)
-    {
         HashSet<Capability> capabilities = [];
         resolver.Resolve(capabilities);
-        return capabilities;
+
+        Assert.That(capabilities.Contains(new Capability(Protocol.Snap, SnapVersions.Snap1)), Is.EqualTo(expected));
     }
 
-    private static readonly Capability Snap1 = new(Protocol.Snap, SnapVersions.Snap1);
-    private static readonly Capability Snap2 = new(Protocol.Snap, SnapVersions.Snap2);
-    private static readonly BlockHeader PivotHeader = Build.A.BlockHeader.TestObject;
-
-    [TestCase(true, false, true, TestName = "Serving advertises snap regardless of sync")]
-    [TestCase(false, true, true, TestName = "Snap-syncing advertises snap")]
-    [TestCase(false, false, false, TestName = "Neither serving nor snap-syncing")]
-    public void Resolve_advertises_snap1(bool snapServing, bool snapSync, bool expected)
+    [TestCase(false, true, SyncMode.StateNodes, SyncMode.Full, true, TestName = "Snap sync finishing flips snap and fires Changed")]
+    [TestCase(false, true, SyncMode.StateNodes, SyncMode.FastBlocks, false, TestName = "Non-Full to non-Full leaves snap unchanged")]
+    [TestCase(true, true, SyncMode.StateNodes, SyncMode.Full, false, TestName = "Snap serving keeps snap constant across sync modes")]
+    [TestCase(false, false, SyncMode.StateNodes, SyncMode.Full, false, TestName = "No snap sync means no snap to toggle")]
+    public void Raises_Changed_only_when_snap_contribution_flips(bool snapServing, bool snapSync, SyncMode previous, SyncMode current, bool expectedFired)
     {
-        using SnapP2PCapabilityResolver resolver = CreateResolver(snapServing, snapSync);
-        Assert.That(Resolve(resolver).Contains(Snap1), Is.EqualTo(expected));
-    }
+        ISyncConfig syncConfig = new SyncConfig { SnapServingEnabled = snapServing, SnapSync = snapSync };
+        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector, LimboLogs.Instance);
 
-    [Test]
-    public void Resolve_serving_only_advertises_snap2_from_chain_spec_alone()
-    {
-        using SnapP2PCapabilityResolver resolver = CreateResolver(snapServing: true, flatEnabled: false, firstPivotHeader: null);
-        Assert.That(Resolve(resolver).Contains(Snap2), Is.True);
-    }
+        bool changed = false;
+        resolver.Changed += () => changed = true;
 
-    [TestCase(true, true, true, TestName = "Syncing with flat db, BAL chain and known pivot advertises snap/2")]
-    [TestCase(false, true, true, TestName = "Syncing without flat db withholds snap/2")]
-    [TestCase(true, false, true, TestName = "Syncing on a non-BAL chain withholds snap/2")]
-    public void Resolve_syncing_requires_bal_healing(bool flatEnabled, bool balEnabled, bool hasPivot)
-    {
-        using SnapP2PCapabilityResolver resolver = CreateResolver(snapSync: true, flatEnabled: flatEnabled, balEnabled: balEnabled,
-            firstPivotHeader: hasPivot ? PivotHeader : null);
-        bool expected = flatEnabled && balEnabled && hasPivot;
-        Assert.That(Resolve(resolver).Contains(Snap2), Is.EqualTo(expected));
-    }
+        syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(previous, current));
 
-    [Test]
-    public void Resolve_syncing_withholds_snap2_until_first_pivot_is_known()
-    {
-        using SnapP2PCapabilityResolver resolver = CreateResolver(snapSync: true, firstPivotHeader: null);
-        Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
+        Assert.That(changed, Is.EqualTo(expectedFired));
     }
 }

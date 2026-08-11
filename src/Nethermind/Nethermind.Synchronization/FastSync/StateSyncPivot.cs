@@ -15,12 +15,7 @@ namespace Nethermind.Synchronization.FastSync
     public class StateSyncPivot(IBlockTree blockTree, ISyncConfig syncConfig, ILogManager? logManager) : IStateSyncPivot
     {
         private BlockHeader? _bestHeader;
-        private BlockHeader? _firstPivotHeader;
         private readonly ILogger _logger = logManager?.GetClassLogger<StateSyncPivot>() ?? throw new ArgumentNullException(nameof(logManager));
-
-        public BlockHeader? FirstPivotHeader => _firstPivotHeader;
-
-        public event EventHandler<BlockHeaderEventArgs>? FirstPivotSet;
 
         public ulong Diff => (blockTree.BestSuggestedHeader?.Number ?? 0UL).SaturatingSub(_bestHeader?.Number ?? 0UL);
 
@@ -61,11 +56,6 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
                 _bestHeader = bestHeader;
-                if (_firstPivotHeader is null)
-                {
-                    _firstPivotHeader = bestHeader;
-                    FirstPivotSet?.Invoke(this, new BlockHeaderEventArgs(bestHeader));
-                }
             }
             else if (syncConfig.StaticSnapPivot && _logger.IsDebug)
             {
