@@ -11,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -1136,7 +1135,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(RangeBegin).Returns(beginHeader);
         _blockTree.FindHeader(RangeEnd).Returns(endHeader);
 
-        SubnetOperationNotSupportedException expected = new("Retrieving epoch switch info for a block range");
+        NotSupportedException expected = new("Retrieving epoch switch info for a block range is not supported on subnet chains.");
         _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader).Throws(expected);
 
         IResultWrapper result = call(_rpcModule);
