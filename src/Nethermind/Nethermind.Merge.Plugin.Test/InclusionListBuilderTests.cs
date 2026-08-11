@@ -128,6 +128,33 @@ public class InclusionListBuilderTests
         FrameSignatures = [],
     };
 
+    // A frame tx whose single frame is a plain deploy has no recognized validation prefix, so it
+    // classifies Outside and must be dropped before it can occupy a reservoir slot.
+    private static Transaction OutsideFrameTx() => new()
+    {
+        Type = TxType.FrameTx,
+        SenderAddress = TestItem.AddressA,
+        Frames = [new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, target: null, 50_000, UInt256.Zero, default)],
+        FrameSignatures = [],
+    };
+
+    [Test]
+    public void Outside_txs_do_not_consume_reservoir_slots()
+    {
+        // Far more Outside txs than the reservoir holds, ahead of a handful of eligible Profile-1 txs:
+        // if Outside txs were sampled they would crowd the eligible ones out, under-filling the IL.
+        Transaction[] outside = Enumerable.Range(0, Eip7805Constants.MaxTransactionsPerInclusionList * 8)
+            .Select(_ => OutsideFrameTx()).ToArray();
+        Transaction[] eligible = Enumerable.Range(0, 10).Select(i => TxOfSize(50, i)).ToArray();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.GetPendingTransactions().Returns([.. outside, .. eligible]);
+        InclusionListBuilder builder = new(pool);
+
+        using InclusionListBytes il = builder.GetInclusionList();
+
+        Assert.That(CountByType(il, TxType.Legacy), Is.EqualTo(10));
+    }
+
     private static int CountByType(InclusionListBytes il, TxType type)
     {
         int count = 0;

@@ -13,13 +13,13 @@ public class InclusionListBuilder(ITxPool txPool)
 {
     public InclusionListBytes GetInclusionList()
     {
-        using ArrayPoolList<Transaction> reservoir = ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions());
+        using ArrayPoolList<Transaction> reservoir = ReservoirSampleEnforceableTxs(txPool.GetPendingTransactions());
         return EncodeTransactionsUpToLimit(reservoir);
     }
 
     // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(MaxTxs) for any mempool size.
     // TODO: score txs and randomly sample weighted by score.
-    private static ArrayPoolList<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
+    private static ArrayPoolList<Transaction> ReservoirSampleEnforceableTxs(Transaction[] mempool)
     {
         const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
         ArrayPoolList<Transaction> reservoir = new(capacity);
@@ -29,8 +29,9 @@ public class InclusionListBuilder(ITxPool txPool)
         for (int i = 0; i < mempool.Length; i++)
         {
             Transaction tx = mempool[i];
-            // Blob txs MUST NOT appear in an IL.
-            if (tx.Type == TxType.Blob) continue;
+            // Exclude here, not at encode time, so FOCIL-unenforceable txs (blobs, wrong-shape /
+            // over-budget frame txs) don't consume reservoir slots and leave the IL under-filled.
+            if (tx.Type == TxType.Blob || Eip8369.Classify(tx) == FocilProfile.Outside) continue;
 
             if (reservoir.Count < capacity)
             {
@@ -61,21 +62,15 @@ public class InclusionListBuilder(ITxPool txPool)
         try
         {
             int size = 0;
-            // EIP-8369 includer budget-fill: Profile-1 txs pass through freely; Profile-2 frame txs are
-            // metered against the per-IL VERIFY budget; anything outside enforcement is excluded.
+            // EIP-8369 includer budget-fill: sampling already dropped Outside txs, so only Profile-1
+            // (free) and Profile-2 (metered against the per-IL VERIFY budget) remain.
             ulong verifyBudget = Eip8369Constants.MaxVerifyGasPerIl;
             foreach (Transaction tx in txs)
             {
-                FocilProfile profile = Eip8369.Classify(tx);
-                if (profile == FocilProfile.Outside) continue;
-
-                // Cost uncomputable / over-budget / doesn't fit → ignore the tx, consume nothing.
-                ulong cost = 0;
-                if (profile == FocilProfile.Two)
-                {
-                    cost = Eip8369.Profile2VerifyCost(tx);
-                    if (cost > Eip8369Constants.MaxVerifyGasPerTx || cost > verifyBudget) continue;
-                }
+                // Profile-2 cost is <= MaxVerifyGasPerTx by classification, so only the remaining per-IL
+                // budget can reject it; Profile-1 costs nothing.
+                ulong cost = Eip8369.Classify(tx) == FocilProfile.Two ? Eip8369.Profile2VerifyCost(tx) : 0;
+                if (cost > verifyBudget) continue;
 
                 ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
