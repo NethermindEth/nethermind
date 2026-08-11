@@ -114,10 +114,12 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     private async Task RunDiscoveryJob(ChannelWriter<TNode> writer, int lookupResultLimit, AdmissionCounter admissions, CancellationToken token)
     {
         TimeSpan iterationDuration = MinimumIterationDuration;
+        // Carried across iterations so that the window covers the paced wait as well as the lookup; a job at the
+        // maximum interval is asleep for nearly all of its iteration, and admissions made then must still reset it.
+        long admissionsSeen = admissions.Count;
         while (!token.IsCancellationRequested)
         {
             long iterationStart = _timeProvider.GetTimestamp();
-            long admissionsBefore = admissions.Count;
             try
             {
                 int targetDistance = Random.Shared.Next(_maxDistance) + 1;
@@ -142,7 +144,9 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
                 _logger.LogError(ex, "Random Kademlia discovery lookup failed.");
             }
 
-            iterationDuration = NextIterationDuration(iterationDuration, admissions.Count != admissionsBefore);
+            long admissionsNow = admissions.Count;
+            iterationDuration = NextIterationDuration(iterationDuration, admissionsNow != admissionsSeen);
+            admissionsSeen = admissionsNow;
 
             TimeSpan elapsed = _timeProvider.GetElapsedTime(iterationStart);
             if (elapsed < iterationDuration)
@@ -163,7 +167,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     /// Returns the pace for the next iteration, resetting it when the last lookup was worth running.
     /// </summary>
     /// <param name="current">Pace the finished iteration ran at.</param>
-    /// <param name="admittedNodes">Whether the routing table admitted a node while the iteration ran.</param>
+    /// <param name="admittedNodes">Whether the routing table admitted a node since the previous iteration decided its pace.</param>
     private TimeSpan NextIterationDuration(TimeSpan current, bool admittedNodes)
     {
         if (admittedNodes || IsUnderfilled())
@@ -185,10 +189,10 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     /// one that only re-confirmed nodes it already knew or whose results a full bucket rejected.
     /// </summary>
     /// <remarks>
-    /// Jobs compare this counter around their own lookup, which also catches admissions made by a concurrent job or
-    /// by inbound traffic in that window. Attributing an admission to the lookup that caused it would mean threading
-    /// a lookup identity through every protocol adapter, and the imprecision is one-sided: an admission this job did
-    /// not cause still means the table is changing, and reading it as productive only keeps discovery eager.
+    /// Jobs compare this counter across their whole iteration, so admissions made by a concurrent job or by inbound
+    /// traffic count too. Attributing an admission to the lookup that caused it would mean threading a lookup
+    /// identity through every protocol adapter, and the imprecision is one-sided: an admission this job did not
+    /// cause still means the table is changing, and reading it as productive only keeps discovery eager.
     /// </remarks>
     private sealed class AdmissionCounter
     {

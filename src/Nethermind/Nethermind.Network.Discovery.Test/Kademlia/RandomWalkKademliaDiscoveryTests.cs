@@ -132,11 +132,24 @@ public class RandomWalkKademliaDiscoveryTests
     }
 
     /// <summary>
-    /// Asserts that the first iterations waited for the expected paces, allowing for the lookup time that each
-    /// iteration subtracts from its pace.
+    /// A backed-off job spends nearly all of its iteration waiting, so an admission arriving from inbound traffic or
+    /// another job while it waits has to reset it just as one during its own lookup does.
     /// </summary>
+    [Test]
+    [CancelAfter(10000)]
+    public async Task DiscoverNodes_should_reset_pace_when_a_node_is_admitted_while_waiting(CancellationToken token)
+    {
+        RoutingTableStub routingTable = new() { Occupancy = FilledTable };
+
+        TimeSpan[] delays = await RunIterations(new TestKademlia(), routingTable, iterations: 5, token,
+            onDelayRequested: wait => { if (wait == 2) routingTable.RaiseNodeAdded(42); });
+
+        AssertPacedBy(delays, [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), OneSecond, TimeSpan.FromSeconds(2)]);
+    }
+
+    /// <summary>Asserts that the first iterations waited for exactly the expected paces.</summary>
     private static void AssertPacedBy(TimeSpan[] delays, TimeSpan[] expected) =>
-        Assert.That(delays.Take(expected.Length).ToArray(), Is.EqualTo(expected).Within(TimeSpan.FromMilliseconds(250)));
+        Assert.That(delays.Take(expected.Length).ToArray(), Is.EqualTo(expected));
 
     private static RandomWalkKademliaDiscovery<int, int, int> CreateDiscovery(
         TestKademlia kademlia,
@@ -157,9 +170,14 @@ public class RandomWalkKademliaDiscoveryTests
     /// Delays are requested before the wait starts, so consuming the nodes of iteration n guarantees that the delays
     /// of every earlier iteration have been recorded.
     /// </remarks>
-    private static async Task<TimeSpan[]> RunIterations(TestKademlia kademlia, RoutingTableStub routingTable, int iterations, CancellationToken token)
+    private static async Task<TimeSpan[]> RunIterations(
+        TestKademlia kademlia,
+        RoutingTableStub routingTable,
+        int iterations,
+        CancellationToken token,
+        Action<int>? onDelayRequested = null)
     {
-        NoWaitTimeProvider timeProvider = new();
+        NoWaitTimeProvider timeProvider = new() { OnDelayRequested = onDelayRequested };
         RandomWalkKademliaDiscovery<int, int, int> discovery = CreateDiscovery(kademlia, routingTable, timeProvider);
 
         await discovery.DiscoverNodes(1, NodesPerLookup, token).Take(iterations * NodesPerLookup).ToListAsync(token);
@@ -167,16 +185,28 @@ public class RandomWalkKademliaDiscoveryTests
         return timeProvider.RequestedDelays;
     }
 
-    /// <summary>Runs timers immediately while recording the delay that was asked for.</summary>
+    /// <summary>
+    /// Runs timers immediately while recording the delay that was asked for, on a clock that never advances.
+    /// </summary>
+    /// <remarks>
+    /// Freezing <see cref="GetTimestamp"/> makes the measured lookup time zero, so a job asks for exactly the pace it
+    /// chose rather than the pace minus however long the test machine took.
+    /// </remarks>
     private sealed class NoWaitTimeProvider : TimeProvider
     {
         private readonly ConcurrentQueue<TimeSpan> _requestedDelays = new();
 
         public TimeSpan[] RequestedDelays => _requestedDelays.ToArray();
 
+        /// <summary>Called as a job starts waiting, with the one-based ordinal of that wait.</summary>
+        public Action<int>? OnDelayRequested { get; init; }
+
+        public override long GetTimestamp() => 0;
+
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             _requestedDelays.Enqueue(dueTime);
+            OnDelayRequested?.Invoke(_requestedDelays.Count);
             return System.CreateTimer(callback, state, TimeSpan.Zero, period);
         }
     }
