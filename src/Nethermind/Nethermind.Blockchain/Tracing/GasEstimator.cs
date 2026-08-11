@@ -45,7 +45,8 @@ public class GasEstimator(
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
     private const string TransactionExecutionFails = "Transaction execution fails";
-    private const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
+    /// <summary>Error emitted when the required gas exceeds the transaction and block gas limits, or the transaction gas limit cap.</summary>
+    public const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
     private const string FrameTxGasLimitOverflows = "frame transaction gas limit overflows";
 

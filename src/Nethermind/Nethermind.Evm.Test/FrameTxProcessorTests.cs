@@ -698,7 +698,7 @@ public class FrameTxProcessorTests
         GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
         estimator.Estimate(tx, header, gasTracer, out string? error);
 
-        Assert.That(error, Is.Not.Null);
+        Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
 
     [Test]
