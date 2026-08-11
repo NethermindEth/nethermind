@@ -1571,9 +1571,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a reorg drops a blob-carrying frame tx from the pool (under BlobsSupportMode.InMemory no blob
-        // storage brings it back), so its hash must be un-marked as known. Otherwise AlreadyKnownTxFilter would
-        // reject every resubmission until LRU eviction and the sender could never get the tx back into the pool.
+        // Under BlobsSupportMode.InMemory nothing re-adds a reorged blob-carrying frame tx, so unless its
+        // hash is un-marked AlreadyKnownTxFilter rejects every resubmission until LRU eviction.
         [Test]
         public async Task Reorged_blob_carrying_frame_tx_can_be_resubmitted()
         {

@@ -960,9 +960,8 @@ public class TxValidatorTests
         Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxMissingMaxFeePerBlobGas));
     }
 
-    // EIP-8141: a blob-carrying frame tx (type 6) lives in the blob pool and is re-checked against the head
-    // spec via MaxBlobCountBlobTxValidator, exactly like a type-3 blob tx. A blob-schedule fork that lowers the
-    // per-tx blob limit must therefore evict an over-limit type-6 tx, not leave it in place.
+    // A blob-schedule fork lowering the per-tx blob limit must evict an over-limit type-6 tx, so head
+    // revalidation covers it exactly like a type-3 blob tx.
     private static IEnumerable<TestCaseData> HeadRevalidationBlobCountCases()
     {
         int max = (int)Bogota.Instance.MaxBlobsPerTx;
@@ -975,6 +974,14 @@ public class TxValidatorTests
         { TestName = "Type-3 within head blob-count limit is retained", ExpectedResult = true };
         yield return new TestCaseData(BuildShardBlobTx(blobCount: max + 1))
         { TestName = "Type-3 above head blob-count limit is evicted", ExpectedResult = false };
+        // A type-3 must declare blobs, so it stays gated on the type rather than on carrying any.
+        yield return new TestCaseData(Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithMaxFeePerGas(1)
+            .WithMaxFeePerBlobGas(1)
+            .TestObject)
+        { TestName = "Type-3 declaring no blobs is evicted", ExpectedResult = false };
     }
 
     [TestCaseSource(nameof(HeadRevalidationBlobCountCases))]
