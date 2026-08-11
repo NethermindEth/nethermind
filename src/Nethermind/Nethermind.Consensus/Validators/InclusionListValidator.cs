@@ -51,11 +51,8 @@ public static class InclusionListValidator
         {
             if (included[i]) continue;
 
-            // EIP-8369 classification gate. Profile 1 keeps FOCIL's end-of-payload omission check.
-            // Profile 2's omission is checked by bounded validation replay at the builder-claimed index
-            // (Eip8369.DefaultClaimedInclusionIndex, default = end of payload); the AA-VOPS state-surface
-            // replay (EIP-8250 keyed nonces, EIP-8272 recent roots) is a DEFERRAL, so a Profile-2 entry is
-            // not treated as a violation here. Outside-enforcement entries are never enforced.
+            // EIP-8369 gate: only Profile-1 keeps FOCIL's end-of-payload omission check; Profile-2 enforcement
+            // (bounded claimed-index replay) is deferred to a future EIP-7805 extension, so it and Outside never fail here.
             if (Eip8369.Classify(il[i]) != FocilProfile.One) continue;
 
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;
@@ -68,9 +65,10 @@ public static class InclusionListValidator
         if (tx.SenderAddress is null) return false;
         // Blob txs MUST NOT appear in an IL.
         if (tx.SupportsBlobs) return false;
-        // Subtraction form so an adversarial GasLimit near long.MaxValue can't overflow the sum; self-contained
-        // rather than relying on the well-formedness gas cap checked below.
-        if (tx.GasLimit < 0 || block.GasUsed > block.GasLimit - tx.GasLimit) return false;
+        // Doesn't fit in the block's remaining gas → can't be included. Subtract on the block side
+        // (block.GasUsed <= block.GasLimit is invariant and the block-full case returned above) so this
+        // ulong arithmetic can't underflow, unlike block.GasLimit - tx.GasLimit for an oversized tx.
+        if (tx.GasLimit > block.GasLimit - block.GasUsed) return false;
         // Appendability must match normal execution: reuse the block validator's well-formedness
         // check (intrinsic gas, typed-tx rules, e.g. maxPriorityFeePerGas <= maxFeePerGas) instead of a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;

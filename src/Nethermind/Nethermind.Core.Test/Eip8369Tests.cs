@@ -82,17 +82,22 @@ public class Eip8369Tests
         AssertProfile(FrameTx(SelfVerify(gasLimit: Eip8369Constants.MaxVerifyGasPerTx), ExecutionFrame), FocilProfile.Two);
 
     [Test]
-    public void Profile2VerifyCost_MatchesValidationWorkGas()
+    public void Profile2VerifyCost_ChargesPrefixFrameGasAndSignatureGas()
     {
+        // Expiry (30_000) + self-verify (100_000) prefix frames plus one secp256k1 signature; the
+        // trailing execution frame is outside the prefix and is not charged.
         Transaction tx = FrameTx(Expiry(), SelfVerify(), ExecutionFrame);
-        Assert.That(Eip8369.Profile2VerifyCost(tx), Is.EqualTo(FrameTxValidation.ValidationWorkGas(tx)));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, default, default)];
+        ulong expected = 30_000 + 100_000 + Eip8141Constants.Secp256k1VerificationGasCost;
+        Assert.That(Eip8369.Profile2VerifyCost(tx), Is.EqualTo(expected));
     }
 
     [Test]
-    public void DefaultClaimedInclusionIndex_IsEndOfPayload()
+    public void Classify_AtBudgetOnFrameGasButSignaturesPushOver_IsOutside()
     {
-        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.WithNonce(1).TestObject).TestObject;
-        Assert.That(Eip8369.DefaultClaimedInclusionIndex(block), Is.EqualTo(block.Transactions.Length));
+        Transaction tx = FrameTx(SelfVerify(gasLimit: Eip8369Constants.MaxVerifyGasPerTx), ExecutionFrame);
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, default, default)];
+        Assert.That(Eip8369.Classify(tx), Is.EqualTo(FocilProfile.Outside));
     }
 
     private static void AssertProfile(Transaction tx, FocilProfile expected) =>

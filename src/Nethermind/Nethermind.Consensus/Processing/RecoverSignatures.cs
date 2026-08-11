@@ -98,7 +98,10 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (Transaction tx in txs)
                 {
-                    TryRecover(tx, releaseSpec, skipErrors);
+                    // Hot path (block txs) calls Recover directly so the per-tx frame stays inlinable;
+                    // only FOCIL IL recovery needs the exception-swallowing wrapper.
+                    if (skipErrors) TryRecover(tx, releaseSpec);
+                    else Recover(tx, releaseSpec);
                 }
             }
         }
@@ -107,19 +110,20 @@ namespace Nethermind.Consensus.Processing
             int i,
             (RecoverSignatures recover, Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors) state)
         {
-            state.recover.TryRecover(state.txs[i], state.releaseSpec, state.skipErrors);
+            if (state.skipErrors) state.recover.TryRecover(state.txs[i], state.releaseSpec);
+            else state.recover.Recover(state.txs[i], state.releaseSpec);
             return state;
         }
 
-        // FOCIL: when skipErrors is set, an inclusion-list tx with valid RLP but invalid signature
-        // leaves SenderAddress null (treated as not-appendable) rather than throwing.
-        private void TryRecover(Transaction tx, IReleaseSpec releaseSpec, bool skipErrors)
+        // FOCIL only: an inclusion-list tx with valid RLP but invalid signature leaves SenderAddress null
+        // (treated as not-appendable) rather than throwing. Block-tx recovery uses Recover directly.
+        private void TryRecover(Transaction tx, IReleaseSpec releaseSpec)
         {
             try
             {
                 Recover(tx, releaseSpec);
             }
-            catch (Exception e) when (skipErrors && e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
+            catch (Exception e) when (e is InvalidDataException or ArgumentException or CryptographicException or RlpException)
             {
                 if (_logger.IsTrace) _logger.Trace($"Sender recovery failed for {tx.Hash}: {e.GetType().Name}: {e.Message}");
             }
