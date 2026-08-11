@@ -119,7 +119,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 if (Logger.IsInfo) Logger.Info($"nhist1 status from {Session}: SupportsFullClone={statusMessage.SupportsFullClone}, row format {statusMessage.RowFormatVersion}, scopes {statusMessage.Scopes.Length}.");
                 return true;
             case NHist1MessageCode.GetHistoryRangeAtHeight:
-                if (ShouldServeNHist())
+                if (EnsureCanServeNHist())
                     ScheduleOrReleaseQuota<GetHistoryRangeAtHeightMessage, HistoryRangeAtHeightMessage>(message, Handle);
                 return true;
             case NHist1MessageCode.HistoryRangeAtHeight:
@@ -128,7 +128,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 Handle(rangeMessage, size);
                 return true;
             case NHist1MessageCode.GetChangesets:
-                if (ShouldServeNHist())
+                if (EnsureCanServeNHist())
                     ScheduleOrReleaseQuota<GetChangesetsMessage, ChangesetsMessage>(message, Handle);
                 return true;
             case NHist1MessageCode.Changesets:
@@ -137,7 +137,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 Handle(changesetsMessage, size);
                 return true;
             case NHist1MessageCode.GetHistoryRows:
-                if (ShouldServeNHist())
+                if (EnsureCanServeNHist())
                     ScheduleOrReleaseQuota<GetHistoryRowsMessage, HistoryRowsMessage>(message, Handle,
                         static requestId => new HistoryRowsMessage { RequestId = requestId, Refused = true });
                 return true;
@@ -151,20 +151,12 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         }
     }
 
-    private bool ShouldServeNHist()
+    private bool EnsureCanServeNHist()
     {
         if (!CanServe)
         {
             Session.InitiateDisconnect(DisconnectReason.NHistServerNotImplemented, DisconnectMessage);
             if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting nhist data. Peer: {Session.Node.ClientId}");
-            return false;
-        }
-
-        if (Interlocked.Increment(ref _inFlightRequests) > MaxInFlightRequestsPerPeer)
-        {
-            Interlocked.Decrement(ref _inFlightRequests);
-            Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, TooManyInFlightMessage);
-            if (Logger.IsDebug) Logger.Debug($"Peer disconnected for exceeding the nhist in-flight request quota. Peer: {Session.Node.ClientId}");
             return false;
         }
 
@@ -175,20 +167,25 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         where TReq : NHistMessageBase
         where TRes : P2PMessage
     {
-        TReq request;
-        try
-        {
-            request = Deserialize<TReq>(message.Content);
-        }
-        catch
+        TReq request = Deserialize<TReq>(message.Content);
+        ReportIn(request, message.Content.ReadableBytes);
+        long requestId = request.RequestId;
+
+        if (Interlocked.Increment(ref _inFlightRequests) > MaxInFlightRequestsPerPeer)
         {
             Interlocked.Decrement(ref _inFlightRequests);
-            throw;
+            request.Dispose();
+            if (refusalFactory is not null)
+            {
+                Send(refusalFactory(requestId));
+                return;
+            }
+
+            Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, TooManyInFlightMessage);
+            if (Logger.IsDebug) Logger.Debug($"Peer disconnected for exceeding the nhist in-flight request quota. Peer: {Session.Node.ClientId}");
+            return;
         }
 
-        ReportIn(request, message.Content.ReadableBytes);
-
-        long requestId = request.RequestId;
         if (!BackgroundTaskScheduler.TryScheduleSyncServe(request, handle, ServeTimeout))
         {
             Interlocked.Decrement(ref _inFlightRequests);
@@ -360,16 +357,26 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         }
         catch (TimeoutException)
         {
-            if (Interlocked.Increment(ref _consecutiveRowsTimeouts) >= MaxConsecutiveRowsTimeouts)
-            {
-                if (Logger.IsInfo) Logger.Info($"Disconnecting {Session} after {MaxConsecutiveRowsTimeouts} consecutive nhist row timeouts; a fresh session will be dialed.");
-                Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, RowsTimeoutDisconnectMessage);
-            }
+            RegisterRowsTimeout();
             throw;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            RegisterRowsTimeout();
+            throw new TimeoutException("The nhist history rows request was cancelled without a response.");
         }
 
         Interlocked.Exchange(ref _consecutiveRowsTimeouts, 0);
         return response;
+    }
+
+    private void RegisterRowsTimeout()
+    {
+        if (Interlocked.Increment(ref _consecutiveRowsTimeouts) >= MaxConsecutiveRowsTimeouts)
+        {
+            if (Logger.IsInfo) Logger.Info($"Disconnecting {Session} after {MaxConsecutiveRowsTimeouts} consecutive nhist row timeouts; a fresh session will be dialed.");
+            Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, RowsTimeoutDisconnectMessage);
+        }
     }
 
     public async Task<HistoryRangeAtHeightMessage> GetHistoryRangeAtHeight(

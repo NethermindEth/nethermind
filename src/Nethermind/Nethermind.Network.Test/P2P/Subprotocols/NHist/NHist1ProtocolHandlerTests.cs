@@ -262,6 +262,44 @@ public class NHist1ProtocolHandlerTests
     }
 
     [Test]
+    public void GetHistoryRows_WhenInFlightQuotaIsExceeded_SendsRefusedResponseInsteadOfDisconnecting()
+    {
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRowsMessageSerializer()),
+            SerializerInfo.Create(new HistoryRowsMessageSerializer()));
+
+        QueueingScheduler scheduler = new();
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            scheduler,
+            LimboLogs.Instance,
+            historyServer,
+            new SyncConfig());
+
+        for (int i = 0; i < IHistoryServer.MaxInFlightRequestsPerPeer; i++)
+        {
+            using GetHistoryRowsMessage request = new() { RequestId = i, Column = HistoryRowColumn.Code, StartKey = [0], EndKey = [0xFF], Cursor = [] };
+            Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRows);
+        }
+
+        using GetHistoryRowsMessage overQuota = new() { RequestId = 99, Column = HistoryRowColumn.Code, StartKey = [0], EndKey = [0xFF], Cursor = [] };
+        Handle(handler, serializer, overQuota, NHist1MessageCode.GetHistoryRows);
+
+        session.Received(1).DeliverMessage(Arg.Is<HistoryRowsMessage>(m => m.RequestId == 99 && m.Refused));
+        session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        Assert.That(scheduler.ScheduledCount, Is.EqualTo(IHistoryServer.MaxInFlightRequestsPerPeer),
+            "the over-quota rows request must be refused without reaching the background scheduler");
+    }
+
+    [Test]
     public void Init_SendsStatusMessageWithServedScopesAndNotifiesProtocolInitialized()
     {
         HistoryServingScope scope = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 5, 100);
