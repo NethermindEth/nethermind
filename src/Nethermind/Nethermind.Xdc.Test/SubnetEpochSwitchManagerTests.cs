@@ -130,11 +130,11 @@ internal class SubnetEpochSwitchManagerTests
     }
 
     [Test]
-    public void GetEpochSwitchInfoBetween_Throws_NotSupported()
+    public void GetEpochSwitchInfoBetween_ReturnsNull()
     {
         XdcSubnetBlockHeader header = Build.A.XdcSubnetBlockHeader().TestObject;
 
-        Assert.That(() => _epochSwitchManager.GetEpochSwitchInfoBetween(header, header),
-            Throws.InstanceOf<NotSupportedException>());
+        Assert.That(() => _epochSwitchManager.GetEpochSwitchInfoBetween(header, header), Throws.Nothing);
+        Assert.That(_epochSwitchManager.GetEpochSwitchInfoBetween(header, header), Is.Null);
     }
 }

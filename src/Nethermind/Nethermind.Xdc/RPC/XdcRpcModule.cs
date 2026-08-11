@@ -85,16 +85,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<ulong[]>.Fail("Headers are not XDC block headers");
         }
 
-        EpochSwitchInfo[] epochSwitchInfos;
-        try
-        {
-            epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader);
-        }
-        catch (NotSupportedException ex)
-        {
-            return ResultWrapper<ulong[]>.Fail(ex.Message);
-        }
-
+        EpochSwitchInfo[] epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader);
         if (epochSwitchInfos is null)
         {
             return ResultWrapper<ulong[]>.Fail("Failed to get epoch switch info");
@@ -312,16 +303,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<AccountRewardResponse>.Fail("Headers are not XDC block headers");
         }
 
-        EpochSwitchInfo[] epochSwitchInfos;
-        try
-        {
-            epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader);
-        }
-        catch (NotSupportedException ex)
-        {
-            return ResultWrapper<AccountRewardResponse>.Fail(ex.Message);
-        }
-
+        EpochSwitchInfo[] epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader);
         if (epochSwitchInfos is null)
         {
             return ResultWrapper<AccountRewardResponse>.Fail("Failed to get epoch switch info");
