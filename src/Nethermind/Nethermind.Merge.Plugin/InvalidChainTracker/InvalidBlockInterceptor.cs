@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using System.Diagnostics.CodeAnalysis;
 
@@ -17,6 +19,9 @@ public class InvalidBlockInterceptor(
     private readonly ILogger _logger = logManager.GetClassLogger<InvalidBlockInterceptor>();
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
+
+    public bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
+        blockValidator.ValidateInclusionList(processedBlock, suggestedBlock, worldState, options);
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {

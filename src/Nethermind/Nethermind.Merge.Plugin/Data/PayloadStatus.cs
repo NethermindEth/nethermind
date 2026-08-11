@@ -24,5 +24,11 @@ namespace Nethermind.Merge.Plugin.Data
         /// Payload was accepted but not executed yet. It can be executed in <see cref="ForkchoiceStateV1"/> call.
         /// </summary>
         public const string Accepted = "ACCEPTED";
+
+        /// <summary>
+        /// EIP-7805 (FOCIL): the block executed cleanly but the inclusion-list constraint was
+        /// not satisfied — an appendable IL transaction was omitted from the payload.
+        /// </summary>
+        public const string InclusionListUnsatisfied = "INCLUSION_LIST_UNSATISFIED";
     }
 }

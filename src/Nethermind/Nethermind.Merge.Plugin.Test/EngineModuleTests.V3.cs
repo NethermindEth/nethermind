@@ -443,6 +443,8 @@ public partial class EngineModuleTests
                 Substitute.For<IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?>>(),
                 Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
                 Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+                Substitute.For<IHandler<InclusionListBytes>>(),
+                new Nethermind.Consensus.Transactions.InclusionListTxSource(null, null, null),
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>>(),
                 Substitute.For<IEngineRequestsTracker>(),
