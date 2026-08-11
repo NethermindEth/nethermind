@@ -68,8 +68,9 @@ internal static class FrameTxPayerResolver
                 payer, payerCodeHash, payerBalance,
                 dependsOnExpiry, expiryDeadline, expiryCodeHash));
 
-        // A prefix with only an expiry frame never sets a payer.
-        if (index >= frames.Length)
+        // Structural payerless prefixes are rejected pre-signature by FrameTxPayerlessFilter; re-checked
+        // here via the shared predicate so a direct caller still gets a NoPayer verdict.
+        if (IsStructurallyPayerless(frames, sender, index))
         {
             return Unresolved(FrameTxPayerOutcome.NoPayer);
         }
@@ -100,24 +101,41 @@ internal static class FrameTxPayerResolver
                 : Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
-        // only_verify approves execution but not payment; a following pay frame sets the payer.
+        // only_verify approves execution but not payment; a following frame names a third-party payer
+        // whose signature the pool cannot verify at admission, so it's deferred to simulation. (A lone
+        // only_verify frame is a structural NoPayer, already handled above.)
         if (IsOnlyVerify(verifyFrame, sender))
         {
-            // A lone only_verify frame has no payment-approving frame after it, so it provably never sets
-            // a payer regardless of signature or sender code — a structural NoPayer.
-            if (index + 1 >= frames.Length)
-            {
-                return Unresolved(FrameTxPayerOutcome.NoPayer);
-            }
-
-            // A following pay frame names a third-party payer whose signature the pool cannot verify at
-            // admission; deferred to the signature-verification / simulation layer.
             return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
         // Not a recognized legible prefix (e.g. a deploy frame, or an unrecognized VERIFY shape).
         return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
     }
+
+    /// <summary>
+    /// Signature- and state-free test of whether a frame transaction's validation prefix provably never
+    /// approves a payer (a lone expiry frame, or a prefix ending in an <c>only_verify</c> frame), letting
+    /// the pool drop it before spending elliptic-curve work on its signature list.
+    /// </summary>
+    public static bool IsStructurallyPayerless(Transaction tx)
+    {
+        TxFrame[]? frames = tx.Frames;
+        Address? sender = tx.SenderAddress;
+        if (frames is null || frames.Length == 0 || sender is null)
+        {
+            return false;
+        }
+
+        int index = IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
+        return IsStructurallyPayerless(frames, sender, index);
+    }
+
+    /// <summary>Structural NoPayer decision over an already-parsed prefix, with the optional leading expiry frame skipped to <paramref name="index"/>.</summary>
+    private static bool IsStructurallyPayerless(TxFrame[] frames, Address sender, int index) =>
+        // Only an expiry frame, or a prefix ending in an only_verify frame, never approves a payer.
+        index >= frames.Length
+        || (IsOnlyVerify(frames[index], sender) && index + 1 >= frames.Length);
 
     /// <summary>
     /// Structural check that index-0 is a canonical-hash (empty <c>msg</c>) secp256k1 signature whose
