@@ -40,6 +40,9 @@ public class InclusionListValidatorTests
             yield return Case("Wrong nonce", [BuildTx(nonce: 5, to: TestItem.AddressB)], true);
             yield return Case("Gas price below base fee", [BuildTx(gasPrice: 1.GWei, to: TestItem.AddressB)], true, baseFee: 5.GWei);
             yield return Case("Gas limit exceeds remaining block gas", [BuildTx(gasLimit: 25_000_000, to: TestItem.AddressB)], true, gasUsed: 10_000_000);
+            // Regression: a GasLimit above the block gas limit can never fit. The remaining-gas guard must
+            // reject it (ulong-safe); block.GasLimit - tx.GasLimit would underflow and mark the block unsatisfied.
+            yield return Case("Gas limit exceeds block gas limit", [BuildTx(gasLimit: 100_000_000, to: TestItem.AddressB)], true);
             // An included tx and a not-appendable (wrong nonce) tx both absolve the builder.
             yield return Case("Partially included, remainder invalid", [_validTx, BuildTx(nonce: 7, value: UInt256.One, to: TestItem.AddressB)], true, blockTxs: [_validTx]);
             // Post-execution semantics: a same-nonce replacement tx advances the sender nonce, so the IL tx is no longer appendable.

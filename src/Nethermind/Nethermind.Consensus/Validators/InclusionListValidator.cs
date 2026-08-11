@@ -59,9 +59,10 @@ public static class InclusionListValidator
         if (tx.SenderAddress is null) return false;
         // Blob txs MUST NOT appear in an IL.
         if (tx.SupportsBlobs) return false;
-        // Subtraction form so an adversarial GasLimit near long.MaxValue can't overflow the sum; self-contained
-        // rather than relying on the well-formedness gas cap checked below.
-        if (tx.GasLimit < 0 || block.GasUsed > block.GasLimit - tx.GasLimit) return false;
+        // Doesn't fit in the block's remaining gas → can't be included. Subtract on the block side
+        // (block.GasUsed <= block.GasLimit is invariant and the block-full case returned above) so this
+        // ulong arithmetic can't underflow, unlike block.GasLimit - tx.GasLimit for an oversized tx.
+        if (tx.GasLimit > block.GasLimit - block.GasUsed) return false;
         // Appendability must match normal execution: reuse the block validator's well-formedness
         // check (intrinsic gas, typed-tx rules, e.g. maxPriorityFeePerGas <= maxFeePerGas) instead of a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;

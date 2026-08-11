@@ -58,26 +58,36 @@ public class InclusionListBuilder(ITxPool txPool)
     private static InclusionListBytes EncodeTransactionsUpToLimit(ArrayPoolList<Transaction> txs)
     {
         InclusionListBytes result = new(txs.Count);
-        int size = 0;
-        foreach (Transaction tx in txs)
+        try
         {
-            ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
-
-            if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
+            int size = 0;
+            foreach (Transaction tx in txs)
             {
-                txBytes.Dispose();
-                continue;
-            }
+                ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
-            size += txBytes.Count;
-            result.Add(txBytes);
+                if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
+                {
+                    txBytes.Dispose();
+                    continue;
+                }
 
-            // No possible tx can fit in the remaining space.
-            if (size + Eip7805Constants.MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
-            {
-                break;
+                size += txBytes.Count;
+                result.Add(txBytes);
+
+                // No possible tx can fit in the remaining space.
+                if (size + Eip7805Constants.MinTransactionSizeBytes > Eip7805Constants.MaxBytesPerInclusionList)
+                {
+                    break;
+                }
             }
+            return result;
         }
-        return result;
+        catch
+        {
+            // Dispose the pooled buffers accumulated so far before propagating — the caller only
+            // disposes result on the normal return, so a mid-loop throw would otherwise leak them.
+            result.Dispose();
+            throw;
+        }
     }
 }
