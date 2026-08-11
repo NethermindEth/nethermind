@@ -124,6 +124,20 @@ public class FrameTxSimulationFilterTests
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
+    [Test]
+    public void Accept_SimulationDeferredByAdmissionBound_IsDistinctFromRejection()
+    {
+        // Peer scoring must be able to tell this node's load shedding from a peer sending bad transactions.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+    }
+
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx)
     {
         FrameTxSimulationFilter filter = new(state, simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());

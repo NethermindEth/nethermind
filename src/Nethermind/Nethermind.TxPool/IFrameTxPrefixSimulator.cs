@@ -45,18 +45,18 @@ public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, st
     public string? RejectionReason { get; } = rejectionReason;
 
     /// <summary>
-    /// True when the rejection reflects a resource bound rather than the prefix itself, so it says
-    /// nothing about validity.
+    /// True when the rejection reflects an admission bound this node spent rather than the prefix itself,
+    /// so it says nothing about validity.
     /// </summary>
     /// <remarks>
-    /// Admission still rejects (declining is mempool-legal), but revalidation must leave such a
-    /// transaction pending: evicting on an exhausted budget would turn a bound into a mass eviction.
+    /// Admission still declines, but revalidation must leave such a transaction pending: evicting on an
+    /// exhausted budget would turn a bound into a mass eviction.
     /// </remarks>
     public bool Indeterminate { get; } = indeterminate;
 
     public static FrameTxSimulationResult Accept(Address payer) => new(true, payer, null);
     public static FrameTxSimulationResult Reject(string reason) => new(false, null, reason);
 
-    /// <summary>A rejection caused by a resource bound, not by the prefix.</summary>
+    /// <summary>A rejection caused by an admission bound, not by the prefix.</summary>
     public static FrameTxSimulationResult RejectIndeterminate(string reason) => new(false, null, reason, indeterminate: true);
 }
