@@ -151,15 +151,29 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         async Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
+            Hash256? requestedHash = hash ?? _remoteHeadBlockHash;
+            if (requestedHash is null) return null;
+
             GetBlockHeadersMessage msg = new();
-            msg.StartBlockHash = hash ?? _remoteHeadBlockHash;
+            msg.StartBlockHash = requestedHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;
             msg.Skip = 0;
 
             using IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
-            return headersSpan.Length > 0 ? headersSpan[0] : null;
+
+            // A peer without the block answers with an empty list, or with an item that decodes to a null header.
+            BlockHeader? header = headersSpan.Length == 0 ? null : headersSpan[0];
+            if (header is null) return null;
+
+            if (header.Hash != requestedHash)
+            {
+                Disconnect(DisconnectReason.UnexpectedHeaderHash, "header hash inconsistent with request");
+                return null;
+            }
+
+            return header;
         }
 
         async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
