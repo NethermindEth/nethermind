@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using Autofac;
+using System;
+using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -20,7 +20,7 @@ public class GcPacerTests
     [TestCase(0L, IdleIntervalMs, true, TestName = "TryStart_Gen0CadenceOnly_Starts")]
     public void TryStart_FollowsConfiguredCadence(long gen1IntervalMs, long gen0IntervalMs, bool expectedStarted)
     {
-        GcPacer pacer = new(
+        using GcPacer pacer = new(
             new FlatDbConfig { GcPaceIntervalMs = gen1IntervalMs, GcPaceGen0IntervalMs = gen0IntervalMs },
             LimboLogs.Instance);
 
@@ -30,7 +30,7 @@ public class GcPacerTests
     [Test]
     public void TryStart_SecondCall_IsNoOp()
     {
-        GcPacer pacer = new(new FlatDbConfig { GcPaceIntervalMs = IdleIntervalMs }, LimboLogs.Instance);
+        using GcPacer pacer = new(new FlatDbConfig { GcPaceIntervalMs = IdleIntervalMs }, LimboLogs.Instance);
 
         pacer.TryStart();
 
@@ -38,10 +38,36 @@ public class GcPacerTests
     }
 
     [Test]
-    public void Module_StartsPacerFromContainer()
+    public void Dispose_StopsPacerThreads()
+    {
+        GcPacer pacer = new(
+            new FlatDbConfig { GcPaceIntervalMs = IdleIntervalMs, GcPaceGen0IntervalMs = IdleIntervalMs },
+            LimboLogs.Instance);
+        Assert.That(pacer.TryStart(), Is.True);
+
+        // Dispose joins the pacer threads; it only returns if cancellation interrupts their idle wait.
+        Task disposed = Task.Run(pacer.Dispose);
+
+        Assert.That(disposed.Wait(TimeSpan.FromSeconds(10)), Is.True);
+    }
+
+    [Test]
+    public void Dispose_IsIdempotent()
+    {
+        GcPacer pacer = new(new FlatDbConfig { GcPaceIntervalMs = IdleIntervalMs }, LimboLogs.Instance);
+        pacer.TryStart();
+
+        pacer.Dispose();
+
+        Assert.DoesNotThrow(pacer.Dispose);
+    }
+
+    [Test]
+    public void Module_RegistersPacerAsSingleton()
     {
         using FlatTestContainer container = new();
 
-        Assert.That(container.Resolve<IEnumerable<IStartable>>(), Has.Some.InstanceOf<GcPacer>());
+        GcPacer pacer = container.Resolve<GcPacer>();
+        Assert.That(container.Resolve<GcPacer>(), Is.SameAs(pacer));
     }
 }

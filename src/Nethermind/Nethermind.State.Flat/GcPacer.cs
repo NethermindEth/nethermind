@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Runtime;
-using Autofac;
+using System.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -14,13 +15,15 @@ namespace Nethermind.State.Flat;
 /// already collected within the interval, so promotion happens in many small pauses instead of
 /// rare multi-second ones.
 /// </summary>
-public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : IStartable
+public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<GcPacer>();
+    private readonly CancellationTokenSource _cancellation = new();
 
+    private Thread? _gen1Thread;
+    private Thread? _gen0Thread;
     private int _started;
-
-    void IStartable.Start() => TryStart();
+    private int _disposed;
 
     /// <summary>Starts the pacer threads for the configured cadences; only the first call wins.</summary>
     /// <returns><c>true</c> when this call started the pacer, <c>false</c> when pacing is disabled by
@@ -35,35 +38,46 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
         if (intervalMs <= 0 && gen0IntervalMs <= 0) return false;
         if (Interlocked.CompareExchange(ref _started, 1, 0) != 0) return false;
 
-        // Thread.Sleep(TimeSpan) rejects millisecond values above int.MaxValue, so clamp each
-        // sleep-driving interval so an out-of-range setting can't turn a paced loop into a busy
-        // exception-retry loop.
+        CancellationToken token = _cancellation.Token;
+
+        // The timed wait rejects millisecond values above int.MaxValue, so clamp each sleep-driving
+        // interval so an out-of-range setting can't turn a paced loop into a busy exception-retry loop.
         if (intervalMs > 0)
         {
             long gen1Interval = Math.Clamp(intervalMs, 1, int.MaxValue);
             long warmupMs = flatConfig.GcPaceWarmupSeconds * 1000;
             long gen2IntervalMs = flatConfig.GcPaceGen2IntervalMs;
-            Thread thread = new(() => Run(gen1Interval, warmupMs, gen2IntervalMs))
+            _gen1Thread = new(() => Run(gen1Interval, warmupMs, gen2IntervalMs, token))
             {
                 // Must stay at normal priority: below-normal starves under saturated block processing.
                 IsBackground = true,
                 Name = "GC Pacer",
             };
-            thread.Start();
+            _gen1Thread.Start();
         }
 
         if (gen0IntervalMs > 0)
         {
             long gen0Interval = Math.Clamp(gen0IntervalMs, 1, int.MaxValue);
-            Thread gen0Thread = new(() => RunGen0(gen0Interval))
+            _gen0Thread = new(() => RunGen0(gen0Interval, token))
             {
                 IsBackground = true,
                 Name = "GC Pacer gen0",
             };
-            gen0Thread.Start();
+            _gen0Thread.Start();
         }
 
         return true;
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0) return;
+
+        _cancellation.Cancel();
+        _gen1Thread?.Join();
+        _gen0Thread?.Join();
+        _cancellation.Dispose();
     }
 
     // Induces a paced collection unless a real no-GC region is active. Guards on GCSettings.LatencyMode
@@ -79,14 +93,14 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
         return true;
     }
 
-    private void RunGen0(long gen0IntervalMs)
+    private void RunGen0(long gen0IntervalMs, CancellationToken token)
     {
         int lastGen0Count = GC.CollectionCount(0);
-        while (true)
+        while (!token.IsCancellationRequested)
         {
             try
             {
-                Thread.Sleep(TimeSpan.FromMilliseconds(gen0IntervalMs));
+                if (token.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(gen0IntervalMs))) return;
 
                 if (GC.CollectionCount(0) == lastGen0Count)
                 {
@@ -105,7 +119,7 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
         }
     }
 
-    private void Run(long intervalMs, long warmupMs, long gen2IntervalMs)
+    private void Run(long intervalMs, long warmupMs, long gen2IntervalMs, CancellationToken token)
     {
         Stopwatch uptime = Stopwatch.StartNew();
         int lastGen1Count = GC.CollectionCount(1);
@@ -114,12 +128,12 @@ public sealed class GcPacer(IFlatDbConfig flatConfig, ILogManager logManager) : 
         long pendingBgcSinceIndex = -1;
         long pendingBgcAtMs = 0;
 
-        while (true)
+        while (!token.IsCancellationRequested)
         {
             try
             {
                 bool warmup = uptime.ElapsedMilliseconds < warmupMs;
-                Thread.Sleep(TimeSpan.FromMilliseconds(warmup ? Math.Max(1000, intervalMs / 2) : intervalMs));
+                if (token.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(warmup ? Math.Max(1000, intervalMs / 2) : intervalMs))) return;
 
                 if (GC.CollectionCount(1) == lastGen1Count)
                 {

@@ -57,6 +57,7 @@ public class FlatDbManagerPersistedTests
 
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
+            new GcPacer(_config, LimboLogs.Instance),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
             Substitute.For<ISnapshotCompactor>(),
@@ -96,6 +97,7 @@ public class FlatDbManagerPersistedTests
 
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
+            new GcPacer(_config, LimboLogs.Instance),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
             Substitute.For<ISnapshotCompactor>(),
@@ -129,6 +131,7 @@ public class FlatDbManagerPersistedTests
 
         FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
+            new GcPacer(_config, LimboLogs.Instance),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
             Substitute.For<ISnapshotCompactor>(),
