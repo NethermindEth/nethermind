@@ -279,6 +279,24 @@ public static class FrameTxValidation
     }
 
     /// <summary>
+    /// The paymaster a frame transaction pays through: the explicit target of the <c>pay</c> frame ending
+    /// its recognized validation prefix, or <c>null</c> when it pays without one.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the frame layout alone, so no state is read. Only the EIP-8141 canonical-paymaster
+    /// prefixes end in a <c>pay</c> frame; a self-relay prefix, an unrecognized layout, or a <c>pay</c>
+    /// frame with a null target (which resolves to the sender, not a sponsor) all yield <c>null</c>.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to inspect.</param>
+    public static Address? GetPrefixPaymaster(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        return RecognizedPrefixLength(frames, transaction.SenderAddress) is int length && IsPayFrame(frames[length - 1])
+            ? frames[length - 1].Target
+            : null;
+    }
+
+    /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>

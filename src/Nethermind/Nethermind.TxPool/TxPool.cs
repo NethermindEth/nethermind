@@ -58,6 +58,7 @@ namespace Nethermind.TxPool
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
         private readonly PayerExposureCache _payerExposure = new();
+        private readonly PendingPaymasterCache _pendingPaymasters = new();
 
         private readonly ILogger _logger;
 
@@ -196,6 +197,10 @@ namespace Nethermind.TxPool
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
+            // EIP-8141: cap the pending frame txs one non-canonical paymaster may sponsor; runs ahead of
+            // payer resolution and simulation so a flood naming one sponsor is dropped before that work.
+            postHashFilters.Add(new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _pendingPaymasters, _logger));
+
             // EIP-8141: resolve and record the frame-tx payer, rejecting provably-payerless prefixes.
             // Runs last so only otherwise-admissible frame txs are resolved.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
@@ -267,16 +272,28 @@ namespace Nethermind.TxPool
         {
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            if (GetPaymaster(args.Value) is Address paymaster) _pendingPaymasters.Increment(paymaster);
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
+            if (GetPaymaster(args.Value) is Address paymaster) _pendingPaymasters.Decrement(paymaster);
             ReleasePayerExposure(args.Value);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
+        /// <summary>
+        /// The paymaster a pending frame transaction pays through, keying the EIP-8141 non-canonical
+        /// paymaster cap (<see cref="FrameTxPaymasterFilter"/>); <c>null</c> when it uses none.
+        /// </summary>
+        /// <remarks>
+        /// State-free, so the count a transaction contributes on insert is the one it releases on removal
+        /// even if the paymaster's code changed meanwhile.
+        /// </remarks>
+        private static Address? GetPaymaster(Transaction tx) => tx.SupportsFrames ? FrameTxValidation.GetPrefixPaymaster(tx) : null;
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {

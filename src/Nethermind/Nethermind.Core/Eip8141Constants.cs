@@ -23,6 +23,12 @@ public static class Eip8141Constants
     // EIP-8141: consensus cap on validation-prefix gas, used by the prefix execution/simulation path.
     public const ulong MaxVerifyGas = 100_000;
 
+    /// <summary>
+    /// Public-mempool cap on how many pending frame transactions may pay through any one non-canonical
+    /// paymaster, bounding the set a single sponsor's balance or code change can invalidate at once.
+    /// </summary>
+    public const int MaxPendingTxsUsingNonCanonicalPaymaster = 1;
+
     public static readonly Address EntryPointAddress = new("0x00000000000000000000000000000000000000aa");
     public static readonly Address ExpiryVerifierAddress = new("0x0000000000000000000000000000000000008141");
 
