@@ -60,5 +60,5 @@ internal class SubnetEpochSwitchManager(
     }
 
     public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end) =>
-        throw new NotImplementedException("GetEpochSwitchInfoBetween is not implemented for subnet epoch switch manager.");
+        throw new NotSupportedException("Retrieving epoch switch info for a block range is not supported on subnet chains.");
 }

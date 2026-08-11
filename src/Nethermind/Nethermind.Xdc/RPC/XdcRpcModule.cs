@@ -13,6 +13,7 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
@@ -85,10 +86,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<ulong[]>.Fail("Headers are not XDC block headers");
         }
 
-        EpochSwitchInfo[] epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader);
-        if (epochSwitchInfos is null)
+        if (!TryGetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader, out EpochSwitchInfo[]? epochSwitchInfos, out string? error))
         {
-            return ResultWrapper<ulong[]>.Fail("Failed to get epoch switch info");
+            return ResultWrapper<ulong[]>.Fail(error);
         }
 
         ulong[] epochSwitchNumbers = new ulong[epochSwitchInfos.Length];
@@ -98,6 +98,41 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
 
         return ResultWrapper<ulong[]>.Success(epochSwitchNumbers);
+    }
+
+    /// <summary>
+    /// Resolves the epoch switch infos between two headers, turning every failure mode into a caller-facing message.
+    /// </summary>
+    /// <remarks>
+    /// Subnet chains do not support range enumeration and report that as <see cref="NotSupportedException"/>; without
+    /// this guard it would surface to the RPC caller as an unhandled exception rather than an error response.
+    /// </remarks>
+    /// <returns><see langword="true"/> when <paramref name="epochSwitchInfos"/> was resolved; otherwise <see langword="false"/>.</returns>
+    private bool TryGetEpochSwitchInfoBetween(
+        XdcBlockHeader begin,
+        XdcBlockHeader end,
+        [NotNullWhen(true)] out EpochSwitchInfo[]? epochSwitchInfos,
+        [NotNullWhen(false)] out string? error)
+    {
+        try
+        {
+            epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(begin, end);
+        }
+        catch (NotSupportedException ex)
+        {
+            epochSwitchInfos = null;
+            error = ex.Message;
+            return false;
+        }
+
+        if (epochSwitchInfos is null)
+        {
+            error = "Failed to get epoch switch info";
+            return false;
+        }
+
+        error = null;
+        return true;
     }
 
     private static IDictionary<(ulong Round, Hash256 Hash), SignerTypes> CalculateSigners<T>(
@@ -303,10 +338,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<AccountRewardResponse>.Fail("Headers are not XDC block headers");
         }
 
-        EpochSwitchInfo[] epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader);
-        if (epochSwitchInfos is null)
+        if (!TryGetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader, out EpochSwitchInfo[]? epochSwitchInfos, out string? error))
         {
-            return ResultWrapper<AccountRewardResponse>.Fail("Failed to get epoch switch info");
+            return ResultWrapper<AccountRewardResponse>.Fail(error);
         }
 
         List<AccountEpochReward> epochRewards = new(epochSwitchInfos.Length);

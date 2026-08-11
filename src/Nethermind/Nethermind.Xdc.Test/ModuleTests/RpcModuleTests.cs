@@ -15,6 +15,7 @@ using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
@@ -1112,6 +1113,42 @@ public class RpcModuleTests
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    private static IEnumerable<TestCaseData> RangeMethods()
+    {
+        yield return new TestCaseData((Func<IXdcRpcModule, IResultWrapper>)(module => module.XDPoS_getEpochNumbersBetween(100, 200)))
+            .SetName(nameof(RangeMethod_ShouldReturnFail_WhenEpochSwitchInfoIsNotSupported) + "(getEpochNumbersBetween)");
+        yield return new TestCaseData((Func<IXdcRpcModule, IResultWrapper>)(module => module.XDPoS_getRewardByAccount(TestItem.AddressA, 100, 200)))
+            .SetName(nameof(RangeMethod_ShouldReturnFail_WhenEpochSwitchInfoIsNotSupported) + "(getRewardByAccount)");
+    }
+
+    [TestCaseSource(nameof(RangeMethods))]
+    public void RangeMethod_ShouldReturnFail_WhenEpochSwitchInfoIsNotSupported(Func<IXdcRpcModule, IResultWrapper> call)
+    {
+        // Arrange
+        const ulong begin = 100;
+        const ulong end = 200;
+        const string message = "Retrieving epoch switch info for a block range is not supported on subnet chains.";
+
+        XdcBlockHeader beginHeader = Build.A.XdcBlockHeader().WithNumber(begin).TestObject;
+        XdcBlockHeader endHeader = Build.A.XdcBlockHeader().WithNumber(end).TestObject;
+
+        _blockTree.FindHeader(begin).Returns(beginHeader);
+        _blockTree.FindHeader(end).Returns(endHeader);
+
+        _epochSwitchManager.GetEpochSwitchInfoBetween(beginHeader, endHeader)
+            .Throws(new NotSupportedException(message));
+
+        // Act
+        IResultWrapper result = call(_rpcModule);
+
+        // Assert
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+            Assert.That(result.Result.Error, Is.EqualTo(message));
+        }
     }
 
     private static Dictionary<string, XdcRewardLog> GetSignerSection(XdcEpochRewards rewards, string section) =>
