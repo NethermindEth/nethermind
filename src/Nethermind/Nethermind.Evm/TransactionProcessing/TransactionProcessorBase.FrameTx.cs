@@ -121,6 +121,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
+        // EIP-8037: net state gas across frames, tracked apart from execution gas for the block's
+        // separate state-gas dimension. Per-frame receipts stay combined (execution + spilled state).
+        long totalStateGas = 0;
         // EIP-3529 storage refunds accumulate into a single transaction-scoped counter (ethereum/EIPs#11940).
         long refundCounter = 0;
 
@@ -147,6 +150,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         StackAccessTracker batchTracker = default;
         int batchStartIndex = 0;
         long batchStartRefund = 0;
+        long batchStartStateGas = 0;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -162,6 +166,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchTracker.TakeSnapshot();
                 batchStartIndex = i;
                 batchStartRefund = refundCounter;
+                batchStartStateGas = totalStateGas;
             }
 
             // Transient storage (TSTORE/TLOAD) is discarded between frames (spec: Cross-frame
@@ -185,8 +190,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
             int frameLogStart = accessTracker.Logs.Count;
-            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed);
+            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
             totalFrameGasUsed += frameGasUsed;
+            totalStateGas += frameStateGas;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
             if (frameSucceeded)
@@ -266,6 +272,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // Refunds from the reverted batch are discarded with its state, so roll the counter back.
                     // No payer/sender_approved rollback is needed: EIP-8141 forbids approval scope on batch frames.
                     refundCounter = batchStartRefund;
+                    // EIP-8037: the unrolled batch commits no state, so drop its frames' state gas from
+                    // the block dimension; the execution gas they consumed stays charged (unroll_atomic_batch).
+                    totalStateGas = batchStartStateGas;
 
                     int terminal = i;
                     while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
@@ -298,11 +307,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
         ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
-        // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
-        // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
-        // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
-        // tx's real spent gas into the header.
-        tx.BlockGasUsed = spentGas;
+        // EIP-8037: block gasUsed = max(execution sum, state sum); state gas is clamped (refunds can
+        // drive it negative) and the execution dimension carries the EIP-7623 floor.
+        ulong blockStateGas = (ulong)Math.Max(0, totalStateGas);
+        ulong blockExecutionGas = Math.Max(grossGas - blockStateGas, floorGas);
+        // BlockGasUsed feeds the header's execution dimension, like the regular path; the receipts stay
+        // combined post-refund.
+        tx.BlockGasUsed = blockExecutionGas;
         Address payer = frameContext.Payer;
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
@@ -369,7 +380,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
             // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
             LogEntry[] txLogs = ConcatFrameLogs(frameReceipts);
-            GasConsumed gasConsumed = new(spentGas, spentGas, spentGas);
+            GasConsumed gasConsumed = new(SpentGas: spentGas, OperationGas: spentGas, BlockGas: blockExecutionGas, BlockStateGas: blockStateGas);
             tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], txLogs);
         }
 
@@ -401,13 +412,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         return logs;
     }
 
-    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
+        stateGasUsed = 0;
+        gasUsed = 0;
         // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
         UInt256 value = frame.Value;
         if (!value.IsZero && WorldState.GetBalance(caller) < value)
         {
-            gasUsed = 0;
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
@@ -415,7 +427,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the protocol-defined behavior instead of the EVM.
         if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            return ExecuteDefaultCode(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out gasUsed);
+            return ExecuteDefaultCode(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out gasUsed, out stateGasUsed);
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
@@ -459,6 +471,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
         gasUsed = frame.GasLimit - remainingGas;
+        // EIP-8037: with an empty reservoir the frame's state gas spills into execution gas (already in
+        // gasUsed). Report net committed state gas; a reverted or halted frame's is restored to zero.
+        stateGasUsed = substate.ShouldRevert || substate.IsError ? 0 : TGasPolicy.GetStateGasUsed(in state.Gas);
 
         if (substate.ShouldRevert || substate.IsError)
         {
@@ -485,9 +500,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// </summary>
     /// <param name="accessTracker">Cross-frame log/warm journal; the transfer log is appended to
     /// its log list so it reaches the frame receipt and the transaction log union.</param>
-    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
         gasUsed = 0;
+        stateGasUsed = 0;
 
         if (isStatic)
         {
