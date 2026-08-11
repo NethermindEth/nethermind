@@ -50,7 +50,8 @@ public static class Eip8369
             if (frames[i].Mode == TxFrame.ModeVerify) return FocilProfile.Outside;
         }
 
-        return FrameTxValidation.ValidationWorkGas(tx) <= Eip8369Constants.MaxVerifyGasPerTx
+        // Reuse the prefix length already resolved above so the frame-shape walk runs once.
+        return FrameTxValidation.ValidationWorkGas(tx, prefixLength) <= Eip8369Constants.MaxVerifyGasPerTx
             ? FocilProfile.Two
             : FocilProfile.Outside;
     }

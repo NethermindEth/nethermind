@@ -253,9 +253,21 @@ public static class FrameTxValidation
     {
         TxFrame[] frames = transaction.Frames ?? [];
         int counted = RecognizedPrefixLength(frames, transaction.SenderAddress) ?? frames.Length;
+        return ValidationWorkGas(transaction, counted);
+    }
+
+    /// <summary>
+    /// <inheritdoc cref="ValidationWorkGas(Transaction)"/> for a caller that has already resolved the
+    /// number of validation-prefix frames, so the frame-shape walk is not repeated.
+    /// </summary>
+    /// <param name="transaction">The frame transaction to price.</param>
+    /// <param name="countedFrames">The number of leading frames to charge, e.g. from <see cref="TryGetValidationPrefixLength"/>.</param>
+    internal static ulong ValidationWorkGas(Transaction transaction, int countedFrames)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
 
         ulong total = 0;
-        for (int i = 0; i < counted; i++)
+        for (int i = 0; i < countedFrames; i++)
         {
             total = Saturating(total, frames[i].GasLimit);
         }
