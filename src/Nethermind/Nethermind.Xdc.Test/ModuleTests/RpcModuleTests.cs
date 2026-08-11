@@ -693,6 +693,70 @@ public class RpcModuleTests
     }
 
 
+    [TestCase(null, false)]
+    [TestCase(99UL, false)]
+    [TestCase(98UL, true)]
+    public void GetV2BlockByNumber_ShouldReportCommitted_OnlyUpToFinalizedBlock(ulong? blockNumber, bool expectedCommitted)
+    {
+        // Arrange
+        XdcBlockHeader committedHeader = BuildHeader(98);
+        XdcBlockHeader uncommittedHeader = BuildHeader(99);
+        XdcBlockHeader headHeader = BuildHeader(100);
+
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(headHeader).TestObject);
+        _blockTree.FindHeader(98).Returns(committedHeader);
+        _blockTree.FindHeader(99).Returns(uncommittedHeader);
+        _blockTree.FindFinalizedHeader().Returns(committedHeader);
+
+        // The highest known QC certifies the head, two rounds ahead of the commit, so it must not drive the flag
+        _quorumCertificateManager.HighestKnownCertificate.Returns(
+            new QuorumCertificate(new BlockRoundInfo(headHeader.Hash!, 100, 100), null, 100));
+
+        // Act
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(
+            blockNumber is null ? BlockParameter.Latest : new BlockParameter(blockNumber.Value));
+
+        // Assert
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Committed, Is.EqualTo(expectedCommitted));
+            Assert.That(result.Data.Error, Is.Null);
+        }
+
+        static XdcBlockHeader BuildHeader(ulong number) =>
+            Build.A.XdcBlockHeader()
+                .WithNumber(number)
+                .WithExtraConsensusData(new ExtraFieldsV2(number, Build.A.QuorumCertificate().TestObject))
+                .TestObject;
+    }
+
+    [Test]
+    public void GetV2BlockByNumber_ShouldReturnError_WhenNoFinalizedBlock()
+    {
+        // Arrange
+        XdcBlockHeader headHeader = Build.A.XdcBlockHeader()
+            .WithNumber(100)
+            .WithExtraConsensusData(new ExtraFieldsV2(100, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
+
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(headHeader).TestObject);
+        _blockTree.FindFinalizedHeader().Returns((BlockHeader?)null);
+
+        // Act
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(BlockParameter.Latest);
+
+        // Assert
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Committed, Is.False);
+            Assert.That(result.Data.Error, Is.Not.Null);
+        }
+    }
+
     [Test]
     public void GetSigners_ShouldReturnSuccess_WithLatestBlockParameter()
     {

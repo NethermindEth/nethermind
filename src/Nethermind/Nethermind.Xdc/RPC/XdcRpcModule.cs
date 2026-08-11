@@ -539,8 +539,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<V2BlockInfo>.Fail("Header is not an XDC block header");
         }
 
-        bool committed = false;
-        BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
+        // A block is committed only once the three-consecutive-round rule fires, which the block tree tracks as the
+        // finalized block. The highest known QC merely certifies a block, so it runs two rounds ahead of the commit.
+        BlockHeader? latestCommittedBlock = tree.FindFinalizedHeader();
 
         if (latestCommittedBlock is null)
         {
@@ -551,10 +552,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             });
         }
 
-        if (header.Number <= latestCommittedBlock.BlockNumber)
-        {
-            committed = true;
-        }
+        bool committed = header.Number <= latestCommittedBlock.Number;
 
         // Get round number from extra consensus data
         ulong round = 0;
