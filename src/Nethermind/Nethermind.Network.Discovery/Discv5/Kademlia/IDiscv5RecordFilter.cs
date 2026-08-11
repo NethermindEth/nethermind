@@ -12,10 +12,10 @@ public interface IDiscv5RecordFilter
     bool Excludes(NodeRecord record);
 }
 
-/// <summary>Excludes consensus-only ENRs because beacon nodes cannot be dialed over RLPx.</summary>
+/// <summary>Excludes ENRs that do not advertise the <c>eth</c> protocol and its EIP-2124 fork ID.</summary>
 public sealed class ExecutionLayerDiscv5RecordFilter : IDiscv5RecordFilter
 {
     public static ExecutionLayerDiscv5RecordFilter Instance { get; } = new();
 
-    public bool Excludes(NodeRecord record) => DiscoveryV5App.IsConsensusOnlyNodeRecord(record);
+    public bool Excludes(NodeRecord record) => !record.HasEntry(EnrContentKey.Eth);
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Messages;
@@ -111,8 +112,9 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
         for (int i = 0; i < nodes.Records.Count && _nodeCount < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
-            if (!Node.TryFromDiscoveryEnr(record, out Node? node) ||
-                !DiscoveryV5App.IsDiscoveryAddressAcceptable(node.DiscoveryAddress.Address, _allowNonRoutableRelays) ||
+            if (!record.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint) ||
+                !DiscoveryV5App.IsDiscoveryAddressAcceptable(discoveryEndpoint.Address, _allowNonRoutableRelays) ||
+                !Node.TryFromDiscoveryEnr(record, out Node? node) ||
                 !TryMarkSeen(node.Id.Hash) ||
                 !MatchesRequestedDistance(node, requestedDistances))
             {
