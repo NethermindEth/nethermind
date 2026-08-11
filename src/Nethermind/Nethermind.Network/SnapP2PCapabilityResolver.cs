@@ -45,12 +45,11 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         _stateSyncPivot = stateSyncPivot;
         _specProvider = specProvider;
         _flatDbConfig = flatDbConfig;
+        _canBalHeal = ComputeCanBalHeal(_stateSyncPivot.FirstPivotHeader);
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
 
         _syncModeSelector.Changed += OnSyncModeChanged;
-
         _stateSyncPivot.FirstPivotSet += OnFirstPivotSet;
-        _canBalHeal = ComputeCanBalHeal(_stateSyncPivot.FirstPivotHeader);
     }
 
     public void Resolve(ISet<Capability> capabilities)
@@ -74,7 +73,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     {
         if (!_syncConfig.SnapSync || !_flatDbConfig.Enabled) return false;
 
-        if (firstPivotHeader is null) return false;
+        if (firstPivotHeader == null) return false;
 
         return _specProvider.GetSpec(firstPivotHeader).BlockLevelAccessListsEnabled;
     }
@@ -95,10 +94,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     private void OnFirstPivotSet(object? sender, BlockHeaderEventArgs e)
     {
-        bool couldBalHeal = _canBalHeal;
         _canBalHeal = ComputeCanBalHeal(e.Header);
-        if (couldBalHeal == _canBalHeal) return;
-
         Changed?.Invoke();
     }
 
