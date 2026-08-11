@@ -81,7 +81,6 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
         Channel<TNode> channel = Channel.CreateBounded<TNode>(lookupResultLimit);
         AdmissionCounter admissions = new();
 
-        routingTable.OnNodeAdded += admissions.OnNodeAdded;
         Task[] discoverTasks = new Task[concurrentDiscoveryJobs];
         for (int i = 0; i < discoverTasks.Length; i++)
         {
@@ -91,6 +90,7 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
         Task discoverTask = Task.WhenAll(discoverTasks);
         try
         {
+            routingTable.OnNodeAdded += admissions.OnNodeAdded;
             await foreach (TNode node in channel.Reader.ReadAllAsync(token))
             {
                 yield return node;
@@ -98,9 +98,9 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
         }
         finally
         {
+            routingTable.OnNodeAdded -= admissions.OnNodeAdded;
             await disposeCts.CancelAsync();
             channel.Writer.TryComplete();
-            routingTable.OnNodeAdded -= admissions.OnNodeAdded;
             try
             {
                 await discoverTask;
