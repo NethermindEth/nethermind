@@ -269,6 +269,20 @@ public static class FrameTxValidation
     }
 
     /// <summary>
+    /// The number of leading frames forming a recognized EIP-8141 validation prefix (one of the four
+    /// self-verify / deploy shapes, optional expiry-verifier frame included), or <c>false</c> when the
+    /// frame layout matches none of them. Reused by EIP-8369 FOCIL Profile-2 classification.
+    /// </summary>
+    /// <param name="transaction">The frame transaction to inspect.</param>
+    /// <param name="prefixLength">The recognized prefix length; 0 when unrecognized.</param>
+    public static bool TryGetValidationPrefixLength(Transaction transaction, out int prefixLength)
+    {
+        int? length = RecognizedPrefixLength(transaction.Frames ?? [], transaction.SenderAddress);
+        prefixLength = length ?? 0;
+        return length is not null;
+    }
+
+    /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>
