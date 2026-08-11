@@ -462,20 +462,36 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         return false;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Persists the in-memory tier before tearing the workers down, so the flat state on disk matches
+    /// the block tree. Without it the process exits with the state up to <c>MinReorgDepth</c> blocks
+    /// behind the last committed block, and the next start has to re-run that branch from the persisted
+    /// base — a path that only survives as far as the next compaction boundary.
+    ///
+    /// The queues are completed in feed order — the compactor writes into the persistence queue, so it
+    /// has to drain first — and both are drained before the flush, so nothing still in flight is lost.
+    /// Cancellation comes after, otherwise it would abort the very work being drained.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, 1, 0) == 1) return;
 
         ClearReadOnlyBundleCache();
-        _cancelTokenSource.Cancel();
 
         _compactorJobs.Writer.Complete();
-        _populateTrieNodeCacheJobs.Writer.Complete();
-        _persistenceJobs.Writer.Complete();
-
         await _compactorTask;
-        await _populateTrieNodeCacheTask;
+
+        _persistenceJobs.Writer.Complete();
         await _persistenceTask;
+
+        FlushCache(CancellationToken.None);
+
+        _cancelTokenSource.Cancel();
+
+        _populateTrieNodeCacheJobs.Writer.Complete();
+
+        await _populateTrieNodeCacheTask;
         await _clearBundleCacheTask;
 
         _cancelTokenSource.Dispose();

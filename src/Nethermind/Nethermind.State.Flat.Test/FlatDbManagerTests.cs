@@ -138,6 +138,52 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task DisposeAsync_FlushesInMemoryStateToPersistence()
+    {
+        _persistenceManager.FlushToPersistence().Returns(CreateStateId(10));
+
+        FlatDbManager manager = CreateManager();
+        await manager.DisposeAsync();
+
+        _persistenceManager.Received(1).FlushToPersistence();
+    }
+
+    [Test]
+    public async Task DisposeAsync_CalledTwice_FlushesOnce()
+    {
+        _persistenceManager.FlushToPersistence().Returns(CreateStateId(10));
+
+        FlatDbManager manager = CreateManager();
+        await manager.DisposeAsync();
+        await manager.DisposeAsync();
+
+        _persistenceManager.Received(1).FlushToPersistence();
+    }
+
+    [Test]
+    public async Task AddSnapshot_QueuedCompaction_IsDrainedAndFlushedOnDispose()
+    {
+        _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = false };
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
+        _snapshotRepository.TryAdd(Arg.Any<Snapshot>(), SnapshotTier.InMemoryBase).Returns(true);
+        _persistenceManager.FlushToPersistence().Returns(CreateStateId(11));
+
+        ResourcePool realResourcePool = new(_config);
+        Snapshot snapshot = realResourcePool.CreateSnapshot(
+            CreateStateId(10), CreateStateId(11), ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot, transientResource);
+        await manager.DisposeAsync();
+
+        // The compactor feeds the persistence queue, so a snapshot queued right before shutdown only
+        // reaches persistence if both drain before the flush.
+        _snapshotRepository.Received(1).AddStateId(Arg.Any<StateId>());
+        _persistenceManager.Received(1).FlushToPersistence();
+    }
+
+    [Test]
     public async Task AddSnapshot_BlockBelowPersistedState_ReturnsEarlyAndLogsWarning()
     {
         StateId persistedStateId = CreateStateId(100);

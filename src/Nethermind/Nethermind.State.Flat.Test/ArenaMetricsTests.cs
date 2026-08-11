@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -120,5 +121,38 @@ public class ArenaMetricsTests
         // Arena gauges stay flat — blob writes never touch them.
         Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
         Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore));
+    }
+
+    [Test]
+    public void Initialize_DropsCatalogEntriesWhoseArenaFileIsGone()
+    {
+        string arenaDir = Path.Combine(_testDir, "arena");
+        using ArenaManager arena = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 64 * 1024,
+        }, LimboLogs.Instance);
+
+        // Materialise arena 0 so one entry stays serviceable.
+        using (ArenaWriter writer = arena.CreateWriter(4096))
+        {
+            writer.GetWriter().GetSpan(4096).Clear();
+            writer.GetWriter().Advance(4096);
+            writer.Complete();
+        }
+
+        CatalogEntry live = new(default, default, new SnapshotLocation(0, 0, 4096), SnapshotTier.PersistedBase);
+        CatalogEntry orphan = new(default, default, new SnapshotLocation(65, 0, 4096), SnapshotTier.PersistedBase);
+        List<CatalogEntry> entries = [live, orphan];
+
+        using ArenaManager reopened = new(arenaDir, new FlatDbConfig
+        {
+            PersistedSnapshotArenaPageCacheBytes = 0,
+            ArenaFileSizeBytes = 64 * 1024,
+        }, LimboLogs.Instance);
+        reopened.Initialize(entries);
+
+        // The orphan is unreadable — Open would throw and take startup down with it.
+        Assert.That(entries, Is.EqualTo(new[] { live }));
     }
 }
