@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
@@ -110,6 +111,81 @@ public class InclusionListBuilderTests
 
         Assert.That(il.Count, Is.LessThanOrEqualTo(Eip7805Constants.MaxTransactionsPerInclusionList));
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+    }
+
+    // EIP-8369 includer VERIFY-budget fill. Each Profile-2 frame tx below costs `verifyGas` (the
+    // self-verify prefix frame; the trailing execution frame is outside the prefix), so with
+    // MAX_VERIFY_GAS_PER_IL = 2^20 exactly floor(2^20 / 300_000) = 3 of six such txs fit.
+    private static Transaction ProfileTwoFrameTx(ulong verifyGas) => new()
+    {
+        Type = TxType.FrameTx,
+        SenderAddress = TestItem.AddressA,
+        Frames =
+        [
+            new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default),
+            new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, 21_000, UInt256.Zero, default),
+        ],
+        FrameSignatures = [],
+    };
+
+    private static int CountByType(InclusionListBytes il, TxType type)
+    {
+        int count = 0;
+        foreach (ArrayPoolList<byte> bytes in il)
+        {
+            RlpReader ctx = new(bytes.AsSpan());
+            if (TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping).Type == type) count++;
+        }
+        return count;
+    }
+
+    [Test]
+    public void Fills_verify_budget_across_profile_two_frame_txs()
+    {
+        Transaction[] txs = Enumerable.Range(0, 6).Select(_ => ProfileTwoFrameTx(300_000)).ToArray();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.GetPendingTransactions().Returns(txs);
+        InclusionListBuilder builder = new(pool);
+
+        using InclusionListBytes il = builder.GetInclusionList();
+
+        Assert.That(CountByType(il, TxType.FrameTx), Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Excludes_over_budget_frame_tx_but_keeps_profile_one()
+    {
+        Transaction overBudget = ProfileTwoFrameTx(Eip8369Constants.MaxVerifyGasPerTx + 1);
+        Transaction profileOne = TxOfSize(50, 1);
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.GetPendingTransactions().Returns([overBudget, profileOne]);
+        InclusionListBuilder builder = new(pool);
+
+        using InclusionListBytes il = builder.GetInclusionList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CountByType(il, TxType.FrameTx), Is.EqualTo(0));
+            Assert.That(il.Count, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Profile_one_txs_are_not_metered_against_the_frame_budget()
+    {
+        Transaction[] profileOne = Enumerable.Range(0, 8).Select(i => TxOfSize(50, i)).ToArray();
+        Transaction[] frames = Enumerable.Range(0, 6).Select(_ => ProfileTwoFrameTx(300_000)).ToArray();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.GetPendingTransactions().Returns([.. profileOne, .. frames]);
+        InclusionListBuilder builder = new(pool);
+
+        using InclusionListBytes il = builder.GetInclusionList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CountByType(il, TxType.Legacy), Is.EqualTo(8));
+            Assert.That(CountByType(il, TxType.FrameTx), Is.EqualTo(3));
+        }
     }
 
     [Test]
