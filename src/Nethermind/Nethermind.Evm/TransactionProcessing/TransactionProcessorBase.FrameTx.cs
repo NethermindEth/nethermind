@@ -121,8 +121,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
-        // EIP-8037: net state gas across frames, tracked apart from execution gas for the block's
-        // separate state-gas dimension. Per-frame receipts stay combined (execution + spilled state).
+        // EIP-8037: net committed state gas across frames, for the block's state dimension.
         long totalStateGas = 0;
         // EIP-3529 storage refunds accumulate into a single transaction-scoped counter (ethereum/EIPs#11940).
         long refundCounter = 0;
@@ -315,8 +314,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // Refunds from the reverted batch are discarded with its state, so roll the counter back.
                     // No payer/sender_approved rollback is needed: EIP-8141 forbids approval scope on batch frames.
                     refundCounter = batchStartRefund;
-                    // EIP-8037: the unrolled batch commits no state, so drop its frames' state gas from
-                    // the block dimension; the execution gas they consumed stays charged (unroll_atomic_batch).
+                    // unroll_atomic_batch: the batch commits no state, so its state gas leaves the block
+                    // dimension while the execution gas it consumed stays charged.
                     totalStateGas = batchStartStateGas;
 
                     if (prefixEndIndex >= batchStartIndex)
@@ -359,12 +358,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
         ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
-        // EIP-8037: block gasUsed = max(execution sum, state sum); state gas is clamped (refunds can
-        // drive it negative) and the execution dimension carries the EIP-7623 floor.
+        // settle_transaction_gas: the block charges max(execution, state), so split the gross sum into
+        // the two dimensions. State gas is clamped — refunds can drive it negative.
         ulong blockStateGas = (ulong)Math.Max(0, totalStateGas);
         ulong blockExecutionGas = Math.Max(grossGas - blockStateGas, floorGas);
-        // BlockGasUsed feeds the header's execution dimension, like the regular path; the receipts stay
-        // combined post-refund.
         tx.BlockGasUsed = blockExecutionGas;
         Address payer = frameContext.Payer;
 
@@ -432,7 +429,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
             // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
             LogEntry[] txLogs = TxFrameReceipt.ConcatLogs(frameReceipts);
-            // SpentGas → receipt cumulative/gasUsed (combined); BlockGas/BlockStateGas → header dimensions.
             GasConsumed gasConsumed = new(SpentGas: spentGas, OperationGas: spentGas, BlockGas: blockExecutionGas, BlockStateGas: blockStateGas);
             if (postTxReverted)
             {
@@ -485,16 +481,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         bool codeless = WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString;
 
-        // A codeless VERIFY target runs the protocol default code, which the spec places before the
-        // frame's EVM entry and which consumes no gas.
+        // The spec places VERIFY default code before the frame's EVM entry, so it pays no entry charge.
         if (codeless && frame.Mode == TxFrame.ModeVerify)
         {
             return ExecuteDefaultVerify(frame, resolvedTarget, frameContext, tracer);
         }
 
-        // EIP-8141 frame entry (create_evm_from_frame): within its gas limit the frame pays cold/warm
-        // target access plus EIP-8037 NEW_ACCOUNT state when a value transfer revives a dead target.
-        // The reservoir starts empty so state spills into execution gas; over-budget fails the frame.
+        // create_evm_from_frame: the frame pays target access plus EIP-8037 NEW_ACCOUNT (value transfer
+        // reviving a dead target) from its own gas limit; a charge it cannot afford fails the frame.
         ulong entryExecution = spec.UseHotAndColdStorage
             ? (accessTracker.IsCold(resolvedTarget) ? Eip8038Constants.ColdAccountAccess : Eip8038Constants.WarmAccess)
             : 0;
@@ -508,7 +502,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if (codeless)
         {
-            // SENDER / DEFAULT default code: empty code — only the entry charge and the value transfer.
+            // SENDER / DEFAULT default code behaves as empty code: entry charge and value transfer only.
             if (spec.UseHotAndColdStorage) accessTracker.WarmUp(resolvedTarget);
             gasUsed = entryCharge;
             stateGasUsed = entryState;
@@ -557,8 +551,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             frameTracker.WarmUp(resolvedTarget);
         }
 
-        // The entry charge is deducted from the frame's gas before execution; the reservoir stays
-        // empty so the VM never draws entry state gas back from it.
+        // The reservoir starts empty, so the VM cannot draw the entry state gas back out of it.
         using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(
             TGasPolicy.FromULong(frame.GasLimit - entryCharge),
             isStatic ? ExecutionType.STATICCALL : ExecutionType.TRANSACTION,
@@ -571,8 +564,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
         gasUsed = frame.GasLimit - remainingGas;
-        // Committed state gas = entry NEW_ACCOUNT + execution state gas; a reverted or halted frame
-        // commits none (its execution state gas is already restored to zero by the VM).
+        // A reverted or halted frame commits no state, so it contributes no state gas.
         stateGasUsed = substate.ShouldRevert || substate.IsError ? 0 : entryState + TGasPolicy.GetStateGasUsed(in state.Gas);
 
         if (substate.ShouldRevert || substate.IsError)
@@ -585,16 +577,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>
-    /// EIP-8141 default code for a codeless VERIFY target: require a canonical-hash SECP256K1
-    /// signature (index 0 for execution scope, index 1 for a payment-only verifier) whose resolved
-    /// signer is the target, then signal APPROVE with the frame's allowed scope. Consumes no gas.
+    /// EIP-8141 default code for a codeless VERIFY target: approve the frame's allowed scope if a
+    /// canonical-hash SECP256K1 signature resolves to the target. Consumes no gas.
     /// </summary>
     /// <remarks>
-    /// The signature's cryptographic validity is already checked in pre-flight; default code checks
-    /// only the structural conditions the spec pins.
-    /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
-    /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
-    /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
+    /// The signature's cryptographic validity is already checked in pre-flight; only the structural
+    /// conditions the spec pins are checked here.
+    /// EIP8141-ISSUE: the signature is read from the hoisted <c>signatures</c> list as the spec
+    /// requires; some public devnet payloads carry it in the VERIFY frame's data instead.
     /// </remarks>
     private TransactionSubstate ExecuteDefaultVerify(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, ITxTracer tracer)
     {
@@ -604,8 +594,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // The expected signature index depends on the frame's scope: execution (or both) reads
-        // index 0; a payment-only verifier (a codeless EOA sponsor) reads index 1
+        // Execution (or both) scope reads signature 0; a payment-only verifier reads signature 1
         // (ethereum/EIPs#11954).
         int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
         TxFrameSignature[] signatures = frameContext.Signatures;
