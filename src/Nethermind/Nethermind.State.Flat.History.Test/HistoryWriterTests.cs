@@ -363,6 +363,103 @@ public class HistoryWriterTests
         }
     }
 
+    // Archive-clone mode: an unconnected walk records a pending range instead of disabling capture, so the blocks
+    // processed while the clone backfills are never lost; reads stay refused until the ranges connect.
+    [Test]
+    public void Detached_capture_records_a_pending_range_instead_of_disabling()
+    {
+        HistoryWriter writer = CreateCloneModeWriter();
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
+
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.CaptureHealthy, Is.True, "detached capture must keep running, not disable itself");
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(0UL), "nothing is served before the ranges connect");
+            Assert.That(_availability.TryGetPendingCaptureRange(out ulong first, out ulong last), Is.True);
+            Assert.That((first, last), Is.EqualTo((1UL, 2UL)));
+            Assert.That(_reader.HasHistoryForBlock(2), Is.False);
+        }
+    }
+
+    [Test]
+    public void Detached_capture_extends_the_pending_range_across_persists()
+    {
+        HistoryWriter writer = CreateCloneModeWriter();
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 3))]);
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_availability.TryGetPendingCaptureRange(out ulong first, out ulong last), Is.True);
+            Assert.That((first, last), Is.EqualTo((1UL, 3UL)));
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(0UL));
+        }
+    }
+
+    [Test]
+    public void Pending_range_merges_once_the_imported_watermark_reaches_it()
+    {
+        HistoryWriter writer = CreateCloneModeWriter();
+        ulong advancedTo = 0;
+        writer.WatermarkAdvanced += w => advancedTo = w;
+        Account atBlock1 = new(1, 11);
+        Account atBlock2 = new(2, 22);
+        CommitBlock(0, 1, accountChanges: [(AddrA, atBlock1)]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, atBlock2)]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        _availability.PublishWatermark(0, _rowFormat.FormatVersion);
+
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 33))]);
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        Span<byte> buffer = stackalloc byte[256];
+        ReadOnlySpan<byte> flatKey = AccountKey(AddrA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(3UL), "the union is contiguous from genesis and fully served");
+            Assert.That(_availability.TryGetPendingCaptureRange(out _, out _), Is.False, "the pending range is consumed by the merge");
+            Assert.That(advancedTo, Is.EqualTo(3UL));
+            Assert.That(_reader.HasHistoryForBlock(2), Is.True);
+            Assert.That(buffer[.._accountHistory.TryGetAt(1, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock1)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(2, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock2)));
+        }
+    }
+
+    // An imported watermark that stops short of the pending range's bottom leaves a hole no read may cross:
+    // nothing merges, nothing above the watermark is served, and the pending capture keeps recording.
+    [Test]
+    public void Pending_range_with_a_hole_below_it_stays_unpublished()
+    {
+        HistoryWriter writer = CreateCloneModeWriter();
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 3))]);
+        CommitBlock(3, 4, accountChanges: [(AddrA, new Account(4, 4))]);
+        writer.CaptureUpTo(StateAt(4), _repository, CancellationToken.None);
+
+        _availability.PublishWatermark(1, _rowFormat.FormatVersion);
+
+        CommitBlock(4, 5, accountChanges: [(AddrA, new Account(5, 5))]);
+        writer.CaptureUpTo(StateAt(5), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(1UL), "the watermark must not advance over the hole at block 2");
+            Assert.That(_availability.TryGetPendingCaptureRange(out ulong first, out ulong last), Is.True);
+            Assert.That((first, last), Is.EqualTo((3UL, 5UL)), "the pending capture keeps recording above the hole");
+            Assert.That(_reader.HasHistoryForBlock(3), Is.False);
+        }
+    }
+
+    private HistoryWriter CreateCloneModeWriter() =>
+        new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryArchiveCloneEnabled = true }, _availability, _rowFormat, LimboLogs.Instance);
+
     [Test]
     public void Recapture_after_restart_is_idempotent_and_extends_from_watermark()
     {

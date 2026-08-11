@@ -50,6 +50,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private readonly bool _rlpWrapSlots;
     private readonly bool _isV3;
     private readonly bool _enabled;
+    // Archive-clone mode: a walk that cannot connect keeps recording into a pending range (published to reads
+    // only once the imported watermark reaches its bottom) instead of disabling capture permanently.
+    private readonly bool _detachedCaptureEnabled;
     private readonly ILogger _logger;
 
     // Under the persistence lock a failed lease means the range below is gone for good (history enabled mid-life);
@@ -81,6 +84,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             ? new ChangesetSidecarStore(history.GetColumnDb(FlatHistoryColumns.ChangesetSidecar))
             : null;
         _availability = availability;
+        _detachedCaptureEnabled = config.HistoryArchiveCloneEnabled;
         _formatVersion = rowFormat.FormatVersion;
         _isV3 = rowFormat.IsV3;
         if (_isV3)
@@ -157,6 +161,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
         if (hasWatermark && target <= watermark) return;
 
+        ulong pendingFirst = 0;
+        ulong pendingLast = 0;
+        bool hasPendingRange = _detachedCaptureEnabled && _availability.TryGetPendingCaptureRange(out pendingFirst, out pendingLast);
+        if (hasPendingRange && target <= pendingLast) return;
+
         // v3 only: per-key "oldest touch in this walk still waiting to learn its pre-value" — resolved either by
         // an even older touch of the same key later in the same walk (see RecordAccountV3/RecordStorageV3), or,
         // for whatever remains once the walk connects, by ResolvePendingV3 below. Not needed for v2, which
@@ -170,11 +179,31 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         StateId current = persistedHead;
         bool connected = false;
+        bool connectedToPendingRange = false;
+        ulong lowestCaptured = 0;
+        bool capturedAny = false;
         while (current != StateId.PreGenesis)
         {
             // A first capture can span the whole in-memory depth under the persistence lock; stay responsive to
             // shutdown. Throwing (never returning) aborts the caller's persist, so the sources survive for a retry.
             cancellationToken.ThrowIfCancellationRequested();
+
+            // The pending range sits strictly above the watermark (it only ever starts on an unconnected walk),
+            // so it is always the first connect point a walk descending from the head can reach.
+            if (hasPendingRange && current.BlockNumber <= pendingLast)
+            {
+                if (!_availability.RootMatches(current.BlockNumber, current.StateRoot))
+                {
+                    DisableCapture(
+                        $"History capture stopped: the captured state root at block {current.BlockNumber} does not match " +
+                        $"the chain being persisted ({current.StateRoot}) - a pre-finalization capture was reorged away. " +
+                        $"The pending capture range [{pendingFirst}, {pendingLast}] cannot be extended; resync the flatHistory database to re-enable capture.");
+                    return;
+                }
+
+                connectedToPendingRange = true;
+                break;
+            }
 
             if (hasWatermark && current.BlockNumber <= watermark)
             {
@@ -197,6 +226,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 using (snapshot)
                 {
                     CaptureBlock(current.BlockNumber, current.StateRoot, snapshot, pending, sidecarByBlock);
+                    lowestCaptured = current.BlockNumber;
+                    capturedAny = true;
                     current = snapshot.From;
                 }
             }
@@ -205,6 +236,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 using (persisted)
                 {
                     CaptureBlock(current.BlockNumber, current.StateRoot, persisted, pending, sidecarByBlock);
+                    lowestCaptured = current.BlockNumber;
+                    capturedAny = true;
                     current = persisted.From;
                 }
             }
@@ -223,6 +256,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             // Durable (throwing WAL-sync) before the caller persists the flat state and prunes the sources.
             _availability.PublishWatermark(target, _formatVersion);
+            if (hasPendingRange) _availability.ClearPendingCaptureRange();
             _history.SyncWal();
             Metrics.FlatHistoryWatermark = (long)target;
 
@@ -235,6 +269,53 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 // Contained: the watermark has already published, so letting this out would abort the persist.
                 if (_logger.IsError) _logger.Error($"A watermark-advanced handler failed at block {target}.", e);
             }
+        }
+        else if (connectedToPendingRange)
+        {
+            if (pending is not null) ResolvePendingV3(pending);
+            if (sidecarByBlock is not null) FlushSidecarBuilders(sidecarByBlock);
+
+            if (hasWatermark && pendingFirst <= watermark + 1)
+            {
+                // The imported (cloned) history reaches the pending range's bottom: the union is contiguous from
+                // genesis, so the whole range becomes servable in one publish and detached mode ends here.
+                _availability.PublishWatermark(target, _formatVersion);
+                _availability.ClearPendingCaptureRange();
+                _history.SyncWal();
+                Metrics.FlatHistoryWatermark = (long)target;
+                if (_logger.IsInfo) _logger.Info(
+                    $"History capture connected to the imported history at block {watermark}; " +
+                    $"as-of reads are now served for the full range up to block {target}.");
+
+                try
+                {
+                    WatermarkAdvanced?.Invoke(target);
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"A watermark-advanced handler failed at block {target}.", e);
+                }
+            }
+            else
+            {
+                _availability.PublishPendingCaptureRange(pendingFirst, target);
+                _history.SyncWal();
+                if (hasWatermark && _logger.IsError) _logger.Error(
+                    $"The imported history ends at block {watermark} but this node's own capture starts at block {pendingFirst}, " +
+                    $"leaving the hole [{watermark + 1}, {pendingFirst - 1}] no read can cross. The pending capture keeps recording; " +
+                    "wipe the flatHistory database and re-clone from a source whose watermark reaches past this node's sync pivot to serve reads.");
+            }
+        }
+        else if (_detachedCaptureEnabled && capturedAny)
+        {
+            if (pending is not null) ResolvePendingV3(pending);
+            if (sidecarByBlock is not null) FlushSidecarBuilders(sidecarByBlock);
+
+            _availability.PublishPendingCaptureRange(lowestCaptured, target);
+            _history.SyncWal();
+            if (_logger.IsInfo) _logger.Info(
+                $"History capture is recording a detached range [{lowestCaptured}, {target}] while the archive clone " +
+                "backfills the blocks below it; as-of reads stay refused until the two ranges connect.");
         }
         else
         {

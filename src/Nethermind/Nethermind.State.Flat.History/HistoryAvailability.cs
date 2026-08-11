@@ -49,6 +49,11 @@ public sealed class HistoryAvailability
     // on why the pruner must never raise the floor past the bottom of one.
     private static ReadOnlySpan<byte> ConnectedRangeKey => "history:import:connected"u8; // [floor|anchor]
 
+    // A contiguous range the capture recorded while detached from the watermark (archive clone in progress):
+    // rows and per-block markers exist for [first, last] but nothing in it is served until the imported
+    // watermark reaches the range's bottom and the two merge into one contiguous-from-genesis watermark.
+    private static ReadOnlySpan<byte> PendingCaptureRangeKey => "history:capture:pending"u8; // [first|last]
+
     private readonly IDb _availableBlocks;
     private readonly ISortedKeyValueStore _sortedAvailableBlocks;
     private readonly Lock _floorLock = new();
@@ -167,14 +172,44 @@ public sealed class HistoryAvailability
     /// deliberately independent of the global floor, so a restricted (per-slice) caller can re-verify canonicity for
     /// a block it already knows sits below that floor.</summary>
     public bool IsCoveredAndRootMatches(ulong block, in ValueHash256 stateRoot)
-    {
-        if (!IsCovered(block)) return false;
+        => IsCovered(block) && RootMatches(block, stateRoot);
 
+    /// <summary>Whether <paramref name="block"/>'s captured marker equals <paramref name="stateRoot"/> — independent
+    /// of coverage, so a detached (pending) capture range can verify continuity above the watermark.</summary>
+    public bool RootMatches(ulong block, in ValueHash256 stateRoot)
+    {
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
         byte[]? capturedRoot = _availableBlocks.Get(key);
         return capturedRoot is { Length: RootBytes } && stateRoot == new ValueHash256(capturedRoot);
     }
+
+    /// <summary>The contiguous range a detached capture has recorded but not published; see
+    /// <see cref="PendingCaptureRangeKey"/>'s remarks. <c>false</c> when none is pending.</summary>
+    public bool TryGetPendingCaptureRange(out ulong first, out ulong last)
+    {
+        byte[]? value = _availableBlocks.Get(PendingCaptureRangeKey);
+        if (value is not { Length: 2 * BlockBytes })
+        {
+            first = 0;
+            last = 0;
+            return false;
+        }
+
+        first = BinaryPrimitives.ReadUInt64BigEndian(value);
+        last = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(BlockBytes));
+        return true;
+    }
+
+    public void PublishPendingCaptureRange(ulong first, ulong last)
+    {
+        Span<byte> value = stackalloc byte[2 * BlockBytes];
+        BinaryPrimitives.WriteUInt64BigEndian(value, first);
+        BinaryPrimitives.WriteUInt64BigEndian(value[BlockBytes..], last);
+        _availableBlocks.PutSpan(PendingCaptureRangeKey, value);
+    }
+
+    public void ClearPendingCaptureRange() => _availableBlocks.Remove(PendingCaptureRangeKey);
 
     /// <summary>The raw stamped format byte, or <c>null</c> when nothing has ever been stamped (a fresh DB).
     /// <see cref="HistoryWriter"/> reads this at construction to latch the windowed format upgrade-only — once a
