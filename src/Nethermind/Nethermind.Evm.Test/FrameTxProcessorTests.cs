@@ -768,13 +768,12 @@ public class FrameTxProcessorTests
     // for that slot, so an uncommitted or out-of-window reference invalidates the transaction. The
     // committed case also proves the reference's intrinsic gas is charged, since the transaction pays
     // more than the same transaction declaring nothing.
-    [TestCase(1_000UL, false, true, TestName = "a committed reference inside the window executes")]
-    [TestCase(1_001UL, false, false, TestName = "a reference to the current slot is not yet referenceable")]
-    [TestCase(9_193UL, false, false, TestName = "a reference older than the usable window has been overwritten")]
-    [TestCase(1_000UL, true, false, TestName = "a reference to a different root at a committed slot fails")]
-    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, bool expectedExecuted)
+    [TestCase(1_000UL, 1_001UL, false, true, TestName = "a committed reference inside the window executes")]
+    [TestCase(1_001UL, 1_001UL, false, false, TestName = "a reference to the current slot is not yet referenceable")]
+    [TestCase(1_001UL, 9_193UL, false, false, TestName = "a reference older than the usable window has been overwritten")]
+    [TestCase(1_000UL, 1_001UL, true, false, TestName = "a reference to a different root at a committed slot fails")]
+    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, ulong headSlot, bool declareOtherRoot, bool expectedExecuted)
     {
-        const ulong HeadSlot = 1_001;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
@@ -787,7 +786,7 @@ public class FrameTxProcessorTests
             declareOtherRoot ? TestItem.KeccakC.ValueHash256 : root)];
 
         CallOutputTracer referencingTracer = new();
-        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: HeadSlot);
+        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: headSlot);
 
         Assert.That(referencing.TransactionExecuted, Is.EqualTo(expectedExecuted));
         if (!expectedExecuted)
@@ -800,7 +799,7 @@ public class FrameTxProcessorTests
         }
 
         CallOutputTracer plainTracer = new();
-        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: HeadSlot);
+        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: headSlot);
 
         Assert.That(unreferencing.TransactionExecuted, Is.True);
         Assert.That(referencingTracer.GasSpent, Is.GreaterThan(plainTracer.GasSpent),
@@ -826,6 +825,66 @@ public class FrameTxProcessorTests
         // rlp([]) is the single non-zero byte 0xc0, which is TxDataNonZeroMultiplier tokens.
         Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent,
             Is.EqualTo((long)(Spec.GasCosts.TxDataNonZeroMultiplier * GasCostOf.TxDataZero)));
+    }
+
+    [Test]
+    public void RecentRootReference_intrinsic_gas_prices_the_address_and_both_keyed_preimages()
+    {
+        IReleaseSpec spec = Spec;
+        const int DomainLen = 32, SourceIdLen = 32, SlotLen = sizeof(ulong), RootLen = 32;
+        static ulong Keccak(int preimageBytes) => GasCostOf.Sha3 + GasCostOf.Sha3Word * (ulong)((preimageBytes + 31) / 32);
+        ulong addressCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry;
+        ulong storageKeyCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry;
+        ulong expected = addressCost + storageKeyCost
+            + Keccak(DomainLen + SourceIdLen + SlotLen)
+            + Keccak(DomainLen + SourceIdLen + SlotLen + RootLen);
+
+        RecentRootReference[] one = [new RecentRootReference(default, 0, default)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RecentRootReferences.IntrinsicGas(one, spec), Is.EqualTo(expected));
+            Assert.That(RecentRootReferences.IntrinsicGas([], spec), Is.Zero);
+            Assert.That(RecentRootReferences.IntrinsicGas(null, spec), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Execute_RecentRootReference_RecordsThePredeploySlotInBal()
+    {
+        const ulong committedSlot = 1_000;
+        const ulong headSlot = 1_001;
+        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.InsertCode(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), Spec);
+        _stateProvider.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
+        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
+            RecentRootStore.EntryHash(sourceId, committedSlot, root).Bytes.WithoutLeadingZeros().ToArray());
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithSlotNumber(headSlot)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AccountChangesAtIndex? predeploy = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
+        Assert.That(predeploy, Is.Not.Null, "the recent-root predeploy is accessed and recorded in the BAL");
+        UInt256 slotKey = RecentRootStore.StorageKey(sourceId, committedSlot % Eip8272Constants.RecentRootLength).ToUInt256();
+        Assert.That(predeploy.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
     }
 
     private static TxFrame SelfVerifyFrame() =>

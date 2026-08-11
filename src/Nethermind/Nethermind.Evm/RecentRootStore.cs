@@ -18,6 +18,9 @@ public static class RecentRootStore
     private const int AddressLength = Address.Size;
     private const int SlotLength = sizeof(ulong);
 
+    /// <summary>The <c>source_id</c> keying a root source's ring buffer: <c>keccak256(source_address || salt)</c>.</summary>
+    /// <remarks>Per EIP-8272 the address is hashed unpadded (20 bytes), matching the predeploy's own derivation
+    /// over memory <c>[0x0c, 0x40)</c>; a 32-byte left-padded preimage would fork from the predeploy.</remarks>
     public static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
     {
         Span<byte> input = stackalloc byte[AddressLength + HashLength];
