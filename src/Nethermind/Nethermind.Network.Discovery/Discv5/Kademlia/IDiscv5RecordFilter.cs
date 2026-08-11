@@ -5,25 +5,17 @@ using Nethermind.Network.Enr;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 
-/// <summary>ENR acceptance policy applied at a discv5 integration boundary.</summary>
+/// <summary>Determines whether a discv5 ENR can be exposed as an execution-layer peer candidate.</summary>
 public interface IDiscv5RecordFilter
 {
-    /// <summary>Returns whether the integration boundary must exclude the record.</summary>
+    /// <summary>Returns whether the record must be excluded from execution-layer peer discovery.</summary>
     bool Excludes(NodeRecord record);
 }
 
-/// <summary>Drops consensus-only ENRs from execution peer discovery because beacon nodes cannot be dialed over RLPx.</summary>
+/// <summary>Excludes consensus-only ENRs because beacon nodes cannot be dialed over RLPx.</summary>
 public sealed class ExecutionLayerDiscv5RecordFilter : IDiscv5RecordFilter
 {
     public static ExecutionLayerDiscv5RecordFilter Instance { get; } = new();
 
     public bool Excludes(NodeRecord record) => DiscoveryV5App.IsConsensusOnlyNodeRecord(record);
-}
-
-/// <summary>Accepts every record.</summary>
-public sealed class AcceptAllDiscv5RecordFilter : IDiscv5RecordFilter
-{
-    public static AcceptAllDiscv5RecordFilter Instance { get; } = new();
-
-    public bool Excludes(NodeRecord record) => false;
 }
