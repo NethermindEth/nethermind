@@ -72,7 +72,27 @@ public ref struct EvmStack
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static EvmWord CreateWordFromUInt64(ulong value)
-        => Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
+    {
+        if (Vector256.IsHardwareAccelerated)
+        {
+            return Vector256.Create(0UL, 0UL, 0UL, value).AsByte();
+        }
+
+        // Without SIMD (e.g. the zkVM guest) Vector256.Create degrades to a software element loop,
+        // which dominates the small-PUSH opcodes; build the word with four plain stores instead.
+        //
+        // Safety: EvmWord is Vector256<byte>, i.e. exactly WordSize (32) bytes with no references,
+        // so reinterpreting it as four ulongs is in-bounds and GC-safe, and all four are written
+        // below - nothing of the SkipInit'd storage is left undefined. Lane 3 carries the value,
+        // matching Vector256.Create(0, 0, 0, value).
+        Unsafe.SkipInit(out EvmWord word);
+        ref ulong parts = ref Unsafe.As<EvmWord, ulong>(ref word);
+        parts = 0;
+        Unsafe.Add(ref parts, 1) = 0;
+        Unsafe.Add(ref parts, 2) = 0;
+        Unsafe.Add(ref parts, 3) = value;
+        return word;
+    }
 
     // PSHUFB/PermuteVar32x8 mask that byte-reverses a 256-bit word (big-endian <-> little-endian).
     // Declared as a property so the JIT folds it to a PC-relative rodata load at every call site.
