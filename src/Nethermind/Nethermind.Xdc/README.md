@@ -269,8 +269,9 @@ Under `TIPUpgradeReward`, candidates beyond the masternode cap are further split
 ### Penalties
 
 [`PenaltyHandler`](PenaltyHandler.cs) counts blocks produced per miner since the previous epoch switch and
-penalises any masternode that produced fewer than `MinimumMinerBlockPerEpoch` (or that produced none at all).
-Two comeback paths exist, selected by the `TIPUpgradePenalty` fork flag:
+penalises any masternode that produced too few (or none at all). The threshold is a hard-coded single block
+until `TIPUpgradePenalty` activates, after which the configured `MinimumMinerBlockPerEpoch` applies. Two
+comeback paths exist, selected by the same flag:
 
 | | Pre-`TIPUpgradePenalty` | Post-`TIPUpgradePenalty` |
 | --- | --- | --- |
@@ -392,16 +393,24 @@ those blocks. XDC therefore rebuilds them as part of state sync:
 
 ### Special transactions
 
-[`XdcExtensions.Transactions`](XdcExtensions.Transactions.cs) classifies transactions by recipient:
+[`XdcExtensions.Transactions`](XdcExtensions.Transactions.cs) recognises two **overlapping but distinct** sets of
+transactions by recipient, and [`XdcTransactionProcessor`](XdcTransactionProcessor.cs) dispatches on them
+separately:
 
-| Category | Recipient | Behaviour |
+| Set | Recipients | Effect |
 | --- | --- | --- |
-| Sign | `BlockSignerContract` | Free; nonce still enforced and incremented |
-| Randomize | `RandomizeSMCBinary` | Free |
-| Trading / lending / trading-state | `XDCXAddressBinary`, `XDCXLendingAddressBinary`, `XDCXLendingFinalizedTradeAddressBinary`, `TradingStateAddressBinary` (post-`TipXDCX`) | Free, nonce checks skipped |
+| Fee-exempt | `BlockSignerContract`, `RandomizeSMCBinary` | Sender buys no gas and pays no fee |
+| Execution-skipping | `BlockSignerContract`, plus the DEX/lending contracts (`XDCXAddressBinary`, `XDCXLendingAddressBinary`, `XDCXLendingFinalizedTradeAddressBinary`, `TradingStateAddressBinary`) | No intrinsic gas, no gas validation, EVM skipped, empty successful receipt |
 
-"Free" means the transaction pays no gas: [`XdcTransactionProcessor`](XdcTransactionProcessor.cs) skips the gas
-purchase, charges no intrinsic gas, and produces an empty successful receipt.
+The overlap is only partial, and the difference is what determines gas accounting:
+
+- **Sign** transactions are in both sets — free *and* skipped — but the nonce is still checked and incremented.
+- **Randomize** transactions are fee-exempt only. They charge intrinsic gas, take the normal nonce path and
+  **execute in the EVM**, consuming block gas; only the sender's payment is waived.
+- **Trading / lending** transactions are execution-skipping only, with nonce checks bypassed.
+
+The DEX/lending contracts qualify only inside the `TipXDCX` → `TIPXDCXReceiverDisable` window, which is already
+closed on mainnet.
 
 ### Fees and blacklist
 
@@ -423,12 +432,13 @@ value, and forces blob base fee to zero, since XDC enables the `BLOBBASEFEE` opc
 
 ### Transaction pool
 
-- [`SignTransactionFilter`](TxPool/SignTransactionFilter.cs) accepts special transactions only from current
+- [`SignTransactionFilter`](TxPool/SignTransactionFilter.cs) accepts fee-exempt transactions only from current
   epoch candidates, and only when the signed block is recent.
-- [`XdcTxGossipPolicy`](TxPool/XdcTxGossipPolicy.cs) gossips sign transactions but withholds the other
-  special-handling transactions.
-- [`XdcTxFilterPipeline`](TxPool/XdcTxFilterPipeline.cs) lets special transactions bypass the block-producer
-  filters (they legitimately carry a zero gas price).
+- [`XdcTxGossipPolicy`](TxPool/XdcTxGossipPolicy.cs) withholds the DEX/lending family; sign and randomize
+  transactions are gossiped normally.
+- [`XdcTxFilterPipeline`](TxPool/XdcTxFilterPipeline.cs) lets the fee-exempt transactions bypass the
+  block-producer filters, since they legitimately carry a zero gas price. The DEX/lending family still goes
+  through them.
 - [`XdcTransactionComparerProvider`](TxPool/XdcTransactionComparerProvider.cs) orders the pool with XDC's
   fee semantics.
 
@@ -436,9 +446,11 @@ value, and forces blob base fee to zero, since XDC enables the `BLOBBASEFEE` opc
 
 ## Storage
 
-| Database | Contents | Registered by |
+Both are registered by [`XdcModule`](XdcModule.cs):
+
+| Database | Contents | Written by |
 | --- | --- | --- |
-| `XdcSnapshots` | RLP-encoded candidate snapshots, keyed by gap block hash | [`XdcModule`](XdcModule.cs) |
+| `XdcSnapshots` | RLP-encoded candidate snapshots, keyed by gap block hash | [`SnapshotManager`](SnapshotManager.cs) |
 | `XdcRewards` | JSON epoch-reward breakdowns, keyed by epoch block hash | [`RewardsStore`](RewardsStore.cs) |
 
 Neither has dedicated RocksDB tuning options, which is why
@@ -546,7 +558,7 @@ either fails to load.
 | `TimeoutSyncThreshold` | count | Broadcast `SyncInfo` after this many consecutive timeouts |
 | `MinePeriod` | **seconds** | Minimum spacing between a parent block and its child. `2` |
 | `MasternodeReward` / `ProtectorReward` / `ObserverReward` | Wei | Fixed per-signer epoch rewards (post-`TIPUpgradeReward`) |
-| `MinimumMinerBlockPerEpoch` | blocks | Below this, a masternode is penalised |
+| `MinimumMinerBlockPerEpoch` | blocks | Below this, a masternode is penalised. Only honoured once `TIPUpgradePenalty` is active; before that a hard-coded `1` applies |
 | `LimitPenaltyEpoch` | epochs | Penalty duration used post-`TIPUpgradePenalty` |
 | `MinimumSigningTx` | count | Signing transactions needed to leave penalty |
 
