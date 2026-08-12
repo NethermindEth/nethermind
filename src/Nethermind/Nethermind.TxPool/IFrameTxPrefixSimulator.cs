@@ -14,8 +14,8 @@ namespace Nethermind.TxPool;
 /// <remarks>
 /// Narrow abstraction so <c>Nethermind.TxPool</c> need not reference the read-only processing env in
 /// <c>Nethermind.Consensus</c> (which already references TxPool — a direct reference would cycle).
-/// Injected optionally: when absent, an opaque frame transaction is left unresolved rather than
-/// admitted. https://eips.ethereum.org/EIPS/eip-8141
+/// Injected optionally: when absent, an opaque frame transaction is admitted with an unresolved payer,
+/// and so without an exposure reservation, as in Phase 1. https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 public interface IFrameTxPrefixSimulator
 {

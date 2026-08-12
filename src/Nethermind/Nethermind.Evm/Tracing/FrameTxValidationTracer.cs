@@ -25,8 +25,8 @@ namespace Nethermind.Evm.Tracing;
 /// dependency. Simulation runs against read-only state, so a banned write reached before detection
 /// is discarded.
 /// The first-<c>deploy</c>-frame carve-outs for <c>CREATE</c>/<c>CREATE2</c>/<c>SETDELEGATE</c> and
-/// <c>SSTORE</c>-to-sender are not honored, so prefixes needing them are rejected (EIP8141-GAP;
-/// declining is always mempool-legal).
+/// <c>SSTORE</c>-to-sender are not honored, so the processor declines a prefix containing a deploy
+/// frame before entering it — the unconditional bans below never fire for one (EIP8141-GAP).
 /// </remarks>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>

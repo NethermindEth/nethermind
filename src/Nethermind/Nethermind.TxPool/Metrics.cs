@@ -49,6 +49,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxNoPayer { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because simulating their validation prefix rejected it.")]
+        public static long PendingTransactionsFrameTxSimulationFailed { get; set; }
+
+        [CounterMetric]
         [Description("Number of EIP-8141 validation-prefix simulations run at mempool admission.")]
         public static long FrameTxSimulations { get; set; }
 
