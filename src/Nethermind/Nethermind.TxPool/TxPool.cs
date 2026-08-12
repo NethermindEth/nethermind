@@ -303,16 +303,34 @@ namespace Nethermind.TxPool
 
             bool hasDistinctPayer = tx.PayerAddress is not null && tx.PayerAddress != tx.SenderAddress;
             bool hasExpiry = HasExpiryDeadline(tx);
-            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (hasExpiry ? 1 : 0)];
+            // A delegated sender runs the delegate's code, so that account is a dependency too; the sender's
+            // own code hash only pins the designation.
+            Address? delegated = DelegationTargetOf(tx.SenderAddress!);
+            AddressAsKey[] accounts = new AddressAsKey[1 + (hasDistinctPayer ? 1 : 0) + (delegated is not null ? 1 : 0) + (hasExpiry ? 1 : 0)];
             int next = 0;
             accounts[next++] = tx.SenderAddress!;
             if (hasDistinctPayer) accounts[next++] = tx.PayerAddress!;
+            if (delegated is not null) accounts[next++] = delegated;
             if (hasExpiry) accounts[next] = Eip8141Constants.ExpiryVerifierAddress;
 
             _frameDependencies.Set(tx.Hash!.ValueHash256, accounts);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
+        /// <summary>The address an EIP-7702 designation at <paramref name="address"/> points at, or <c>null</c>.</summary>
+        private Address? DelegationTargetOf(Address address)
+        {
+            // Gated on the account carrying code at all, so the overwhelmingly common codeless sender
+            // costs one account read rather than a code load.
+            IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
+            if (!state.TryGetAccount(address, out AccountStruct account) || !account.HasCode) return null;
+
+            ReadOnlySpan<byte> code = state.GetCode(address);
+            return Eip7702Constants.IsDelegatedCode(code)
+                ? new Address(code[Eip7702Constants.DelegationHeader.Length..])
+                : null;
+        }
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
@@ -610,7 +628,11 @@ namespace Nethermind.TxPool
         /// </remarks>
         private void RevalidateFrameTransactions(Block block)
         {
-            if (_frameTxsToRevalidate.Count == 0 || !_specProvider.GetSpec(block.Header).IsEip8141Enabled) return;
+            if (_frameTxsToRevalidate.Count == 0 || !_specProvider.GetSpec(block.Header).IsEip8141Enabled)
+            {
+                _frameTxsToRevalidate.Clear();
+                return;
+            }
 
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
