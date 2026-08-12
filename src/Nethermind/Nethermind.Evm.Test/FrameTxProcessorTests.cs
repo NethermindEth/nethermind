@@ -1296,6 +1296,16 @@ public class FrameTxProcessorTests
             Assert.That(_stateProvider.GetBalance(IdentityPrecompile.Address), Is.EqualTo(value), "the value must reach the target");
             Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
         }
+
+        // The VM builds the log from its own caller/executing account, which the balance assertions
+        // above cannot tell apart from the processor's debit and credit.
+        LogEntry transferLog = tracer.FrameReceipts![1].Logs[0];
+        LogEntry expected = TransferLog.CreateTransfer(Sender, IdentityPrecompile.Address, in value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transferLog.Topics, Is.EqualTo(expected.Topics), "the transfer log must name the sender and the precompile, in that order");
+            Assert.That(transferLog.Data, Is.EqualTo(expected.Data), "the transfer log must carry the transferred value");
+        }
     }
 
     /// <summary>A precompile that rejects its input fails the frame that targeted it.</summary>
