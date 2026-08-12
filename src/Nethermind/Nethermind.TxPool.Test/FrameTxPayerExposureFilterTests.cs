@@ -129,7 +129,8 @@ public class FrameTxPayerExposureFilterTests
     {
         // At max_fee_per_gas == 1 the cost is the gas budget, so the frame's gas limit is the
         // requested cost less the spec-priced intrinsic component.
-        FrameTxValidation.TryCalculateGasBudget(FrameTx(0), Spec, out ulong intrinsicGas, out _, out _);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(FrameTx(0), Spec, out ulong intrinsicGas, out _, out _), Is.True);
+        Assert.That(intrinsicGas, Is.LessThan((ulong)cost), "the requested cost must leave room for the intrinsic term");
         return FrameTx((ulong)cost - intrinsicGas);
     }
 

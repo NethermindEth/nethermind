@@ -382,7 +382,7 @@ public static class FrameTxValidation
             return false;
         }
 
-        ulong blobGas = (ulong)(transaction.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
+        ulong blobGas = transaction.GetBlobGas();
         if (UInt256.MultiplyOverflow((UInt256)blobGas, transaction.MaxFeePerBlobGas.GetValueOrDefault(), out UInt256 blobCost)
             || UInt256.AddOverflow(gasCost, blobCost, out maxCost))
         {

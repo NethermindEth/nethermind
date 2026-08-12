@@ -527,6 +527,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 TxFrame frame = frames[i];
 
+                // The recognized grammar admits one leading deploy frame, but simulating it needs the
+                // first-deploy carve-outs (CREATE/CREATE2/SETDELEGATE, SSTORE to sender) (EIP8141-GAP).
+                if (FrameTxValidation.IsDeployFrame(frame))
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
+                }
+
                 // Only VERIFY-mode frames form the validation prefix; reaching a non-VERIFY frame
                 // before the payer is set means the prefix ended without payment (rule 8).
                 if (frame.Mode != TxFrame.ModeVerify)

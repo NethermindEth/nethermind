@@ -82,12 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 if (!accepted)
                 {
-                    if (accepted == AcceptTxResult.FrameSimulationDeferred)
-                    {
-                        // This node declined to do the work; holding that against the peer would disconnect
-                        // honest peers exactly when admission is already shedding load.
-                    }
-                    else if (accepted == AcceptTxResult.Invalid)
+                    if (accepted == AcceptTxResult.Invalid)
                     {
                         disconnectRequest ??= new(
                             DisconnectReason.InvalidTxReceived,
@@ -102,7 +97,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
                             _isLegacyDowngraded = true;
                         }
-                        else if (_notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
+                        // Load this node shed itself still throttles a flood through the downgrade above, but
+                        // must never disconnect: an honest peer does not control when shedding starts.
+                        else if (accepted != AcceptTxResult.FrameSimulationDeferred
+                            && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
                         {
                             disconnectRequest ??= new(
                                 DisconnectReason.TxFlooding,

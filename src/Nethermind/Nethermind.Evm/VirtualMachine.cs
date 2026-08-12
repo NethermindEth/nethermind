@@ -99,7 +99,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public object ReturnData { get; set; }
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
-    protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
+    protected internal Stack<VmState<TGasPolicy>> StateStack => _stateStack;
     // IsTracingActions is fixed per execution and read at several hot CALL/precompile sites, so cache it
     // once in ExecuteTransaction and read the field rather than dispatching through the tracer each time.
     private bool _isTracingActionsCached;
@@ -325,6 +325,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 substateError = null;
                 goto Failure;
             }
+            catch
+            {
+                // Only a normal return pops the parent frames, so an abort (a cancelling tracer) would
+                // otherwise leave them rooted here with their pooled data stacks for the VM's lifetime.
+                UnwindAbortedFrames();
+                throw;
+            }
 
             // Continue with the next iteration of the execution loop.
             continue;
@@ -342,6 +349,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     public TransactionSubstate ExecuteTransaction(VmState<TGasPolicy> vmState, IWorldState worldState, ITxTracer txTracer) =>
         ExecuteTransaction<OffFlag>(vmState, worldState, txTracer);
+
+    /// <summary>Drops the call frames an exception unwound past, returning their pooled buffers.</summary>
+    /// <remarks>The top-level frame belongs to the caller's <c>using</c>, so it is dropped but not disposed.</remarks>
+    private void UnwindAbortedFrames()
+    {
+        VmState<TGasPolicy>? state = _currentState;
+        _currentState = null;
+        while (state is not null)
+        {
+            if (!state.IsTopLevel) state.Dispose();
+            state = _stateStack.TryPop(out VmState<TGasPolicy>? parent) ? parent : null;
+        }
+    }
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ReadOnlySpan<byte> previousCallOutput)
     {

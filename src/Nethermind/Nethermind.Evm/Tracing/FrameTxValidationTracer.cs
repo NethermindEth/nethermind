@@ -25,8 +25,8 @@ namespace Nethermind.Evm.Tracing;
 /// dependency. Simulation runs against read-only state, so a banned write reached before detection
 /// is discarded.
 /// The first-<c>deploy</c>-frame carve-outs for <c>CREATE</c>/<c>CREATE2</c>/<c>SETDELEGATE</c> and
-/// <c>SSTORE</c>-to-sender are not honored, so prefixes needing them are rejected (EIP8141-GAP;
-/// declining is always mempool-legal).
+/// <c>SSTORE</c>-to-sender are not honored, so the processor declines a prefix containing a deploy
+/// frame before entering it — the unconditional bans below never fire for one (EIP8141-GAP).
 /// </remarks>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
@@ -50,10 +50,6 @@ public sealed class FrameTxValidationTracer(
     // the same instruction (the stack operands are unavailable to StartOperation).
     private int _targetStackIndex = -1;
 
-    // Depth of the instruction being traced, recorded in StartOperation for the operand callbacks that
-    // do not receive the execution environment.
-    private int _callDepth;
-
     public override bool IsTracingInstructions => true;
     public override bool IsTracingOpLevelStorage => true;
     public override bool IsTracingStack => true;
@@ -65,12 +61,11 @@ public sealed class FrameTxValidationTracer(
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Polled by the interpreter every 1024 opcodes. Aborting on a violation denies a spammer the rest of
-    /// the <c>MAX_VERIFY_GAS</c> budget per rejected transaction, but only at call depth 0: unwinding out
-    /// of a child frame would abandon its pooled <c>VmState</c>, and the caller checks
-    /// <see cref="Violated"/> after execution anyway.
+    /// Polled by the interpreter every 1024 opcodes. Aborting at the first violation denies a spammer the
+    /// rest of the <c>MAX_VERIFY_GAS</c> budget per rejected transaction; the frames the abort unwinds
+    /// past are released by the interpreter, so it is safe from any call depth.
     /// </remarks>
-    bool ITxTracer.IsCancelled => (Violated && _callDepth == 0) || TimedOut || token.IsCancellationRequested;
+    bool ITxTracer.IsCancelled => Violated || TimedOut || token.IsCancellationRequested;
 
     /// <summary>True once the wall-clock bound was reached; the transaction is then rejected, not cancelled.</summary>
     public bool TimedOut => _deadline != 0 && Stopwatch.GetTimestamp() > _deadline;
@@ -87,7 +82,6 @@ public sealed class FrameTxValidationTracer(
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         _targetStackIndex = -1;
-        _callDepth = env.CallDepth;
         if (Violated) return;
 
         if ((byte)opcode == SetDelegateOpcode)

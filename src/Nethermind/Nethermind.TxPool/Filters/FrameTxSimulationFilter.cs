@@ -16,7 +16,9 @@ namespace Nethermind.TxPool.Filters;
 /// Runs after <see cref="FrameTxPayerFilter"/>, so a natively-resolved payer keeps the EVM-free fast
 /// path and never reaches the simulator. Only a <see cref="FrameTxPayerOutcome.RequiresSimulation"/>
 /// outcome is simulated, and only when a simulator is wired; a successful simulation records the payer
-/// the exposure gate downstream reads. https://eips.ethereum.org/EIPS/eip-8141
+/// the exposure gate downstream reads. This call runs inside the pool's head read lock, so a queued
+/// simulation also delays head processing — the simulator is where that wait is bounded.
+/// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 internal sealed class FrameTxSimulationFilter(
     IReadOnlyStateProvider stateProvider,
@@ -42,6 +44,7 @@ internal sealed class FrameTxSimulationFilter(
         FrameTxSimulationResult result = simulator.Simulate(tx);
         if (!result.Accepted)
         {
+            Metrics.PendingTransactionsFrameTxSimulationFailed++;
             if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.RejectionReason}.");
             // An admission bound the node spent on itself is not the sending peer's fault.
             return (result.Indeterminate ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.FrameSimulationFailed)
