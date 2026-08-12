@@ -77,6 +77,21 @@ public class FrameTxPaymasterFilterTests
     }
 
     [Test]
+    public void Accept_CodeCarryingSenderPayingItself_IsCapped()
+    {
+        // The spec's carve-out from the cap is the empty code hash, not self-payment, so a code-carrying
+        // sender naming itself in the pay frame is a non-canonical paymaster like any other.
+        TestReadOnlyStateProvider state = new();
+        state.InsertCode([0x60, 0x00], Sender);
+        PendingPaymasterCache cache = new();
+        cache.Increment(Sender);
+
+        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Sender)], nonce: 1));
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+    }
+
+    [Test]
     public void Accept_FirstPendingTxAdmitted_SecondRejected()
     {
         TestReadOnlyStateProvider state = new();
@@ -125,7 +140,7 @@ public class FrameTxPaymasterFilterTests
 
         // A fee bump is the same sender and nonce at a higher price.
         Transaction incoming = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], incomingNonce, gasPrice: 2);
-        AcceptTxResult result = Accept(state, cache, incoming, Pool(pending));
+        AcceptTxResult result = Accept(state, cache, incoming, Pool(blobs: false, pending));
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.NonCanonicalPaymasterLimitReached : AcceptTxResult.Accepted));
     }
@@ -143,7 +158,7 @@ public class FrameTxPaymasterFilterTests
         cache.Increment(Paymaster);
 
         Transaction incoming = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], gasPrice: 2, carriesBlobs: true);
-        AcceptTxResult result = Accept(state, cache, incoming, Pool(pending));
+        AcceptTxResult result = Accept(state, cache, incoming, Pool(blobs: true, pending));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
@@ -186,21 +201,26 @@ public class FrameTxPaymasterFilterTests
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PendingPaymasterCache cache, Transaction tx, TxDistinctSortedPool? pool = null)
     {
         // The displaced tx sits in whichever pool matches its shape, so both are wired as TxPool does.
-        (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs ? (Pool(), pool ?? Pool()) : (pool ?? Pool(), Pool());
+        (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs
+            ? (Pool(blobs: false), pool ?? Pool(blobs: true))
+            : (pool ?? Pool(blobs: false), Pool(blobs: true));
         FrameTxPaymasterFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
-    private static TxDistinctSortedPool Pool(params Transaction[] pending)
+    /// <summary>The real pool type for the shape, so the visitor's ascending-nonce exit is exercised as wired.</summary>
+    private static TxDistinctSortedPool Pool(bool blobs, params Transaction[] pending)
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
 
-        TxDistinctSortedPool pool = new(pending.Length + 1,
-            new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer(), LimboLogs.Instance);
+        IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
+        TxDistinctSortedPool pool = blobs
+            ? new BlobTxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance)
+            : new TxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance);
         foreach (Transaction tx in pending)
         {
             pool.TryInsert(tx.Hash!, tx);

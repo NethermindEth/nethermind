@@ -791,8 +791,9 @@ namespace Nethermind.TxPool
                     // it means it was added and immediately evicted - pool was full of better txs. The
                     // self-eviction already raised Removed and released the reservation; a frame tx
                     // retained only by the persistent broadcaster below therefore contributes nothing
-                    // to its payer's exposure. That local-only under-count is accepted deliberately:
-                    // the broadcaster has no Removed hook, so a reservation held for it would leak.
+                    // to its payer's exposure, nor to its paymaster's pending count. That local-only
+                    // under-count is accepted deliberately: the broadcaster has no Removed hook, so
+                    // anything held for it would leak.
                     if (!isPersistentBroadcast || tx.CarriesBlobs || !_broadcaster.Broadcast(tx, true))
                     {
                         // we are adding only to persistent broadcast - not good enough for standard pool,

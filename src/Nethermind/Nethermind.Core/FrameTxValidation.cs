@@ -275,8 +275,9 @@ public static class FrameTxValidation
     /// its recognized validation prefix, or <c>null</c> when it pays without one.
     /// </summary>
     /// <remarks>
-    /// Derived from the frame layout alone, so no state is read. A self-relay prefix, an unrecognized
-    /// layout, or a <c>pay</c> frame targeting the sender rather than a sponsor all yield <c>null</c>.
+    /// Derived from the frame layout alone, so no state is read: a self-relay prefix, an unrecognized
+    /// layout, or a target-less <c>pay</c> frame yield <c>null</c>. A <c>pay</c> frame naming the sender is
+    /// returned like any other target — the spec's carve-out is the empty code hash, not self-payment.
     /// </remarks>
     public static Address? GetPrefixPaymaster(Transaction transaction)
     {
