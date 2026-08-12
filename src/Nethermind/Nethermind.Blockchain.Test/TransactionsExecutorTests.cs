@@ -339,7 +339,7 @@ namespace Nethermind.Blockchain.Test
             tx.Frames = [dependencyFrame];
 
             Block block = Build.A.Block.WithGasLimit(GasCostOf.Transaction + headroom).TestObject;
-            BlockProcessor.BlockProductionTransactionPicker txPicker = new(new TestSingleReleaseSpecProvider(Osaka.Instance));
+            BlockProcessor.BlockProductionTransactionPicker txPicker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance));
 
             BlockProcessor.AddingTxEventArgs args = txPicker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>());
 

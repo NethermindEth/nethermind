@@ -25,11 +25,10 @@
     <Exec Command="cargo build --release --manifest-path &quot;$(LeanFfiManifest)&quot;" ContinueOnError="true" />
   </Target>
 
-  <ItemGroup Condition="Exists('$(LeanFfiLib)')">
-    <None Include="$(LeanFfiLib)">
-      <Link>$(LeanFfiLibName)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+  <!-- A top-level ItemGroup is evaluated before BuildLeanFfi runs, so a fresh clone would build the
+       library and copy nothing; copy from a target that runs after it instead. -->
+  <Target Name="CopyLeanFfi" AfterTargets="BuildLeanFfi" Condition="Exists('$(LeanFfiLib)')">
+    <Copy SourceFiles="$(LeanFfiLib)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

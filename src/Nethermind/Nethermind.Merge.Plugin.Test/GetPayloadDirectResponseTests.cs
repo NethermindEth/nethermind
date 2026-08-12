@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -230,6 +231,25 @@ public class GetPayloadDirectResponseTests
 
         Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[-1]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
         Assert.That(() => { ExecutionPayloadBodyV1Result? _ = direct[direct.Count]; }, Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
+
+    // The hand-rolled writer is the path a CL actually receives, and recursive_stark is the one field the
+    // parity matrix does not vary: an empty proof and one past the hex chunking threshold both risk drift.
+    [TestCase(0, TestName = "Direct_response_json_matches_dto_json_with_an_empty_recursive_stark_proof")]
+    [TestCase(3, TestName = "Direct_response_json_matches_dto_json_with_a_small_recursive_stark_proof")]
+    [TestCase(PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1, TestName = "Direct_response_json_matches_dto_json_with_a_chunked_recursive_stark_proof")]
+    public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength)
+    {
+        (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
+        block.Header.RecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("deps"));
+
+        object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);
+        IStreamableResult direct = CreateDirectResult(6, block, blobsBundle, executionRequests);
+
+        byte[] expected = JsonSerializer.SerializeToUtf8Bytes(plain, plain.GetType(), EthereumJsonSerializer.JsonOptions);
+        byte[] actual = await WriteStreamableAsync(direct);
+
+        Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
     }
 
     [TestCase(5)]

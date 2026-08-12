@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -63,7 +64,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         {
             decoderContext.ReadSequenceLength();
             byte[] starkProof = decoderContext.DecodeByteArray();
-            Hash256 depsHash = decoderContext.DecodeKeccak()!;
+            Hash256 depsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
             recursiveStark = new RecursiveStark(starkProof, depsHash);
         }
 
@@ -151,4 +152,8 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
 
         return (Rlp.LengthOf(depsBytes) + Rlp.LengthOfSequence(innerContentLength), innerContentLength);
     }
+
+    [DoesNotReturn]
+    private static Hash256 ThrowMissingBlockDepsHash() =>
+        throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in {nameof(MempoolWrapper)}");
 }

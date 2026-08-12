@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -29,7 +30,7 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
 
         decoderContext.ReadSequenceLength();
         byte[] starkProof = decoderContext.DecodeByteArray();
-        Hash256 depsHash = decoderContext.DecodeKeccak()!;
+        Hash256 depsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -78,4 +79,8 @@ public sealed class FocilInclusionListDecoder : RlpDecoder<FocilInclusionList>
 
         return (contentLength, entries);
     }
+
+    [DoesNotReturn]
+    private static Hash256 ThrowMissingBlockDepsHash() =>
+        throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in {nameof(FocilInclusionList)}");
 }

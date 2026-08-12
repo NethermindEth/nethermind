@@ -661,15 +661,20 @@ public class Eth70ProtocolHandlerTests
         Assert.That(exception?.Message, Is.EqualTo("Block receipts size exceeds block gas limit allowance"));
     }
 
-    [TestCase(false, false, 1, 2, "Block gas used exceeds header value")]
-    [TestCase(true, false, 1, 2, "Block gas used exceeds header value")]
-    [TestCase(false, true, 1, 2, null)]
-    [TestCase(true, true, 1, 2, null)]
-    [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header")]
-    [TestCase(true, false, 2, 1, null)]
+    [TestCase(false, false, false, 1, 2, "Block gas used exceeds header value")]
+    [TestCase(true, false, false, 1, 2, "Block gas used exceeds header value")]
+    [TestCase(false, true, false, 1, 2, null)]
+    [TestCase(true, true, false, 1, 2, null)]
+    [TestCase(false, false, false, 2, 1, "Block gas used mismatch between receipts and header")]
+    [TestCase(true, false, false, 2, 1, null)]
+    // EIP-8288 puts recursive_stark_gas in the header that belongs to no transaction, so the receipt
+    // total is legitimately below it and only the upper bound can be checked.
+    [TestCase(false, false, true, 2, 1, null)]
+    [TestCase(false, false, true, 1, 2, "Block gas used exceeds header value")]
     public async Task Should_validate_receipt_cumulative_against_header_gas_used_by_spec(
         bool isEip7778Enabled,
         bool isEip8037Enabled,
+        bool isEip8288Enabled,
         int headerGasUsedMultiplier,
         int receiptGasUsedMultiplier,
         string? expectedException)
@@ -685,6 +690,7 @@ public class Eth70ProtocolHandlerTests
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.IsEip7778Enabled.Returns(isEip7778Enabled);
         spec.IsEip8037Enabled.Returns(isEip8037Enabled);
+        spec.IsEip8288Enabled.Returns(isEip8288Enabled);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         TxReceipt[] receipts = new TxReceipt[receiptGasUsedMultiplier];
