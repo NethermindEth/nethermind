@@ -41,7 +41,11 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Int256Overflow;
         }
 
-        UInt256 balance = stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
+        // Keyed on the payer actually being the sender, never assumed: a simulated third-party payer must
+        // still be read from state, or the bound would be enforced against the wrong account.
+        UInt256 balance = payer == tx.SenderAddress
+            ? state.SenderAccount.Balance
+            : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
         // Reserve atomically so N concurrent submissions for the same payer cannot each observe a
         // pre-reservation total and all pass. Released on the pool Removed event, or on the
