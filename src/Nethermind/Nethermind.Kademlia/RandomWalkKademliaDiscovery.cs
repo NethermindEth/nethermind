@@ -30,7 +30,18 @@ public sealed class RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>(
     where TKadKey : notnull
 {
     private static readonly TimeSpan MinimumIterationDuration = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan MaximumIterationDuration = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// Longest interval an idle job backs off to.
+    /// </summary>
+    /// <remarks>
+    /// The lookup rate is inversely proportional to this cap, so almost all of the saving is already banked by the
+    /// first few doublings: a one-minute cap removes 98% of the one-second crawl rate and this one removes 99.7%,
+    /// while a half-hour cap would buy a further 0.3% at six times the worst-case delay. Because a reset only
+    /// applies to the next iteration and never wakes a sleeping job, this cap alone bounds how long a job can go
+    /// without looking up, whatever else happens in the table meanwhile.
+    /// </remarks>
+    private static readonly TimeSpan MaximumIterationDuration = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// Reciprocal of the bucket-slot fill ratio the table must reach before idle lookups may slow down.

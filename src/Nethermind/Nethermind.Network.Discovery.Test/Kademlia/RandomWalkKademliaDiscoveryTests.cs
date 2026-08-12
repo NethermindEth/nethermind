@@ -108,14 +108,13 @@ public class RandomWalkKademliaDiscoveryTests
     {
         RoutingTableStub routingTable = new() { Occupancy = FilledTable };
 
-        TimeSpan[] delays = await RunIterations(new TestKademlia(), routingTable, iterations: 13, token);
+        TimeSpan[] delays = await RunIterations(new TestKademlia(), routingTable, iterations: 11, token);
 
         AssertPacedBy(delays, [
             TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(16),
             TimeSpan.FromSeconds(32), TimeSpan.FromSeconds(64), TimeSpan.FromSeconds(128), TimeSpan.FromSeconds(256),
-            TimeSpan.FromSeconds(512), TimeSpan.FromSeconds(1024),
             // Doubling stops at the cap.
-            TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(30)
+            TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)
         ]);
     }
 
