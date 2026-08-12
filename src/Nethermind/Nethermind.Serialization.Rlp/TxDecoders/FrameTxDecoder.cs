@@ -40,23 +40,37 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && IsNetworkWrapper(ref decoderContext))
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
-            DecodeNetworkWrapper(ref transaction, ref decoderContext, rlpBehaviors);
+            if (IsNetworkWrapper(ref decoderContext))
+            {
+                DecodeNetworkWrapper(ref transaction, ref decoderContext, rlpBehaviors);
+                return;
+            }
+
+            base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            // EIP-7594: as for type-3, a blob-carrying transaction's mempool form is the sidecar wrapper.
+            if (transaction is { CarriesBlobs: true }) ThrowMissingSidecar();
             return;
         }
 
         base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
+    [DoesNotReturn]
+    private static void ThrowMissingSidecar() =>
+        throw new RlpException($"Blob-carrying {nameof(TxType.FrameTx)} in mempool form must carry a {nameof(ShardBlobNetworkWrapper)}");
+
     // The wrapper form's first element is the tx_payload_body list; the plain payload's first element
     // is the chain_id scalar.
     private static bool IsNetworkWrapper(ref RlpReader decoderContext)
     {
         int start = decoderContext.Position;
-        decoderContext.ReadSequenceLength();
-        // A truncated payload leaves Position at the end, where IsSequenceNext reads Data[Position] unchecked.
-        bool isWrapper = decoderContext.Position < decoderContext.Length && decoderContext.IsSequenceNext();
+        int length = decoderContext.ReadSequenceLength();
+        // The reader spans the whole message, so bound the peek by this transaction's own sequence —
+        // an empty payload list would otherwise read the next transaction's first byte.
+        int end = Math.Min(decoderContext.Position + length, decoderContext.Length);
+        bool isWrapper = decoderContext.Position < end && decoderContext.IsSequenceNext();
         decoderContext.Position = start;
         return isWrapper;
     }
@@ -152,7 +166,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             writer.StartSequence(wrapperContentLength);
             writer.StartSequence(payloadContentLength);
-            // Key eliding on forSigning like payloadContentLength above, so the declared length and the
+            // Keep eliding on forSigning like payloadContentLength above, so the declared length and the
             // bytes written cannot drift if InMempoolForm and forSigning ever co-occur.
             EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
             ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper);

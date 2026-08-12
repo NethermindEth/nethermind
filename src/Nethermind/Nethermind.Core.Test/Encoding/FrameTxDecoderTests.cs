@@ -89,6 +89,30 @@ public class FrameTxDecoderTests
         Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
     }
 
+    // A blob-carrying type-6 whose mempool form is the plain payload would reach the blob pool with no
+    // sidecar to serve, so mempool decode rejects it — as it already does for type-3.
+    [Test]
+    public void Decode_BlobCarryingFrameTxWithoutWrapper_InMempoolForm_ThrowsRlpException()
+    {
+        Transaction tx = CreateBlobCarryingFrameTx(ProofVersion.V1, blobCount: 1);
+        tx.NetworkWrapper = null;
+
+        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
+
+        Assert.That(() =>
+        {
+            RlpReader reader = new(bytes);
+            _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm);
+        }, Throws.InstanceOf<RlpException>());
+
+        // The same bytes are a valid consensus form: only the mempool form requires the sidecar.
+        RlpReader consensusReader = new(bytes);
+        Transaction decoded = _txDecoder.Decode(ref consensusReader)!;
+        Assert.That(decoded.BlobVersionedHashes, Is.EqualTo(tx.BlobVersionedHashes));
+    }
+
     [Test]
     public void Decode_NetworkWrapperWithoutSidecar_ThrowsRlpException()
     {

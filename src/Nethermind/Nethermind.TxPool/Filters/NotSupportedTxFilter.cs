@@ -27,7 +27,7 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
 
         // EIP-8141: the frame codec now round-trips the sidecar, but the persistent blob pool's type-6 arc
         // (reload, serve, frame expiry) is still unexercised, so admit these under BlobsSupportMode.InMemory only.
-        if (tx.SupportsFrames && tx.CarriesBlobs && _txPoolConfig.BlobsSupport.IsPersistentStorage())
+        if (tx.SupportsFrames && tx.CarriesBlobs && !_txPoolConfig.BlobsSupport.SupportsBlobFrameTxs())
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions require in-memory blob support.");
