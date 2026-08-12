@@ -2457,7 +2457,7 @@ namespace Nethermind.TxPool.Test
             Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
             Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
 
-            FrameTxValidation.TryCalculateMaxCost(first, Bogota.Instance, out UInt256 maxCost);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(first, Bogota.Instance, out UInt256 maxCost), Is.True);
             EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
 
             AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
