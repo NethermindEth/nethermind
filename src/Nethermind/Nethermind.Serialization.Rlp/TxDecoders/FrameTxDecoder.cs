@@ -57,7 +57,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
-    [DoesNotReturn]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowMissingSidecar() =>
         throw new RlpException($"Blob-carrying {nameof(TxType.FrameTx)} in mempool form must carry a {nameof(ShardBlobNetworkWrapper)}");
 
@@ -178,6 +178,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         int payloadSequenceLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
 
+        // Deliberately no sidecar requirement here: GetLength is the pool's sizing call (TxBroadcaster
+        // sizes every accepted tx), so it must stay total, and Encode must agree with it.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;
