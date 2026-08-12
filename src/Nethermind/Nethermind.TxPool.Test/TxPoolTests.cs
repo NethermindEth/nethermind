@@ -2489,7 +2489,7 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult blockedResult = _txPool.SubmitTx(blocked, TxHandlingOptions.None);
             // Within the bound but too small a bump to replace: no Removed fires, so only AddCore's
             // explicit release keeps the payer from leaking.
-            AcceptTxResult unreplaceableResult = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 6, salt: 1), TxHandlingOptions.None);
+            AcceptTxResult unreplaceableResult = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 6, distinctHash: true), TxHandlingOptions.None);
             _txPool.RemoveTransaction(first.Hash);
             AcceptTxResult afterReleaseResult = _txPool.SubmitTx(afterRelease, TxHandlingOptions.None);
 
@@ -2503,10 +2503,17 @@ namespace Nethermind.TxPool.Test
         }
 
         /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
-        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, ulong salt = 0)
+        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, bool distinctHash = false)
         {
             Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
-                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas, verifyGasLimit: 50_000 + salt);
+                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas);
+            // Naming the sender explicitly is still a self_verify frame and prices identically, so this
+            // varies the hash without touching any input the reservation is computed from.
+            if (distinctHash)
+            {
+                TxFrame frame = tx.Frames![0];
+                tx.Frames = [new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data)];
+            }
             tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
             tx.Hash = tx.CalculateHash();
             return tx;
