@@ -123,8 +123,8 @@ outputs:
     value: ${{ steps.destroy.outputs.preempted }}
   terminated_by:
     description: >-
-      One of deleted-by-action, deleted-by-self, preempted, terminated, delete-failed
-      or unknown.
+      One of deleted-by-action, deleted-by-self, deleted-concurrently, preempted,
+      terminated, delete-failed or unknown.
     value: ${{ steps.destroy.outputs.terminated_by }}
 
 runs:
