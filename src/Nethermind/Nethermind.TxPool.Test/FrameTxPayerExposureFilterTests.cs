@@ -152,7 +152,6 @@ public class FrameTxPayerExposureFilterTests
         return state;
     }
 
-    /// <summary>A frame tx whose max cost (gas only, <c>MaxFeePerGas * GasLimit</c>) is exactly <paramref name="cost"/>.</summary>
     [Test]
     public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo()
     {
@@ -184,6 +183,7 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
+    /// <summary>A frame tx whose max cost (gas only, <c>MaxFeePerGas * GasLimit</c>) is exactly <paramref name="cost"/>.</summary>
     private static Transaction FrameTxCostingExactly(int cost, Address? payer = null) => new()
     {
         Type = TxType.FrameTx,
