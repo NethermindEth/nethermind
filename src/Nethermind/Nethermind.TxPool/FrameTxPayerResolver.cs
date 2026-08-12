@@ -47,8 +47,6 @@ internal static class FrameTxPayerResolver
         // FrameTxValidation prices admission against so the pricing filter and this verdict cannot drift.
         int index = PrefixVerifyIndex(frames);
 
-        // A leading expiry_verify frame contributes its deadline and the EXPIRY_VERIFIER code to the
-        // dependency set.
         bool dependsOnExpiry = false;
         ulong expiryDeadline = 0;
         ValueHash256 expiryCodeHash = default;
@@ -105,9 +103,8 @@ internal static class FrameTxPayerResolver
                 : Unresolved(FrameTxPayerOutcome.RequiresSimulation);
         }
 
-        // Everything else defers to simulation: an only_verify frame names a third-party payer whose
-        // pay-frame signature the pool cannot verify at admission (a lone only_verify is a structural
-        // NoPayer, already handled above), and any other unrecognized VERIFY shape is likewise opaque.
+        // Everything else is opaque: an only_verify frame names a payer whose pay-frame signature the
+        // pool cannot verify at admission.
         return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
     }
 
