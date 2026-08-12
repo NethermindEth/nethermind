@@ -1254,28 +1254,56 @@ public class FrameTxProcessorTests
     /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
     /// <remarks>
     /// A precompile account has the empty code hash, which EIP-8141 keys default code on, but default
-    /// code only applies to a <c>VERIFY</c> frame; a <c>DEFAULT</c> / <c>SENDER</c> frame runs the EVM,
-    /// and the EVM dispatches a precompile by address. Pinned on the frame receipt's gas, the
-    /// consensus-visible trace of the precompile having run: default code consumes none.
+    /// code only applies to a <c>VERIFY</c> frame; every other mode runs the EVM, and the EVM
+    /// dispatches a precompile by address. Pinned on the frame receipt's gas, the consensus-visible
+    /// trace of the precompile having run: default code consumes none. The identity gas of EIP-152
+    /// (15 base, 3 per word) makes both components observable.
     /// </remarks>
-    [TestCase(1, TestName = "Execute_DefaultFrameTargetsPrecompile_RunsIt(one byte)")]
-    [TestCase(64, TestName = "Execute_DefaultFrameTargetsPrecompile_RunsIt(two words)")]
-    public void Execute_DefaultFrameTargetsPrecompile_RunsIt(int dataLength)
+    [TestCase(TxFrame.ModeDefault, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, one byte)")]
+    [TestCase(TxFrame.ModeDefault, 64, 21UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, two words)")]
+    [TestCase(TxFrame.ModeSender, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(SENDER)")]
+    [TestCase(TxFrame.ModePostTx, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(POST_TX)")]
+    public void Execute_FrameTargetsPrecompile_RunsIt(byte mode, int dataLength, ulong expectedGas)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         byte[] data = new byte[dataLength];
         data.AsSpan().Fill(0xab);
 
         FrameReceiptTracer tracer = new();
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: IdentityPrecompile.Address, data: data));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(mode, target: IdentityPrecompile.Address, data: data));
 
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
 
-        ulong expectedGas = IdentityPrecompile.Instance.BaseGasCost(Spec) + IdentityPrecompile.Instance.DataGasCost(data, Spec);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(expectedGas), "the frame must be charged for the precompile it ran");
+        }
+    }
+
+    /// <summary>A <c>SENDER</c> frame's value reaches a precompile target, transfer log included.</summary>
+    /// <remarks>
+    /// <c>SENDER</c> is the only mode a frame may carry value in, so it is the only one whose value
+    /// leg this path relocates: the processor debits the caller and the VM credits the precompile
+    /// account and emits the EIP-7708 transfer log, where default code did both itself.
+    /// </remarks>
+    [Test]
+    public void Execute_SenderFrameWithValueTargetsPrecompile_TransfersAndRunsIt()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        UInt256 value = 1_000_000;
+
+        FrameReceiptTracer tracer = new();
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: IdentityPrecompile.Address, value: value, data: new byte[32]));
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].GasUsed, Is.EqualTo(18UL), "the frame must be charged for the precompile it ran");
+            Assert.That(_stateProvider.GetBalance(IdentityPrecompile.Address), Is.EqualTo(value), "the value must reach the target");
+            Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
         }
     }
 
@@ -1312,12 +1340,17 @@ public class FrameTxProcessorTests
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, IdentityPrecompile.Address, gasLimit: 200_000, UInt256.Zero, default));
+            Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: IdentityPrecompile.Address));
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.False);
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"),
+                "the transaction must be rejected by the default code reverting, not by an earlier check");
+        }
     }
 
     private sealed class FrameReceiptTracer : CallOutputTracer, IFrameTxReceiptTracer

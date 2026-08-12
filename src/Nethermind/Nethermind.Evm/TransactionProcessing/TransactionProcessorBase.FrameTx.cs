@@ -488,8 +488,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // Default code: a codeless target (empty code hash, no EIP-7702 delegation indicator) runs
         // the protocol-defined behavior instead of the EVM. A precompile is codeless too, but it is
-        // dispatched by address, so only VERIFY — whose default code EIP-8141 keys on the empty code
-        // hash alone — takes this path; the other modes run the EVM, which runs the precompile.
+        // dispatched by address: only VERIFY, whose default code EIP-8141 keys on the empty code hash
+        // alone, takes a precompile target here; SENDER, DEFAULT and POST_TX run it through the EVM.
         if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString
             && (frame.Mode == TxFrame.ModeVerify || !spec.IsPrecompile(resolvedTarget)))
         {
