@@ -1064,6 +1064,116 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// #12692 (item 1): a no-gas call must default to the block budget, not GasCap (100M) — which the EIP-8037
+    /// inclusion check rejects (ExecutionDimensionExceeded on a small block, StateDimensionExceeded below the cap).
+    /// </summary>
+    [TestCase(5_000_000ul, TestName = "no-gas call fits a small block's gas budget (execution dimension)")]
+    [TestCase(30_000_000ul, TestName = "no-gas call fits a realistic block's gas budget (state dimension)")]
+    public async Task eth_simulateV1_defaults_missing_gas_to_block_limit_on_bal_path(ulong blockGasLimit)
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = blockGasLimit },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
+    }
+
+    /// <summary>
+    /// #12692 (item 1): the no-gas default tracks the running budget, so multiple gas-less calls in one block all fit.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_defaults_missing_gas_for_multiple_calls_on_bal_path()
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
+    }
+
+    /// <summary>
+    /// #12692 (item 1, state dimension): a storage write costs far more state gas than execution gas, so a
+    /// following no-gas call must clamp to the state budget too, else StateDimensionExceeded.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_no_gas_call_after_state_write_fits_state_dimension()
+    {
+        TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        // runtime code PUSH1 1, PUSH1 0, SSTORE: writes a new slot → large EIP-8037 state gas
+                        { TestItem.AddressC, new AccountOverride { Code = Bytes.FromHexString("0x6001600055") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 200_000, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        Assert.That(result.Data![0].Calls.All(static c => c.Error is null), Is.True);
+    }
+
+    /// <summary>
     /// Regression test: blob tx rejected when <c>maxFeePerBlobGas</c> is below the <c>blobBaseFee</c>
     /// block override. The decorated calculator must be used for validation, not the static
     /// <c>BlobGasCalculator.TryCalculateFeePerBlobGas</c> which reads from the raw header.
