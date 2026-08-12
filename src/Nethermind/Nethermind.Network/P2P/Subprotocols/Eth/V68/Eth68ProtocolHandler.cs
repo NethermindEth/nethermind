@@ -282,8 +282,10 @@ public class Eth68ProtocolHandler(ISession session,
                 if (!CanRequestPooledTransaction(txShape.Type)
                     || txShape.Size <= 0
                     // EIP-8141: a type-6 announcement carries only its type byte, so a blob-carrying frame tx is
-                    // indistinguishable from a plain one — budget every frame tx at the blob size, ungated on blob support.
-                    || txShape.Size > (txShape.Type is TxType.Blob or TxType.FrameTx ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
+                    // indistinguishable from a plain one — budget every frame tx at the blob size while blobs are on.
+                    || txShape.Size > (txShape.Type is TxType.Blob || (txShape.Type is TxType.FrameTx && _blobSupportEnabled)
+                        ? _configuredMaxBlobTxSize
+                        : _configuredMaxTxSize))
                 {
                     continue;
                 }

@@ -251,6 +251,39 @@ public class Eth68ProtocolHandlerTests
         _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes.Count == NewPooledTransactionHashesMessage68.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
     }
 
+    // A type-6 announcement carries only its type byte, so its size budget must be the blob one — except
+    // with blobs off, where nothing needing that budget can be admitted and it is pure download amplification.
+    [TestCase(BlobsSupportMode.InMemory, 1, TestName = "Blob_sized_frame_tx_announcement_is_requested_when_blobs_are_enabled")]
+    [TestCase(BlobsSupportMode.Disabled, 0, TestName = "Blob_sized_frame_tx_announcement_is_not_requested_when_blobs_are_disabled")]
+    public void Frame_tx_announcement_budget_follows_blob_support(BlobsSupportMode blobsSupport, int expectedRequests)
+    {
+        TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport };
+        _handler = new Eth68ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            RunImmediatelyScheduler.Instance,
+            _transactionPool,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager),
+            LimboLogs.Instance,
+            txPoolConfig,
+            Substitute.For<ISpecProvider>(),
+            _txGossipPolicy);
+
+        // Between MaxTxSize (128 KiB) and MaxBlobTxSize (1 MiB): admissible only where blobs are supported.
+        using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
+        using ArrayPoolList<int> sizes = new(1) { (int)txPoolConfig.MaxTxSize! + 1 };
+        using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+    }
+
     [Test]
     public void should_divide_GetPooledTransactionsMessage_if_max_message_size_is_exceeded([Values(0, 1, 100, 10_000)] int numberOfTransactions, [Values(97, TransactionsMessage.MaxPacketSize)] int sizeOfOneTx)
     {
