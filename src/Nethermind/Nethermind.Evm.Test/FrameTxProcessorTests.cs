@@ -384,11 +384,7 @@ public class FrameTxProcessorTests
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
         DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. Recipient.Bytes]);
 
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
         TxFrame frame = new(TxFrame.ModeDefault, flags: 0, Observer,
             gasLimit: Eip8038Constants.ColdAccountAccess, UInt256.Zero, default);
@@ -408,6 +404,31 @@ public class FrameTxProcessorTests
             Assert.That(bal.GetAccountChanges(Recipient), Is.Null,
                 "a frame that cannot pay the designation access must not read the designated account");
         }
+    }
+
+    [Test]
+    public void Execute_FrameTargetDesignatesAPrecompile_RecordsThePrecompileInTheBal()
+    {
+        // EIP-7928: the designation is resolved by accessing the designated account, and the
+        // precompile branch asks the repository for nothing, so only the explicit read records it.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Address identityPrecompile = Address.FromNumber(4);
+        DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. identityPrecompile.Bytes]);
+
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+
+        Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance).TransactionExecuted, Is.True);
+
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        Assert.That(bal.GetAccountChanges(identityPrecompile), Is.Not.Null,
+            "resolving a designation accesses the designated precompile");
     }
 
     [Test]
@@ -931,11 +952,7 @@ public class FrameTxProcessorTests
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[TxFrameSignature.Secp256k1SignatureLength])];
@@ -971,11 +988,7 @@ public class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Address beneficiary = TestItem.AddressF;
 
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.GasPrice = 0; // max_priority_fee_per_gas - zero premium, so the beneficiary credit is zero
@@ -1268,6 +1281,17 @@ public class FrameTxProcessorTests
             tracer: baselineTracer).TransactionExecuted, Is.True);
 
         return (long)targetTracer.GasSpent - (long)baselineTracer.GasSpent;
+    }
+
+    /// <summary>A processor over a <see cref="TracedAccessWorldState"/> that generates a block access list.</summary>
+    private (EthereumTransactionProcessor Processor, TracedAccessWorldState State) TracedProcessor()
+    {
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        return (new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, tracedState,
+            virtualMachine, codeInfoRepository, LimboLogs.Instance), tracedState);
     }
 
     private void DeploySmartSender(byte[] code) => DeployContract(Sender, code, 1.Ether);
