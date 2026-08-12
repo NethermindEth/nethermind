@@ -545,7 +545,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             });
         }
 
-        bool committed = tree.IsMainChain(header) && header.Number <= tree.LastFinalizedBlockLevel;
+        bool committed = header.Number <= tree.LastFinalizedBlockLevel && tree.IsMainChain(header);
 
         // Get round number from extra consensus data
         ulong round = 0;
