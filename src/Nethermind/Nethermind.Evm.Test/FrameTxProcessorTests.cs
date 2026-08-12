@@ -342,6 +342,27 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_FrameTargetingDelegatedAccount_PaysTheDelegateAccess()
+    {
+        // create_evm_from_frame resolves the EIP-7702 designation at frame entry, an access of the
+        // designated address charged on top of the target's own.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. Recipient.Bytes]);
+
+        CallOutputTracer delegatedTracer = new();
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer)),
+            tracer: delegatedTracer).TransactionExecuted, Is.True);
+
+        CallOutputTracer directTracer = new();
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient)),
+            tracer: directTracer).TransactionExecuted, Is.True);
+
+        Assert.That(delegatedTracer.GasSpent - directTracer.GasSpent, Is.EqualTo((long)Eip8038Constants.ColdAccountAccess),
+            "resolving the designation must charge the cold access of the designated address");
+    }
+
+    [Test]
     public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
     {
         // max_fee = max_priority = 2^255 with an even tx gas limit (415_950 here) wraps maxCost to

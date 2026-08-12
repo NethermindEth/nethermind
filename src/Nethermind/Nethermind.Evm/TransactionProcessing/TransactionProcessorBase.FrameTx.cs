@@ -517,7 +517,21 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return DefaultCodeSuccess();
         }
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out Address? delegation);
+        // resolve_delegated_code_address: following the designation accesses the designated address,
+        // charged at frame entry like the target's own access.
+        if (delegation is not null && spec.UseHotAndColdStorage)
+        {
+            entryCharge += delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
+                ? TGasPolicy.GetColdAccountAccessCost(spec)
+                : Eip8038Constants.WarmAccess;
+            if (entryCharge > frame.GasLimit)
+            {
+                gasUsed = frame.GasLimit;
+                return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+            }
+        }
+
         ReadOnlyMemory<byte> inputData = frame.Data;
 
         ExecutionEnvironment env = ExecutionEnvironment.Rent(
@@ -544,6 +558,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (spec.UseHotAndColdStorage)
         {
             frameTracker.WarmUp(resolvedTarget);
+            if (delegation is not null) frameTracker.WarmUp(delegation);
         }
 
         // The reservoir starts empty, so the VM cannot draw the entry state gas back out of it.
