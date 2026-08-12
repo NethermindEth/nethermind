@@ -19,6 +19,10 @@ inputs:
     description: Value for the Alloy User label.
     required: false
     default: ${{ github.actor }}
+  external-provider:
+    description: Infrastructure provider label applied to shipped metrics and logs.
+    required: false
+    default: linode
   alloy-config:
     description: Path to the Alloy config file to mount. Defaults to the copy vendored next to this action.
     required: false
@@ -52,6 +56,7 @@ runs:
         NODE_NAME: ${{ inputs.node-name }}
         CLIENT: ${{ inputs.client }}
         GITHUB_USER: ${{ inputs.github-user }}
+        EXTERNAL_PROVIDER: ${{ inputs.external-provider }}
         ALLOY_CONFIG: ${{ inputs.alloy-config }}
         LOKI_URL: ${{ inputs.loki-url }}
         LOKI_USERNAME: ${{ inputs.loki-username }}
@@ -97,6 +102,7 @@ runs:
           --restart=unless-stopped \
           --net=host \
           -e GITHUB_USER="$GITHUB_USER" \
+          -e EXTERNAL_PROVIDER="$EXTERNAL_PROVIDER" \
           -e CLIENT="$CLIENT" \
           -e NODE_NAME="$NODE_NAME" \
           -e SEDGE_NETWORK="$NETWORK" \

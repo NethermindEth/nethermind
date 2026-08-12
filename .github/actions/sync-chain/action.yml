@@ -1,0 +1,215 @@
+name: Sync Chain
+description: >-
+  Run a Nethermind sync test for one network in one sync mode on a self-hosted runner:
+  builds sedge, brings up the node pair, ships telemetry, and waits for the sync to
+  complete or fail. Requires the repository to be checked out already.
+
+inputs:
+  network:
+    description: Network to sync (e.g. hoodi, op-sepolia, taiko-alethia).
+    required: true
+  mode:
+    description: HalfPath or Flat.
+    required: true
+  docker_image:
+    description: Nethermind Docker image to sync with.
+    required: true
+  node_name_prefix:
+    description: Prefix for Metrics.NodeName, identifying the calling workflow.
+    required: true
+  cl:
+    description: Consensus client for L1 networks.
+    required: false
+    default: ""
+  cl_image:
+    description: Consensus client image for L1 networks.
+    required: false
+    default: ""
+  checkpoint_sync_url:
+    description: Checkpoint sync URL for L1 networks.
+    required: false
+    default: ""
+  nethermind_args:
+    description: Extra Nethermind flags, space-separated and without leading dashes.
+    required: false
+    default: ""
+  external_provider:
+    description: Infrastructure provider label applied to metrics and logs.
+    required: false
+    default: gcp
+  tests_token:
+    description: Token able to check out NethermindEth/post-merge-smoke-tests.
+    required: true
+  mainnet_consensus_url:
+    description: L1 mainnet consensus endpoint, for op/world/taiko mainnet networks.
+    required: false
+    default: ""
+  mainnet_execution_url:
+    description: L1 mainnet execution endpoint, for op/world/taiko mainnet networks.
+    required: false
+    default: ""
+  sepolia_consensus_url:
+    description: L1 sepolia consensus endpoint, for op/world sepolia networks.
+    required: false
+    default: ""
+  sepolia_execution_url:
+    description: L1 sepolia execution endpoint, for op/world sepolia networks.
+    required: false
+    default: ""
+  hoodi_consensus_url:
+    description: L1 hoodi consensus endpoint, for taiko-hoodi.
+    required: false
+    default: ""
+  hoodi_execution_url:
+    description: L1 hoodi execution endpoint, for taiko-hoodi.
+    required: false
+    default: ""
+  loki_url:
+    description: Loki push endpoint.
+    required: true
+  loki_username:
+    description: Loki basic-auth username.
+    required: true
+  loki_password:
+    description: Loki basic-auth password.
+    required: true
+  prometheus_url:
+    description: Prometheus remote_write endpoint.
+    required: true
+  prometheus_username:
+    description: Prometheus remote_write basic-auth username.
+    required: true
+  prometheus_password:
+    description: Prometheus remote_write basic-auth password.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout tests repository
+      uses: actions/checkout@v6
+      with:
+        repository: NethermindEth/post-merge-smoke-tests
+        path: tests
+        token: ${{ inputs.tests_token }}
+        clean: true
+
+    - name: Setup Go environment
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+        check-latest: true
+        cache: true
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.X"
+
+    - name: Install Sedge environment
+      shell: bash
+      run: |
+        git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+        cd sedge
+        make compile
+
+    - name: Resolve node name
+      id: node
+      shell: bash
+      env:
+        PREFIX: ${{ inputs.node_name_prefix }}
+        NETWORK: ${{ inputs.network }}
+        SYNC_MODE: ${{ inputs.mode }}
+      run: echo "name=${PREFIX}-${NETWORK}-${SYNC_MODE}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+    - name: Run Sedge
+      shell: bash
+      working-directory: sedge
+      env:
+        NETWORK: ${{ inputs.network }}
+        SYNC_MODE: ${{ inputs.mode }}
+        DOCKER_IMAGE: ${{ inputs.docker_image }}
+        CL_CLIENT: ${{ inputs.cl }}
+        CL_IMAGE: ${{ inputs.cl_image }}
+        CHECKPOINT_URL: ${{ inputs.checkpoint_sync_url }}
+        NODE_NAME: ${{ steps.node.outputs.name }}
+        NETHERMIND_ARGS: ${{ inputs.nethermind_args }}
+        MAINNET_CONSENSUS_URL: ${{ inputs.mainnet_consensus_url }}
+        MAINNET_EXECUTION_URL: ${{ inputs.mainnet_execution_url }}
+        SEPOLIA_CONSENSUS_URL: ${{ inputs.sepolia_consensus_url }}
+        SEPOLIA_EXECUTION_URL: ${{ inputs.sepolia_execution_url }}
+        HOODI_CONSENSUS_URL: ${{ inputs.hoodi_consensus_url }}
+        HOODI_EXECUTION_URL: ${{ inputs.hoodi_execution_url }}
+      run: bash "${GITHUB_ACTION_PATH}/run-sedge.sh"
+
+    - name: Start Grafana Alloy
+      continue-on-error: true
+      uses: ./.github/actions/start-alloy
+      with:
+        network: ${{ inputs.network }}
+        node-name: ${{ steps.node.outputs.name }}
+        external-provider: ${{ inputs.external_provider }}
+        loki-url: ${{ inputs.loki_url }}
+        loki-username: ${{ inputs.loki_username }}
+        loki-password: ${{ inputs.loki_password }}
+        prometheus-url: ${{ inputs.prometheus_url }}
+        prometheus-username: ${{ inputs.prometheus_username }}
+        prometheus-password: ${{ inputs.prometheus_password }}
+
+    - name: Wait for ${{ inputs.network }} to sync
+      shell: bash
+      env:
+        NETWORK: ${{ inputs.network }}
+        SYNC_MODE: ${{ inputs.mode }}
+      run: python scripts/wait-for-sync.py
+
+    - name: Collect Nethermind debug logs
+      if: failure() || cancelled()
+      shell: bash
+      env:
+        NETWORK: ${{ inputs.network }}
+        SYNC_MODE: ${{ inputs.mode }}
+      run: |
+        target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
+        cd "$target_dir/logs"
+        log_file=$(find . -type f -name "*.log" | head -n 1)
+        echo "Found log file: $log_file"
+        artifact_name="$(basename "$log_file")-${NETWORK}-${SYNC_MODE}-${GITHUB_RUN_ID}"
+        zip "${artifact_name}.zip" "$log_file"
+        echo "artifact_name=$artifact_name" >> "$GITHUB_ENV"
+        echo "artifact_path=$(pwd)/${artifact_name}.zip" >> "$GITHUB_ENV"
+
+    - name: Upload Nethermind debug logs artifact
+      if: failure() || cancelled()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.artifact_name }}
+        path: ${{ env.artifact_path }}
+        retention-days: 7
+
+    - name: Get consensus logs
+      if: always()
+      shell: bash
+      env:
+        NETWORK: ${{ inputs.network }}
+      run: |
+        if [[ "$NETWORK" == op-* || "$NETWORK" == world-* ]]; then
+          docker logs sedge-consensus-op-l2-client
+        elif [[ "$NETWORK" == taiko-* ]]; then
+          docker logs sedge-consensus-taikodriver-client
+        else
+          docker logs sedge-consensus-client
+        fi
+
+    - name: Check size of DB
+      if: always()
+      shell: bash
+      run: du -h "$GITHUB_WORKSPACE/sedge"
+
+    - name: Stop Grafana Alloy
+      if: always()
+      continue-on-error: true
+      shell: bash
+      run: |
+        docker stop -t 15 grafana-alloy 2>/dev/null || true
+        docker rm -f grafana-alloy 2>/dev/null || true
