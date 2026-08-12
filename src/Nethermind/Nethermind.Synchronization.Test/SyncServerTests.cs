@@ -620,7 +620,9 @@ public class SyncServerTests
         // would both grow a mock's retained-call log and race its non-thread-safe recording.
         StubSyncPeerPool peerPool = new();
 
-        using SyncServer syncServer = new(
+        // Block-scoped using: roots the server (and its event subscriptions) for the whole concurrent run
+        // and disposes it afterwards.
+        using (new SyncServer(
             Substitute.For<IWorldStateManager>(),
             new MemDb(),
             blockTree,
@@ -634,35 +636,33 @@ public class SyncServerTests
             Policy.FullGossip,
             historyPruner,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
-
-        BlockHeader oldest = blockTree.Genesis!;
-        const int threadCount = 4;
-        const int iterationsPerThread = 3000;
-        using ManualResetEventSlim start = new(false);
-        ConcurrentQueue<Exception> failures = new();
-
-        Task[] tasks = Enumerable.Range(0, threadCount).Select(_ => Task.Run(() =>
+            LimboLogs.Instance))
         {
-            start.Wait();
-            try
+            BlockHeader oldest = blockTree.Genesis!;
+            const int threadCount = 4;
+            const int iterationsPerThread = 3000;
+            using ManualResetEventSlim start = new(false);
+            ConcurrentQueue<Exception> failures = new();
+
+            Task[] tasks = Enumerable.Range(0, threadCount).Select(_ => Task.Run(() =>
             {
-                for (int i = 0; i < iterationsPerThread; i++)
-                    historyPruner.RaiseNewOldestBlock(oldest);
-            }
-            catch (Exception e)
-            {
-                failures.Enqueue(e);
-            }
-        })).ToArray();
+                start.Wait();
+                try
+                {
+                    for (int i = 0; i < iterationsPerThread; i++)
+                        historyPruner.RaiseNewOldestBlock(oldest);
+                }
+                catch (Exception e)
+                {
+                    failures.Enqueue(e);
+                }
+            })).ToArray();
 
-        start.Set();
-        Task.WaitAll(tasks);
+            start.Set();
+            Task.WaitAll(tasks);
 
-        // Keep the server (and its event subscriptions) rooted for the whole concurrent run.
-        GC.KeepAlive(syncServer);
-
-        Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures.Select(static e => e.ToString())));
+            Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures.Select(static e => e.ToString())));
+        }
     }
 
     private sealed class RaisableHistoryPruner : IHistoryPruner
