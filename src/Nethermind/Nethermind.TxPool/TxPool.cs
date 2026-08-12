@@ -155,7 +155,10 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            UpdateBuckets();
+            if (_blobTransactions.Count > 0)
+            {
+                _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            }
 
             _headInfo.HeadChanged += OnHeadChange;
 
@@ -825,6 +828,11 @@ namespace Nethermind.TxPool
 
         private void UpdateBuckets()
         {
+            if (_transactions.Count == 0 && _blobTransactions.Count == 0)
+            {
+                return;
+            }
+
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
             bool isSpecChange = !ReferenceEquals(_lastRevalidatedSpec, headSpec);
             _revalidatedTransactions = 0;
