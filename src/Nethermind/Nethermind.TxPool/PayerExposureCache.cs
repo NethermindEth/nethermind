@@ -44,6 +44,13 @@ internal sealed class PayerExposureCache
     /// </remarks>
     public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance, out UInt256 reserved)
     {
+        // Mirrors Subtract: a zero reservation would leave an entry the matching release never reclaims.
+        if (cost.IsZero)
+        {
+            reserved = UInt256.Zero;
+            return true;
+        }
+
         while (true)
         {
             if (_reserved.TryGetValue(key, out UInt256 existing))
