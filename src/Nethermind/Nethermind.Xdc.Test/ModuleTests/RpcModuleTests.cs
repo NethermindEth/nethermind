@@ -715,6 +715,25 @@ public class RpcModuleTests
     }
 
     [Test]
+    public void GetV2BlockByHash_ShouldNotReportCommitted_ForBlockOffTheCanonicalChain()
+    {
+        ArrangeChainWithFinalizedTip();
+
+        XdcBlockHeader forkHeader = Build.A.XdcBlockHeader()
+            .WithNumber(FinalizedBlockNumber)
+            .WithParentHash(TestItem.KeccakA)
+            .WithExtraConsensusData(new ExtraFieldsV2(FinalizedBlockNumber, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
+
+        _blockTree.FindHeader(forkHeader.Hash!).Returns(forkHeader);
+        _blockTree.IsMainChain(forkHeader).Returns(false);
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByHash(new BlockParameter(forkHeader.Hash!));
+
+        AssertCommitted(result, false);
+    }
+
+    [Test]
     public void GetV2BlockByNumber_ShouldReturnError_WhenNoFinalizedBlock()
     {
         ArrangeChainWithFinalizedTip();
@@ -750,6 +769,7 @@ public class RpcModuleTests
             _blockTree.FindHeader(number).Returns(header);
             _blockTree.FindHeader(header.Hash!).Returns(header);
             _blockTree.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
+            _blockTree.IsMainChain(header).Returns(true);
         }
 
         _blockTree.Head.Returns(Build.A.Block.WithHeader(headers[HeadBlockNumber]).TestObject);
