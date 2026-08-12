@@ -48,7 +48,7 @@ public sealed class FrameTxPrefixSimulator(
     private long _budgetSpentTicks;
     private bool _disposed;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default)
+    public FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false)
     {
         token.ThrowIfCancellationRequested();
 
@@ -85,7 +85,9 @@ public sealed class FrameTxPrefixSimulator(
                 return FrameTxSimulationResult.RejectIndeterminate("simulator disposed");
             }
 
-            if (!HasHeadBudget(head))
+            // The budget rations simulation between gossiping peers; a local submission is not competing
+            // for that share, so it is only bounded by the timeout and MAX_VERIFY_GAS.
+            if (!local && !HasHeadBudget(head))
             {
                 Metrics.FrameTxSimulationsBudgetExhausted++;
                 return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
@@ -146,7 +148,7 @@ public sealed class FrameTxPrefixSimulator(
         {
             Metrics.FrameTxSimulations++;
             Metrics.FrameTxSimulationsTimedOut++;
-            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation timed out");
+            return FrameTxSimulationResult.RejectTimedOut("validation-prefix simulation timed out");
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {

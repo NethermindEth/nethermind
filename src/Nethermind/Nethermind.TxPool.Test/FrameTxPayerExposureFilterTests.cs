@@ -43,11 +43,11 @@ public class FrameTxPayerExposureFilterTests
 
         AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(TestCost));
 
-        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.PayerExposureExceeded : AcceptTxResult.Accepted));
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
     [Test]
-    public void Accept_ReservesOnAdmission_SoConcurrentSecondTxSeesIt()
+    public void Accept_ReservesOnAdmission_SoASecondTxFromOnePayerSeesIt()
     {
         // The filter itself reserves on admission, so a second frame tx from the same payer sees it.
         TestReadOnlyStateProvider state = StateWithPayerBalance(TestCost + TestCost / 2);
@@ -59,7 +59,7 @@ public class FrameTxPayerExposureFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(second, Is.EqualTo(AcceptTxResult.PayerExposureExceeded));
+            Assert.That(second, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
             Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)TestCost), "only the admitted tx is reserved");
         }
     }

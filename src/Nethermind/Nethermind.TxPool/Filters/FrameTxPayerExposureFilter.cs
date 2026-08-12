@@ -35,7 +35,7 @@ internal sealed class FrameTxPayerExposureFilter(
         }
 
         // The upper-bound TXPARAM(0x06), shared with the processor so the admission bound and the
-        // payer-solvency gate cannot drift.
+        // payer-solvency gate cannot drift — this is where the base branch's under-reservation closes.
         if (!FrameTxValidation.TryCalculateMaxCost(tx, specProvider.GetCurrentHeadSpec(), out UInt256 maxCost))
         {
             return AcceptTxResult.Invalid.WithMessage("Frame transaction maximum cost cannot be priced");
@@ -54,7 +54,7 @@ internal sealed class FrameTxPayerExposureFilter(
             Metrics.PendingTransactionsFrameTxPayerExposureExceeded++;
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} reserved exposure {reserved} + {maxCost} exceeds balance {balance}.");
-            return AcceptTxResult.PayerExposureExceeded;
+            return AcceptTxResult.FrameTxPayerExposureExceeded;
         }
 
         return AcceptTxResult.Accepted;

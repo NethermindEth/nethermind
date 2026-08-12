@@ -41,13 +41,14 @@ internal sealed class FrameTxSimulationFilter(
             return AcceptTxResult.Accepted;
         }
 
-        FrameTxSimulationResult result = simulator.Simulate(tx);
+        FrameTxSimulationResult result = simulator.Simulate(tx, local: (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0);
         if (!result.Accepted)
         {
             Metrics.PendingTransactionsFrameTxSimulationFailed++;
             if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.RejectionReason}.");
-            // An admission bound the node spent on itself is not the sending peer's fault.
-            return (result.Indeterminate ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.FrameSimulationFailed)
+            // Deferred only for a bound this node spent on itself. A timeout is retained by revalidation
+            // (Indeterminate) yet chargeable here, because the prefix's own wall clock is what tripped it.
+            return (result.NodeBound ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.FrameSimulationFailed)
                 .WithMessage(result.RejectionReason ?? TxPoolErrorMessages.FrameSimulationFailed);
         }
 

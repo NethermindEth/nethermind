@@ -26,14 +26,18 @@ public interface IFrameTxPrefixSimulator
     /// serialized processing env. An <see cref="System.OperationCanceledException"/> propagates; the
     /// implementation's own wall-clock bound surfaces as a rejection instead.
     /// </param>
-    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
+    /// <param name="local">
+    /// True for a locally submitted transaction, which is exempt from the per-head budget that rations
+    /// simulation between gossiping peers. The per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply.
+    /// </param>
+    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false);
 }
 
 /// <summary>
 /// Outcome of an <see cref="IFrameTxPrefixSimulator.Simulate"/> call: whether the prefix is admissible
 /// and, when it is, the payer it resolved.
 /// </summary>
-public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, string? rejectionReason, bool indeterminate = false)
+public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, string? rejectionReason, bool indeterminate = false, bool nodeBound = false)
 {
     /// <summary>True when the prefix validated under the trace/opcode rules and set a payer within the gas bound.</summary>
     public bool Accepted { get; } = accepted;
@@ -45,8 +49,8 @@ public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, st
     public string? RejectionReason { get; } = rejectionReason;
 
     /// <summary>
-    /// True when the rejection reflects an admission bound this node spent rather than the prefix itself,
-    /// so it says nothing about validity.
+    /// True when the rejection reflects an admission bound rather than the prefix itself, so it says
+    /// nothing about validity and a pending transaction must be retained.
     /// </summary>
     /// <remarks>
     /// Admission still declines, but revalidation must leave such a transaction pending: evicting on an
@@ -54,9 +58,18 @@ public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, st
     /// </remarks>
     public bool Indeterminate { get; } = indeterminate;
 
+    /// <summary>
+    /// True when the bound was one this node imposed on itself, so the sending peer did not choose it.
+    /// A timeout is indeterminate but <em>not</em> node-bound: the prefix's own wall clock trips it.
+    /// </summary>
+    public bool NodeBound { get; } = nodeBound;
+
     public static FrameTxSimulationResult Accept(Address payer) => new(true, payer, null);
     public static FrameTxSimulationResult Reject(string reason) => new(false, null, reason);
 
-    /// <summary>A rejection caused by an admission bound, not by the prefix.</summary>
-    public static FrameTxSimulationResult RejectIndeterminate(string reason) => new(false, null, reason, indeterminate: true);
+    /// <summary>A rejection caused by a bound this node spent on itself, not by the prefix.</summary>
+    public static FrameTxSimulationResult RejectIndeterminate(string reason) => new(false, null, reason, indeterminate: true, nodeBound: true);
+
+    /// <summary>A rejection the prefix's own wall-clock consumption caused; retained, but chargeable to the sender.</summary>
+    public static FrameTxSimulationResult RejectTimedOut(string reason) => new(false, null, reason, indeterminate: true);
 }

@@ -39,6 +39,7 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         // Still missing before any public activation: canonical-paymaster reservation, the failed-APPROVE
         // replay bound, and a deadline-ordered pool index — eviction applies the nearest-expiry tier only
         // through the near-expiry shed pass, not across the whole pool.
+        // MalformedTxFilter still enforces static well-formedness downstream.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
