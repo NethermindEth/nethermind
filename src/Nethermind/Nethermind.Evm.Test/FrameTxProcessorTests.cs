@@ -1255,28 +1255,33 @@ public class FrameTxProcessorTests
     /// <remarks>
     /// The route is observable through the shared warm journal: default code never touches the EVM
     /// and so leaves its target cold, where the VM path warms it. A later frame reading that address
-    /// therefore pays the cold access either way, and pays it whichever target the first frame named.
+    /// therefore pays the cold access either way, pinned on that frame's own receipt.
     /// </remarks>
     [Test]
     public void Execute_DefaultFrameTargetsCodelessAccount_LeavesItCold()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        Address codeless = TestItem.AddressD;
-        Address unrelated = TestItem.AddressF;
-        DeployContract(Observer, Prepare.EvmCode.PushData(codeless).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        Address observed = TestItem.AddressD;
+        // A second codeless account the observer never reads, so the two runs differ only in whether
+        // the default-code frame named the address the observer goes on to read.
+        Address unobserved = TestItem.AddressF;
+        DeployContract(Observer, Prepare.EvmCode.PushData(observed).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done);
 
-        CallOutputTracer targeted = new();
+        FrameReceiptTracer targeted = new();
         Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(),
-            Frame(TxFrame.ModeDefault, target: codeless), Frame(TxFrame.ModeSender, target: Observer)),
+            Frame(TxFrame.ModeDefault, target: observed), Frame(TxFrame.ModeSender, target: Observer)),
             tracer: targeted).TransactionExecuted, Is.True);
 
-        CallOutputTracer untouched = new();
+        FrameReceiptTracer untouched = new();
         Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(),
-            Frame(TxFrame.ModeDefault, target: unrelated), Frame(TxFrame.ModeSender, target: Observer)),
+            Frame(TxFrame.ModeDefault, target: unobserved), Frame(TxFrame.ModeSender, target: Observer)),
             tracer: untouched).TransactionExecuted, Is.True);
 
-        Assert.That(targeted.GasSpent, Is.EqualTo(untouched.GasSpent),
-            "a default-code frame must not warm its target, so the later BALANCE pays the cold access either way");
+        ulong observerGas = targeted.FrameReceipts![2].GasUsed;
+        ulong baselineGas = untouched.FrameReceipts![2].GasUsed;
+        Assert.That(observerGas, Is.EqualTo(baselineGas),
+            $"a default-code frame must not warm its target, so the later BALANCE pays the cold access either way; "
+            + $"a difference of {(long)baselineGas - (long)observerGas} is the warm/cold spread");
     }
 
     /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>

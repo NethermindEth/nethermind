@@ -487,7 +487,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // Default code: a codeless target runs the protocol-defined behavior instead of the EVM. A
-        // precompile is codeless but dispatched by address, so only VERIFY takes one down this path.
+        // precompile is codeless but dispatched by address; execute_frame gates default code on VERIFY.
         if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString
             && (frame.Mode == TxFrame.ModeVerify || _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null))
         {
