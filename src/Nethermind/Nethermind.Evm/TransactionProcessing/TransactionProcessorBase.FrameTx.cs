@@ -460,31 +460,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         return TransactionResult.Ok;
     }
 
-    /// <summary>
-    /// The transaction log set: the frame-order concatenation of the per-frame receipt logs.
-    /// </summary>
-    private static LogEntry[] ConcatFrameLogs(TxFrameReceipt[] frameReceipts)
-    {
-        int total = 0;
-        foreach (TxFrameReceipt frameReceipt in frameReceipts)
-        {
-            total += frameReceipt.Logs.Length;
-        }
-
-        if (total == 0) return [];
-
-        LogEntry[] logs = new LogEntry[total];
-        int offset = 0;
-        foreach (TxFrameReceipt frameReceipt in frameReceipts)
-        {
-            LogEntry[] frameLogs = frameReceipt.Logs;
-            frameLogs.CopyTo(logs, offset);
-            offset += frameLogs.Length;
-        }
-
-        return logs;
-    }
-
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
         stateGasUsed = 0;
