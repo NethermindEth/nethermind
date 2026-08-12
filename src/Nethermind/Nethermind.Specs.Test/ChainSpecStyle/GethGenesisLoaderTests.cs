@@ -374,6 +374,29 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void AutoDetectingLoader_detects_geth_format_when_config_is_not_first()
+    {
+        const string gethGenesis = """
+        {
+          "nonce": "0x0",
+          "config": {
+            "chainId": 12345,
+            "homesteadBlock": 0,
+            "eip150Block": 0,
+            "eip155Block": 0,
+            "eip158Block": 0
+          },
+          "difficulty": "0x1",
+          "gasLimit": "0x8000000",
+          "alloc": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadAutoDetecting(gethGenesis);
+        Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
+    }
+
+    [Test]
     public void AutoDetectingLoader_detects_parity_format()
     {
         const string parityChainspec = """

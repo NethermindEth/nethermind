@@ -21,43 +21,41 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
 
     public ChainSpec Load(Stream streamData)
     {
-        static Stream RewindStream(Stream streamData, long startPosition)
+        if (!streamData.CanSeek)
         {
-            streamData.Position = startPosition;
-            return streamData;
+            using MemoryStream bufferedStream = new();
+            streamData.CopyTo(bufferedStream);
+            bufferedStream.Position = 0;
+            return LoadSeekable(bufferedStream);
         }
 
-        Span<byte> header = stackalloc byte[256];
-        long startPosition = streamData.CanSeek ? streamData.Position : -1;
-        int headerLength = streamData.ReadAtLeast(header, 1, throwOnEndOfStream: false);
-        header = header[..headerLength];
-        GenesisFormat format = DetectFormat(header);
+        return LoadSeekable(streamData);
+    }
 
-        Stream stream = streamData.CanSeek
-            ? RewindStream(streamData, startPosition)
-            : new PrefixedStream(header.ToArray(), streamData);
+    private ChainSpec LoadSeekable(Stream streamData)
+    {
+        long startPosition = streamData.Position;
+        GenesisFormat format = DetectFormat(streamData);
+        streamData.Position = startPosition;
 
         return format switch
         {
-            GenesisFormat.Geth => _gethLoader.Load(stream),
-            _ => _parityLoader.Load(stream),
+            GenesisFormat.Geth => _gethLoader.Load(streamData),
+            _ => _parityLoader.Load(streamData),
         };
     }
 
     /// <summary>
-    /// Geth genesis always starts with <c>"config"</c> as the first property; parity chainspecs never do.
+    /// Geth genesis contains a top-level <c>"config"</c> property; parity chainspecs do not.
     /// </summary>
-    private GenesisFormat DetectFormat(ReadOnlySpan<byte> data)
+    private GenesisFormat DetectFormat(Stream streamData)
     {
         try
         {
-            Utf8JsonReader reader = new(data, new JsonReaderOptions { AllowTrailingCommas = true });
-
-            while (reader.Read())
-            {
-                if (reader.TokenType is JsonTokenType.PropertyName && !reader.ValueTextEquals("$schema"u8))
-                    return reader.ValueTextEquals("config"u8) ? GenesisFormat.Geth : GenesisFormat.Parity;
-            }
+            using JsonDocument document = JsonDocument.Parse(streamData, new JsonDocumentOptions { AllowTrailingCommas = true });
+            return document.RootElement.ValueKind is JsonValueKind.Object && document.RootElement.TryGetProperty("config", out _)
+                ? GenesisFormat.Geth
+                : GenesisFormat.Parity;
         }
         catch (JsonException e)
         {
@@ -66,51 +64,6 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
 
         if (_logger.IsWarn) _logger.Warn("Failed to detect genesis file format, assuming Parity-like style.");
         return GenesisFormat.Unknown;
-    }
-
-    /// <summary>
-    /// A read-only stream that replays a prefix byte buffer before delegating to the inner stream.
-    /// Avoids copying the entire inner stream to a MemoryStream just for format detection.
-    /// </summary>
-    private sealed class PrefixedStream(ReadOnlyMemory<byte> prefix, Stream inner) : Stream
-    {
-        private int _prefixPosition;
-
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            if (_prefixPosition < prefix.Length)
-            {
-                int toCopy = Math.Min(count, prefix.Length - _prefixPosition);
-                prefix.Span.Slice(_prefixPosition, toCopy).CopyTo(buffer.AsSpan(offset, toCopy));
-                _prefixPosition += toCopy;
-                return toCopy;
-            }
-
-            return inner.Read(buffer, offset, count);
-        }
-
-        public override int Read(Span<byte> buffer)
-        {
-            if (_prefixPosition < prefix.Length)
-            {
-                int toCopy = Math.Min(buffer.Length, prefix.Length - _prefixPosition);
-                prefix.Span.Slice(_prefixPosition, toCopy).CopyTo(buffer);
-                _prefixPosition += toCopy;
-                return toCopy;
-            }
-
-            return inner.Read(buffer);
-        }
-
-        public override bool CanRead => true;
-        public override bool CanSeek => false;
-        public override bool CanWrite => false;
-        public override long Length => throw new NotSupportedException();
-        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-        public override void Flush() { }
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private enum GenesisFormat
