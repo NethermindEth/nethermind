@@ -2240,6 +2240,28 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public async Task Shedding_takes_the_nearest_deadline_first_and_stops_at_the_freed_slot()
+        {
+            // Only as many as the pressure needs, in the spec's order: the later deadline keeps its place.
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            _txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_005), TxHandlingOptions.None);
+            Transaction later = BuildFrameTx(nonce: 0, TestItem.PrivateKeyB.Address, deadline: 1_015);
+            _txPool.SubmitTx(later, TxHandlingOptions.None);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.TryGetPendingTransaction(later.Hash!, out _), Is.True, "the later deadline keeps its slot");
+            }
+        }
+
         [TestCase(1, true, TestName = "a full pool sheds the frame tx closest to expiry")]
         [TestCase(4, false, TestName = "a pool with room keeps it")]
         public async Task Nearly_expired_frame_transaction_is_shed_only_under_capacity_pressure(int poolSize, bool shed)

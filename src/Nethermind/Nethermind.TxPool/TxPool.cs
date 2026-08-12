@@ -62,8 +62,8 @@ namespace Nethermind.TxPool
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
 
-        // Roughly two slots of remaining life: inside it a frame tx is near-worthless, so under capacity
-        // pressure it yields its slot rather than displacing a live transaction.
+        // Candidate filter for the shed pass, calibrated on a 12s slot; on a faster chain it simply admits
+        // more transactions to the deadline order, which is the order the spec asks for anyway.
         private const ulong ExpiryShedHorizonSeconds = 24;
         private readonly IFrameTxPrefixSimulator? _frameTxPrefixSimulator;
 
@@ -325,8 +325,8 @@ namespace Nethermind.TxPool
         /// <summary>The address an EIP-7702 designation at <paramref name="address"/> points at, or <c>null</c>.</summary>
         private Address? DelegationTargetOf(Address address)
         {
-            // Read through the pool's account cache, as every other sender read here does, and gate on the
-            // account carrying code so the overwhelmingly common codeless sender never loads code.
+            // Runs from the pool's Inserted event, so under its lock: gated on the account carrying code at
+            // all, which keeps the codeless sender to one cached read and never a code load.
             if (!_accounts.TryGetAccount(address, out AccountStruct account) || !account.HasCode) return null;
 
             ReadOnlySpan<byte> code = _headInfo.ReadOnlyStateProvider.GetCode(address);
@@ -610,23 +610,19 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>
-        /// Under capacity pressure, sheds the pending frame transactions whose expiry deadline is all but
-        /// reached, nearest first and lowest effective fee first among equals.
+        /// Sheds the pending frame transactions closest to expiry while a pool is at capacity, nearest
+        /// deadline first and lowest effective priority fee first among equals.
         /// </summary>
         /// <remarks>
         /// EIP-8141 "Replacement and Eviction" orders eviction as invalid-against-head, then nearest expiry,
-        /// then lowest effective priority fee. The first tier is <see cref="RevalidateFrameTransactions"/>;
-        /// this covers the second and third for the transactions where they carry real information — one
-        /// about to expire is worth little, so it yields its slot rather than displacing a live transaction
-        /// through the pool's fee-ordered capacity eviction. Applying the deadline order to the whole pool
-        /// needs a deadline-ordered index inside the pool itself (EIP8141-GAP); this pass instead runs only
-        /// when the pool is full and only over the transactions inside <see cref="ExpiryShedHorizonSeconds"/>,
-        /// so it never sheds a transaction with useful life left.
+        /// then lowest effective priority fee; the first tier is <see cref="RevalidateFrameTransactions"/>.
+        /// Applying the deadline order across the whole pool needs a deadline-ordered index inside the pool
+        /// (EIP8141-GAP), so this sheds only as far as the pressure goes and only within
+        /// <see cref="ExpiryShedHorizonSeconds"/> of the deadline.
         /// </remarks>
         private void ShedNearlyExpiredFrameTransactions(Block block)
         {
             if (Volatile.Read(ref _expiringFrameTxCount) == 0
-                || !_transactions.IsFull()
                 || !_specProvider.GetSpec(block.Header).IsEip8141Enabled)
             {
                 return;
@@ -636,9 +632,17 @@ namespace Nethermind.TxPool
             ulong horizon = block.Timestamp > ulong.MaxValue - ExpiryShedHorizonSeconds
                 ? ulong.MaxValue
                 : block.Timestamp + ExpiryShedHorizonSeconds;
+            ShedNearlyExpiredFrameTransactions(_transactions, horizon);
+            ShedNearlyExpiredFrameTransactions(_blobTransactions, horizon);
+        }
+
+        private void ShedNearlyExpiredFrameTransactions(TxDistinctSortedPool pool, ulong horizon)
+        {
+            if (!pool.IsFull()) return;
+
             UInt256 baseFee = _headInfo.CurrentBaseFee;
             bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
-            Transaction[] snapshot = _transactions.GetSnapshot();
+            Transaction[] snapshot = pool.GetSnapshot();
             using ArrayPoolList<(ulong Deadline, UInt256 Fee, Transaction Tx)> shedding = new(snapshot.Length);
             for (int i = 0; i < snapshot.Length; i++)
             {
@@ -659,11 +663,15 @@ namespace Nethermind.TxPool
 
             foreach ((_, _, Transaction tx) in shedding.AsSpan())
             {
+                // Stops as soon as a slot is free, so the order above decides who yields first and a
+                // transaction with life to spare keeps its place until it actually expires.
+                if (!pool.IsFull()) break;
+
                 if (RemoveTransaction(tx.Hash))
                 {
                     EvictedPending?.Invoke(this, new TxEventArgs(tx));
-                    // A deadline only ever gets closer, so unlike a revalidation eviction this one cannot
-                    // reverse and the hash is left cached, as on the expiry path.
+                    // A deadline only ever gets closer, so unlike a revalidation eviction this cannot
+                    // reverse and the hash stays cached, as on the expiry path.
                     Metrics.PendingTransactionsEvicted++;
                     Metrics.FrameTxExpiryShedEvictions++;
                     if (_logger.IsTrace) _logger.Trace($"Shed nearly-expired frame transaction {tx.Hash} to relieve pool pressure.");
@@ -717,11 +725,11 @@ namespace Nethermind.TxPool
                 }
 
                 Metrics.FrameTxRevalidations++;
-                if (!TryRevalidateFrameTransaction(tx, headSpec, state, out bool exposureReleased))
+                if (!TryRevalidateFrameTransaction(tx, headSpec, state, out bool holdsNoReservation))
                 {
-                    // Cleared only when this pass already released the reservation, so the Removed handler
-                    // releases it exactly once — an unreleased reservation would be permanent.
-                    if (exposureReleased) tx.PayerAddress = null;
+                    // The Removed handler must release exactly once: an unreleased reservation is permanent,
+                    // and releasing one that was never taken under-counts the payer just as badly.
+                    if (holdsNoReservation) tx.PayerAddress = null;
                     if (RemoveTransaction(tx.Hash))
                     {
                         EvictedPending?.Invoke(this, new TxEventArgs(tx));
@@ -739,7 +747,7 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>Whether <paramref name="tx"/> still resolves a solvent payer against the new head, moving its reservation if the payer changed.</summary>
-        /// <param name="exposureReleased">True when this call already released the reservation the transaction held.</param>
+        /// <param name="holdsNoReservation">True when the transaction no longer holds a reservation the pool must release — either this call released it, or it never had one.</param>
         /// <remarks>
         /// The solvency test compares the payer's whole pending exposure against its balance, so an
         /// over-committed payer sheds transactions one at a time: each eviction releases its reservation,
@@ -749,16 +757,16 @@ namespace Nethermind.TxPool
         /// A transaction that stays pending is re-indexed: both the payer and the sender's delegation target
         /// are head-state snapshots, so either can move without the other.
         /// </remarks>
-        private bool TryRevalidateFrameTransaction(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool exposureReleased)
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool holdsNoReservation)
         {
-            bool stillValid = ResolveFrameTxAgainstHead(tx, headSpec, state, out exposureReleased);
+            bool stillValid = ResolveFrameTxAgainstHead(tx, headSpec, state, out holdsNoReservation);
             if (stillValid) IndexFrameTxDependencies(tx);
             return stillValid;
         }
 
-        private bool ResolveFrameTxAgainstHead(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool exposureReleased)
+        private bool ResolveFrameTxAgainstHead(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool holdsNoReservation)
         {
-            exposureReleased = false;
+            holdsNoReservation = false;
             if (!FrameTxValidation.TryCalculateMaxCost(tx, headSpec, out UInt256 maxCost)) return false;
 
             // Matches TxFilteringState: a never-seen sender must read back as code-free, not zero-hashed.
@@ -790,7 +798,7 @@ namespace Nethermind.TxPool
             }
 
             if (previousPayer is not null) _payerExposure.Subtract(previousPayer, maxCost);
-            exposureReleased = true;
+            holdsNoReservation = true;
             tx.PayerAddress = payer;
             return payer is null || _payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _);
         }
