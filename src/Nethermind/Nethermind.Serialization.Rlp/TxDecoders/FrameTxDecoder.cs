@@ -18,9 +18,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// bytes of canonical-hash (empty msg) entries are elided.
 /// </summary>
 /// <remarks>
-/// A blob-carrying frame transaction takes the EIP-7594 wrapper form, byte-identical to type-3's; one
-/// with no blobs uses the plain payload. The two are disjoint: the wrapper opens with a list, the plain
-/// payload with the <c>chain_id</c> scalar. The consensus form and signature hash are unaffected.
+/// The wrapper and plain forms are disjoint: a wrapper opens with a list, a plain payload with the
+/// <c>chain_id</c> scalar. The consensus form and signature hash are unaffected.
 /// </remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()

@@ -251,8 +251,6 @@ public class Eth68ProtocolHandlerTests
         _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes.Count == NewPooledTransactionHashesMessage68.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
     }
 
-    // A type-6 announcement carries only its type byte, so its size budget must be the blob one wherever a
-    // blob-carrying frame tx is admissible — and only the plain size where NotSupportedTxFilter rejects it.
     [TestCase(BlobsSupportMode.InMemory, 1, TestName = "Blob_sized_frame_tx_announcement_is_requested_when_blob_frame_txs_are_admissible")]
     [TestCase(BlobsSupportMode.Disabled, 0, TestName = "Blob_sized_frame_tx_announcement_is_not_requested_when_blobs_are_disabled")]
     [TestCase(BlobsSupportMode.Storage, 0, TestName = "Blob_sized_frame_tx_announcement_is_not_requested_under_persistent_storage")]

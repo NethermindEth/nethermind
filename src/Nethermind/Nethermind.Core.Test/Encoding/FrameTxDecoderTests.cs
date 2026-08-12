@@ -59,7 +59,6 @@ public class FrameTxDecoderTests
         Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
         Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
 
-        // The wrapped mempool form carries the consensus-form transaction hash, not a form-specific one.
         Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
     }
 
@@ -89,8 +88,7 @@ public class FrameTxDecoderTests
         Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
     }
 
-    // A blob-carrying type-6 whose mempool form is the plain payload would reach the blob pool with no
-    // sidecar to serve, so mempool decode rejects it — as it already does for type-3.
+    // Such a transaction would reach the blob pool with no sidecar to serve.
     [Test]
     public void Decode_BlobCarryingFrameTxWithoutWrapper_InMempoolForm_ThrowsRlpException()
     {
