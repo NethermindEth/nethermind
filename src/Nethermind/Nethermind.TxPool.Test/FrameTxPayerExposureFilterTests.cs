@@ -43,7 +43,7 @@ public class FrameTxPayerExposureFilterTests
 
         AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(TestCost));
 
-        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.PayerExposureExceeded : AcceptTxResult.Accepted));
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
     [Test]
@@ -59,7 +59,7 @@ public class FrameTxPayerExposureFilterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(second, Is.EqualTo(AcceptTxResult.PayerExposureExceeded));
+            Assert.That(second, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
             Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)TestCost), "only the admitted tx is reserved");
         }
     }
