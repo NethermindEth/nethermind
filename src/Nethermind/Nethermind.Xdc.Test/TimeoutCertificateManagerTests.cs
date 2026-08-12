@@ -272,6 +272,84 @@ public class TimeoutCertificateManagerTests
         Assert.That(tcManager.FilterTimeout(timeout), Is.EqualTo(expected));
     }
 
+    [TestCase(99UL, 0, 0L, TestName = "StaleRound_NeitherRelayedNorPooled")]
+    [TestCase(100UL, 1, 1L, TestName = "CurrentRound_RelayedAndPooled")]
+    [TestCase(101UL, 0, 0L, TestName = "FutureRound_NeitherRelayedNorPooled")]
+    public async Task OnReceiveTimeout_DifferentRounds_RelaysAndPoolsAsExpected(ulong timeoutRound, int expectedRelays, long expectedPooled)
+    {
+        PrivateKey[] keys = XdcTestHelper.GeneratePrivateKeys(3);
+        Address[] masternodes = keys.Select(k => k.Address).ToArray();
+        (TimeoutCertificateManager manager, ISyncPeerPool syncPeerPool) = BuildManagerForReceivedTimeouts(masternodes);
+
+        Timeout timeout = XdcTestHelper.BuildSignedTimeout(keys[0], timeoutRound, Gap);
+        await manager.OnReceiveTimeout(timeout);
+
+        _ = syncPeerPool.Received(expectedRelays).AllPeers;
+        Assert.That(manager.GetTimeoutsCount(timeout), Is.EqualTo(expectedPooled));
+    }
+
+    [Test]
+    public async Task OnReceiveTimeout_EpochSwitchInfoUnavailable_StillRelaysTimeout()
+    {
+        PrivateKey[] keys = XdcTestHelper.GeneratePrivateKeys(3);
+        Address[] masternodes = keys.Select(k => k.Address).ToArray();
+
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>()).Returns((EpochSwitchInfo?)null);
+
+        (TimeoutCertificateManager manager, ISyncPeerPool syncPeerPool) =
+            BuildManagerForReceivedTimeouts(masternodes, epochSwitchManager);
+
+        Timeout timeout = XdcTestHelper.BuildSignedTimeout(keys[0], CurrentRound, Gap);
+        await manager.OnReceiveTimeout(timeout);
+
+        _ = syncPeerPool.Received(1).AllPeers;
+        Assert.That(manager.GetTimeoutsCount(timeout), Is.EqualTo(1L));
+    }
+
+    private const ulong CurrentRound = 100;
+    private const ulong Gap = 0;
+
+    private static (TimeoutCertificateManager Manager, ISyncPeerPool SyncPeerPool) BuildManagerForReceivedTimeouts(
+        Address[] masternodes,
+        IEpochSwitchManager? epochSwitchManager = null)
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(new Block(header, new BlockBody()));
+
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        snapshotManager.GetSnapshotByGapNumber(Gap).Returns(new Snapshot(0, Hash256.Zero, masternodes));
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec spec = Substitute.For<IXdcReleaseSpec>();
+        spec.EpochLength.Returns(900UL);
+        spec.CertificateThreshold.Returns(0.667);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        if (epochSwitchManager is null)
+        {
+            epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+            epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>())
+                .Returns(new EpochSwitchInfo(masternodes, [], [], new BlockRoundInfo(header.Hash!, CurrentRound, header.Number)));
+        }
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+
+        TimeoutCertificateManager manager = new(
+            new XdcConsensusContext { CurrentRound = CurrentRound },
+            Substitute.For<ITimeoutTimer>(),
+            syncPeerPool,
+            snapshotManager,
+            epochSwitchManager,
+            specProvider,
+            blockTree,
+            Substitute.For<ISigner>(),
+            NullLogManager.Instance);
+
+        return (manager, syncPeerPool);
+    }
+
     private TimeoutCertificateManager BuildTimeoutCertificateManager(XdcConsensusContext? ctx = null) =>
         new(
             ctx ?? new XdcConsensusContext(),

@@ -75,6 +75,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         _timeouts.Add(timeout);
         IReadOnlyCollection<Timeout> collectedTimeouts = _timeouts.GetItemsByKey(timeout);
 
+        BroadcastTimeout(timeout);
+
         XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
         if (epochSwitchInfo is null)
@@ -82,8 +84,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             // Failed to get epoch switch info, cannot process timeout
             return Task.CompletedTask;
         }
-
-        BroadcastTimeout(timeout);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
         double requiredTimeouts = epochSwitchInfo.Masternodes.Length * spec.CertificateThreshold;
@@ -254,7 +254,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         if (FilterTimeout(timeout))
         {
-            //TODO: Broadcast Timeout
             return HandleTimeoutVote(timeout);
         }
         return Task.CompletedTask;
