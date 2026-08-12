@@ -138,6 +138,17 @@ public abstract class TransactionTestBase
         ["TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH"] = ["InvalidBlobVersionedHashVersion"],
         ["TransactionException.TYPE_3_TX_CONTRACT_CREATION"] = ["blob transaction of type create"],
         ["TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS"] = ["max fee per blob gas less than block blob gas fee"],
+        // EIP-8141 static frame rules: most messages name a frame, the rest are the signature-entry
+        // and blob-field rules of FrameTxValidation.
+        ["TransactionException.TYPE_6_INVALID_FRAME_FORMAT"] =
+        [
+            "frame",
+            "signature scheme",
+            "signature msg",
+            "signatures must not name a signer",
+            "max fee per blob gas must be 0",
+            .. s_rlpDecodeFragments
+        ],
     };
 }
 
