@@ -137,10 +137,16 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameTxPayerExposureExceeded = new(22, TxPoolErrorMessages.FrameTxPayerExposureExceeded);
 
         /// <summary>
+        /// An EIP-8141 frame transaction whose validation prefix can never approve a payer.
+        /// </summary>
+        /// <remarks>Unincludable rather than malformed, so it must not disconnect the peer that relayed it.</remarks>
+        public static readonly AcceptTxResult FrameTxNoPayer = new(23, TxPoolErrorMessages.FrameTxNoPayer);
+
+        /// <summary>
         /// An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation:
         /// it reverted, used a banned opcode, exceeded <c>MAX_VERIFY_GAS</c>, or never set a payer.
         /// </summary>
-        public static readonly AcceptTxResult FrameSimulationFailed = new(23, TxPoolErrorMessages.FrameSimulationFailed);
+        public static readonly AcceptTxResult FrameSimulationFailed = new(24, TxPoolErrorMessages.FrameSimulationFailed);
 
         /// <summary>
         /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were
@@ -150,7 +156,7 @@ namespace Nethermind.TxPool
         /// Distinct from <see cref="FrameSimulationFailed"/> so peer scoring can tell load shedding apart from
         /// a peer sending transactions this node rejects.
         /// </remarks>
-        public static readonly AcceptTxResult FrameSimulationDeferred = new(24, TxPoolErrorMessages.FrameSimulationDeferred);
+        public static readonly AcceptTxResult FrameSimulationDeferred = new(25, TxPoolErrorMessages.FrameSimulationDeferred);
 
         private int Id { get; } = id;
         private string Code { get; } = code;
