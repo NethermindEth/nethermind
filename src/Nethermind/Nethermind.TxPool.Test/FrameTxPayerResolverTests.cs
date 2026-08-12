@@ -225,8 +225,10 @@ public class FrameTxPayerResolverTests
         // Admission pricing and payer resolution must classify this prefix the same way, or they drift.
         TestReadOnlyStateProvider state = new();
         DefaultCodeAccount(state, Sender);
+        TxFrame deploy = DeployFrame();
+        TxFrame selfVerify = SelfVerifyFrame();
         TxFrame trailing = new(TxFrame.ModeDefault, flags: 0, target: null, gasLimit: 5_000_000, UInt256.Zero, default);
-        Transaction tx = FrameTx([DeployFrame(), SelfVerifyFrame(), trailing], [Secp(Sender)]);
+        Transaction tx = FrameTx([deploy, selfVerify, trailing], [Secp(Sender)]);
 
         FrameTxPayerResolution resolution = Resolve(tx, state);
         ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx);
@@ -236,7 +238,7 @@ public class FrameTxPayerResolverTests
             Assert.That(resolution.Outcome, Is.EqualTo(FrameTxPayerOutcome.Resolved));
             Assert.That(resolution.Payer, Is.EqualTo(Sender));
             // Recognized-prefix pricing stops at the self_verify frame, excluding the trailing frame's gas.
-            Assert.That(verifyGas, Is.EqualTo(50_000UL + 100_000UL + Eip8141Constants.Secp256k1VerificationGasCost));
+            Assert.That(verifyGas, Is.EqualTo(deploy.GasLimit + selfVerify.GasLimit + Eip8141Constants.Secp256k1VerificationGasCost));
         }
     }
 
