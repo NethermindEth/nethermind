@@ -14,19 +14,11 @@ namespace Nethermind.Evm.Tracing;
 /// prefix is simulated at mempool admission, and captures the resolved payer.
 /// </summary>
 /// <remarks>
-/// The gas bound (<c>MAX_VERIFY_GAS</c>) and the "halt once payer is set" rule are enforced by the
-/// transaction processor's validation-prefix loop; this tracer enforces the per-opcode rules
-/// (ethereum/EIPs#12007 "Validation Trace Rules"): the banned-opcode list, the <c>GAS</c>-before-call
-/// caveat, the <c>TIMESTAMP</c>-in-expiry-verifier caveat, <c>SLOAD</c> restricted to <c>tx.sender</c>
-/// storage, and the <c>CALL*</c>/<c>EXTCODE*</c> target rule — those may only target an existing
-/// contract or a precompile and may not target an EIP-7702-delegated address (spec §Validation Trace
-/// Rules, L816/L853), except for <c>tx.sender</c> (a tracked dependency, covering its default-code
-/// behavior). A violation is recorded and the whole transaction is rejected; the simulation runs
-/// against read-only state, so a banned write executed before detection is discarded.
-/// EIP8141 follow-ups (design note §4 "Alternative C"): the first-<c>deploy</c>-frame carve-outs for
-/// <c>CREATE</c>/<c>CREATE2</c>/<c>SETDELEGATE</c> and <c>SSTORE</c>-to-sender are not yet honored, so
-/// the processor declines a prefix containing a deploy frame before entering it — the unconditional bans
-/// below never get to fire for one (declining is always spec-compliant, L684).
+/// The gas bound and the "halt once payer is set" rule live in the processor's prefix loop; this
+/// enforces the per-opcode rules of EIP-8141 "Validation Trace Rules". <c>tx.sender</c> is exempt from
+/// the <c>CALL*</c>/<c>EXTCODE*</c> target rule because its code hash is a tracked dependency.
+/// The first-<c>deploy</c>-frame carve-outs are not honored, so the processor declines a prefix
+/// containing a deploy frame before entering it and the bans below never fire for one (EIP8141-GAP).
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)

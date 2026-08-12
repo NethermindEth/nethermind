@@ -316,9 +316,10 @@ public static class FrameTxValidation
         addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
 
     /// <summary>True if <paramref name="frame"/> is a well-formed EIP-8141 expiry-verifier VERIFY frame.</summary>
-    /// <remarks>Position is not checked; the recognized prefix admits one only as the leading frame.</remarks>
-    /// <remarks>The value and data-length checks are kept so a caller may read the deadline out of a
-    /// matching frame without re-validating it.</remarks>
+    /// <remarks>
+    /// Position is not checked; the recognized prefix admits one only as the leading frame. The value and
+    /// data-length checks are kept so a caller may read the deadline without re-validating the frame.
+    /// </remarks>
     public static bool IsExpiryVerifyFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == TxFrame.ApproveScopeNone

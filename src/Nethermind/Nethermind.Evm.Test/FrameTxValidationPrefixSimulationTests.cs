@@ -94,7 +94,6 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_PrefixNeverSetsPayer_Rejected()
     {
-        // A VERIFY frame that returns without calling APPROVE leaves the payer unset.
         DeployContract(Sender, Prepare.EvmCode.Op(Instruction.STOP).Done, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
 
@@ -125,8 +124,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_PrefixUsesBannedOpcode_RecordsViolation()
     {
-        // TIMESTAMP is banned during the validation prefix outside the expiry verifier frame, even
-        // though the frame still calls APPROVE and would otherwise resolve a payer.
+        // Banned outside the expiry verifier frame, even though the frame goes on to APPROVE.
         byte[] code = Prepare.EvmCode
             .Op(Instruction.TIMESTAMP).Op(Instruction.POP)
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
@@ -141,9 +139,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_PrefixExceedsMaxVerifyGas_RejectedAsOverBudget()
     {
-        // A frame declaring far more than MAX_VERIFY_GAS is capped to the remaining budget; an unbounded
-        // loop then exhausts that cap. The rejection must be reported as over-budget, distinct from a
-        // plain revert of a within-budget frame.
+        // A capped frame that then runs out of gas must report as over-budget, not as a plain revert.
         byte[] code = Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done;
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
@@ -162,9 +158,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_PrefixCallsCodelessTarget_RecordsViolation()
     {
-        // CALL*/EXTCODE* to an address that is neither an existing contract nor a precompile is banned:
-        // its validity would depend on the target staying codeless — an unindexed mempool dependency
-        // (EIP-8141 §Validation Trace Rules, L816). AddressC is never deployed, so it is codeless.
+        // Validity would otherwise depend on the target staying codeless — an unindexed dependency.
         byte[] code = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 50_000)
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
@@ -179,8 +173,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_PrefixCallsExistingContract_Allowed()
     {
-        // CALL*/EXTCODE* to an existing (non-delegated) contract is permitted — helper contracts and
-        // libraries may be used during validation (EIP-8141 §Validation Trace Rules, L853).
+        // Helper contracts and libraries may be used during validation.
         DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
         byte[] code = Prepare.EvmCode
             .StaticCall(TestItem.AddressC, 50_000)

@@ -21,15 +21,9 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>
 /// Lives here (not in <c>Nethermind.TxPool</c>) because it depends on
 /// <see cref="IReadOnlyTxProcessingEnvFactory"/>: TxPool cannot reference Consensus (that would cycle),
-/// so the pool depends only on the <see cref="IFrameTxPrefixSimulator"/> abstraction and this
-/// composition-root implementation supplies the env. The processing source is created once and reused;
-/// simulations are serialized because they share one resettable world state, which also bounds
-/// concurrent admission work. Each call runs the prefix under
-/// <see cref="ExecutionOptions.FrameValidationPrefixOnly"/> (bounded by <c>MAX_VERIFY_GAS</c>,
-/// restoring state) with a <see cref="FrameTxValidationTracer"/> enforcing the trace/opcode rules.
-/// EIP8141 follow-ups (design note §4): dependency-set-keyed result caching, head-change re-simulation
-/// indexing, a wall-clock cancellation guard, and a multi-simulation admission budget are deferred.
-/// https://eips.ethereum.org/EIPS/eip-8141 (ethereum/EIPs#12007)
+/// so the pool depends only on the <see cref="IFrameTxPrefixSimulator"/> abstraction. Simulations are
+/// serialized because they share one resettable world state, which also bounds concurrent admission work.
+/// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
