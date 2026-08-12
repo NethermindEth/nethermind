@@ -43,7 +43,7 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
-    public void Accept_ReservesOnAdmission_SoConcurrentSecondTxSeesIt()
+    public void Accept_ReservesOnAdmission_SoASecondTxFromOnePayerSeesIt()
     {
         // The filter itself reserves on admission (no external accounting is simulated), so a second
         // frame tx from the same payer sees the first tx's reservation.

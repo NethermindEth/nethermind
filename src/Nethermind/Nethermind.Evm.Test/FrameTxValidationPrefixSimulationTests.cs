@@ -219,6 +219,51 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    [TestCase(0, true, TestName = "a payer covering the EIP-7623 floor resolves")]
+    [TestCase(-1, false, TestName = "a payer one wei short of the EIP-7623 floor does not")]
+    public void Simulate_PricesTheApproveGateOnTheSameBudgetExecutionEscrows(int balanceDelta, bool resolves)
+    {
+        // A calldata-heavy prefix with modest frame gas prices on the EIP-7623 floor, not the frame-gas
+        // sum, so the simulated APPROVE gate must use the same budget the main path escrows on.
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
+                CalldataOf(30_000)));
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out ulong maxGas), Is.True);
+        Assert.That(maxGas, Is.EqualTo(floorGas), "the fixture must be a shape where the floor binds");
+
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), (UInt256)(maxGas + (ulong)(long)balanceDelta));
+
+        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        Assert.That(tracer.Payer, resolves ? Is.EqualTo(Sender) : Is.Null);
+    }
+
+    [Test]
+    public void Simulate_UnpaidPrefixFollowedByAnExecutionFrame_RejectedAsNeverSettingAPayer()
+    {
+        // A default-mode frame with no approval scope is also the ordinary execution frame, so the
+        // deploy-frame decline must not claim this permanently-invalid shape.
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default));
+
+        (TransactionResult result, _) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("never set a payer"));
+        }
+    }
+
+    private static byte[] CalldataOf(int length)
+    {
+        byte[] data = new byte[length];
+        data.AsSpan().Fill(0xff);
+        return data;
+    }
+
     private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx)
     {
         Block block = Build.A.Block.WithNumber(1)

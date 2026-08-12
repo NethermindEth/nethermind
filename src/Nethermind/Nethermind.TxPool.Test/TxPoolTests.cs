@@ -2473,6 +2473,43 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
+        {
+            // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
+            // shape that reaches the exposure gate here — the reserve and the release, through the real
+            // filter chain and the real Removed event.
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            const ulong gasLimit = 1_000_000;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * gasLimit);
+
+            Transaction first = SelfPayingFrameTx(nonce: 0, feePerGas: 6);
+            Transaction blocked = SelfPayingFrameTx(nonce: 0, feePerGas: 7);
+            Transaction afterRelease = SelfPayingFrameTx(nonce: 0, feePerGas: 8);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult blockedResult = _txPool.SubmitTx(blocked, TxHandlingOptions.None);
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult afterReleaseResult = _txPool.SubmitTx(afterRelease, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(blockedResult, Is.EqualTo(AcceptTxResult.PayerExposureExceeded), "the first tx's reservation must be visible to the second");
+                Assert.That(afterReleaseResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx must release its reservation");
+            }
+        }
+
+        /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
+        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas)
+        {
+            Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
+                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas);
+            tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000)
         {
             List<TxFrame> frames =

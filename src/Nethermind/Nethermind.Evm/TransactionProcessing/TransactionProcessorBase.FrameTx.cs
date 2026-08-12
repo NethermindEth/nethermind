@@ -504,7 +504,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             // Acceptance algorithm step 2: validate all protocol signatures before touching state.
             ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-            IPrecompile? p256Precompile = _codeInfoRepository.GetCachedCodeInfo(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec, out _).Precompile;
+            // GetPrecompile, not GetCachedCodeInfo: the main path uses it so an unused P256 branch records no
+            // account access (EIP-7928), and the two paths must resolve the precompile the same way.
+            IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
             if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
@@ -524,33 +526,21 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
             }
 
-            // max_cost (TXPARAM 0x06) at basefee=max, as the main path computes it: the APPROVE payment
-            // charge reserves it and gates payer solvency.
-            if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out _, out _))
+            // max_cost (TXPARAM 0x06) taken from the same helper the main path escrows on, so the EIP-7623
+            // floor is included and the simulated APPROVE gate cannot decide against a different number.
+            if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong txGasLimit))
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas budget overflows");
             }
 
-            ulong totalFrameGas = 0;
-            foreach (TxFrame frame in frames)
-            {
-                ulong accumulated = totalFrameGas + frame.GasLimit;
-                if (accumulated < totalFrameGas)
-                {
-                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("total frame gas overflows");
-                }
-
-                totalFrameGas = accumulated;
-            }
-
-            ulong txGasLimit = intrinsicGas + totalFrameGas;
-            if (txGasLimit < intrinsicGas)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
-            }
-
+            // EIP8141-GAP: the blob leg is priced at max_fee_per_blob_gas where execution escrows at the
+            // actual blob base fee, so admission over-reserves it — conservative, never laxer.
             ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
-            UInt256 maxCost = (UInt256)txGasLimit * tx.DecodedMaxFeePerGas + (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault();
+            if (UInt256.MultiplyOverflow((UInt256)txGasLimit, tx.DecodedMaxFeePerGas, out UInt256 maxCost)
+                || UInt256.AddOverflow(maxCost, (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault(), out maxCost))
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction max cost overflows");
+            }
 
             FrameTxContext frameContext = new(
                 sender, tx.Nonce, frames, tx.FrameSignatures ?? [], sigHash,
@@ -567,9 +557,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 TxFrame frame = frames[i];
 
-                // The recognized grammar admits one leading deploy frame, but simulating it needs the
-                // first-deploy carve-outs (CREATE/CREATE2/SETDELEGATE, SSTORE to sender) (EIP8141-GAP).
-                if (FrameTxValidation.IsDeployFrame(frame))
+                // Positional, as RecognizedPrefixLength applies it: a default-mode frame with no approval
+                // scope is also the ordinary execution frame that ends an unpaid prefix. Only a leading one
+                // followed by a VERIFY frame is the deploy frame whose carve-outs are missing (EIP8141-GAP).
+                if (i <= 1 && i + 1 < frames.Length && FrameTxValidation.IsDeployFrame(frame) && frames[i + 1].Mode == TxFrame.ModeVerify)
                 {
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
                 }
