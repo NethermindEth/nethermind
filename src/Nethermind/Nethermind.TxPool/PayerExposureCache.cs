@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -18,6 +19,7 @@ namespace Nethermind.TxPool;
 internal sealed class PayerExposureCache
 {
     private readonly ConcurrentDictionary<AddressAsKey, UInt256> _reserved = new();
+    private long _trackedPayers;
 
     /// <summary>Summed pending maximum cost currently reserved for <paramref name="key"/>, or zero.</summary>
     public UInt256 GetReserved(AddressAsKey key) => _reserved.TryGetValue(key, out UInt256 reserved) ? reserved : UInt256.Zero;
@@ -71,6 +73,9 @@ internal sealed class PayerExposureCache
                 }
                 if (_reserved.TryAdd(key, cost))
                 {
+                    // Tracked on the add/remove transitions: an idle pool must read zero, so a non-zero
+                    // floor is a leaked reservation rather than the bound doing its job.
+                    Metrics.FrameTxPayersWithReservedExposure = Interlocked.Increment(ref _trackedPayers);
                     reserved = UInt256.Zero;
                     return true;
                 }
@@ -92,8 +97,11 @@ internal sealed class PayerExposureCache
         if (updated.IsZero)
         {
             // Threadsafe: removes the key only while its value is still zero (mirrors DelegationCache).
-            ((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(
-                new KeyValuePair<AddressAsKey, UInt256>(key, UInt256.Zero));
+            if (((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(
+                    new KeyValuePair<AddressAsKey, UInt256>(key, UInt256.Zero)))
+            {
+                Metrics.FrameTxPayersWithReservedExposure = Interlocked.Decrement(ref _trackedPayers);
+            }
         }
     }
 }
