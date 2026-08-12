@@ -10,9 +10,8 @@ using NUnit.Framework;
 namespace Nethermind.TxPool.Test;
 
 /// <summary>
-/// Backward compatibility of the persisted <see cref="BlobTxsColumns.LightBlobTxs"/> record. The proof
-/// version and the transaction type are optional trailing fields, so records written before either was
-/// added must still decode; a record that fails here crashes blob-pool construction at startup.
+/// Backward compatibility of the persisted <see cref="BlobTxsColumns.LightBlobTxs"/> record: the proof
+/// version and type are optional trailing fields, and a record that fails to decode breaks pool startup.
 /// </summary>
 [TestFixture]
 public class LightTxDecoderTests

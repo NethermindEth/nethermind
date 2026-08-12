@@ -59,7 +59,6 @@ public class FrameTxDecoderTests
         Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
         Assert.That(decoded.BlobVersionedHashes ?? [], Is.EqualTo(tx.BlobVersionedHashes ?? []));
 
-        // The wrapped mempool form carries the consensus-form transaction hash, not a form-specific one.
         Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
     }
 
@@ -89,27 +88,27 @@ public class FrameTxDecoderTests
         Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
     }
 
-    // A blob-carrying type-6 whose mempool form is the plain payload would reach the blob pool with no
-    // sidecar to serve, so mempool decode rejects it — as it already does for type-3.
+    // Such a transaction would reach the blob pool with no sidecar to serve.
     [Test]
     public void Decode_BlobCarryingFrameTxWithoutWrapper_InMempoolForm_ThrowsRlpException()
     {
         Transaction tx = CreateBlobCarryingFrameTx(ProofVersion.V1, blobCount: 1);
         tx.NetworkWrapper = null;
 
-        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm)];
+        // The plain form is byte-identical to the consensus form, which the encoder still produces.
+        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
         RlpWriter writer = new(bytes);
-        _txDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
+        _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
 
         Assert.That(() =>
         {
             RlpReader reader = new(bytes);
-            _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm);
+            _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
         }, Throws.InstanceOf<RlpException>());
 
-        // The same bytes are a valid consensus form: only the mempool form requires the sidecar.
+        // The same bytes stay a valid consensus form: only the mempool form requires the sidecar.
         RlpReader consensusReader = new(bytes);
-        Transaction decoded = _txDecoder.Decode(ref consensusReader)!;
+        Transaction decoded = _txDecoder.Decode(ref consensusReader, RlpBehaviors.SkipTypedWrapping)!;
         Assert.That(decoded.BlobVersionedHashes, Is.EqualTo(tx.BlobVersionedHashes));
     }
 

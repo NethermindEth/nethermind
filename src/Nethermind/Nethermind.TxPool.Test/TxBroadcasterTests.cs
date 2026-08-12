@@ -735,7 +735,6 @@ public class TxBroadcasterTests
             ? proofVersion
             : proofVersion == ProofVersion.V1 ? ProofVersion.V0 : ProofVersion.V1;
 
-        // EIP-8141: a blob-carrying frame tx participates in gossip on the same terms as type-3.
         Transaction frameBlobTx = new()
         {
             Type = TxType.FrameTx,
@@ -763,7 +762,6 @@ public class TxBroadcasterTests
         Transaction bloblessFrameTx = new() { Type = TxType.FrameTx };
 
         Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTxNoWrapper), Is.False);
-        // A frame tx with no blobs has nothing to serve as a sidecar; it gossips like any plain tx.
         Assert.That(gossipPolicy.ShouldGossipTransaction(bloblessFrameTx), Is.True);
     }
 

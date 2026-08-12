@@ -18,9 +18,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// bytes of canonical-hash (empty msg) entries are elided.
 /// </summary>
 /// <remarks>
-/// A blob-carrying frame transaction takes the EIP-7594 wrapper form, byte-identical to type-3's; one
-/// with no blobs uses the plain payload. The two are disjoint: the wrapper opens with a list, the plain
-/// payload with the <c>chain_id</c> scalar. The consensus form and signature hash are unaffected.
+/// The wrapper and plain forms are disjoint: a wrapper opens with a list, a plain payload with the
+/// <c>chain_id</c> scalar. The consensus form and signature hash are unaffected.
 /// </remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()
@@ -57,7 +56,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
-    [DoesNotReturn]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowMissingSidecar() =>
         throw new RlpException($"Blob-carrying {nameof(TxType.FrameTx)} in mempool form must carry a {nameof(ShardBlobNetworkWrapper)}");
 
@@ -143,6 +142,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         int payloadContentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         int payloadSequenceLength = Rlp.LengthOfSequence(payloadContentLength);
 
+        // A sidecar-less blob carrier still serialises to the plain form that Decode refuses; see GetLength.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;
@@ -178,6 +178,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         int payloadSequenceLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
 
+        // Deliberately no sidecar requirement here: GetLength is the pool's sizing call (TxBroadcaster
+        // sizes every accepted tx), so it must stay total, and Encode must agree with it.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;
