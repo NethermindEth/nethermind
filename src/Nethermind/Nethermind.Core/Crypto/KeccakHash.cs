@@ -373,7 +373,6 @@ public sealed partial class KeccakHash
         // Obtain the state data in the desired (hash) size we want.
         _hash = output;
 
-        // Return the result.
         return output;
     }
 
