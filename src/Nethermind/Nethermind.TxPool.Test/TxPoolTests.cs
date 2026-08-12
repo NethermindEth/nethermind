@@ -2532,6 +2532,56 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Revalidation_eviction_leaves_the_transaction_resubmittable()
+        {
+            // Unlike expiry, invalidity against a head reverses, so the hash must not stay in the cache.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Reject("payer over its exposure"));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted), "the same transaction must be admissible once its payer is solvent again");
+        }
+
+        [Test]
+        public async Task Revalidation_tracks_a_delegation_installed_after_admission()
+        {
+            // The delegate is a head-state snapshot, so a sender that delegates after admission must be
+            // re-indexed: a later change at the new delegate is what runs the prefix's code.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            // The sender delegates to AddressC; its own account changed, so this head re-indexes it.
+            byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
+            _stateProvider.InsertCode(TestItem.PrivateKeyA.Address, delegation, Bogota.Instance);
+            Block delegating = Build.A.Block.WithNumber(1).TestObject;
+            delegating.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.PrivateKeyA.Address };
+            await RaiseBlockAddedToMainAndWaitForNewHead(delegating);
+            simulator.ClearReceivedCalls();
+
+            // Only the delegate moves now: without the re-index the transaction would not be revalidated.
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Reject("delegate code changed"));
+            Block delegateChanged = Build.A.Block.WithNumber(2).WithParent(delegating).TestObject;
+            delegateChanged.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressC };
+            await RaiseBlockAddedToMainAndWaitForNewHead(delegateChanged);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
         public async Task Reorg_revalidates_frame_transactions_its_change_list_does_not_mention()
         {
             // A reorg reports the new branch's changes but not what the abandoned one reverted.

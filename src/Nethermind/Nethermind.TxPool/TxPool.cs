@@ -321,12 +321,11 @@ namespace Nethermind.TxPool
         /// <summary>The address an EIP-7702 designation at <paramref name="address"/> points at, or <c>null</c>.</summary>
         private Address? DelegationTargetOf(Address address)
         {
-            // Gated on the account carrying code at all, so the overwhelmingly common codeless sender
-            // costs one account read rather than a code load.
-            IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
-            if (!state.TryGetAccount(address, out AccountStruct account) || !account.HasCode) return null;
+            // Read through the pool's account cache, as every other sender read here does, and gate on the
+            // account carrying code so the overwhelmingly common codeless sender never loads code.
+            if (!_accounts.TryGetAccount(address, out AccountStruct account) || !account.HasCode) return null;
 
-            ReadOnlySpan<byte> code = state.GetCode(address);
+            ReadOnlySpan<byte> code = _headInfo.ReadOnlyStateProvider.GetCode(address);
             return Eip7702Constants.IsDelegatedCode(code)
                 ? new Address(code[Eip7702Constants.DelegationHeader.Length..])
                 : null;
@@ -624,7 +623,9 @@ namespace Nethermind.TxPool
         /// whole pool per head would be its own denial-of-service vector. Evicting here is the spec's
         /// "invalid against the current head first" eviction order: such transactions never compete for
         /// pool space in the first place. A simulation that fails on a resource bound rather than on the
-        /// prefix leaves the transaction pending.
+        /// prefix leaves the transaction pending. The fork gate reads the incoming block's spec while pricing
+        /// reads the head spec, matching <see cref="RemoveExpiredFrameTransactions"/>; they differ only for
+        /// the one head that crosses a fork boundary.
         /// </remarks>
         private void RevalidateFrameTransactions(Block block)
         {
@@ -639,7 +640,12 @@ namespace Nethermind.TxPool
 
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
             {
-                if (!_transactions.TryGetValue(hash, out Transaction? tx) || !tx.SupportsFrames) continue;
+                // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
+                if ((!_transactions.TryGetValue(hash, out Transaction? tx) && !_blobTransactions.TryGetValue(hash, out tx))
+                    || !tx.SupportsFrames)
+                {
+                    continue;
+                }
 
                 Metrics.FrameTxRevalidations++;
                 if (!TryRevalidateFrameTransaction(tx, headSpec, state, out bool exposureReleased))
@@ -650,7 +656,11 @@ namespace Nethermind.TxPool
                     if (RemoveTransaction(tx.Hash))
                     {
                         EvictedPending?.Invoke(this, new TxEventArgs(tx));
+                        // Unlike expiry, invalidity here is relative to this head and reverses (the payer
+                        // refunds, a reorg restores the state), so the hash must stay resubmittable.
+                        _hashCache.DeleteFromLongTerm(tx.Hash!);
                         Metrics.FrameTxRevalidationEvictions++;
+                        Metrics.PendingTransactionsEvicted++;
                         if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {tx.Hash}, invalid against the new head.");
                     }
                 }
@@ -665,8 +675,19 @@ namespace Nethermind.TxPool
         /// The solvency test compares the payer's whole pending exposure against its balance, so an
         /// over-committed payer sheds transactions one at a time: each eviction releases its reservation,
         /// and the rest of the sweep re-tests against the reduced total, leaving only the surplus dropped.
+        /// <em>Which</em> of that payer's transactions survive follows index iteration order, not the spec's
+        /// nearest-expiry-then-lowest-fee order.
+        /// A transaction that stays pending is re-indexed: both the payer and the sender's delegation target
+        /// are head-state snapshots, so either can move without the other.
         /// </remarks>
         private bool TryRevalidateFrameTransaction(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool exposureReleased)
+        {
+            bool stillValid = ResolveFrameTxAgainstHead(tx, headSpec, state, out exposureReleased);
+            if (stillValid) IndexFrameTxDependencies(tx);
+            return stillValid;
+        }
+
+        private bool ResolveFrameTxAgainstHead(Transaction tx, IReleaseSpec headSpec, IReadOnlyStateProvider state, out bool exposureReleased)
         {
             exposureReleased = false;
             if (!FrameTxValidation.TryCalculateMaxCost(tx, headSpec, out UInt256 maxCost)) return false;
@@ -702,11 +723,7 @@ namespace Nethermind.TxPool
             if (previousPayer is not null) _payerExposure.Subtract(previousPayer, maxCost);
             exposureReleased = true;
             tx.PayerAddress = payer;
-            if (payer is not null && !_payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _)) return false;
-
-            // The index still maps this transaction to the payer it was admitted with.
-            IndexFrameTxDependencies(tx);
-            return true;
+            return payer is null || _payerExposure.TryReserve(payer, maxCost, BalanceOf(state, payer), out _);
         }
 
         private static UInt256 BalanceOf(IReadOnlyStateProvider state, Address address) =>
