@@ -116,12 +116,11 @@ jobs:
                     + $run_id + "-master-" + $config.network
                   ),
                   machine_type: (if $machine_type == "" then $config.machine_type else $machine_type end),
+                  # This is the path that pages people on Slack, and a reclaimed Spot VM is
+                  # indistinguishable from a real regression in that alert. Default to
+                  # STANDARD regardless of the matrix flag; Spot stays available on demand.
                   provisioning_model: (
-                    if $model == "Spot" then "SPOT"
-                    elif $model == "Standard" then "STANDARD"
-                    elif $config.spot then "SPOT"
-                    else "STANDARD"
-                    end
+                    if $model == "Spot" then "SPOT" else "STANDARD" end
                   ),
                   timeout: (
                     if $mode == "Flat" and ($config.network == "mainnet" or $config.network == "gnosis") then 360
@@ -186,6 +185,9 @@ jobs:
     name: "Sync ${{ matrix.config.network }} (${{ matrix.config.mode }})"
     runs-on: ${{ matrix.config.runner_label }}
     timeout-minutes: ${{ matrix.config.timeout }}
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Authenticate App
@@ -225,6 +227,19 @@ jobs:
           prometheus_url: ${{ secrets.PROMETHEUS_URL }}
           prometheus_username: ${{ secrets.PROMETHEUS_USERNAME }}
           prometheus_password: ${{ secrets.PROMETHEUS_PASSWORD }}
+
+      # Frees each VM as its own sync ends; destroy_runner waits for the whole matrix.
+      - name: Release this runner
+        if: always()
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy-self
+          runner_label: ${{ matrix.config.runner_label }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
 
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-chain]

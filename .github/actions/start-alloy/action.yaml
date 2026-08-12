@@ -67,6 +67,11 @@ runs:
       run: |
         set -euo pipefail
 
+        # Telemetry is best-effort, but continue-on-error is not honoured on
+        # composite-action steps (actions/runner#2347), so a transient docker pull would
+        # otherwise fail a caller's multi-hour sync. Contain it here instead.
+        trap 'echo "::warning title=Alloy::failed to start Grafana Alloy; continuing without telemetry"; exit 0' ERR
+
         # github.action_path is not available in an input default, so resolve
         # the vendored config here via the auto-set GITHUB_ACTION_PATH.
         ALLOY_CONFIG="${ALLOY_CONFIG:-$GITHUB_ACTION_PATH/alloy-config.alloy}"

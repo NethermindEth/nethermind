@@ -7,6 +7,13 @@ set -euo pipefail
 INSTANCE_NAME=$(derive_instance_name "$RUNNER_LABEL")
 echo "instance name: ${INSTANCE_NAME}"
 
+# An empty or non-numeric count would silently attach zero Local SSDs and leave the job
+# running on the boot disk until it fills, hours into a sync.
+if ! [[ "$LOCAL_SSD_COUNT" =~ ^[0-9]+$ ]]; then
+  echo "::error title=GCP runner::local_ssd_count must be a non-negative integer, got '${LOCAL_SSD_COUNT}'"
+  exit 1
+fi
+
 JIT_FILE="${RUNNER_TEMP}/jitconfig.b64"
 RUNNER_ID=""
 
@@ -70,7 +77,7 @@ build_create_args() {
     --max-run-duration="$MAX_RUN_DURATION"
     --instance-termination-action=DELETE
     --no-restart-on-failure
-    --metadata="enable-guest-attributes=TRUE,serial-port-logging-enable=TRUE,runner-version=${RUNNER_VERSION},data-mount=${DATA_MOUNT}"
+    --metadata="enable-guest-attributes=TRUE,serial-port-logging-enable=TRUE,runner-version=${RUNNER_VERSION},data-mount=${DATA_MOUNT},local-ssd-count=${LOCAL_SSD_COUNT}"
     --metadata-from-file="startup-script=$(dirname "$0")/startup-script.sh,runner-jit-config=${JIT_FILE}"
     --labels="gh-run-id=${GITHUB_RUN_ID},gh-run-attempt=${GITHUB_RUN_ATTEMPT},managed-by=gcp-runner-action"
     --format=json
@@ -132,6 +139,11 @@ for model in "${MODELS[@]}"; do
     fi
     if grep -qE "$RETRYABLE" <<<"$err"; then
       echo "::notice title=GCP runner::${zone} has no ${model} capacity, trying next"
+      # A create can also fail after the insert succeeded (operation timeout, a partial
+      # failure attaching SSDs). Without this, a later zone succeeding would leave two
+      # instances sharing a name and destroy.sh could delete the wrong one.
+      gcloud compute instances delete "$INSTANCE_NAME" --project="$PROJECT_ID" \
+        --zone="$zone" --quiet --delete-disks=all >/dev/null 2>&1 || true
       continue
     fi
     echo "::error title=GCP runner::unrecognised create failure in ${zone}: ${err}"

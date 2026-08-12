@@ -36,6 +36,10 @@ systemctl disable --now apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || t
 systemctl stop apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
 
 stage disks
+# The image's baked package lists go stale as the family ages, and mdadm below is only
+# reached on the multi-SSD networks — the ones least affordable to lose to a dead mirror.
+$APT update
+
 # google-local-nvme-ssd-* is the only naming that reliably excludes the boot disk: on some
 # machine families the boot persistent disk is itself presented as /dev/nvme0n1.
 SSDS=()
@@ -44,14 +48,23 @@ for dev in /dev/disk/by-id/google-local-nvme-ssd-*; do
   [[ "$dev" == *-part[0-9]* ]] && continue
   SSDS+=("$dev")
 done
-echo "local NVMe SSDs: ${#SSDS[@]} -> ${SSDS[*]:-none}"
+EXPECTED_SSDS="$(md local-ssd-count || echo 0)"
+echo "local NVMe SSDs: found ${#SSDS[@]}, expected ${EXPECTED_SSDS} -> ${SSDS[*]:-none}"
+
+# Falling through to the boot disk would let the runner register and then fail with ENOSPC
+# hours into a sync, which reads like a client bug rather than a provisioning one.
+if (( ${#SSDS[@]} != EXPECTED_SSDS )); then
+  echo "ERROR: expected ${EXPECTED_SSDS} local SSDs but found ${#SSDS[@]}"
+  exit 1
+fi
+
 mkdir -p "$DATA_MOUNT"
 
 MKFS_OPTS=(-F -m 0 -E lazy_itable_init=1,lazy_journal_init=1)
 MOUNT_OPTS='discard,defaults,noatime'
 
 if (( ${#SSDS[@]} == 0 )); then
-  echo "WARNING: no local SSD attached, falling back to the boot disk for ${DATA_MOUNT}"
+  echo "WARNING: no local SSD requested, using the boot disk for ${DATA_MOUNT}"
 elif (( ${#SSDS[@]} == 1 )); then
   mkfs.ext4 "${MKFS_OPTS[@]}" "${SSDS[0]}"
   mount -o "$MOUNT_OPTS" "${SSDS[0]}" "$DATA_MOUNT"

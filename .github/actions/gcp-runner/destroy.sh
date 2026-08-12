@@ -9,12 +9,20 @@ echo "instance name: ${INSTANCE_NAME}"
 
 ZONE=$(resolve_zone "$INSTANCE_NAME")
 PREEMPTED=false
+DELETE_FAILED=false
 
 if [ -n "$ZONE" ]; then
   echo "deleting ${INSTANCE_NAME} in ${ZONE}"
-  gcloud compute instances delete "$INSTANCE_NAME" --project="$PROJECT_ID" \
-    --zone="$ZONE" --quiet --delete-disks=all || true
-  TERMINATED_BY=deleted-by-action
+  # This is the last line of defence for the whole design, so a failed delete has to be
+  # loud rather than leaving the VM to --max-run-duration hours later.
+  if gcloud compute instances delete "$INSTANCE_NAME" --project="$PROJECT_ID" \
+       --zone="$ZONE" --quiet --delete-disks=all; then
+    TERMINATED_BY=deleted-by-action
+  else
+    DELETE_FAILED=true
+    TERMINATED_BY=delete-failed
+    echo "::error title=GCP runner::failed to delete ${INSTANCE_NAME} in ${ZONE}; --max-run-duration will reap it"
+  fi
 else
   # The instance is already gone. Every in-guest preemption signal died with it, but zone
   # operations outlive the instance, so they are the only usable post-mortem.
@@ -28,6 +36,10 @@ else
     PREEMPTED=true
     TERMINATED_BY=preempted
     echo "::warning title=GCP runner::${RUNNER_LABEL} was preempted — infrastructure reclaim, not a sync failure"
+  elif grep -qx 'delete' <<<"$ops"; then
+    # The expected path: the sync job released its own VM via destroy-self.
+    TERMINATED_BY=deleted-by-self
+    echo "${INSTANCE_NAME} was already released by its sync job"
   elif [ -z "$ops" ]; then
     TERMINATED_BY=unknown
     echo "::warning title=GCP runner::${INSTANCE_NAME} vanished with no operations recorded"
@@ -57,3 +69,6 @@ fi
   echo "preempted=${PREEMPTED}"
   echo "terminated_by=${TERMINATED_BY}"
 } >> "$GITHUB_OUTPUT"
+
+[ "$DELETE_FAILED" = true ] && exit 1
+exit 0

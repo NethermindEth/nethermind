@@ -8,8 +8,7 @@ derive_instance_name() {
   local label="$1" sanitized hash
   sanitized=$(printf '%s' "$label" | tr '[:upper:]_' '[:lower:]-' | tr -cd 'a-z0-9-')
   hash=$(printf '%s' "$label" | sha1sum | cut -c1-8)
-  local name="gh-${sanitized:0:40}-${hash}-a${GITHUB_RUN_ATTEMPT:-1}"
-  printf '%s' "${name%-}"
+  printf 'gh-%s-%s-a%s' "${sanitized:0:40}" "$hash" "${GITHUB_RUN_ATTEMPT:-1}"
 }
 
 resolve_zone() {

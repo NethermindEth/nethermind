@@ -173,6 +173,9 @@ jobs:
     name: "Run sync of ${{ matrix.config.network }} (${{ matrix.config.mode }}) chain"
     runs-on: ${{ matrix.config.runner_label }}
     timeout-minutes: ${{ matrix.config.timeout }}
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Authenticate App
@@ -228,6 +231,21 @@ jobs:
           prometheus_url: ${{ secrets.PROMETHEUS_URL }}
           prometheus_username: ${{ secrets.PROMETHEUS_USERNAME }}
           prometheus_password: ${{ secrets.PROMETHEUS_PASSWORD }}
+
+      # Frees each VM as its own sync ends. destroy_runner cannot: matrix-to-matrix needs
+      # waits for the whole matrix, so without this a 45-minute hoodi VM would bill until
+      # op-mainnet finishes ten hours later.
+      - name: Release this runner
+        if: always()
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy-self
+          runner_label: ${{ matrix.config.runner_label }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
 
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-chain]
