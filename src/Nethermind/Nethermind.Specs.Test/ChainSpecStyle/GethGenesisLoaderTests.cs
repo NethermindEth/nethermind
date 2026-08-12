@@ -371,7 +371,7 @@ public class GethGenesisLoaderTests
         get
         {
             yield return new TestCaseData(BuildStandardGethGenesisJson(chainId: 12345))
-                { TestName = "Geth_config_is_first" };
+                .SetName("Geth_config_is_first");
 
             yield return new TestCaseData("""
                 {
@@ -388,7 +388,7 @@ public class GethGenesisLoaderTests
                   "alloc": {}
                 }
                 """)
-                { TestName = "Geth_config_follows_nonce" };
+                .SetName("Geth_config_follows_nonce");
 
             string padding = new('a', 8192);
             yield return new TestCaseData($$"""
@@ -407,7 +407,7 @@ public class GethGenesisLoaderTests
                   "alloc": {}
                 }
                 """)
-                { TestName = "Geth_config_follows_large_value" };
+                .SetName("Geth_config_follows_large_value");
         }
     }
 
