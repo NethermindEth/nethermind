@@ -1251,6 +1251,34 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>A codeless non-precompile target stays on the default-code route.</summary>
+    /// <remarks>
+    /// The route is observable through the shared warm journal: default code never touches the EVM
+    /// and so leaves its target cold, where the VM path warms it. A later frame reading that address
+    /// therefore pays the cold access either way, and pays it whichever target the first frame named.
+    /// </remarks>
+    [Test]
+    public void Execute_DefaultFrameTargetsCodelessAccount_LeavesItCold()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Address codeless = TestItem.AddressD;
+        Address unrelated = TestItem.AddressF;
+        DeployContract(Observer, Prepare.EvmCode.PushData(codeless).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+        CallOutputTracer targeted = new();
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: codeless), Frame(TxFrame.ModeSender, target: Observer)),
+            tracer: targeted).TransactionExecuted, Is.True);
+
+        CallOutputTracer untouched = new();
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: unrelated), Frame(TxFrame.ModeSender, target: Observer)),
+            tracer: untouched).TransactionExecuted, Is.True);
+
+        Assert.That(targeted.GasSpent, Is.EqualTo(untouched.GasSpent),
+            "a default-code frame must not warm its target, so the later BALANCE pays the cold access either way");
+    }
+
     /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
     /// <remarks>Pinned on the frame receipt's gas, which the default code would leave at zero; a frame
     /// pays no entry cost on this branch, so the identity gas (15 base, 3 per word) is all of it.</remarks>
