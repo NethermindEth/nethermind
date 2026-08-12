@@ -22,10 +22,12 @@ namespace Nethermind.Xdc.Test.ModuleTests;
 [TestFixture, NonParallelizable]
 public class RpcModuleTests
 {
+    private const ulong FinalizedBlockNumber = 98;
+    private const ulong HeadBlockNumber = 100;
+
     private IBlockTree _blockTree;
     private ISnapshotManager _snapshotManager;
     private ISpecProvider _specProvider;
-    private IQuorumCertificateManager _quorumCertificateManager;
     private IEpochSwitchManager _epochSwitchManager;
     private IVotesManager _votesManager;
     private ITimeoutCertificateManager _timeoutCertificateManager;
@@ -147,7 +149,6 @@ public class RpcModuleTests
         _blockTree = Substitute.For<IBlockTree>();
         _snapshotManager = Substitute.For<ISnapshotManager>();
         _specProvider = Substitute.For<ISpecProvider>();
-        _quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         _epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         _votesManager = Substitute.For<IVotesManager>();
         _timeoutCertificateManager = Substitute.For<ITimeoutCertificateManager>();
@@ -158,7 +159,6 @@ public class RpcModuleTests
             _blockTree,
             _snapshotManager,
             _specProvider,
-            _quorumCertificateManager,
             _epochSwitchManager,
             _votesManager,
             _timeoutCertificateManager,
@@ -581,17 +581,10 @@ public class RpcModuleTests
     }
 
     [Test]
-    public void GetMasternodesByNumber_ShouldReturnSuccess_WithFinalizedBlockParameter()
+    public void GetMasternodesByNumber_ShouldResolveFinalizedBlock_FromTheCommittedTip()
     {
         // Arrange
-        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        header.Number = 100;
-        BlockRoundInfo proposedBlock = new(header.Hash!, 50, 100);
-        QuorumCertificate qc = new(proposedBlock, null, 50);
-        header.ExtraConsensusData = new ExtraFieldsV2(50, qc);
-
-        _quorumCertificateManager.HighestKnownCertificate.Returns(qc);
-        _blockTree.FindHeader(header.Hash!).Returns(header);
+        XdcBlockHeader finalizedHeader = ArrangeChainWithFinalizedTip()[FinalizedBlockNumber];
 
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
@@ -601,9 +594,9 @@ public class RpcModuleTests
             masternodes,
             Array.Empty<Address>(),
             Array.Empty<Address>(),
-            new BlockRoundInfo(TestItem.KeccakA, 50, 100));
+            new BlockRoundInfo(finalizedHeader.Hash!, FinalizedBlockNumber, (long)FinalizedBlockNumber));
 
-        _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
+        _epochSwitchManager.GetEpochSwitchInfo(finalizedHeader).Returns(epochSwitchInfo);
 
         // Act
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
@@ -611,13 +604,19 @@ public class RpcModuleTests
         // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Number, Is.EqualTo(FinalizedBlockNumber));
+            Assert.That(result.Data.Round, Is.EqualTo((UInt256)FinalizedBlockNumber));
+            Assert.That(result.Data.Masternodes, Is.EquivalentTo(masternodes));
+        }
     }
 
     [Test]
     public void GetMasternodesByNumber_ShouldReturnFail_WhenFinalizedBlockNotFound()
     {
         // Arrange
-        _quorumCertificateManager.HighestKnownCertificate.Returns((QuorumCertificate?)null);
+        _blockTree.FinalizedHash.Returns((Hash256?)null);
 
         // Act
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
@@ -749,16 +748,13 @@ public class RpcModuleTests
 
     /// <summary>
     /// Sets up a chain whose head is two rounds ahead of the committed (finalized) tip, as the XDPoS 2.0 commit rule
-    /// leaves it, and stubs the highest known QC on the head so it cannot be mistaken for the committed block.
+    /// leaves it. Each header carries its own block number as its round.
     /// </summary>
     /// <returns>The headers of the chain, keyed by block number.</returns>
     private Dictionary<ulong, XdcBlockHeader> ArrangeChainWithFinalizedTip()
     {
-        const ulong finalizedNumber = 98;
-        const ulong headNumber = 100;
-
         Dictionary<ulong, XdcBlockHeader> headers = [];
-        for (ulong number = finalizedNumber - 1; number <= headNumber; number++)
+        for (ulong number = FinalizedBlockNumber - 1; number <= HeadBlockNumber; number++)
         {
             XdcBlockHeader header = Build.A.XdcBlockHeader()
                 .WithNumber(number)
@@ -768,13 +764,12 @@ public class RpcModuleTests
             headers[number] = header;
             _blockTree.FindHeader(number).Returns(header);
             _blockTree.FindHeader(header.Hash!).Returns(header);
+            _blockTree.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
         }
 
-        _blockTree.Head.Returns(Build.A.Block.WithHeader(headers[headNumber]).TestObject);
-        _blockTree.FinalizedHash.Returns(headers[finalizedNumber].Hash);
-        _blockTree.LastFinalizedBlockLevel.Returns(finalizedNumber);
-        _quorumCertificateManager.HighestKnownCertificate.Returns(
-            new QuorumCertificate(new BlockRoundInfo(headers[headNumber].Hash!, headNumber, (long)headNumber), null, headNumber));
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(headers[HeadBlockNumber]).TestObject);
+        _blockTree.FinalizedHash.Returns(headers[FinalizedBlockNumber].Hash);
+        _blockTree.LastFinalizedBlockLevel.Returns(FinalizedBlockNumber);
 
         return headers;
     }

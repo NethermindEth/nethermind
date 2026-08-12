@@ -17,7 +17,7 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
@@ -171,15 +171,14 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
         else if (blockNumber.Type == BlockParameterType.Finalized)
         {
-            BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
-            if (latestCommittedBlock != null)
-            {
-                header = tree.FindHeader(latestCommittedBlock.Hash);
-            }
-            else
+            if (tree.FinalizedHash is null)
             {
                 return ResultWrapper<MasternodesStatus>.Fail("No finalized block found from consensus");
             }
+
+            // Only the header contents are read here, so skip the total difficulty lookup, which creates the chain
+            // level when it is missing and would turn this read-only path into a write
+            header = tree.FindHeader(tree.FinalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
         else if (blockNumber.BlockNumber is null)
         {
