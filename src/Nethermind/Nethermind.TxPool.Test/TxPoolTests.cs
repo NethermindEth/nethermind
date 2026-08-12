@@ -2709,8 +2709,9 @@ namespace Nethermind.TxPool.Test
             // varies the hash without touching any input the reservation is computed from.
             if (distinctHash)
             {
-                TxFrame frame = tx.Frames![0];
-                tx.Frames = [new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data)];
+                int i = Array.FindIndex(tx.Frames!, f => f.Flags == TxFrame.ApproveExecutionAndPayment);
+                TxFrame frame = tx.Frames![i];
+                tx.Frames[i] = new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data);
             }
             tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
             // As FrameTxDecoder sets it: the frame-gas sum, so the sender-balance filters price below the

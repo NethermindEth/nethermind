@@ -168,32 +168,48 @@ public class FrameTxPayerExposureFilterTests
         return state;
     }
 
+    [TestCase(1000, false, TestName = "self-paying sender within its balance")]
+    [TestCase(999, true, TestName = "self-paying sender over its balance")]
+    public void Accept_SelfPayingSender_GatesOnTheAccountTheSiblingBalanceFiltersUsed(int balance, bool rejected)
+    {
+        // Native resolution only ever yields payer == sender today, so this is the branch every real
+        // admission takes: it must read the cached sender account, not the state provider.
+        Transaction tx = FrameTxCostingExactly(TestCost, payer: TestItem.AddressA);
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, rejected ? (UInt256)(TestCost - 1) : (UInt256)TestCost);
+
+        // The state provider is left empty: reading it instead would see a zero balance and always reject.
+        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts);
+
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
+    }
+
     /// <summary>A frame tx whose EIP-8141 <c>TXPARAM(0x06)</c> max cost is exactly <paramref name="cost"/> wei.</summary>
-    private static Transaction FrameTxCostingExactly(int cost)
+    private static Transaction FrameTxCostingExactly(int cost, Address? payer = null)
     {
         // At max_fee_per_gas == 1 the cost is the gas budget, so the frame's gas limit is the
         // requested cost less the spec-priced intrinsic component.
         Assert.That(FrameTxValidation.TryCalculateGasBudget(FrameTx(0), Spec, out ulong intrinsicGas, out _, out _), Is.True);
         Assert.That(intrinsicGas, Is.LessThan((ulong)cost), "the requested cost must leave room for the intrinsic term");
-        return FrameTx((ulong)cost - intrinsicGas);
+        return FrameTx((ulong)cost - intrinsicGas, payer);
     }
 
-    private static Transaction FrameTx(ulong frameGasLimit) => new()
+    private static Transaction FrameTx(ulong frameGasLimit, Address? payer = null) => new()
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
         Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
         FrameSignatures = [],
         DecodedMaxFeePerGas = UInt256.One,
-        PayerAddress = Payer,
+        PayerAddress = payer ?? Payer,
     };
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null)
     {
         IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
         specProvider.GetCurrentHeadSpec().Returns(Spec);
         FrameTxPayerExposureFilter filter = new(specProvider, state, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }
