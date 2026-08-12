@@ -211,7 +211,8 @@ public static class FrameTxValidation
             }
         }
 
-        // A value check, not a presence check: the decoder always populates both blob fields.
+        // A value check, not a presence check: the decoder always populates both blob fields. Refusing a
+        // blob-carrying frame tx here would be a block-validity rule, since BlockValidator reaches this.
         if (transaction.BlobVersionedHashes is not { Length: > 0 } && transaction.MaxFeePerBlobGas is { IsZero: false })
         {
             error = BlobFeeWithoutBlobs;
