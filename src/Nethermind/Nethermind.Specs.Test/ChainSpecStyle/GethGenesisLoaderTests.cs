@@ -422,6 +422,36 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void AutoDetectingLoader_preserves_parity_format_with_top_level_config()
+    {
+        const string parityChainspec = """
+        {
+          "config": { "chainId": 12345 },
+          "engine": { "Ethash": {} },
+          "params": {
+            "chainID": "0x1",
+            "terminalPoWBlockNumber": "0x64",
+            "terminalTotalDifficulty": "0xA"
+          },
+          "genesis": {
+            "difficulty": "0x1",
+            "gasLimit": "0x1388"
+          },
+          "accounts": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadAutoDetecting(parityChainspec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+            Assert.That(chainSpec.TerminalPoWBlockNumber, Is.EqualTo(100));
+            Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo((UInt256)10));
+        }
+    }
+
+    [Test]
     public void AutoDetectingLoader_detects_parity_format()
     {
         const string parityChainspec = """

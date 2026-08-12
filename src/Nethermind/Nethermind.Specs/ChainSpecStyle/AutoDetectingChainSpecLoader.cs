@@ -58,6 +58,7 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
         try
         {
             int bytesInBuffer = 0;
+            bool hasGethConfig = false;
             JsonReaderState readerState = new(new JsonReaderOptions { AllowTrailingCommas = true });
 
             while (true)
@@ -79,7 +80,7 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
                 {
                     if (reader.TokenType is JsonTokenType.EndObject && reader.CurrentDepth == 0)
                     {
-                        return GenesisFormat.Parity;
+                        return hasGethConfig ? GenesisFormat.Geth : GenesisFormat.Parity;
                     }
 
                     if (reader.TokenType is not JsonTokenType.PropertyName || reader.CurrentDepth != 1)
@@ -87,10 +88,15 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
                         continue;
                     }
 
-                    if (reader.ValueTextEquals("config"u8))
+                    if (reader.ValueTextEquals("engine"u8) ||
+                        reader.ValueTextEquals("params"u8) ||
+                        reader.ValueTextEquals("genesis"u8) ||
+                        reader.ValueTextEquals("accounts"u8))
                     {
-                        return GenesisFormat.Geth;
+                        return GenesisFormat.Parity;
                     }
+
+                    hasGethConfig |= reader.ValueTextEquals("config"u8);
 
                     if (!reader.Read() || !reader.TrySkip())
                     {
