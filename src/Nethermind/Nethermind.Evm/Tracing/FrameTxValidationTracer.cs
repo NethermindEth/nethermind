@@ -25,7 +25,8 @@ namespace Nethermind.Evm.Tracing;
 /// against read-only state, so a banned write executed before detection is discarded.
 /// EIP8141 follow-ups (design note §4 "Alternative C"): the first-<c>deploy</c>-frame carve-outs for
 /// <c>CREATE</c>/<c>CREATE2</c>/<c>SETDELEGATE</c> and <c>SSTORE</c>-to-sender are not yet honored, so
-/// prefixes that need them are conservatively rejected here (declining is always spec-compliant, L684).
+/// the processor declines a prefix containing a deploy frame before entering it — the unconditional bans
+/// below never get to fire for one (declining is always spec-compliant, L684).
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
