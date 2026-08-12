@@ -77,6 +77,25 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
+    public void Simulate_LocalSubmission_IsExemptFromTheExhaustedHeadBudget()
+    {
+        // The budget rations simulation between gossiping peers, so a peer that spends it must not also
+        // shut the operator out of their own node until the next head.
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _, budgetPerHeadMs: 1);
+        simulator.Simulate(FrameTx());
+        envFactory.ClearReceivedCalls();
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx(), local: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.RejectionReason, Does.Not.Contain("budget"));
+            envFactory.Received().Create();
+        }
+    }
+
+    [Test]
     public void Simulate_CancelledBeforeEntry_Throws()
     {
         using FrameTxPrefixSimulator simulator = Create(Substitute.For<IReadOnlyTxProcessingEnvFactory>(), out _);

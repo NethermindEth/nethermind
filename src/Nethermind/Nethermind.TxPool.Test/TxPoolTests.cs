@@ -2445,7 +2445,7 @@ namespace Nethermind.TxPool.Test
             // tx releases the reservation so a third is admitted.
             Address sponsor = TestItem.AddressD;
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(sponsor));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(sponsor));
             // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
 
@@ -2472,6 +2472,51 @@ namespace Nethermind.TxPool.Test
                 Assert.That(secondResult, Is.EqualTo(AcceptTxResult.PayerExposureExceeded), "the summed exposure of both txs exceeds the sponsor's balance");
                 Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx released the reservation");
             }
+        }
+
+        [Test]
+        public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
+        {
+            // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
+            // shape that reaches the exposure gate here — the reserve and the release, through the real
+            // filter chain and the real Removed event.
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+
+            Transaction first = SelfPayingFrameTx(nonce: 0, feePerGas: 6);
+            Transaction blocked = SelfPayingFrameTx(nonce: 0, feePerGas: 7);
+            Transaction afterRelease = SelfPayingFrameTx(nonce: 0, feePerGas: 8);
+
+            // Priced with the gate's own helper: enough for either transaction alone, never for both.
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(first, Bogota.Instance, out UInt256 firstCost), Is.True);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(blocked, Bogota.Instance, out UInt256 blockedCost), Is.True);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, firstCost + blockedCost - 1);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult blockedResult = _txPool.SubmitTx(blocked, TxHandlingOptions.None);
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult afterReleaseResult = _txPool.SubmitTx(afterRelease, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(blockedResult, Is.EqualTo(AcceptTxResult.PayerExposureExceeded), "the first tx's reservation must be visible to the second");
+                Assert.That(afterReleaseResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx must release its reservation");
+            }
+        }
+
+        /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
+        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas)
+        {
+            Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
+                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas);
+            tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+            // As FrameTxDecoder sets it: the frame-gas sum, so the sender-balance filters price below the
+            // payer gate and the exposure bound is what binds.
+            ulong frameGas = 0;
+            foreach (TxFrame frame in tx.Frames!) frameGas += frame.GasLimit;
+            tx.GasLimit = frameGas;
+            tx.Hash = tx.CalculateHash();
+            return tx;
         }
 
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000)

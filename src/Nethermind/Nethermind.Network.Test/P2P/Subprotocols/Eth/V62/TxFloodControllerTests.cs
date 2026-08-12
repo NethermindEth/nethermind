@@ -137,7 +137,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             // The peer does not choose when this node sheds simulation load, so a deferral must not
             // escalate to a disconnect — but a flood through a shedding window is still throttled.
-            for (int i = 0; i < 6000; i++)
+            // One past the flood threshold, so the same volume disconnects for any other rejection.
+            for (int i = 0; i < 6001; i++)
             {
                 _controller.Report(AcceptTxResult.FrameSimulationDeferred);
             }

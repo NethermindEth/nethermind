@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -160,6 +161,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         MetricsCounters = default;
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
+        // UnwindAbortedFrames is what keeps this true when an exception escapes the dispatch loop below.
+        Debug.Assert(_stateStack.Count == 0, "call frames left over from a previous execution");
         _currentState = vmState;
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
