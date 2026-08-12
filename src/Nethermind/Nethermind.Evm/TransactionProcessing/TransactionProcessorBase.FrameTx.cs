@@ -519,22 +519,22 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, followDelegation: false, spec, out Address? delegation);
-        // resolve_delegated_code_address: following the designation accesses the designated address.
-        // The target is charged just above and counts as accessed, so a self-designation is warm.
-        if (delegation is not null && spec.UseHotAndColdStorage)
-        {
-            entryCharge += delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
-                ? TGasPolicy.GetColdAccountAccessCost(spec)
-                : Eip8038Constants.WarmAccess;
-            if (entryCharge > frame.GasLimit)
-            {
-                gasUsed = frame.GasLimit;
-                return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
-            }
-        }
-
         if (delegation is not null)
         {
+            // resolve_delegated_code_address: following the designation accesses the designated address.
+            // The target is charged just above and counts as accessed, so a self-designation is warm.
+            if (spec.UseHotAndColdStorage)
+            {
+                entryCharge += delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
+                    ? TGasPolicy.GetColdAccountAccessCost(spec)
+                    : Eip8038Constants.WarmAccess;
+                if (entryCharge > frame.GasLimit)
+                {
+                    gasUsed = frame.GasLimit;
+                    return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                }
+            }
+
             // create_evm_from_frame reads the designated code only once its access is paid for, so a
             // frame failing that charge never touches the account. EIP-7702: no dispatch to a precompile.
             WorldState.AddAccountRead(delegation);
