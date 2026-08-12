@@ -77,7 +77,7 @@ public class GasEstimator(
         tx.SenderAddress ??= Address.Zero;
 
         if (tx.SupportsFrames)
-            return EstimateFrameTx(tx, header, spec, gasTracer);
+            return EstimateFrameTx(tx, header, spec);
 
         UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress!);
 
@@ -99,18 +99,15 @@ public class GasEstimator(
         return BinarySearchEstimate(tx, header, spec, gasTracer, bounds, errorMargin, token);
     }
 
-    /// <summary>The gas an EIP-8141 frame transaction reserves, or the probe's failure.</summary>
+    /// <summary>The gas an EIP-8141 frame transaction reserves, or a failure when that budget is unestimable.</summary>
     /// <remarks>
     /// A frame transaction has no <c>gas_limit</c> to search: the processor derives the budget from the
     /// signed per-frame limits and ignores <see cref="Transaction.GasLimit"/>. Affordability gates are
     /// skipped because the payer is frame-chosen rather than the sender; the tracer's out-of-gas and
     /// revert flags are not consulted because each frame runs as its own top-level action.
     /// </remarks>
-    private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec, EstimateGasTracer gasTracer)
+    private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
     {
-        if (gasTracer.StatusCode != StatusCode.Success)
-            return EstimationResult.Failure(GetError(gasTracer));
-
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
             return EstimationResult.Failure(FrameTxGasLimitOverflows);
 
