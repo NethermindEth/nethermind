@@ -583,7 +583,6 @@ public class RpcModuleTests
     [Test]
     public void GetMasternodesByNumber_ShouldResolveFinalizedBlock_FromTheCommittedTip()
     {
-        // Arrange
         XdcBlockHeader finalizedHeader = ArrangeChainWithFinalizedTip()[FinalizedBlockNumber];
 
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
@@ -598,10 +597,8 @@ public class RpcModuleTests
 
         _epochSwitchManager.GetEpochSwitchInfo(finalizedHeader).Returns(epochSwitchInfo);
 
-        // Act
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
 
-        // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
         using (Assert.EnterMultipleScope())
@@ -615,13 +612,10 @@ public class RpcModuleTests
     [Test]
     public void GetMasternodesByNumber_ShouldReturnFail_WhenFinalizedBlockNotFound()
     {
-        // Arrange
         _blockTree.FinalizedHash.Returns((Hash256?)null);
 
-        // Act
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
 
-        // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
@@ -699,14 +693,11 @@ public class RpcModuleTests
     [TestCase(97UL, true)]
     public void GetV2BlockByNumber_ShouldReportCommitted_OnlyUpToFinalizedBlock(ulong? blockNumber, bool expectedCommitted)
     {
-        // Arrange
         ArrangeChainWithFinalizedTip();
 
-        // Act
         ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(
             blockNumber is null ? BlockParameter.Latest : new BlockParameter(blockNumber.Value));
 
-        // Assert
         AssertCommitted(result, expectedCommitted);
     }
 
@@ -715,28 +706,22 @@ public class RpcModuleTests
     [TestCase(98UL, true)]
     public void GetV2BlockByHash_ShouldReportCommitted_OnlyUpToFinalizedBlock(ulong? blockNumber, bool expectedCommitted)
     {
-        // Arrange
         Dictionary<ulong, XdcBlockHeader> headers = ArrangeChainWithFinalizedTip();
 
-        // Act
         ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByHash(
             blockNumber is null ? BlockParameter.Latest : new BlockParameter(headers[blockNumber.Value].Hash!));
 
-        // Assert
         AssertCommitted(result, expectedCommitted);
     }
 
     [Test]
     public void GetV2BlockByNumber_ShouldReturnError_WhenNoFinalizedBlock()
     {
-        // Arrange
         ArrangeChainWithFinalizedTip();
         _blockTree.FinalizedHash.Returns((Hash256?)null);
 
-        // Act
         ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(BlockParameter.Latest);
 
-        // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
         using (Assert.EnterMultipleScope())

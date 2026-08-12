@@ -176,8 +176,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
                 return ResultWrapper<MasternodesStatus>.Fail("No finalized block found from consensus");
             }
 
-            // Only the header contents are read here, so skip the total difficulty lookup, which creates the chain
-            // level when it is missing and would turn this read-only path into a write
             header = tree.FindHeader(tree.FinalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
         else if (blockNumber.BlockNumber is null)
