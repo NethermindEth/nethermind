@@ -1065,8 +1065,7 @@ public class FrameTxProcessorTests
             DecodedMaxFeePerGas = 1,
         };
 
-    // The opcodes only exist inside a POST_TX frame; here one runs in the VERIFY prefix, which must
-    // exceptional-halt and invalidate the transaction like any other VERIFY halt.
+    // A halt in the VERIFY prefix invalidates the transaction like any other.
     [TestCase(Instruction.TXTRACE)]
     [TestCase(Instruction.TXDIFF)]
     [TestCase(Instruction.EVENTDATACOPY)]
@@ -1187,8 +1186,7 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // A count param (here TXTRACE 0x00) marks in2 "must be 0"; a non-zero index exceptional-halts, which
-    // in a POST_TX frame surfaces as a failed transaction. The zero case is the control.
+    // A count param marks in2 "must be 0"; a halt inside a POST_TX frame surfaces as a failed transaction.
     [TestCase(0, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceCountParam_ZeroIndex_Succeeds")]
     [TestCase(1, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceCountParam_NonZeroIndex_HaltsExceptionally")]
     public byte Execute_TxTraceCountParam_IndexMustBeZero(int index)
