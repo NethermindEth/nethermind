@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -186,7 +187,8 @@ public class XdcTestBlockchain : TestBlockchain
                     new XdcTransactionComparerProvider(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockTree>()).GetDefaultComparer(),
                     ctx.Resolve<ITxGossipPolicy>(),
                     new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
-                    ctx.Resolve<ITxValidator>()
+                    ctx.Resolve<ITxValidator>(),
+                    specChangeTxValidator: IntrinsicGasTxValidator.Instance
                 );
 
                 return txPool;

@@ -82,7 +82,7 @@ namespace Nethermind.TxPool
         private ulong _lastBlockNumber = ulong.MaxValue;
         private Hash256? _lastBlockHash;
         private IReleaseSpec? _lastRevalidatedSpec;
-        private IReadOnlyDictionary<Hash256, Transaction>? _blobTransactionsToRevalidate;
+        private IReadOnlyDictionary<Hash256, ValidationResult>? _blobTransactionRevalidationResults;
 
         private bool _isDisposed;
         private long _pendingTransactionsAdded = 0;
@@ -122,12 +122,13 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
-            _specChangeTxValidator = specChangeTxValidator ?? validator;
+            _specChangeTxValidator = specChangeTxValidator ?? throw new ArgumentNullException(nameof(specChangeTxValidator));
             _headTxValidator = headTxValidator;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
+            _lastRevalidatedSpec = _specProvider.GetCurrentHeadSpec();
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
             _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(
@@ -769,7 +770,9 @@ namespace Nethermind.TxPool
                         if (!revalidation)
                         {
                             _revalidatedTransactions++;
-                            MarkForEviction(tx, revalidation.Error == TxErrorMessages.InvalidProofVersion, evictFollowingTransactions: true);
+                            bool allowLaterPoolReentrance = revalidation.Error == TxErrorMessages.InvalidProofVersion
+                                || revalidation.Error == TxErrorMessages.InvalidTransactionForm;
+                            MarkForEviction(tx, allowLaterPoolReentrance, evictFollowingTransactions: true);
                             continue;
                         }
                     }
@@ -830,6 +833,7 @@ namespace Nethermind.TxPool
         {
             if (_transactions.Count == 0 && _blobTransactions.Count == 0)
             {
+                _lastRevalidatedSpec = _specProvider.GetCurrentHeadSpec();
                 return;
             }
 
@@ -841,15 +845,16 @@ namespace Nethermind.TxPool
                 _lastRevalidatedSpec = headSpec;
             }
 
-            _blobTransactionsToRevalidate = isSpecChange ? LoadBlobTransactionsForRevalidation(headSpec) : null;
             try
             {
+                // These fields are scoped to the single-reader head-processing loop and its serial bucket updates.
+                _blobTransactionRevalidationResults = isSpecChange ? LoadBlobTransactionRevalidationResults(headSpec) : null;
                 _transactions.UpdatePool(_accounts, isSpecChange ? _updateBucketAtSpecChange : _updateBucket);
                 _blobTransactions.UpdatePool(_accounts, isSpecChange ? _updateBlobBucketAtSpecChange : _updateBucket);
             }
             finally
             {
-                _blobTransactionsToRevalidate = null;
+                _blobTransactionRevalidationResults = null;
             }
 
             if (isSpecChange && _revalidatedTransactions != 0)
@@ -868,36 +873,62 @@ namespace Nethermind.TxPool
         private void UpdateBlobBucketAtSpecChange(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
             => UpdateBucketWithRevalidation(account, transactions, ref lastElement, updateTx, _lastRevalidatedSpec, resolveFullBlobTransaction: true);
 
-        private Dictionary<Hash256, Transaction> LoadBlobTransactionsForRevalidation(IReleaseSpec headSpec)
+        private Dictionary<Hash256, ValidationResult> LoadBlobTransactionRevalidationResults(IReleaseSpec headSpec)
         {
-            Dictionary<Hash256, Transaction> fullTransactions = [];
+            Dictionary<Hash256, ValidationResult> failedTransactions = [];
             foreach (Transaction transaction in _blobTransactions.GetSnapshot())
             {
-                if (transaction is LightTransaction lightTransaction
-                    && lightTransaction.GetProofVersion() == headSpec.BlobProofVersion
-                    && lightTransaction.Hash is Hash256 hash
-                    && _blobTransactions.TryGetValue(hash, out Transaction? fullTransaction))
+                if (transaction is not LightTransaction lightTransaction || lightTransaction.Hash is not Hash256 hash)
                 {
-                    fullTransactions[hash] = fullTransaction;
+                    continue;
+                }
+
+                ProofVersion? proofVersion = lightTransaction.GetProofVersion();
+                if (proofVersion != headSpec.BlobProofVersion)
+                {
+                    failedTransactions[hash] = proofVersion is null
+                        ? TxErrorMessages.InvalidTransactionForm
+                        : TxErrorMessages.InvalidProofVersion;
+                    continue;
+                }
+
+                if (!_blobTransactions.TryGetValue(hash, out Transaction? fullTransaction))
+                {
+                    failedTransactions[hash] = TxErrorMessages.InvalidTransactionForm;
+                    continue;
+                }
+
+                ValidationResult revalidation = _specChangeTxValidator.IsWellFormed(fullTransaction, headSpec);
+                if (!revalidation)
+                {
+                    failedTransactions[hash] = revalidation;
                 }
             }
 
-            return fullTransactions;
+            return failedTransactions;
         }
 
         private ValidationResult Revalidate(Transaction transaction, IReleaseSpec headSpec, bool resolveFullBlobTransaction)
         {
             if (resolveFullBlobTransaction && transaction is LightTransaction lightTransaction)
             {
-                if (lightTransaction.Hash is not Hash256 hash
-                    || _blobTransactionsToRevalidate is null
-                    || !_blobTransactionsToRevalidate.TryGetValue(hash, out Transaction? fullTransaction))
+                if (lightTransaction.Hash is not Hash256 hash || _blobTransactionRevalidationResults is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing {lightTransaction.ToShortString()} from the blob pool because its full transaction is unavailable.");
                     return TxErrorMessages.InvalidTransactionForm;
                 }
 
-                transaction = fullTransaction;
+                if (_blobTransactionRevalidationResults.TryGetValue(hash, out ValidationResult revalidation))
+                {
+                    if (revalidation.Error == TxErrorMessages.InvalidTransactionForm && _logger.IsTrace)
+                    {
+                        _logger.Trace($"Removing {lightTransaction.ToShortString()} from the blob pool because its full transaction is unavailable or invalid under the new specification.");
+                    }
+
+                    return revalidation;
+                }
+
+                return ValidationResult.Success;
             }
 
             return _specChangeTxValidator.IsWellFormed(transaction, headSpec);
@@ -959,7 +990,8 @@ namespace Nethermind.TxPool
                         {
                             ValidationResult revalidation = Revalidate(transaction, revalidationSpec, resolveFullBlobTransaction);
                             revalidationFailed = !revalidation;
-                            allowLaterPoolReentrance = revalidation.Error == TxErrorMessages.InvalidProofVersion;
+                            allowLaterPoolReentrance = revalidation.Error == TxErrorMessages.InvalidProofVersion
+                                || revalidation.Error == TxErrorMessages.InvalidTransactionForm;
                             if (revalidationFailed)
                             {
                                 _revalidatedTransactions++;

@@ -231,9 +231,6 @@ public class TxPoolSourceTests
             .WithMaxPriorityFeePerGas(1.GWei)
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
-        IntrinsicGasTxValidator.Instance.IsWellFormed(invalidBlob, Amsterdam.Instance);
-        IntrinsicGasTxValidator.Instance.IsWellFormed(validBlob, Amsterdam.Instance);
-
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
         {
@@ -267,5 +264,40 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
 
         Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
+    }
+
+    [Test]
+    public void GetTransactions_should_not_resolve_blob_when_blob_fee_is_too_low()
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Cancun.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .WithMaxFeePerBlobGas(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(blobTx.SenderAddress!), [new LightTransaction(blobTx)] }
+        });
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig());
+
+        Transaction[] result = txSource.GetTransactions(
+            Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject,
+            long.MaxValue).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Empty);
+            txPool.DidNotReceiveWithAnyArgs().TryGetPendingBlobTransaction(Arg.Any<Hash256>(), out _);
+        }
     }
 }

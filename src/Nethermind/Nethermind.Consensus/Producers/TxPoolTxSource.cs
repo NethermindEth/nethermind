@@ -53,14 +53,17 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
-            // Transactions admitted to TxPool have an intrinsic-gas memo; rechecking that memo against the target
-            // spec is cheap on ordinary blocks and catches a producer racing the asynchronous pool update.
-            bool IsValidTransactionForNextBlock(Transaction tx) => _txFilterPipeline.Execute(tx, parent, spec)
-                && (tx.IntrinsicGasMemo is null || IntrinsicGasTxValidator.Instance.IsWellFormed(tx, spec));
-
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, IsValidTransactionForNextBlock, gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, IsValidBlobForNextBlock, maxBlobCount);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(
+                pendingTransactions,
+                comparer,
+                tx => IsValidTransactionForNextBlock(tx, parent, spec),
+                gasLimit);
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
+                pendingBlobTransactionsEquivalences,
+                comparer,
+                tx => IsBlobProofVersionValidForNextBlock(tx, spec),
+                maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -107,19 +110,6 @@ namespace Nethermind.Consensus.Producers
             }
 
             if (_logger.IsTrace) _logger.Trace($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
-
-            bool IsValidBlobForNextBlock(Transaction blobTx)
-            {
-                if (blobTx.GetProofVersion() != spec.BlobProofVersion
-                    || !TryGetFullBlobTx(blobTx, out Transaction? fullBlobTx)
-                    || fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
-                    || wrapper.Blobs.Length != blobTx.BlobVersionedHashes?.Length)
-                {
-                    return false;
-                }
-
-                return IsValidTransactionForNextBlock(fullBlobTx);
-            }
 
             bool ResolveBlob(Transaction blobTx, out Transaction fullBlobTx)
             {
@@ -172,6 +162,7 @@ namespace Nethermind.Consensus.Producers
         {
             ulong maxBlobsToConsider = maxBlobs * 5ul;
             ulong countOfRemainingBlobs = 0UL;
+            ulong consideredBlobCount = 0UL;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
             {
@@ -195,6 +186,18 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
+                consideredBlobCount += txBlobCount;
+                bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
+                if (!IsValidBlobForNextBlock(blobTx, parent, spec))
+                {
+                    if (reachedConsiderationLimit)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
                 if (txBlobCount == 1UL && candidates is null)
                 {
                     selectedBlobTxs.Add(blobTx);
@@ -213,7 +216,7 @@ namespace Nethermind.Consensus.Producers
                     countOfRemainingBlobs += txBlobCount;
                 }
 
-                if (countOfRemainingBlobs > maxBlobsToConsider)
+                if (reachedConsiderationLimit)
                 {
                     // Reached max blobs to consider, should have enough to fill the block.
                     break;
@@ -375,6 +378,31 @@ namespace Nethermind.Consensus.Producers
             fullBlobTx = null;
             return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
         }
+
+        private bool IsValidTransactionForNextBlock(Transaction tx, BlockHeader parent, IReleaseSpec spec) =>
+            _txFilterPipeline.Execute(tx, parent, spec)
+            && (tx.IntrinsicGasMemo is null || IsIntrinsicallyValid(tx, spec));
+
+        private static bool IsBlobProofVersionValidForNextBlock(Transaction blobTx, IReleaseSpec spec) =>
+            blobTx.GetProofVersion() == spec.BlobProofVersion;
+
+        private bool IsValidBlobForNextBlock(Transaction blobTx, BlockHeader parent, IReleaseSpec spec)
+        {
+            if (blobTx.GetProofVersion() != spec.BlobProofVersion
+                || !TryGetFullBlobTx(blobTx, out Transaction? fullBlobTx)
+                || fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
+                || wrapper.Blobs.Length != blobTx.BlobVersionedHashes?.Length)
+            {
+                return false;
+            }
+
+            // Light transactions do not carry the intrinsic-gas memo, so the full blob transaction must be checked here.
+            return _txFilterPipeline.Execute(fullBlobTx, parent, spec)
+                && IsIntrinsicallyValid(fullBlobTx, spec);
+        }
+
+        private static bool IsIntrinsicallyValid(Transaction tx, IReleaseSpec spec) =>
+            IntrinsicGasTxValidator.Instance.IsWellFormed(tx, spec);
 
         private bool TryUpdateFeePerBlobGas(BlockHeader parent, IReleaseSpec spec, out UInt256 feePerBlobGas)
         {
