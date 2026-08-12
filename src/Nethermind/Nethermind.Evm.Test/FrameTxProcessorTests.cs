@@ -376,6 +376,41 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_FrameGasCoveringOnlyTheTargetAccess_LeavesTheDesignatedAccountOutOfTheBal()
+    {
+        // EIP-7928: the designated code is read only once its access is paid for, so a frame that
+        // cannot afford the charge leaves no BAL entry for the designated account.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. Recipient.Bytes]);
+
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor tracedProcessor = new(BlobBaseFeeCalculator.Instance, _specProvider, tracedState, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        TxFrame frame = new(TxFrame.ModeDefault, flags: 0, Observer,
+            gasLimit: Eip8038Constants.ColdAccountAccess, UInt256.Zero, default);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), frame);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+
+        Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance).TransactionExecuted, Is.True);
+
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bal.GetAccountChanges(Observer), Is.Not.Null, "the target is read to find the designation");
+            Assert.That(bal.GetAccountChanges(Recipient), Is.Null,
+                "a frame that cannot pay the designation access must not read the designated account");
+        }
+    }
+
+    [Test]
     public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
     {
         // max_fee = max_priority = 2^255 with an even tx gas limit (415_950 here) wraps maxCost to
