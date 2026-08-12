@@ -38,7 +38,6 @@ public class FrameTxPayerExposureFilterTests
     {
         TestReadOnlyStateProvider state = StateWithPayerBalance(balance);
         PayerExposureCache cache = new();
-        // Pre-seed a prior payer reservation (as an earlier admitted frame tx would have taken).
         if (reserved > 0) cache.TryReserve(Payer, (UInt256)reserved, UInt256.MaxValue, out _);
 
         AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(TestCost));
@@ -49,7 +48,6 @@ public class FrameTxPayerExposureFilterTests
     [Test]
     public void Accept_ReservesOnAdmission_SoASecondTxFromOnePayerSeesIt()
     {
-        // The filter itself reserves on admission, so a second frame tx from the same payer sees it.
         TestReadOnlyStateProvider state = StateWithPayerBalance(TestCost + TestCost / 2);
         PayerExposureCache cache = new();
 
