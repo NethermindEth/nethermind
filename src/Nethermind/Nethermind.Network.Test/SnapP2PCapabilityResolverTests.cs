@@ -60,11 +60,30 @@ public class SnapP2PCapabilityResolverTests
         Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
     }
 
-    [TestCase(true, TestName = "Snap-syncing on a BAL chain still withholds snap/2 (no BAL-heal substitute yet)")]
-    [TestCase(false, TestName = "Snap-syncing on a non-BAL chain withholds snap/2")]
-    public void Resolve_syncing_withholds_snap2_without_bal_heal_substitute(bool balEnabled)
+    [Test]
+    public void Resolve_syncing_withholds_snap2_without_bal_heal_substitute()
     {
-        using SnapP2PCapabilityResolver resolver = CreateResolver(snapSync: true, balEnabled: balEnabled);
+        // BAL healing isn't implemented yet, so this always withholds snap/2 regardless of chain spec.
+        using SnapP2PCapabilityResolver resolver = CreateResolver(snapSync: true);
         Assert.That(Resolve(resolver).Contains(Snap2), Is.False);
+    }
+
+    [TestCase(SyncMode.StateNodes, SyncMode.Full, true, TestName = "State sync finishing fires Changed")]
+    [TestCase(SyncMode.Full, SyncMode.StateNodes, true, TestName = "Regressing from Full fires Changed")]
+    [TestCase(SyncMode.StateNodes, SyncMode.FastBlocks, false, TestName = "Non-Full to non-Full does not fire")]
+    [TestCase(SyncMode.Full, SyncMode.Full | SyncMode.FastBlockAccessLists, false, TestName = "Full to Full does not fire")]
+    public void Raises_Changed_only_when_full_sync_completion_flips(SyncMode previous, SyncMode current, bool expectedFired)
+    {
+        ISyncConfig syncConfig = new SyncConfig();
+        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec());
+        using SnapP2PCapabilityResolver resolver = new(syncConfig, syncModeSelector, specProvider, LimboLogs.Instance);
+
+        bool changed = false;
+        resolver.Changed += () => changed = true;
+
+        syncModeSelector.Changed += Raise.EventWith(new SyncModeChangedEventArgs(previous, current));
+
+        Assert.That(changed, Is.EqualTo(expectedFired));
     }
 }

@@ -13,7 +13,8 @@ using Nethermind.Synchronization.ParallelSync;
 namespace Nethermind.Network;
 
 /// <summary>
-/// Advertises snap (and snap/2 when enabled) while the node serves snap data or still needs to snap-sync its own state.
+/// Advertises snap while the node serves snap data or still needs to snap-sync its own state; snap/2 is
+/// only added once BALs are active on the chain and trie nodes are no longer needed to finish syncing.
 /// </summary>
 /// <remarks>
 /// Replaces the former <c>SnapCapabilitySwitcher</c>: instead of adding the capability on start and removing it
