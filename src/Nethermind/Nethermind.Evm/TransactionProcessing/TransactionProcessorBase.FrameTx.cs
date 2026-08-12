@@ -518,8 +518,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out Address? delegation);
-        // resolve_delegated_code_address: following the designation accesses the designated address,
-        // charged at frame entry like the target's own access.
+        // resolve_delegated_code_address: following the designation accesses the designated address.
+        // The target is charged just above and counts as accessed, so a self-designation is warm.
         if (delegation is not null && spec.UseHotAndColdStorage)
         {
             entryCharge += delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
