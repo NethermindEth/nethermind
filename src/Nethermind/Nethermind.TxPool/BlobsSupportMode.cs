@@ -43,6 +43,7 @@ public static class BlobsSupportModeExtensions
     public static bool SupportsReorgs(this BlobsSupportMode mode) => mode is BlobsSupportMode.StorageWithReorgs;
 
     /// <summary>Whether a blob-carrying EIP-8141 frame transaction can be admitted under this mode.</summary>
-    /// <remarks>Only the in-memory pool keeps the full transaction; the persistent pool's type-6 arc is untested.</remarks>
+    /// <remarks>A persisted light record carries no frames, so frame expiry silently never fires for one;
+    /// carrying the transaction type on that record is not sufficient.</remarks>
     public static bool SupportsBlobFrameTxs(this BlobsSupportMode mode) => mode is BlobsSupportMode.InMemory;
 }
