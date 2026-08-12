@@ -536,8 +536,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<V2BlockInfo>.Fail("Header is not an XDC block header");
         }
 
-        // A block is committed only once the three-consecutive-round rule fires, which the block tree tracks as the
-        // finalized block. The highest known QC merely certifies a block, so it runs two rounds ahead of the commit.
         if (tree.FinalizedHash is null)
         {
             return ResultWrapper<V2BlockInfo>.Success(new V2BlockInfo
