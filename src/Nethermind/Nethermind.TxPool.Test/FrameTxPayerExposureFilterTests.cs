@@ -3,6 +3,8 @@
 
 #nullable enable
 
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -115,6 +117,50 @@ public class FrameTxPayerExposureFilterTests
 
         Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
         Assert.That(maxCost, Is.EqualTo((UInt256)TestCost + Eip4844Constants.GasPerBlob));
+    }
+
+    [Test]
+    public void ExposureCache_RejectsAnAccumulationThatWouldOverflow()
+    {
+        // Overflow is checked before the balance compare: a wrapped total would silently re-open the gate.
+        PayerExposureCache cache = new();
+        Assert.That(cache.TryReserve(Payer, UInt256.MaxValue, UInt256.MaxValue, out _), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryReserve(Payer, 1, UInt256.MaxValue, out _), Is.False);
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.MaxValue));
+        }
+    }
+
+    [Test]
+    public void ExposureCache_ZeroCostReserveLeavesNoEntry()
+    {
+        // Subtract early-returns on zero, so a zero reservation would leave an entry nothing reclaims.
+        PayerExposureCache cache = new();
+
+        Assert.That(cache.TryReserve(Payer, UInt256.Zero, balance: 1000, out _), Is.True);
+        Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
+    }
+
+    [Test]
+    public void ExposureCache_ConcurrentReservationsNeverExceedTheBalance()
+    {
+        // The reservation must be atomic: a check-then-act version admits more than the balance fits.
+        const int fits = 8;
+        PayerExposureCache cache = new();
+        int accepted = 0;
+
+        Parallel.For(0, 64, i =>
+        {
+            if (cache.TryReserve(Payer, 1000, balance: fits * 1000, out UInt256 _)) Interlocked.Increment(ref accepted);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.EqualTo(fits));
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)(fits * 1000)));
+        }
     }
 
     private static TestReadOnlyStateProvider StateWithPayerBalance(int wei)
