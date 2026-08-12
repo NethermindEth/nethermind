@@ -47,6 +47,7 @@ internal sealed class FrameTxPayerExposureFilter(
         // pre-reservation total and all pass.
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved))
         {
+            Metrics.PendingTransactionsFrameTxPayerExposureExceeded++;
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} reserved exposure {reserved} + {maxCost} exceeds balance {balance}.");
             return AcceptTxResult.PayerExposureExceeded;

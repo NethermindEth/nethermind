@@ -84,7 +84,8 @@ internal static class FrameTxPayerResolver
         if (FrameTxValidation.IsSelfVerifyFrame(verifyFrame, sender))
         {
             // Legible only for a default-code sender; a deployed or EIP-7702-delegated sender runs its
-            // own account code and must be simulated.
+            // own account code and must be simulated. Read at chain head, so code a preceding deploy
+            // frame installs is not reflected — that changes what runs, never who pays.
             if (senderHasCode)
             {
                 return Unresolved(FrameTxPayerOutcome.RequiresSimulation);
