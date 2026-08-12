@@ -110,8 +110,8 @@ internal static class FrameTxPayerResolver
 
     /// <summary>
     /// Signature- and state-free test of whether a frame transaction's validation prefix provably never
-    /// approves a payer (a lone expiry frame, or a prefix ending in an <c>only_verify</c> frame), letting
-    /// the pool drop it before spending elliptic-curve work on its signature list.
+    /// approves a payer — nothing after the optional leading expiry and deploy frames, or a prefix ending
+    /// in an <c>only_verify</c> frame — letting the pool drop it before verifying its signature list.
     /// </summary>
     public static bool IsStructurallyPayerless(Transaction tx)
     {
