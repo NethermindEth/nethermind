@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -44,10 +45,12 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    ILeanProofVerifier? leanProofVerifier = null)
     : IBlockProcessor
 {
     protected readonly ISpecProvider _specProvider = specProvider;
+    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? PlaceholderLeanProofVerifier.Instance;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
@@ -152,6 +155,23 @@ public partial class BlockProcessor(
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+        }
+
+        if (spec.IsEip8288Enabled)
+        {
+            // Spec Gas Accounting charges dependencies twice: the frames paid per-scheme verification gas,
+            // and the block pays LEANSTARK_VERIFICATION_GAS × total deps for the aggregated proof.
+            List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
+            header.GasUsed += (ulong)deps.Count * Eip8288Constants.LeanStarkVerificationGas;
+
+            if (options.ContainsFlag(ProcessingOptions.ProducingBlock))
+            {
+                // EIP8288-DEVIATION: the builder produces the proof off-chain; a deterministic
+                // placeholder stands in until Lean Ethereum tooling / AGGREGATED_VK are defined.
+                ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
+                byte[] proof = _leanProofVerifier.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk);
+                header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+            }
         }
 
         Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;

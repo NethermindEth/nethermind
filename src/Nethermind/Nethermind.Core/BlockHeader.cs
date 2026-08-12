@@ -77,6 +77,9 @@ public class BlockHeader
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public ulong? SlotNumber { get; set; }
+
+    /// <summary>EIP-8288 recursive STARK aggregating the block's transaction dependencies.</summary>
+    public RecursiveStark? RecursiveStark { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
@@ -131,6 +134,10 @@ public class BlockHeader
         if (SlotNumber is not null)
         {
             builder.AppendLine($"{indent}SlotNumber: {SlotNumber}");
+        }
+        if (RecursiveStark is not null)
+        {
+            builder.AppendLine($"{indent}BlockDepsHash: {RecursiveStark.BlockDepsHash}");
         }
 
         return builder.ToString();
@@ -212,6 +219,7 @@ public class BlockHeader
         dst.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         dst.SlotNumber = SlotNumber;
         dst.BlockAccessListHash = BlockAccessListHash;
+        dst.RecursiveStark = RecursiveStark;
         dst.BlobGasUsed = BlobGasUsed;
         dst.ExcessBlobGas = ExcessBlobGas;
     }

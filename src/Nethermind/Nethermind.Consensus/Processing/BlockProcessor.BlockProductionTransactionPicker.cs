@@ -36,7 +36,11 @@ namespace Nethermind.Consensus.Processing
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                ulong gasRemaining = block.Header.GasLimit - block.GasUsed;
+                // EIP-8288 charges recursive_stark_gas to the header after execution, so selection holds
+                // that budget back — otherwise a full block with dependency frames exceeds its own limit.
+                ulong reservedStarkGas = (block as BlockToProduce)?.RecursiveStarkGas ?? 0;
+                ulong blockGasRemaining = block.Header.GasLimit - block.GasUsed;
+                ulong gasRemaining = blockGasRemaining > reservedStarkGas ? blockGasRemaining - reservedStarkGas : 0;
 
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
@@ -58,9 +62,10 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Null sender");
                 }
 
-                if (currentTx.GasLimit > gasRemaining)
+                ulong txStarkGas = Eip8288Dependencies.RecursiveStarkGas(currentTx);
+                if (txStarkGas > gasRemaining || currentTx.GasLimit > gasRemaining - txStarkGas)
                 {
-                    return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining}");
+                    return args.Set(TxAction.Skip, $"Not enough gas in block, gas limit {currentTx.GasLimit} > {gasRemaining - Math.Min(txStarkGas, gasRemaining)}");
                 }
 
                 if (transactionsInBlock.Contains(currentTx))

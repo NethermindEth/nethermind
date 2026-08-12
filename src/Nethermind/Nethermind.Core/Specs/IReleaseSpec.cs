@@ -326,6 +326,12 @@ namespace Nethermind.Core.Specs
         bool IsEip8141Enabled { get; }
 
         /// <summary>
+        /// EIP-8288: dependency-verification frames and the block-level recursive STARK aggregating
+        /// post-quantum signatures and STARKs. Extends EIP-8141.
+        /// </summary>
+        bool IsEip8288Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }

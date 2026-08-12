@@ -287,7 +287,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 blockTransactions.Add(GetTransactionsForReceiptValidation(block));
                 receiptRlpBehaviors.Add(spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 validateReceiptGasUpperBoundAgainstHeader.Add(!spec.IsEip8037Enabled);
-                validateReceiptGasEqualToHeader.Add(!spec.IsEip7778Enabled && !spec.IsEip8037Enabled);
+                // EIP-8288 charges recursive_stark_gas to the header for the block's aggregated proof, which
+                // belongs to no transaction, so no receipt's cumulative gas can add up to header.GasUsed.
+                validateReceiptGasEqualToHeader.Add(!spec.IsEip7778Enabled && !spec.IsEip8037Enabled && !spec.IsEip8288Enabled);
             }
         }
 

@@ -49,7 +49,8 @@ public class Eip8141ScenarioTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        // Eip8288Prototype enables EIP-8141 too, so the base frame scenarios below run unchanged.
+        _specProvider = new TestSpecProvider(Eip8288Prototype.Instance);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -256,6 +257,68 @@ public class Eip8141ScenarioTests
             Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
+        }
+    }
+
+    // A DEP_VERIFY frame is not executed as EVM, yet still charges its full gas_limit.
+    [Test]
+    public void DependencyFrame_NotExecuted_ChargesVerificationGas()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength * 2];
+        depData[31] = Eip8288Constants.LeanSphincsScheme;
+        depData[Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanStarkScheme;
+        ulong depGas = Eip8288Constants.LeanSphincsVerificationGas + Eip8288Constants.LeanStarkVerificationGas;
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDepVerify, 0, null, depGas, UInt256.Zero, depData),
+            SenderFrame(Recipient, value: 1_000));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+        TxFrameReceipt depReceipt = receipt.FrameReceipts![1];
+        Assert.That(depReceipt.GasUsed, Is.EqualTo(depGas), "the dependency frame charges its full verification gas");
+        Assert.That(depReceipt.Logs, Is.Empty);
+        Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000), "later operation frames still run");
+    }
+
+    // Spec "Transaction Execution Visibility": a VERIFY frame reads the dependency frame's
+    // verification_key with FRAMEDATALOAD and approves only on a match, so a mismatch reverts APPROVE.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void DependencyFrame_VerifyFrameIntrospectsDeclaredDependency(bool dependencyMatches)
+    {
+        const int expectedVk = 0xBB;
+        byte[] verifierCode = Prepare.EvmCode
+            .PushData(1).PushData(64).Op(Instruction.FRAMEDATALOAD)          // dependency frame (index 1) verification_key word
+            .PushData(expectedVk).Op(Instruction.EQ)                          // 1 when it matches, else 0
+            .PushData(TxFrame.ApproveExecutionAndPayment).Op(Instruction.MUL) // scope = match ? EXECUTION_AND_PAYMENT : 0
+            .PushData(0).PushData(0).Op(Instruction.APPROVE)
+            .Done;
+        DeployContract(Sender, verifierCode, 1.Ether);
+
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
+        depData[31] = Eip8288Constants.LeanSphincsScheme;
+        depData[95] = (byte)(dependencyMatches ? expectedVk : 0xCC); // least-significant byte of verification_key
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData));
+
+        if (dependencyMatches)
+        {
+            TxReceipt receipt = ProcessBlock(tx)[0];
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.Payer, Is.EqualTo(Sender), "the VERIFY frame approved after reading the matching dependency");
+        }
+        else
+        {
+            TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(BuildBlock(tx).Header, Spec), NullTxTracer.Instance);
+            Assert.That(result.TransactionExecuted, Is.False, "a non-matching dependency must not approve, invalidating the transaction");
         }
     }
 

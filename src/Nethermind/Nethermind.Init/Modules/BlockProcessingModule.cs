@@ -38,6 +38,13 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 {
     protected override void Load(ContainerBuilder builder)
     {
+        // EIP-8288: deliberately an env var, not a config key — the switch exists only to exercise the
+        // FFI binding on a devnet and is removed with the placeholder verifier.
+        if (Environment.GetEnvironmentVariable("NETHERMIND_EIP8288_NATIVE_LEAN") == "1")
+        {
+            builder.AddSingleton<ILeanProofVerifier>(Nethermind.Crypto.NativeLeanProofVerifier.Instance);
+        }
+
         builder
             // Validators
             .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
