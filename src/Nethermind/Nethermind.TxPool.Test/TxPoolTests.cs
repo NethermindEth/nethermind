@@ -2441,10 +2441,10 @@ namespace Nethermind.TxPool.Test
         {
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
             // shape that reaches the exposure gate here — the reserve and the release, through the real
-            // filter chain and the real Removed event.
+            // filter chain and the real Removed event. The middle assertion encodes the documented
+            // replacement over-count: the incumbent is still reserved while its replacement is priced.
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
-            const ulong gasLimit = 1_000_000;
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * gasLimit);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * TxGasLimit);
 
             Transaction first = SelfPayingFrameTx(nonce: 0, feePerGas: 6);
             Transaction blocked = SelfPayingFrameTx(nonce: 0, feePerGas: 7);
@@ -2458,7 +2458,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(blockedResult, Is.EqualTo(AcceptTxResult.PayerExposureExceeded), "the first tx's reservation must be visible to the second");
+                Assert.That(blockedResult, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the first tx's reservation must be visible to the second");
                 Assert.That(afterReleaseResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx must release its reservation");
             }
         }
@@ -2496,7 +2496,7 @@ namespace Nethermind.TxPool.Test
                 SenderAddress = sender,
                 Frames = [.. frames],
                 FrameSignatures = [],
-                GasLimit = 1_000_000,
+                GasLimit = TxGasLimit,
                 GasPrice = maxPriorityFeePerGas ?? 1.GWei,
                 DecodedMaxFeePerGas = maxFeePerGas ?? 1.GWei,
             };
