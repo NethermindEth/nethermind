@@ -156,7 +156,7 @@ namespace Nethermind.TxPool
         /// Distinct from <see cref="FrameSimulationFailed"/> so peer scoring can tell load shedding apart from
         /// a peer sending transactions this node rejects.
         /// </remarks>
-        public static readonly AcceptTxResult FrameSimulationDeferred = new(24, TxPoolErrorMessages.FrameSimulationDeferred);
+        public static readonly AcceptTxResult FrameSimulationDeferred = new(25, TxPoolErrorMessages.FrameSimulationDeferred);
 
         private int Id { get; } = id;
         private string Code { get; } = code;
