@@ -213,7 +213,8 @@ public static class FrameTxValidation
 
         // A value check, not a presence check: the decoder always populates both blob fields. Refusing a
         // blob-carrying frame tx here would be a block-validity rule, since BlockValidator reaches this.
-        if (transaction.BlobVersionedHashes is not { Length: > 0 } && transaction.MaxFeePerBlobGas is { IsZero: false })
+        bool hasBlobs = transaction.BlobVersionedHashes is { Length: > 0 };
+        if (!hasBlobs && transaction.MaxFeePerBlobGas is { IsZero: false })
         {
             error = BlobFeeWithoutBlobs;
             return false;
@@ -299,12 +300,17 @@ public static class FrameTxValidation
         addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
 
     /// <summary>True if <paramref name="frame"/> is the optional leading EIP-8141 expiry-verifier VERIFY frame.</summary>
+    /// <remarks>The value and data-length checks are kept so a caller may read the deadline out of a
+    /// matching frame without re-validating it.</remarks>
     public static bool IsExpiryVerifyFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == TxFrame.ApproveScopeNone
-        && frame.Target == Eip8141Constants.ExpiryVerifierAddress;
+        && frame.Target == Eip8141Constants.ExpiryVerifierAddress
+        && frame.Value.IsZero
+        && frame.Data.Length == Eip8141Constants.ExpiryDataLength;
 
-    /// <summary>True if <paramref name="frame"/> is a deploy frame: a default-mode frame carrying no approval scope.</summary>
+    /// <summary>True if <paramref name="frame"/> is a deploy frame: any default-mode frame carrying no
+    /// approval scope, so it can never approve a payer.</summary>
     public static bool IsDeployFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeDefault && frame.Flags == TxFrame.ApproveScopeNone;
 
