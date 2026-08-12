@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -39,6 +40,27 @@ public class FrameTxPayerExposureFilterTests
         AcceptTxResult result = Accept(state, cache, FrameTxCostingExactly(1000));
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
+    }
+
+    // Round-1 defect: pricing the bound on the gas leg alone let a frame tx name blob hashes at an
+    // arbitrary max_fee_per_blob_gas and hold exposure the bound never counted. Pinned by magnitude, so
+    // dropping either factor of GasPerBlob * blob count * MaxFeePerBlobGas moves the boundary and fails.
+    [TestCase(1, 3, TestName = "one blob")]
+    [TestCase(2, 5, TestName = "two blobs")]
+    public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo(int blobCount, int maxFeePerBlobGas)
+    {
+        int blobTerm = (int)Eip4844Constants.GasPerBlob * blobCount * maxFeePerBlobGas;
+        PayerExposureCache cache = new();
+
+        AcceptTxResult atBound = Accept(StateWithPayerBalance(1000 + blobTerm), cache, BlobFrameTx(blobCount, maxFeePerBlobGas));
+        AcceptTxResult oneWeiShort = Accept(StateWithPayerBalance(1000 + blobTerm - 1), new PayerExposureCache(), BlobFrameTx(blobCount, maxFeePerBlobGas));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(atBound, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)(1000 + blobTerm)), "the gas leg and the whole blob term are reserved");
+            Assert.That(oneWeiShort, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
     }
 
     [Test]
@@ -152,21 +174,6 @@ public class FrameTxPayerExposureFilterTests
         return state;
     }
 
-    [Test]
-    public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo()
-    {
-        // Round-1 defect: pricing the bound on gas alone let a frame tx name one blob hash at an
-        // arbitrary max_fee_per_blob_gas and hold unbounded exposure for the gas leg's cost.
-        Transaction tx = FrameTxCostingExactly(1000);
-        tx.BlobVersionedHashes = [new byte[32]];
-        tx.MaxFeePerBlobGas = 1;
-
-        // Covers the gas leg exactly, so only the blob term can reject it.
-        AcceptTxResult result = Accept(StateWithPayerBalance(1000), new PayerExposureCache(), tx);
-
-        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
-    }
-
     [TestCase(1000, false, TestName = "self-paying sender within its balance")]
     [TestCase(999, true, TestName = "self-paying sender over its balance")]
     public void Accept_SelfPayingSender_GatesOnTheAccountTheSiblingBalanceFiltersUsed(int balance, bool rejected)
@@ -181,6 +188,17 @@ public class FrameTxPayerExposureFilterTests
         AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts);
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
+    }
+
+    /// <summary>The same frame tx as <see cref="FrameTxCostingExactly"/>, carrying <paramref name="blobCount"/> blobs.</summary>
+    private static Transaction BlobFrameTx(int blobCount, int maxFeePerBlobGas)
+    {
+        Transaction tx = FrameTxCostingExactly(1000);
+        byte[][] hashes = new byte[blobCount][];
+        Array.Fill(hashes, new byte[32]);
+        tx.BlobVersionedHashes = hashes;
+        tx.MaxFeePerBlobGas = (UInt256)maxFeePerBlobGas;
+        return tx;
     }
 
     /// <summary>A frame tx whose max cost (gas only, <c>MaxFeePerGas * GasLimit</c>) is exactly <paramref name="cost"/>.</summary>
