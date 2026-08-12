@@ -54,7 +54,7 @@ namespace Nethermind.TxPool
 
         [GaugeMetric]
         [Description("Number of EIP-8141 frame-transaction payers currently holding a pending-cost reservation.")]
-        public static long FrameTxPayersWithReservedExposure { get; set; }
+        public static long FrameTxPayersWithReservedExposure;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because simulating their validation prefix rejected it.")]
