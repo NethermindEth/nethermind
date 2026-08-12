@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -1248,6 +1249,82 @@ public class FrameTxProcessorTests
             Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.APPROVE)), "the validation prefix is traced");
             Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.SSTORE)), "the execution frame is traced");
         }
+    }
+
+    /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
+    /// <remarks>
+    /// A precompile account has the empty code hash, which EIP-8141 keys default code on, but default
+    /// code only applies to a <c>VERIFY</c> frame; a <c>DEFAULT</c> / <c>SENDER</c> frame runs the EVM,
+    /// and the EVM dispatches a precompile by address. Pinned on the frame receipt's gas, the
+    /// consensus-visible trace of the precompile having run: default code consumes none.
+    /// </remarks>
+    [TestCase(1, TestName = "Execute_DefaultFrameTargetsPrecompile_RunsIt(one byte)")]
+    [TestCase(64, TestName = "Execute_DefaultFrameTargetsPrecompile_RunsIt(two words)")]
+    public void Execute_DefaultFrameTargetsPrecompile_RunsIt(int dataLength)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        byte[] data = new byte[dataLength];
+        data.AsSpan().Fill(0xab);
+
+        FrameReceiptTracer tracer = new();
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: IdentityPrecompile.Address, data: data));
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        ulong expectedGas = IdentityPrecompile.Instance.BaseGasCost(Spec) + IdentityPrecompile.Instance.DataGasCost(data, Spec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(expectedGas), "the frame must be charged for the precompile it ran");
+        }
+    }
+
+    /// <summary>A precompile that rejects its input fails the frame that targeted it.</summary>
+    /// <remarks>A top-level precompile failure is an exceptional halt, so the frame forfeits its whole
+    /// gas limit — the opposite of the default-code path, which would report success at no cost.</remarks>
+    [Test]
+    public void Execute_FrameTargetsPrecompileThatRejectsItsInput_FailsTheFrame()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        byte[] notOnTheCurve = new byte[128];
+        notOnTheCurve.AsSpan().Fill(0xff);
+
+        FrameReceiptTracer tracer = new();
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: BN254AddPrecompile.Address, data: notOnTheCurve));
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(200_000UL), "an exceptional halt consumes the frame's gas limit");
+        }
+    }
+
+    /// <summary>A <c>VERIFY</c> frame targeting a precompile runs default code, not the precompile.</summary>
+    /// <remarks>
+    /// EIP-8141 routes every <c>VERIFY</c> frame whose resolved target has the empty code hash to
+    /// default code; no signature can resolve to a precompile address, so the frame reverts and the
+    /// transaction is invalid.
+    /// </remarks>
+    [Test]
+    public void Execute_VerifyFrameTargetsPrecompile_RunsDefaultCodeAndInvalidatesTheTransaction()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, IdentityPrecompile.Address, gasLimit: 200_000, UInt256.Zero, default));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+    }
+
+    private sealed class FrameReceiptTracer : CallOutputTracer, IFrameTxReceiptTracer
+    {
+        public TxFrameReceipt[]? FrameReceipts { get; private set; }
+
+        public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => FrameReceipts = frameReceipts;
     }
 
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
