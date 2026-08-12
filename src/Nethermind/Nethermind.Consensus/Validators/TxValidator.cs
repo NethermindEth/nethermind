@@ -94,9 +94,8 @@ public sealed class TxValidator : ITxValidator
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
-            // Blob fields cannot use the presence-based NonBlobFieldsTxValidator here: the frame-tx
-            // decoder always populates max_fee_per_blob_gas and blob_versioned_hashes, so it would
-            // reject every frame tx. FrameTxFieldsTxValidator checks them by value instead.
+            // The frame-tx decoder always populates both blob fields, so the presence-based
+            // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
             FrameTxFieldsTxValidator.Instance
         ]));
     }

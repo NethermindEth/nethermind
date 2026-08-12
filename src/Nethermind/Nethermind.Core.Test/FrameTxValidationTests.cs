@@ -158,7 +158,6 @@ public class FrameTxValidationTests
         yield return Case("BlobFeeWithoutBlobHashes_BlobFeeWithoutBlobs",
             static tx => tx.MaxFeePerBlobGas = UInt256.One, FrameTxValidation.BlobFeeWithoutBlobs);
 
-        // A blob-carrying frame tx is well-formed: the blob fee is rejected only without hashes.
         yield return Case("BlobHashesWithBlobFee_Valid",
             static tx => { tx.BlobVersionedHashes = [new byte[32]]; tx.MaxFeePerBlobGas = UInt256.One; }, null);
 
