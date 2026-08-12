@@ -153,6 +153,21 @@ public class FrameTxPayerExposureFilterTests
     }
 
     /// <summary>A frame tx whose max cost (gas only, <c>MaxFeePerGas * GasLimit</c>) is exactly <paramref name="cost"/>.</summary>
+    [Test]
+    public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo()
+    {
+        // Round-1 defect: pricing the bound on gas alone let a frame tx name one blob hash at an
+        // arbitrary max_fee_per_blob_gas and hold unbounded exposure for the gas leg's cost.
+        Transaction tx = FrameTxCostingExactly(1000);
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = 1;
+
+        // Covers the gas leg exactly, so only the blob term can reject it.
+        AcceptTxResult result = Accept(StateWithPayerBalance(1000), new PayerExposureCache(), tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+    }
+
     [TestCase(1000, false, TestName = "self-paying sender within its balance")]
     [TestCase(999, true, TestName = "self-paying sender over its balance")]
     public void Accept_SelfPayingSender_GatesOnTheAccountTheSiblingBalanceFiltersUsed(int balance, bool rejected)
