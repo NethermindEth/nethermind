@@ -1252,13 +1252,8 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
-    /// <remarks>
-    /// A precompile account has the empty code hash, which EIP-8141 keys default code on, but default
-    /// code only applies to a <c>VERIFY</c> frame; every other mode runs the EVM, and the EVM
-    /// dispatches a precompile by address. Pinned on the frame receipt's gas, the consensus-visible
-    /// trace of the precompile having run: default code consumes none. The identity gas of EIP-152
-    /// (15 base, 3 per word) makes both components observable.
-    /// </remarks>
+    /// <remarks>Pinned on the frame receipt's gas, which the default code would leave at zero; the
+    /// identity gas (15 base, 3 per word) makes both components observable.</remarks>
     [TestCase(TxFrame.ModeDefault, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, one byte)")]
     [TestCase(TxFrame.ModeDefault, 64, 21UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, two words)")]
     [TestCase(TxFrame.ModeSender, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(SENDER)")]
@@ -1282,11 +1277,7 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A <c>SENDER</c> frame's value reaches a precompile target, transfer log included.</summary>
-    /// <remarks>
-    /// <c>SENDER</c> is the only mode a frame may carry value in, so it is the only one whose value
-    /// leg this path relocates: the processor debits the caller and the VM credits the precompile
-    /// account and emits the EIP-7708 transfer log, where default code did both itself.
-    /// </remarks>
+    /// <remarks><c>SENDER</c> is the only mode a frame may carry value in.</remarks>
     [Test]
     public void Execute_SenderFrameWithValueTargetsPrecompile_TransfersAndRunsIt()
     {
@@ -1308,8 +1299,7 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A precompile that rejects its input fails the frame that targeted it.</summary>
-    /// <remarks>A top-level precompile failure is an exceptional halt, so the frame forfeits its whole
-    /// gas limit — the opposite of the default-code path, which would report success at no cost.</remarks>
+    /// <remarks>The rejection is an exceptional halt, so the frame forfeits its whole gas limit.</remarks>
     [Test]
     public void Execute_FrameTargetsPrecompileThatRejectsItsInput_FailsTheFrame()
     {
@@ -1330,11 +1320,7 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A <c>VERIFY</c> frame targeting a precompile runs default code, not the precompile.</summary>
-    /// <remarks>
-    /// EIP-8141 routes every <c>VERIFY</c> frame whose resolved target has the empty code hash to
-    /// default code; no signature can resolve to a precompile address, so the frame reverts and the
-    /// transaction is invalid.
-    /// </remarks>
+    /// <remarks>No signature can resolve to a precompile address, so the default code reverts.</remarks>
     [Test]
     public void Execute_VerifyFrameTargetsPrecompile_RunsDefaultCodeAndInvalidatesTheTransaction()
     {
