@@ -197,7 +197,7 @@ namespace Nethermind.TxPool
                 // EIP-8141: cap the pending frame txs one non-canonical paymaster may sponsor. Ahead of
                 // FrameTxSignatureFilter so a flood naming one sponsor costs one account read, not a
                 // signature list; the trade-off is that such a tx is not also reported as malformed.
-                new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _pendingPaymasters, _logger),
+                new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _pendingPaymasters, _logger),
 
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve work over an uncapped signature list, so let the cheap filters reject first
             ];

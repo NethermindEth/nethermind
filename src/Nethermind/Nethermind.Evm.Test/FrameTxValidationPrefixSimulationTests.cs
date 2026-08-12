@@ -198,6 +198,27 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    [Test]
+    public void Simulate_PrefixStartsWithDeployFrame_RejectedAsUnsimulated()
+    {
+        // The recognized grammar allows a leading deploy frame, but its carve-outs are unimplemented, so
+        // the prefix is declined before the frame is entered — not reported as "never set a payer".
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default),
+            SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("deploy frame"));
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
     private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx)
     {
         Block block = Build.A.Block.WithNumber(1)

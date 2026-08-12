@@ -16,8 +16,9 @@ namespace Nethermind.TxPool;
 /// <c>Nethermind.Consensus</c> (which already references TxPool — a direct reference would cycle). The
 /// implementation, wired at the composition root, runs the prefix in a bounded, read-only EVM under
 /// <c>MAX_VERIFY_GAS</c> and enforces the trace/opcode rules. Injected optionally into the pool
-/// (mirroring the optional incoming-tx filter): when absent, <c>RequiresSimulation</c> frame txs stay
-/// rejected as in Phase 1. https://eips.ethereum.org/EIPS/eip-8141 (ethereum/EIPs#12007)
+/// (mirroring the optional incoming-tx filter): when absent, <c>RequiresSimulation</c> frame txs are
+/// admitted with an unresolved payer, and so without an exposure reservation, as in Phase 1.
+/// https://eips.ethereum.org/EIPS/eip-8141 (ethereum/EIPs#12007)
 /// </remarks>
 public interface IFrameTxPrefixSimulator
 {

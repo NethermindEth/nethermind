@@ -130,6 +130,24 @@ public class FrameTxPaymasterFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.NonCanonicalPaymasterLimitReached : AcceptTxResult.Accepted));
     }
 
+    [Test]
+    public void Accept_FeeBumpOfBlobCarryingSponsoredTx_Accepted()
+    {
+        // A blob-carrying frame tx is counted against the cap from the blob pool, so its replacement has
+        // to be discounted from there too or it could never be re-priced.
+        TestReadOnlyStateProvider state = new();
+        state.InsertCode([0x60, 0x00], Paymaster);
+
+        Transaction pending = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], carriesBlobs: true);
+        PendingPaymasterCache cache = new();
+        cache.Increment(Paymaster);
+
+        Transaction incoming = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], gasPrice: 2, carriesBlobs: true);
+        AcceptTxResult result = Accept(state, cache, incoming, Pool(pending));
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
     private static IEnumerable<TestCaseData> ReplacementCases()
     {
         yield return new TestCaseData(0ul, Paymaster, 0ul, false)
@@ -167,7 +185,9 @@ public class FrameTxPaymasterFilterTests
 
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PendingPaymasterCache cache, Transaction tx, TxDistinctSortedPool? pool = null)
     {
-        FrameTxPaymasterFilter filter = new(state, pool ?? Pool(), cache, LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
+        // The displaced tx sits in whichever pool matches its shape, so both are wired as TxPool does.
+        (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs ? (Pool(), pool ?? Pool()) : (pool ?? Pool(), Pool());
+        FrameTxPaymasterFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
@@ -189,7 +209,7 @@ public class FrameTxPaymasterFilterTests
         return pool;
     }
 
-    private static Transaction FrameTx(TxFrame[] frames, ulong nonce = 0, uint gasPrice = 1)
+    private static Transaction FrameTx(TxFrame[] frames, ulong nonce = 0, uint gasPrice = 1, bool carriesBlobs = false)
     {
         Transaction tx = new()
         {
@@ -201,6 +221,8 @@ public class FrameTxPaymasterFilterTests
             GasLimit = 1_000_000,
             GasPrice = gasPrice,
             DecodedMaxFeePerGas = gasPrice,
+            BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
+            MaxFeePerBlobGas = carriesBlobs ? UInt256.One : UInt256.Zero,
         };
         tx.Hash = tx.CalculateHash();
         return tx;

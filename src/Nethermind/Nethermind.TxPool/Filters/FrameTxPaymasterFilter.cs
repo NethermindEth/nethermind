@@ -23,6 +23,7 @@ namespace Nethermind.TxPool.Filters;
 internal sealed class FrameTxPaymasterFilter(
     IReadOnlyStateProvider stateProvider,
     TxDistinctSortedPool standardPool,
+    TxDistinctSortedPool blobPool,
     PendingPaymasterCache paymasters,
     ILogger logger) : IIncomingTxFilter
 {
@@ -64,12 +65,14 @@ internal sealed class FrameTxPaymasterFilter(
     /// </summary>
     /// <remarks>
     /// Matching on the paymaster too: replacing a tx sponsored elsewhere frees that sponsor's slot while
-    /// still taking one here. Frame txs never carry blobs, so only the standard pool can hold the displaced tx.
+    /// still taking one here. A blob-carrying frame tx lives in the blob pool, so the displaced tx is
+    /// looked for in whichever pool holds transactions of this shape.
     /// </remarks>
     private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster)
     {
         ReplacementSearch search = new(tx.Nonce, paymaster);
-        standardPool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
+        TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
+        pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
         {
             // Buckets are visited in ascending nonce order, so stop once past the replaced nonce.
             if (pending.Nonce < state.Nonce) return true;

@@ -21,7 +21,9 @@ namespace Nethermind.TxPool.Filters;
 /// is wired, and on failure the transaction is rejected. When no simulator is wired, or the outcome is
 /// the provably-invalid <see cref="FrameTxPayerOutcome.NoPayer"/>, the transaction passes through
 /// unchanged (Phase-1 behavior). A successful simulation records the resolved payer, feeding the
-/// exposure gate downstream. https://eips.ethereum.org/EIPS/eip-8141 (ethereum/EIPs#12007)
+/// exposure gate downstream. Runs inside the pool's head read lock, so a queued simulation also delays
+/// head processing — the simulator, not this filter, is where that wait has to be bounded.
+/// https://eips.ethereum.org/EIPS/eip-8141 (ethereum/EIPs#12007)
 /// </remarks>
 internal sealed class FrameTxSimulationFilter(
     IReadOnlyStateProvider stateProvider,
@@ -47,6 +49,7 @@ internal sealed class FrameTxSimulationFilter(
         FrameTxSimulationResult result = simulator.Simulate(tx);
         if (!result.Accepted)
         {
+            Metrics.PendingTransactionsFrameTxSimulationFailed++;
             if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.RejectionReason}.");
             return AcceptTxResult.FrameSimulationFailed.WithMessage(result.RejectionReason ?? TxPoolErrorMessages.FrameSimulationFailed);
         }
