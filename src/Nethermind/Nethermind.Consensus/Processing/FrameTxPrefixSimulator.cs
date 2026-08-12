@@ -24,12 +24,10 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>
 /// Lives here (not in <c>Nethermind.TxPool</c>) because it depends on
 /// <see cref="IReadOnlyTxProcessingEnvFactory"/>: TxPool cannot reference Consensus (that would cycle),
-/// so the pool depends only on the <see cref="IFrameTxPrefixSimulator"/> abstraction and this
-/// composition-root implementation supplies the env.
+/// so the pool depends only on the <see cref="IFrameTxPrefixSimulator"/> abstraction.
 /// Admission work is bounded three ways: <c>MAX_VERIFY_GAS</c> per prefix, a wall-clock timeout per
-/// simulation (which also caps how long an admission thread waits for the serialized env), and a
-/// cumulative per-head time budget. Beyond any of them the transaction is rejected, which is always
-/// mempool-legal.
+/// simulation (which also caps the wait for the serialized env), and a cumulative per-head budget.
+/// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
