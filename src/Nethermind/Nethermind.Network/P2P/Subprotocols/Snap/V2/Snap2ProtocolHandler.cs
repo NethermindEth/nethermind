@@ -20,7 +20,7 @@ using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V2;
 
-public class Snap2ProtocolHandler : Snap1ProtocolHandler, IStaticProtocolInfo, ISnapSyncPeer
+public class Snap2ProtocolHandler : Snap1ProtocolHandler, IStaticProtocolInfo
 {
     public override string Name => "snap2";
     public new static byte Version => SnapVersions.Snap2;
@@ -61,6 +61,7 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, IStaticProtocolInfo, I
                 return base.HandleMessageCore(message);
         }
     }
+
     private void Handle(BlockAccessListsMessage msg, long size) => _getBlockAccessListsRequests.Handle(msg.RequestId, msg, size);
 
     private ValueTask<BlockAccessListsMessage> Handle(GetBlockAccessListsMessage getBlockAccessListsMessage, CancellationToken cancellationToken)

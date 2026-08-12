@@ -18,8 +18,8 @@ namespace Nethermind.Network;
 /// </summary>
 /// <remarks>
 /// Replaces the former <c>SnapCapabilitySwitcher</c>: instead of adding the capability on start and removing it
-/// when state sync reaches <see cref="SyncMode.Full"/>, the contribution is recomputed per session, so a session
-/// opened after sync completes simply no longer advertises snap.
+/// once state sync finished, the contribution is recomputed per session, so a session opened after sync completes
+/// simply no longer advertises snap.
 /// </remarks>
 public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 {
@@ -28,18 +28,27 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     private readonly ISyncConfig _syncConfig;
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
 
     // BAL healing isn't implemented yet - always false until it lands.
     private readonly bool _canBalHeal = false;
 
+    private volatile bool _stateDownloaded;
+
     public event Action? Changed;
 
-    public SnapP2PCapabilityResolver(ISyncConfig syncConfig, ISyncModeSelector syncModeSelector, ISpecProvider specProvider, ILogManager logManager)
+    public SnapP2PCapabilityResolver(
+        ISyncConfig syncConfig,
+        ISyncModeSelector syncModeSelector,
+        ISyncProgressResolver syncProgressResolver,
+        ISpecProvider specProvider,
+        ILogManager logManager)
     {
         _syncConfig = syncConfig;
         _syncModeSelector = syncModeSelector;
+        _syncProgressResolver = syncProgressResolver;
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
         _syncModeSelector.Changed += OnSyncModeChanged;
@@ -48,8 +57,8 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     public void Resolve(ISet<Capability> capabilities)
     {
         bool snapServingEnabled = _syncConfig.SnapServingEnabled == true;
-        bool hasCompletedStateSync = (_syncModeSelector.Current & SyncMode.Full) != 0;
-        bool requiresSnapForSync = _syncConfig.SnapSync && !hasCompletedStateSync;
+        bool stateDownloaded = _stateDownloaded;
+        bool requiresSnapForSync = _syncConfig.SnapSync && !stateDownloaded;
 
         if (!snapServingEnabled && !requiresSnapForSync) return;
 
@@ -59,7 +68,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         // trie nodes ourselves - state sync finished, or snap-syncing with a BAL-heal.
         bool canAdvertiseSnap2 = requiresSnapForSync
             ? _canBalHeal
-            : hasCompletedStateSync && _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
+            : stateDownloaded && _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
 
         if (canAdvertiseSnap2)
         {
@@ -67,13 +76,15 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         }
     }
 
+    private bool StateDownloaded() => _syncProgressResolver.FindBestFullState() >= _syncProgressResolver.SyncPivot.BlockNumber;
+
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {
-        bool wasSyncing = (e.Previous & SyncMode.Full) == 0;
-        bool isSyncing = (e.Current & SyncMode.Full) == 0;
-        if (wasSyncing == isSyncing) return;
+        bool stateWasDownloaded = _stateDownloaded;
+        _stateDownloaded = StateDownloaded();
+        if (stateWasDownloaded == _stateDownloaded) return;
 
-        if (_logger.IsDebug) _logger.Debug($"State sync {(isSyncing ? "in progress" : "finished")}; snap advertisement {(isSyncing ? "enabled" : "disabled")}");
+        if (_logger.IsDebug) _logger.Debug($"State sync {(_stateDownloaded ? "finished" : "in progress")}; snap advertisement updated");
         Changed?.Invoke();
     }
 
