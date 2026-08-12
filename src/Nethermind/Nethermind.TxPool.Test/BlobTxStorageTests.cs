@@ -39,8 +39,7 @@ public class BlobTxStorageTests
         Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
-    // EIP-8141: a blob-carrying frame tx (type 6) persists via the same InMempoolForm as a type-3 tx, so
-    // its real type and EIP-7594 (V1 cell-proof) sidecar survive the store/reload round trip.
+    // Persisted through the same InMempoolForm as a type-3, so the type and sidecar both have to survive.
     [Test]
     public void should_roundtrip_blob_carrying_frame_tx_with_sidecar()
     {

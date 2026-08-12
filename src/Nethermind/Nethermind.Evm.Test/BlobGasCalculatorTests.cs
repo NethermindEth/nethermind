@@ -66,8 +66,7 @@ public class BlobGasCalculatorTests
         Assert.That(blobGas, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(2 + 3)));
     }
 
-    // EIP-8141: GetGasInfo gates on CarriesBlobs, so a blob-carrying frame tx's receipt reports the blob gas
-    // it is charged, rather than reporting none while being metered against the block blob budget.
+    // Otherwise the receipt reports no blob gas while the block budget still meters it.
     [Test]
     public void GetGasInfo_reports_blob_gas_for_blob_carrying_frame_tx()
     {

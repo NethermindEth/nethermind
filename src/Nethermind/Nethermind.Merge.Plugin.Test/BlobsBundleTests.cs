@@ -12,9 +12,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-// EIP-8141: a blob-carrying frame tx (type 6) is a first-class blob carrier, so the block's blobs bundle
-// must publish its blobs/commitments/proofs alongside those of type-3 txs — otherwise the header counts
-// the frame tx's blob gas while the CL receives an incomplete bundle.
+// The header counts a type-6's blob gas, so the bundle has to publish its blobs alongside type-3's or the
+// CL receives one that does not add up.
 [TestFixture]
 public class BlobsBundleTests
 {

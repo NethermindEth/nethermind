@@ -1593,8 +1593,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a persisted blob-carrying frame tx must reload with its EIP-7594 sidecar after a restart
-        // (the light collection and blob index are rebuilt from storage), so it stays producible and servable.
+        // Without the sidecar surviving the reload the transaction is neither producible nor servable.
         [Test]
         public void Blob_carrying_frame_tx_sidecar_survives_restart_and_is_servable()
         {

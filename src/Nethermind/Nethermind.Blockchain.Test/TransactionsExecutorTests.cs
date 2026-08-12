@@ -494,8 +494,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void CanAddTransaction_admits_blob_carrying_frame_transaction()
         {
-            // EIP8141: a blob-carrying frame tx (type 6) reaches the picker with a sidecar already resolved
-            // by the blob-selection path, so it is produced like a type-3 tx rather than skipped.
+            // The blob-selection path resolves the sidecar before the picker sees the transaction.
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);

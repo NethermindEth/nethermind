@@ -159,8 +159,6 @@ public class FrameTransactionForRpcTests
         }
     }
 
-    // Both fields are unconditional in the signed type-6 payload, so a consumer must be able to rebuild
-    // it from this view even for a blobless frame tx — as it can for type-3.
     [Test]
     public void FrameTransactionForRpc_ReportsBlobFields_ForBloblessFrameTx()
     {
