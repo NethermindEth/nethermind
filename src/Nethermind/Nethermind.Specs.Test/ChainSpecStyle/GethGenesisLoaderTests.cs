@@ -366,57 +366,54 @@ public class GethGenesisLoaderTests
         }
     }
 
-    [Test]
-    public void AutoDetectingLoader_detects_geth_format()
+    public static IEnumerable<TestCaseData> GethGenesisDetectionCases
     {
-        ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(chainId: 12345));
-        Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
+        get
+        {
+            yield return new TestCaseData(BuildStandardGethGenesisJson(chainId: 12345))
+                { TestName = "Geth_config_is_first" };
+
+            yield return new TestCaseData("""
+                {
+                  "nonce": "0x0",
+                  "config": {
+                    "chainId": 12345,
+                    "homesteadBlock": 0,
+                    "eip150Block": 0,
+                    "eip155Block": 0,
+                    "eip158Block": 0
+                  },
+                  "difficulty": "0x1",
+                  "gasLimit": "0x8000000",
+                  "alloc": {}
+                }
+                """)
+                { TestName = "Geth_config_follows_nonce" };
+
+            string padding = new('a', 8192);
+            yield return new TestCaseData($$"""
+                {
+                  "nonce": "0x0",
+                  "padding": "{{padding}}",
+                  "config": {
+                    "chainId": 12345,
+                    "homesteadBlock": 0,
+                    "eip150Block": 0,
+                    "eip155Block": 0,
+                    "eip158Block": 0
+                  },
+                  "difficulty": "0x1",
+                  "gasLimit": "0x8000000",
+                  "alloc": {}
+                }
+                """)
+                { TestName = "Geth_config_follows_large_value" };
+        }
     }
 
-    [Test]
-    public void AutoDetectingLoader_detects_geth_format_when_config_is_not_first()
+    [TestCaseSource(nameof(GethGenesisDetectionCases))]
+    public void AutoDetectingLoader_detects_geth_format_regardless_of_config_position(string gethGenesis)
     {
-        const string gethGenesis = """
-        {
-          "nonce": "0x0",
-          "config": {
-            "chainId": 12345,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
-        ChainSpec chainSpec = LoadAutoDetecting(gethGenesis);
-        Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
-    }
-
-    [Test]
-    public void AutoDetectingLoader_detects_geth_format_when_config_is_after_detection_buffer()
-    {
-        string padding = new('a', 8192);
-        string gethGenesis = $$"""
-        {
-          "nonce": "0x0",
-          "padding": "{{padding}}",
-          "config": {
-            "chainId": 12345,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
         ChainSpec chainSpec = LoadAutoDetecting(gethGenesis);
         Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
     }

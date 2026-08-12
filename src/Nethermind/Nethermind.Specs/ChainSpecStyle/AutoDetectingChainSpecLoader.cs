@@ -49,7 +49,9 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
     }
 
     /// <summary>
-    /// Geth genesis contains a top-level <c>"config"</c> property; parity chainspecs do not.
+    /// Geth genesis contains a top-level <c>"config"</c> property, while Parity-style chainspecs
+    /// are identified by their top-level <c>"engine"</c>, <c>"params"</c>, <c>"genesis"</c>, or
+    /// <c>"accounts"</c> properties.
     /// </summary>
     private GenesisFormat DetectFormat(Stream streamData)
     {
