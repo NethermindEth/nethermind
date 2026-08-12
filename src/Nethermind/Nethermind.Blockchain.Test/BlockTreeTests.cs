@@ -1765,6 +1765,47 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_correctly_after_restart_mid_sync_post_merge()
+    {
+        // Restart wedge repro (issue #9454): a PoS node stopped while forward-sync blocks were
+        // suggested but not yet processed (Head still at genesis) has no main-chain block on its best
+        // level, so the post-merge FindHeader(number) returns null. BestSuggestedHeader must still be
+        // restored from that level's block infos — reloading it as null makes MultiSyncModeSelector
+        // see header == 0 with a nonzero pivot and wedge in SyncMode.None.
+        CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance))
+        {
+            TerminalTotalDifficulty = UInt256.Zero
+        };
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider)
+            .WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block genesis = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        tree.SuggestBlock(genesis);
+        tree.TryUpdateMainChain(genesis.Header, wereProcessed: true, preloadedBlocks: new[] { genesis });
+
+        Block parent = genesis;
+        for (ulong i = 1ul; i <= 3ul; i++)
+        {
+            Block block = Build.A.Block.WithNumber(i).WithDifficulty(0).WithParent(parent).TestObject;
+            tree.SuggestBlock(block);
+            parent = block;
+        }
+
+        BlockTree loadedTree = Build.A.BlockTree(specProvider)
+            .WithoutSettingHead
+            .WithDatabaseFrom(builder)
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadedTree.BestSuggestedHeader?.Number, Is.EqualTo(3ul), "header");
+            Assert.That(loadedTree.BestSuggestedBody?.Number, Is.EqualTo(3ul), "body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cannot_insert_genesis()
     {
         ulong pivotNumber = 0ul;

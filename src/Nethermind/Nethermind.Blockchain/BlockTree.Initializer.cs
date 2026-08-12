@@ -259,11 +259,67 @@ public partial class BlockTree
         }
 
         BestKnownNumber = bestKnownNumberFound;
-        BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
+        // A restart mid-sync can leave the best level with no main-chain block (headers inserted or
+        // blocks suggested but not yet processed), where the post-merge FindHeader(number) declines to
+        // pick a block. Restore the pointer from the block infos the search above matched — reloading
+        // it as null makes the sync mode selector see header == 0 with a nonzero pivot and wedge in
+        // SyncMode.None forever (issue #9454).
+        BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None)
+                              ?? FindNonBeaconHeaderOnLevel(bestSuggestedHeaderNumber);
         BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
-        BestSuggestedBody = bestSuggestedBodyHeader is null
-            ? null
-            : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
+        BestSuggestedBody = bestSuggestedBodyHeader is not null
+            ? FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None)
+            : FindNonBeaconBlockOnLevel(bestSuggestedBodyNumber);
+    }
+
+    private BlockHeader? FindNonBeaconHeaderOnLevel(ulong blockNumber)
+    {
+        ChainLevelInfo level = LoadLevel(blockNumber);
+        if (level is null)
+        {
+            return null;
+        }
+
+        foreach (BlockInfo blockInfo in level.BlockInfos)
+        {
+            if (blockInfo.IsBeaconHeader)
+            {
+                continue;
+            }
+
+            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
+            if (header is not null)
+            {
+                return header;
+            }
+        }
+
+        return null;
+    }
+
+    private Block? FindNonBeaconBlockOnLevel(ulong blockNumber)
+    {
+        ChainLevelInfo level = LoadLevel(blockNumber);
+        if (level is null)
+        {
+            return null;
+        }
+
+        foreach (BlockInfo blockInfo in level.BlockInfos)
+        {
+            if (blockInfo.IsBeaconBody)
+            {
+                continue;
+            }
+
+            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
+            if (block is not null)
+            {
+                return block;
+            }
+        }
+
+        return null;
     }
 
 
