@@ -69,6 +69,10 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidationEvictions { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions shed because they were close to expiry while the pool was full.")]
+        public static long FrameTxExpiryShedEvictions { get; set; }
+
+        [CounterMetric]
         [Description("Number of EIP-8141 validation-prefix simulations aborted by the per-simulation wall-clock bound.")]
         public static long FrameTxSimulationsTimedOut { get; set; }
 

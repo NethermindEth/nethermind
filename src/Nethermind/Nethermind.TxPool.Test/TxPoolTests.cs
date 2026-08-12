@@ -2240,6 +2240,25 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [TestCase(1, true, TestName = "a full pool sheds the frame tx closest to expiry")]
+        [TestCase(4, false, TestName = "a pool with room keeps it")]
+        public async Task Nearly_expired_frame_transaction_is_shed_only_under_capacity_pressure(int poolSize, bool shed)
+        {
+            // Nearest expiry is the spec's second eviction tier: under pressure a frame tx with almost no
+            // life left yields its slot rather than displacing a live transaction.
+            _txPool = CreatePool(new TxPoolConfig { Size = poolSize }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            // Inside the shed horizon, so it is near-worthless but not yet expired.
+            Assert.That(_txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_010), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shed ? 0 : 1));
+        }
+
         [Test]
         public void Frame_transaction_from_a_contract_sender_is_not_rejected_by_eip3607()
         {

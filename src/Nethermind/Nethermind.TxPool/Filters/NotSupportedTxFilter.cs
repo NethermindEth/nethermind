@@ -37,7 +37,8 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
 
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
         // Still missing before any public activation: canonical-paymaster reservation, the failed-APPROVE
-        // replay bound, and the nearest-expiry-then-lowest-fee half of the eviction order.
+        // replay bound, and a deadline-ordered pool index — eviction applies the nearest-expiry tier only
+        // through the near-expiry shed pass, not across the whole pool.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
