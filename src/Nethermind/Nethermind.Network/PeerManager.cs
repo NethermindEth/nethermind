@@ -1167,6 +1167,19 @@ namespace Nethermind.Network
 
             if (peerHasAnOpenSameDirectionSession)
             {
+                // An inbound session is RLPx-authenticated: a fresh dial from the same node id proves the dialer
+                // considers its previous session dead, so the open one here is a stale half — keep the new session
+                // and shed the stale one. Rejecting the new dial instead pins the peer to a session the remote
+                // will never speak on again. Outbound duplicates stay first-wins: both dials are ours.
+                if (sessionDirection == ConnectionDirection.In)
+                {
+                    ISession? stale = GetSession(peer, sessionDirection);
+                    if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.ExistingSessionReplacing, sessionDirection);
+                    AttachSession(peer, session, sessionDirection, disconnectOpposite: false);
+                    stale?.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "replaced by a fresh inbound session from the same node");
+                    return;
+                }
+
                 if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.AlreadyConnected);
                 session.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "same");
                 return;

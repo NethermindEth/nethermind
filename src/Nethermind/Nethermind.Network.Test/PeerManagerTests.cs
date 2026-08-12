@@ -215,6 +215,30 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
         }
 
+        [Test]
+        public async Task Will_replace_open_incoming_session_when_the_same_node_dials_again()
+        {
+            await using Context ctx = new();
+            ctx.PeerManager.Start();
+
+            Session firstSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
+            Session secondSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
+
+            ctx.RlpxPeer.CreateIncoming(firstSession);
+            Session staleSession = ctx.Sessions.Single();
+            InitSession(staleSession);
+            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(staleSession));
+
+            ctx.RlpxPeer.CreateIncoming(secondSession);
+            Session freshSession = ctx.Sessions.Last();
+            InitSession(freshSession);
+
+            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession),
+                "a fresh authenticated dial from the same node must replace the stale half-open session");
+            Assert.That(staleSession.IsClosing, Is.True, "the stale session must be shed, not the fresh one");
+            Assert.That(freshSession.IsClosing, Is.False);
+        }
+
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
         {
             Session session = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
