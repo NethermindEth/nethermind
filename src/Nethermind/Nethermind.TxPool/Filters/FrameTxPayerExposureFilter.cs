@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -46,7 +47,9 @@ internal sealed class FrameTxPayerExposureFilter(
 
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved))
         {
-            Metrics.PendingTransactionsFrameTxPayerExposureExceeded++;
+            // Atomic like the gauge: the two are only diagnosable together, and this filter runs under
+            // the pool's head read lock, so rejections for different payers are concurrent.
+            Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPayerExposureExceeded);
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} reserved exposure {reserved} + {maxCost} exceeds balance {balance}.");
             return AcceptTxResult.FrameTxPayerExposureExceeded;

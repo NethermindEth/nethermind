@@ -153,19 +153,35 @@ public class FrameTxPayerExposureFilterTests
     }
 
     /// <summary>A frame tx whose max cost (gas only, <c>MaxFeePerGas * GasLimit</c>) is exactly <paramref name="cost"/>.</summary>
-    private static Transaction FrameTxCostingExactly(int cost) => new()
+    [TestCase(1000, false, TestName = "self-paying sender within its balance")]
+    [TestCase(999, true, TestName = "self-paying sender over its balance")]
+    public void Accept_SelfPayingSender_GatesOnTheAccountTheSiblingBalanceFiltersUsed(int balance, bool rejected)
+    {
+        // Native resolution only ever yields payer == sender today, so this is the branch every real
+        // admission takes: it must read the cached sender account, not the state provider.
+        Transaction tx = FrameTxCostingExactly(1000, payer: TestItem.AddressA);
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)balance);
+
+        // The state provider is left empty: reading it instead would see a zero balance and always reject.
+        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts);
+
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
+    }
+
+    private static Transaction FrameTxCostingExactly(int cost, Address? payer = null) => new()
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
         GasLimit = 1,
         DecodedMaxFeePerGas = (UInt256)cost,
-        PayerAddress = Payer,
+        PayerAddress = payer ?? Payer,
     };
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null)
     {
         FrameTxPayerExposureFilter filter = new(state, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }
