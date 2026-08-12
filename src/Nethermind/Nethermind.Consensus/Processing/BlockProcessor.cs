@@ -159,9 +159,8 @@ public partial class BlockProcessor(
 
         if (spec.IsEip8288Enabled)
         {
-            // Spec Gas Accounting charges dependencies twice: each dep frame already paid per-scheme
-            // verification gas in the tx; the block additionally pays recursive_stark_gas =
-            // LEANSTARK_VERIFICATION_GAS × total deps for the aggregated proof.
+            // Spec Gas Accounting charges dependencies twice: the frames paid per-scheme verification gas,
+            // and the block pays LEANSTARK_VERIFICATION_GAS × total deps for the aggregated proof.
             List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
             header.GasUsed += (ulong)deps.Count * Eip8288Constants.LeanStarkVerificationGas;
 

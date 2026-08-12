@@ -49,8 +49,7 @@ public class Eip8141ScenarioTests
     [SetUp]
     public void Setup()
     {
-        // Eip8288Prototype enables both EIP-8141 and EIP-8288, so the base frame scenarios below run
-        // unchanged while the EIP-8288 dependency-frame scenario is also exercisable.
+        // Eip8288Prototype enables EIP-8141 too, so the base frame scenarios below run unchanged.
         _specProvider = new TestSpecProvider(Eip8288Prototype.Instance);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
@@ -261,9 +260,7 @@ public class Eip8141ScenarioTests
         }
     }
 
-    // EIP-8288: a DEP_VERIFY frame is not executed as EVM — it only declares dependencies for the
-    // block-level recursive STARK. Its full gas_limit (the per-scheme verification gas) is charged
-    // unconditionally, it yields a success receipt with no logs, and later operation frames still run.
+    // A DEP_VERIFY frame is not executed as EVM, yet still charges its full gas_limit.
     [Test]
     public void DependencyFrame_NotExecuted_ChargesVerificationGas()
     {
@@ -289,10 +286,8 @@ public class Eip8141ScenarioTests
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000), "later operation frames still run");
     }
 
-    // EIP-8288 Test Case 1/2: a VERIFY frame introspects the transaction's declared dependency — it
-    // reads the dependency frame's verification_key with FRAMEDATALOAD and only approves when it
-    // matches (spec "Transaction Execution Visibility"). A non-matching dependency yields scope 0,
-    // so APPROVE reverts the VERIFY frame and the whole transaction is invalid.
+    // Spec "Transaction Execution Visibility": a VERIFY frame reads the dependency frame's
+    // verification_key with FRAMEDATALOAD and approves only on a match, so a mismatch reverts APPROVE.
     [TestCase(true)]
     [TestCase(false)]
     public void DependencyFrame_VerifyFrameIntrospectsDeclaredDependency(bool dependencyMatches)

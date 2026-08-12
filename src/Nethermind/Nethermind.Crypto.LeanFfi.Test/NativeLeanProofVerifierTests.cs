@@ -68,8 +68,7 @@ public class NativeLeanProofVerifierTests
     [Test]
     public void Native_and_managed_verifiers_agree()
     {
-        // The whole point of the placeholder matching: a node producing with the managed prover must
-        // validate under the native verifier, and vice versa.
+        // Producing with one backend must validate under the other.
         ValueHash256 depsHash = Keccak.Compute("block").ValueHash256;
         byte[] proof = PlaceholderLeanProofVerifier.ProveRecursive(in depsHash, Vk);
 
