@@ -34,9 +34,9 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // EIP8141-DEVIATION: TXPARAM(0x06) is defined precisely; Transaction.GasLimit is the frame-gas sum
-        // only, so the intrinsic and EIP-7623 floor terms go unreserved — for a calldata-heavy prefix with
-        // small frame gas limits that is a small fraction of the true max cost.
+        // EIP8141-DEVIATION: TXPARAM(0x06) is defined precisely, but Transaction.GasLimit is the frame-gas
+        // sum only, so the intrinsic and EIP-7623 floor terms go unreserved; for a calldata-heavy prefix
+        // with small frame gas limits the reserved amount can be a small fraction of the true max cost.
         if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
         {
             return AcceptTxResult.Int256Overflow;
