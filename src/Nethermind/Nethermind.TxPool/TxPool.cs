@@ -684,7 +684,9 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <remarks>
         /// EIP-8141 "Revalidation". Only the dependency-affected subset is rechecked — revalidating the
-        /// whole pool per head would be its own denial-of-service vector. Evicting here is the spec's
+        /// whole pool per head would be its own denial-of-service vector, and it is why caching a simulation
+        /// result against its dependency set would add nothing: a re-simulated prefix has already moved.
+        /// Evicting here is the spec's
         /// "invalid against the current head first" eviction order: such transactions never compete for
         /// pool space in the first place. A simulation that fails on a resource bound rather than on the
         /// prefix leaves the transaction pending. The fork gate reads the incoming block's spec while pricing
