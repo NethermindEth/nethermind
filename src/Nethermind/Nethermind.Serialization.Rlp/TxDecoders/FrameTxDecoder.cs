@@ -142,6 +142,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         int payloadContentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         int payloadSequenceLength = Rlp.LengthOfSequence(payloadContentLength);
 
+        // A sidecar-less blob carrier still serialises to the plain form that Decode refuses; see GetLength.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;

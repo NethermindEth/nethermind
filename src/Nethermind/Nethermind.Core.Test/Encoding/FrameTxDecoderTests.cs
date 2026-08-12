@@ -110,7 +110,6 @@ public class FrameTxDecoderTests
         RlpReader consensusReader = new(bytes);
         Transaction decoded = _txDecoder.Decode(ref consensusReader, RlpBehaviors.SkipTypedWrapping)!;
         Assert.That(decoded.BlobVersionedHashes, Is.EqualTo(tx.BlobVersionedHashes));
-
     }
 
     [Test]
