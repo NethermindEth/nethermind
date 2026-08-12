@@ -90,8 +90,7 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
-        // A leading deploy frame (default mode, no approval scope) is part of the recognized prefix that
-        // Core prices against, so it is skipped like the expiry frame and the self relay still resolves.
+        // A leading deploy frame is part of the recognized prefix, so it is skipped like the expiry frame.
         yield return Case("DeployThenSelfVerify_PayerIsSender",
             state =>
             {
@@ -99,7 +98,6 @@ public class FrameTxPayerResolverTests
                 return FrameTx([DeployFrame(), SelfVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
-        // A lone deploy frame never approves a payer, exactly like a lone only_verify frame.
         yield return Case("DeployFrameOnly_NoPayer",
             state =>
             {
@@ -224,9 +222,7 @@ public class FrameTxPayerResolverTests
     [Test]
     public void Resolve_DeployPrefix_AgreesWithValidationPricing()
     {
-        // A [deploy, self_verify] prefix must be classified the same way by admission pricing and payer
-        // resolution: Core prices it as a recognized prefix (charging only the prefix, not the trailing
-        // frame), and the resolver must resolve it natively rather than deferring to simulation.
+        // Admission pricing and payer resolution must classify this prefix the same way, or they drift.
         TestReadOnlyStateProvider state = new();
         DefaultCodeAccount(state, Sender);
         TxFrame trailing = new(TxFrame.ModeDefault, flags: 0, target: null, gasLimit: 5_000_000, UInt256.Zero, default);

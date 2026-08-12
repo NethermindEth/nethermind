@@ -13,11 +13,7 @@ namespace Nethermind.TxPool;
 /// admission can bound each payer's aggregate exposure to its balance.
 /// </summary>
 /// <remarks>
-/// EIP-8141 per-payer reservation accounting (ethereum/EIPs#12007, "Reservation accounting applies
-/// to every payer, not only canonical paymasters"). The reservation is taken atomically at
-/// admission (<see cref="TryReserve"/>) and released when the transaction leaves the pool
-/// (<see cref="Subtract"/>), so concurrent submissions for one payer cannot each pass a stale
-/// balance check.
+/// EIP-8141: "Reservation accounting applies to every payer, not only canonical paymasters".
 /// </remarks>
 internal sealed class PayerExposureCache
 {

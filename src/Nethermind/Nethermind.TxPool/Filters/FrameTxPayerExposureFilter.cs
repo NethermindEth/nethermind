@@ -13,12 +13,8 @@ namespace Nethermind.TxPool.Filters;
 /// payer's summed pending maximum cost would exceed the payer's balance.
 /// </summary>
 /// <remarks>
-/// Runs after <see cref="FrameTxPayerFilter"/> has recorded <see cref="Transaction.PayerAddress"/>.
-/// Only natively-resolved payers are gated; unresolved frame txs (payer <c>null</c>) and non-frame
-/// txs pass through. The reservation is taken here atomically at admission and released when the
-/// transaction leaves the pool (or fails to insert), so concurrent submissions for one payer cannot
-/// each pass a stale check (ethereum/EIPs#12007, "a node MUST NOT hold pending frame transactions
-/// whose summed maximum costs exceed the payer's balance").
+/// The reservation is taken atomically at admission and released when the transaction leaves the pool,
+/// so concurrent submissions for one payer cannot each pass a stale check.
 /// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 internal sealed class FrameTxPayerExposureFilter(
@@ -48,9 +44,6 @@ internal sealed class FrameTxPayerExposureFilter(
             ? state.SenderAccount.Balance
             : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
-        // Reserve atomically so N concurrent submissions for the same payer cannot each observe a
-        // pre-reservation total and all pass. Released on the pool Removed event, or on the
-        // non-insert path in TxPool.AddCore.
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved))
         {
             Metrics.PendingTransactionsFrameTxPayerExposureExceeded++;

@@ -2440,9 +2440,7 @@ namespace Nethermind.TxPool.Test
         public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
         {
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
-            // shape that reaches the exposure gate here — the reserve and the release, through the real
-            // filter chain and the real Removed event. The middle assertion encodes the documented
-            // replacement over-count: the incumbent is still reserved while its replacement is priced.
+            // shape reaching the exposure gate here; it is refused because the incumbent is still reserved.
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * TxGasLimit);
 
@@ -2452,8 +2450,8 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
             AcceptTxResult blockedResult = _txPool.SubmitTx(blocked, TxHandlingOptions.None);
-            // Within the exposure bound but too small a bump to replace: the pool never takes ownership,
-            // so no Removed fires and only AddCore's explicit release keeps the payer from leaking.
+            // Within the bound but too small a bump to replace: no Removed fires, so only AddCore's
+            // explicit release keeps the payer from leaking.
             AcceptTxResult unreplaceableResult = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 6, salt: 1), TxHandlingOptions.None);
             _txPool.RemoveTransaction(first.Hash);
             AcceptTxResult afterReleaseResult = _txPool.SubmitTx(afterRelease, TxHandlingOptions.None);

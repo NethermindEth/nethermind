@@ -585,8 +585,6 @@ public class TxValidatorTests
             BlobVersionedHashes = carriesBlobs ? [[KzgPolynomialCommitments.KzgBlobHashVersionV1, .. new byte[31]]] : null,
         };
 
-        // Round-trip through the decoder so the validated instance has the exact field shape a
-        // gossiped frame tx has (non-null MaxFeePerBlobGas, empty-not-null BlobVersionedHashes).
         TxDecoder decoder = TxDecoder.Instance;
         byte[] bytes = new byte[decoder.GetLength(tx, RlpBehaviors.None)];
         RlpWriter writer = new(bytes);
