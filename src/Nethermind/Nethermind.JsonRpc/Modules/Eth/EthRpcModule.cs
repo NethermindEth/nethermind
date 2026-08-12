@@ -75,7 +75,8 @@ public partial class EthRpcModule(
     ulong? secondsPerSlot,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
-    IBlockForRpcFactory blockForRpcFactory) : IEthRpcModule
+    IBlockForRpcFactory blockForRpcFactory,
+    EthCallResponseCache? ethCallCache = null) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -101,6 +102,7 @@ public partial class EthRpcModule(
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
     private readonly IReceiptConfig _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
+    private readonly EthCallResponseCache? _ethCallCache = ethCallCache;
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -600,9 +602,33 @@ public partial class EthRpcModule(
         }
     }
 
-    public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
-        new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
-            .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
+    public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
+    {
+        CallTxExecutor executor = new(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider);
+
+        // Overrides make the call non-deterministic across requests, so they bypass the cache entirely.
+        if (_ethCallCache is null || stateOverride is not null || blockOverride is not null)
+        {
+            return executor.ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
+        }
+
+        SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
+        Hash256? blockHash = headerSearch.IsError ? null : headerSearch.Object?.Hash;
+        if (blockHash is null)
+        {
+            return executor.Execute(transactionCall, blockParameter, searchResult: headerSearch);
+        }
+
+        ValueHash256 cacheKey = EthCallResponseCache.ComputeKey(blockHash, transactionCall);
+        if (_ethCallCache.TryGet(cacheKey, out ResultWrapper<HexBytes>? cached))
+        {
+            return cached;
+        }
+
+        ResultWrapper<HexBytes> result = executor.Execute(transactionCall, blockParameter, searchResult: headerSearch);
+        _ethCallCache.SetIfCacheable(cacheKey, result);
+        return result;
+    }
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)

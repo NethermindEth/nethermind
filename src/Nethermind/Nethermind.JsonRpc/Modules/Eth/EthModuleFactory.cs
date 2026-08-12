@@ -45,6 +45,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
         private readonly HeadBlockSignal _headBlockSignal = new(blockTree);
+        // A single cache shared by all pooled module instances, so repeats hit regardless of which instance serves them.
+        private readonly EthCallResponseCache? _ethCallCache = EthCallResponseCache.CreateIfEnabled(config);
 
         public override IEthRpcModule Create() => new EthRpcModule(
                 config,
@@ -68,6 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _secondsPerSlot,
                 _headBlockSignal,
                 capabilitiesProvider,
-                blockForRpcFactory);
+                blockForRpcFactory,
+                _ethCallCache);
     }
 }
