@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -77,5 +78,23 @@ public class TransactionDiffViewTests
         }));
         Assert.That(view.TryGetSlotRun(Low, out int start, out int count), Is.True);
         Assert.That((start, count), Is.EqualTo((0, 2)));
+    }
+
+    // TXDIFF 0x04: the EIP pins codehash_before to the empty-code hash for an undeployed contract.
+    [TestCase(false, TestName = "Build_PreTxCodeHash_UndeployedContract_IsTheEmptyCodeHash")]
+    [TestCase(true, TestName = "Build_PreTxCodeHash_ExistingCode_IsItsKeccak")]
+    public void GetPreTxCodeHash_HashesThePreTxCode(bool hadCode)
+    {
+        BlockAccessListAtIndex slice = new();
+        byte[] preTxCode = hadCode ? [0x00] : [];
+        slice.AddCodeChange(Low, preTxCode, Code);
+        TransactionDiffView view = TransactionDiffView.Build(slice, []);
+        AccountChangesAtIndex account = slice.GetAccountChanges(Low)!;
+
+        ValueHash256 hash = view.GetPreTxCodeHash(Low, account);
+
+        Assert.That(hash, Is.EqualTo(hadCode ? ValueKeccak.Compute(preTxCode) : ValueKeccak.OfAnEmptyString));
+        // The memo is what keeps a warm-priced param from re-hashing up to 24 KB per call.
+        Assert.That(view.GetPreTxCodeHash(Low, account), Is.EqualTo(hash));
     }
 }

@@ -35,21 +35,23 @@ public static unsafe partial class EvmInstructions
         byte p = (byte)param.u0;
         return p switch
         {
-            0x00 => Count<TTracingInst>(in index, view.BalanceAddresses.Length, ref stack),
-            0x01 => Count<TTracingInst>(in index, view.Slots.Length, ref stack),
-            0x02 => Count<TTracingInst>(in index, view.DeployedAddresses.Length, ref stack),
+            0x00 => PushCountForZeroIndex<TTracingInst>(in index, view.BalanceAddresses.Length, ref stack),
+            0x01 => PushCountForZeroIndex<TTracingInst>(in index, view.Slots.Length, ref stack),
+            0x02 => PushCountForZeroIndex<TTracingInst>(in index, view.DeployedAddresses.Length, ref stack),
             >= 0x03 and <= 0x05 => TxTraceBalance<TTracingInst>(view, p, in index, ref stack),
             >= 0x06 and <= 0x09 => TxTraceStorage<TTracingInst>(view, p, in index, ref stack),
             0x0A or 0x0B => TxTraceDeployment<TTracingInst>(view, p, in index, ref stack),
-            0x0C => Count<TTracingInst>(in index, view.Logs.Length, ref stack),
+            0x0C => PushCountForZeroIndex<TTracingInst>(in index, view.Logs.Length, ref stack),
             >= 0x0D and <= 0x13 => TxTraceEvent<TTracingInst>(view, p, in index, ref stack),
             0x14 => index.IsZero ? stack.PushUInt256<TTracingInst>(ctx.MaxCost) : EvmExceptionType.BadInstruction,
+            // A POST_TX frame can run before any frame approves payment; that transaction is rejected
+            // after the loop, so the zero stands in for a value no valid transaction can observe.
             0x15 => index.IsZero ? stack.PushAddress<TTracingInst>(ctx.Payer ?? Address.Zero) : EvmExceptionType.BadInstruction,
             _ => EvmExceptionType.BadInstruction,
         };
     }
 
-    private static EvmExceptionType Count<TTracingInst>(in UInt256 index, int count, ref EvmStack stack)
+    private static EvmExceptionType PushCountForZeroIndex<TTracingInst>(in UInt256 index, int count, ref EvmStack stack)
         where TTracingInst : struct, IFlag
         => index.IsZero
             ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)count)
@@ -195,7 +197,7 @@ public static unsafe partial class EvmInstructions
         TGasPolicy.Consume<TxTraceGasCost>(ref gas);
         return param switch
         {
-            0x06 => in3.IsZero ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)(account?.StorageChangeCount ?? 0)) : EvmExceptionType.BadInstruction,
+            0x06 => in3.IsZero ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)(view.TryGetSlotRun(address, out _, out int slots) ? slots : 0)) : EvmExceptionType.BadInstruction,
             0x07 => view.TryGetSlotRun(address, out int start, out int count) && in3 < (UInt256)(ulong)count
                 ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)(start + (int)in3.u0))
                 : EvmExceptionType.BadInstruction,

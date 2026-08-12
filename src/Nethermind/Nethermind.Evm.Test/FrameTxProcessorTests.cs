@@ -1065,8 +1065,6 @@ public class FrameTxProcessorTests
             DecodedMaxFeePerGas = 1,
         };
 
-    // --- EIP-7906 TXTRACE / TXDIFF / EVENTDATACOPY ---
-
     // The opcodes only exist inside a POST_TX frame; here one runs in the VERIFY prefix, which must
     // exceptional-halt and invalidate the transaction like any other VERIFY halt.
     [Test]
@@ -1079,10 +1077,9 @@ public class FrameTxProcessorTests
         Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted, Is.False);
     }
 
-    // A POST_TX frame reads the transaction's storage diff for a body-frame write: the recorded
-    // net change (after = 99, before = 0), the per-address slot count, and the change-flags bitmask.
-    [Test]
-    public void Execute_TxDiff_ReadsStorageDiffAndChangeFlags()
+    [TestCase(false, TestName = "Execute_TxDiff_ReadsStorageDiffAndChangeFlags_Sequential")]
+    [TestCase(true, TestName = "Execute_TxDiff_ReadsStorageDiffAndChangeFlags_Parallel")]
+    public void Execute_TxDiff_ReadsStorageDiffAndChangeFlags(bool parallel)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
@@ -1093,7 +1090,7 @@ public class FrameTxProcessorTests
             (Txdiff(0x0A, Observer, 0), To32(0b0100)))); // change flags: storage only
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
-            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)), parallel);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
@@ -1113,8 +1110,6 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
     }
 
-    // TXTRACE enumerates the diff by index: the single changed slot, its address/key/before/after, and
-    // the aggregate counts (one slot changed, nothing deployed).
     [Test]
     public void Execute_TxTrace_EnumeratesStorageChangesAndCounts()
     {
@@ -1134,8 +1129,7 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // Events: TXTRACE reads the log a body frame emitted (address, topic, data length) and EVENTDATACOPY
-    // copies its non-indexed data into memory. The logs come from the shared frame-transaction log buffer.
+    // The logs come from the frame-transaction log buffer shared across frames and nested calls.
     [Test]
     public void Execute_TxTraceAndEventDataCopy_ReadTransactionLogs()
     {
@@ -1179,9 +1173,11 @@ public class FrameTxProcessorTests
 
     // EIP-7906 requires a TXDIFF param that falls back to live state (0x00-0x05) to be recorded in the
     // EIP-7928 block access list like any other state-reading opcode, so a rebuilt BAL matches.
-    [TestCase(true, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList")]
-    [TestCase(false, TestName = "Execute_WithoutTxDiff_TheAccountStaysOutOfTheBlockAccessList")]
-    public void Execute_TxDiffLiveRead_IsRecordedInTheBlockAccessList(bool readBalance)
+    [TestCase(true, false, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList")]
+    [TestCase(false, false, TestName = "Execute_WithoutTxDiff_TheAccountStaysOutOfTheBlockAccessList")]
+    [TestCase(true, true, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList_Parallel")]
+    [TestCase(false, true, TestName = "Execute_WithoutTxDiff_TheAccountStaysOutOfTheBlockAccessList_Parallel")]
+    public void Execute_TxDiffLiveRead_IsRecordedInTheBlockAccessList(bool readBalance, bool parallel)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.Op(Instruction.STOP).Done);
@@ -1190,7 +1186,7 @@ public class FrameTxProcessorTests
             : Prepare.EvmCode.Op(Instruction.STOP).Done);
 
         (_, CallOutputTracer tracer) = ProcessTraced(
-            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)), out BlockAccessListAtIndex slice);
+            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)), out BlockAccessListAtIndex slice, parallel);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(slice.HasAccount(Observer), Is.EqualTo(readBalance));
@@ -1257,12 +1253,14 @@ public class FrameTxProcessorTests
         return code.ToArray();
     }
 
-    private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx)
-        => ProcessTraced(tx, out _);
+    private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, bool parallel = false)
+        => ProcessTraced(tx, out _, parallel);
 
-    private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, out BlockAccessListAtIndex slice)
+    private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, out BlockAccessListAtIndex slice, bool parallel = false)
     {
-        TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
+        // parallel: true is the read path a validating node takes — storage reads are served from the
+        // recorded change rather than from the base state.
+        TracedAccessWorldState tracedState = new(_stateProvider, parallel);
         slice = new BlockAccessListAtIndex();
         tracedState.SetGeneratingBlockAccessList(slice);
         EthereumCodeInfoRepository codeInfoRepository = new(tracedState);
