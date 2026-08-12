@@ -87,9 +87,8 @@ public sealed class TxValidator : ITxValidator
         // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
         // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
         // signature validation happen during processing.
-        // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 network wrapper with type-3,
-        // so the same sidecar and proof-version validators run — they are no-ops for a frame tx with no
-        // wrapper (block form or a blobless frame tx).
+        // EIP-8141: type 6 shares the EIP-7594 wrapper with type-3, so the same sidecar and proof-version
+        // validators run; they are no-ops for a frame tx with no wrapper.
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
@@ -337,9 +336,9 @@ public sealed class MaxBlobCountBlobTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction switch
         {
-            // EIP-8141: re-check a blob-carrying frame tx (type 6) against the head spec too, so key on
-            // the instance-level blob predicate rather than the type.
-            { CarriesBlobs: false } => ValidationResult.Success,
+            // EIP-8141: re-check a blob-carrying frame tx (type 6) against the head spec too. Type-3 stays
+            // gated on the type, so a type-3 declaring no blobs is still rejected rather than skipped.
+            { Type: not TxType.Blob, CarriesBlobs: false } => ValidationResult.Success,
             _ => ValidateBlobFields(transaction, releaseSpec)
         };
 

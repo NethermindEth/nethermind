@@ -1497,10 +1497,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a blob-carrying frame tx lives in the blob pool, so the on-head expiry pass must scan it there
-        // (the blob pool's Inserted/Removed feed the same expiry counter as the normal pool). This holds only under
-        // BlobsSupportMode.InMemory: persistent storage's LightTransaction hard-codes TxType.Blob (SupportsFrames
-        // false), so it cannot be evicted until the light record carries the tx type.
+        // EIP-8141: a blob-carrying frame tx lives in the blob pool, so the on-head expiry pass must scan it
+        // there — the blob pool's Inserted/Removed feed the same expiry counter as the normal pool.
         [Test]
         public async Task Expired_blob_carrying_frame_tx_is_evicted_from_blob_pool_on_new_head()
         {
@@ -1532,9 +1530,8 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
         }
 
-        // EIP-8141: a persistent blob pool would store a blob-carrying frame tx via the frame RLP decoder, which drops
-        // the sidecar and reloads a wrapper-less, unproducible LightTransaction. Such txs are therefore rejected at
-        // ingress under the persistent modes and admitted only under BlobsSupportMode.InMemory, where the full tx is kept.
+        // EIP-8141: the persistent blob pool's type-6 arc is still unexercised, so a blob-carrying frame tx is
+        // rejected at ingress under the persistent modes and admitted only under BlobsSupportMode.InMemory.
         [TestCase(BlobsSupportMode.Storage)]
         [TestCase(BlobsSupportMode.StorageWithReorgs)]
         public void Blob_carrying_frame_tx_is_rejected_under_persistent_blob_pool(BlobsSupportMode blobsSupport)
@@ -1571,9 +1568,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a reorg drops a blob-carrying frame tx from the pool (under BlobsSupportMode.InMemory no blob
-        // storage brings it back), so its hash must be un-marked as known. Otherwise AlreadyKnownTxFilter would
-        // reject every resubmission until LRU eviction and the sender could never get the tx back into the pool.
+        // Under BlobsSupportMode.InMemory nothing re-adds a reorged blob-carrying frame tx, so unless its
+        // hash is un-marked AlreadyKnownTxFilter rejects every resubmission until LRU eviction.
         [Test]
         public async Task Reorged_blob_carrying_frame_tx_can_be_resubmitted()
         {
@@ -1584,7 +1580,6 @@ namespace Nethermind.TxPool.Test
             Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // Include the tx in block A, then reorg it out to block B; InMemory mode does not re-add it.
             Block blockA = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
             Block blockB = Build.A.Block.WithNumber(1).TestObject;

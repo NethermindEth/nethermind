@@ -45,6 +45,7 @@ public class Eth68ProtocolHandler(ISession session,
     private const int MaxPooledTransactionHashesPerRequest = 256;
 
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+    private readonly bool _blobFrameTxsAdmissible = txPoolConfig.BlobsSupport.SupportsBlobFrameTxs();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
     private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
@@ -281,9 +282,11 @@ public class Eth68ProtocolHandler(ISession session,
                 (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
                 if (!CanRequestPooledTransaction(txShape.Type)
                     || txShape.Size <= 0
-                    // EIP-8141: a type-6 announcement carries only its type byte, so a blob-carrying frame
-                    // tx is indistinguishable from a plain one — budget every frame tx at the blob-tx size.
-                    || txShape.Size > (txShape.Type is TxType.Blob or TxType.FrameTx ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
+                    // EIP-8141: a type-6 announcement carries only its type byte, so a blob-carrying frame tx is
+                    // indistinguishable from a plain one — budget every frame tx at the blob size where one is admissible.
+                    || txShape.Size > (txShape.Type is TxType.Blob || (txShape.Type is TxType.FrameTx && _blobFrameTxsAdmissible)
+                        ? _configuredMaxBlobTxSize
+                        : _configuredMaxTxSize))
                 {
                     continue;
                 }

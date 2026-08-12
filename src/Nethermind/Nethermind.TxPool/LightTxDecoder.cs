@@ -10,8 +10,7 @@ namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
-    private static int GetLength(Transaction tx) => Rlp.LengthOf((byte)tx.Type)
-               + Rlp.LengthOf(tx.Timestamp)
+    private static int GetLength(Transaction tx) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -23,7 +22,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(tx.GetLength())
-               + Rlp.LengthOf(sizeof(byte));
+               + Rlp.LengthOf(sizeof(byte))
+               + Rlp.LengthOf((byte)tx.Type);
 
     public static byte[] Encode(Transaction tx)
     {

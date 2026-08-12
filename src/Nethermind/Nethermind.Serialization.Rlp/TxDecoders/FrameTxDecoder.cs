@@ -18,12 +18,9 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// bytes of canonical-hash (empty msg) entries are elided.
 /// </summary>
 /// <remarks>
-/// A blob-carrying frame transaction has an EIP-7594 network form that wraps the payload as
-/// <c>[tx_payload_body, wrapper_version, blobs, commitments, cell_proofs]</c>, byte-identical to the
-/// EIP-4844 type-3 wrapper. A frame transaction with no blobs uses the plain payload with no wrapper;
-/// the two mempool forms are structurally disjoint (plain = list beginning with the <c>chain_id</c>
-/// scalar, wrapper = list beginning with the <c>tx_payload_body</c> list). The consensus form is
-/// always the plain payload and its signature hash is unchanged by the presence of a wrapper.
+/// A blob-carrying frame transaction takes the EIP-7594 wrapper form, byte-identical to type-3's; one
+/// with no blobs uses the plain payload. The two are disjoint: the wrapper opens with a list, the plain
+/// payload with the <c>chain_id</c> scalar. The consensus form and signature hash are unaffected.
 /// </remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()
@@ -43,24 +40,37 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm) && IsNetworkWrapper(ref decoderContext))
+        if (rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm))
         {
-            DecodeNetworkWrapper(ref transaction, ref decoderContext, rlpBehaviors);
+            if (IsNetworkWrapper(ref decoderContext))
+            {
+                DecodeNetworkWrapper(ref transaction, ref decoderContext, rlpBehaviors);
+                return;
+            }
+
+            base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            // EIP-7594: as for type-3, a blob-carrying transaction's mempool form is the sidecar wrapper.
+            if (transaction is { CarriesBlobs: true }) ThrowMissingSidecar();
             return;
         }
 
         base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
+    [DoesNotReturn]
+    private static void ThrowMissingSidecar() =>
+        throw new RlpException($"Blob-carrying {nameof(TxType.FrameTx)} in mempool form must carry a {nameof(ShardBlobNetworkWrapper)}");
+
     // The wrapper form's first element is the tx_payload_body list; the plain payload's first element
-    // is the chain_id scalar. Peek without consuming to pick the branch.
+    // is the chain_id scalar.
     private static bool IsNetworkWrapper(ref RlpReader decoderContext)
     {
         int start = decoderContext.Position;
-        decoderContext.ReadSequenceLength();
-        // Guard the peek: a truncated payload (e.g. an empty type-6 list from a peer) leaves Position at
-        // the end, and IsSequenceNext reads Data[Position] unchecked. Keep it an RlpException path.
-        bool isWrapper = decoderContext.Position < decoderContext.Length && decoderContext.IsSequenceNext();
+        int length = decoderContext.ReadSequenceLength();
+        // The reader spans the whole message, so bound the peek by this transaction's own sequence —
+        // an empty payload list would otherwise read the next transaction's first byte.
+        int end = Math.Min(decoderContext.Position + length, decoderContext.Length);
+        bool isWrapper = decoderContext.Position < end && decoderContext.IsSequenceNext();
         decoderContext.Position = start;
         return isWrapper;
     }
@@ -133,7 +143,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         int payloadContentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         int payloadSequenceLength = Rlp.LengthOfSequence(payloadContentLength);
 
-        // Only a blob-carrying frame tx in mempool form is wrapped; every other form is the plain payload.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;
@@ -157,7 +166,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             writer.StartSequence(wrapperContentLength);
             writer.StartSequence(payloadContentLength);
-            // Key eliding on forSigning like payloadContentLength above, so the declared length and the
+            // Keep eliding on forSigning like payloadContentLength above, so the declared length and the
             // bytes written cannot drift if InMempoolForm and forSigning ever co-occur.
             EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
             ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper);

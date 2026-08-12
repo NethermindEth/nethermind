@@ -89,6 +89,60 @@ public class FrameTxDecoderTests
         Assert.That(decoded.Hash, Is.EqualTo(ConsensusHash(tx)));
     }
 
+    // A blob-carrying type-6 whose mempool form is the plain payload would reach the blob pool with no
+    // sidecar to serve, so mempool decode rejects it — as it already does for type-3.
+    [Test]
+    public void Decode_BlobCarryingFrameTxWithoutWrapper_InMempoolForm_ThrowsRlpException()
+    {
+        Transaction tx = CreateBlobCarryingFrameTx(ProofVersion.V1, blobCount: 1);
+        tx.NetworkWrapper = null;
+
+        byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm)];
+        RlpWriter writer = new(bytes);
+        _txDecoder.Encode(ref writer, tx, RlpBehaviors.InMempoolForm);
+
+        Assert.That(() =>
+        {
+            RlpReader reader = new(bytes);
+            _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm);
+        }, Throws.InstanceOf<RlpException>());
+
+        // The same bytes are a valid consensus form: only the mempool form requires the sidecar.
+        RlpReader consensusReader = new(bytes);
+        Transaction decoded = _txDecoder.Decode(ref consensusReader)!;
+        Assert.That(decoded.BlobVersionedHashes, Is.EqualTo(tx.BlobVersionedHashes));
+    }
+
+    [Test]
+    public void Decode_NetworkWrapperWithoutSidecar_ThrowsRlpException()
+    {
+        // A wrapper holding only the payload body leaves the reader at the end of the buffer, where the
+        // sidecar peek reads out of bounds; the decoder must surface that as an RlpException, not a crash.
+        Rlp body = Rlp.Encode(
+            Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
+            Rlp.Encode(0L),                          // nonce
+            Rlp.Encode(TestItem.AddressA.Bytes),     // sender
+            Rlp.Encode(Array.Empty<Rlp>()),          // frames
+            Rlp.Encode(Array.Empty<Rlp>()),          // signatures
+            Rlp.Encode(0L),                          // max_priority_fee_per_gas
+            Rlp.Encode(0L),                          // max_fee_per_gas
+            Rlp.Encode(0L),                          // max_fee_per_blob_gas
+            Rlp.Encode(Array.Empty<Rlp>()));         // blob_versioned_hashes
+        Rlp wrapper = Rlp.Encode(new[] { body });
+
+        byte[] payload = new byte[1 + wrapper.Length];
+        payload[0] = (byte)TxType.FrameTx;
+        wrapper.Bytes.CopyTo(payload, 1);
+
+        void Decode()
+        {
+            RlpReader reader = new(payload);
+            _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        }
+
+        Assert.That(Decode, Throws.InstanceOf<RlpException>());
+    }
+
     [Test]
     public void Decode_PayloadWithTrailingSignature_Throws()
     {

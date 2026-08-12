@@ -25,10 +25,9 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP-8141: a persistent blob pool stores a blob-carrying frame tx via the frame RLP decoder, which
-        // has no network-wrapper handling and drops the sidecar, reloading a wrapper-less LightTransaction that
-        // is unproducible and unservable. Only BlobsSupportMode.InMemory keeps the full tx intact, so admit it there only.
-        if (tx.SupportsFrames && tx.CarriesBlobs && _txPoolConfig.BlobsSupport.IsPersistentStorage())
+        // EIP-8141: the frame codec now round-trips the sidecar, but the persistent blob pool's type-6 arc
+        // (reload, serve, frame expiry) is still unexercised, so admit these under BlobsSupportMode.InMemory only.
+        if (tx.SupportsFrames && tx.CarriesBlobs && !_txPoolConfig.BlobsSupport.SupportsBlobFrameTxs())
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions require in-memory blob support.");

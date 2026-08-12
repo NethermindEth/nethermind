@@ -41,4 +41,8 @@ public static class BlobsSupportModeExtensions
     public static bool IsEnabled(this BlobsSupportMode mode) => mode is not BlobsSupportMode.Disabled;
     public static bool IsDisabled(this BlobsSupportMode mode) => mode is BlobsSupportMode.Disabled;
     public static bool SupportsReorgs(this BlobsSupportMode mode) => mode is BlobsSupportMode.StorageWithReorgs;
+
+    /// <summary>Whether a blob-carrying EIP-8141 frame transaction can be admitted under this mode.</summary>
+    /// <remarks>Only the in-memory pool keeps the full transaction; the persistent pool's type-6 arc is untested.</remarks>
+    public static bool SupportsBlobFrameTxs(this BlobsSupportMode mode) => mode is BlobsSupportMode.InMemory;
 }
