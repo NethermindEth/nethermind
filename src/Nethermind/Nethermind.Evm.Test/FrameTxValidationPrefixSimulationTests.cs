@@ -32,6 +32,7 @@ public class FrameTxValidationPrefixSimulationTests
 {
     private ISpecProvider _specProvider;
     private ITransactionProcessor _transactionProcessor;
+    private EthereumVirtualMachine _virtualMachine;
     private IWorldState _stateProvider;
     private IDisposable _worldStateCloser;
     private IReleaseSpec Spec => _specProvider.GenesisSpec;
@@ -46,8 +47,8 @@ public class FrameTxValidationPrefixSimulationTests
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -331,6 +332,31 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.ErrorDescription, Does.Contain("deploy frame"));
             Assert.That(tracer.Violated, Is.False);
             Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Simulate_AbortedInsideAChildFrame_ReleasesTheUnwoundFrames()
+    {
+        // The helper violates the SLOAD scope rule and then spins, so the abort fires on a later poll,
+        // inside the child frame. The interpreter has to release the frames it unwound past, or their
+        // pooled data stacks stay rooted for the lifetime of the reused machine.
+        DeployContract(TestItem.AddressC, Prepare.EvmCode
+            .Op(Instruction.JUMPDEST)
+            .PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .PushData(0).Op(Instruction.JUMP).Done);
+        byte[] code = Prepare.EvmCode
+            .StaticCall(TestItem.AddressC, 50_000).Op(Instruction.POP)
+            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        FrameTxValidationTracer tracer = Tracer(tx);
+
+        Assert.Throws<OperationCanceledException>(() => Run(tx, tracer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.True);
+            Assert.That(_virtualMachine.StateStack, Is.Empty);
         }
     }
 
