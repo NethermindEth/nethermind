@@ -1067,14 +1067,44 @@ public class FrameTxProcessorTests
 
     // The opcodes only exist inside a POST_TX frame; here one runs in the VERIFY prefix, which must
     // exceptional-halt and invalidate the transaction like any other VERIFY halt.
-    [Test]
-    public void Execute_TxTraceOutsidePostTxFrame_HaltsExceptionally()
+    [TestCase(Instruction.TXTRACE)]
+    [TestCase(Instruction.TXDIFF)]
+    [TestCase(Instruction.EVENTDATACOPY)]
+    public void Execute_AssertionOpcodeOutsidePostTxFrame_HaltsExceptionally(Instruction opcode)
     {
+        // Four operands cover the widest of the three; a halt leaves any surplus unread.
         DeploySmartSender(Prepare.EvmCode
-            .PushData(0).PushData(0).Op(Instruction.TXTRACE)
+            .PushData(0).PushData(0).PushData(0).PushData(0).Op(opcode)
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
 
         Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted, Is.False);
+    }
+
+    // The opcodes sit in the jump table for every transaction once EIP-7906 is on, so one with no frame
+    // context at all must exceptional-halt rather than dereference a null one.
+    [TestCase(Instruction.TXTRACE)]
+    [TestCase(Instruction.TXDIFF)]
+    [TestCase(Instruction.EVENTDATACOPY)]
+    public void Execute_AssertionOpcodeInOrdinaryTransaction_HaltsExceptionally(Instruction opcode)
+    {
+        DeployContract(Recipient, Prepare.EvmCode
+            .PushData(0).PushData(0).PushData(0).PushData(0).Op(opcode).Op(Instruction.STOP).Done);
+        DeployContract(TestItem.AddressD, [], 1.Ether);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithTo(Recipient)
+            .WithGasLimit(100_000)
+            .WithMaxFeePerGas(1)
+            .WithMaxPriorityFeePerGas(1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+
+        CallOutputTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
     }
 
     [TestCase(false, TestName = "Execute_TxDiff_ReadsStorageDiffAndChangeFlags_Sequential")]

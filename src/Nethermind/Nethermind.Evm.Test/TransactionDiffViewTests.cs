@@ -94,7 +94,10 @@ public class TransactionDiffViewTests
         ValueHash256 hash = view.GetPreTxCodeHash(Low, account);
 
         Assert.That(hash, Is.EqualTo(hadCode ? ValueKeccak.Compute(preTxCode) : ValueKeccak.OfAnEmptyString));
-        // The memo is what keeps a warm-priced param from re-hashing up to 24 KB per call.
+
+        // Clearing the source the hash derives from: only a memoized second call still returns it, which
+        // is the property that keeps a warm-priced param from re-hashing up to 24 KB per call.
+        account.Reset(Low);
         Assert.That(view.GetPreTxCodeHash(Low, account), Is.EqualTo(hash));
     }
 }
