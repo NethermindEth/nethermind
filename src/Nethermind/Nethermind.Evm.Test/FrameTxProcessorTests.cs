@@ -1252,8 +1252,8 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
-    /// <remarks>Pinned on the frame receipt's gas, which the default code would leave at zero; the
-    /// identity gas (15 base, 3 per word) makes both components observable.</remarks>
+    /// <remarks>Pinned on the frame receipt's gas, which the default code would leave at zero; a frame
+    /// pays no entry cost on this branch, so the identity gas (15 base, 3 per word) is all of it.</remarks>
     [TestCase(TxFrame.ModeDefault, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, one byte)")]
     [TestCase(TxFrame.ModeDefault, 64, 21UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, two words)")]
     [TestCase(TxFrame.ModeSender, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(SENDER)")]

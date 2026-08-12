@@ -489,7 +489,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // Default code: a codeless target runs the protocol-defined behavior instead of the EVM. A
         // precompile is codeless but dispatched by address, so only VERIFY takes one down this path.
         if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString
-            && (frame.Mode == TxFrame.ModeVerify || !spec.IsPrecompile(resolvedTarget)))
+            && (frame.Mode == TxFrame.ModeVerify || _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null))
         {
             return ExecuteDefaultCode(frame, resolvedTarget, caller, frameContext, in accessTracker, spec, tracer, out gasUsed);
         }
@@ -562,9 +562,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
     /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
     /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
-    /// EIP8141: default-code gas metering is pending, so the transfer to a dead recipient always
-    /// logs (the EIP-8037 NEW_ACCOUNT charge that suppresses it on the VM path never applies) and
-    /// needs no frame-journal snapshot. A gas charge here would revisit both.
+    /// EIP8141: frame gas metering is pending on this branch — neither this path nor the VM one
+    /// charges a frame entry cost or EIP-8037 NEW_ACCOUNT — so the transfer to a dead recipient
+    /// always logs and needs no frame-journal snapshot. A gas charge here would revisit both.
     /// </summary>
     /// <param name="accessTracker">Cross-frame log/warm journal; the transfer log is appended to
     /// its log list so it reaches the frame receipt and the transaction log union.</param>
