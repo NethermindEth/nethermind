@@ -2266,13 +2266,11 @@ namespace Nethermind.TxPool.Test
         [TestCase(4, false, TestName = "a pool with room keeps it")]
         public async Task Nearly_expired_frame_transaction_is_shed_only_under_capacity_pressure(int poolSize, bool shed)
         {
-            // Nearest expiry is the spec's second eviction tier: under pressure a frame tx with almost no
-            // life left yields its slot rather than displacing a live transaction.
+            // The spec's second eviction tier: a frame tx with almost no life left yields its slot first.
             _txPool = CreatePool(new TxPoolConfig { Size = poolSize }, new TestSpecProvider(Bogota.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
-            // Inside the shed horizon, so it is near-worthless but not yet expired.
             Assert.That(_txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_010), TxHandlingOptions.None),
                 Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -2596,7 +2594,7 @@ namespace Nethermind.TxPool.Test
         public async Task Revalidation_tracks_a_delegation_installed_after_admission()
         {
             // The delegate is a head-state snapshot, so a sender that delegates after admission must be
-            // re-indexed: a later change at the new delegate is what runs the prefix's code.
+            // re-indexed or the account whose code its prefix runs stops being watched.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
@@ -2605,7 +2603,6 @@ namespace Nethermind.TxPool.Test
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
-            // The sender delegates to AddressC; its own account changed, so this head re-indexes it.
             byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
             _stateProvider.InsertCode(TestItem.PrivateKeyA.Address, delegation, Bogota.Instance);
             Block delegating = Build.A.Block.WithNumber(1).TestObject;
@@ -2653,8 +2650,7 @@ namespace Nethermind.TxPool.Test
 
             _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
 
-            // The first head establishes the sequential baseline; only then is a change list trusted to
-            // describe everything that moved.
+            // A change list is trusted to describe everything that moved only after a sequential baseline.
             Block parent = Build.A.Block.WithNumber(1).TestObject;
             parent.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
             await RaiseBlockAddedToMainAndWaitForNewHead(parent);

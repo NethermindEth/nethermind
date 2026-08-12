@@ -13,12 +13,10 @@ namespace Nethermind.TxPool;
 /// back to that transaction, so a new head only revalidates the prefixes it could have invalidated.
 /// </summary>
 /// <remarks>
-/// EIP-8141 "Revalidation" asks nodes to index pending transactions by their dependency set. Without
-/// the index the only correct alternative is re-simulating the whole pool on every head, which is
-/// itself a denial-of-service vector. Account granularity is a conservative superset of the spec's
-/// slot granularity: a write to a sender storage slot also changes that sender's account.
-/// A missed entry is a missed revalidation, so mutation and collection are serialized outright rather
-/// than reasoned about lock-free; frame-transaction churn is far too low for the contention to matter.
+/// Without it the only correct alternative is re-simulating the whole pool on every head, itself a
+/// denial-of-service vector. Account granularity is a conservative superset of the spec's slot
+/// granularity: a write to a sender storage slot also changes that sender's account. A missed entry is
+/// a missed revalidation, so mutation and collection are serialized rather than reasoned about lock-free.
 /// </remarks>
 internal sealed class FrameTxDependencyIndex
 {

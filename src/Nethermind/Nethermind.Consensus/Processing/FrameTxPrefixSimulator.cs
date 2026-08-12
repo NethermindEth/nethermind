@@ -156,9 +156,8 @@ public sealed class FrameTxPrefixSimulator(
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            // A malformed opaque prefix must never crash admission: reject and keep the pool up. Once the
-            // tracer exists the prefix is the expected source, so the rejection is definite — retaining one
-            // that throws every head would let it pin a pool slot.
+            // A malformed opaque prefix must never crash admission. Once the tracer exists the prefix is
+            // the expected source, so the rejection is definite: one that throws every head cannot pin a slot.
             if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
             return tracer is null
                 ? FrameTxSimulationResult.RejectIndeterminate("validation-prefix processing env unavailable")
