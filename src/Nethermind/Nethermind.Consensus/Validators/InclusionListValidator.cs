@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -69,12 +70,9 @@ public static class InclusionListValidator
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
 
         senderCache ??= [];
-        if (!senderCache.TryGetValue(tx.SenderAddress, out AccountStruct account))
-        {
-            // Cache the negative result too (default struct = balance 0, nonce 0, empty codehash).
-            state.TryGetAccount(tx.SenderAddress, out account);
-            senderCache[tx.SenderAddress] = account;
-        }
+        ref AccountStruct account = ref CollectionsMarshal.GetValueRefOrAddDefault(senderCache, tx.SenderAddress, out bool cached);
+        // Cache the negative result too (default struct = balance 0, nonce 0, empty codehash).
+        if (!cached) state.TryGetAccount(tx.SenderAddress, out account);
 
         // EIP-3607: a sender with non-delegated code cannot send a tx.
         if (account.HasCode && !state.IsDelegatedCode(tx.SenderAddress)) return false;

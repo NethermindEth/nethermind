@@ -688,9 +688,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     static (i, state) =>
                     {
                         Transaction[] txs = state.Payload.Transactions;
-                        // Indexes past the block txs warm inclusion-list senders — they may be promoted into the block.
+                        // Indexes past the block txs warm inclusion-list txs — they may be promoted into the block.
                         Transaction tx = i < txs.Length ? txs[i] : state.Payload.InclusionListTransactions![i - txs.Length];
-                        WarmupSender(tx.SenderAddress, i < txs.Length ? tx.To : null, state.Scope!.WorldState);
+                        WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
 
                         return state;
                     },

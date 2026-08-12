@@ -43,37 +43,26 @@ public class InclusionListTxSource(
         => _decodedByAttributes.AddOrUpdate(inclusionListTransactions, OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec))));
 
     // The producer offers each IL tx to the block executor only once, so a lower nonce that appears
-    // later than its dependent higher nonce (the IL is shuffled) would be skipped forever. Group each
-    // sender's txs and sort by nonce within the group, preserving the senders' first-appearance order —
-    // this keeps the dependency guarantee without imposing a cross-sender ordering bias (a plain
-    // (sender, nonce) sort would systematically favour low-address senders when the IL doesn't all fit).
+    // later than its dependent higher nonce (the IL is shuffled) would be skipped forever. Give each
+    // sender a first-appearance index, then sort the array in place by (sender first-appearance, nonce):
+    // each sender's txs ascend by nonce without imposing a cross-sender bias (a plain (sender, nonce)
+    // sort would systematically favour low-address senders when the IL doesn't all fit).
     private static Transaction[] OrderForProduction(Transaction[] txs)
     {
         if (txs.Length < 2) return txs;
 
-        Dictionary<AddressAsKey, List<Transaction>> bySender = new(txs.Length);
-        List<AddressAsKey> senderOrder = new(txs.Length);
+        // Unrecoverable senders (null) can never be included; group them together under Zero.
+        Dictionary<AddressAsKey, int> firstSeen = new(txs.Length);
+        int next = 0;
         foreach (Transaction tx in txs)
-        {
-            // Unrecoverable senders (null) can never be included; group them together under Zero.
-            AddressAsKey key = tx.SenderAddress ?? Address.Zero;
-            if (!bySender.TryGetValue(key, out List<Transaction>? group))
-            {
-                bySender[key] = group = [];
-                senderOrder.Add(key);
-            }
-            group.Add(tx);
-        }
+            if (firstSeen.TryAdd(tx.SenderAddress ?? Address.Zero, next)) next++;
 
-        Transaction[] ordered = new Transaction[txs.Length];
-        int i = 0;
-        foreach (AddressAsKey sender in senderOrder)
+        Array.Sort(txs, (a, b) =>
         {
-            List<Transaction> group = bySender[sender];
-            group.Sort(static (a, b) => a.Nonce.CompareTo(b.Nonce));
-            foreach (Transaction tx in group) ordered[i++] = tx;
-        }
-        return ordered;
+            int bySender = firstSeen[a.SenderAddress ?? Address.Zero].CompareTo(firstSeen[b.SenderAddress ?? Address.Zero]);
+            return bySender != 0 ? bySender : a.Nonce.CompareTo(b.Nonce);
+        });
+        return txs;
     }
 
     // FOCIL: blob (type-3) IL entries are ignored — drop them so block production never emits a blob

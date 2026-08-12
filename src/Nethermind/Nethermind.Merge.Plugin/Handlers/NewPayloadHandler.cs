@@ -55,7 +55,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly ISpecProvider _specProvider;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
-    private readonly LruCache<Hash256AsKey, (ValidationResult result, string? message, ValueHash256 ilDigest)>? _latestBlocks;
+    private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -335,11 +335,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         result = null;
         if (_latestBlocks is null
-            || !_latestBlocks.TryGet(block.GetOrCalculateHash(), out (ValidationResult result, string? message, ValueHash256 ilDigest) cached)
-            || cached.ilDigest != ComputeInclusionListDigest(block))
+            || !_latestBlocks.TryGet(block.GetOrCalculateHash(), out CachedPayloadResult cached)
+            || cached.InclusionListDigest != ComputeInclusionListDigest(block))
             return false;
 
-        result = cached.result switch
+        result = cached.Result switch
         {
             ValidationResult.Valid => NewPayloadV1Result.Valid(block.Hash),
             ValidationResult.InclusionListUnsatisfied => NewPayloadV1Result.InclusionListUnsatisfied(block.Hash),
@@ -465,7 +465,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         {
             // Cache terminal outcomes only; SYNCING isn't terminal (we haven't processed the block yet).
             if (result is ValidationResult.Invalid or ValidationResult.Valid or ValidationResult.InclusionListUnsatisfied)
-                _latestBlocks?.Set(block.GetOrCalculateHash(), (result, errorMessage, ilDigest));
+                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest));
             return result;
         }
 
@@ -473,14 +473,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // If duplicate (same block and same inclusion list), reuse the cached result.
         if (_latestBlocks is not null
-            && _latestBlocks.TryGet(block.Hash!, out (ValidationResult result, string? message, ValueHash256 ilDigest) cachedResult)
-            && cachedResult.ilDigest == ilDigest)
+            && _latestBlocks.TryGet(block.Hash!, out CachedPayloadResult cachedResult)
+            && cachedResult.InclusionListDigest == ilDigest)
         {
-            if (cachedResult.result == ValidationResult.Invalid)
+            if (cachedResult.Result == ValidationResult.Invalid)
             {
                 if (_logger.IsWarn) _logger.Warn("Invalid block found in latestBlock cache.");
             }
-            return (cachedResult.result, cachedResult.message);
+            return (cachedResult.Result, cachedResult.Message);
         }
 
         // Validate
@@ -668,4 +668,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Syncing,
         InclusionListUnsatisfied
     }
+
+    // Cached newPayload outcome, keyed by block hash; the inclusion-list digest disambiguates a
+    // resubmission of the same block with a different IL (the IL is a per-call parameter).
+    private readonly record struct CachedPayloadResult(ValidationResult Result, string? Message, ValueHash256 InclusionListDigest);
 }

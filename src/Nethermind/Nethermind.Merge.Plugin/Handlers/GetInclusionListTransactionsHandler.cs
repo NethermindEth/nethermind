@@ -18,12 +18,9 @@ public class GetInclusionListTransactionsHandler(ITxPool? txPool, IChainHeadSpec
     private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool);
 
     public ResultWrapper<InclusionListBytes> Handle()
-    {
         // Reject out-of-fork calls with -38005 like the other engine endpoints (and the SSZ-REST route,
         // which is fork-gated at routing) rather than returning a mempool list before Bogota.
-        if (!chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7805Enabled)
-            return ResultWrapper<InclusionListBytes>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork);
-
-        return ResultWrapper<InclusionListBytes>.Success(_inclusionListBuilder?.GetInclusionList() ?? new InclusionListBytes(0));
-    }
+        => !chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7805Enabled
+            ? ResultWrapper<InclusionListBytes>.Fail(MergeErrorMessages.UnsupportedFork, MergeErrorCodes.UnsupportedFork)
+            : ResultWrapper<InclusionListBytes>.Success(_inclusionListBuilder?.GetInclusionList() ?? new InclusionListBytes(0));
 }

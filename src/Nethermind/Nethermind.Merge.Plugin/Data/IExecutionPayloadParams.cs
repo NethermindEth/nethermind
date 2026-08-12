@@ -87,15 +87,14 @@ public class ExecutionPayloadParams(
                 return ValidationResult.Fail;
             }
 
+            // Entry count is already bounded above, so summing then checking once is bounded work.
             long totalBytes = 0;
             for (int i = 0; i < InclusionListTransactions.Length; i++)
-            {
                 totalBytes += InclusionListTransactions[i]?.Length ?? 0;
-                if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
-                {
-                    error = "Inclusion list exceeds the maximum aggregate size";
-                    return ValidationResult.Fail;
-                }
+            if (totalBytes > Eip7805Constants.MaxAggregateInclusionListBytes)
+            {
+                error = "Inclusion list exceeds the maximum aggregate size";
+                return ValidationResult.Fail;
             }
         }
 
