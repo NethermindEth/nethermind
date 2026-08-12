@@ -465,6 +465,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         stateGasUsed = 0;
         gasUsed = 0;
         // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
+        // execute_frame tests funding before building the EVM, so the frame pays no entry charge.
         UInt256 value = frame.Value;
         if (!value.IsZero && WorldState.GetBalance(caller) < value)
         {
@@ -517,7 +518,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return DefaultCodeSuccess();
         }
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out Address? delegation);
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, followDelegation: false, spec, out Address? delegation);
         // resolve_delegated_code_address: following the designation accesses the designated address.
         // The target is charged just above and counts as accessed, so a self-designation is warm.
         if (delegation is not null && spec.UseHotAndColdStorage)
@@ -530,6 +531,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 gasUsed = frame.GasLimit;
                 return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
             }
+        }
+
+        if (delegation is not null)
+        {
+            // create_evm_from_frame reads the designated code only once its access is paid for, so a
+            // frame failing that charge never touches the account. EIP-7702: no dispatch to a precompile.
+            WorldState.AddAccountRead(delegation);
+            codeInfo = spec.IsPrecompile(delegation)
+                ? CodeInfo.Empty
+                : _codeInfoRepository.GetCachedCodeInfoNoDelegation(delegation, spec);
         }
 
         ReadOnlyMemory<byte> inputData = frame.Data;
