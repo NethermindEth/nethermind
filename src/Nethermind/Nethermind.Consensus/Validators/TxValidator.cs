@@ -87,6 +87,8 @@ public sealed class TxValidator : ITxValidator
         // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
         // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
         // signature validation happen during processing.
+        // EIP-8141: no type-6 network wrapper is decoded yet, so no sidecar/proof validator is registered.
+        // Add a blob-sidecar and proof-version validator here once the sidecar wire format lands.
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
@@ -94,7 +96,7 @@ public sealed class TxValidator : ITxValidator
             GasFieldsTxValidator.Instance,
             // Blob fields cannot use the presence-based NonBlobFieldsTxValidator here: the frame-tx
             // decoder always populates max_fee_per_blob_gas and blob_versioned_hashes, so it would
-            // reject every frame tx. FrameTxFieldsTxValidator rejects blob-carrying frame txs by value.
+            // reject every frame tx. FrameTxFieldsTxValidator checks them by value instead.
             FrameTxFieldsTxValidator.Instance
         ]));
     }

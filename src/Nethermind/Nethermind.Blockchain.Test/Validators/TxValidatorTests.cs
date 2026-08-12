@@ -565,13 +565,11 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
-    // Regression (EIP-8141): FrameTxDecoder always populates max_fee_per_blob_gas and
-    // blob_versioned_hashes, so the presence-based NonBlobFieldsTxValidator rejected every frame tx
-    // that came off the wire. The composite must accept a normal (no-blob) frame tx by value, and
-    // reject only a blob-carrying one.
-    [TestCase(false, null, TestName = "IsWellFormed_DecodedNonBlobFrameTx_Accepted")]
-    [TestCase(true, FrameTxValidation.BlobHashesNotSupported, TestName = "IsWellFormed_DecodedBlobCarryingFrameTx_Rejected")]
-    public void IsWellFormed_DecodedFrameTx_GatesOnBlobFieldsByValue(bool carriesBlobs, string? expectedError)
+    // Regression (EIP-8141): the decoder always populates max_fee_per_blob_gas and blob_versioned_hashes,
+    // so a presence-based blob gate would reject every frame tx off the wire. Both shapes are well-formed.
+    [TestCase(false, TestName = "IsWellFormed_DecodedNonBlobFrameTx_Accepted")]
+    [TestCase(true, TestName = "IsWellFormed_DecodedBlobCarryingFrameTx_Accepted")]
+    public void IsWellFormed_DecodedFrameTx_GatesOnBlobFieldsByValue(bool carriesBlobs)
     {
         Transaction tx = new()
         {
@@ -584,7 +582,7 @@ public class TxValidatorTests
             GasPrice = 1,               // max_priority_fee_per_gas
             DecodedMaxFeePerGas = 100,  // max_fee_per_gas
             MaxFeePerBlobGas = carriesBlobs ? (UInt256)1 : UInt256.Zero,
-            BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
+            BlobVersionedHashes = carriesBlobs ? [[KzgPolynomialCommitments.KzgBlobHashVersionV1, .. new byte[31]]] : null,
         };
 
         // Round-trip through the decoder so the validated instance has the exact field shape a
@@ -599,11 +597,7 @@ public class TxValidatorTests
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ValidationResult result = txValidator.IsWellFormed(decoded, Eip8141Prototype.Instance);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.AsBool, Is.EqualTo(expectedError is null), result.Error);
-            Assert.That(result.Error, Is.EqualTo(expectedError));
-        }
+        Assert.That(result.AsBool, Is.True, result.Error);
     }
 
     [Test]
