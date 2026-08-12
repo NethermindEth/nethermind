@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Text.Json;
 using Nethermind.Logging;
@@ -15,6 +16,8 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// </summary>
 public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManager logManager) : IChainSpecLoader
 {
+    private const int DetectionBufferSize = 4096;
+
     private readonly ILogger _logger = logManager.GetClassLogger<AutoDetectingChainSpecLoader>();
     private readonly ChainSpecLoader _parityLoader = new(serializer, logManager);
     private readonly GethGenesisLoader _gethLoader = new(serializer);
@@ -50,16 +53,72 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
     /// </summary>
     private GenesisFormat DetectFormat(Stream streamData)
     {
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(DetectionBufferSize);
+
         try
         {
-            using JsonDocument document = JsonDocument.Parse(streamData, new JsonDocumentOptions { AllowTrailingCommas = true });
-            return document.RootElement.ValueKind is JsonValueKind.Object && document.RootElement.TryGetProperty("config", out _)
-                ? GenesisFormat.Geth
-                : GenesisFormat.Parity;
+            int bytesInBuffer = 0;
+            JsonReaderState readerState = new(new JsonReaderOptions { AllowTrailingCommas = true });
+
+            while (true)
+            {
+                if (bytesInBuffer == buffer.Length)
+                {
+                    byte[] largerBuffer = ArrayPool<byte>.Shared.Rent(checked(buffer.Length * 2));
+                    buffer.AsSpan(0, bytesInBuffer).CopyTo(largerBuffer);
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = largerBuffer;
+                }
+
+                int bytesRead = streamData.Read(buffer.AsSpan(bytesInBuffer));
+                bytesInBuffer += bytesRead;
+                bool isFinalBlock = bytesRead == 0;
+
+                Utf8JsonReader reader = new(buffer.AsSpan(0, bytesInBuffer), isFinalBlock, readerState);
+                while (reader.Read())
+                {
+                    if (reader.TokenType is JsonTokenType.EndObject && reader.CurrentDepth == 0)
+                    {
+                        return GenesisFormat.Parity;
+                    }
+
+                    if (reader.TokenType is not JsonTokenType.PropertyName || reader.CurrentDepth != 1)
+                    {
+                        continue;
+                    }
+
+                    if (reader.ValueTextEquals("config"u8))
+                    {
+                        return GenesisFormat.Geth;
+                    }
+
+                    if (!reader.Read() || !reader.TrySkip())
+                    {
+                        break;
+                    }
+                }
+
+                readerState = reader.CurrentState;
+                int bytesConsumed = checked((int)reader.BytesConsumed);
+                if (bytesConsumed > 0)
+                {
+                    buffer.AsSpan(bytesConsumed, bytesInBuffer - bytesConsumed).CopyTo(buffer);
+                    bytesInBuffer -= bytesConsumed;
+                }
+
+                if (isFinalBlock)
+                {
+                    break;
+                }
+            }
         }
         catch (JsonException e)
         {
             if (_logger.IsError) _logger.Error("Error parsing specification", e);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         if (_logger.IsWarn) _logger.Warn("Failed to detect genesis file format, assuming Parity-like style.");
