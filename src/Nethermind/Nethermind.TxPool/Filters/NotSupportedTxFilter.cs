@@ -38,8 +38,9 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
         // The public-mempool DoS rules (validation-prefix simulation, MAX_VERIFY_GAS, paymaster reservation,
         // failed-APPROVE replay bound, payer-exposure accounting, dependency-set revalidation/eviction ordering)
-        // are NOT implemented and must gate this branch before any public activation. MalformedTxFilter still
-        // enforces static well-formedness downstream.
+        // are NOT implemented and must gate this branch before any public activation. The paymaster cap is not
+        // re-counted when a code-less pay target later gains code, which the submitter orders.
+        // MalformedTxFilter still enforces static well-formedness downstream.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

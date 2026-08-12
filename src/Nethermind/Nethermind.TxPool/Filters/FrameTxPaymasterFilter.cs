@@ -47,7 +47,7 @@ internal sealed class FrameTxPaymasterFilter(
         {
             Metrics.PendingTransactionsFrameTxPaymasterLimitReached++;
             if (logger.IsTrace)
-                logger.Trace($"Skipped adding frame transaction {tx.Hash}, non-canonical paymaster {paymaster} already sponsors {pending} pending transactions.");
+                logger.Trace($"Skipped adding frame transaction {tx.Hash}, non-canonical paymaster {paymaster} already sponsors {paymasters.GetPendingCount(paymaster)} pending transactions.");
             return AcceptTxResult.NonCanonicalPaymasterLimitReached;
         }
 
