@@ -2517,6 +2517,7 @@ namespace Nethermind.TxPool.Test
             if (distinctHash)
             {
                 int i = Array.FindIndex(tx.Frames!, f => f.Flags == TxFrame.ApproveExecutionAndPayment);
+                Assert.That(i, Is.GreaterThanOrEqualTo(0), "the helper must still build a self_verify frame to retarget");
                 TxFrame frame = tx.Frames![i];
                 tx.Frames[i] = new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data);
             }
