@@ -324,8 +324,8 @@ public static class FrameTxValidation
     public static bool IsOnlyVerifyFrame(TxFrame frame, Address? sender) =>
         IsSelfTargetedVerify(frame, TxFrame.ApproveExecution, sender);
 
-    /// <summary>True if <paramref name="frame"/> is a payment-approving VERIFY frame naming a third-party payer.</summary>
-    public static bool IsPayFrame(TxFrame frame) =>
+    /// <summary>True if <paramref name="frame"/> is a VERIFY frame approving payment.</summary>
+    private static bool IsPayFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
 
     /// <remarks>

@@ -19,7 +19,6 @@ namespace Nethermind.TxPool;
 internal sealed class PayerExposureCache
 {
     private readonly ConcurrentDictionary<AddressAsKey, UInt256> _reserved = new();
-    private long _trackedPayers;
 
     /// <summary>Summed pending maximum cost currently reserved for <paramref name="key"/>, or zero.</summary>
     public UInt256 GetReserved(AddressAsKey key) => _reserved.TryGetValue(key, out UInt256 reserved) ? reserved : UInt256.Zero;
@@ -75,7 +74,7 @@ internal sealed class PayerExposureCache
                 {
                     // Tracked on the add/remove transitions: an idle pool must read zero, so a non-zero
                     // floor is a leaked reservation rather than the bound doing its job.
-                    Metrics.FrameTxPayersWithReservedExposure = Interlocked.Increment(ref _trackedPayers);
+                    Interlocked.Increment(ref Metrics.FrameTxPayersWithReservedExposure);
                     reserved = UInt256.Zero;
                     return true;
                 }
@@ -87,20 +86,29 @@ internal sealed class PayerExposureCache
     /// Releases a previously reserved <paramref name="cost"/> for <paramref name="key"/>, clamping at
     /// zero rather than going negative so a double release can never re-enable the gate for a payer.
     /// </summary>
+    /// <remarks>
+    /// Compare-and-set like <see cref="TryReserve"/>, so a release for an unreserved payer touches
+    /// nothing: inserting a transient zero would decrement the gauge without a matching increment.
+    /// </remarks>
     public void Subtract(AddressAsKey key, in UInt256 cost)
     {
         if (cost.IsZero) return;
-        UInt256 updated = _reserved.AddOrUpdate(key,
-            static (_, _) => UInt256.Zero,
-            static (_, existing, delta) => existing > delta ? existing - delta : UInt256.Zero,
-            cost);
-        if (updated.IsZero)
+
+        while (_reserved.TryGetValue(key, out UInt256 existing))
         {
-            // Threadsafe: removes the key only while its value is still zero (mirrors DelegationCache).
-            if (((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(
-                    new KeyValuePair<AddressAsKey, UInt256>(key, UInt256.Zero)))
+            UInt256 updated = existing > cost ? existing - cost : UInt256.Zero;
+            if (!updated.IsZero)
             {
-                Metrics.FrameTxPayersWithReservedExposure = Interlocked.Decrement(ref _trackedPayers);
+                if (_reserved.TryUpdate(key, updated, existing)) return;
+                continue;
+            }
+
+            // Removes the entry only while its value is still the one this release priced against.
+            if (((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(
+                    new KeyValuePair<AddressAsKey, UInt256>(key, existing)))
+            {
+                Interlocked.Decrement(ref Metrics.FrameTxPayersWithReservedExposure);
+                return;
             }
         }
     }
