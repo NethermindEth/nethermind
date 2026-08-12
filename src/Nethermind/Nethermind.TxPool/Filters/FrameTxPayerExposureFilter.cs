@@ -34,10 +34,8 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // Max cost approximates TXPARAM(0x06). For a frame tx this is gas-only (MaxFeePerGas·GasLimit):
-        // the top-level Value is always zero (frame value lives on TxFrame.Value) and blob fields are
-        // rejected at validation while frame-blob support is off. The signature-verification add-on
-        // lands with the deferred MAX_VERIFY_GAS slice.
+        // Approximates TXPARAM(0x06) from below: Transaction.GasLimit is the frame-gas sum only, so the
+        // intrinsic and EIP-7623 floor terms are not yet reserved (EIP8141-GAP).
         if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
         {
             return AcceptTxResult.Int256Overflow;
@@ -50,6 +48,7 @@ internal sealed class FrameTxPayerExposureFilter(
         // non-insert path in TxPool.AddCore.
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved))
         {
+            Metrics.PendingTransactionsFrameTxPayerExposureExceeded++;
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} reserved exposure {reserved} + {maxCost} exceeds balance {balance}.");
             return AcceptTxResult.PayerExposureExceeded;
