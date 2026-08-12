@@ -65,6 +65,13 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
+                // EIP-8141: blob-frame production is deferred — deliberately skip until a follow-up wires
+                // picker admission together with type-6 support in the blobs-bundle builders.
+                if (currentTx.Type == TxType.FrameTx && currentTx.CarriesBlobs)
+                {
+                    return args.Set(TxAction.Skip, "Blob-carrying frame transaction production is deferred");
+                }
+
                 // A frame transaction's GasLimit is only the sum of its frame gas limits, so gating on it alone would
                 // let the produced block exceed its own gas limit. A transaction that cannot be priced never fits.
                 ulong txGasBudget = !currentTx.SupportsFrames
@@ -96,10 +103,15 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
                 }
 
-                UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                // A frame transaction's fees are paid by the frame that approves payment, which need not
+                // be the sender, so a sender-balance gate here would skip transactions that do pay.
+                if (!currentTx.SupportsFrames)
                 {
-                    return args;
+                    UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
+                    if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                    {
+                        return args;
+                    }
                 }
 
                 OnAddingTransaction(args);
@@ -127,7 +139,7 @@ namespace Nethermind.Consensus.Processing
                         return false;
                     }
 
-                    if (transaction.SupportsBlobs && (
+                    if (transaction.CarriesBlobs && (
                         !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
                         senderBalance < (maxFee += blobBaseFee)))
                     {

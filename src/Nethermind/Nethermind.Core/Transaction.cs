@@ -55,6 +55,12 @@ namespace Nethermind.Core
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public bool SupportsFrames => Type.SupportsFrames();
+
+        /// <summary>
+        /// EIP-8141: whether this transaction carries blobs (a type-3 blob tx or a blob-carrying type-6 frame tx)
+        /// for pool routing and blob-gas accounting; the instance-level counterpart to <see cref="SupportsBlobs"/>.
+        /// </summary>
+        public bool CarriesBlobs => BlobVersionedHashes is { Length: > 0 };
         public ulong GasLimit { get; set; }
         private ulong _spentGas;
         private ulong _blockGasUsed;
@@ -215,6 +221,12 @@ namespace Nethermind.Core
         public TxFrameSignature[]? FrameSignatures { get; set; }
 
         /// <summary>
+        /// Fee-payer resolved at mempool admission for an EIP-8141 frame transaction; <c>null</c> until
+        /// resolved or when it cannot be resolved natively. In-memory only (not encoded).
+        /// </summary>
+        public Address? PayerAddress { get; set; }
+
+        /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
@@ -333,6 +345,7 @@ namespace Nethermind.Core
                 obj.AuthorizationList = default;
                 obj.Frames = default;
                 obj.FrameSignatures = default;
+                obj.PayerAddress = default;
 
                 return true;
             }
@@ -367,6 +380,7 @@ namespace Nethermind.Core
             tx.AuthorizationList = AuthorizationList;
             tx.Frames = Frames;
             tx.FrameSignatures = FrameSignatures;
+            tx.PayerAddress = PayerAddress;
         }
 
         public virtual ProofVersion? GetProofVersion() =>

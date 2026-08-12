@@ -21,12 +21,12 @@ namespace Nethermind.TxPool.Filters
         {
             bool isLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
             bool nonceGapsAllowed = isLocal || !_txs.IsFull();
-            if (nonceGapsAllowed && !tx.SupportsBlobs)
+            if (nonceGapsAllowed && !tx.CarriesBlobs)
             {
                 return AcceptTxResult.Accepted;
             }
 
-            int numberOfSenderTxsInPending = tx.SupportsBlobs
+            int numberOfSenderTxsInPending = tx.CarriesBlobs
                 ? _blobTxs.GetBucketCount(tx.SenderAddress!)
                 : _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             ulong currentNonce = state.SenderAccount.Nonce;

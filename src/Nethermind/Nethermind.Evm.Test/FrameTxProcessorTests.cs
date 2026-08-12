@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -48,6 +49,9 @@ public class FrameTxProcessorTests
     private static readonly Address Observer = TestItem.AddressB;
     private static readonly Address Recipient = TestItem.AddressC;
     private static readonly Address Beneficiary = TestItem.AddressE;
+
+    // The gas leg of max_cost (TXPARAM 0x06) for a SelfVerify + one DEFAULT frame at max fee 1, blob-free.
+    private const ulong BlobFreeMaxCost = 415_950;
 
     [SetUp]
     public void Setup()
@@ -145,6 +149,116 @@ public class FrameTxProcessorTests
         UInt256 balance = _stateProvider.GetBalance(Sender);
         Assert.That(balance, Is.LessThan(1.Ether), "payer charged");
         Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)frame.GasLimit), "unused gas refunded");
+    }
+
+    [Test]
+    public void Execute_BlobCarryingFrameTx_ChargesAndBurnsBlobFee()
+    {
+        // EIP-8141/EIP-4844: the payer covers the burned blob fee. With base fee 0 the whole gas premium
+        // goes to the beneficiary, so the only value that leaves the payer for good is the burned blob fee.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = 1000;
+
+        CallOutputTracer tracer = new();
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        UInt256 spentGas = (UInt256)tracer.GasSpent;
+        UInt256 blobFee = ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
+        Assert.That(blobFee, Is.GreaterThan(UInt256.Zero), "blob fee is nonzero at the minimum blob base fee");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(spentGas), "beneficiary gets the gas premium only");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - spentGas - blobFee), "payer pays the spent gas and the blob fee");
+            Assert.That(_stateProvider.GetBalance(Sender) + _stateProvider.GetBalance(Beneficiary),
+                Is.EqualTo(1.Ether - blobFee), "the blob fee is burned, not paid to the beneficiary");
+        }
+    }
+
+    [Test]
+    public void Execute_BlobCarryingFrameTx_OnFeeCollectorChain_CollectsBaseFeeAndBlobFee()
+    {
+        // Regression: on a fee-collector chain that also enables EIP-4844 fee collection (e.g. Gnosis),
+        // both the EIP-1559 base-fee share and the blob fee must be routed to the collector, exactly as
+        // PayFees does on the regular path. A nonzero base fee makes the 1559 leg observable: the fix
+        // credits it to the collector rather than burning it, so nothing is destroyed.
+        Address feeCollector = TestItem.AddressF;
+        _spec.FeeCollector = feeCollector;
+        _spec.IsEip4844FeeCollectorEnabled = true;
+
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = 1000;
+        tx.GasPrice = 1;                 // max_priority_fee_per_gas
+        tx.DecodedMaxFeePerGas = 10;
+
+        const ulong baseFee = 7;
+        CallOutputTracer tracer = new();
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0, baseFeePerGas: baseFee, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        UInt256 spentGas = (UInt256)tracer.GasSpent;
+        UInt256 blobFee = ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
+        Assert.That(blobFee, Is.GreaterThan(UInt256.Zero), "blob fee is nonzero at the minimum blob base fee");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(spentGas), "beneficiary gets the 1-wei premium only");
+            Assert.That(_stateProvider.GetBalance(feeCollector), Is.EqualTo(baseFee * spentGas + blobFee),
+                "the collector receives both the base-fee share and the blob fee");
+            Assert.That(
+                _stateProvider.GetBalance(Sender) + _stateProvider.GetBalance(Beneficiary) + _stateProvider.GetBalance(feeCollector),
+                Is.EqualTo(1.Ether), "no value is burned - both burned legs go to the collector");
+        }
+    }
+
+    [Test]
+    public void Execute_BlobFrameTx_MaxFeePerBlobGasBelowBlobBaseFee_Invalid()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.BlobVersionedHashes = [new byte[32]];
+
+        const ulong excessBlobGas = 50_000_000;
+        UInt256 feePerBlobGas = FeePerBlobGas(excessBlobGas);
+        Assert.That(feePerBlobGas, Is.GreaterThan(UInt256.One), "excess chosen so the blob base fee exceeds 1");
+        tx.MaxFeePerBlobGas = feePerBlobGas - 1;
+
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.InsufficientSenderBalance));
+            Assert.That(_stateProvider.GetBalance(Beneficiary), Is.EqualTo(UInt256.Zero), "beneficiary not credited");
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "nonce not consumed");
+        }
+    }
+
+    [Test]
+    public void Execute_TxParamMaxCost_BlobCarryingFrameTx_ReservesBlobLegAtBlobBaseFeeNotMaxFee()
+    {
+        // The blob leg of max_cost (TXPARAM 0x06) is reserved at the actual blob_base_fee, not
+        // max_fee_per_blob_gas, so it equals the gas leg plus blob_gas × blob_base_fee.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x06).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = 1000;
+
+        TransactionResult result = ProcessWithBlobHeader(tx, excessBlobGas: 0);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        // Gas leg is the blobless Execute_TxParam_MaxCost value the same frame shape observes (max fee 1).
+        UInt256 expectedMaxCost = BlobFreeMaxCost + ExpectedBlobFee(excessBlobGas: 0, blobCount: 1);
+        AssertStorage(Observer, 0, expectedMaxCost);
+        UInt256 maxFeePricedMaxCost = BlobFreeMaxCost + tx.MaxFeePerBlobGas.Value * BlobGasCalculator.CalculateBlobGas(1);
+        Assert.That(expectedMaxCost, Is.LessThan(maxFeePricedMaxCost),
+            "max_cost priced below the max_fee_per_blob_gas reservation, i.e. at the blob base fee");
     }
 
     [TestCase(7ul, 2ul, 10ul, 2ul, TestName = "Execute_NonZeroBaseFee_PremiumIsTheRequestedPriorityFee")]
@@ -323,7 +437,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
     [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
     // Max cost = sum(frame gas) 400000 + intrinsic 15000 + per-frame 475×2 (no calldata/sig).
-    [TestCase((byte)0x06, 415_950UL, TestName = "Execute_TxParam_MaxCost")]
+    [TestCase((byte)0x06, BlobFreeMaxCost, TestName = "Execute_TxParam_MaxCost")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
     [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]
@@ -636,6 +750,103 @@ public class FrameTxProcessorTests
         Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
         Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo(1.Ether), "the sponsor is not charged");
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "the sender nonce is not consumed");
+    }
+
+    /// <summary>A sponsored frame transaction estimates against the budget its frames fix, not against
+    /// the sender's balance.</summary>
+    /// <remarks>
+    /// The regular estimation path bounds the search by what the sender can afford at the fee cap, which
+    /// is zero here, and searches over a gas limit the frame processor never reads. Both are wrong for a
+    /// frame transaction: the payer is chosen by the frames, and the budget is fixed by them.
+    /// </remarks>
+    [Test]
+    public void EstimateGas_SponsoredFrameTx_ReturnsTheFrameBudgetForAZeroBalanceSender()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution));
+        DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Observer, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(TxFrame.ModeSender, target: Recipient));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        TransactionResult probe = _transactionProcessor.CallAndRestore(tx, gasTracer);
+        Assert.That(probe.TransactionExecuted, Is.True, probe.ErrorDescription ?? probe.Error.ToString());
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        ulong estimate = estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        const ulong frameGasSum = 3 * 200_000;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, Is.Null, "a zero-balance sender must not cap a sponsored estimate");
+            Assert.That(estimate, Is.GreaterThanOrEqualTo(
+                frameGasSum + (ulong)Eip8141Constants.IntrinsicGasCost + 3 * (ulong)Eip8141Constants.PerFrameGasCost),
+                "every frame's own limit is reserved on top of the transaction's intrinsic cost");
+        }
+    }
+
+    /// <remarks>
+    /// The frames fix the budget, so a transaction reserving more than the block can hold is not estimable —
+    /// returning the reservation would hand the caller a figure no block can include.
+    /// </remarks>
+    [Test]
+    public void EstimateGas_FrameTxReservingMoreThanTheBlock_ReportsTheBudgetAsUnestimable()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(100_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        _transactionProcessor.CallAndRestore(tx, gasTracer);
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
+    }
+
+    /// <summary>A reverting POST_TX frame fails the probe's status but keeps the transaction valid and
+    /// its frame budget well-defined, so the estimate is returned rather than reported as a failure.</summary>
+    [Test]
+    public void EstimateGas_FrameTxWithARevertingPostTxFrame_StillReturnsTheFrameBudget()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        TransactionResult probe = _transactionProcessor.CallAndRestore(tx, gasTracer);
+
+        Assert.That(probe.TransactionExecuted, Is.True, probe.ErrorDescription ?? probe.Error.ToString());
+        Assert.That(gasTracer.StatusCode, Is.EqualTo(StatusCode.Failure), "a reverting POST_TX frame fails the probe status");
+
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        ulong estimate = estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, Is.Null, "a reverting POST_TX frame must not fail a frame-budget estimate");
+            Assert.That(estimate, Is.GreaterThan(0UL));
+        }
     }
 
     [Test]
@@ -1014,6 +1225,31 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>Every frame's execution reaches an instruction tracer, so <c>debug_traceTransaction</c>
+    /// reports steps for a frame transaction.</summary>
+    /// <remarks>
+    /// Asserted on both frames because the outer loop runs each one through its own top-level VM state:
+    /// a trace covering only the validation prefix would still be non-empty.
+    /// </remarks>
+    [Test]
+    public void Execute_InstructionTracer_ReceivesTheStepsOfEveryFrame()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer));
+        GethLikeTxMemoryTracer tracer = new(tx, GethTraceOptions.Default);
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        GethTxTraceEntry[] entries = [.. tracer.BuildResult().Entries];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.APPROVE)), "the validation prefix is traced");
+            Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.SSTORE)), "the execution frame is traced");
+        }
+    }
+
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
@@ -1023,6 +1259,27 @@ public class FrameTxProcessorTests
             .WithGasLimit(30_000_000).TestObject;
         return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
     }
+
+    private TransactionResult ProcessWithBlobHeader(Transaction tx, ulong excessBlobGas, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
+    {
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(baseFeePerGas)
+            .WithBeneficiary(Beneficiary)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
+    }
+
+    private UInt256 FeePerBlobGas(ulong excessBlobGas)
+    {
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(excessBlobGas).TestObject;
+        BlobGasCalculator.TryCalculateFeePerBlobGas(header, Spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+        return feePerBlobGas;
+    }
+
+    private UInt256 ExpectedBlobFee(ulong excessBlobGas, int blobCount) =>
+        FeePerBlobGas(excessBlobGas) * BlobGasCalculator.CalculateBlobGas(blobCount);
 
     private void DeploySmartSender(byte[] code) => DeployContract(Sender, code, 1.Ether);
 

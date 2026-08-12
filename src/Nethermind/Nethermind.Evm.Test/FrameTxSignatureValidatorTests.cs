@@ -50,6 +50,33 @@ public class FrameTxSignatureValidatorTests
     }
 
     [Test]
+    public void Validate_Secp256k1BlobCarryingTx_ReturnsTrueAndResolvesSigner()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.MaxFeePerBlobGas = 3;
+        tx.BlobVersionedHashes = [BlobVersionedHash(0x01), BlobVersionedHash(0x02)];
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
+
+        Assert.That(Validate(tx, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_BlobFieldTamperedAfterSigning_ReturnsFalse()
+    {
+        // Mutating a blob field after signing must invalidate the signature, proving the preimage covers it.
+        Transaction tx = CreateFrameTx();
+        tx.MaxFeePerBlobGas = 3;
+        tx.BlobVersionedHashes = [BlobVersionedHash(0x01)];
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
+
+        tx.BlobVersionedHashes = [BlobVersionedHash(0x02)];
+
+        Assert.That(Validate(tx, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSignature));
+    }
+
+    [Test]
     public void Validate_Secp256k1WithAbsentSigner_ResolvesToTxSender()
     {
         // "If absent, tx.sender is used" — the sender key must have produced the signature.
@@ -325,6 +352,13 @@ public class FrameTxSignatureValidatorTests
         bytes[0] = signature.RecoveryId; // strict yParity encoding (0/1)
         signature.Bytes.CopyTo(bytes.AsSpan(1));
         return bytes;
+    }
+
+    private static byte[] BlobVersionedHash(byte fill)
+    {
+        byte[] hash = new byte[Hash256.Size];
+        hash.AsSpan().Fill(fill);
+        return hash;
     }
 
     private static byte[] Pad32(byte[] value)
