@@ -509,6 +509,9 @@ namespace Nethermind.Blockchain.Test
                 .WithNonce(0)
                 .WithGasLimit(GasCostOf.Transaction)
                 .TestObject;
+            // The picker prices a frame tx through its frames, so it needs at least one to be priceable.
+            frameBlobTx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: GasCostOf.Transaction, UInt256.Zero, default)];
+            frameBlobTx.FrameSignatures = [];
 
             Block block = Build.A.Block
                 .WithNumber(1)

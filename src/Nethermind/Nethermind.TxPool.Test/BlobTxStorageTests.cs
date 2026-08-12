@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using CkzgLib;
 using System;
 using System.Linq;
 using Nethermind.Core;
@@ -68,7 +69,9 @@ public class BlobTxStorageTests
 
     private static Transaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
     {
-        int proofsCount = version is ProofVersion.V1 ? blobCount * 4 : blobCount;
+        // The count only has to satisfy the RLP round-trip; nothing here verifies KZG, and the light
+        // record carries the version explicitly rather than inferring it from the proofs/blobs ratio.
+        int proofsCount = version is ProofVersion.V1 ? blobCount * Ckzg.CellsPerExtBlob : blobCount;
         byte[][] versionedHashes = new byte[blobCount][];
         byte[][] blobs = new byte[blobCount][];
         byte[][] commitments = new byte[blobCount][];

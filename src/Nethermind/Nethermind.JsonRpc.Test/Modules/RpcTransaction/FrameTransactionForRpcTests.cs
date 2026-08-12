@@ -159,8 +159,10 @@ public class FrameTransactionForRpcTests
         }
     }
 
+    // Both fields are unconditional in the signed type-6 payload, so a consumer must be able to rebuild
+    // it from this view even for a blobless frame tx — as it can for type-3.
     [Test]
-    public void FrameTransactionForRpc_OmitsBlobFields_ForBloblessFrameTx()
+    public void FrameTransactionForRpc_ReportsBlobFields_ForBloblessFrameTx()
     {
         Transaction tx = BuildMinimalFrameTx();
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
@@ -170,9 +172,21 @@ public class FrameTransactionForRpcTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(doc.RootElement.TryGetProperty("maxFeePerBlobGas", out _), Is.False);
-            Assert.That(doc.RootElement.TryGetProperty("blobVersionedHashes", out _), Is.False);
+            Assert.That(doc.RootElement.GetProperty("maxFeePerBlobGas").GetString(), Is.EqualTo("0x0"));
+            Assert.That(doc.RootElement.GetProperty("blobVersionedHashes").GetArrayLength(), Is.EqualTo(0));
         }
+    }
+
+    // A blobless frame tx must be 0 here per the EIP-8141 constraints, but a caller-supplied value must
+    // still reach the transaction so a simulation sees what TXPARAM 0x05 would see on chain.
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_KeepsMaxFeePerBlobGas_WithoutBlobHashes()
+    {
+        FrameTransactionForRpc rpc = new() { MaxFeePerBlobGas = 123 };
+
+        Transaction tx = rpc.ToTransaction().Data!;
+
+        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo((UInt256)123));
     }
 
     [Test]

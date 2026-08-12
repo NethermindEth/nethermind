@@ -44,6 +44,9 @@ public static class TxErrorMessages
     public const string BlobTxMissingMaxFeePerBlobGas =
         "BlobTxMissingMaxFeePerBlobGas: Must be set.";
 
+    public const string BloblessFrameTxMaxFeePerBlobGasNotZero =
+        "BloblessFrameTxMaxFeePerBlobGasNotZero: Must be 0 when blob_versioned_hashes is empty.";
+
     public const string BlobTxMissingBlobVersionedHashes =
         "blob transaction missing blob hashes";
 
