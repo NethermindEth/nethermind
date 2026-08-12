@@ -32,7 +32,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     private static readonly RlpLimit FramesCountLimit = RlpLimit.For<Transaction>(Eip8141Constants.MaxFrames, nameof(Transaction.Frames));
     private static readonly RlpLimit SignaturesCountLimit = RlpLimit.For<Transaction>(SignaturesDecodeCap, nameof(Transaction.FrameSignatures));
     // EIP8141-GAP: the spec does not bound blob_versioned_hashes; mirrors the blob tx decode cap.
-    private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(128, nameof(Transaction.BlobVersionedHashes));
+    private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(ShardBlobNetworkWrapperRlp.BlobCountLimit, nameof(Transaction.BlobVersionedHashes));
 
     private static readonly byte[][] EmptyVersionedHashes = [];
 

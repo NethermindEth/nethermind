@@ -17,7 +17,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// </remarks>
 internal static class ShardBlobNetworkWrapperRlp
 {
-    private const int BlobCountLimit = 128;
+    /// <summary>Decode-side cap on blobs per transaction, shared with the decoders that carry the sidecar.</summary>
+    internal const int BlobCountLimit = 128;
     private const int BlobCellProofsCountLimit = BlobCountLimit * Ckzg.CellsPerExtBlob;
 
     private static readonly RlpLimit BlobsCountLimit = RlpLimit.For<ShardBlobNetworkWrapper>(BlobCountLimit, nameof(ShardBlobNetworkWrapper.Blobs));
