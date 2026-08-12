@@ -50,13 +50,12 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     // The wrapper form's first element is the tx_payload_body list; the plain payload's first element
-    // is the chain_id scalar. Peek without consuming to pick the branch.
+    // is the chain_id scalar.
     private static bool IsNetworkWrapper(ref RlpReader decoderContext)
     {
         int start = decoderContext.Position;
         decoderContext.ReadSequenceLength();
-        // Guard the peek: a truncated payload (e.g. an empty type-6 list from a peer) leaves Position at
-        // the end, and IsSequenceNext reads Data[Position] unchecked. Keep it an RlpException path.
+        // A truncated payload leaves Position at the end, where IsSequenceNext reads Data[Position] unchecked.
         bool isWrapper = decoderContext.Position < decoderContext.Length && decoderContext.IsSequenceNext();
         decoderContext.Position = start;
         return isWrapper;
@@ -130,7 +129,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         int payloadContentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
         int payloadSequenceLength = Rlp.LengthOfSequence(payloadContentLength);
 
-        // Only a blob-carrying frame tx in mempool form is wrapped; every other form is the plain payload.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;

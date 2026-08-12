@@ -152,9 +152,7 @@ namespace Nethermind.TxPool
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             // EIP-8141: blob-carrying frame txs live in the blob pool, so it wires the same insert/removal
-            // bookkeeping (delegations, frame expiry) as the normal pool. Frame expiry only takes effect
-            // under BlobsSupportMode.InMemory: persistent storage keeps a LightTransaction whose Type is
-            // hard-coded TxType.Blob, so SupportsFrames is false until the light record carries the tx type.
+            // bookkeeping (delegations, frame expiry) as the normal pool.
             _blobTransactions.Inserted += OnInsertedTx;
             _blobTransactions.Removed += OnRemovedTx;
             if (_blobTransactions.Count > 0)
@@ -330,8 +328,6 @@ namespace Nethermind.TxPool
 
                         ReAddReorganisedTransactions(args.PreviousBlock);
                         RemoveProcessedTransactions(args.Block);
-                        // EIP-8141: for blob-carrying frame txs this evicts only under BlobsSupportMode.InMemory,
-                        // since persistent storage's LightTransaction hard-codes TxType.Blob (SupportsFrames false).
                         RemoveExpiredFrameTransactions(args.Block);
 
                         if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)

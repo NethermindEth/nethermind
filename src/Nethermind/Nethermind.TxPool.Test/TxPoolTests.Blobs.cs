@@ -1583,7 +1583,6 @@ namespace Nethermind.TxPool.Test
             Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // Include the tx in block A, then reorg it out to block B; InMemory mode does not re-add it.
             Block blockA = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
             Block blockB = Build.A.Block.WithNumber(1).TestObject;
