@@ -210,6 +210,27 @@ public class MempoolWrapperTests
         Assert.That(error, Is.EqualTo(MempoolWrapperValidator.InvalidProof));
     }
 
+    // A deps blob of 96k + r decoded to the same wrapper as the 96k one, so two wire encodings mapped
+    // to one object.
+    [Test]
+    public void Deps_blob_that_is_not_a_multiple_of_the_triple_length_is_rejected()
+    {
+        Rlp encoded = Rlp.Encode(
+            Rlp.Encode(new[] { Rlp.Encode(Keccak.Compute("tx1").BytesToArray()) }),
+            Rlp.Encode((ulong)MempoolWrapper.ModeDirect),
+            Rlp.Encode(new[]
+            {
+                Rlp.Encode(new byte[Eip8288Constants.DependencyTripleLength + 1]),
+                Rlp.Encode(System.Array.Empty<Rlp>()),
+            }));
+
+        Assert.That(() =>
+        {
+            RlpReader reader = new(encoded.Bytes);
+            MempoolWrapperDecoder.Instance.Decode(ref reader);
+        }, Throws.InstanceOf<RlpException>());
+    }
+
     private static MempoolWrapper RoundTrip(MempoolWrapper wrapper)
     {
         Rlp rlp = MempoolWrapperDecoder.Instance.Encode(wrapper);

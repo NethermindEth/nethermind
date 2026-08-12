@@ -45,6 +45,10 @@ public sealed class PlaceholderLeanProofVerifier : ILeanProofVerifier
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) =>
         proof.SequenceEqual(ProveRecursive(in depsHash, aggregatedVk));
 
+    /// <inheritdoc/>
+    public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk) =>
+        ProveRecursive(in depsHash, aggregatedVk);
+
     private static byte[] Tag(byte scheme, in ValueHash256 dataHash, in ValueHash256 verificationKey)
     {
         Span<byte> buffer = stackalloc byte[65];

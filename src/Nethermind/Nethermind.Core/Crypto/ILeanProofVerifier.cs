@@ -22,4 +22,8 @@ public interface ILeanProofVerifier
 
     /// <summary>Verifies a recursive STARK for dependency commitment <paramref name="depsHash"/> under the aggregated verification key.</summary>
     bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof);
+
+    /// <summary>Produces the recursive STARK a builder attaches to its block.</summary>
+    /// <remarks>On the same seam as verification so a node cannot prove and verify with different backends.</remarks>
+    byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk);
 }

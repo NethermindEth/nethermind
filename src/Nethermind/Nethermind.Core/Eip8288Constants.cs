@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Core;
 
 /// <summary>
@@ -37,5 +39,7 @@ public static class Eip8288Constants
     /// Protocol-level verification key for the block-level recursive STARK. The spec marks it
     /// <c>TBD</c> (derived from the finalized Lean Ethereum STARK circuit); a placeholder until then.
     /// </summary>
-    public static readonly byte[] AggregatedVk = new byte[32];
+    public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
+
+    private static readonly byte[] _aggregatedVk = new byte[32];
 }

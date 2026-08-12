@@ -18,7 +18,7 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeLeanProofVerifierTests
 {
     private static readonly ILeanProofVerifier Native = NativeLeanProofVerifier.Instance;
-    private static readonly byte[] Vk = Eip8288Constants.AggregatedVk;
+    private static byte[] Vk => Eip8288Constants.AggregatedVk.ToArray();
 
     [OneTimeSetUp]
     public void EnsureNativeLibraryLoads()

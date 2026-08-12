@@ -133,7 +133,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameContext.MarkFrameSucceeded(i);
                 frameReceipts[i] = new TxFrameReceipt(TxFrameReceipt.StatusSuccess, frame.GasLimit, []);
                 totalFrameGasUsed += frame.GasLimit;
-                if (inBatch && !frame.IsAtomicBatch) inBatch = false;
+                inBatch = false;
                 continue;
             }
 

@@ -117,7 +117,6 @@ public class BlockValidatorTests
         block.Header.RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block)));
         block.Header.Hash = block.Header.CalculateHash();
 
-        // Full-block RLP round-trip — the wire path a peer receives — then validate the decoded block.
         Block decoded = Rlp.Decode<Block>(Rlp.Encode(block).Bytes);
 
         Assert.That(decoded.Header.RecursiveStark, Is.Not.Null);
@@ -178,6 +177,7 @@ public class BlockValidatorTests
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => result;
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk) => [];
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

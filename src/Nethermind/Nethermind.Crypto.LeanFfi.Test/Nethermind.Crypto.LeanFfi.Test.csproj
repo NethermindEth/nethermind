@@ -7,7 +7,11 @@
 
   <PropertyGroup>
     <LeanFfiManifest>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/Cargo.toml</LeanFfiManifest>
-    <LeanFfiDylib>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/release/libnethermind_lean.dylib</LeanFfiDylib>
+    <LeanFfiOutDir>$(MSBuildThisFileDirectory)../../../tools/lean-ffi/target/release</LeanFfiOutDir>
+    <LeanFfiLibName Condition="$([MSBuild]::IsOSPlatform('Windows'))">nethermind_lean.dll</LeanFfiLibName>
+    <LeanFfiLibName Condition="$([MSBuild]::IsOSPlatform('OSX'))">libnethermind_lean.dylib</LeanFfiLibName>
+    <LeanFfiLibName Condition="'$(LeanFfiLibName)' == ''">libnethermind_lean.so</LeanFfiLibName>
+    <LeanFfiLib>$(LeanFfiOutDir)/$(LeanFfiLibName)</LeanFfiLib>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,9 +25,9 @@
     <Exec Command="cargo build --release --manifest-path &quot;$(LeanFfiManifest)&quot;" ContinueOnError="true" />
   </Target>
 
-  <ItemGroup Condition="Exists('$(LeanFfiDylib)')">
-    <None Include="$(LeanFfiDylib)">
-      <Link>libnethermind_lean.dylib</Link>
+  <ItemGroup Condition="Exists('$(LeanFfiLib)')">
+    <None Include="$(LeanFfiLib)">
+      <Link>$(LeanFfiLibName)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

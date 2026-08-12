@@ -38,7 +38,15 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         byte mode = decoderContext.DecodeByte();
 
         decoderContext.ReadSequenceLength();
-        List<FrameDependency> deps = Eip8288Dependencies.Parse(decoderContext.DecodeByteArray());
+        // A trailing partial triple would decode to the same wrapper as the truncated blob, making the
+        // encoding malleable; the transaction side enforces the same constraint.
+        byte[] depsBlob = decoderContext.DecodeByteArray();
+        if (depsBlob.Length % Eip8288Constants.DependencyTripleLength != 0)
+        {
+            throw new RlpException($"{nameof(MempoolWrapper)} deps length {depsBlob.Length} is not a multiple of {Eip8288Constants.DependencyTripleLength}");
+        }
+
+        List<FrameDependency> deps = Eip8288Dependencies.Parse(depsBlob);
 
         List<byte[]>? proofs = null;
         RecursiveStark? recursiveStark = null;

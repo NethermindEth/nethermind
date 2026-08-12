@@ -327,6 +327,25 @@ namespace Nethermind.Blockchain.Test
                 Is.EquivalentTo(testCase.ExpectedSelectedTransactions.Select(static transaction => transaction.Hash)));
         }
 
+        // EIP-8288 charges recursive_stark_gas to the header only after execution, so a block packed to
+        // its limit with dependency frames would otherwise fail its own HeaderValidator gas check.
+        [TestCase(0UL, false, TestName = "Picker_reserves_recursive_stark_gas_TxSkippedWhenTheChargeDoesNotFit")]
+        [TestCase(Eip8288Constants.LeanStarkVerificationGas, true, TestName = "Picker_reserves_recursive_stark_gas_TxFitsWhenTheBlockHasRoomForTheCharge")]
+        public void BlockProductionTransactionPicker_reserves_recursive_stark_gas(ulong headroom, bool expectedToFit)
+        {
+            TxFrame dependencyFrame = new(TxFrame.ModeDepVerify, 0, null, GasCostOf.Transaction, UInt256.Zero, new byte[Eip8288Constants.DependencyTripleLength]);
+            Transaction tx = Build.A.Transaction.WithGasLimit(GasCostOf.Transaction).SignedAndResolved().TestObject;
+            tx.Type = TxType.FrameTx;
+            tx.Frames = [dependencyFrame];
+
+            Block block = Build.A.Block.WithGasLimit(GasCostOf.Transaction + headroom).TestObject;
+            BlockProcessor.BlockProductionTransactionPicker txPicker = new(new TestSingleReleaseSpecProvider(Osaka.Instance));
+
+            BlockProcessor.AddingTxEventArgs args = txPicker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>());
+
+            Assert.That(args.Reason?.StartsWith("Not enough gas in block") == true, Is.EqualTo(!expectedToFit));
+        }
+
         [Test]
         public void BlockProductionTransactionsExecutor_calculates_block_size_using_proper_tx_form()
         {

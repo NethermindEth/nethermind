@@ -96,6 +96,31 @@ public class ExecutionPayloadV4Tests
         Assert.That(reRoundTripped.Header.CalculateHash(), Is.EqualTo(block.Header.CalculateHash()));
     }
 
+    // A CL payload is untrusted input, so a proof with a missing or wrong-sized deps hash must fail
+    // the Result rather than throw out of the decode boundary.
+    [TestCase(false, TestName = "Recursive_stark_proof_without_deps_hash_fails_the_result")]
+    [TestCase(true, TestName = "Recursive_stark_deps_hash_of_wrong_length_fails_the_result")]
+    public void Recursive_stark_malformed_deps_hash_fails_the_result(bool wrongLength)
+    {
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            SlotNumber = 0,
+            RecursiveStarkProof = [1, 2, 3],
+            RecursiveStarkBlockDepsHash = wrongLength ? new byte[31] : null,
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        Assert.That(result.IsError, Is.True);
+        Assert.That(result.Error, Does.Contain(nameof(ExecutionPayloadV3.RecursiveStarkBlockDepsHash)));
+    }
+
     [Test]
     public void Recursive_stark_survives_json_round_trip()
     {

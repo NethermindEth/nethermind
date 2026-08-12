@@ -45,7 +45,16 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        block.Header.RecursiveStark = RecursiveStarkProof is null ? null : new RecursiveStark(RecursiveStarkProof, new Hash256(RecursiveStarkBlockDepsHash!));
+        if (RecursiveStarkProof is not null)
+        {
+            if (RecursiveStarkBlockDepsHash is not { Length: Hash256.Size })
+            {
+                return Result<Block>.Fail($"Invalid {nameof(RecursiveStarkBlockDepsHash)}: expected {Hash256.Size} bytes, got {RecursiveStarkBlockDepsHash?.Length.ToString() ?? "none"}");
+            }
+
+            block.Header.RecursiveStark = new RecursiveStark(RecursiveStarkProof, new Hash256(RecursiveStarkBlockDepsHash));
+        }
+
         return baseResult;
     }
 
@@ -67,9 +76,8 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     public sealed override ulong? ExcessBlobGas { get; set; }
 
     /// <summary>
-    /// EIP-8288 <c>recursive_stark</c> proof and its <c>block_deps_hash</c>. Optional and present only
-    /// when the block declares dependencies (from the Osaka-based prototype onward), so payloads for
-    /// forks without EIP-8288 are byte-identical.
+    /// EIP-8288 <c>recursive_stark</c> proof and its <c>block_deps_hash</c>, present on every block once
+    /// the fork is active, so payloads for forks without EIP-8288 are byte-identical.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[]? RecursiveStarkProof { get; set; }
@@ -77,4 +85,3 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[]? RecursiveStarkBlockDepsHash { get; set; }
 }
-

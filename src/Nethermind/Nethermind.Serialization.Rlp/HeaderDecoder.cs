@@ -67,9 +67,9 @@ namespace Nethermind.Serialization.Rlp
                 int recursiveStarkLength = decoderContext.ReadSequenceLength();
                 int recursiveStarkCheck = decoderContext.Position + recursiveStarkLength;
                 byte[]? starkProof = decoderContext.DecodeByteArray();
-                Hash256? blockDepsHash = decoderContext.DecodeKeccak();
+                Hash256 blockDepsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
                 decoderContext.Check(recursiveStarkCheck);
-                blockHeader.RecursiveStark = new RecursiveStark(starkProof!, blockDepsHash!);
+                blockHeader.RecursiveStark = new RecursiveStark(starkProof!, blockDepsHash);
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -261,5 +261,9 @@ namespace Nethermind.Serialization.Rlp
 
         public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
             => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+
+        [DoesNotReturn]
+        private static Hash256 ThrowMissingBlockDepsHash() =>
+            throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in {nameof(BlockHeader.RecursiveStark)}");
     }
 }

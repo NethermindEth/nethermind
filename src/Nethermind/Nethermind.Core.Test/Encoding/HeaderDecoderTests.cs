@@ -56,6 +56,24 @@ public class HeaderDecoderTests
         Assert.That(decoded.Hash, Is.EqualTo(header.CalculateHash()), "hash");
     }
 
+    // Peer-supplied recursive_stark = ["", ""]: the deps hash is non-nullable on the header, so decode
+    // must reject rather than store a null through it.
+    [Test]
+    public void Cannot_decode_recursive_stark_without_a_deps_hash()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithMixHash(Keccak.Compute("mix_hash")).WithNonce(1000).TestObject;
+        header.RecursiveStark = new RecursiveStark([], null!);
+
+        HeaderDecoder decoder = new();
+        Rlp rlp = decoder.Encode(header);
+
+        Assert.That(() =>
+        {
+            RlpReader decoderContext = new(rlp.Bytes);
+            decoder.Decode(ref decoderContext);
+        }, Throws.InstanceOf<RlpException>());
+    }
+
     [Test]
     public void Get_length_null()
     {

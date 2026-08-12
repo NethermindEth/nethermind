@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
@@ -26,6 +27,8 @@ public sealed unsafe class NativeLeanProofVerifier : ILeanProofVerifier
     /// <summary>ABI version exported by the native library; probe to confirm it loads and matches.</summary>
     public static uint AbiVersion => nlean_abi_version();
 
+    // fixed pins each buffer for the duration of the call, and the native side reads nothing past the
+    // paired length; an empty span pins to null, which as_slice treats as empty.
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
     {
         fixed (byte* d = dataHash.Bytes)
@@ -56,6 +59,25 @@ public sealed unsafe class NativeLeanProofVerifier : ILeanProofVerifier
         }
     }
 
+    /// <inheritdoc/>
+    public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk)
+    {
+        byte[] proof = new byte[32];
+        fixed (byte* h = depsHash.Bytes)
+        fixed (byte* vk = aggregatedVk)
+        fixed (byte* p = proof)
+        {
+            int written = nlean_prove_recursive(h, vk, (nuint)aggregatedVk.Length, p);
+            if (written != proof.Length) ThrowProveFailed(written);
+        }
+
+        return proof;
+    }
+
+    [DoesNotReturn]
+    private static void ThrowProveFailed(int written) =>
+        throw new InvalidOperationException($"{nameof(nlean_prove_recursive)} wrote {written} bytes, expected 32");
+
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern uint nlean_abi_version();
 
@@ -67,4 +89,7 @@ public sealed unsafe class NativeLeanProofVerifier : ILeanProofVerifier
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     private static extern int nlean_verify_recursive(byte* depsHash, byte* aggregatedVk, nuint aggregatedVkLen, byte* proof, nuint proofLen);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int nlean_prove_recursive(byte* depsHash, byte* aggregatedVk, nuint aggregatedVkLen, byte* @out);
 }

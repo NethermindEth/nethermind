@@ -27,7 +27,8 @@ public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, Value
     /// <summary>Writes the canonical 96-byte encoding <c>bytes32_be(scheme) || data_hash || verification_key</c>.</summary>
     public void WriteTo(Span<byte> destination)
     {
-        destination[..Eip8288Constants.DependencyTripleLength].Clear();
+        // Only the scheme word's leading padding needs clearing; the two hashes overwrite bytes 32..96.
+        destination[..31].Clear();
         destination[31] = Scheme;
         DataHash.Bytes.CopyTo(destination[32..64]);
         VerificationKey.Bytes.CopyTo(destination[64..96]);
@@ -75,15 +76,48 @@ public static class Eip8288Dependencies
     }
 
     /// <summary>Spec <c>dependencies(block)</c>: all transaction dependencies in inclusion order.</summary>
+    /// <remarks>Walks the frames directly rather than through the iterators, which runs on every block.</remarks>
     public static List<FrameDependency> ForBlock(Block block)
     {
         List<FrameDependency> dependencies = [];
         foreach (Transaction tx in block.Transactions)
         {
-            foreach (FrameDependency dep in ForTransaction(tx)) dependencies.Add(dep);
+            TxFrame[]? frames = tx.Frames;
+            if (frames is null) continue;
+
+            foreach (TxFrame frame in frames)
+            {
+                if (!IsDependencyFrame(frame)) continue;
+
+                ReadOnlySpan<byte> data = frame.Data.Span;
+                int count = data.Length / Eip8288Constants.DependencyTripleLength;
+                for (int i = 0; i < count; i++)
+                {
+                    ReadOnlySpan<byte> triple = data.Slice(i * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength);
+                    dependencies.Add(new FrameDependency(triple[31], new ValueHash256(triple[32..64]), new ValueHash256(triple[64..96])));
+                }
+            }
         }
 
         return dependencies;
+    }
+
+    /// <summary>
+    /// The block-level <c>recursive_stark_gas</c> this transaction's dependencies contribute, charged
+    /// on top of the per-scheme verification gas the frames already paid.
+    /// </summary>
+    public static ulong RecursiveStarkGas(Transaction tx)
+    {
+        TxFrame[]? frames = tx.Frames;
+        if (frames is null) return 0;
+
+        ulong count = 0;
+        foreach (TxFrame frame in frames)
+        {
+            if (IsDependencyFrame(frame)) count += (ulong)(frame.Data.Length / Eip8288Constants.DependencyTripleLength);
+        }
+
+        return count * Eip8288Constants.LeanStarkVerificationGas;
     }
 
     /// <summary>Concatenates dependencies into their <c>96·k</c>-byte wire form.</summary>
@@ -118,7 +152,7 @@ public static class Eip8288Dependencies
     /// used as the placeholder.
     /// </summary>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies) =>
-        ValueKeccak.Compute(Serialize(dependencies));
+        dependencies.Count == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(Serialize(dependencies));
 
     /// <summary>Counts dependencies per scheme (leanSPHINCS, leanSTARK) for the mempool/tx limits.</summary>
     public static (int Sphincs, int Stark) CountByScheme(IReadOnlyList<FrameDependency> dependencies)

@@ -162,7 +162,6 @@ public class FrameTxValidationTests
         yield return DepCase("MixedSchemesInOneFrame_Valid",
             static tx => tx.Frames = [DepFrame(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme)], null);
 
-        // data must be a non-empty multiple of 96 bytes.
         yield return DepCase("EmptyData_DependencyFrameDataLength",
             static tx => tx.Frames = [new TxFrame(TxFrame.ModeDepVerify, 0, null, 0, UInt256.Zero, Array.Empty<byte>())],
             FrameTxValidation.DependencyFrameDataLength);
@@ -170,26 +169,21 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [new TxFrame(TxFrame.ModeDepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, new byte[95])],
             FrameTxValidation.DependencyFrameDataLength);
 
-        // at most MAX_DEPENDENCIES_PER_FRAME triples.
         yield return DepCase("TooManyDependenciesPerFrame_TooManyDependenciesPerFrame",
             static tx => tx.Frames = [DepFrame(Enumerable.Repeat(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.MaxDependenciesPerFrame + 1).ToArray())],
             FrameTxValidation.TooManyDependenciesPerFrame);
 
-        // first 31 bytes of each triple must be zero.
         yield return DepCase("NonZeroPadding_DependencyPaddingNotZero",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], mutateData: static data => data[0] = 1)],
             FrameTxValidation.DependencyPaddingNotZero);
 
-        // scheme must be LEANSPHINCS or LEANSTARK.
         yield return DepCase("UnknownScheme_InvalidDependencyScheme",
             static tx => tx.Frames = [DepFrame(0x12)], FrameTxValidation.InvalidDependencyScheme);
 
-        // gas_limit must equal the sum of per-scheme verification gas.
         yield return DepCase("GasLimitMismatch_DependencyFrameGasMismatch",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], gasLimit: 1)],
             FrameTxValidation.DependencyFrameGasMismatch);
 
-        // target None, value 0, flags 0.
         yield return DepCase("NonNullTarget_DependencyFrameShape",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], target: TestItem.AddressB)],
             FrameTxValidation.DependencyFrameShape);
@@ -200,7 +194,6 @@ public class FrameTxValidationTests
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], flags: TxFrame.ApprovePayment)],
             FrameTxValidation.DependencyFrameShape);
 
-        // per-transaction limits MAX_SIGS_PER_TX and MAX_STARKS_PER_TX.
         yield return DepCase("TooManySigDeps_TooManySigDeps",
             static tx => tx.Frames = [DepFrame(Enumerable.Repeat(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.MaxSigsPerTx + 1).ToArray())],
             FrameTxValidation.TooManySigDeps);
