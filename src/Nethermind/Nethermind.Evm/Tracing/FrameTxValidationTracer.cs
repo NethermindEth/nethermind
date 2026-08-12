@@ -16,17 +16,12 @@ namespace Nethermind.Evm.Tracing;
 /// prefix is simulated at mempool admission, and captures the resolved payer.
 /// </summary>
 /// <remarks>
-/// The gas bound (<c>MAX_VERIFY_GAS</c>) and the "halt once payer is set" rule are enforced by the
-/// transaction processor's validation-prefix loop; this tracer enforces the per-opcode rules
-/// (EIP-8141 "Validation Trace Rules"): the banned-opcode list, the <c>GAS</c>-before-call caveat,
-/// the <c>TIMESTAMP</c>-in-expiry-verifier caveat, <c>SLOAD</c> restricted to <c>tx.sender</c>
-/// storage, and the <c>CALL*</c>/<c>EXTCODE*</c> target rule — an existing contract or a precompile,
-/// never an EIP-7702-delegated address, except for <c>tx.sender</c> whose code hash is a tracked
-/// dependency. Simulation runs against read-only state, so a banned write reached before detection
-/// is discarded.
-/// The first-<c>deploy</c>-frame carve-outs for <c>CREATE</c>/<c>CREATE2</c>/<c>SETDELEGATE</c> and
-/// <c>SSTORE</c>-to-sender are not honored, so the processor declines a prefix containing a deploy
-/// frame before entering it — the unconditional bans below never fire for one (EIP8141-GAP).
+/// The gas bound and the "halt once payer is set" rule live in the processor's prefix loop; this
+/// enforces the per-opcode rules of EIP-8141 "Validation Trace Rules". <c>tx.sender</c> is exempt from
+/// the <c>CALL*</c>/<c>EXTCODE*</c> target rule because its code hash is a tracked dependency.
+/// The first-<c>deploy</c>-frame carve-outs are not honored, so the processor declines a prefix
+/// containing a deploy frame before entering it and the bans below never fire for one (EIP8141-GAP).
+/// https://eips.ethereum.org/EIPS/eip-8141
 /// </remarks>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
