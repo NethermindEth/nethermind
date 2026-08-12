@@ -47,7 +47,7 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
-    public void Accept_ReservesOnAdmission_SoConcurrentSecondTxSeesIt()
+    public void Accept_ReservesOnAdmission_SoASecondTxFromOnePayerSeesIt()
     {
         // The filter itself reserves on admission, so a second frame tx from the same payer sees it.
         TestReadOnlyStateProvider state = StateWithPayerBalance(TestCost + TestCost / 2);
