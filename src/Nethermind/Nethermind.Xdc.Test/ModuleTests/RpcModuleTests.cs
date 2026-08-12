@@ -22,10 +22,12 @@ namespace Nethermind.Xdc.Test.ModuleTests;
 [TestFixture, NonParallelizable]
 public class RpcModuleTests
 {
+    private const ulong FinalizedBlockNumber = 98;
+    private const ulong HeadBlockNumber = 100;
+
     private IBlockTree _blockTree;
     private ISnapshotManager _snapshotManager;
     private ISpecProvider _specProvider;
-    private IQuorumCertificateManager _quorumCertificateManager;
     private IEpochSwitchManager _epochSwitchManager;
     private IVotesManager _votesManager;
     private ITimeoutCertificateManager _timeoutCertificateManager;
@@ -147,7 +149,6 @@ public class RpcModuleTests
         _blockTree = Substitute.For<IBlockTree>();
         _snapshotManager = Substitute.For<ISnapshotManager>();
         _specProvider = Substitute.For<ISpecProvider>();
-        _quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         _epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         _votesManager = Substitute.For<IVotesManager>();
         _timeoutCertificateManager = Substitute.For<ITimeoutCertificateManager>();
@@ -158,7 +159,6 @@ public class RpcModuleTests
             _blockTree,
             _snapshotManager,
             _specProvider,
-            _quorumCertificateManager,
             _epochSwitchManager,
             _votesManager,
             _timeoutCertificateManager,
@@ -581,17 +581,9 @@ public class RpcModuleTests
     }
 
     [Test]
-    public void GetMasternodesByNumber_ShouldReturnSuccess_WithFinalizedBlockParameter()
+    public void GetMasternodesByNumber_ShouldResolveFinalizedBlock_FromTheCommittedTip()
     {
-        // Arrange
-        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        header.Number = 100;
-        BlockRoundInfo proposedBlock = new(header.Hash!, 50, 100);
-        QuorumCertificate qc = new(proposedBlock, null, 50);
-        header.ExtraConsensusData = new ExtraFieldsV2(50, qc);
-
-        _quorumCertificateManager.HighestKnownCertificate.Returns(qc);
-        _blockTree.FindHeader(header.Hash!).Returns(header);
+        XdcBlockHeader finalizedHeader = ArrangeChainWithFinalizedTip()[FinalizedBlockNumber];
 
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
@@ -601,28 +593,29 @@ public class RpcModuleTests
             masternodes,
             Array.Empty<Address>(),
             Array.Empty<Address>(),
-            new BlockRoundInfo(TestItem.KeccakA, 50, 100));
+            new BlockRoundInfo(finalizedHeader.Hash!, FinalizedBlockNumber, (long)FinalizedBlockNumber));
 
-        _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
+        _epochSwitchManager.GetEpochSwitchInfo(finalizedHeader).Returns(epochSwitchInfo);
 
-        // Act
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
 
-        // Assert
         Assert.That(result.Result, Is.EqualTo(Result.Success));
         Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Number, Is.EqualTo(FinalizedBlockNumber));
+            Assert.That(result.Data.Round, Is.EqualTo((UInt256)FinalizedBlockNumber));
+            Assert.That(result.Data.Masternodes, Is.EquivalentTo(masternodes));
+        }
     }
 
     [Test]
     public void GetMasternodesByNumber_ShouldReturnFail_WhenFinalizedBlockNotFound()
     {
-        // Arrange
-        _quorumCertificateManager.HighestKnownCertificate.Returns((QuorumCertificate?)null);
+        _blockTree.FinalizedHash.Returns((Hash256?)null);
 
-        // Act
         ResultWrapper<MasternodesStatus> result = _rpcModule.XDPoS_getMasternodesByNumber(BlockParameter.Finalized);
 
-        // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
@@ -692,6 +685,110 @@ public class RpcModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
     }
 
+
+    [TestCase(null, false)]
+    [TestCase(100UL, false)]
+    [TestCase(99UL, false)]
+    [TestCase(98UL, true)]
+    [TestCase(97UL, true)]
+    public void GetV2BlockByNumber_ShouldReportCommitted_OnlyUpToFinalizedBlock(ulong? blockNumber, bool expectedCommitted)
+    {
+        ArrangeChainWithFinalizedTip();
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(
+            blockNumber is null ? BlockParameter.Latest : new BlockParameter(blockNumber.Value));
+
+        AssertCommitted(result, expectedCommitted);
+    }
+
+    [TestCase(null, false)]
+    [TestCase(99UL, false)]
+    [TestCase(98UL, true)]
+    public void GetV2BlockByHash_ShouldReportCommitted_OnlyUpToFinalizedBlock(ulong? blockNumber, bool expectedCommitted)
+    {
+        Dictionary<ulong, XdcBlockHeader> headers = ArrangeChainWithFinalizedTip();
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByHash(
+            blockNumber is null ? BlockParameter.Latest : new BlockParameter(headers[blockNumber.Value].Hash!));
+
+        AssertCommitted(result, expectedCommitted);
+    }
+
+    [Test]
+    public void GetV2BlockByHash_ShouldNotReportCommitted_ForBlockOffTheCanonicalChain()
+    {
+        ArrangeChainWithFinalizedTip();
+
+        XdcBlockHeader forkHeader = Build.A.XdcBlockHeader()
+            .WithNumber(FinalizedBlockNumber)
+            .WithParentHash(TestItem.KeccakA)
+            .WithExtraConsensusData(new ExtraFieldsV2(FinalizedBlockNumber, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
+
+        _blockTree.FindHeader(forkHeader.Hash!).Returns(forkHeader);
+        _blockTree.IsMainChain(forkHeader).Returns(false);
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByHash(new BlockParameter(forkHeader.Hash!));
+
+        AssertCommitted(result, false);
+    }
+
+    [Test]
+    public void GetV2BlockByNumber_ShouldReturnError_WhenNoFinalizedBlock()
+    {
+        ArrangeChainWithFinalizedTip();
+        _blockTree.FinalizedHash.Returns((Hash256?)null);
+
+        ResultWrapper<V2BlockInfo> result = _rpcModule.XDPoS_getV2BlockByNumber(BlockParameter.Latest);
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Committed, Is.False);
+            Assert.That(result.Data.Error, Is.Not.Null);
+        }
+    }
+
+    /// <summary>
+    /// Sets up a chain whose head is two rounds ahead of the committed (finalized) tip, as the XDPoS 2.0 commit rule
+    /// leaves it. Each header carries its own block number as its round.
+    /// </summary>
+    /// <returns>The headers of the chain, keyed by block number.</returns>
+    private Dictionary<ulong, XdcBlockHeader> ArrangeChainWithFinalizedTip()
+    {
+        Dictionary<ulong, XdcBlockHeader> headers = [];
+        for (ulong number = FinalizedBlockNumber - 1; number <= HeadBlockNumber; number++)
+        {
+            XdcBlockHeader header = Build.A.XdcBlockHeader()
+                .WithNumber(number)
+                .WithExtraConsensusData(new ExtraFieldsV2(number, Build.A.QuorumCertificate().TestObject))
+                .TestObject;
+
+            headers[number] = header;
+            _blockTree.FindHeader(number).Returns(header);
+            _blockTree.FindHeader(header.Hash!).Returns(header);
+            _blockTree.FindHeader(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
+            _blockTree.IsMainChain(header).Returns(true);
+        }
+
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(headers[HeadBlockNumber]).TestObject);
+        _blockTree.FinalizedHash.Returns(headers[FinalizedBlockNumber].Hash);
+        _blockTree.LastFinalizedBlockLevel.Returns(FinalizedBlockNumber);
+
+        return headers;
+    }
+
+    private static void AssertCommitted(ResultWrapper<V2BlockInfo> result, bool expectedCommitted)
+    {
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Committed, Is.EqualTo(expectedCommitted));
+            Assert.That(result.Data.Error, Is.Null);
+        }
+    }
 
     [Test]
     public void GetSigners_ShouldReturnSuccess_WithLatestBlockParameter()
