@@ -2511,9 +2511,7 @@ namespace Nethermind.TxPool.Test
         public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
         {
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
-            // shape that reaches the exposure gate here — the reserve and the release, through the real
-            // filter chain and the real Removed event. The middle assertion encodes the documented
-            // replacement over-count: the incumbent is still reserved while its replacement is priced.
+            // shape reaching the exposure gate here; it is refused because the incumbent is still reserved.
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * TxGasLimit);
 
@@ -2523,6 +2521,9 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
             AcceptTxResult blockedResult = _txPool.SubmitTx(blocked, TxHandlingOptions.None);
+            // Within the bound but too small a bump to replace: no Removed fires, so only AddCore's
+            // explicit release keeps the payer from leaking.
+            AcceptTxResult unreplaceableResult = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 6, salt: 1), TxHandlingOptions.None);
             _txPool.RemoveTransaction(first.Hash);
             AcceptTxResult afterReleaseResult = _txPool.SubmitTx(afterRelease, TxHandlingOptions.None);
 
@@ -2530,15 +2531,16 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(blockedResult, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the first tx's reservation must be visible to the second");
-                Assert.That(afterReleaseResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx must release its reservation");
+                Assert.That(unreplaceableResult, Is.EqualTo(AcceptTxResult.ReplacementNotAllowed));
+                Assert.That(afterReleaseResult, Is.EqualTo(AcceptTxResult.Accepted), "both the refused replacement and the removed tx must have released");
             }
         }
 
         /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
-        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas)
+        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, ulong salt = 0)
         {
             Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
-                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas);
+                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas, verifyGasLimit: 50_000 + salt);
             tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
             tx.Hash = tx.CalculateHash();
             return tx;

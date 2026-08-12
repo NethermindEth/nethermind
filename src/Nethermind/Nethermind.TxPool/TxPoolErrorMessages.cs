@@ -31,6 +31,7 @@ public static class TxPoolErrorMessages
     public const string FrameTxExpired = "frame transaction expired";
     public const string FrameTxVerifyGasTooHigh = "frame transaction validation prefix exceeds MAX_VERIFY_GAS";
     public const string FrameTxPayerExposureExceeded = "frame transaction payer exposure exceeds balance";
+    public const string FrameTxNoPayer = "frame transaction never approves a payer";
     public const string FrameSimulationFailed = "frame transaction validation-prefix simulation failed";
     public const string NonCanonicalPaymasterLimitReached = "non-canonical paymaster already sponsors the maximum number of pending frame transactions";
 }

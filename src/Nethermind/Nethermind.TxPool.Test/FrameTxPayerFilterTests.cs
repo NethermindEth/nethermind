@@ -67,7 +67,7 @@ public class FrameTxPayerFilterTests
 
         AcceptTxResult result = Accept(state, tx);
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxNoPayer));
     }
 
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, Transaction tx)
