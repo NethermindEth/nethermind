@@ -632,7 +632,10 @@ namespace Nethermind.TxPool
                 return;
             }
 
-            ulong horizon = block.Timestamp + ExpiryShedHorizonSeconds;
+            // Saturating: a head timestamp near ulong.MaxValue would otherwise trap in a checked build.
+            ulong horizon = block.Timestamp > ulong.MaxValue - ExpiryShedHorizonSeconds
+                ? ulong.MaxValue
+                : block.Timestamp + ExpiryShedHorizonSeconds;
             UInt256 baseFee = _headInfo.CurrentBaseFee;
             bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
             Transaction[] snapshot = _transactions.GetSnapshot();
