@@ -199,6 +199,30 @@ public class ArchiveCloneImporterTests
     }
 
     [Test]
+    public async Task ResetForNewTarget_MakesTheNextCloneRestreamAgainstTheSourcesCurrentWatermark()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
+        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        await CreateImporter(source).CloneAsync(CancellationToken.None);
+
+        FakeCloneSource newer = new(_rowFormat.FormatVersion) { Watermark = 99 };
+        newer.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [7]));
+        newer.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 99], ValueKeccak.Compute("root99"u8).BytesAsSpan.ToArray()));
+        ArchiveCloneImporter second = CreateImporter(newer);
+        second.ResetForNewTarget();
+        ulong republished = await second.CloneAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newer.Calls, Is.Not.Empty, "after a reset the next clone must stream from the source again");
+            Assert.That(republished, Is.EqualTo(99UL));
+            Assert.That(_availability.TryGetWatermark(out ulong watermark), Is.True);
+            Assert.That(watermark, Is.EqualTo(99UL), "the new pass publishes the fresh source watermark the re-streamed rows actually cover");
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get([1, 2, 3]), Is.EqualTo(new byte[] { 7 }));
+        }
+    }
+
+    [Test]
     public async Task CloneAsync_PageTimeout_IsRetriedAndSucceedsWhenTheSourceRecovers()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, TimeoutFirstNCalls = 2 };

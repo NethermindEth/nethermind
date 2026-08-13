@@ -29,6 +29,7 @@ public sealed class ArchiveCloneCoordinator : IDisposable
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DiagnosticsInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan CaptureConnectionPollDelay = TimeSpan.FromSeconds(30);
 
     private readonly IFlatDbConfig _config;
     private readonly NHistPeerSelector _selector;
@@ -102,9 +103,22 @@ public sealed class ArchiveCloneCoordinator : IDisposable
                     if (_logger.IsInfo) _logger.Info($"Full archive clone starting from peer {peer} (row format {source.RowFormatVersion}, source watermark {source.Watermark}).");
                     ArchiveCloneImporter importer = new(
                         source, _history, _codeDb, _metadataDb, _config, _pruner, _availability, _rowFormat, _logManager);
-                    await importer.CloneAsync(token);
-                    if (_logger.IsInfo) _logger.Info($"Full archive clone from peer {peer} completed at watermark {source.Watermark}.");
-                    return;
+                    ulong targetWatermark = await importer.CloneAsync(token);
+                    if (_logger.IsInfo) _logger.Info($"Full archive clone from peer {peer} completed at watermark {targetWatermark}.");
+
+                    if (await WaitForCaptureConnectionAsync(targetWatermark, token))
+                    {
+                        return;
+                    }
+
+                    // The clone's frozen watermark landed below this node's own capture start (the snap pivot kept
+                    // moving while the clone streamed), so the two ranges do not touch. A fresh pass reads a fresh,
+                    // strictly newer source watermark; the capture floor is fixed, so the gap closes in one or two
+                    // passes and this loop terminates.
+                    if (_logger.IsInfo) _logger.Info(
+                        $"The cloned history ends at block {targetWatermark}, below this node's own capture start; " +
+                        "re-cloning against the source's current watermark to close the gap.");
+                    importer.ResetForNewTarget();
                 }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -125,6 +139,34 @@ public sealed class ArchiveCloneCoordinator : IDisposable
                 return;
             }
         }
+    }
+
+    private async Task<bool> WaitForCaptureConnectionAsync(ulong targetWatermark, CancellationToken token)
+    {
+        long lastLogTimestamp = Stopwatch.GetTimestamp();
+        while (!token.IsCancellationRequested)
+        {
+            if (_availability.TryGetWatermark(out ulong watermark) && watermark > targetWatermark)
+            {
+                if (_logger.IsInfo) _logger.Info($"Full archive clone finished: this node's capture connected and history is served up to block {watermark}.");
+                return true;
+            }
+
+            if (_availability.TryGetPendingCaptureRange(out ulong pendingFirst, out _) && pendingFirst > targetWatermark + 1)
+            {
+                return false;
+            }
+
+            if (_logger.IsInfo && Stopwatch.GetElapsedTime(lastLogTimestamp) > DiagnosticsInterval)
+            {
+                lastLogTimestamp = Stopwatch.GetTimestamp();
+                _logger.Info($"Archive clone complete at watermark {targetWatermark}; waiting for this node's own capture to connect.");
+            }
+
+            await Task.Delay(CaptureConnectionPollDelay, token);
+        }
+
+        return true;
     }
 
     public void Dispose()

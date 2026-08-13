@@ -87,7 +87,7 @@ public sealed class ArchiveCloneImporter
         _logger = logManager.GetClassLogger<ArchiveCloneImporter>();
     }
 
-    public async Task CloneAsync(CancellationToken cancellationToken)
+    public async Task<ulong> CloneAsync(CancellationToken cancellationToken)
     {
         if (!_source.SupportsFullClone)
         {
@@ -109,6 +109,26 @@ public sealed class ArchiveCloneImporter
         }
 
         _availability.PublishWatermark(targetWatermark, _source.RowFormatVersion);
+        return targetWatermark;
+    }
+
+    /// <summary>Discards the stored target watermark, done markers, and shard cursors so the next
+    /// <see cref="CloneAsync"/> re-streams everything against the source's current watermark. Rows already
+    /// imported stay (re-imports overwrite idempotently); the already-published watermark stays honest because
+    /// the new pass only ever adds rows above it.</summary>
+    public void ResetForNewTarget()
+    {
+        _metadata.Remove(TargetWatermarkKey);
+        foreach (HistoryRowColumn column in ColumnsInCloneOrder)
+        {
+            _metadata.Remove(ColumnDoneKey(column));
+            for (int shard = 0; shard < _shardCount; shard++)
+            {
+                ClearShardCursor(column, shard);
+            }
+        }
+
+        _metadata.SyncWal();
     }
 
     private ulong ReadOrStoreTargetWatermark()
