@@ -22,7 +22,7 @@ public class Olympic() : NamedReleaseSpec<Olympic>(null)
         spec.Eip1559TransitionBlock = long.MaxValue;
         spec.ValidateChainId = true;
         spec.ValidateReceipts = true;
-        spec.MinHistoryRetentionEpochs = 82125;
+        spec.MinHistoryRetentionEpochs = 33024;
         spec.MinBalRetentionEpochs = 3533;
 
         // The below addresses are added for all forks, but the given EIPs can be enabled at a specific timestamp or block.

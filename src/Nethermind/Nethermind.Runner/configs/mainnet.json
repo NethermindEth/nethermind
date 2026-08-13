@@ -14,8 +14,8 @@
     "PivotHash": "0x76cfeaac1eda4c0e572803cefae863703caedbbb31393a397359e3002ef7bea1",
     "PivotTotalDifficulty": "58750003716598352816469",
     "FastSyncCatchUpHeightDelta": 10000000000,
-    "AncientReceiptsBarrier": 15537394,
-    "AncientBodiesBarrier": 15537394
+    "AncientReceiptsBarrier": 24690000,
+    "AncientBodiesBarrier": 24690000
   },
   "EthStats": {
     "Server": "wss://ethstats.net/api"
