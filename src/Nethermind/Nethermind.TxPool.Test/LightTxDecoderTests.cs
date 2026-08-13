@@ -9,7 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>Backward compatibility of the persisted <see cref="BlobTxsColumns.LightBlobTxs"/> record;
+/// <summary>Backward compatibility of the persisted <see cref="Nethermind.Db.BlobTxsColumns.LightBlobTxs"/> record;
 /// a record that fails to decode breaks pool startup.</summary>
 [TestFixture]
 public class LightTxDecoderTests
