@@ -396,6 +396,30 @@ class CorpusParityTests(unittest.TestCase):
                     corpus_parity.load_corpus(self.write_corpus(lines=lines))
 
 
+class NonJsonConstantTests(unittest.TestCase):
+    """NaN/Infinity are not JSON. Accepting them here would pass validation and then fail
+    conversion inside the first cell, where the failure is far harder to attribute."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_non_json_constants_are_rejected_without_echoing_the_line(self):
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                path = self.dir / "corpus.jsonl"
+                path.write_text(
+                    '{"method":"eth_call","params":[{"to":"0x1","gas":%s,"data":"%s"},"latest"]}\n'
+                    % (constant, SENTINEL), encoding="utf-8")
+                with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                    corpus_parity.load_corpus(path)
+                self.assertIn("line 1", str(caught.exception))
+                self.assertNotIn(SENTINEL, str(caught.exception))
+
+
 class EnvironmentCapTests(unittest.TestCase):
     """The caps are read at import, so a malformed override must degrade, not abort the sweep."""
 
