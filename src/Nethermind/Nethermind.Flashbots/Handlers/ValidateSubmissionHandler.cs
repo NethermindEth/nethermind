@@ -198,7 +198,11 @@ public class ValidateSubmissionHandler(
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
-        RecoverSenderAddress(block, releaseSpec);
+        if (!RecoverSenderAddress(block, releaseSpec, out error))
+        {
+            return false;
+        }
+
         UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
 
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -249,12 +253,26 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private void RecoverSenderAddress(Block block, IReleaseSpec spec)
+    private bool RecoverSenderAddress(Block block, IReleaseSpec spec, out string? error)
     {
         foreach (Transaction tx in block.Transactions)
         {
-            tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            if (tx.SenderAddress is not null)
+            {
+                continue;
+            }
+
+            if (!_ethereumEcdsa.TryRecoverAddress(tx, out Address? senderAddress, !spec.ValidateChainId))
+            {
+                error = $"Transaction {tx.Hash} sender address is not recoverable";
+                return false;
+            }
+
+            tx.SenderAddress = senderAddress;
         }
+
+        error = null;
+        return true;
     }
 
     private bool ValidateBlockMetadata(Block block, ulong registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
