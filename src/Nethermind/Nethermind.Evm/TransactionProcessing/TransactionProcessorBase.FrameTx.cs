@@ -484,9 +484,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// resolving the payer and enforcing the trace/opcode rules under the <c>MAX_VERIFY_GAS</c> bound.
     /// </summary>
     /// <remarks>Per-opcode rules belong to the caller's <c>FrameTxValidationTracer</c>; state is always
-    /// restored. Nonce equality is deliberately not required: the prefix never reads the account nonce.
-    /// EIP8141: result caching, head-change re-simulation and a wall-clock guard are deferred; the
-    /// per-transaction gas bound is the DoS bound implemented here.</remarks>
+    /// restored. Nonce equality is deliberately not required: the prefix never reads the account nonce.</remarks>
     private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;
