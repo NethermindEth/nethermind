@@ -2439,10 +2439,8 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void SubmitTx_FrameTransactions_SharingSimulatedPayer_BoundByPayerBalance_ReleasedOnRemoval()
         {
-            // Distinct senders share one third-party sponsor as payer. The sponsored prefix is opaque, so
-            // the payer is resolved by validation-prefix simulation rather than natively; the exposure
-            // gate then bounds the sponsor's summed pending cost to its balance, and removing the first
-            // tx releases the reservation so a third is admitted.
+            // Distinct senders share one opaque-prefix sponsor, so the exposure gate bounds its summed
+            // pending cost to its balance, and removing a tx releases the reservation.
             Address sponsor = TestItem.AddressD;
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(sponsor));
@@ -2562,8 +2560,7 @@ namespace Nethermind.TxPool.Test
             return tx;
         }
 
-        // A frame tx whose only_verify|pay prefix names the sponsor as payer. The prefix is opaque to
-        // native resolution, so the payer is resolved by validation-prefix simulation.
+        // An only_verify|pay prefix naming the sponsor: opaque to native resolution, so it is simulated.
         private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey)
         {
             Transaction tx = new()

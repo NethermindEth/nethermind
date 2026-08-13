@@ -14,17 +14,9 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing;
 
-/// <summary>
-/// Simulates the validation prefix of an opaque EIP-8141 frame transaction against the current head,
-/// reusing the read-only transaction processing env rather than a pool-specific EVM.
-/// </summary>
-/// <remarks>
-/// Lives here (not in <c>Nethermind.TxPool</c>) because it depends on
-/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: TxPool cannot reference Consensus (that would cycle),
-/// so the pool depends only on the <see cref="IFrameTxPrefixSimulator"/> abstraction. Simulations are
-/// serialized because they share one resettable world state, which also bounds concurrent admission work.
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </remarks>
+/// <inheritdoc cref="IFrameTxPrefixSimulator"/>
+/// <remarks>Simulations are serialized: they share one resettable world state, which also bounds the
+/// concurrent admission work an attacker can trigger.</remarks>
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IBlockFinder blockFinder,
@@ -83,7 +75,7 @@ public sealed class FrameTxPrefixSimulator(
             }
             catch (OperationCanceledException)
             {
-                // Cooperative shutdown/scheduler cancel: propagate rather than masking it as a rejection.
+                // Shutdown, not a verdict on the transaction.
                 throw;
             }
             catch (Exception e)
