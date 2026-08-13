@@ -634,7 +634,9 @@ public partial class EthRpcModule(
 
         SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter);
         Hash256? blockHash = headerSearch.IsError ? null : headerSearch.Object?.Hash;
-        if (blockHash is null)
+        // Pre-EIP-2930 specs downgrade type-defaulted requests to legacy (see TransactionForRpc.ResolveType),
+        // a distinction the cache key cannot observe — bypass the cache for such blocks.
+        if (blockHash is null || !_specProvider.GetSpec(headerSearch.Object!).IsEip2930Enabled)
         {
             return executor.Execute(transactionCall, blockParameter, searchResult: headerSearch);
         }

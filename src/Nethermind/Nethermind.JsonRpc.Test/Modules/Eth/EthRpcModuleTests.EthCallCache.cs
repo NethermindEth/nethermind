@@ -10,6 +10,8 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -89,6 +91,22 @@ public partial class EthRpcModuleTests
 
         await rpc.TestEthRpc("eth_call", call, "latest");
         await rpc.AddBlock();
+        await rpc.TestEthRpc("eth_call", call, "latest");
+
+        AssertBridgeCallCount(bridge, 2);
+    }
+
+    [Test]
+    public async Task Eth_call_cache_pre_berlin_block_bypasses_cache()
+    {
+        IBlockchainBridge bridge = CreateEthCallCacheBridge(new CallOutput { OutputData = [1, 2, 3] });
+        using TestRpcBlockchain rpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge)
+            .WithConfig(new JsonRpcConfig { EthCallCacheSize = 16 })
+            .Build(new TestSpecProvider(Istanbul.Instance));
+        TransactionForRpc call = CreateEthCallCacheCall(rpc);
+
+        await rpc.TestEthRpc("eth_call", call, "latest");
         await rpc.TestEthRpc("eth_call", call, "latest");
 
         AssertBridgeCallCount(bridge, 2);
