@@ -14,6 +14,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -102,6 +105,33 @@ public partial class DebugRpcModuleTests
         );
 
         RpcTest.AssertSuccess(response);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_without_gas_pricing_uses_zero_base_fee()
+    {
+        OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
+
+        Assert.That(ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { data = "0x4860005260206000f3" });
+        string overriddenResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { data = "0x4860005260206000f3" }, null, new
+            {
+                blockOverrides = new { baseFeePerGas = "0x100" }
+            });
+
+        JToken result = JToken.Parse(response)["result"]!;
+        JToken overriddenResult = JToken.Parse(overriddenResponse)["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.False);
+            Assert.That(result["returnValue"]?.Value<string>(), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
+            Assert.That(overriddenResult["failed"]?.Value<bool>(), Is.False);
+            Assert.That(overriddenResult["returnValue"]?.Value<string>(), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
+        }
     }
 
     [TestCase(

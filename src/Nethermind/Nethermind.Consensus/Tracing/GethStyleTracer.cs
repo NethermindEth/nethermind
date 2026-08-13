@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -64,7 +65,8 @@ public class GethStyleTracer(
 
         try
         {
-            return TraceImpl(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions, writer, pipeWriter);
+            return TraceImpl(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions, writer, pipeWriter,
+                zeroBaseFeeForUnpricedCall: tx.MaxFeePerGas.IsZero);
         }
         finally
         {
@@ -176,7 +178,8 @@ public class GethStyleTracer(
     }
 
     private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
-        ProcessingOptions processingOptions = ProcessingOptions.Trace, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
+        ProcessingOptions processingOptions = ProcessingOptions.Trace, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null,
+        bool zeroBaseFeeForUnpricedCall = false)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -189,6 +192,11 @@ public class GethStyleTracer(
             : block.Header;
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
+        if (zeroBaseFeeForUnpricedCall)
+        {
+            // EIP-1559 requires the base fee to be below the fee cap; match geth for unpriced calls.
+            block.Header.BaseFeePerGas = UInt256.Zero;
+        }
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
 
         GethTraceOptions filtered = options with { TxHash = txHash };
