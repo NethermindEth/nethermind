@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         }
 
         [Test]
-        public void Roundtrip_Empty()
+        public void Roundtrip_Empty_With_Null_LimitHash()
         {
             GetStorageRangeMessage msg = new()
             {
@@ -50,7 +50,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                     RootHash = Keccak.OfAnEmptyString,
                     Accounts = ArrayPoolList<PathWithAccount>.Empty(),
                     StartingHash = SnapSerializerGoldens.RangeStart,
-                    LimitHash = SnapSerializerGoldens.RangeLimit
+                    LimitHash = null
                 },
                 ResponseBytes = 1000
             };
@@ -58,11 +58,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             // The message encodes as [requestId, rootHash, accountPaths, startingHash, limitHash, responseBytes].
             SerializerTester.TestZero(serializer, msg,
-                "f86a" + SnapSerializerGoldens.RequestId1111Rlp +
+                "f84a" + SnapSerializerGoldens.RequestId1111Rlp +
                 SnapSerializerGoldens.EmptyStringKeccakRlp +
                 "c0" +
                 SnapSerializerGoldens.RangeStartRlp +
-                SnapSerializerGoldens.RangeLimitRlp +
+                "80" +
                 "8203e8");
         }
 
