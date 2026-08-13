@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -20,6 +21,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     internal readonly ColumnFamilyHandle _columnFamily;
 
     private readonly DbOnTheRocks.IteratorManager _iteratorManager;
+    private readonly Lazy<DbOnTheRocks.IteratorManager> _seekIteratorManager;
     private readonly RocksDbReader _reader;
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
@@ -31,10 +33,15 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         Name = name;
 
         _iteratorManager = new DbOnTheRocks.IteratorManager(_rocksDb, _columnFamily, _mainDb._readAheadReadOptions);
+        _seekIteratorManager = _mainDb.CreateLazySeekIteratorManager(_columnFamily);
         _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, _iteratorManager, _columnFamily);
     }
 
-    public void Dispose() => _iteratorManager.Dispose();
+    public void Dispose()
+    {
+        _iteratorManager.Dispose();
+        if (_seekIteratorManager.IsValueCreated) _seekIteratorManager.Value.Dispose();
+    }
     public string Name { get; }
 
     byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags) => _reader.Get(key, flags);
@@ -165,6 +172,14 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) =>
         _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
+
+    public bool TryGetCeiling(
+        scoped ReadOnlySpan<byte> seekKey, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
+    ) => DbOnTheRocks.TryGetCeilingWithIterator(
+        seekKey, upperBoundExclusive, _seekIteratorManager.Value,
+        keyBuffer, out keyLength, valueBuffer, out valueLength
+    );
 
     public IKeyValueStoreSnapshot CreateSnapshot()
     {

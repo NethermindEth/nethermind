@@ -69,28 +69,28 @@ internal sealed class HistoryStore
         foundAtBlock = 0;
 
         // With the descending suffix, the newest version at/below block is the first entry at/after [key | ~block].
-        Span<byte> seekKey = stackalloc byte[flatKey.Length + BlockBytes];
+        int historyKeyLength = flatKey.Length + BlockBytes;
+        Span<byte> seekKey = stackalloc byte[historyKeyLength];
         WriteHistoryKey(seekKey, flatKey, block);
 
         // One byte past [key | 0xFF..FF] so the exclusive upper bound cannot cut off the block-0 version.
-        Span<byte> upperBound = stackalloc byte[flatKey.Length + BlockBytes + 1];
+        Span<byte> upperBound = stackalloc byte[historyKeyLength + 1];
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);
         upperBound[^1] = 0x00;
 
-        using ISortedView view = _history.GetViewBetween(seekKey, upperBound);
-        if (!view.MoveNext()) return -1; // first call positions at the first entry of the bounded view
+        Span<byte> foundKey = stackalloc byte[historyKeyLength];
+        if (!_history.TryGetCeiling(seekKey, upperBound, foundKey, out int foundKeyLength, outBuffer, out int valueLength))
+            return -1;
 
-        ReadOnlySpan<byte> foundKey = view.CurrentKey;
-        if (foundKey.Length != flatKey.Length + BlockBytes || !foundKey[..flatKey.Length].SequenceEqual(flatKey))
+        if (foundKeyLength != historyKeyLength || !foundKey[..flatKey.Length].SequenceEqual(flatKey))
             return -1;
 
         foundAtBlock = ~BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
-        ReadOnlySpan<byte> value = view.CurrentValue;
         // Buffers are sized to the encoders' maxima: oversized can only be corruption.
-        if (value.Length > outBuffer.Length)
+        if (valueLength > outBuffer.Length)
         {
-            string message = $"History value of {value.Length} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.";
+            string message = $"History value of {valueLength} bytes at block {foundAtBlock} exceeds the {outBuffer.Length}-byte encoder maximum - the row is corrupt; resync the flatHistory database.";
             // Once per height: the RPC layer reports a generic error, so the operator only learns extent from here.
             if (_logger.IsError && _corruptHeightsLogged.Count < MaxCorruptHeightsLogged && _corruptHeightsLogged.TryAdd(foundAtBlock, true))
             {
@@ -98,8 +98,7 @@ internal sealed class HistoryStore
             }
             throw new StateUnavailableException(message);
         }
-        value.CopyTo(outBuffer);
-        return value.Length;
+        return valueLength;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

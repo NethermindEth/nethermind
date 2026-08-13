@@ -97,6 +97,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private CacheLinePaddedLong _totalWrites;
 
     private readonly IteratorManager _iteratorManager;
+    private readonly Lazy<IteratorManager> _seekIteratorManager;
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
@@ -123,6 +124,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
+        _seekIteratorManager = CreateLazySeekIteratorManager(null);
 
         _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
 
@@ -767,6 +769,41 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         success = false;
         return null;
+    }
+
+    internal Lazy<IteratorManager> CreateLazySeekIteratorManager(ColumnFamilyHandle? cf) =>
+        new(() => new IteratorManager(_db, cf, _defaultReadOptions), LazyThreadSafetyMode.ExecutionAndPublication);
+
+    /// <summary>
+    /// The <see cref="GetWithIterator"/> path, but positioned at the first key at/after <paramref name="seekKey"/>
+    /// instead of an exact match. A pooled iterator's read options are fixed at creation, so the upper bound is a
+    /// span compare here rather than a native iterate bound.
+    /// </summary>
+    internal static bool TryGetCeilingWithIterator(
+        scoped ReadOnlySpan<byte> seekKey,
+        scoped ReadOnlySpan<byte> upperBoundExclusive,
+        IteratorManager iteratorManager,
+        Span<byte> keyBuffer, out int keyLength,
+        Span<byte> valueBuffer, out int valueLength)
+    {
+        keyLength = 0;
+        valueLength = 0;
+
+        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(ReadFlags.None);
+        Iterator iterator = wrapper.Iterator;
+
+        iterator.Seek(seekKey);
+        if (!iterator.Valid()) return false;
+
+        ReadOnlySpan<byte> key = iterator.GetKeySpan();
+        if (key.SequenceCompareTo(upperBoundExclusive) >= 0) return false;
+
+        ReadOnlySpan<byte> value = iterator.GetValueSpan();
+        keyLength = key.Length;
+        valueLength = value.Length;
+        if (keyLength <= keyBuffer.Length) key.CopyTo(keyBuffer);
+        if (valueLength <= valueBuffer.Length) value.CopyTo(valueBuffer);
+        return true;
     }
 
     internal unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
@@ -1582,6 +1619,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
 
         _iteratorManager.Dispose();
+        if (_seekIteratorManager.IsValueCreated) _seekIteratorManager.Value.Dispose();
         _db.Dispose();
 
         if (_rowCache.HasValue)
@@ -2017,6 +2055,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         Iterator iterator = CreateIterator(readOptions, cf);
         return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
     }
+
+    public bool TryGetCeiling(
+        scoped ReadOnlySpan<byte> seekKey, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
+    ) => TryGetCeilingWithIterator(
+        seekKey, upperBoundExclusive, _seekIteratorManager.Value,
+        keyBuffer, out keyLength, valueBuffer, out valueLength
+    );
 
     public IKeyValueStoreSnapshot CreateSnapshot()
     {

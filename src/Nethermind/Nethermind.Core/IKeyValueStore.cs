@@ -123,6 +123,38 @@ namespace Nethermind.Core
         byte[]? LastKey { get; }
 
         ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+
+        /// <summary>
+        /// Finds the first <c>key</c> with <c>seekKey &lt;= key &lt; upperBoundExclusive</c>,
+        /// or returns <c>false</c> when there is none.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="keyLength"/> and <paramref name="valueLength"/> always report the stored lengths.
+        /// A buffer too short for its part is left untouched instead of throwing.
+        /// </remarks>
+        bool TryGetCeiling(
+            scoped ReadOnlySpan<byte> seekKey, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
+        )
+        {
+            using ISortedView view = GetViewBetween(seekKey, upperBoundExclusive);
+            if (!view.MoveNext())
+            {
+                keyLength = 0;
+                valueLength = 0;
+                return false;
+            }
+
+            keyLength = CopyIfFits(view.CurrentKey, keyBuffer);
+            valueLength = CopyIfFits(view.CurrentValue, valueBuffer);
+            return true;
+
+            static int CopyIfFits(ReadOnlySpan<byte> source, Span<byte> destination)
+            {
+                if (source.Length <= destination.Length) source.CopyTo(destination);
+                return source.Length;
+            }
+        }
     }
 
     /// <summary>
