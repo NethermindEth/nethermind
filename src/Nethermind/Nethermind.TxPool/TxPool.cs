@@ -128,7 +128,6 @@ namespace Nethermind.TxPool
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
-            _lastRevalidatedSpec = _specProvider.GetCurrentHeadSpec();
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
             _retryCache = new RetryCache<PooledTransactionRequestMessage, ValueHash256>(
@@ -158,6 +157,7 @@ namespace Nethermind.TxPool
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             if (_blobTransactions.Count > 0)
             {
+                _lastRevalidatedSpec = _specProvider.GetCurrentHeadSpec();
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
             }
 
@@ -633,7 +633,9 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
-            bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
+            IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+            Interlocked.CompareExchange(ref _lastRevalidatedSpec, headSpec, null);
+            bool eip1559Enabled = headSpec.IsEip1559Enabled;
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
             TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
 
@@ -833,7 +835,6 @@ namespace Nethermind.TxPool
         {
             if (_transactions.Count == 0 && _blobTransactions.Count == 0)
             {
-                _lastRevalidatedSpec = _specProvider.GetCurrentHeadSpec();
                 return;
             }
 
