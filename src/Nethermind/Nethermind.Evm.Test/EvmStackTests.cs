@@ -3,7 +3,9 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -199,6 +201,23 @@ public class EvmStackTests
 
         Assert.That(popped, Is.EqualTo(value));
         Assert.That(stack.Head, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ByteSwap_reverses_all_32_bytes()
+    {
+        EvmWord word = Vector256.Create(
+            0x0706050403020100ul,
+            0x0f0e0d0c0b0a0908ul,
+            0x1716151413121110ul,
+            0x1f1e1d1c1b1a1918ul).AsByte();
+        EvmWord expected = Vector256.Create(
+            0x18191a1b1c1d1e1ful,
+            0x1011121314151617ul,
+            0x08090a0b0c0d0e0ful,
+            0x0001020304050607ul).AsByte();
+
+        Assert.That(word.ByteSwap(), Is.EqualTo(expected));
     }
 
     [Test]
