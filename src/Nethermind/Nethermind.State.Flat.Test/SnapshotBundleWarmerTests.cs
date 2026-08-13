@@ -131,6 +131,49 @@ public class SnapshotBundleWarmerTests
         }
     }
 
+    [Test]
+    public void Warmer_miss_is_not_cached_so_a_later_normal_read_still_sees_the_committed_node()
+    {
+        TreePath committedPath = TreePath.FromHexString("12");
+        TrieNode committedNode = Leaf(0x82);
+        Hash256 warmHash = TestItem.KeccakA;
+
+        using SnapshotBundle bundle = NewBundle();
+        bundle.SetStateNode(committedPath, committedNode);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+
+        TrieNode warmed = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, warmHash);
+        TrieNode normalRead = bundle.FindStateNodeOrUnknown(committedPath, warmHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmed.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(normalRead, Is.SameAs(committedNode));
+        }
+    }
+
+    [Test]
+    public void Warmer_storage_miss_is_not_cached_so_a_later_normal_read_still_sees_the_committed_node()
+    {
+        Hash256 storageAddress = TestItem.KeccakC;
+        TreePath committedStoragePath = TreePath.FromHexString("34");
+        TrieNode committedStorageNode = Leaf(0x83);
+        Hash256 warmHash = TestItem.KeccakA;
+
+        using SnapshotBundle bundle = NewBundle();
+        bundle.SetStorageNode(storageAddress, committedStoragePath, committedStorageNode);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+
+        TrieNode warmed = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, committedStoragePath, warmHash);
+        TrieNode normalRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, warmHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmed.NodeType, Is.EqualTo(NodeType.Unknown));
+            Assert.That(normalRead, Is.SameAs(committedStorageNode));
+        }
+    }
+
     private sealed record ChurnEpoch(SnapshotBundle Bundle, TrieNode Node);
 
     // Regression for the warmer recycle-under-reader race. Warmer-shaped readers hold only a
