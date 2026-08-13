@@ -84,18 +84,15 @@ public sealed class TxValidator : ITxValidator
             GasLimitCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance
         ]));
-        // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
-        // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
-        // signature validation happen during processing.
-        // EIP-8141: no type-6 network wrapper is decoded yet, so no sidecar/proof validator is registered.
-        // Add a blob-sidecar and proof-version validator here once the sidecar wire format lands.
+        // A frame tx has no envelope ECDSA signature, so the signature and intrinsic-gas validators do not
+        // apply; per-frame gas and signatures are validated during processing. No sidecar validator yet.
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
-            // The frame-tx decoder always populates both blob fields, so the presence-based
-            // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
+            // Checks the blob fields by value: the decoder always populates them, so the presence-based
+            // NonBlobFieldsTxValidator would reject every frame tx.
             FrameTxFieldsTxValidator.Instance
         ]));
     }
@@ -185,10 +182,7 @@ public sealed class GasFieldsTxValidator : ITxValidator
         transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
 }
 
-/// <summary>
-/// EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes) plus the
-/// EIP-7594 blob constraints for a blob-carrying frame transaction.
-/// </summary>
+/// <summary>EIP-8141 static frame constraints, plus the EIP-7594 blob constraints when the frame tx carries blobs.</summary>
 public sealed class FrameTxFieldsTxValidator : ITxValidator
 {
     public static readonly FrameTxFieldsTxValidator Instance = new();
@@ -201,8 +195,7 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
-        // EIP-7594: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
-        // versioned-hash version byte as a type-3 blob tx.
+        // EIP-7594: same per-tx blob-count limit and versioned-hash version byte as a type-3 blob tx.
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
         if (blobVersionedHashes is { Length: > 0 })
         {

@@ -85,9 +85,8 @@ namespace Nethermind.TxPool
         private bool _isDisposed;
         private long _pendingTransactionsAdded = 0;
 
-        // Count of pending frame txs carrying an EIP-8141 expiry deadline; lets the per-head expiry
-        // pass skip the pool walk entirely when there is nothing to expire (the case on every network
-        // where the fork is inactive). Maintained under the pool lock via the Inserted/Removed events.
+        // Lets the per-head expiry pass skip the pool walk when nothing can expire; maintained under the
+        // pool lock via the Inserted/Removed events.
         private int _expiringFrameTxCount;
 
         /// <summary>
@@ -152,10 +151,8 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            // EIP-8141: blob-carrying frame txs live in the blob pool, so it wires the same insert/removal
-            // bookkeeping (delegations, frame expiry) as the normal pool. Frame expiry only takes effect
-            // under BlobsSupportMode.InMemory: persistent storage keeps a LightTransaction whose Type is
-            // hard-coded TxType.Blob, so SupportsFrames is false until the light record carries the tx type.
+            // Blob-carrying frame txs need the same bookkeeping as the normal pool. Frame expiry applies
+            // only under BlobsSupportMode.InMemory: a persisted LightTransaction hard-codes TxType.Blob.
             _blobTransactions.Inserted += OnInsertedTx;
             _blobTransactions.Removed += OnRemovedTx;
             if (_blobTransactions.Count > 0)
@@ -200,12 +197,9 @@ namespace Nethermind.TxPool
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
-            // EIP-8141: resolve and record the frame-tx payer, rejecting provably-payerless prefixes.
-            // Runs last so only otherwise-admissible frame txs are resolved.
+            // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved, and gate on the
+            // payer straight after, since the gate reads what the resolver recorded.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
-
-            // EIP-8141: bound each resolved payer's summed pending exposure to its balance; runs
-            // after FrameTxPayerFilter, which records the payer this gate reads.
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
@@ -494,19 +488,8 @@ namespace Nethermind.TxPool
             return removed;
         }
 
-        /// <summary>
-        /// Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.
-        /// </summary>
-        /// <remarks>
-        /// An expired frame tx can never be included (the expiry-verifier predeploy reverts once
-        /// <c>block.timestamp &gt; deadline</c>), so it is evicted rather than re-propagated
-        /// (ethereum/EIPs#12007, "Revalidation"). The predicate matches that revert condition exactly (not
-        /// <c>&gt;=</c>) so the pool never drops a tx the predeploy would accept.
-        /// The count guard skips the pool walk when no expiring frame tx is present.
-        /// EIP8141: a deadline-ordered index (evict without scanning) is deferred to the scalable eviction layer;
-        /// so is sweeping expired frame txs held only in the broadcaster's persistent-broadcast pool (locally
-        /// submitted, then cheap-evicted from <see cref="_transactions"/>), which this pass does not yet reach.
-        /// </remarks>
+        /// <summary>Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
+        /// <remarks>Matches the expiry predeploy's revert condition exactly (&gt;, not &gt;=), so the pool never drops a tx it would accept.</remarks>
         private void RemoveExpiredFrameTransactions(Block block)
         {
             if (Volatile.Read(ref _expiringFrameTxCount) == 0
@@ -730,11 +713,8 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
-            // The exposure filter reserved this frame tx's max cost. Ownership of the reservation
-            // passes to the pool on a successful insert (released later via the Removed event) or is
-            // released explicitly on the non-insert paths below. Should anything throw before the tx
-            // is inserted, it never enters the pool and no Removed fires, so the finally releases the
-            // reservation to avoid a permanent per-payer leak (EIP-8141).
+            // EIP-8141: a successful insert hands the payer reservation to the pool, released on Removed.
+            // Every other exit, a throw included, must release it here or it leaks for good.
             bool reservationSettled = false;
             try
             {
@@ -748,8 +728,7 @@ namespace Nethermind.TxPool
                     : worstTx.GasBottleneck;
 
                 bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
-                // Past this point the reservation is owned by the pool, or was already released
-                // synchronously by a Removed event on self-eviction, so the finally must not touch it.
+                // The reservation is now the pool's, or was already released by a self-eviction Removed.
                 reservationSettled = true;
 
                 if (!inserted)
@@ -764,11 +743,9 @@ namespace Nethermind.TxPool
 
                 if (tx.Hash == removed?.Hash)
                 {
-                    // it means it was added and immediately evicted - pool was full of better txs. The
-                    // self-eviction already raised Removed and released the reservation; a frame tx
-                    // retained only by the persistent broadcaster below therefore contributes nothing
-                    // to its payer's exposure. That local-only under-count is accepted deliberately:
-                    // the broadcaster has no Removed hook, so a reservation held for it would leak.
+                    // it means it was added and immediately evicted - pool was full of better txs
+                    // Its Removed already released the reservation, so a tx kept only by the broadcaster
+                    // under-counts its payer — accepted, since the broadcaster has no hook to release on.
                     if (!isPersistentBroadcast || tx.CarriesBlobs || !_broadcaster.Broadcast(tx, true))
                     {
                         // we are adding only to persistent broadcast - not good enough for standard pool,
@@ -839,13 +816,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        /// <summary>
-        /// Releases the pending exposure a resolved frame-tx payer reserved at admission
-        /// (<see cref="FrameTxPayerExposureFilter"/>) once the transaction leaves the pool — covering
-        /// eviction, replacement, inclusion, and reorg removal, which all funnel through the pool
-        /// <c>Removed</c> event, plus the replacement-rejected path that never inserts. A no-op for
-        /// non-frame txs and unresolved payers. EIP-8141 (ethereum/EIPs#12007).
-        /// </summary>
+        /// <summary>Releases the exposure a frame-tx payer reserved at admission, once the transaction leaves the pool.</summary>
         private void ReleasePayerExposure(Transaction tx)
         {
             if (tx.SupportsFrames && tx.PayerAddress is not null && !tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
