@@ -439,6 +439,13 @@ namespace Nethermind.Network
             {
                 if (HasOpenSession(peer.OutSession) || HasOpenSession(peer.InSession))
                 {
+                    ISession openSession = HasOpenSession(peer.OutSession) ? peer.OutSession! : peer.InSession!;
+                    DateTime lastSignOfLife = openSession.LastPongUtc == default ? openSession.LastPingUtc : openSession.LastPongUtc;
+                    if (lastSignOfLife != default && nowUTC - lastSignOfLife > StalePongThreshold)
+                    {
+                        LogStaticPeerSkip(peer, $"session {openSession} counts as open but last answered a ping at {lastSignOfLife:HH:mm:ss} UTC");
+                    }
+
                     continue;
                 }
 
@@ -483,6 +490,7 @@ namespace Nethermind.Network
 
         private const long StaticDialDebounceMs = 5_000;
         private const long StaticSkipLogIntervalMs = 60_000;
+        private static readonly TimeSpan StalePongThreshold = TimeSpan.FromSeconds(35);
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticSkipLog = new();
 

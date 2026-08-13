@@ -108,7 +108,7 @@ namespace Nethermind.Network.Test.P2P
             using HelloMessage message = new()
             {
                 Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 63) },
-                NodeId = TestItem.PublicKeyA,
+                NodeId = TestItem.PublicKeyB,
             };
 
             using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
@@ -218,7 +218,7 @@ namespace Nethermind.Network.Test.P2P
             using HelloMessage message = new()
             {
                 Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
-                NodeId = TestItem.PublicKeyA,
+                NodeId = TestItem.PublicKeyB,
                 ClientId = "Nethermind/v1.0",
                 ListenPort = 30303,
                 P2PVersion = 5,
@@ -236,6 +236,36 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(packet);
 
             _session.DidNotReceive().InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+        }
+
+        [Test]
+        public void On_hello_carrying_this_nodes_own_identity_disconnects()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                NodeId = TestItem.PublicKeyA,
+                ClientId = "Nethermind/v1.0",
+                ListenPort = 30303,
+                P2PVersion = 5,
+            };
+
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
+            data.ReadByte();
+
+            Packet packet = new(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            };
+
+            p2PProtocolHandler.HandleMessage(packet);
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, Arg.Any<string>());
+            _session.DidNotReceive().InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
         }
 
         [Test]
@@ -277,7 +307,7 @@ namespace Nethermind.Network.Test.P2P
                     new(Protocol.Eth, 70),
                     new(Protocol.Eth, 71),
                 },
-                NodeId = TestItem.PublicKeyA,
+                NodeId = TestItem.PublicKeyB,
             };
 
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));

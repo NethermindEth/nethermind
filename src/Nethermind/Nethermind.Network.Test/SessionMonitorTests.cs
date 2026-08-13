@@ -67,6 +67,29 @@ namespace Nethermind.Network.Test
             Assert.That(session2.State, Is.EqualTo(SessionState.Disconnected));
         }
 
+        [Test]
+        public void Disconnects_a_session_after_consecutive_missed_pongs()
+        {
+            ISession responsive = CreateSession();
+            ISession unresponsive = CreateUnresponsiveSession();
+
+            NetworkConfig networkConfig = new();
+            networkConfig.P2PPingInterval = 20;
+            SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
+            sessionMonitor.AddSession(responsive);
+            sessionMonitor.AddSession(unresponsive);
+            sessionMonitor.Start();
+            try
+            {
+                Assert.That(() => unresponsive.IsClosing, Is.True.After(10_000, 20));
+                Assert.That(responsive.IsClosing, Is.False);
+            }
+            finally
+            {
+                sessionMonitor.Stop();
+            }
+        }
+
         private ISession CreateSession()
         {
             ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
