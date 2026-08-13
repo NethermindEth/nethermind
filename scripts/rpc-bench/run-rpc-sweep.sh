@@ -95,7 +95,17 @@ snap_path() {
   else echo "/mnt/sda/$1-${SNAPSHOT_BLOCK}"; fi
 }
 layout_flags() { [[ "$1" == "nethermind" && "$STATE_LAYOUT" == "flat" ]] && echo "--FlatDb.Enabled=true" || true; }
-isolation()    { [[ "$1" == "reth" ]] && echo "direct" || echo "overlay"; }
+# Per-client isolation used to differ (reth direct, others overlay), which made cross-client
+# storage numbers incomparable: overlayfs adds a layer and changes readahead and page-cache
+# behaviour, so disk-read-per-request measured a harness difference as much as a client one.
+# DB_ISOLATION_ALL forces one mode for every client. `direct` mounts the pristine snapshot
+# READ-WRITE and the node's startup writes mutate it — only use it on snapshots no other
+# consumer shares; `copy` gives the same overlay-free path while leaving the snapshot intact.
+DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
+isolation() {
+  if [[ -n "$DB_ISOLATION_ALL" ]]; then echo "$DB_ISOLATION_ALL"; return; fi
+  [[ "$1" == "reth" ]] && echo "direct" || echo "overlay"
+}
 
 # One json-bench cell: $1=config (repo-relative) $2=rps $3=duration $4=out dir $5=client
 # $6=label $7=corpus file (empty = normal cell; set = private corpus cell, aggregate-only output)
