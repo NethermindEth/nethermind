@@ -63,7 +63,7 @@ public class ArenaMetricsTests
     public void ArenaWriter_Complete_AdvancesAllocatedBytes_ByFrontierDelta_NotMappedSize()
     {
         // Use a delta from the baseline so parallel-running tests don't interfere.
-        const long maxArenaSize = 64 * 1024;  // 64 KiB sparse arena file
+        long maxArenaSize = Math.Max(64 * 1024, 4L * Environment.SystemPageSize);
         int payloadBytes = Environment.SystemPageSize;
 
         long arenaBytesBefore = Metrics.ArenaAllocatedBytes;
