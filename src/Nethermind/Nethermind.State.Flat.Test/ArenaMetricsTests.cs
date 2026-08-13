@@ -64,7 +64,7 @@ public class ArenaMetricsTests
     {
         // Use a delta from the baseline so parallel-running tests don't interfere.
         const long maxArenaSize = 64 * 1024;  // 64 KiB sparse arena file
-        const int payloadBytes = 4096;
+        int payloadBytes = Environment.SystemPageSize;
 
         long arenaBytesBefore = Metrics.ArenaAllocatedBytes;
         long arenaCountBefore = Metrics.ArenaFileCount;
