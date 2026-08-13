@@ -249,6 +249,19 @@ public class ArchiveCloneImporterTests
     }
 
     [Test]
+    public async Task CloneAsync_RefusalStreakLongerThanTheTimeoutBudget_IsWaitedOut()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 6 };
+        source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+
+        await CreateImporter(source).CloneAsync(CancellationToken.None);
+
+        Assert.That(_codeDb.Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+            "refusal is explicit backpressure from a live source; a persist window longer than the timeout budget must be waited out, not treated as fatal");
+    }
+
+    [Test]
     public async Task VerifyAndBan_HealthyClone_BansNobody()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 20 };

@@ -17,7 +17,8 @@ public sealed class ArchiveCloneImporter
 {
     private const int BlockBytes = sizeof(ulong);
     private const int MaxConcurrentStreams = IHistoryServer.MaxInFlightRequestsPerPeer - 1;
-    private const int RefusedRetryLimit = 5;
+    private const int TimeoutRetryLimit = 5;
+    private const int RefusedRetryLimit = 90;
     private static readonly TimeSpan RefusedRetryDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressLogInterval = TimeSpan.FromSeconds(30);
 
@@ -54,6 +55,8 @@ public sealed class ArchiveCloneImporter
     private int _columnShardsDone;
     private long _columnStartTimestamp;
     private long _lastProgressLogTimestamp;
+    private double[] _shardProgress = [];
+    private ulong _progressTargetWatermark;
 
     public ArchiveCloneImporter(
         IArchiveCloneSource source,
@@ -102,6 +105,7 @@ public sealed class ArchiveCloneImporter
         }
 
         ulong targetWatermark = ReadOrStoreTargetWatermark();
+        Volatile.Write(ref _progressTargetWatermark, targetWatermark);
 
         foreach (HistoryRowColumn column in ColumnsInCloneOrder)
         {
@@ -194,6 +198,7 @@ public sealed class ArchiveCloneImporter
         Volatile.Write(ref _columnBytes, 0);
         Volatile.Write(ref _columnRows, 0);
         Volatile.Write(ref _columnShardsDone, 0);
+        Volatile.Write(ref _shardProgress, new double[_shardCount]);
         long now = Stopwatch.GetTimestamp();
         Volatile.Write(ref _columnStartTimestamp, now);
         Volatile.Write(ref _lastProgressLogTimestamp, now);
@@ -225,6 +230,7 @@ public sealed class ArchiveCloneImporter
                                 await CloneShardAsync(column, destination, shard, shardStart, shardEnd, token);
                             }
 
+                            SetShardProgress(shard, 1.0);
                             Interlocked.Increment(ref _columnShardsDone);
                         }
                     }
@@ -298,7 +304,51 @@ public sealed class ArchiveCloneImporter
 
         double seconds = Stopwatch.GetElapsedTime(Volatile.Read(ref _columnStartTimestamp), now).TotalSeconds;
         long bytes = Volatile.Read(ref _columnBytes);
-        _logger.Info($"Archive clone: {column} {FormatMB(bytes)}, {Volatile.Read(ref _columnRows):N0} rows, {FormatRate(bytes, seconds)}, shards {Volatile.Read(ref _columnShardsDone)}/{_shardCount}.");
+        double fraction = ColumnProgressFraction();
+        _logger.Info($"Archive clone {column,-15} ({fraction * 100,6:F2} %) {Progress.GetMeter((float)fraction, 1)} {FormatMB(bytes)} | {Volatile.Read(ref _columnRows):N0} rows | {FormatRate(bytes, seconds)} | shards {Volatile.Read(ref _columnShardsDone)}/{_shardCount}");
+    }
+
+    private double ColumnProgressFraction()
+    {
+        double[] progress = Volatile.Read(ref _shardProgress);
+        if (progress.Length == 0) return 0;
+
+        double sum = 0;
+        for (int i = 0; i < progress.Length; i++) sum += progress[i];
+        return sum / progress.Length;
+    }
+
+    private void SetShardProgress(int shard, double fraction)
+    {
+        double[] progress = Volatile.Read(ref _shardProgress);
+        if (shard < progress.Length) progress[shard] = fraction;
+    }
+
+    private double ShardFraction(HistoryRowColumn column, byte[] key, byte[] shardStart, byte[] shardEnd)
+    {
+        if (column == HistoryRowColumn.AvailableBlocks)
+        {
+            ulong target = Volatile.Read(ref _progressTargetWatermark);
+            if (target == 0 || key.Length != BlockBytes) return 0;
+            return Math.Clamp(BinaryPrimitives.ReadUInt64BigEndian(key) / (double)target, 0, 1);
+        }
+
+        uint position = ReadKeyPrefix(key);
+        uint rangeStart = (uint)shardStart[0] << 24;
+        uint rangeEndInclusive = ((uint)shardEnd[0] << 24) | 0x00FFFFFF;
+        double span = (double)rangeEndInclusive - rangeStart + 1;
+        return Math.Clamp((position - (double)rangeStart) / span, 0, 1);
+    }
+
+    private static uint ReadKeyPrefix(byte[] key)
+    {
+        uint value = 0;
+        for (int i = 0; i < sizeof(uint); i++)
+        {
+            value = (value << 8) | (i < key.Length ? key[i] : (byte)0);
+        }
+
+        return value;
     }
 
     private static string FormatMB(long bytes) => $"{bytes / (1024.0 * 1024.0):N0} MB";
@@ -310,6 +360,7 @@ public sealed class ArchiveCloneImporter
     {
         byte[]? resumeCursor = ReadShardCursor(column, shard);
         byte[] from = resumeCursor is null ? shardStart : RawRowKeys.NextKeyAfter(resumeCursor);
+        if (resumeCursor is not null) SetShardProgress(shard, ShardFraction(column, resumeCursor, shardStart, shardEnd));
 
         while (true)
         {
@@ -356,6 +407,7 @@ public sealed class ArchiveCloneImporter
             {
                 SyncDestination(column, destination);
                 WriteShardCursor(column, shard, lastWritten);
+                SetShardProgress(shard, ShardFraction(column, lastWritten, shardStart, shardEnd));
                 from = RawRowKeys.NextKeyAfter(lastWritten);
             }
 
@@ -365,28 +417,31 @@ public sealed class ArchiveCloneImporter
 
     private async Task<ArchiveCloneRowPage> FetchPageAsync(HistoryRowColumn column, int shard, byte[] from, byte[] shardEnd, byte[]? sourceCursor, CancellationToken cancellationToken)
     {
-        for (int attempt = 1; ; attempt++)
+        int timeouts = 0;
+        int refusals = 0;
+        while (true)
         {
             ArchiveCloneRowPage page;
             try
             {
                 page = await _source.GetHistoryRowsAsync(column, from, shardEnd, sourceCursor, cancellationToken);
             }
-            catch (TimeoutException) when (attempt < RefusedRetryLimit)
+            catch (TimeoutException) when (++timeouts < TimeoutRetryLimit)
             {
-                if (_logger.IsInfo) _logger.Info($"Archive clone: {column} shard {shard} page timed out (attempt {attempt}/{RefusedRetryLimit}); the source may be paused, retrying in {RefusedRetryDelay.TotalSeconds:F0}s.");
+                if (_logger.IsInfo) _logger.Info($"Archive clone: {column} shard {shard} page timed out (attempt {timeouts}/{TimeoutRetryLimit}); the source may be unreachable, retrying in {RefusedRetryDelay.TotalSeconds:F0}s.");
                 await Task.Delay(RefusedRetryDelay, cancellationToken);
                 continue;
             }
 
             if (!page.Refused) return page;
 
-            if (attempt >= RefusedRetryLimit)
+            if (++refusals >= RefusedRetryLimit)
             {
                 throw new InvalidOperationException($"The clone source kept refusing {column} rows for shard {shard} after {RefusedRetryLimit} attempts.");
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Archive clone: {column} shard {shard} page refused by the source (attempt {attempt}/{RefusedRetryLimit}); retrying in {RefusedRetryDelay.TotalSeconds:F0}s.");
+            if (refusals == 1 && _logger.IsInfo) _logger.Info($"Archive clone: the source is refusing {column} pages (it is likely persisting); waiting for it to resume.");
+            else if (_logger.IsDebug) _logger.Debug($"Archive clone: {column} shard {shard} page refused by the source (attempt {refusals}/{RefusedRetryLimit}); retrying in {RefusedRetryDelay.TotalSeconds:F0}s.");
             await Task.Delay(RefusedRetryDelay, cancellationToken);
         }
     }
