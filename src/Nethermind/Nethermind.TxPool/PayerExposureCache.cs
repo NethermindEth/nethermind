@@ -82,13 +82,18 @@ internal sealed class PayerExposureCache
     /// <remarks>Nothing stops a submission already in flight from reserving after this, so it bounds the leak rather than closing it.</remarks>
     public void Clear()
     {
+        // Unconditional, unlike Subtract: nothing releases these again, and TryAdd is the only increment,
+        // so retiring an entry at whatever value it now holds still retires exactly one increment.
         foreach (KeyValuePair<AddressAsKey, UInt256> entry in _reserved)
         {
-            RemoveTracked(entry.Key, entry.Value);
+            if (_reserved.TryRemove(entry.Key, out _))
+            {
+                Interlocked.Decrement(ref Metrics.FrameTxPayersWithReservedExposure);
+            }
         }
     }
 
-    /// <summary>Removes <paramref name="key"/> only while its reservation is still <paramref name="expected"/>, so the gauge stays paired with the entry count.</summary>
+    /// <summary>Removes <paramref name="key"/> only while its reservation is still <paramref name="expected"/>, so a racing reserve is never dropped.</summary>
     private bool RemoveTracked(AddressAsKey key, in UInt256 expected)
     {
         if (!((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(

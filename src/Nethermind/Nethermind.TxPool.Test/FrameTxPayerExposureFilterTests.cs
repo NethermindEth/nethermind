@@ -144,7 +144,7 @@ public class FrameTxPayerExposureFilterTests
     public void ExposureCache_ClearReleasesEveryReservation()
     {
         // Pins the drain only: its paired gauge decrement is a shared static, so asserting that would race
-        // the parallel fixtures. RemoveTracked keeps the pairing in one place instead.
+        // the parallel fixtures.
         PayerExposureCache cache = new();
         cache.TryReserve(Payer, 1000, balance: 1000, out _);
         cache.TryReserve(TestItem.AddressC, 500, balance: 500, out _);
