@@ -248,8 +248,10 @@ public class PeerPoolTests
         Assert.That(replacedPeer.Node.IsStatic, Is.False);
     }
 
-    [Test]
-    public void GetOrAdd_PromotesTheStaticFlagOntoAnAlreadyPooledPeer()
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(false, false, true)]
+    public void GetOrAdd_PromotesElevatedFlagsOntoAnAlreadyPooledPeer(bool isStatic, bool isTrusted, bool isBootnode)
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         TestNodeSource nodeSource = new();
@@ -259,13 +261,38 @@ public class PeerPoolTests
         Peer pooled = pool.GetOrAdd(persistedNode);
         Assert.That(pool.StaticPeers, Is.Empty);
 
+        Node configuredNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234)
+        {
+            IsStatic = isStatic,
+            IsTrusted = isTrusted,
+            IsBootnode = isBootnode
+        };
+        Peer resolved = pool.GetOrAdd(configuredNode);
+
+        Assert.That(resolved, Is.SameAs(pooled));
+        Assert.That(pooled.Node.IsStatic, Is.EqualTo(isStatic),
+            "a peer that was already pooled from the persisted peers db must gain the elevated status of a later arrival, or it is never treated as such for the whole session");
+        Assert.That(pooled.Node.IsTrusted, Is.EqualTo(isTrusted));
+        Assert.That(pooled.Node.IsBootnode, Is.EqualTo(isBootnode));
+        Assert.That(pool.StaticPeers, isStatic ? Has.Exactly(1).Items : Is.Empty);
+    }
+
+    [Test]
+    public void GetOrAdd_DoesNotClearElevatedFlagsWhenAPlainArrivalFollows()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
         Node staticNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234) { IsStatic = true };
-        Peer resolved = pool.GetOrAdd(staticNode);
+        Peer pooled = pool.GetOrAdd(staticNode);
+
+        Node plainNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
+        Peer resolved = pool.GetOrAdd(plainNode);
 
         Assert.That(resolved, Is.SameAs(pooled));
         Assert.That(pooled.Node.IsStatic, Is.True,
-            "a static peer that was already pooled from the persisted peers db must gain its static status, or it is never treated as static for the whole session");
-        Assert.That(pool.StaticPeers, Has.Exactly(1).Items);
+            "promotion is monotonic: a later plain arrival of the same node id must never demote the pooled peer");
     }
 
     [Test]
