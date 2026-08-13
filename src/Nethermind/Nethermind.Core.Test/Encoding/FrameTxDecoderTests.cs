@@ -68,7 +68,6 @@ public class FrameTxDecoderTests
     {
         Transaction withWrapper = CreateBlobCarryingFrameTx(version, blobCount: 2);
 
-        // Same transaction fields, wrapper stripped — the consensus form must be byte-identical.
         Transaction withoutWrapper = EncodeDecode(withWrapper, RlpBehaviors.None);
         withoutWrapper.NetworkWrapper = null;
 
@@ -96,7 +95,7 @@ public class FrameTxDecoderTests
         Transaction tx = CreateBlobCarryingFrameTx(ProofVersion.V1, blobCount: 1);
         tx.NetworkWrapper = null;
 
-        // The plain form is byte-identical to the consensus form, which the encoder still produces.
+        // The plain form is byte-identical to the consensus form.
         byte[] bytes = new byte[_txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping)];
         RlpWriter writer = new(bytes);
         _txDecoder.Encode(ref writer, tx, RlpBehaviors.SkipTypedWrapping);
@@ -116,8 +115,7 @@ public class FrameTxDecoderTests
     [Test]
     public void Decode_NetworkWrapperWithoutSidecar_ThrowsRlpException()
     {
-        // A wrapper holding only the payload body leaves the reader at the end of the buffer, where the
-        // sidecar peek reads out of bounds; the decoder must surface that as an RlpException, not a crash.
+        // A wrapper holding only the body leaves the reader at the end of the buffer, where the peek reads out of bounds.
         Rlp body = Rlp.Encode(
             Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
             Rlp.Encode(0L),                          // nonce

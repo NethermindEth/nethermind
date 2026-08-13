@@ -960,8 +960,7 @@ public class TxValidatorTests
         Assert.That(result.Error, Is.EqualTo(TxErrorMessages.BlobTxMissingMaxFeePerBlobGas));
     }
 
-    // A blob-schedule fork lowering the per-tx blob limit must evict an over-limit type-6 tx, so head
-    // revalidation covers it exactly like a type-3 blob tx.
+    // A fork lowering the per-tx blob limit must evict an over-limit type-6 at head revalidation.
     private static IEnumerable<TestCaseData> HeadRevalidationBlobCountCases()
     {
         int max = (int)Bogota.Instance.MaxBlobsPerTx;

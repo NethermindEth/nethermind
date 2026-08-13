@@ -30,8 +30,7 @@ public class BlobsBundleV1
 
         foreach (Transaction? tx in block.Transactions)
         {
-            // EIP-8141: match the type-agnostic GetBlobCount sizing above, or a type-6 blob tx would
-            // size in its blobs and then be skipped, leaving null entries in the bundle.
+            // Match the type-agnostic GetBlobCount sizing above, or a type-6 leaves null bundle entries.
             if (!tx.CarriesBlobs)
             {
                 continue;

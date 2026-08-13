@@ -25,8 +25,7 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP-8141: the frame codec now round-trips the sidecar, but the persistent blob pool's type-6 arc
-        // (reload, serve, frame expiry) is still unexercised, so admit these under BlobsSupportMode.InMemory only.
+        // EIP8141-GAP: frame expiry cannot see a persisted blob-carrying frame tx, so admit in memory only.
         if (tx.SupportsFrames && tx.CarriesBlobs && !_txPoolConfig.BlobsSupport.SupportsBlobFrameTxs())
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

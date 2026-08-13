@@ -43,8 +43,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.PoolIndex);
         writer.Encode(tx.GetLength());
         writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
-        // Type is appended last so pre-existing type-3 records (written without it) still decode,
-        // defaulting to TxType.Blob via the trailing read below.
+        // Appended last so records written before it still decode, defaulting to TxType.Blob.
         writer.Encode((byte)tx.Type);
 
         return bytes;
@@ -53,8 +52,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     public static LightTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
-        // Argument evaluation is left-to-right, so the read order below must match Encode's write order;
-        // proofVersion and type are optional trailing fields, absent on older persisted records.
+        // Argument evaluation is left-to-right, so this read order must match Encode's write order.
         return new LightTransaction(
             timestamp: ctx.DecodeUInt256(),
             sender: ctx.DecodeAddress()!,

@@ -19,10 +19,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// Encoding with <c>forSigning</c> produces the <c>compute_sig_hash</c> form: the raw signature
 /// bytes of canonical-hash (empty msg) entries are elided.
 /// </summary>
-/// <remarks>
-/// The wrapper and plain forms are disjoint: a wrapper opens with a list, a plain payload with the
-/// <c>chain_id</c> scalar. The consensus form and signature hash are unaffected.
-/// </remarks>
+/// <remarks>The wrapper and plain forms are disjoint: a wrapper opens with a list, a plain payload
+/// with the <c>chain_id</c> scalar.</remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()
 {
@@ -63,14 +61,11 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     private static void ThrowMissingSidecar() =>
         throw new RlpException($"Blob-carrying {nameof(TxType.FrameTx)} in mempool form must carry a {nameof(ShardBlobNetworkWrapper)}");
 
-    // The wrapper form's first element is the tx_payload_body list; the plain payload's first element
-    // is the chain_id scalar.
     private static bool IsNetworkWrapper(ref RlpReader decoderContext)
     {
         int start = decoderContext.Position;
         int length = decoderContext.ReadSequenceLength();
-        // The reader spans the whole message, so bound the peek by this transaction's own sequence —
-        // an empty payload list would otherwise read the next transaction's first byte.
+        // The reader spans the whole message, so bound the peek by this transaction's own sequence.
         int end = Math.Min(decoderContext.Position + length, decoderContext.Length);
         bool isWrapper = decoderContext.Position < end && decoderContext.IsSequenceNext();
         decoderContext.Position = start;
@@ -170,8 +165,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         {
             writer.StartSequence(wrapperContentLength);
             writer.StartSequence(payloadContentLength);
-            // Keep eliding on forSigning like payloadContentLength above, so the declared length and the
-            // bytes written cannot drift if InMempoolForm and forSigning ever co-occur.
+            // Elide on forSigning like payloadContentLength, or the declared length and the bytes drift.
             EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
             ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper);
         }
@@ -182,8 +176,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     {
         int payloadSequenceLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
 
-        // Deliberately no sidecar requirement here: GetLength is the pool's sizing call (TxBroadcaster
-        // sizes every accepted tx), so it must stay total, and Encode must agree with it.
+        // GetLength is the pool's sizing call, so it must stay total and Encode must agree with it.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
             ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
             : null;

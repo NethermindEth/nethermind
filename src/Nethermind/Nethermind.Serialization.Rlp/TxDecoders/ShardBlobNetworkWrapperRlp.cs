@@ -7,17 +7,12 @@ using Nethermind.Core;
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 /// <summary>
-/// RLP codec for the EIP-4844 / EIP-7594 blob-sidecar network wrapper
-/// <c>[wrapper_version?, blobs, commitments, proofs]</c> shared by every blob-carrying transaction
-/// type (EIP-4844 type-3 and EIP-8141 type-6).
+/// RLP codec for the EIP-7594 blob sidecar <c>[wrapper_version?, blobs, commitments, proofs]</c>, shared
+/// by type-3 and type-6. The version scalar is absent for the legacy <see cref="ProofVersion.V0"/> form.
 /// </summary>
-/// <remarks>
-/// The <c>wrapper_version</c> scalar is present only for <see cref="ProofVersion.V1"/> (EIP-7594 cell
-/// proofs); its absence denotes the legacy <see cref="ProofVersion.V0"/> form.
-/// </remarks>
 internal static class ShardBlobNetworkWrapperRlp
 {
-    /// <summary>Decode-side cap on blobs per transaction, shared with the decoders that carry the sidecar.</summary>
+    /// <summary>Decode-side cap on blobs per transaction.</summary>
     internal const int BlobCountLimit = 128;
     private const int BlobCellProofsCountLimit = BlobCountLimit * Ckzg.CellsPerExtBlob;
 
