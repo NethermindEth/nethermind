@@ -70,6 +70,15 @@ namespace Nethermind.Synchronization.ParallelSync
 
     public static class SyncModeExtensions
     {
+        private static readonly SyncMode[] FlagsDescending = CreateDescendingFlags();
+
+        private static SyncMode[] CreateDescendingFlags()
+        {
+            SyncMode[] flags = Enum.GetValues<SyncMode>();
+            Array.Reverse(flags);
+            return flags;
+        }
+
         public static bool NotSyncing(this SyncMode syncMode) => syncMode is SyncMode.WaitingForBlock or SyncMode.Disconnected;
 
         public static bool HaveNotSyncedBodiesYet(this SyncMode syncMode) =>
@@ -107,16 +116,7 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.StateNodes) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
-        private static readonly SyncMode[] s_flagsDescending = CreateDescendingFlags();
-
-        private static SyncMode[] CreateDescendingFlags()
-        {
-            SyncMode[] flags = Enum.GetValues<SyncMode>();
-            Array.Reverse(flags);
-            return flags;
-        }
-
-        public static string ToFlagsString(this SyncMode syncMode)
+        internal static string ToFlagsString(this SyncMode syncMode)
         {
             if (syncMode == SyncMode.None)
             {
@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             StringBuilder builder = new();
             SyncMode printed = SyncMode.None;
-            foreach (SyncMode flag in s_flagsDescending)
+            foreach (SyncMode flag in FlagsDescending)
             {
                 if ((syncMode & flag) != flag || (printed & flag) == flag)
                 {
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     builder.Append(", ");
                 }
 
-                builder.Append(flag);
+                builder.Append(flag.ToString());
                 printed |= flag;
             }
 
@@ -149,7 +149,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     builder.Append(", ");
                 }
 
-                builder.Append("unknown: ").Append((int)unknown);
+                builder.Append("unknown: 0x").Append(((uint)unknown).ToString("X"));
             }
 
             return builder.ToString();

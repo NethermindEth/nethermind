@@ -189,7 +189,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             {
                                 if (_logger.IsInfo)
                                     _logger.Info($"Changing sync {current.ToFlagsString()} to {newModes.ToFlagsString()} at {BuildStateString(best)}");
-
                             }
                         }
                         catch (InvalidAsynchronousStateException)
