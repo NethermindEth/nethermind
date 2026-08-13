@@ -50,6 +50,10 @@ CORPUS_TIMINGS_RPS="${CORPUS_TIMINGS_RPS:-0}"
 CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
 # Characterise each parity divergence word by word. Derived from response bytes, so opt-in.
 CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
+# Sample the node container's cgroup during each corpus cell. Counters only, and a missing cgroup
+# is a no-op, so this is on by default: without it a cross-client latency gap cannot be attributed
+# to doing more work, waiting on IO, or leaving the machine idle.
+CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 # Free-form knobs reach shell arithmetic, where under `set -uo pipefail` (no -e) a value such as
@@ -131,6 +135,21 @@ corpus_cell_duration() {
   fi
   # Round up so the cell never delivers fewer than the requested count.
   printf '%ss' "$(( (target + rps - 1) / rps ))"
+}
+
+# Resource sampling brackets the measured load window only, so node startup and DB warmup do not
+# dilute the per-request figures.
+SAMPLER_PID=""
+start_sampler() {
+  [[ "$CORPUS_RESOURCE_SAMPLING" == "true" ]] || return 0
+  python3 "$here/sample-resources.py" --container "$1" --out "$2" --requests "$3" &
+  SAMPLER_PID=$!
+}
+stop_sampler() {
+  [[ -n "$SAMPLER_PID" ]] || return 0
+  kill -TERM "$SAMPLER_PID" 2>/dev/null
+  wait "$SAMPLER_PID" 2>/dev/null
+  SAMPLER_PID=""
 }
 
 # Short scenario label from a corpus filename: eth-call-corpus[-<label>].jsonl.gz -> <label> | default
@@ -223,8 +242,10 @@ for entry in $CLIENTS; do
         cell="$OUT_DIR/corpus/${clabel}/${label}/${rps}"
         cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
         echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
+        start_sampler "$cname" "$cell/resources.json" "$(( rps * ${cell_duration%s} ))"
         run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" \
           || { echo "::warning::corpus ${clabel}/${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+        stop_sampler
         [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${clabel}|${label}|${rps}=$cell/jsonbench-summary.md")
       done
       if [[ -z "$BASELINE_LABEL" ]]; then
