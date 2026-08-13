@@ -39,8 +39,7 @@ public enum ExecutionOptions
     BuildUp = 16,
 
     /// <summary>
-    /// EIP-8141 mempool admission: simulate only the validation prefix of a frame transaction,
-    /// bounded by <c>MAX_VERIFY_GAS</c> and halting once the payer is set (ethereum/EIPs#12007).
+    /// EIP-8141 mempool admission: run only the validation prefix, halting once the payer is set.
     /// </summary>
     FrameValidationPrefixOnly = 32,
 

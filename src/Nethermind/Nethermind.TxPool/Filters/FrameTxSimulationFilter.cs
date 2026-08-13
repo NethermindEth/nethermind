@@ -8,22 +8,12 @@ using Nethermind.Logging;
 namespace Nethermind.TxPool.Filters;
 
 /// <summary>
-/// Admits the opaque EIP-8141 frame transactions the native resolver defers
-/// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>) by simulating their validation prefix in a
-/// bounded, read-only EVM, and rejects those whose prefix does not validate.
+/// Simulates the validation prefix of the opaque EIP-8141 frame transactions the native resolver defers
+/// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>), rejecting those whose prefix does not validate.
 /// </summary>
 /// <remarks>
-/// Runs after <see cref="FrameTxPayerFilter"/>. The standard, natively-resolvable prefixes keep the
-/// EVM-free fast path: a transaction whose payer was already resolved (non-null
-/// <see cref="Transaction.PayerAddress"/>) returns immediately without re-resolving or simulating, so
-/// the simulator is never consulted for it. Only a frame tx with an unresolved payer is re-classified
-/// here; a <see cref="FrameTxPayerOutcome.RequiresSimulation"/> outcome is simulated when a simulator
-/// is wired, and on failure the transaction is rejected. When no simulator is wired, or the outcome is
-/// the provably-invalid <see cref="FrameTxPayerOutcome.NoPayer"/>, the transaction passes through
-/// unchanged (Phase-1 behavior). A successful simulation records the resolved payer, feeding the
-/// exposure gate downstream. Runs inside the pool's head read lock, so a queued simulation also delays
-/// head processing — the simulator, not this filter, is where that wait has to be bounded.
-/// https://eips.ethereum.org/EIPS/eip-8141 (ethereum/EIPs#12007)
+/// Must run after <see cref="FrameTxPayerFilter"/>, whose resolved payer is the EVM-free fast path here.
+/// Runs inside the pool's head read lock, so the simulator has to bound its own wait.
 /// </remarks>
 internal sealed class FrameTxSimulationFilter(
     IReadOnlyStateProvider stateProvider,
@@ -38,9 +28,7 @@ internal sealed class FrameTxSimulationFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // A null payer is either a provably-invalid legible prefix (NoPayer) or an opaque one that
-        // needs simulation; only the latter is simulated. Re-resolving is cheap (native, ≤2 reads)
-        // and reached only for the rare unresolved frame tx, not the common resolved fast path.
+        // An unresolved payer is either provably invalid (NoPayer) or opaque; only the latter is simulated.
         if (FrameTxPayerResolver.Resolve(tx, stateProvider, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
         {
             return AcceptTxResult.Accepted;

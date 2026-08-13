@@ -9,13 +9,8 @@ namespace Nethermind.TxPool.Filters;
 /// <summary>
 /// Rejects an EIP-8141 frame transaction whose validation prefix structurally can never approve a payer.
 /// </summary>
-/// <remarks>
-/// The verdict is purely structural (frame mode/flags/target and the explicit sender only), so it holds
-/// regardless of signature validity. Running it ahead of <see cref="FrameTxSignatureFilter"/> drops a
-/// payerless gossiped transaction before any elliptic-curve work is spent recovering its uncapped
-/// signature list. Must run after <see cref="MalformedTxFilter"/>, which resolves the sender and
-/// guarantees the frame list is well-formed.
-/// </remarks>
+/// <remarks>Purely structural, so it can run before <see cref="FrameTxSignatureFilter"/> and save recovering
+/// an uncapped signature list; needs the sender and frames validated by <see cref="MalformedTxFilter"/>.</remarks>
 internal sealed class FrameTxPayerlessFilter(ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
