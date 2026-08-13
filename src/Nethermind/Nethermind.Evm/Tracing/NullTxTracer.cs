@@ -89,6 +89,9 @@ public class NullTxTracer : TxTracer
     public override void ReportActionError(EvmExceptionType exceptionType)
         => ThrowInvalidOperationException();
 
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
+        => ThrowInvalidOperationException();
+
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => ThrowInvalidOperationException();
     public override void ReportBlockHash(Hash256 blockHash)

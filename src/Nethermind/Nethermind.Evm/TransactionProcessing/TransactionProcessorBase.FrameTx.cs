@@ -362,8 +362,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong blockStateGas = (ulong)totalFrameStateGasUsed;
         // blockStateGas <= grossGas by the reservoir-0 invariant: each frame rents an empty state-gas
         // reservoir, so every state charge is already counted inside totalFrameGasUsed (hence grossGas),
-        // which is what makes the SaturatingSub in CalculateBlockRegularGas sound.
-        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(grossGas, blockStateGas, floorGas);
+        // which is what makes the SaturatingSub in CalculateBlockExecutionGas sound.
+        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
         // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
         // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
         // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
