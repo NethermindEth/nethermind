@@ -16,6 +16,7 @@ public static class EvmWordExtensions
         /// <summary>
         /// Reverses the byte order of a 32-byte word (big-endian &lt;-&gt; little-endian).
         /// AVX-512 VBMI: single PermuteVar32x8. AVX2: Permute4x64 lane-swap + per-lane PSHUFB.
+        /// AdvSimd (ARM64): 2x REV64 + 2x EXT #8 half-rotate.
         /// Scalar fallback: 4x ReverseEndianness with ulong reorder.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

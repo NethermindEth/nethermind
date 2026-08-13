@@ -35,8 +35,15 @@ namespace Nethermind.Evm.Benchmark
                 0x1f1e1d1c1b1a1918ul).AsByte();
         }
 
-        [Benchmark]
-        public EvmWord ByteSwap() => _word.ByteSwap();
+        [Benchmark(OperationsPerInvoke = 4)]
+        public EvmWord ByteSwap()
+        {
+            EvmWord word = _word;
+            word = word.ByteSwap();
+            word = word.ByteSwap();
+            word = word.ByteSwap();
+            return word.ByteSwap();
+        }
 
         [Benchmark(OperationsPerInvoke = 4)]
         [ArgumentsSource(nameof(ValueSource))]
