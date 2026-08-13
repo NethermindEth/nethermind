@@ -249,6 +249,26 @@ public class PeerPoolTests
     }
 
     [Test]
+    public void GetOrAdd_PromotesTheStaticFlagOntoAnAlreadyPooledPeer()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        Node persistedNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
+        Peer pooled = pool.GetOrAdd(persistedNode);
+        Assert.That(pool.StaticPeers, Is.Empty);
+
+        Node staticNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234) { IsStatic = true };
+        Peer resolved = pool.GetOrAdd(staticNode);
+
+        Assert.That(resolved, Is.SameAs(pooled));
+        Assert.That(pooled.Node.IsStatic, Is.True,
+            "a static peer that was already pooled from the persisted peers db must gain its static status, or it is never treated as static for the whole session");
+        Assert.That(pool.StaticPeers, Has.Exactly(1).Items);
+    }
+
+    [Test]
     public void GetOrAdd_NetworkNode_sets_trusted_flag_from_manager()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();

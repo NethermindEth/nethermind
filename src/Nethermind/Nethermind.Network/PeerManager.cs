@@ -437,10 +437,11 @@ namespace Nethermind.Network
             DateTime nowUTC = DateTime.UtcNow;
             foreach (Peer peer in _peerPool.StaticPeers)
             {
-                if (HasOpenSession(peer.OutSession) || HasOpenSession(peer.InSession))
+                ISession? openSession = peer.OutSession;
+                if (!HasOpenSession(openSession)) openSession = peer.InSession;
+                if (HasOpenSession(openSession))
                 {
-                    ISession openSession = HasOpenSession(peer.OutSession) ? peer.OutSession! : peer.InSession!;
-                    DateTime lastSignOfLife = openSession.LastPongUtc == default ? openSession.LastPingUtc : openSession.LastPongUtc;
+                    DateTime lastSignOfLife = openSession!.LastPongUtc == default ? openSession.LastPingUtc : openSession.LastPongUtc;
                     if (lastSignOfLife != default && nowUTC - lastSignOfLife > StalePongThreshold)
                     {
                         LogStaticPeerSkip(peer, $"session {openSession} counts as open but last answered a ping at {lastSignOfLife:HH:mm:ss} UTC");
