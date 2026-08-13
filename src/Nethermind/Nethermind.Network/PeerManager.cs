@@ -437,13 +437,21 @@ namespace Nethermind.Network
             DateTime nowUTC = DateTime.UtcNow;
             foreach (Peer peer in _peerPool.StaticPeers)
             {
-                if (IsConnected(peer) || peer.IsAwaitingConnection)
+                if (HasOpenSession(peer.OutSession) || HasOpenSession(peer.InSession))
                 {
                     continue;
                 }
 
-                if (peer.Stats.IsConnectionDelayed(nowUTC).Result)
+                if (peer.IsAwaitingConnection)
                 {
+                    LogStaticPeerSkip(peer, "a dial is already in flight");
+                    continue;
+                }
+
+                (bool Result, NodeStatsEventType? DelayReason) delay = peer.Stats.IsConnectionDelayed(nowUTC);
+                if (delay.Result)
+                {
+                    LogStaticPeerSkip(peer, $"reconnection is delayed ({delay.DelayReason})");
                     continue;
                 }
 
@@ -462,8 +470,21 @@ namespace Nethermind.Network
             }
         }
 
+        private void LogStaticPeerSkip(Peer peer, string reason)
+        {
+            if (!_logger.IsInfo) return;
+
+            long now = Environment.TickCount64;
+            if (_lastStaticSkipLog.TryGetValue(peer.Node.Id, out long last) && now - last < StaticSkipLogIntervalMs) return;
+
+            _lastStaticSkipLog[peer.Node.Id] = now;
+            _logger.Info($"Static peer {peer.Node:s} is not connected and not redialed: {reason}.");
+        }
+
         private const long StaticDialDebounceMs = 5_000;
+        private const long StaticSkipLogIntervalMs = 60_000;
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
+        private readonly ConcurrentDictionary<PublicKey, long> _lastStaticSkipLog = new();
 
         private void SignalPeerUpdateNeeded()
         {

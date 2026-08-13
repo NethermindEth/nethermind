@@ -375,7 +375,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
     private void RegisterRowsTimeout()
     {
-        if (Interlocked.Increment(ref _consecutiveRowsTimeouts) >= MaxConsecutiveRowsTimeouts)
+        if (Interlocked.Increment(ref _consecutiveRowsTimeouts) == MaxConsecutiveRowsTimeouts)
         {
             if (Logger.IsInfo) Logger.Info($"Disconnecting {Session} after {MaxConsecutiveRowsTimeouts} consecutive nhist row timeouts; a fresh session will be dialed.");
             Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, RowsTimeoutDisconnectMessage);
