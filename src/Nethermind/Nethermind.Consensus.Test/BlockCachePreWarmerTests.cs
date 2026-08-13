@@ -944,30 +944,26 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    /// <summary>Admission into the speculative gas budget is deterministic in block order, not race order.</summary>
-    [TestCase(true, TestName = "DiscoverAndWarmStorage_AdmitsCandidatesInBlockOrder_HeavyContractFirst")]
-    [TestCase(false, TestName = "DiscoverAndWarmStorage_AdmitsCandidatesInBlockOrder_HeavyContractSecond")]
-    public void DiscoverAndWarmStorage_AdmitsCandidatesInBlockOrder(bool heavyContractFirst)
+    /// <summary>Budget freed by an unproductive candidate is reclaimed, so a deferred heavy contract is still discovered in a later round.</summary>
+    [Test]
+    public void DiscoverAndWarmStorage_ReclaimsBudgetFromUnproductiveCandidates()
     {
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
         using (preWarmer)
         {
-            Transaction toContract = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressE)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction toEoa = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressD)
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            // 45M budget admits only the first 30M candidate; the second must be excluded deterministically.
-            Block block = Build.A.Block.WithTransactions(toContract, toEoa).WithGasLimit(45_000_000).TestObject;
+            Transaction toContract = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            // Round 1's 45M budget admits only the over-declared transfer; it captures nothing and drops out,
+            // freeing budget for the deferred heavy contract in round 2.
+            Block block = Build.A.Block.WithTransactions(toEoa, toContract).WithGasLimit(45_000_000).TestObject;
 
-            List<(int Index, Transaction Tx)> candidates = heavyContractFirst
-                ? [(0, toContract), (1, toEoa)]
-                : [(0, toEoa), (1, toContract)];
+            preWarmer.DiscoverAndWarmStorage([(0, toEoa), (1, toContract)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
 
-            preWarmer.DiscoverAndWarmStorage(candidates, block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
-
-            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.EqualTo(heavyContractFirst),
-                "only the block-order prefix that fits the budget is admitted");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True,
+                "a heavy contract crowded out of round 1 by an over-declared transfer must be discovered once that budget is reclaimed");
         }
     }
 
