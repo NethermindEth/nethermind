@@ -66,8 +66,7 @@ namespace Nethermind.Init.Steps
                 _txGossipPolicy,
                 null,
                 _api.HeadTxValidator,
-                // EIP-8141: opaque frame-tx prefixes are admitted by in-pool simulation when the
-                // simulator is registered; absent it, they stay deferred as in Phase 1.
+                // EIP-8141: without a registered simulator, opaque frame-tx prefixes stay unresolved.
                 frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
             );
 

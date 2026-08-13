@@ -17,18 +17,9 @@ using Metrics = Nethermind.TxPool.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
-/// <summary>
-/// Simulates the validation prefix of an opaque EIP-8141 frame transaction against the current head,
-/// reusing the read-only transaction processing env rather than a pool-specific EVM.
-/// </summary>
-/// <remarks>
-/// Lives here (not in <c>Nethermind.TxPool</c>) because it depends on
-/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: TxPool cannot reference Consensus (that would cycle),
-/// so the pool depends only on the <see cref="IFrameTxPrefixSimulator"/> abstraction.
-/// Admission work is bounded three ways: <c>MAX_VERIFY_GAS</c> per prefix, a wall-clock timeout per
-/// simulation (which also caps the wait for the serialized env), and a cumulative per-head budget.
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </remarks>
+/// <inheritdoc cref="IFrameTxPrefixSimulator"/>
+/// <remarks>Admission work is bounded three ways: <c>MAX_VERIFY_GAS</c> per prefix, a wall-clock timeout
+/// per simulation (which also caps the wait for the serialized env), and a cumulative per-head budget.</remarks>
 public sealed class FrameTxPrefixSimulator(
     IReadOnlyTxProcessingEnvFactory envFactory,
     IBlockFinder blockFinder,
