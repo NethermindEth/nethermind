@@ -338,8 +338,7 @@ public class FrameTxProcessorTests
     [TestCase(true, TestName = "Execute_FrameTargetingDelegatedAccount_PaysTheDelegateAccess(precompile designation)")]
     public void Execute_FrameTargetingDelegatedAccount_PaysTheDelegateAccess(bool designatePrecompile)
     {
-        // create_evm_from_frame resolves the EIP-7702 designation at frame entry, an access of the
-        // designated address charged on top of the target's own; a designated precompile is warm.
+        // create_evm_from_frame charges the designated address's access on top of the target's own.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
         Address designated = designatePrecompile ? Address.FromNumber(4) : Recipient;
@@ -354,8 +353,6 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_FrameGasCoveringOnlyTheTargetAccess_FailsOnTheDelegateAccess()
     {
-        // The designation access is charged after the target's own, so a frame that affords one but
-        // not both fails at entry with its whole gas limit consumed.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
         DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. Recipient.Bytes]);
@@ -378,8 +375,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_FrameGasCoveringOnlyTheTargetAccess_LeavesTheDesignatedAccountOutOfTheBal()
     {
-        // EIP-7928: the designated code is read only once its access is paid for, so a frame that
-        // cannot afford the charge leaves no BAL entry for the designated account.
+        // EIP-7928: the designated code is read only once its access is paid for.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
         DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. Recipient.Bytes]);
@@ -409,8 +405,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_FrameTargetDesignatesAPrecompile_RecordsThePrecompileInTheBal()
     {
-        // EIP-7928: the designation is resolved by accessing the designated account, and the
-        // precompile branch asks the repository for nothing, so only the explicit read records it.
+        // EIP-7928: the precompile branch asks the repository for nothing, so only the explicit read records it.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Address identityPrecompile = Address.FromNumber(4);
         DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. identityPrecompile.Bytes]);
@@ -1268,8 +1263,7 @@ public class FrameTxProcessorTests
         public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => FrameReceipts = frameReceipts;
     }
 
-    /// <summary>Frame gas of a <c>DEFAULT</c> frame targeting <paramref name="target"/> less the same
-    /// frame targeting <paramref name="baseline"/>, isolating what the two entry charges differ by.</summary>
+    /// <summary>Difference in frame gas between two <c>DEFAULT</c> frames, isolating their entry charges.</summary>
     private long EntryGasDelta(Address target, Address baseline)
     {
         CallOutputTracer targetTracer = new();

@@ -521,8 +521,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, followDelegation: false, spec, out Address? delegation);
         if (delegation is not null)
         {
-            // resolve_delegated_code_address: following the designation accesses the designated address.
-            // The target is charged just above and counts as accessed, so a self-designation is warm.
+            // resolve_delegated_code_address: the target counts as accessed by now, so a self-designation is warm.
             if (spec.UseHotAndColdStorage)
             {
                 entryCharge += delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
@@ -535,8 +534,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
             }
 
-            // create_evm_from_frame reads the designated code only once its access is paid for, so a
-            // frame failing that charge never touches the account. EIP-7702: no dispatch to a precompile.
+            // create_evm_from_frame reads the designated code only after its access is paid for.
+            // EIP-7702: a precompile must not execute via delegation.
             WorldState.AddAccountRead(delegation);
             codeInfo = spec.IsPrecompile(delegation)
                 ? CodeInfo.Empty
