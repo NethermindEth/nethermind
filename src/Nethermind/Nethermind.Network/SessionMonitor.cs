@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
@@ -39,7 +40,10 @@ namespace Nethermind.Network
 
         public void Stop() => StopPingTimer();
 
+        private const int MaxConsecutiveMissedPongs = 3;
+
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        private readonly ConcurrentDictionary<Guid, int> _missedPongCounts = new();
         public IEnumerable<ISession> Sessions => _sessions.Select(static kvp => kvp.Value);
 
         public void AddSession(ISession session)
@@ -54,8 +58,11 @@ namespace Nethermind.Network
             }
         }
 
-        public void RemoveSession(ISession session) =>
-            _sessions.TryRemove(session.SessionId, out session);
+        public void RemoveSession(ISession session)
+        {
+            _sessions.TryRemove(session.SessionId, out _);
+            _missedPongCounts.TryRemove(session.SessionId, out _);
+        }
 
         private async Task SendPingMessagesAsync()
         {
@@ -126,12 +133,20 @@ namespace Nethermind.Network
                     if (!session.IsClosing)
                     {
                         if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
+                        int missedPongs = _missedPongCounts.AddOrUpdate(session.SessionId, 1, static (_, count) => count + 1);
+                        if (missedPongs >= MaxConsecutiveMissedPongs)
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Disconnecting {session} after {missedPongs} consecutive missed pongs; the connection is considered dead.");
+                            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, $"{missedPongs} consecutive missed pongs");
+                        }
+
                         return false;
                     }
 
                     return true;
                 }
 
+                _missedPongCounts.TryRemove(session.SessionId, out _);
                 session.LastPongUtc = DateTime.UtcNow;
                 return true;
             }
