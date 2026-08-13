@@ -8,17 +8,12 @@ using Nethermind.Logging;
 namespace Nethermind.TxPool.Filters;
 
 /// <summary>
-/// Admits the opaque EIP-8141 frame transactions the native resolver defers
-/// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>) by simulating their validation prefix in a
-/// bounded, read-only EVM, and rejects those whose prefix does not validate.
+/// Simulates the validation prefix of the opaque EIP-8141 frame transactions the native resolver defers
+/// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>), rejecting those whose prefix does not validate.
 /// </summary>
 /// <remarks>
-/// Runs after <see cref="FrameTxPayerFilter"/>, so a natively-resolved payer keeps the EVM-free fast
-/// path and never reaches the simulator. Only a <see cref="FrameTxPayerOutcome.RequiresSimulation"/>
-/// outcome is simulated, and only when a simulator is wired; a successful simulation records the payer
-/// the exposure gate downstream reads. This call runs inside the pool's head read lock, so a queued
-/// simulation also delays head processing — the simulator is where that wait is bounded.
-/// https://eips.ethereum.org/EIPS/eip-8141
+/// Must run after <see cref="FrameTxPayerFilter"/>, whose resolved payer is the EVM-free fast path here.
+/// Runs inside the pool's head read lock, so the simulator has to bound its own wait.
 /// </remarks>
 internal sealed class FrameTxSimulationFilter(
     IReadOnlyStateProvider stateProvider,
@@ -33,9 +28,7 @@ internal sealed class FrameTxSimulationFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // A null payer is either a provably-invalid legible prefix (NoPayer) or an opaque one that
-        // needs simulation; only the latter is simulated. Re-resolving is cheap (native, ≤2 reads)
-        // and reached only for the rare unresolved frame tx, not the common resolved fast path.
+        // An unresolved payer is either provably invalid (NoPayer) or opaque; only the latter is simulated.
         if (FrameTxPayerResolver.Resolve(tx, stateProvider, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
         {
             return AcceptTxResult.Accepted;

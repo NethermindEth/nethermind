@@ -112,8 +112,7 @@ public class FrameTxPrefixSimulatorTests
     {
         blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
-        // Standing in for a simulation that got past the bounds: it must be observable that it ran, and
-        // it must consume measurable time so the per-head budget can be driven deterministically.
+        // Stands in for a simulation past the bounds: observable, and slow enough to drive the budget.
         envFactory.Create().Returns(_ =>
         {
             Thread.Sleep(5);

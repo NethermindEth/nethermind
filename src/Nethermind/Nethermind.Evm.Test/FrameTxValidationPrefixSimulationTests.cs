@@ -22,10 +22,8 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// EIP-8141 in-pool validation-prefix simulation (Phase 2): exercises the processor's
-/// <see cref="ExecutionOptions.FrameValidationPrefixOnly"/> path together with the
-/// <see cref="FrameTxValidationTracer"/> — resolving the payer of an opaque (deployed-code) prefix,
-/// halting once the payer is set, enforcing the trace/opcode rules, and bounding gas by MAX_VERIFY_GAS.
+/// EIP-8141 in-pool validation-prefix simulation: the processor's
+/// <see cref="ExecutionOptions.FrameValidationPrefixOnly"/> path and <see cref="FrameTxValidationTracer"/>.
 /// </summary>
 [TestFixture]
 public class FrameTxValidationPrefixSimulationTests
@@ -326,8 +324,7 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_PrefixStartsWithDeployFrame_RejectedAsUnsimulated()
     {
-        // The recognized grammar allows a leading deploy frame, but its carve-outs are unimplemented, so
-        // the prefix is declined before the frame is entered — not reported as "never set a payer".
+        // The deploy-frame carve-outs are unimplemented, so the prefix is declined before it is entered.
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
         Transaction tx = FrameTx(nonce: 0,
             new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default),
@@ -347,9 +344,8 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_AbortedInsideAChildFrame_ReleasesTheUnwoundFrames()
     {
-        // The helper violates the SLOAD scope rule and then spins, so the abort fires on a later poll,
-        // inside the child frame. The interpreter has to release the frames it unwound past, or their
-        // pooled data stacks stay rooted for the lifetime of the reused machine.
+        // The abort fires inside the child frame, so the interpreter has to release the frames it unwound
+        // past or their pooled data stacks stay rooted for the lifetime of the reused machine.
         DeployContract(TestItem.AddressC, Prepare.EvmCode
             .Op(Instruction.JUMPDEST)
             .PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP)
@@ -387,8 +383,8 @@ public class FrameTxValidationPrefixSimulationTests
     [TestCase(-1, false, TestName = "a payer one wei short of the EIP-7623 floor does not")]
     public void Simulate_PricesTheApproveGateOnTheSameBudgetExecutionEscrows(int balanceDelta, bool resolves)
     {
-        // A calldata-heavy prefix with modest frame gas prices on the EIP-7623 floor, not the frame-gas
-        // sum, so the simulated APPROVE gate must use the same budget the main path escrows on.
+        // A calldata-heavy prefix prices on the EIP-7623 floor, so the simulated APPROVE gate must use
+        // the same budget the main path escrows on.
         Transaction tx = FrameTx(nonce: 0,
             new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 30_000, UInt256.Zero,
                 CalldataOf(30_000)));

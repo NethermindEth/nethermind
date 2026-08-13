@@ -483,24 +483,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// EIP-8141 mempool admission: simulate the validation prefix against read-only head state,
     /// resolving the payer and enforcing the trace/opcode rules under the <c>MAX_VERIFY_GAS</c> bound.
     /// </summary>
-    /// <remarks>
-    /// Reuses the frame execution machinery (<see cref="ExecuteFrame"/>, <see cref="ApplyApproval"/>)
-    /// rather than reimplementing opcode semantics. The per-opcode and <c>SLOAD</c>-scope rules belong
-    /// to the caller's <c>FrameTxValidationTracer</c>; this method enforces the structural rules, the
-    /// cumulative <c>MAX_VERIFY_GAS</c> bound, and payer resolution — halting once the payer is set.
-    /// State is always restored. Nonce equality is intentionally not required: a future-nonce frame tx
-    /// is admissible and the validation prefix does not read the account nonce.
-    /// </remarks>
+    /// <remarks>Per-opcode rules belong to the caller's <c>FrameTxValidationTracer</c>; state is always
+    /// restored. Nonce equality is deliberately not required: the prefix never reads the account nonce.</remarks>
     private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;
         Snapshot txSnapshot = WorldState.TakeSnapshot();
         try
         {
-            // Acceptance algorithm step 2: validate all protocol signatures before touching state.
             ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-            // GetPrecompile, not GetCachedCodeInfo: the main path uses it so an unused P256 branch records no
-            // account access (EIP-7928), and the two paths must resolve the precompile the same way.
+            // GetPrecompile, as the main path does, so an unused P256 branch records no account access
+            // (EIP-7928) and the two paths resolve the precompile the same way.
             IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
             if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
             {
@@ -521,8 +514,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
             }
 
-            // max_cost (TXPARAM 0x06) from the same helper the main path escrows on, so the EIP-7623 floor
-            // is included and the simulated APPROVE gate cannot decide against a different number.
+            // max_cost (TXPARAM 0x06) from the same helper the main path escrows on, so the simulated
+            // APPROVE gate cannot decide against a different number.
             if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas budget overflows");
@@ -543,16 +536,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 TxFrame frame = frames[i];
 
-                // Positional, as RecognizedPrefixLength applies it: a default-mode frame with no approval
-                // scope is also the ordinary execution frame that ends an unpaid prefix. Only a leading one
-                // followed by a VERIFY frame is the deploy frame whose carve-outs are missing (EIP8141-GAP).
+                // EIP8141-GAP: deploy-frame carve-outs are unimplemented. Positional, as RecognizedPrefixLength
+                // applies it — a later default-mode frame is the execution frame ending an unpaid prefix.
                 if (i <= 1 && i + 1 < frames.Length && FrameTxValidation.IsDeployFrame(frame) && frames[i + 1].Mode == TxFrame.ModeVerify)
                 {
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
                 }
 
-                // Only VERIFY-mode frames form the validation prefix; reaching a non-VERIFY frame
-                // before the payer is set means the prefix ended without payment (rule 8).
+                // Rule 8: a non-VERIFY frame ends the validation prefix, here without a payer.
                 if (frame.Mode != TxFrame.ModeVerify)
                 {
                     break;
@@ -567,12 +558,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameContext.CurrentFrameIndex = i;
                 WorldState.ResetTransient();
 
-                // Cap the frame's gas so cumulative validation work cannot exceed MAX_VERIFY_GAS even
-                // for an opaque prefix whose declared gas_limits were never structurally bounded.
+                // Cap the frame's gas: an opaque prefix's declared gas_limits are not structurally bounded,
+                // so this is what keeps cumulative validation work under MAX_VERIFY_GAS.
                 ulong remainingVerifyGas = Eip8141Constants.MaxVerifyGas - verifyGasUsed;
                 ulong frameGasLimit = Math.Min(frame.GasLimit, remainingVerifyGas);
-                // When the frame's declared gas_limit exceeds the remaining budget, cumulative prefix
-                // gas already tops MAX_VERIFY_GAS; running under the cap tells whether that budget is hit.
                 bool capped = frameGasLimit < frame.GasLimit;
                 TxFrame boundedFrame = capped
                     ? new TxFrame(frame.Mode, frame.Flags, frame.Target, frameGasLimit, frame.Value, frame.Data)
@@ -590,10 +579,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 if (substate.ShouldRevert || substate.IsError)
                 {
-                    // Attribute the failure to the budget only when the frame was capped and did not
-                    // explicitly REVERT: an explicit revert (e.g. a signature mismatch) returns unused gas
-                    // and is a genuine within-budget rejection, whereas a capped frame that ran out of gas
-                    // exhausted the cap, so its validation work exceeds MAX_VERIFY_GAS (spec §Structural Rules 6).
+                    // Only a capped frame that ran out of gas (rather than explicitly reverting) proves the
+                    // prefix exceeds MAX_VERIFY_GAS; an explicit revert is a within-budget rejection.
                     return capped && !substate.ShouldRevert
                         ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS")
                         : TransactionResult.ErrorType.MalformedTransaction.WithDetail("validation prefix frame reverted");
@@ -614,7 +601,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
             }
 
-            // The prefix completed without ever setting a payer.
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix never set a payer");
         }
         finally
