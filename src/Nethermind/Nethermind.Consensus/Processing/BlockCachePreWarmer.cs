@@ -193,30 +193,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (cancellationToken.IsCancellationRequested) return;
 
+        List<(int Index, Transaction Tx)> currentCandidates = AdmitCandidatesWithinGasBudget(candidates, block.GasLimit);
+        if (currentCandidates.Count == 0) return;
+
         using PooledSet<StorageCell> allDiscoveredCells = [];
         using PooledSet<StorageCell> roundCells = [];
         Lock roundCellsLock = new();
-        // Copy: the round swap below would otherwise mutate the caller's list.
-        List<(int Index, Transaction Tx)> currentCandidates = [.. candidates];
-        List<(int Index, Transaction Tx)> nextRoundCandidates = new(candidates.Count);
+        List<(int Index, Transaction Tx)> nextRoundCandidates = new(currentCandidates.Count);
 
         for (int round = 0; round < MaxDiscoveryRounds && currentCandidates.Count > 0; round++)
         {
             roundCells.Clear();
             nextRoundCandidates.Clear();
-            DiscoveryRound roundState = new(
-                block,
-                parent,
-                spec,
-                CellBudget: MaxDiscoveredCells - allDiscoveredCells.Count,
-                RemainingCaptureCells: new StrongBox<int>(MaxDiscoveredCells - allDiscoveredCells.Count),
-                // Declared limits are unvalidated under SkipValidation and placeholder values can steer
-                // execution into paths real execution never takes; cap each round's speculative work at
-                // one re-execution of the block.
-                GasBudget: new StrongBox<long>((long)Math.Min(block.GasLimit, (ulong)long.MaxValue)),
-                roundCells,
-                roundCellsLock,
-                nextRoundCandidates);
+            int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
+            DiscoveryRound roundState = new(block, parent, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates);
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, currentCandidates.Count),
@@ -244,17 +234,49 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    /// <summary>Selects the block-order prefix of candidates whose declared gas fits the speculative-work budget.</summary>
+    /// <remarks>
+    /// Declared limits are unvalidated under SkipValidation and placeholder values can steer execution into
+    /// paths real execution never takes, so each candidate is charged its declared gas for every round up
+    /// front, against a budget of re-executing the block once per round. Deterministic admission keeps a
+    /// chained-read candidate admitted for all its rounds instead of racing for per-round budget.
+    /// </remarks>
+    private static List<(int Index, Transaction Tx)> AdmitCandidatesWithinGasBudget(List<(int Index, Transaction Tx)> candidates, ulong blockGasLimit)
+    {
+        const ulong maxChargeable = (ulong)(long.MaxValue / MaxDiscoveryRounds);
+        long remaining = (long)Math.Min(blockGasLimit, maxChargeable) * MaxDiscoveryRounds;
+        List<(int Index, Transaction Tx)> admitted = new(candidates.Count);
+        foreach ((int Index, Transaction Tx) candidate in candidates)
+        {
+            long cost = (long)Math.Min(candidate.Tx.GasLimit, maxChargeable) * MaxDiscoveryRounds;
+            if (cost > remaining) continue;
+            remaining -= cost;
+            admitted.Add(candidate);
+        }
+
+        return admitted;
+    }
+
     /// <summary>Shared state of one discovery round.</summary>
-    private sealed record DiscoveryRound(
-        Block Block,
-        BlockHeader Parent,
-        IReleaseSpec Spec,
-        int CellBudget,
-        StrongBox<int> RemainingCaptureCells,
-        StrongBox<long> GasBudget,
-        PooledSet<StorageCell> Cells,
-        Lock CellsLock,
-        List<(int Index, Transaction Tx)> NextRoundCandidates);
+    private sealed class DiscoveryRound(
+        Block block,
+        BlockHeader parent,
+        IReleaseSpec spec,
+        int cellBudget,
+        StrongBox<int> remainingCaptureCells,
+        PooledSet<StorageCell> cells,
+        Lock cellsLock,
+        List<(int Index, Transaction Tx)> nextRoundCandidates)
+    {
+        public Block Block { get; } = block;
+        public BlockHeader Parent { get; } = parent;
+        public IReleaseSpec Spec { get; } = spec;
+        public int CellBudget { get; } = cellBudget;
+        public StrongBox<int> RemainingCaptureCells { get; } = remainingCaptureCells;
+        public PooledSet<StorageCell> Cells { get; } = cells;
+        public Lock CellsLock { get; } = cellsLock;
+        public List<(int Index, Transaction Tx)> NextRoundCandidates { get; } = nextRoundCandidates;
+    }
 
     private void DiscoverTransactionStorageReads((int Index, Transaction Tx) candidate, DiscoveryRound round)
     {
@@ -262,19 +284,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (MainThreadTxIndex >= candidate.Index) return;
 
         Transaction tx = candidate.Tx;
-        long declaredGas = (long)Math.Min(tx.GasLimit, (ulong)long.MaxValue);
-        if (Interlocked.Add(ref round.GasBudget.Value, -declaredGas) < 0)
-        {
-            // Refund and retry next round, so an over-declared candidate cannot poison the budget for smaller ones.
-            Interlocked.Add(ref round.GasBudget.Value, declaredGas);
-            using (round.CellsLock.EnterScope())
-            {
-                round.NextRoundCandidates.Add(candidate);
-            }
-
-            return;
-        }
-
         IReadOnlyTxProcessorSource env = _envPool.Get();
         try
         {
@@ -305,11 +314,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             using (round.CellsLock.EnterScope())
             {
                 round.NextRoundCandidates.Add(candidate);
+                int added = 0;
                 foreach (StorageCell cell in capture.Cells)
                 {
                     if (round.Cells.Count >= round.CellBudget) break;
-                    round.Cells.Add(cell);
+                    if (round.Cells.Add(cell)) added++;
                 }
+
+                // Refund cells that did not extend the round (duplicates across captures), so overlapping
+                // candidates of one heavy contract don't multiply-charge the shared budget.
+                int unused = capture.Cells.Count - added;
+                if (unused > 0) Interlocked.Add(ref round.RemainingCaptureCells.Value, unused);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

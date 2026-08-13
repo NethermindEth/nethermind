@@ -934,13 +934,40 @@ public class BlockCachePreWarmerTests
         {
             Transaction heavy = Build.A.Transaction.WithGasLimit(25_000_000).WithTo(TestItem.AddressE)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            // Budget is block.GasLimit per round; a declared limit exceeding the whole budget must not execute.
+            // Admission charges declared gas per round against block.GasLimit per round, so 25M > 4M is never admitted.
             Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(4_000_000).TestObject;
 
             preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
 
             Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
                 "a candidate whose declared gas exceeds the speculative budget must not be executed");
+        }
+    }
+
+    /// <summary>Admission into the speculative gas budget is deterministic in block order, not race order.</summary>
+    [TestCase(true, TestName = "DiscoverAndWarmStorage_AdmitsCandidatesInBlockOrder_HeavyContractFirst")]
+    [TestCase(false, TestName = "DiscoverAndWarmStorage_AdmitsCandidatesInBlockOrder_HeavyContractSecond")]
+    public void DiscoverAndWarmStorage_AdmitsCandidatesInBlockOrder(bool heavyContractFirst)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction toContract = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction toEoa = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressD)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            // 45M budget admits only the first 30M candidate; the second must be excluded deterministically.
+            Block block = Build.A.Block.WithTransactions(toContract, toEoa).WithGasLimit(45_000_000).TestObject;
+
+            List<(int Index, Transaction Tx)> candidates = heavyContractFirst
+                ? [(0, toContract), (1, toEoa)]
+                : [(0, toEoa), (1, toContract)];
+
+            preWarmer.DiscoverAndWarmStorage(candidates, block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.EqualTo(heavyContractFirst),
+                "only the block-order prefix that fits the budget is admitted");
         }
     }
 
