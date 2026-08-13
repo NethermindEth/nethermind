@@ -203,7 +203,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
 
-    [ConfigItem(Description = "The number of `eth_call` results cached across recent blocks, in entries. Identical calls against the same block are served from the cache. 0 disables the cache.", DefaultValue = "0")]
+    [ConfigItem(Description = "The number of results cached per read-only method (`eth_call`, `eth_getBalance`) across recent blocks, in entries. Identical requests against the same block are served from the cache. 0 disables the caches.", DefaultValue = "0")]
     int EthCallCacheSize { get; set; }
 
     [ConfigItem(Description = "Maximum total tx fee (gasPrice * gasLimit, in wei) the node will sign in eth_signTransaction. 0 disables the cap. Default 1 ETH.", DefaultValue = "1000000000000000000")]

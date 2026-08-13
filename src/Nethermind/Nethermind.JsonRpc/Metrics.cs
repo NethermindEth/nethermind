@@ -69,6 +69,14 @@ namespace Nethermind.JsonRpc
         [Description("Number of eth_call requests that missed the eth_call response cache.")]
         public static long EthCallCacheMisses;
 
+        [CounterMetric]
+        [Description("Number of eth_getBalance requests served from the balance response cache.")]
+        public static long EthBalanceCacheHits;
+
+        [CounterMetric]
+        [Description("Number of eth_getBalance requests that missed the balance response cache.")]
+        public static long EthBalanceCacheMisses;
+
         [HistogramMetric(
             LabelNames = ["method", "status"],
             Buckets = [10, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000])]

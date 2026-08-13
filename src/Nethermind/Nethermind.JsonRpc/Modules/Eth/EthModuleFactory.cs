@@ -4,10 +4,12 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
@@ -45,8 +47,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
         private readonly HeadBlockSignal _headBlockSignal = new(blockTree);
-        // A single cache shared by all pooled module instances, so repeats hit regardless of which instance serves them.
-        private readonly EthCallResponseCache? _ethCallCache = EthCallResponseCache.CreateIfEnabled(config);
+        // Caches shared by all pooled module instances, so repeats hit regardless of which instance serves them.
+        private readonly EthResponseCache<HexBytes>? _ethCallCache = EthResponseCache.CreateCallCacheIfEnabled(config);
+        private readonly EthResponseCache<UInt256?>? _ethBalanceCache = EthResponseCache.CreateBalanceCacheIfEnabled(config);
 
         public override IEthRpcModule Create() => new EthRpcModule(
                 config,
@@ -71,6 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _headBlockSignal,
                 capabilitiesProvider,
                 blockForRpcFactory,
-                _ethCallCache);
+                _ethCallCache,
+                _ethBalanceCache);
     }
 }

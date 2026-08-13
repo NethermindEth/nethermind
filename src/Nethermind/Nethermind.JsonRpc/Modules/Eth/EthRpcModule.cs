@@ -76,7 +76,8 @@ public partial class EthRpcModule(
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
     IBlockForRpcFactory blockForRpcFactory,
-    EthCallResponseCache? ethCallCache = null) : IEthRpcModule
+    EthResponseCache<HexBytes>? ethCallCache = null,
+    EthResponseCache<UInt256?>? ethBalanceCache = null) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -102,7 +103,8 @@ public partial class EthRpcModule(
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
     private readonly IReceiptConfig _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
-    private readonly EthCallResponseCache? _ethCallCache = ethCallCache;
+    private readonly EthResponseCache<HexBytes>? _ethCallCache = ethCallCache;
+    private readonly EthResponseCache<UInt256?>? _ethBalanceCache = ethBalanceCache;
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -188,14 +190,32 @@ public partial class EthRpcModule(
             return Task.FromResult(GetFailureResult<UInt256?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
         }
 
-        BlockHeader header = searchResult.Object;
-        if (!_blockchainBridge.HasStateForBlock(header!))
+        BlockHeader header = searchResult.Object!;
+        if (_ethBalanceCache is null || header.Hash is not Hash256 blockHash)
         {
-            return Task.FromResult(GetStateFailureResult<UInt256?>(header));
+            return Task.FromResult(GetBalance(header, address));
         }
 
-        _stateReader.TryGetAccount(header!, address, out AccountStruct account);
-        return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
+        ValueHash256 cacheKey = EthResponseCache.ComputeBalanceKey(blockHash, address);
+        if (_ethBalanceCache.TryGet(cacheKey, out ResultWrapper<UInt256?>? cached))
+        {
+            return Task.FromResult(cached);
+        }
+
+        ResultWrapper<UInt256?> result = GetBalance(header, address);
+        _ethBalanceCache.SetIfCacheable(cacheKey, result);
+        return Task.FromResult(result);
+    }
+
+    private ResultWrapper<UInt256?> GetBalance(BlockHeader header, Address address)
+    {
+        if (!_blockchainBridge.HasStateForBlock(header))
+        {
+            return GetStateFailureResult<UInt256?>(header);
+        }
+
+        _stateReader.TryGetAccount(header, address, out AccountStruct account);
+        return ResultWrapper<UInt256?>.Success(account.Balance);
     }
 
     public ResultWrapper<byte[]> eth_getStorageAt(Address address, StorageIndex positionIndex,
@@ -619,7 +639,7 @@ public partial class EthRpcModule(
             return executor.Execute(transactionCall, blockParameter, searchResult: headerSearch);
         }
 
-        ValueHash256 cacheKey = EthCallResponseCache.ComputeKey(blockHash, transactionCall);
+        ValueHash256 cacheKey = EthResponseCache.ComputeCallKey(blockHash, transactionCall);
         if (_ethCallCache.TryGet(cacheKey, out ResultWrapper<HexBytes>? cached))
         {
             return cached;
