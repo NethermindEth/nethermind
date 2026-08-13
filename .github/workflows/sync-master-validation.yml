@@ -99,7 +99,7 @@ jobs:
                     + $run_id + "-master-" + $config.network
                   ),
                   timeout: (
-                    if $config.network == "mainnet" and $mode == "Flat" then 360
+                    if $mode == "Flat" and ($config.network == "mainnet" or $config.network == "gnosis") then 360
                     else $config.timeout end
                   )
                 }]')

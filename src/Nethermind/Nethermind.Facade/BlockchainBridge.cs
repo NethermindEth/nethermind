@@ -39,6 +39,7 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Stateless;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.Facade
 {
@@ -51,7 +52,7 @@ namespace Nethermind.Facade
         IBlockTree blockTree,
         IStateReader stateReader,
         ITxPool txPool,
-        IReceiptFinder receiptStorage,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptStorage,
         FilterStore filterStore,
         FilterManager filterManager,
         IEthereumEcdsa ecdsa,
@@ -560,7 +561,8 @@ namespace Nethermind.Facade
         public Hash256[] GetPendingTransactionFilterChanges(int filterId) =>
             filterManager.PollPendingTransactionHashes(filterId);
 
-        public Address? RecoverTxSender(Transaction tx) => ecdsa.RecoverAddress(tx);
+        public Address? RecoverTxSender(Transaction tx) =>
+            ecdsa.TryRecoverAddress(tx, out Address? senderAddress) ? senderAddress : null;
 
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
             => stateReader.RunTreeVisitor(treeVisitor, baseBlock, diagnostics: diagnostics);

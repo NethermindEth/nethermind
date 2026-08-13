@@ -300,4 +300,12 @@ public static class Metrics
     [Description("Persisted-snapshot compaction wall-clock time, by compact size")]
     [ExponentialPowerHistogramMetric(LabelNames = ["size"], Start = 1, Factor = 1.5, Count = 30)]
     public static IMetricObserver PersistedSnapshotCompactTime { get; set; } = new NoopMetricObserver();
+
+    [GaugeMetric]
+    [Description("Highest block whose state history is captured (the contiguous-from-genesis watermark); 0 when history is disabled or empty")]
+    public static long FlatHistoryWatermark { get; set; }
+
+    [GaugeMetric]
+    [Description("1 when history capture has self-disabled (permanent gap, reorged capture, or repeated write failures); as-of reads above the watermark are refused until the flatHistory DB is resynced")]
+    public static long FlatHistoryCaptureDisabled { get; set; }
 }

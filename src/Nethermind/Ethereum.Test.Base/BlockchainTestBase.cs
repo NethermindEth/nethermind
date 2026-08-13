@@ -126,7 +126,12 @@ public abstract class BlockchainTestBase
         IConfigProvider configProvider = new ConfigProvider();
         // Patricia by default (the production default); opt into the flat state layout with
         // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.Enabled = UseFlatDb;
+        // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
+        // and a fire-and-forget background convert from one test can race another test's files. Long finality is
+        // irrelevant at EF-test chain lengths, so keep the on-disk tier off.
+        flatDbConfig.EnableLongFinality = false;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarming = PreWarmMode.None;
