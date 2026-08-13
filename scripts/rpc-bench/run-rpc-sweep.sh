@@ -6,6 +6,8 @@
 # (each scenario alone) and MIXED (all together). A node that fails to start is skipped.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/rpc-bench/lib.sh
+source "$here/lib.sh"
 
 : "${OUT_DIR:?base output directory}"
 : "${STATE_ROOT:?base per-client node state directory}"
