@@ -925,6 +925,8 @@ namespace Nethermind.Network
             }
         }
 
+        private static readonly Capability NHistCapability = new(Protocol.NHist, NHistVersions.NHist1);
+
         private int NHistServingSlots => _syncConfig.HistoryServingEnabled == true ? _syncConfig.HistoryServingPeerSlots : 0;
 
         private bool TryReserveNHistServingSlot(ISession session)
@@ -932,7 +934,7 @@ namespace Nethermind.Network
             int slots = NHistServingSlots;
             if (slots <= 0) return false;
             if (session.Direction != ConnectionDirection.In) return false;
-            if (!session.HasAgreedCapability(new Capability(Protocol.NHist, NHistVersions.NHist1))) return false;
+            if (!session.HasAgreedCapability(NHistCapability)) return false;
 
             lock (_nhistServingSessions)
             {
@@ -1167,16 +1169,16 @@ namespace Nethermind.Network
 
             if (peerHasAnOpenSameDirectionSession)
             {
-                // An inbound session is RLPx-authenticated: a fresh dial from the same node id proves the dialer
-                // considers its previous session dead, so the open one here is a stale half — keep the new session
-                // and shed the stale one. Rejecting the new dial instead pins the peer to a session the remote
-                // will never speak on again. Outbound duplicates stay first-wins: both dials are ours.
-                if (sessionDirection == ConnectionDirection.In)
+                // Scoped strictly to nhist sessions: a clone consumer that locally shed a dead session redials
+                // immediately, and rejecting that RLPx-authenticated fresh dial pins it to a stale half-open
+                // session forever. For every other peer the upstream first-wins rule stays untouched — replacing
+                // healthy general-purpose sessions on any same-id redial proved to disturb sync-peer allocation.
+                ISession? stale = GetSession(peer, sessionDirection);
+                if (sessionDirection == ConnectionDirection.In && stale is not null && stale.HasAgreedCapability(NHistCapability))
                 {
-                    ISession? stale = GetSession(peer, sessionDirection);
                     if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.ExistingSessionReplacing, sessionDirection);
                     AttachSession(peer, session, sessionDirection, disconnectOpposite: false);
-                    stale?.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "replaced by a fresh inbound session from the same node");
+                    stale.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "replaced by a fresh inbound session from the same node");
                     return;
                 }
 

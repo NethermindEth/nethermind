@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Rlpx;
@@ -216,7 +217,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task Will_replace_open_incoming_session_when_the_same_node_dials_again()
+        public async Task Will_replace_open_incoming_nhist_session_when_the_same_node_dials_again()
         {
             await using Context ctx = new();
             ctx.PeerManager.Start();
@@ -227,6 +228,7 @@ namespace Nethermind.Network.Test
             ctx.RlpxPeer.CreateIncoming(firstSession);
             Session staleSession = ctx.Sessions.Single();
             InitSession(staleSession);
+            MarkNHistAgreed(staleSession);
             Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(staleSession));
 
             ctx.RlpxPeer.CreateIncoming(secondSession);
@@ -234,9 +236,41 @@ namespace Nethermind.Network.Test
             InitSession(freshSession);
 
             Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession),
-                "a fresh authenticated dial from the same node must replace the stale half-open session");
+                "a fresh authenticated dial from the same nhist node must replace the stale half-open session");
             Assert.That(staleSession.IsClosing, Is.True, "the stale session must be shed, not the fresh one");
             Assert.That(freshSession.IsClosing, Is.False);
+        }
+
+        [Test]
+        public async Task Will_keep_open_incoming_session_without_nhist_when_the_same_node_dials_again()
+        {
+            await using Context ctx = new();
+            ctx.PeerManager.Start();
+
+            Session firstSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
+            Session secondSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
+
+            ctx.RlpxPeer.CreateIncoming(firstSession);
+            Session existingSession = ctx.Sessions.Single();
+            InitSession(existingSession);
+            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(existingSession));
+
+            ctx.RlpxPeer.CreateIncoming(secondSession);
+            Session duplicateSession = ctx.Sessions.Last();
+            InitSession(duplicateSession);
+
+            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(existingSession),
+                "ordinary peers keep the upstream first-wins rule - the open session must not be replaced");
+            Assert.That(duplicateSession.IsClosing, Is.True, "the duplicate dial is rejected, not the existing session");
+            Assert.That(existingSession.IsClosing, Is.False);
+        }
+
+        private static void MarkNHistAgreed(Session session)
+        {
+            IP2PProtocolHandler p2p = Substitute.For<IP2PProtocolHandler>();
+            p2p.ProtocolCode.Returns(Protocol.P2P);
+            p2p.HasAgreedCapability(new Capability(Protocol.NHist, 1)).Returns(true);
+            session.AddProtocolHandler(p2p);
         }
 
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
