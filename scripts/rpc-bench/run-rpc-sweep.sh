@@ -210,6 +210,10 @@ fi
 
 # Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
 # same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
+# Listing the same image twice is how a sweep measures its own run-to-run drift, so repeats get a
+# distinct label: sharing one would make each repeat overwrite the previous one's cells and state,
+# and the sweep would silently report fewer results than it ran.
+declare -A LABEL_SEEN=()
 for entry in $CLIENTS; do
   ctype="${entry%%@*}"
   if [[ "$entry" == *@* ]]; then
@@ -217,6 +221,8 @@ for entry in $CLIENTS; do
   else
     img="$(default_image "$ctype")" || { echo "skip $entry: no image"; continue; }; label="$ctype"
   fi
+  LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
+  (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
