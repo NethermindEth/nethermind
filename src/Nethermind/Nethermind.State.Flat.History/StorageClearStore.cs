@@ -48,19 +48,19 @@ internal sealed class StorageClearStore
         if (afterBlockExclusive >= atOrBeforeBlock) return false;
 
         // Clear keys ascend by block - find earliest clear after the lower bound and check it is at/before upper bound
-        int clearKeyLength = accountKey.Length + BlockBytes;
-        Span<byte> seekKey = stackalloc byte[clearKeyLength];
+        int keyLen = accountKey.Length + BlockBytes;
+        Span<byte> seekKey = stackalloc byte[keyLen];
         WriteClearKey(seekKey, accountKey, afterBlockExclusive + 1);
 
         // One byte past [account | 0xFF..FF], so the bound stops at the account without needing atOrBeforeBlock + 1.
-        Span<byte> upperBound = stackalloc byte[clearKeyLength + 1];
+        Span<byte> upperBound = stackalloc byte[keyLen + 1];
         accountKey.CopyTo(upperBound);
         upperBound[accountKey.Length..].Fill(0xFF);
         upperBound[^1] = 0x00;
 
-        Span<byte> foundKey = stackalloc byte[clearKeyLength];
-        if (!_clears.TryGetCeiling(seekKey, upperBound, foundKey, out int foundKeyLength, [], out _)) return false;
-        if (foundKeyLength != clearKeyLength || !foundKey[..accountKey.Length].SequenceEqual(accountKey)) return false;
+        Span<byte> foundKey = stackalloc byte[keyLen];
+        if (!_clears.TryGetCeiling(seekKey, upperBound, foundKey, out int foundKeyLen, [], out _) || foundKeyLen != keyLen)
+            return false;
 
         return BinaryPrimitives.ReadUInt64BigEndian(foundKey[accountKey.Length..]) <= atOrBeforeBlock;
     }

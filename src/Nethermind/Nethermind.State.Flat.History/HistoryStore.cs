@@ -69,21 +69,18 @@ internal sealed class HistoryStore
         foundAtBlock = 0;
 
         // With the descending suffix, the newest version at/below block is the first entry at/after [key | ~block].
-        int historyKeyLength = flatKey.Length + BlockBytes;
-        Span<byte> seekKey = stackalloc byte[historyKeyLength];
+        int keyLen = flatKey.Length + BlockBytes;
+        Span<byte> seekKey = stackalloc byte[keyLen];
         WriteHistoryKey(seekKey, flatKey, block);
 
         // One byte past [key | 0xFF..FF] so the exclusive upper bound cannot cut off the block-0 version.
-        Span<byte> upperBound = stackalloc byte[historyKeyLength + 1];
+        Span<byte> upperBound = stackalloc byte[keyLen + 1];
         flatKey.CopyTo(upperBound);
         upperBound[flatKey.Length..].Fill(0xFF);
         upperBound[^1] = 0x00;
 
-        Span<byte> foundKey = stackalloc byte[historyKeyLength];
-        if (!_history.TryGetCeiling(seekKey, upperBound, foundKey, out int foundKeyLength, outBuffer, out int valueLength))
-            return -1;
-
-        if (foundKeyLength != historyKeyLength || !foundKey[..flatKey.Length].SequenceEqual(flatKey))
+        Span<byte> foundKey = stackalloc byte[keyLen];
+        if (!_history.TryGetCeiling(seekKey, upperBound, foundKey, out int foundKeyLen, outBuffer, out int valueLength) || foundKeyLen != keyLen)
             return -1;
 
         foundAtBlock = ~BinaryPrimitives.ReadUInt64BigEndian(foundKey[flatKey.Length..]);
