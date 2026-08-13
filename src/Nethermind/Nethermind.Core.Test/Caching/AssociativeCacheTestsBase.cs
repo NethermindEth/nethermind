@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Threading.Tasks;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching;
@@ -17,7 +20,6 @@ namespace Nethermind.Core.Test.Caching;
 public abstract class AssociativeCacheTestsBase
 {
     protected const int Capacity = 32;
-    private const int Ways = 8;
 
     protected AddressAsKey[] _keys = null!;
     protected Account[] _accounts = null!;
@@ -147,24 +149,6 @@ public abstract class AssociativeCacheTestsBase
             AssertValue(in _keys[0], 0);
             Assert.That(GetCount(), Is.EqualTo(1));
         }
-    }
-
-    [TestCase(8)]
-    [TestCase(32)]
-    [TestCase(256)]
-    [TestCase(1024)]
-    public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
-    {
-        CreateCache(capacity);
-        int insertCount = Math.Min(capacity / 2, Ways);
-
-        for (int i = 0; i < insertCount; i++)
-            Assert.That(Set(in _keys[i], i), Is.True);
-
-        for (int i = 0; i < insertCount; i++)
-            AssertValue(in _keys[i], i);
-
-        Assert.That(GetCount(), Is.EqualTo(insertCount));
     }
 
     [Test]
@@ -311,5 +295,86 @@ public abstract class AssociativeCacheTestsBase
             Assert.That(Set(in _keys[i], i), Is.True, $"key {i} should be new after Clear");
 
         Assert.That(GetCount(), Is.EqualTo(16));
+    }
+}
+
+[TestFixture]
+public class AssociativeCacheDeterministicHashTests
+{
+    private const int Ways = 8;
+
+    [TestCase(8)]
+    [TestCase(32)]
+    [TestCase(256)]
+    [TestCase(1024)]
+    public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
+    {
+        int insertCount = capacity / 2;
+        DeterministicHashKey[] keys = BuildKeys(capacity, insertCount);
+        TestValue[] values = new TestValue[insertCount];
+        AssociativeCache<DeterministicHashKey, TestValue> cache = new(capacity);
+        AssociativeKeyCache<DeterministicHashKey> keyCache = new(capacity);
+
+        for (int i = 0; i < insertCount; i++)
+        {
+            values[i] = new TestValue();
+            bool cacheInserted = cache.Set(in keys[i], values[i]);
+            bool keyCacheInserted = keyCache.Set(in keys[i]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cacheInserted, Is.True, $"{nameof(AssociativeCache<DeterministicHashKey, TestValue>)} key {i}");
+                Assert.That(keyCacheInserted, Is.True, $"{nameof(AssociativeKeyCache<DeterministicHashKey>)} key {i}");
+            }
+        }
+
+        for (int i = 0; i < insertCount; i++)
+        {
+            TestValue? actualValue = cache.Get(in keys[i]);
+            bool keyFound = keyCache.Get(in keys[i]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actualValue, Is.SameAs(values[i]), $"{nameof(AssociativeCache<DeterministicHashKey, TestValue>)} key {i}");
+                Assert.That(keyFound, Is.True, $"{nameof(AssociativeKeyCache<DeterministicHashKey>)} key {i}");
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Count, Is.EqualTo(insertCount));
+            Assert.That(keyCache.Count, Is.EqualTo(insertCount));
+        }
+    }
+
+    private static DeterministicHashKey[] BuildKeys(int capacity, int count)
+    {
+        int setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((capacity + Ways - 1) / Ways));
+        int hashShift = BitOperations.Log2((uint)setCount);
+        DeterministicHashKey[] keys = new DeterministicHashKey[count];
+
+        for (int i = 0; i < keys.Length; i++)
+        {
+            int setIndex = i % setCount;
+            // Put the signature immediately above the set-index bits while spreading keys
+            // evenly across sets, so retrievability is tested without incidental eviction.
+            long hashCode = ((long)(i + 1) << hashShift) | (uint)setIndex;
+            keys[i] = new DeterministicHashKey(i, hashCode);
+        }
+
+        return keys;
+    }
+
+    private sealed class TestValue
+    {
+    }
+
+    private readonly struct DeterministicHashKey(int value, long hashCode) : IHash64bit<DeterministicHashKey>
+    {
+        private readonly int _value = value;
+        private readonly long _hashCode = hashCode;
+
+        public long GetHashCode64() => _hashCode;
+        public bool Equals(in DeterministicHashKey other) => _value == other._value;
     }
 }
