@@ -258,19 +258,7 @@ public class Eth68ProtocolHandlerTests
     public void Frame_tx_announcement_budget_follows_blob_support(BlobsSupportMode blobsSupport, int expectedRequests)
     {
         TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport };
-        _handler = new Eth68ProtocolHandler(
-            _session,
-            _svc,
-            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
-            _syncManager,
-            RunImmediatelyScheduler.Instance,
-            _transactionPool,
-            _gossipPolicy,
-            new ForkInfo(_specProvider, _syncManager),
-            LimboLogs.Instance,
-            txPoolConfig,
-            Substitute.For<ISpecProvider>(),
-            _txGossipPolicy);
+        _handler = BuildHandler(txPoolConfig, frameTxsEnabled: true);
 
         // Between MaxTxSize (128 KiB) and MaxBlobTxSize (1 MiB): admissible only where blobs are supported.
         using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
@@ -282,6 +270,47 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+    }
+
+    // Without the fork a frame tx is rejected at ingress, so requesting one is always wasted bandwidth.
+    [TestCase(true, 1, TestName = "Frame_tx_announcement_is_requested_once_the_fork_is_active")]
+    [TestCase(false, 0, TestName = "Frame_tx_announcement_is_not_requested_before_the_fork")]
+    public void Frame_tx_announcement_request_follows_fork_activation(bool frameTxsEnabled, int expectedRequests)
+    {
+        TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+        _handler = BuildHandler(txPoolConfig, frameTxsEnabled);
+
+        using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
+        using ArrayPoolList<int> sizes = new(1) { 100 };
+        using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+    }
+
+    private Eth68ProtocolHandler BuildHandler(ITxPoolConfig txPoolConfig, bool frameTxsEnabled)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(frameTxsEnabled);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        return new Eth68ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            RunImmediatelyScheduler.Instance,
+            _transactionPool,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager),
+            LimboLogs.Instance,
+            txPoolConfig,
+            specProvider,
+            _txGossipPolicy);
     }
 
     [Test]
