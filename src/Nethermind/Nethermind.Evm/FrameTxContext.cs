@@ -52,7 +52,7 @@ public sealed class FrameTxContext(
     /// EIP-8141 envelope hashes as the key set <c>[0]</c>, the domain its single account nonce occupies.
     /// </remarks>
     public ValueHash256 NonceKeysHash =>
-        NonceKeys is { } nonceKeys ? _nonceKeysHash ??= ComputeNonceKeysHash(nonceKeys) : AccountNonceKeySetHash;
+        NonceKeys is { } keys ? _nonceKeysHash ??= ComputeNonceKeysHash(keys) : AccountNonceKeySetHash;
 
     private ValueHash256? _nonceKeysHash;
 
