@@ -28,10 +28,24 @@ import zlib
 from pathlib import Path
 from typing import Sequence
 
+
+def _env_int(name: str, default: int) -> int:
+    """Positive-integer override from the environment, falling back on anything malformed.
+
+    These are read at import, so a typo such as `250k` must not abort the sweep with a traceback
+    before any node has started.
+    """
+    try:
+        value = int(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 # Guard rail, not a hard limit: the replay holds every record's params in memory, so a large
 # capture needs a deliberate raise (and a runner with the RAM for it) rather than discovering the
 # cost mid-sweep. Override with RPC_BENCH_MAX_CORPUS_RECORDS.
-MAX_CORPUS_RECORDS = int(os.environ.get("RPC_BENCH_MAX_CORPUS_RECORDS", "10000"))
+MAX_CORPUS_RECORDS = _env_int("RPC_BENCH_MAX_CORPUS_RECORDS", 10000)
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 120
 
@@ -56,7 +70,7 @@ PARITY_LABEL_FIELDS = ("baseline_client", "candidate_client")
 
 # Reports also carry the 1-based corpus indexes of divergent records (capped) so the corpus
 # OWNER can look the calls up in their copy — an index is positional metadata, not content.
-MAX_DIVERGENCE_INDEXES = int(os.environ.get("RPC_BENCH_MAX_DIVERGENCE_INDEXES", "200"))
+MAX_DIVERGENCE_INDEXES = _env_int("RPC_BENCH_MAX_DIVERGENCE_INDEXES", 200)
 
 # Baseline outcome marker for a call the baseline client rejected with a JSON-RPC error.
 # Deliberately not valid hex so it can never collide with a result string; the error
@@ -240,7 +254,7 @@ def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
 # change what any record returns - only how fast the whole set is collected. Results are stored by
 # index, so completion order is irrelevant. Serial replay left the node ~99% idle: at 50k records
 # that is ~17 minutes of wall clock to do a few seconds of work.
-REPLAY_CONCURRENCY = int(os.environ.get("RPC_BENCH_PARITY_CONCURRENCY", "16"))
+REPLAY_CONCURRENCY = _env_int("RPC_BENCH_PARITY_CONCURRENCY", 16)
 # Outcomes that indicate the transport or the node struggled, not that the call has an answer.
 # rpc_error is excluded: a captured corpus legitimately contains calls that fail at the head.
 RETRYABLE_CATEGORIES = frozenset({"transport_failure", "invalid_response"})
@@ -345,12 +359,13 @@ def _describe_divergence(index: int, expected: str, actual: str) -> dict:
         differing += 1
         if len(words) >= MAX_DIFF_WORDS:
             continue  # keep counting; only the first few are described
-        # Deliberately NOT the words themselves: a signed decimal difference is what identifies a
-        # fee- or balance-shaped divergence, and unlike the operands it does not carry the values.
+        # Position and direction only. A signed magnitude is not safe to publish: whenever one
+        # operand is zero the difference IS the other operand, so the artifact would carry a
+        # complete response word despite the counts-only contract.
         item: dict = {"word": word}
         try:
             if a and b:
-                item["delta"] = str(int(b, 16) - int(a, 16))
+                item["direction"] = "higher" if int(b, 16) > int(a, 16) else "lower"
         except ValueError:
             pass
         words.append(item)

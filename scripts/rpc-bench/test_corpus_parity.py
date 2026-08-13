@@ -7,11 +7,13 @@ import csv
 import gzip
 import io
 import json
+import os
 import sys
 import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -201,7 +203,24 @@ class CorpusParityTests(unittest.TestCase):
         self.assertEqual(described["total_differing_words"], words)
         self.assertEqual(len(described["differing_words"]), corpus_parity.MAX_DIFF_WORDS)
         # and no response operands survive into the record
-        self.assertTrue(all(set(w) <= {"word", "delta"} for w in described["differing_words"]))
+        self.assertTrue(all(set(w) <= {"word", "direction"} for w in described["differing_words"]))
+
+    def test_zero_operand_divergence_cannot_be_reconstructed(self):
+        """A zero baseline word must not let the candidate word be recovered from the record.
+
+        A signed magnitude would be exactly the candidate here, which is why only a direction
+        is published.
+        """
+        secret = "de" * 32
+        described = corpus_parity._describe_divergence(1, "0x" + "00" * 32, "0x" + secret)
+        serialized = json.dumps(described)
+        self.assertNotIn(secret, serialized)
+        self.assertNotIn(str(int(secret, 16)), serialized)
+        self.assertEqual(described["differing_words"], [{"word": 0, "direction": "higher"}])
+        # ...and symmetrically, when the candidate is the zero word
+        reversed_case = corpus_parity._describe_divergence(1, "0x" + secret, "0x" + "00" * 32)
+        self.assertNotIn(str(int(secret, 16)), json.dumps(reversed_case))
+        self.assertEqual(reversed_case["differing_words"], [{"word": 0, "direction": "lower"}])
 
     def test_timings_writes_a_record_by_pass_matrix_without_content(self):
         corpus = self.write_corpus(3)
@@ -375,6 +394,23 @@ class CorpusParityTests(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(corpus_parity.CorpusParityError):
                     corpus_parity.load_corpus(self.write_corpus(lines=lines))
+
+
+class EnvironmentCapTests(unittest.TestCase):
+    """The caps are read at import, so a malformed override must degrade, not abort the sweep."""
+
+    def test_a_valid_override_is_used(self):
+        with unittest.mock.patch.dict(os.environ, {"CAP": "250"}):
+            self.assertEqual(corpus_parity._env_int("CAP", 10), 250)
+
+    def test_malformed_and_out_of_range_overrides_fall_back(self):
+        for value in ("250k", "", "abc", "1e3", "12.5", "0", "-5", " "):
+            with self.subTest(value=value), unittest.mock.patch.dict(os.environ, {"CAP": value}):
+                self.assertEqual(corpus_parity._env_int("CAP", 10), 10)
+
+    def test_an_absent_override_uses_the_default(self):
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(corpus_parity._env_int("CAP", 10), 10)
 
 
 if __name__ == "__main__":

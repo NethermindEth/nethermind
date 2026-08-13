@@ -295,6 +295,23 @@ docker_common=(
 # A stale same-name container from a hard-interrupted run would fail docker run.
 docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
+# Resource sampling brackets container execution only. Cloning and building json-bench, converting
+# the corpus fixture and post-processing the summary all happen outside this window, so they cannot
+# dilute the wall-clock-derived figures (averages, peak cores).
+sampler_pid=""
+if [[ -n "${RESOURCE_SAMPLER_CONTAINER:-}" && -n "${RESOURCE_SAMPLER_OUT:-}" ]]; then
+  python3 "$HERE/sample-resources.py" sample \
+    --container "$RESOURCE_SAMPLER_CONTAINER" --out "$RESOURCE_SAMPLER_OUT" &
+  sampler_pid=$!
+fi
+stop_resource_sampler() {
+  [[ -n "$sampler_pid" ]] || return 0
+  kill -TERM "$sampler_pid" 2>/dev/null
+  wait "$sampler_pid" 2>/dev/null
+  sampler_pid=""
+}
+trap stop_resource_sampler EXIT
+
 # Run the selected mode.
 tool_failed=0
 if [[ "$JB_MODE" == "compare" ]]; then
@@ -346,6 +363,8 @@ else
       || tool_failed=1
   fi
 fi
+# Close the window before summary post-processing; the EXIT trap only covers an early exit.
+stop_resource_sampler
 
 # Deep-check capture: replay each request once after the timed load (won't perturb k6),
 # storing raw responses keyed by request fingerprint for offline cross-client diff. Non-fatal.
@@ -515,6 +534,26 @@ with open(sys.argv[3], "w") as f:
 PY
     fail_pct="$(head -n 1 "$fail_pct_file" 2>/dev/null || true)"
     rm -f "$fail_pct_file"
+  fi
+
+  # Per-request resource cost uses the count the load actually delivered. Deriving it from
+  # rate x duration would assume an integer-second duration and that k6 dropped no iterations.
+  if [[ -n "${RESOURCE_SAMPLER_OUT:-}" && -s "$RESOURCE_SAMPLER_OUT" && -s "$OUT_DIR/summary.json" ]]; then
+    delivered="$(python3 - "$OUT_DIR/summary.json" <<'PY' 2>/dev/null || echo 0
+import json, sys
+try:
+    metrics = (json.load(open(sys.argv[1])) or {}).get("metrics", {}) or {}
+    count = ((metrics.get("http_reqs") or {}).get("values") or {}).get("count")
+except Exception:
+    count = None
+print(int(count) if isinstance(count, (int, float)) and not isinstance(count, bool) and count > 0 else 0)
+PY
+)"
+    if [[ "$delivered" =~ ^[0-9]+$ && "$delivered" -gt 0 ]]; then
+      python3 "$HERE/sample-resources.py" normalize --out "$RESOURCE_SAMPLER_OUT" --requests "$delivered" || true
+    else
+      log "resource sample left un-normalized: no usable http_reqs count"
+    fi
   fi
 
   {

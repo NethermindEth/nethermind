@@ -33,7 +33,6 @@ METRIC_FIELDS: dict[str, tuple[str, ...]] = {
 }
 # Filenames stage will publish; everything else in the output tree is left behind.
 BLOCK_HASH_PATTERN = re.compile(r"0x[0-9a-f]{64}")
-DELTA_PATTERN = re.compile(r"-?\d{1,80}")
 STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(:-?\d+)?")
 
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
@@ -211,15 +210,13 @@ def _validate_parity_diffs(path: Path) -> None:
             if key in entry and not isinstance(entry[key], bool):
                 raise CorpusResultsError(f"{path.name}: {key} is not a boolean")
         for word in entry.get("differing_words", []):
-            if not isinstance(word, dict) or not set(word) <= {"word", "delta"}:
+            if not isinstance(word, dict) or not set(word) <= {"word", "direction"}:
                 raise CorpusResultsError(f"{path.name}: a differing word carries unexpected fields")
             if isinstance(word.get("word"), bool) or not isinstance(word.get("word"), int):
                 raise CorpusResultsError(f"{path.name}: word position is not an integer")
-            # delta is a signed decimal string; anything hex-shaped would be a response word.
-            if "delta" in word:
-                delta = word["delta"]
-                if not isinstance(delta, str) or not DELTA_PATTERN.fullmatch(delta):
-                    raise CorpusResultsError(f"{path.name}: delta is not a signed decimal")
+            # No magnitude of any kind: with a zero operand a magnitude is the other operand.
+            if "direction" in word and word["direction"] not in ("higher", "lower"):
+                raise CorpusResultsError(f"{path.name}: direction is not 'higher' or 'lower'")
 
 
 def _validate_timings_meta(path: Path) -> None:
@@ -379,8 +376,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments.command == "sanitize":
             sanitize(arguments.raw, arguments.out)
-        else:
+        elif arguments.command == "stage":
             stage(arguments.output_root, arguments.stage_root)
+        else:
+            print(comment(arguments.stage_root, arguments.baseline, arguments.candidate))
     except CorpusResultsError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
