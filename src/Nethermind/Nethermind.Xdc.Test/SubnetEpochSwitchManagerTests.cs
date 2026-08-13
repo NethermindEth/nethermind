@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Xdc.Spec;
@@ -129,4 +131,103 @@ internal class SubnetEpochSwitchManagerTests
         Assert.That(() => _epochSwitchManager.GetEpochSwitchInfo(header), Throws.InstanceOf<ArgumentException>());
     }
 
+    private const ulong EpochLength = 10;
+
+    /// <summary>
+    /// Registers an epoch switch block with the substituted tree and snapshot manager.
+    /// </summary>
+    /// <param name="withQuorumCertificate">
+    /// When <see langword="false"/>, models the switch block: no consensus data, so no parent block info.
+    /// </param>
+    private XdcSubnetBlockHeader SetupEpochSwitchBlock(ulong number, bool withQuorumCertificate = true)
+    {
+        Address[] masterNodes = [TestItem.AddressA, TestItem.AddressB];
+
+        XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
+        builder.WithNumber(number);
+        builder.WithHash(Keccak.Compute($"epoch-switch-{number}"));
+        builder.WithValidators(masterNodes);
+        if (withQuorumCertificate)
+        {
+            builder.WithExtraConsensusData(new ExtraFieldsV2(number, Build.A.QuorumCertificate().TestObject));
+        }
+        XdcSubnetBlockHeader header = builder.TestObject;
+
+        _tree.FindHeader(number).Returns(header);
+        _snapshotManager.GetSnapshotByBlockNumber(number, Arg.Any<IXdcReleaseSpec>())
+            .Returns(new SubnetSnapshot(number, header.Hash!, [.. masterNodes], []));
+
+        return header;
+    }
+
+    private void SetupSpec(ulong switchBlock = 0) =>
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec
+        {
+            EpochLength = EpochLength,
+            Gap = 5,
+            SwitchBlock = switchBlock,
+            GenesisMasterNodes = [TestItem.AddressA, TestItem.AddressB],
+            V2Configs = [new V2ConfigParams()]
+        });
+
+    private XdcSubnetBlockHeader PlainHeader(ulong number)
+    {
+        XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
+        builder.WithNumber(number);
+        return builder.TestObject;
+    }
+
+    [TestCase(5UL, 35UL, new ulong[] { 10, 20, 30 }, TestName = "spans partial epochs at both ends")]
+    [TestCase(10UL, 30UL, new ulong[] { 10, 20, 30 }, TestName = "includes both exact boundaries")]
+    [TestCase(11UL, 29UL, new ulong[] { 20 }, TestName = "excludes boundaries outside the range")]
+    [TestCase(11UL, 19UL, new ulong[] { }, TestName = "no epoch switch in range")]
+    [TestCase(20UL, 20UL, new ulong[] { }, TestName = "empty range")]
+    [TestCase(30UL, 20UL, new ulong[] { }, TestName = "end before start")]
+    public void GetEpochSwitchInfoBetween_ReturnsEpochSwitchesInRange(ulong start, ulong end, ulong[] expected)
+    {
+        SetupSpec();
+        for (ulong number = EpochLength; number <= 40; number += EpochLength)
+        {
+            SetupEpochSwitchBlock(number);
+        }
+
+        EpochSwitchInfo[]? result = _epochSwitchManager.GetEpochSwitchInfoBetween(PlainHeader(start), PlainHeader(end));
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Select(static i => i.EpochSwitchBlockInfo.BlockNumber), Is.EqualTo(expected).AsCollection);
+    }
+
+    [Test]
+    public void GetEpochSwitchInfoBetween_ExcludesSwitchBlockWithoutQuorumCertificate()
+    {
+        SetupSpec();
+        SetupEpochSwitchBlock(0, withQuorumCertificate: false);
+        SetupEpochSwitchBlock(10);
+        SetupEpochSwitchBlock(20);
+
+        EpochSwitchInfo[]? result = _epochSwitchManager.GetEpochSwitchInfoBetween(PlainHeader(0), PlainHeader(20));
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Select(static i => i.EpochSwitchBlockInfo.BlockNumber), Is.EqualTo(new ulong[] { 10, 20 }).AsCollection);
+    }
+
+    [Test]
+    public void GetEpochSwitchInfoBetween_MissingHeader_ReturnsNull()
+    {
+        SetupSpec();
+        SetupEpochSwitchBlock(10);
+        _tree.FindHeader(20UL).Returns((BlockHeader?)null);
+
+        Assert.That(_epochSwitchManager.GetEpochSwitchInfoBetween(PlainHeader(5), PlainHeader(25)), Is.Null);
+    }
+
+    [Test]
+    public void GetEpochSwitchInfoBetween_MissingSnapshot_ReturnsNull()
+    {
+        SetupSpec();
+        XdcSubnetBlockHeader header = SetupEpochSwitchBlock(10);
+        _snapshotManager.GetSnapshotByBlockNumber(header.Number, Arg.Any<IXdcReleaseSpec>()).Returns((Snapshot?)null);
+
+        Assert.That(_epochSwitchManager.GetEpochSwitchInfoBetween(PlainHeader(5), PlainHeader(15)), Is.Null);
+    }
 }

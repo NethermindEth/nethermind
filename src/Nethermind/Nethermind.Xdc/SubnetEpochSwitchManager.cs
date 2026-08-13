@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -59,6 +60,36 @@ internal class SubnetEpochSwitchManager(
         return epochSwitchInfo.EpochSwitchBlockInfo;
     }
 
-    public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end) =>
-        throw new NotImplementedException("GetEpochSwitchInfoBetween is not implemented for subnet epoch switch manager.");
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Subnet epoch switches sit on exact multiples of the epoch length, so the blocks in range are computed directly
+    /// instead of walking the chain as <see cref="EpochSwitchManager"/> does.
+    /// </remarks>
+    public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end)
+    {
+        if (end.Number <= start.Number) return [];
+
+        ulong epochLength = XdcSpecProvider.GetXdcSpec(end).EpochLength;
+        ulong offset = start.Number % epochLength;
+        ulong first = offset == 0 ? start.Number : start.Number + (epochLength - offset);
+        ulong last = end.Number - end.Number % epochLength;
+        if (first > last) return [];
+
+        List<EpochSwitchInfo> epochSwitchInfos = [];
+        for (ulong number = first; number <= last; number += epochLength)
+        {
+            if (Tree.FindHeader(number) is not XdcBlockHeader header) return null;
+
+            EpochSwitchInfo? epochSwitchInfo = GetEpochSwitchInfo(header);
+            if (epochSwitchInfo is null) return null;
+
+            // The switch block carries no quorum certificate, so it has no parent block info. EpochSwitchManager
+            // stops its backward walk there rather than reporting it, and callers expect the same set.
+            if (epochSwitchInfo.EpochSwitchParentBlockInfo is null) continue;
+
+            epochSwitchInfos.Add(epochSwitchInfo);
+        }
+
+        return epochSwitchInfos.ToArray();
+    }
 }
