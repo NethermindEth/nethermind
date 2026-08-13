@@ -22,6 +22,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import zlib
 from pathlib import Path
 from typing import Sequence
 
@@ -99,7 +100,9 @@ def load_corpus(path: str | Path) -> list[list]:
                         or not isinstance(record.get("params"), list):
                     raise CorpusParityError(f"corpus line {number}: not an eth_call record")
                 params.append(record["params"])
-    except OSError as error:
+    # EOFError/zlib.error (truncated or corrupt gzip) and UnicodeError (invalid UTF-8) are not
+    # OSError, so they previously escaped as tracebacks — which print the offending corpus bytes.
+    except (OSError, EOFError, UnicodeError, zlib.error) as error:
         raise CorpusParityError(f"cannot read corpus: {error.__class__.__name__}") from None
     if not params:
         raise CorpusParityError("corpus contains no records")
@@ -110,19 +113,32 @@ def load_corpus(path: str | Path) -> list[list]:
     return params
 
 
-def _node_identity(url: str) -> tuple[int, int]:
-    """Return (head block number, chain id); raises a content-free error when unreadable."""
-    identity = []
-    for method in ("eth_blockNumber", "eth_chainId"):
-        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": []}).encode()
-        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                envelope = json.loads(response.read(1 << 20))
-            identity.append(int(envelope["result"], 16))
-        except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
-            raise CorpusParityError(f"cannot read {method} from the node") from None
-    return identity[0], identity[1]
+def _rpc(url: str, method: str, params: list):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            return json.loads(response.read(1 << 20))["result"]
+    except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError):
+        raise CorpusParityError(f"cannot read {method} from the node") from None
+
+
+def _node_identity(url: str) -> tuple[int, int, str]:
+    """Return (head block number, chain id, head block hash).
+
+    Height and chain id alone do not identify a chain segment: a same-height reorg or a
+    mislabelled snapshot passes that check and every record then reads as client divergence. The
+    block hash pins the actual state the replay ran against.
+    """
+    chain_id = _rpc(url, "eth_chainId", [])
+    header = _rpc(url, "eth_getBlockByNumber", ["latest", False])
+    try:
+        head = int(header["number"], 16)
+        block_hash = str(header["hash"]).lower()
+        int(chain_id, 16)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise CorpusParityError("node returned an unusable head header") from None
+    return head, int(chain_id, 16), block_hash
 
 
 def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
@@ -227,7 +243,7 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     Transport/invalid responses still abort: they indicate node trouble, not call content.
     """
     params_list = load_corpus(corpus)
-    head, chain_id = _node_identity(rpc_url)
+    head, chain_id, block_hash = _node_identity(rpc_url)
     results: list[str] = []
     failures: dict[str, int] = {}
     error_count = 0
@@ -247,7 +263,8 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     state = Path(state_path)
     state.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(state, "wt", encoding="utf-8") as output:
-        json.dump({"total": len(results), "head": head, "chain_id": chain_id, "results": results}, output)
+        json.dump({"total": len(results), "head": head, "chain_id": chain_id,
+                   "block_hash": block_hash, "results": results}, output)
     print(f"baseline captured: {len(results)} outcomes ({error_count} rpc_error) at head {head}")
     if error_count:
         error_indexes = [str(i) for i, r in enumerate(results, start=1) if r == ERROR_MARKER]
@@ -272,22 +289,26 @@ def _describe_divergence(index: int, expected: str, actual: str) -> dict:
         "candidate_all_zero": bool(act) and set(act) == {"0"},
     }
     words = []
+    differing = 0
     for word in range(max(len(exp), len(act)) // 64 + 1):
         a, b = exp[word * 64:(word + 1) * 64], act[word * 64:(word + 1) * 64]
         if a == b or (not a and not b):
             continue
-        item = {"word": word, "baseline": a, "candidate": b}
-        # Numeric delta: a fee- or balance-shaped difference shows up as a clean integer gap.
+        differing += 1
+        if len(words) >= MAX_DIFF_WORDS:
+            continue  # keep counting; only the first few are described
+        # Deliberately NOT the words themselves: a signed decimal difference is what identifies a
+        # fee- or balance-shaped divergence, and unlike the operands it does not carry the values.
+        item: dict = {"word": word}
         try:
             if a and b:
-                item["delta"] = str(int(b or "0", 16) - int(a or "0", 16))
+                item["delta"] = str(int(b, 16) - int(a, 16))
         except ValueError:
             pass
         words.append(item)
-        if len(words) >= MAX_DIFF_WORDS:
-            break
     entry["differing_words"] = words
-    entry["total_differing_words"] = len(words)
+    # Count every differing word, not just the described preview.
+    entry["total_differing_words"] = differing
     return entry
 
 
@@ -300,6 +321,7 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
             state = json.load(source)
         baseline_results = state["results"]
         baseline_head, baseline_chain = state["head"], state["chain_id"]
+        baseline_hash = state.get("block_hash")
     except (OSError, json.JSONDecodeError, KeyError, TypeError):
         raise CorpusParityError("baseline state is missing or unreadable") from None
     if not isinstance(baseline_results, list) or len(baseline_results) != len(params_list):
@@ -308,11 +330,13 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         )
     # A snapshot at a different head/chain would mismatch on every record — report it as the
     # fixture problem it is, not as client divergence.
-    head, chain_id = _node_identity(rpc_url)
-    if (head, chain_id) != (baseline_head, baseline_chain):
+    head, chain_id, block_hash = _node_identity(rpc_url)
+    if (head, chain_id) != (baseline_head, baseline_chain) or (
+            baseline_hash is not None and block_hash != baseline_hash):
         raise CorpusParityError(
             f"node identity mismatch: baseline head={baseline_head} chain={baseline_chain} "
-            f"vs candidate head={head} chain={chain_id} — align the snapshots before comparing"
+            f"hash={baseline_hash} vs candidate head={head} chain={chain_id} hash={block_hash} "
+            f"— align the snapshots before comparing"
         )
 
     report = {field: 0 for field in PARITY_COUNTER_FIELDS}
@@ -454,7 +478,7 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
     total_records = len(params_list)
     if passes < 1:
         raise CorpusParityError("passes must be >= 1")
-    head, chain_id = _node_identity(rpc_url)
+    head, chain_id, block_hash = _node_identity(rpc_url)
 
     grid: list[list[float | None]] = [[None] * passes for _ in range(total_records)]
     status: list[list[str]] = [[""] * passes for _ in range(total_records)]
@@ -498,6 +522,17 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
             writer.writerow(row)
 
     achieved = issued / wall if wall > 0 else 0.0
+    # A matrix compared against one taken at a different head, rate or concurrency is meaningless,
+    # and nothing in the CSV records those. Emit them beside it.
+    meta = {
+        "head": head, "chain_id": chain_id, "block_hash": block_hash,
+        "records": total_records, "passes": passes, "requests": issued,
+        "target_rps": rps, "achieved_rps": round(achieved, 2), "concurrency": concurrency,
+        "outcomes": {k: v for k, v in sorted(outcomes.items())},
+    }
+    meta_target = target.with_name("timings.meta.json")
+    with meta_target.open("w", encoding="utf-8") as handle:
+        json.dump(meta, handle, sort_keys=True, separators=(",", ":"))
     summary = ", ".join(f"{k}={v}" for k, v in sorted(outcomes.items()))
     print(f"timings: {total_records} records x {passes} passes = {issued} requests "
           f"at head {head} chain {chain_id}")
