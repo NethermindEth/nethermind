@@ -454,6 +454,30 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        [Repeat(3)]
+        public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created()
+        {
+            ISortedKeyValueStore sorted = (ISortedKeyValueStore)_db;
+            Span<byte> key = stackalloc byte[2];
+            Span<byte> value = stackalloc byte[1];
+
+            // Shuffled so about half the seeks go backwards
+            byte[] suffixes = [.. Enumerable.Range(1, 49).Select(static i => (byte)i)];
+            Random rng = new(42);
+            rng.Shuffle(suffixes);
+
+            // Keep updating the DB and checking that iterator sees the latest value
+            foreach (byte i in suffixes)
+            {
+                _db[[1, i]] = [i];
+
+                bool found = sorted.TryGetCeiling([1, i], [1, (byte)(i + 1)], key, out _, value, out int valueLength);
+                Assert.That(found, Is.True, $"write {i} must be visible to the pooled iterator");
+                Assert.That(value[..valueLength].ToArray(), Is.EqualTo([i]));
+            }
+        }
+
+        [Test]
         public void Snapshot_test()
         {
             IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;

@@ -58,6 +58,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
     private ReadOptions? _readAheadReadOptions;
+    private ReadOptions _seekReadOptions = null!;
 
     internal DbOptions? DbOptions { get; private set; }
     private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
@@ -715,6 +716,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? 256UL.KiB);
             _readAheadReadOptions.SetTailing(true);
         }
+
+        // A pooled seek iterator outlives the read that rented it, so it must see writes made after its creation.
+        // Tailing gives that, at the cost of re-seeking every immutable child whenever a seek goes backwards.
+        // They also don't support SeekForPrev and SeekToLast
+        _seekReadOptions = CreateReadOptions();
+        _seekReadOptions.SetTailing(true);
         #endregion
     }
 
@@ -800,9 +807,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     internal Lazy<IteratorManager> CreateLazyReadAheadIteratorManager(ColumnFamilyHandle? cf) =>
         CreateLazyIteratorManager(cf, _readAheadReadOptions);
 
-    /// <summary> Pool for bounded seeks - regular iterators. </summary>
+    /// <summary> Pool for ceiling seeks - tailing iterators. </summary>
     internal Lazy<IteratorManager> CreateLazySeekIteratorManager(ColumnFamilyHandle? cf) =>
-        CreateLazyIteratorManager(cf, _defaultReadOptions);
+        CreateLazyIteratorManager(cf, _seekReadOptions);
 
     private Lazy<IteratorManager> CreateLazyIteratorManager(ColumnFamilyHandle? cf, ReadOptions? readOptions) =>
         new(() => new IteratorManager(_db, cf, readOptions), LazyThreadSafetyMode.ExecutionAndPublication);
