@@ -17,8 +17,12 @@ internal sealed class PayerExposureCache
     public UInt256 GetReserved(AddressAsKey key) => _reserved.TryGetValue(key, out UInt256 reserved) ? reserved : UInt256.Zero;
 
     /// <summary>Atomically reserves <paramref name="cost"/> if the summed reservation stays within <paramref name="balance"/>.</summary>
-    /// <param name="reserved">The reservation observed at the decision point; the return value is the outcome.</param>
-    public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance, out UInt256 reserved)
+    /// <param name="reserved">On rejection, the total observed at the decision point, for diagnostics; zero otherwise.</param>
+    /// <param name="replaced">
+    /// The reservation of a pending transaction this one displaces, excluded from the bound because the
+    /// pending set does not grow. Still held rather than settled here: its own release runs on removal.
+    /// </param>
+    public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance, out UInt256 reserved, in UInt256 replaced = default)
     {
         // A zero reservation would leave an entry Subtract never reclaims.
         if (cost.IsZero)
@@ -31,7 +35,8 @@ internal sealed class PayerExposureCache
         {
             if (_reserved.TryGetValue(key, out UInt256 existing))
             {
-                if (UInt256.AddOverflow(existing, cost, out UInt256 updated) || updated > balance)
+                UInt256 bound = existing > replaced ? existing - replaced : UInt256.Zero;
+                if (UInt256.AddOverflow(existing, cost, out UInt256 updated) || bound + cost > balance)
                 {
                     reserved = existing;
                     return false;

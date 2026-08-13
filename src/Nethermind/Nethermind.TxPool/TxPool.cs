@@ -203,7 +203,7 @@ namespace Nethermind.TxPool
             // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved, and gate on the
             // payer straight after, since the gate reads what the resolver recorded.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
-            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _payerExposure, _logger));
+            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
 

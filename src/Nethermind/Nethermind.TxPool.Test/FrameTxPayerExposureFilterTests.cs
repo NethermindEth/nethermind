@@ -3,13 +3,19 @@
 
 #nullable enable
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
@@ -62,6 +68,29 @@ public class FrameTxPayerExposureFilterTests
             Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)(1000 + blobTerm)), "the gas leg and the whole blob term are reserved");
             Assert.That(oneWeiShort, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
         }
+    }
+
+    // The gate runs before AddCore resolves the replacement, so the displaced tx is still reserved. The
+    // bound is on the pending set the pool would hold, and only a tx this one displaces may be discounted
+    // from it — same sender, same nonce, and the same payer, or some other payer is the one being freed.
+    [TestCase(0ul, false, false, TestName = "a fee bump discounts the tx it displaces")]
+    [TestCase(1ul, false, true, TestName = "a later nonce joins the pending set instead")]
+    [TestCase(0ul, true, true, TestName = "an incumbent paid by another payer frees that one")]
+    public void Accept_DiscountsOnlyTheReservationItDisplaces(ulong bumpNonce, bool incumbentPaidByAnother, bool rejected)
+    {
+        Transaction incumbent = FrameTxCostingExactly(600, payer: incumbentPaidByAnother ? TestItem.AddressC : null);
+        incumbent.Hash = TestItem.KeccakA;
+        Transaction bump = FrameTxCostingExactly(700);
+        bump.Nonce = bumpNonce;
+        bump.Hash = TestItem.KeccakB;
+
+        // 600 + 700 exceeds the balance, so only discounting the displaced 600 can admit the bump.
+        PayerExposureCache cache = new();
+        cache.TryReserve(Payer, 600, balance: 1200, out _);
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(1200), cache, bump, pending: Pool(blobs: false, incumbent));
+
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
     [Test]
@@ -234,10 +263,34 @@ public class FrameTxPayerExposureFilterTests
         PayerAddress = payer ?? Payer,
     };
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null)
+    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null, TxDistinctSortedPool? pending = null)
     {
-        FrameTxPayerExposureFilter filter = new(state, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
+        // The displaced tx sits in whichever pool matches its shape, so both are wired as TxPool does.
+        (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs
+            ? (Pool(blobs: false), pending ?? Pool(blobs: true))
+            : (pending ?? Pool(blobs: false), Pool(blobs: true));
+        FrameTxPayerExposureFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
         TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
+    }
+
+    /// <summary>The real pool type for the shape, so the visitor's ascending-nonce exit is exercised as wired.</summary>
+    private static TxDistinctSortedPool Pool(bool blobs, params Transaction[] pending)
+    {
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
+
+        IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
+        TxDistinctSortedPool pool = blobs
+            ? new BlobTxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance)
+            : new TxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance);
+        foreach (Transaction tx in pending)
+        {
+            pool.TryInsert(tx.Hash!, tx);
+        }
+
+        return pool;
     }
 }

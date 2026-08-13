@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -13,6 +14,8 @@ namespace Nethermind.TxPool.Filters;
 /// <remarks>The reservation is taken at admission and released when the transaction leaves the pool.</remarks>
 internal sealed class FrameTxPayerExposureFilter(
     IReadOnlyStateProvider stateProvider,
+    TxDistinctSortedPool standardPool,
+    TxDistinctSortedPool blobPool,
     PayerExposureCache exposure,
     ILogger logger) : IIncomingTxFilter
 {
@@ -36,7 +39,10 @@ internal sealed class FrameTxPayerExposureFilter(
             ? state.SenderAccount.Balance
             : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
-        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved))
+        // This runs before AddCore resolves the replacement, so the displaced tx is still reserved. The
+        // bound is on the pending set the pool would hold, which a replacement does not grow (EIP-8141
+        // decrements on "eviction, replacement, inclusion, or reorg removal").
+        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, ReplacedPendingReservation(tx, payer)))
         {
             // Atomic: this filter runs under the pool's head read lock, so payers reject concurrently.
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPayerExposureExceeded);
@@ -46,5 +52,38 @@ internal sealed class FrameTxPayerExposureFilter(
         }
 
         return AcceptTxResult.Accepted;
+    }
+
+    /// <summary>
+    /// The reservation held by a pending transaction of the same sender and nonce that <paramref name="tx"/>
+    /// would displace, or zero when it would join the pending set rather than replace one.
+    /// </summary>
+    /// <remarks>Matches on the payer too: displacing a tx paid by someone else frees that payer, not this one.</remarks>
+    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer)
+    {
+        ReplacementSearch search = new(tx.Nonce, payer);
+        TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
+        pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
+        {
+            // Buckets are visited in ascending nonce order, so stop once past the replaced nonce.
+            if (pending.Nonce < state.Nonce) return true;
+            if (pending.Nonce == state.Nonce
+                && pending.PayerAddress == state.Payer
+                && !pending.IsOverflowInTxCostAndValue(out UInt256 cost))
+            {
+                state.Reserved = cost;
+            }
+
+            return false;
+        });
+
+        return search.Reserved;
+    }
+
+    private struct ReplacementSearch(ulong nonce, Address payer)
+    {
+        public readonly ulong Nonce = nonce;
+        public readonly Address Payer = payer;
+        public UInt256 Reserved;
     }
 }
