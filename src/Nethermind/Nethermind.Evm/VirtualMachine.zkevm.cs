@@ -27,6 +27,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 
+    public object ReturnData;
+
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run
     /// no bytecode, so instead of handing a child frame to the ExecuteTransaction
