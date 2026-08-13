@@ -8,8 +8,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Precompiles.Benchmark
 {
+    [MemoryDiagnoser]
     public class KeccakBenchmark
     {
+        private readonly byte[] _output = new byte[32];
+
         public readonly struct Param
         {
             private static readonly Random _random = new(42);
@@ -41,5 +44,8 @@ namespace Nethermind.Precompiles.Benchmark
 
         [Benchmark(Baseline = true)]
         public Span<byte> Baseline() => ValueKeccak.Compute(Input.Bytes).BytesAsSpan;
+
+        [Benchmark]
+        public void ComputeHash() => KeccakHash.ComputeHash(Input.Bytes, _output);
     }
 }

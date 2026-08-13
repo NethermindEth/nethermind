@@ -3,9 +3,11 @@
 
 using System;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 
 using static System.Numerics.BitOperations;
@@ -17,6 +19,8 @@ public sealed partial class KeccakHash
     private const int ROUNDS = 24;
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
+    private const ulong AT_HWCAP2 = 26;
+    private const ulong HWCAP2_SVESHA3 = 1UL << 5;
     private static readonly ulong[] RoundConstants =
     [
         0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL,
@@ -29,11 +33,38 @@ public sealed partial class KeccakHash
         0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
     ];
 
+#pragma warning disable SYSLIB5003
+    // .NET 10 lacks a FEAT_SVE_SHA3-specific probe, so explicit opt-in is required.
+    private static readonly bool ExperimentalSve2KeccakEnabled = GetExperimentalSve2KeccakEnabled();
+
+    private static bool GetExperimentalSve2KeccakEnabled()
+    {
+        if (Environment.GetEnvironmentVariable("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK") != "1")
+            return false;
+
+        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
+            throw new PlatformNotSupportedException("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1 requires Linux ARM64.");
+
+        if (!Sve2.IsSupported)
+            throw new PlatformNotSupportedException("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1 requires SVE2, but .NET did not expose SVE2 support on this platform.");
+
+        if ((GetAuxiliaryValue(AT_HWCAP2) & HWCAP2_SVESHA3) == 0)
+            throw new PlatformNotSupportedException("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1 requires Linux HWCAP2_SVESHA3 support.");
+
+        return true;
+    }
+
+    [DllImport("libc", EntryPoint = "getauxval")]
+    private static extern ulong GetAuxiliaryValue(ulong type);
+#pragma warning restore SYSLIB5003
+
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {
         if (Avx512F.IsSupported)
             KeccakF1600Avx512F(st);
+        else if (ExperimentalSve2KeccakEnabled)
+            KeccakF1600Sve2(st);
         else
             KeccakF1600(st);
     }
@@ -249,6 +280,80 @@ public sealed partial class KeccakHash
         st[1] = abe;
         st[0] = aba;
     }
+
+#pragma warning disable SYSLIB5003
+    private static void KeccakF1600Sve2(Span<ulong> st)
+    {
+        Debug.Assert(st.Length == 25);
+
+        Span<Vector<ulong>> a = stackalloc Vector<ulong>[25];
+        Span<Vector<ulong>> b = stackalloc Vector<ulong>[25];
+        Span<Vector<ulong>> c = stackalloc Vector<ulong>[5];
+        Span<Vector<ulong>> d = stackalloc Vector<ulong>[5];
+
+        for (int i = 0; i < 25; i++)
+            a[i] = new Vector<ulong>(st[i]);
+
+        for (int round = 0; round < ROUNDS; round++)
+        {
+            c[0] = Sve2.Xor(Sve2.Xor(a[0], a[5], a[10]), a[15], a[20]);
+            c[1] = Sve2.Xor(Sve2.Xor(a[1], a[6], a[11]), a[16], a[21]);
+            c[2] = Sve2.Xor(Sve2.Xor(a[2], a[7], a[12]), a[17], a[22]);
+            c[3] = Sve2.Xor(Sve2.Xor(a[3], a[8], a[13]), a[18], a[23]);
+            c[4] = Sve2.Xor(Sve2.Xor(a[4], a[9], a[14]), a[19], a[24]);
+
+            d[0] = Vector.Xor(c[4], Vector.BitwiseOr(Vector.ShiftLeft(c[1], 1), Vector.ShiftRightLogical(c[1], 63)));
+            d[1] = Vector.Xor(c[0], Vector.BitwiseOr(Vector.ShiftLeft(c[2], 1), Vector.ShiftRightLogical(c[2], 63)));
+            d[2] = Vector.Xor(c[1], Vector.BitwiseOr(Vector.ShiftLeft(c[3], 1), Vector.ShiftRightLogical(c[3], 63)));
+            d[3] = Vector.Xor(c[2], Vector.BitwiseOr(Vector.ShiftLeft(c[4], 1), Vector.ShiftRightLogical(c[4], 63)));
+            d[4] = Vector.Xor(c[3], Vector.BitwiseOr(Vector.ShiftLeft(c[0], 1), Vector.ShiftRightLogical(c[0], 63)));
+
+            b[0] = Vector.Xor(a[0], d[0]);
+            b[10] = Sve2.XorRotateRight(a[1], d[1], (byte)63);
+            b[20] = Sve2.XorRotateRight(a[2], d[2], (byte)2);
+            b[5] = Sve2.XorRotateRight(a[3], d[3], (byte)36);
+            b[15] = Sve2.XorRotateRight(a[4], d[4], (byte)37);
+
+            b[16] = Sve2.XorRotateRight(a[5], d[0], (byte)28);
+            b[1] = Sve2.XorRotateRight(a[6], d[1], (byte)20);
+            b[11] = Sve2.XorRotateRight(a[7], d[2], (byte)58);
+            b[21] = Sve2.XorRotateRight(a[8], d[3], (byte)9);
+            b[6] = Sve2.XorRotateRight(a[9], d[4], (byte)44);
+
+            b[7] = Sve2.XorRotateRight(a[10], d[0], (byte)61);
+            b[17] = Sve2.XorRotateRight(a[11], d[1], (byte)54);
+            b[2] = Sve2.XorRotateRight(a[12], d[2], (byte)21);
+            b[12] = Sve2.XorRotateRight(a[13], d[3], (byte)39);
+            b[22] = Sve2.XorRotateRight(a[14], d[4], (byte)25);
+
+            b[23] = Sve2.XorRotateRight(a[15], d[0], (byte)23);
+            b[8] = Sve2.XorRotateRight(a[16], d[1], (byte)19);
+            b[18] = Sve2.XorRotateRight(a[17], d[2], (byte)49);
+            b[3] = Sve2.XorRotateRight(a[18], d[3], (byte)43);
+            b[13] = Sve2.XorRotateRight(a[19], d[4], (byte)56);
+
+            b[14] = Sve2.XorRotateRight(a[20], d[0], (byte)46);
+            b[24] = Sve2.XorRotateRight(a[21], d[1], (byte)62);
+            b[9] = Sve2.XorRotateRight(a[22], d[2], (byte)3);
+            b[19] = Sve2.XorRotateRight(a[23], d[3], (byte)8);
+            b[4] = Sve2.XorRotateRight(a[24], d[4], (byte)50);
+
+            for (int y = 0; y < 25; y += 5)
+            {
+                a[y] = Sve2.BitwiseClearXor(b[y], b[y + 2], b[y + 1]);
+                a[y + 1] = Sve2.BitwiseClearXor(b[y + 1], b[y + 3], b[y + 2]);
+                a[y + 2] = Sve2.BitwiseClearXor(b[y + 2], b[y + 4], b[y + 3]);
+                a[y + 3] = Sve2.BitwiseClearXor(b[y + 3], b[y], b[y + 4]);
+                a[y + 4] = Sve2.BitwiseClearXor(b[y + 4], b[y + 1], b[y]);
+            }
+
+            a[0] = Vector.Xor(a[0], new Vector<ulong>(RoundConstants[round]));
+        }
+
+        for (int i = 0; i < 25; i++)
+            st[i] = a[i][0];
+    }
+#pragma warning restore SYSLIB5003
 
     [SkipLocalsInit]
     public static void KeccakF1600Avx512F(Span<ulong> state)
