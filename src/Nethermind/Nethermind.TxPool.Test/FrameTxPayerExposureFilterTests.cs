@@ -47,9 +47,11 @@ public class FrameTxPayerExposureFilterTests
     // dropping either factor of GasPerBlob * blob count * MaxFeePerBlobGas moves the boundary and fails.
     [TestCase(1, 3, TestName = "one blob")]
     [TestCase(2, 5, TestName = "two blobs")]
+    [TestCase(6, 1_000_000, TestName = "six blobs at a realistic blob fee")]
     public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo(int blobCount, int maxFeePerBlobGas)
     {
-        int blobTerm = (int)Eip4844Constants.GasPerBlob * blobCount * maxFeePerBlobGas;
+        // Widened: the product exceeds int at six blobs and a realistic blob fee.
+        long blobTerm = (long)Eip4844Constants.GasPerBlob * blobCount * maxFeePerBlobGas;
         PayerExposureCache cache = new();
 
         AcceptTxResult atBound = Accept(StateWithPayerBalance(1000 + blobTerm), cache, BlobFrameTx(blobCount, maxFeePerBlobGas));
@@ -100,6 +102,22 @@ public class FrameTxPayerExposureFilterTests
         AcceptTxResult result = Accept(StateWithPayerBalance(0), new PayerExposureCache(), tx);
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    [TestCase(1000, false, TestName = "self-paying sender within its balance")]
+    [TestCase(999, true, TestName = "self-paying sender over its balance")]
+    public void Accept_SelfPayingSender_GatesOnTheAccountTheSiblingBalanceFiltersUsed(int balance, bool rejected)
+    {
+        // Native resolution only ever yields payer == sender today, so this is the branch every real
+        // admission takes: it must read the cached sender account, not the state provider.
+        Transaction tx = FrameTxCostingExactly(1000, payer: TestItem.AddressA);
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)balance);
+
+        // The state provider is left empty: reading it instead would see a zero balance and always reject.
+        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts);
+
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
     [Test]
@@ -167,27 +185,11 @@ public class FrameTxPayerExposureFilterTests
         }
     }
 
-    private static TestReadOnlyStateProvider StateWithPayerBalance(int wei)
+    private static TestReadOnlyStateProvider StateWithPayerBalance(long wei)
     {
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(Payer, (UInt256)wei);
         return state;
-    }
-
-    [TestCase(1000, false, TestName = "self-paying sender within its balance")]
-    [TestCase(999, true, TestName = "self-paying sender over its balance")]
-    public void Accept_SelfPayingSender_GatesOnTheAccountTheSiblingBalanceFiltersUsed(int balance, bool rejected)
-    {
-        // Native resolution only ever yields payer == sender today, so this is the branch every real
-        // admission takes: it must read the cached sender account, not the state provider.
-        Transaction tx = FrameTxCostingExactly(1000, payer: TestItem.AddressA);
-        TestReadOnlyStateProvider senderAccounts = new();
-        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)balance);
-
-        // The state provider is left empty: reading it instead would see a zero balance and always reject.
-        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts);
-
-        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
     /// <summary>The same frame tx as <see cref="FrameTxCostingExactly"/>, carrying <paramref name="blobCount"/> blobs.</summary>
@@ -195,7 +197,11 @@ public class FrameTxPayerExposureFilterTests
     {
         Transaction tx = FrameTxCostingExactly(1000);
         byte[][] hashes = new byte[blobCount][];
-        Array.Fill(hashes, new byte[32]);
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = new byte[32];
+        }
+
         tx.BlobVersionedHashes = hashes;
         tx.MaxFeePerBlobGas = (UInt256)maxFeePerBlobGas;
         return tx;
