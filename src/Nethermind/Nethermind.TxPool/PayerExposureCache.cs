@@ -83,4 +83,16 @@ internal sealed class PayerExposureCache
             }
         }
     }
+
+    /// <summary>Releases every held reservation, so a torn-down pool leaves nothing counted against the process-wide gauge.</summary>
+    public void Clear()
+    {
+        foreach (KeyValuePair<AddressAsKey, UInt256> entry in _reserved)
+        {
+            if (_reserved.TryRemove(entry.Key, out _))
+            {
+                Interlocked.Decrement(ref Metrics.FrameTxPayersWithReservedExposure);
+            }
+        }
+    }
 }

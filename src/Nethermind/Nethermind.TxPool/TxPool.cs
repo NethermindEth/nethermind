@@ -1113,6 +1113,8 @@ namespace Nethermind.TxPool
             _transactions.Removed -= OnRemovedTx;
             _blobTransactions.Inserted -= OnInsertedTx;
             _blobTransactions.Removed -= OnRemovedTx;
+            // Removed no longer fires, so anything still reserved would be counted by a gauge no pool can decrement.
+            _payerExposure.Clear();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;

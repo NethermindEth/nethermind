@@ -141,6 +141,24 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
+    public void ExposureCache_ClearReleasesEveryReservation()
+    {
+        // The pool clears on dispose: Removed is unsubscribed by then, so anything still held would be
+        // counted by the process-wide gauge with no pool left that could decrement it.
+        PayerExposureCache cache = new();
+        cache.TryReserve(Payer, 1000, balance: 1000, out _);
+        cache.TryReserve(TestItem.AddressC, 500, balance: 500, out _);
+
+        cache.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
+            Assert.That(cache.GetReserved(TestItem.AddressC), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void ExposureCache_RejectsAnAccumulationThatWouldOverflow()
     {
         // Overflow is checked before the balance compare: a wrapped total would silently re-open the gate.
