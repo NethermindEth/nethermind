@@ -1252,18 +1252,13 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A codeless non-precompile target stays on the default-code route.</summary>
-    /// <remarks>
-    /// The route is observable through the shared warm journal: default code never touches the EVM
-    /// and so leaves its target cold, where the VM path warms it. A later frame reading that address
-    /// therefore pays the cold access either way, pinned on that frame's own receipt.
-    /// </remarks>
+    /// <remarks>Default code leaves its target cold where the VM path warms it.</remarks>
     [Test]
     public void Execute_DefaultFrameTargetsCodelessAccount_LeavesItCold()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Address observed = TestItem.AddressD;
-        // A second codeless account the observer never reads, so the two runs differ only in whether
-        // the default-code frame named the address the observer goes on to read.
+        // The address the observer does not read.
         Address unobserved = TestItem.AddressF;
         DeployContract(Observer, Prepare.EvmCode.PushData(observed).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done);
 
@@ -1285,8 +1280,7 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
-    /// <remarks>Pinned on the frame receipt's gas, which the default code would leave at zero; a frame
-    /// pays no entry cost on this branch, so the identity gas (15 base, 3 per word) is all of it.</remarks>
+    /// <remarks>A frame pays no entry cost on this branch, so the identity gas is the whole figure.</remarks>
     [TestCase(TxFrame.ModeDefault, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, one byte)")]
     [TestCase(TxFrame.ModeDefault, 64, 21UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, two words)")]
     [TestCase(TxFrame.ModeSender, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(SENDER)")]
@@ -1330,8 +1324,7 @@ public class FrameTxProcessorTests
             Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
         }
 
-        // The VM builds the log from its own caller/executing account, which the balance assertions
-        // above cannot tell apart from the processor's debit and credit.
+        // The VM builds the log from its own caller/executing account, not the processor's.
         LogEntry transferLog = tracer.FrameReceipts![1].Logs[0];
         LogEntry expected = TransferLog.CreateTransfer(Sender, IdentityPrecompile.Address, in value);
         using (Assert.EnterMultipleScope())
