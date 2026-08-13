@@ -36,7 +36,8 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         }
 
         // EIP8141-GAP (devnet only): still missing before public activation are canonical-paymaster
-        // reservation, the failed-APPROVE replay bound, and dependency-set revalidation ordering.
+        // reservation, the failed-APPROVE replay bound, dependency-set revalidation ordering, re-counting
+        // the cap when a pay target gains code, and reorg re-admission beyond one tx per sponsor.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
