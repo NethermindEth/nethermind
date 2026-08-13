@@ -32,10 +32,12 @@ METRIC_FIELDS: dict[str, tuple[str, ...]] = {
     "dropped_iterations": ("count",),
 }
 # Filenames stage will publish; everything else in the output tree is left behind.
+BLOCK_HASH_PATTERN = re.compile(r"0x[0-9a-f]{64}")
+DELTA_PATTERN = re.compile(r"-?\d{1,80}")
 STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(:-?\d+)?")
 
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
-                    "timings.csv", "parity-diffs.json")
+                    "timings.csv", "parity-diffs.json", "timings.meta.json")
 
 
 class CorpusResultsError(Exception):
@@ -174,6 +176,75 @@ def _validate_timings(path: Path) -> None:
                     raise CorpusResultsError(f"timings.csv: row {number} holds an unexpected status")
 
 
+def _validate_parity_diffs(path: Path) -> None:
+    """Exact schema for the divergence characterisation — numbers only, never response words.
+
+    This file is the one artifact derived from response bytes, so it is validated strictly: any
+    field outside this schema, or any string that could carry a response word, fails staging.
+    """
+    with path.open("r", encoding="utf-8") as source:
+        data = json.load(source)
+    if not isinstance(data, dict) or set(data) != {
+            "baseline_client", "candidate_client", "total_divergences", "recorded", "diffs"}:
+        raise CorpusResultsError(f"{path.name} does not match the diffs schema")
+    for field in ("baseline_client", "candidate_client"):
+        if not isinstance(data[field], str) or not (0 < len(data[field]) <= 128):
+            raise CorpusResultsError(f"{path.name}: {field} is not a short string")
+    for field in ("total_divergences", "recorded"):
+        value = data[field]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise CorpusResultsError(f"{path.name}: {field} is not a non-negative integer")
+    diffs = data["diffs"]
+    if not isinstance(diffs, list) or len(diffs) != data["recorded"]:
+        raise CorpusResultsError(f"{path.name}: diffs length does not match 'recorded'")
+    allowed = {"index", "baseline_bytes", "candidate_bytes",
+               "baseline_all_zero", "candidate_all_zero",
+               "differing_words", "total_differing_words"}
+    for entry in diffs:
+        if not isinstance(entry, dict) or not set(entry) <= allowed or "index" not in entry:
+            raise CorpusResultsError(f"{path.name}: divergence entry has unexpected fields")
+        for key in ("index", "baseline_bytes", "candidate_bytes", "total_differing_words"):
+            if key in entry and (isinstance(entry[key], bool) or not isinstance(entry[key], int)):
+                raise CorpusResultsError(f"{path.name}: {key} is not an integer")
+        for key in ("baseline_all_zero", "candidate_all_zero"):
+            if key in entry and not isinstance(entry[key], bool):
+                raise CorpusResultsError(f"{path.name}: {key} is not a boolean")
+        for word in entry.get("differing_words", []):
+            if not isinstance(word, dict) or not set(word) <= {"word", "delta"}:
+                raise CorpusResultsError(f"{path.name}: a differing word carries unexpected fields")
+            if isinstance(word.get("word"), bool) or not isinstance(word.get("word"), int):
+                raise CorpusResultsError(f"{path.name}: word position is not an integer")
+            # delta is a signed decimal string; anything hex-shaped would be a response word.
+            if "delta" in word:
+                delta = word["delta"]
+                if not isinstance(delta, str) or not DELTA_PATTERN.fullmatch(delta):
+                    raise CorpusResultsError(f"{path.name}: delta is not a signed decimal")
+
+
+def _validate_timings_meta(path: Path) -> None:
+    """Numbers, a client-agnostic block identity, and outcome counts — nothing else."""
+    with path.open("r", encoding="utf-8") as source:
+        data = json.load(source)
+    required = {"head", "chain_id", "block_hash", "records", "passes", "requests",
+                "target_rps", "achieved_rps", "concurrency", "outcomes"}
+    if not isinstance(data, dict) or set(data) != required:
+        raise CorpusResultsError(f"{path.name} does not match the timings metadata schema")
+    for key in ("head", "chain_id", "records", "passes", "requests", "concurrency"):
+        if isinstance(data[key], bool) or not isinstance(data[key], int) or data[key] < 0:
+            raise CorpusResultsError(f"{path.name}: {key} is not a non-negative integer")
+    for key in ("target_rps", "achieved_rps"):
+        if isinstance(data[key], bool) or not isinstance(data[key], (int, float)) or data[key] < 0:
+            raise CorpusResultsError(f"{path.name}: {key} is not a non-negative number")
+    if not isinstance(data["block_hash"], str) or not BLOCK_HASH_PATTERN.fullmatch(data["block_hash"]):
+        raise CorpusResultsError(f"{path.name}: block_hash is not a 32-byte hex hash")
+    outcomes = data["outcomes"]
+    if not isinstance(outcomes, dict):
+        raise CorpusResultsError(f"{path.name}: outcomes is not an object")
+    for key, value in outcomes.items():
+        if not STATUS_PATTERN.fullmatch(key) or isinstance(value, bool) or not isinstance(value, int):
+            raise CorpusResultsError(f"{path.name}: unexpected outcome entry")
+
+
 def stage(output_root: str, stage_root: str) -> None:
     """Copy only validated aggregate files from output_root into a fresh stage_root."""
     source_root = Path(output_root)
@@ -192,6 +263,10 @@ def stage(output_root: str, stage_root: str) -> None:
                 _validate_parity(path)
             elif path.name == "timings.csv":
                 _validate_timings(path)
+            elif path.name == "parity-diffs.json":
+                _validate_parity_diffs(path)
+            elif path.name == "timings.meta.json":
+                _validate_timings_meta(path)
             # markdown/manifest files are generated by our own scripts from sanitized data
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as error:
             raise CorpusResultsError(f"{path.name}: unreadable ({error.__class__.__name__})") from None

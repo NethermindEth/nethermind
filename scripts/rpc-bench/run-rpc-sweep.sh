@@ -52,6 +52,30 @@ CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
 CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
+# Free-form knobs reach shell arithmetic, where under `set -uo pipefail` (no -e) a value such as
+# "250k" silently yields an empty duration and the cell quietly falls back to the workload default.
+# Reject anything non-numeric up front, before a node is started.
+require_positive_int() {
+  local name="$1" value="$2"
+  [[ -z "$value" ]] && return 0
+  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+    echo "::error::${name} must be a positive integer, got '${value}'"; exit 1
+  fi
+}
+require_positive_int CORPUS_REQUESTS "$CORPUS_REQUESTS"
+require_positive_int CORPUS_PASSES "$CORPUS_PASSES"
+require_positive_int CORPUS_TIMINGS_PASSES "$CORPUS_TIMINGS_PASSES"
+require_positive_int CORPUS_TIMINGS_CONCURRENCY "$CORPUS_TIMINGS_CONCURRENCY"
+if [[ -n "$CORPUS_REQUESTS" && -n "$CORPUS_PASSES" ]]; then
+  echo "::error::corpus_requests and corpus_passes are mutually exclusive"; exit 1
+fi
+# rps entries feed the same arithmetic; an empty list is legal (no k6 cells).
+for _rps in $RPS_LIST; do require_positive_int "rps_list entry" "$_rps"; done
+# timings_rps may be 0 (unpaced), so it is checked as a non-negative integer instead.
+if [[ -n "$CORPUS_TIMINGS_RPS" && ! "$CORPUS_TIMINGS_RPS" =~ ^(0|[1-9][0-9]*)$ ]]; then
+  echo "::error::timings_rps must be a non-negative integer, got '${CORPUS_TIMINGS_RPS}'"; exit 1
+fi
+
 default_image() {
   case "$1" in
     geth) echo "ethereum/client-go:stable" ;;
@@ -314,6 +338,11 @@ sink="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 if [[ "${#SUMMARIES[@]}" -gt 0 ]]; then
   printf '%s\n' "${SUMMARIES[@]}" > "$OUT_DIR/summaries.manifest"  # via file — 100+ cells exceed ARG_MAX
   python3 "$here/percat-matrix.py" "@$OUT_DIR/summaries.manifest" >> "$sink" || echo "aggregation failed" >> "$sink"
+elif [[ -z "${RPS_LIST// /}" ]]; then
+  # Documented mode: an empty rps_list requests no k6 cells at all (parity/timings only), so
+  # having no summaries is the expected outcome, not a failed sweep. Keep going so the parity
+  # table still renders and the real failure counters below decide the exit status.
+  echo "No k6 cells requested (empty rps_list) — parity/timings only." >> "$sink"
 else
   echo "No cell summaries produced — every client failed to start." >> "$sink"; exit 1
 fi

@@ -23,18 +23,23 @@ SENTINEL = "SENTINEL_PRIVATE_CALLDATA"
 
 class RpcServer:
     """Minimal JSON-RPC test double; responder(id) -> result hex | ('error',) | ('http', status)
-    | ('http_json_error', status) | bytes. Answers eth_blockNumber/eth_chainId itself."""
+    | ('http_json_error', status) | bytes. Answers the node-identity calls itself."""
 
-    def __init__(self, responder, head=25_490_000, chain=1):
+    def __init__(self, responder, head=25_490_000, chain=1, block_hash=None):
         outer = self
         self.head, self.chain = head, chain
+        # Distinct per head by default so a same-height/different-chain-segment case is expressible.
+        self.block_hash = block_hash or ("0x" + f"{head:064x}")
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):  # noqa: N802
                 request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                if request.get("method") in ("eth_blockNumber", "eth_chainId"):
-                    value = outer.head if request["method"] == "eth_blockNumber" else outer.chain
-                    body = json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": hex(value)}).encode()
+                if request.get("method") in ("eth_blockNumber", "eth_chainId", "eth_getBlockByNumber"):
+                    if request["method"] == "eth_getBlockByNumber":
+                        result = {"number": hex(outer.head), "hash": outer.block_hash}
+                    else:
+                        result = hex(outer.head if request["method"] == "eth_blockNumber" else outer.chain)
+                    body = json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}).encode()
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(body)))
@@ -162,6 +167,41 @@ class CorpusParityTests(unittest.TestCase):
         self.assertFalse(clean)
         self.assertEqual(report["matched"], 28)
         self.assertEqual(sorted(d["index"] for d in report["divergences"]), sorted(wrong))
+
+    def test_same_height_different_block_hash_is_a_fixture_error(self):
+        """Height+chain alone cannot tell a reorg or mislabelled snapshot from client divergence."""
+        corpus = self.write_corpus(3)
+        self.run_baseline(corpus, lambda i: "0x" + f"{i:04x}")
+        with RpcServer(lambda i: "0x" + f"{i:04x}", block_hash="0x" + "ab" * 32) as server,                 contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.compare(str(corpus), server.url, str(self.state), str(self.report),
+                                      "base", "cand")
+        self.assertIn("identity mismatch", str(caught.exception))
+
+    def test_corrupt_corpus_never_leaks_bytes(self):
+        """Truncated gzip and invalid UTF-8 must surface as content-free errors, not tracebacks."""
+        truncated = self.dir / "trunc.jsonl.gz"
+        full = self.write_corpus(200)
+        truncated.write_bytes(full.read_bytes()[:200])
+        bad_utf8 = self.dir / "bad.jsonl.gz"
+        with gzip.open(bad_utf8, "wb") as handle:
+            handle.write(b'{"method":"eth_call","params":["\xff\xfe' + SENTINEL.encode() + b'"]}\n')
+        for path in (truncated, bad_utf8):
+            with self.assertRaises(corpus_parity.CorpusParityError) as caught:
+                corpus_parity.load_corpus(path)
+            self.assertNotIn(SENTINEL, str(caught.exception))
+
+    def test_over_cap_divergence_reports_the_full_word_count(self):
+        """The preview is capped; the count must not be."""
+        words = corpus_parity.MAX_DIFF_WORDS + 4
+        described = corpus_parity._describe_divergence(
+            1,
+            "0x" + "".join(f"{i:064x}" for i in range(words)),
+            "0x" + "".join(f"{i + 1:064x}" for i in range(words)))
+        self.assertEqual(described["total_differing_words"], words)
+        self.assertEqual(len(described["differing_words"]), corpus_parity.MAX_DIFF_WORDS)
+        # and no response operands survive into the record
+        self.assertTrue(all(set(w) <= {"word", "delta"} for w in described["differing_words"]))
 
     def test_timings_writes_a_record_by_pass_matrix_without_content(self):
         corpus = self.write_corpus(3)

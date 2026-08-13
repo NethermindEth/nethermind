@@ -239,6 +239,15 @@ jobs:
           fi
           # Private eth_call corpus mode (jsonbench/jsonbench-sweep benchmark only): call contents
           # stay on the runner; the artifact carries aggregate summaries and parity counts only.
+          # Single source of truth for corpus mode. A present-but-non-Boolean value (e.g. the string
+          # "true") previously read as false here while the sweep's tostring read it as true, which
+          # ran the private corpus with log redaction, restricted staging and the raised gas cap all
+          # disabled. Reject it rather than guess, and pass this resolved value downstream.
+          corpus_raw="$(echo "${tool_config}" | jq -r 'if has("eth_call_corpus") then (.eth_call_corpus|type) else "absent" end')"
+          case "${corpus_raw}" in
+            absent|boolean) ;;
+            *) echo "eth_call_corpus must be a JSON boolean (true/false), got ${corpus_raw}."; exit 1;;
+          esac
           eth_call_corpus="$(echo "${tool_config}" | jq -r 'if .eth_call_corpus == true then "true" else "false" end')"
           if [[ "${eth_call_corpus}" == "true" ]]; then
             case "${benchmark_tool}" in
@@ -586,6 +595,7 @@ jobs:
         env:
           RPC_URL: http://localhost:8545
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
           CLIENT: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
           REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
@@ -615,6 +625,7 @@ jobs:
           RPC_URL: http://localhost:8545
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
           REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
@@ -638,7 +649,7 @@ jobs:
           jb_to="$(get '.timeout')";                     [[ -n "${jb_to}" ]] && export JB_TIMEOUT="${jb_to}"
           export JB_VALIDATE_SCHEMA="$(getb '.validate_schema')"
           export JB_DEEP_CHECK="$(getb '.deep_check')"
-          export JB_ETH_CALL_CORPUS="$(getb '.eth_call_corpus')"
+          export JB_ETH_CALL_CORPUS="${RESOLVED_ETH_CALL_CORPUS}"   # resolved once in `resolve`
           jb_html="$(getb '.html_report')";              [[ -n "${jb_html}" ]] && export JB_HTML_REPORT="${jb_html}"
           export JB_FAIL_ON_DIFF="$(getb '.fail_on_diff')"
           # getb: '// empty' would swallow an explicit 0 (jq treats it as truthy-false).
@@ -658,6 +669,7 @@ jobs:
           RPC_URL: http://localhost:8545
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
         shell: bash
         run: |
           set -euo pipefail
@@ -693,6 +705,7 @@ jobs:
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
           NETWORK: ${{ needs.resolve.outputs.network }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
         shell: bash
         run: |
           set -euo pipefail
@@ -700,7 +713,7 @@ jobs:
           get() { echo "${cfg}" | jq -r "$1 // empty"; }
           # For booleans '// empty' would swallow an explicit false — test null instead.
           getb() { echo "${cfg}" | jq -r "$1 | if . == null then \"\" else tostring end"; }
-          export JB_ETH_CALL_CORPUS="$(getb '.eth_call_corpus')"
+          export JB_ETH_CALL_CORPUS="${RESOLVED_ETH_CALL_CORPUS}"   # resolved once in `resolve`
           corpus_dir="$(get '.corpus_dir')";               [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
           corpus_glob="$(get '.corpus_glob')";             [[ -n "${corpus_glob}" ]] && export CORPUS_GLOB="${corpus_glob}"
           export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind geth reth"
