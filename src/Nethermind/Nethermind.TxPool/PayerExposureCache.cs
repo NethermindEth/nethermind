@@ -17,7 +17,7 @@ internal sealed class PayerExposureCache
     public UInt256 GetReserved(AddressAsKey key) => _reserved.TryGetValue(key, out UInt256 reserved) ? reserved : UInt256.Zero;
 
     /// <summary>Atomically reserves <paramref name="cost"/> if the summed reservation stays within <paramref name="balance"/>.</summary>
-    /// <param name="reserved">The total the rejecting decision saw; zero on success.</param>
+    /// <param name="reserved">The reservation observed at the decision point; the return value is the outcome.</param>
     public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance, out UInt256 reserved)
     {
         // A zero reservation would leave an entry Subtract never reclaims.

@@ -56,7 +56,8 @@ public class FrameTxPayerFilterTests
     {
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(TestItem.AddressA, 1 * Unit.Ether);
-        // only_verify with no following pay frame never approves a payer: provably invalid.
+        // only_verify with no following pay frame never approves a payer: refused, but not as Invalid,
+        // so the peer that relayed it is not disconnected.
         Transaction tx = new()
         {
             Type = TxType.FrameTx,
