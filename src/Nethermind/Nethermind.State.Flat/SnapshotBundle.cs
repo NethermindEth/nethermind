@@ -313,7 +313,7 @@ public sealed class SnapshotBundle : IDisposable
         TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null)
         {
-            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node) && node is not null
+            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node)
                 ? node
                 : new TrieNode(NodeType.Unknown, hash);
         }
@@ -336,12 +336,12 @@ public sealed class SnapshotBundle : IDisposable
             return node;
         }
 
-        return TryFindStorageNodeInPersistence(address, path, hash, out node) && node is not null
+        return TryFindStorageNodeInPersistence(address, path, hash, out node)
             ? transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, node)
             : new TrieNode(NodeType.Unknown, hash);
     }
 
-    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
+    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {

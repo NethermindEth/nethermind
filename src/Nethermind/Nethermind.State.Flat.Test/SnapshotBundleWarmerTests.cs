@@ -73,27 +73,24 @@ public class SnapshotBundleWarmerTests
         // from them, so afterwards they are reachable only through the path the warmer must not take.
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
 
-        // Read normally first: the warmer caches its own Unknown result into the transient, which a later
-        // normal read would then serve.
-        TrieNode normalStateRead = bundle.FindStateNodeOrUnknown(committedPath, TestItem.KeccakA);
-        TrieNode normalStorageRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, TestItem.KeccakA);
         TrieNode warmedCommittedState = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, TestItem.KeccakA);
         TrieNode warmedCommittedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, committedStoragePath, TestItem.KeccakA);
         TrieNode warmedPersistedState = bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakB);
         TrieNode warmedPersistedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, persistedStoragePath, TestItem.KeccakB);
 
+        TrieNode normalStateRead = bundle.FindStateNodeOrUnknown(committedPath, TestItem.KeccakA);
+        TrieNode normalStorageRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, TestItem.KeccakA);
+
         using (Assert.EnterMultipleScope())
         {
-            // The committed nodes really are reachable, so the warmer's Unknown below is a genuine miss.
-            Assert.That(normalStateRead, Is.SameAs(committedNode));
-            Assert.That(normalStorageRead, Is.SameAs(committedStorageNode));
-
             Assert.That(warmedCommittedState.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(warmedCommittedStorage.NodeType, Is.EqualTo(NodeType.Unknown));
 
-            // The warmer still returns nodes that are in persistence (state and storage).
             Assert.That(warmedPersistedState, Is.SameAs(persistedNode));
             Assert.That(warmedPersistedStorage, Is.SameAs(persistedStorageNode));
+
+            Assert.That(normalStateRead, Is.SameAs(committedNode));
+            Assert.That(normalStorageRead, Is.SameAs(committedStorageNode));
         }
     }
 
@@ -128,49 +125,6 @@ public class SnapshotBundleWarmerTests
         finally
         {
             bundle.ReleaseReadOnlyBundleLease();
-        }
-    }
-
-    [Test]
-    public void Warmer_miss_is_not_cached_so_a_later_normal_read_still_sees_the_committed_node()
-    {
-        TreePath committedPath = TreePath.FromHexString("12");
-        TrieNode committedNode = Leaf(0x82);
-        Hash256 warmHash = TestItem.KeccakA;
-
-        using SnapshotBundle bundle = NewBundle();
-        bundle.SetStateNode(committedPath, committedNode);
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
-
-        TrieNode warmed = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, warmHash);
-        TrieNode normalRead = bundle.FindStateNodeOrUnknown(committedPath, warmHash);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(warmed.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(normalRead, Is.SameAs(committedNode));
-        }
-    }
-
-    [Test]
-    public void Warmer_storage_miss_is_not_cached_so_a_later_normal_read_still_sees_the_committed_node()
-    {
-        Hash256 storageAddress = TestItem.KeccakC;
-        TreePath committedStoragePath = TreePath.FromHexString("34");
-        TrieNode committedStorageNode = Leaf(0x83);
-        Hash256 warmHash = TestItem.KeccakA;
-
-        using SnapshotBundle bundle = NewBundle();
-        bundle.SetStorageNode(storageAddress, committedStoragePath, committedStorageNode);
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
-
-        TrieNode warmed = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, committedStoragePath, warmHash);
-        TrieNode normalRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, warmHash);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(warmed.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(normalRead, Is.SameAs(committedStorageNode));
         }
     }
 
