@@ -54,6 +54,10 @@ CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 # is a no-op, so this is on by default: without it a cross-client latency gap cannot be attributed
 # to doing more work, waiting on IO, or leaving the machine idle.
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
+# Discarded load applied to each node before its measured cells. Default covers two 120s cells,
+# which is what the 2026-08-13 measurements showed is needed to reach a 0% failure rate; set to 0
+# to measure a cold node deliberately.
+CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-240s}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 # Free-form knobs reach shell arithmetic, where under `set -uo pipefail` (no -e) a value such as
@@ -139,6 +143,30 @@ run_cell() {
     JB_ETH_CALL_CORPUS="$is_corpus" JB_ETH_CALL_CORPUS_FILE="$corpus" \
     RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
     "$here/run-jsonbench.sh"
+}
+
+# Print a cell's failure rate next to its name. Latency percentiles above the failure rate are
+# measuring failures, not latency: at a 2% failure rate p99 sits inside the failing population and
+# reads as a huge regression when nothing got slower. Surfacing it per cell keeps that visible.
+report_fail_rate() {
+  local cell="$1" name="$2" rate
+  [[ -s "$cell/summary.json" ]] || return 0
+  rate="$(python3 - "$cell/summary.json" <<'PY' 2>/dev/null || echo ""
+import json, sys
+try:
+    m = (json.load(open(sys.argv[1])) or {}).get("metrics", {}) or {}
+    r = ((m.get("http_req_failed") or {}).get("values") or {}).get("rate")
+    print("%.3f" % (r * 100) if isinstance(r, (int, float)) else "")
+except Exception:
+    print("")
+PY
+)"
+  [[ -n "$rate" ]] || return 0
+  if awk "BEGIN{exit !($rate > ${JB_MAX_FAIL_RATE_PCT:-1})}" 2>/dev/null; then
+    echo "::warning::${name}: ${rate}% of requests failed — percentiles at or above p$(awk "BEGIN{printf \"%d\", 100-$rate}") describe failures, not latency"
+  else
+    echo "   ${name}: fail rate ${rate}%"
+  fi
 }
 
 # Corpus mode raises start-node's uniform RPC_GAS_CAP (default 1e9) to 1e12: captured calls
@@ -256,16 +284,40 @@ for entry in $CLIENTS; do
     # while the node is still up. The first started client is the parity baseline.
     for corpus in "${CORPORA[@]}"; do
       clabel="$(corpus_label "$corpus")"
+
+      # A node that has just started answers eth_blockNumber (what wait_for_rpc gates on) long
+      # before it serves eth_call from state. Measured cold, the first cell fails ~2% of requests
+      # and reports roughly 60% higher p99 than the same node warm — an effect larger than any
+      # code change this harness is used to detect. Burn that off into a discarded cell first.
+      # 2026-08-13 evidence: with 120s/cell, cell 1 failed 1.97%, cell 2 <1%, cell 3 0.000%.
+      if [[ -n "$RPS_LIST" && "$CORPUS_WARMUP_DURATION" != "0" ]]; then
+        warm_rps="${RPS_LIST%% *}"
+        warm_cell="$OUT_DIR/corpus/${clabel}/${label}/warmup"
+        echo "-- WARMUP ${clabel} ${label} @ rps=${warm_rps} for ${CORPUS_WARMUP_DURATION} (discarded) --"
+        run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "$CORPUS_WARMUP_DURATION" "$warm_cell" \
+          "$ctype" "$label" "$corpus" "" \
+          || echo "::warning::warmup cell for ${label} did not complete cleanly — measured cells may still be cold"
+        report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
+      fi
+
       # An empty rps_list runs no k6 cells: for a large corpus the JSON-array fixture alone can
       # exceed the box, and parity/timings do not need it.
+      # A repeated rate is a deliberate drift control, so each repeat needs its own cell directory —
+      # sharing one silently leaves only the last result behind.
+      declare -A RPS_SEEN=()
       for rps in $RPS_LIST; do
-        cell="$OUT_DIR/corpus/${clabel}/${label}/${rps}"
+        RPS_SEEN["$rps"]=$(( ${RPS_SEEN["$rps"]:-0} + 1 ))
+        slot="$rps"
+        (( ${RPS_SEEN["$rps"]} > 1 )) && slot="${rps}_r${RPS_SEEN["$rps"]}"
+        cell="$OUT_DIR/corpus/${clabel}/${label}/${slot}"
         cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
         echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
         run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" "$cname" \
-          || { echo "::warning::corpus ${clabel}/${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
-        [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${clabel}|${label}|${rps}=$cell/jsonbench-summary.md")
+          || { echo "::warning::corpus ${clabel}/${label}/${slot} failed"; cell_fail=$((cell_fail + 1)); }
+        report_fail_rate "$cell" "${clabel}/${label}/${slot}"
+        [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${clabel}|${label}|${slot}=$cell/jsonbench-summary.md")
       done
+      unset RPS_SEEN
       if [[ -z "$BASELINE_LABEL" ]]; then
         echo "-- PARITY ${clabel}: capturing baseline (${label}) --"
         if ! python3 "$here/corpus_parity.py" baseline \
