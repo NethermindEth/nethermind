@@ -199,13 +199,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // Copy: candidate lists are round-local state from here on.
         List<(int Index, Transaction Tx)> currentCandidates = [.. candidates];
         List<(int Index, Transaction Tx)> nextRoundCandidates = new(candidates.Count);
+        List<(int Index, Transaction Tx)> admitted = new(candidates.Count);
+        List<(int Index, Transaction Tx)> deferred = new(candidates.Count);
 
         for (int round = 0; round < MaxDiscoveryRounds && currentCandidates.Count > 0; round++)
         {
             roundCells.Clear();
             nextRoundCandidates.Clear();
-            (List<(int Index, Transaction Tx)> admitted, List<(int Index, Transaction Tx)> deferred) =
-                SplitByRoundGasBudget(currentCandidates, block.GasLimit);
+            admitted.Clear();
+            deferred.Clear();
+            SplitByRoundGasBudget(currentCandidates, block.GasLimit, admitted, deferred);
             if (admitted.Count == 0) return;
 
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
@@ -235,8 +238,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (!WarmDiscoveredStorage(parent, roundCells, cancellationToken)) return;
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
-            else if (deferred.Count == 0)
+            else if (deferred.Count == 0 || nextRoundCandidates.Count == admitted.Count)
             {
+                // No progress and no budget freed for the deferred — the next round would repeat this one.
                 return;
             }
 
@@ -251,15 +255,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <remarks>
     /// Declared limits are unvalidated under SkipValidation and placeholder values can steer execution into
     /// paths real execution never takes, so each round's speculative work is capped at re-executing the block
-    /// once. Splitting anew each round is deterministic, keeps a productive low-index candidate admitted every
-    /// round, and lets budget freed by dropped candidates be reclaimed by deferred ones.
+    /// once. Splitting anew each round is deterministic and lets budget freed by dropped candidates be
+    /// reclaimed by deferred ones. A persistently productive low-index candidate keeps its admission every
+    /// round, deferring later ones for the whole discovery window — deliberate: finishing one read chain
+    /// beats time-slicing several.
     /// </remarks>
-    private static (List<(int Index, Transaction Tx)> Admitted, List<(int Index, Transaction Tx)> Deferred) SplitByRoundGasBudget(
-        List<(int Index, Transaction Tx)> candidates, ulong blockGasLimit)
+    internal static void SplitByRoundGasBudget(
+        List<(int Index, Transaction Tx)> candidates,
+        ulong blockGasLimit,
+        List<(int Index, Transaction Tx)> admitted,
+        List<(int Index, Transaction Tx)> deferred)
     {
         long remaining = (long)Math.Min(blockGasLimit, (ulong)long.MaxValue);
-        List<(int Index, Transaction Tx)> admitted = new(candidates.Count);
-        List<(int Index, Transaction Tx)> deferred = [];
         foreach ((int Index, Transaction Tx) candidate in candidates)
         {
             long cost = (long)Math.Min(candidate.Tx.GasLimit, (ulong)long.MaxValue);
@@ -273,8 +280,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 deferred.Add(candidate);
             }
         }
-
-        return (admitted, deferred);
     }
 
     /// <summary>Shared state of one discovery round.</summary>

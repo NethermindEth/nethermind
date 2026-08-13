@@ -944,6 +944,41 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    [Test]
+    public void SplitByRoundGasBudget_AdmitsGreedyFirstFitInBlockOrder()
+    {
+        Transaction tx30M = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction tx20M = Build.A.Transaction.WithGasLimit(20_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction tx10M = Build.A.Transaction.WithGasLimit(10_000_001).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+        List<(int Index, Transaction Tx)> admitted = [];
+        List<(int Index, Transaction Tx)> deferred = [];
+        BlockCachePreWarmer.SplitByRoundGasBudget([(0, tx30M), (1, tx20M), (2, tx10M)], 45_000_000, admitted, deferred);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted, Is.EqualTo(new[] { (0, tx30M), (2, tx10M) }),
+                "greedy first-fit in block order: 30M fits, 20M exceeds the 15M remainder, 10M fits it");
+            Assert.That(deferred, Is.EqualTo(new[] { (1, tx20M) }));
+        }
+    }
+
+    [Test]
+    public void SplitByRoundGasBudget_DefersAllWhenNothingFits()
+    {
+        Transaction heavy = Build.A.Transaction.WithGasLimit(25_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        List<(int Index, Transaction Tx)> admitted = [];
+        List<(int Index, Transaction Tx)> deferred = [];
+        BlockCachePreWarmer.SplitByRoundGasBudget([(0, heavy)], 4_000_000, admitted, deferred);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted, Is.Empty, "a declared limit exceeding the round budget is never admitted");
+            Assert.That(deferred, Is.EqualTo(new[] { (0, heavy) }));
+        }
+    }
+
     /// <summary>Budget freed by an unproductive candidate is reclaimed, so a deferred heavy contract is still discovered in a later round.</summary>
     [Test]
     public void DiscoverAndWarmStorage_ReclaimsBudgetFromUnproductiveCandidates()
