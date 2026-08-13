@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Core.Extensions;
@@ -28,6 +29,14 @@ public static class EvmWordExtensions
             {
                 Vector256<ulong> permute = Avx2.Permute4x64(word.AsUInt64(), 0b_01_00_11_10);
                 return Avx2.Shuffle(permute.AsByte(), ByteSwap256Mask);
+            }
+            if (AdvSimd.Arm64.IsSupported)
+            {
+                Vector128<ulong> reversedUpper = AdvSimd.ReverseElement8(word.GetUpper().AsUInt64());
+                Vector128<ulong> reversedLower = AdvSimd.ReverseElement8(word.GetLower().AsUInt64());
+                Vector128<ulong> lower = AdvSimd.ExtractVector128(reversedUpper, reversedUpper, 1);
+                Vector128<ulong> upper = AdvSimd.ExtractVector128(reversedLower, reversedLower, 1);
+                return Vector256.Create(lower, upper).AsByte();
             }
 
             Vector256<ulong> u = word.AsUInt64();

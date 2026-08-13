@@ -3,8 +3,10 @@
 
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -20,9 +22,21 @@ namespace Nethermind.Evm.Benchmark
         };
 
         private byte[] _stack;
+        private EvmWord _word;
 
         [GlobalSetup]
-        public void GlobalSetup() => _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];
+        public void GlobalSetup()
+        {
+            _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];
+            _word = Vector256.Create(
+                0x0706050403020100ul,
+                0x0f0e0d0c0b0a0908ul,
+                0x1716151413121110ul,
+                0x1f1e1d1c1b1a1918ul).AsByte();
+        }
+
+        [Benchmark]
+        public EvmWord ByteSwap() => _word.ByteSwap();
 
         [Benchmark(OperationsPerInvoke = 4)]
         [ArgumentsSource(nameof(ValueSource))]
