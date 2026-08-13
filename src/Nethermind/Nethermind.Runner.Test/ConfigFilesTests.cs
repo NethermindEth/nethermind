@@ -207,7 +207,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     public void Migrations_are_not_enabled_by_default(string configWildcard) => Test<IReceiptConfig, bool>(configWildcard, static c => c.ReceiptsMigration, false);
 
     [TestCase("^mainnet ^gnosis ^sepolia", 0UL)]
-    [TestCase("mainnet ^archive", 24690000UL)]
+    [TestCase("mainnet ^archive", 24600000UL)]
     [TestCase("gnosis ^archive", 25349537UL)]
     [TestCase("sepolia ^archive", 1450409UL)]
     [TestCase("archive", 0UL)]
