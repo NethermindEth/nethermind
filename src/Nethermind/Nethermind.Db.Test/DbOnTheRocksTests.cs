@@ -564,7 +564,7 @@ namespace Nethermind.Db.Test
         };
 
         [Test]
-        public void Can_get_all_on_empty() => _ = _db.GetAll().ToList();
+        public void Can_get_all_on_empty() => Assert.That(_db.GetAll(), Is.Empty);
 
         [Test]
         public void Smoke_test_iterator()

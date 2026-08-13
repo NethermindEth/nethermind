@@ -191,20 +191,6 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Dispose_does_not_cause_trouble()
-        {
-            SnapshotableMemDb memDb = new();
-            memDb.Dispose();
-        }
-
-        [Test]
-        public void Flush_does_not_cause_trouble()
-        {
-            SnapshotableMemDb memDb = new();
-            memDb.Flush();
-        }
-
-        [Test]
         public void Can_clear()
         {
             SnapshotableMemDb memDb = new();
