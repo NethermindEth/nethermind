@@ -25,8 +25,7 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP-8141: store, reload and serve now round-trip, but a reloaded LightTransaction has no Frames,
-        // so frame expiry cannot see it — admit these under BlobsSupportMode.InMemory only until it can.
+        // EIP8141-GAP: frame expiry cannot see a persisted blob-carrying frame tx, so admit in memory only.
         if (tx.SupportsFrames && tx.CarriesBlobs && !_txPoolConfig.BlobsSupport.SupportsBlobFrameTxs())
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

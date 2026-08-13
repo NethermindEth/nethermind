@@ -15,8 +15,7 @@ public class LightTransaction : Transaction
 {
     public LightTransaction(Transaction fullTx)
     {
-        // EIP-8141: preserve the real type so a blob-carrying frame tx (type 6) is announced as type 6,
-        // not type 3 — otherwise the delivered full tx fails the announced-type check on the requesting peer.
+        // Preserve the real type, or the delivered tx fails the announced-type check on the peer.
         Type = fullTx.Type;
         Hash = fullTx.Hash;
         SenderAddress = fullTx.SenderAddress;
@@ -34,8 +33,8 @@ public class LightTransaction : Transaction
         _size = fullTx.GetLength();
     }
 
+    // Declared in the order LightTxDecoder reads them: the two optional trailing fields come last.
     public LightTransaction(
-        TxType type,
         UInt256 timestamp,
         Address sender,
         ulong nonce,
@@ -48,7 +47,8 @@ public class LightTransaction : Transaction
         byte[][] blobVersionHashes,
         ulong poolIndex,
         int size,
-        ProofVersion proofVersion)
+        ProofVersion proofVersion,
+        TxType type)
     {
         Type = type;
         Hash = hash;

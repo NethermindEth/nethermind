@@ -9,10 +9,8 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>
-/// Backward compatibility of the persisted <see cref="BlobTxsColumns.LightBlobTxs"/> record: the proof
-/// version and type are optional trailing fields, and a record that fails to decode breaks pool startup.
-/// </summary>
+/// <summary>Backward compatibility of the persisted <see cref="BlobTxsColumns.LightBlobTxs"/> record;
+/// a record that fails to decode breaks pool startup.</summary>
 [TestFixture]
 public class LightTxDecoderTests
 {
@@ -36,8 +34,7 @@ public class LightTxDecoderTests
         }
     }
 
-    // Both trailing fields are written as one RLP byte each, so dropping them reproduces the two record
-    // layouts that predate them. A reordering that breaks upgrading nodes breaks these cases first.
+    // Both trailing fields are one RLP byte, so dropping them reproduces the two older record layouts.
     [TestCase(1, ProofVersion.V1, TestName = "Legacy_record_without_the_type_field_decodes_as_a_blob_tx")]
     [TestCase(2, default(ProofVersion), TestName = "Legacy_record_without_the_proof_version_or_type_fields_decodes_as_a_blob_tx")]
     public void Legacy_record_decodes_as_a_blob_tx(int droppedTrailingFields, ProofVersion expectedProofVersion)

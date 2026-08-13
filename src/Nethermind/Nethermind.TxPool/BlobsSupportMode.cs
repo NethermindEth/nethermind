@@ -42,7 +42,7 @@ public static class BlobsSupportModeExtensions
     public static bool IsDisabled(this BlobsSupportMode mode) => mode is BlobsSupportMode.Disabled;
     public static bool SupportsReorgs(this BlobsSupportMode mode) => mode is BlobsSupportMode.StorageWithReorgs;
 
-    /// <summary>Whether a blob-carrying EIP-8141 frame transaction can be admitted under this mode.</summary>
-    /// <remarks>A reloaded light record carries no frames, so a persisted one could never expire out of the pool.</remarks>
+    /// <summary>Whether a blob-carrying frame transaction can be admitted under this mode.</summary>
+    /// <remarks>EIP8141-GAP: a persisted light record carries no frames, so frame expiry never fires for one.</remarks>
     public static bool SupportsBlobFrameTxs(this BlobsSupportMode mode) => mode is BlobsSupportMode.InMemory;
 }

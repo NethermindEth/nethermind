@@ -1497,8 +1497,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a blob-carrying frame tx lives in the blob pool, so the on-head expiry pass must scan it
-        // there — the blob pool's Inserted/Removed feed the same expiry counter as the normal pool.
+        // The blob pool feeds the same expiry counter as the normal pool, so the on-head pass scans both.
         [Test]
         public async Task Expired_blob_carrying_frame_tx_is_evicted_from_blob_pool_on_new_head()
         {
@@ -1530,8 +1529,6 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
         }
 
-        // EIP-8141: the persistent blob pool's type-6 arc is still unexercised, so a blob-carrying frame tx is
-        // rejected at ingress under the persistent modes and admitted only under BlobsSupportMode.InMemory.
         [TestCase(BlobsSupportMode.Storage)]
         [TestCase(BlobsSupportMode.StorageWithReorgs)]
         public void Blob_carrying_frame_tx_is_rejected_under_persistent_blob_pool(BlobsSupportMode blobsSupport)
@@ -1568,8 +1565,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // Under BlobsSupportMode.InMemory nothing re-adds a reorged blob-carrying frame tx, so unless its
-        // hash is un-marked AlreadyKnownTxFilter rejects every resubmission until LRU eviction.
+        // Nothing re-adds a reorged blob-frame tx in memory, so an un-marked hash is what lets it resend.
         [Test]
         public async Task Reorged_blob_carrying_frame_tx_can_be_resubmitted()
         {
