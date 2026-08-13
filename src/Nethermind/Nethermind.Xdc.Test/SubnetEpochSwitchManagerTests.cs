@@ -17,6 +17,8 @@ namespace Nethermind.Xdc.Test;
 
 internal class SubnetEpochSwitchManagerTests
 {
+    private const ulong EpochLength = 10;
+
     private IEpochSwitchManager _epochSwitchManager;
     private IBlockTree _tree;
     private ISpecProvider _config;
@@ -30,6 +32,16 @@ internal class SubnetEpochSwitchManagerTests
         _snapshotManager = Substitute.For<ISnapshotManager>();
         _epochSwitchManager = new SubnetEpochSwitchManager(_config, _tree, _snapshotManager);
     }
+
+    private void SetupSpec() =>
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec
+        {
+            EpochLength = EpochLength,
+            Gap = 5,
+            SwitchBlock = 0,
+            GenesisMasterNodes = [TestItem.AddressA, TestItem.AddressB],
+            V2Configs = [new V2ConfigParams()]
+        });
 
     [TestCase(20UL, 10UL, true)]
     [TestCase(5UL, 10UL, false)]
@@ -77,15 +89,7 @@ internal class SubnetEpochSwitchManagerTests
         Address[] headerPenalties = [TestItem.AddressD]; // deliberately different
         Address[] masterNodes = [TestItem.AddressA, TestItem.AddressB];
 
-        XdcReleaseSpec releaseSpec = new()
-        {
-            EpochLength = 10,
-            Gap = 5,
-            SwitchBlock = 0,
-            GenesisMasterNodes = masterNodes,
-            V2Configs = [new V2ConfigParams()]
-        };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        SetupSpec();
 
         // Block 0 is an epoch switch (0 % 10 == 0), so no parent-walk needed
         XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
@@ -110,15 +114,7 @@ internal class SubnetEpochSwitchManagerTests
     {
         Address[] masterNodes = [TestItem.AddressA, TestItem.AddressB];
 
-        XdcReleaseSpec releaseSpec = new()
-        {
-            EpochLength = 10,
-            Gap = 5,
-            SwitchBlock = 0,
-            GenesisMasterNodes = masterNodes,
-            V2Configs = [new V2ConfigParams()]
-        };
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        SetupSpec();
 
         XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
         builder.WithNumber(0);
@@ -130,8 +126,6 @@ internal class SubnetEpochSwitchManagerTests
 
         Assert.That(() => _epochSwitchManager.GetEpochSwitchInfo(header), Throws.InstanceOf<ArgumentException>());
     }
-
-    private const ulong EpochLength = 10;
 
     /// <summary>
     /// Registers an epoch switch block with the substituted tree and snapshot manager.
@@ -159,16 +153,6 @@ internal class SubnetEpochSwitchManagerTests
 
         return header;
     }
-
-    private void SetupSpec(ulong switchBlock = 0) =>
-        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec
-        {
-            EpochLength = EpochLength,
-            Gap = 5,
-            SwitchBlock = switchBlock,
-            GenesisMasterNodes = [TestItem.AddressA, TestItem.AddressB],
-            V2Configs = [new V2ConfigParams()]
-        });
 
     private XdcSubnetBlockHeader PlainHeader(ulong number)
     {

@@ -63,7 +63,9 @@ internal class SubnetEpochSwitchManager(
     /// <inheritdoc/>
     /// <remarks>
     /// Subnet epoch switches sit on exact multiples of the epoch length, so the blocks in range are computed directly
-    /// instead of walking the chain as <see cref="EpochSwitchManager"/> does.
+    /// instead of walking the chain as <see cref="EpochSwitchManager"/> does. Resolution is therefore canonical by
+    /// block number: the branch <paramref name="start"/> and <paramref name="end"/> sit on is not honoured, so a
+    /// non-canonical header yields canonical results rather than that branch's ancestors.
     /// </remarks>
     public override EpochSwitchInfo[]? GetEpochSwitchInfoBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
