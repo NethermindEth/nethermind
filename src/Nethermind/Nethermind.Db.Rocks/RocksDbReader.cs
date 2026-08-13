@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
@@ -55,25 +54,15 @@ public class RocksDbReader(DbOnTheRocks mainDb,
             return;
         }
 
-        DestroyReadOptions(_options);
-        DestroyReadOptions(_hintCacheMissOptions);
-    }
-
-    /// <summary>
-    /// Destroys a native ReadOptions handle and suppresses its finalizer to prevent
-    /// finalizer queue buildup from short-lived ReadOptions instances.
-    /// </summary>
-    internal static void DestroyReadOptions(ReadOptions options)
-    {
-        RocksDbSharp.Native.Instance.rocksdb_readoptions_destroy(options.Handle);
-        GC.SuppressFinalize(options);
+        RocksDbInterop.DestroyReadOptions(_options);
+        RocksDbInterop.DestroyReadOptions(_hintCacheMissOptions);
     }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null)
         {
-            byte[]? result = _mainDb.GetWithIterator(key, _columnFamily, _iteratorManager, flags, out bool success);
+            byte[]? result = DbOnTheRocks.GetWithIterator(key, _columnFamily, _iteratorManager, flags, out bool success);
             if (success)
             {
                 return result;
@@ -125,19 +114,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         ReadOptions readOptions = _readOptionsFactory();
 
-        IntPtr iterateLowerBound = IntPtr.Zero;
-        IntPtr iterateUpperBound = IntPtr.Zero;
-
-        unsafe
-        {
-            iterateLowerBound = Marshal.AllocHGlobal(firstKey.Length);
-            firstKey.CopyTo(new Span<byte>(iterateLowerBound.ToPointer(), firstKey.Length));
-            Native.Instance.rocksdb_readoptions_set_iterate_lower_bound(readOptions.Handle, iterateLowerBound, (UIntPtr)firstKey.Length);
-
-            iterateUpperBound = Marshal.AllocHGlobal(lastKey.Length);
-            lastKey.CopyTo(new Span<byte>(iterateUpperBound.ToPointer(), lastKey.Length));
-            Native.Instance.rocksdb_readoptions_set_iterate_upper_bound(readOptions.Handle, iterateUpperBound, (UIntPtr)lastKey.Length);
-        }
+        RocksDbInterop.SetIterateBounds(readOptions, firstKey, lastKey, out nint iterateLowerBound, out nint iterateUpperBound);
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
         return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);

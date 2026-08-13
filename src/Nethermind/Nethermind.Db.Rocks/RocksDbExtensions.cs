@@ -4,8 +4,10 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using RocksDbSharp;
-using RocksDbNative = RocksDbSharp.Native;
+using Nethermind.RocksDbBindings;
+using Nethermind.RocksDbBindings.Native;
+
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.Db.Rocks;
 
@@ -13,42 +15,36 @@ internal static class RocksDbExtensions
 {
     private static readonly ReadOptions _defaultReadOptions = new();
 
+    // Only buffers returned by GetSpan may be released here, exactly once.
     internal static unsafe void DangerousReleaseMemory(this RocksDb _, in ReadOnlySpan<byte> span)
     {
         ref byte ptr = ref MemoryMarshal.GetReference(span);
-        nint intPtr = new(Unsafe.AsPointer(ref ptr));
 
-        RocksDbNative.Instance.rocksdb_free(intPtr);
+        rocksdb_free(Unsafe.AsPointer(ref ptr));
     }
 
+    // The returned buffer stays native-owned until released through DangerousReleaseMemory.
     internal static unsafe Span<byte> GetSpan(this RocksDb db, scoped ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null, ReadOptions? readOptionObj = null)
     {
-        nint readOptions = _defaultReadOptions.Handle;
-        if (readOptionObj is not null) readOptions = readOptionObj.Handle;
+        rocksdb_readoptions_t* readOptions = (rocksdb_readoptions_t*)(readOptionObj ?? _defaultReadOptions).Handle;
 
-        long keyLength = (long)key.Length;
-
-        nint result;
-        nint error;
-        UIntPtr valueLength;
+        sbyte* result;
+        sbyte* error = null;
+        nuint valueLength;
 
         fixed (byte* ptr = key)
         {
-            nuint keyLengthPtr = (UIntPtr)keyLength;
+            nuint keyLength = (nuint)key.Length;
             result = cf is null
-                ? RocksDbNative.Instance.rocksdb_get(db.Handle, readOptions, ptr, keyLengthPtr, out valueLength, out error)
-                : RocksDbNative.Instance.rocksdb_get_cf(db.Handle, readOptions, cf.Handle, ptr, keyLengthPtr, out valueLength, out error);
-
+                ? rocksdb_get((rocksdb_t*)db.Handle, readOptions, (sbyte*)ptr, keyLength, &valueLength, &error)
+                : rocksdb_get_cf((rocksdb_t*)db.Handle, readOptions, (rocksdb_column_family_handle_t*)cf.Handle, (sbyte*)ptr, keyLength, &valueLength, &error);
         }
 
-        if (error != IntPtr.Zero)
-            throw new RocksDbException(error);
+        RocksDbInterop.ThrowIfError(error);
 
-        if (result == IntPtr.Zero)
+        if (result is null)
             return default;
 
-        Span<byte> span = new((void*)result, (int)valueLength);
-
-        return span;
+        return new Span<byte>(result, (int)valueLength);
     }
 }

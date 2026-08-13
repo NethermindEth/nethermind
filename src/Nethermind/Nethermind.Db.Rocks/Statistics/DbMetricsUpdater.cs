@@ -8,7 +8,7 @@ using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
@@ -188,7 +188,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         long numKeys = Prop("rocksdb.estimate-num-keys");
         long liveFiles = 0;
         // num_levels is configurable above the default 7; querying only levels 0..6 would undercount L7+.
-        int numLevels = Native.Instance.rocksdb_options_get_num_levels(dbOptions.Handle);
+        int numLevels = RocksDbInterop.GetNumLevels(dbOptions.Handle);
         for (int level = 0; level < numLevels; level++)
         {
             liveFiles += Math.Max(0, Prop($"rocksdb.num-files-at-level{level}"));

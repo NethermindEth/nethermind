@@ -4,30 +4,25 @@
 using System;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
-internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions, IntPtr lowerBound = default, IntPtr upperBound = default) : ISortedView
+internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions, nint lowerBound = default, nint upperBound = default) : ISortedView
 {
     private readonly Iterator _iterator = iterator;
     private readonly ReadOptions _readOptions = readOptions;
-    private readonly IntPtr _lowerBound = lowerBound;
-    private readonly IntPtr _upperBound = upperBound;
+    private readonly nint _lowerBound = lowerBound;
+    private readonly nint _upperBound = upperBound;
     private bool _started = false;
 
-    public void Dispose()
+    // Bounds must outlive the iterator and were allocated with NativeMemory.
+    public unsafe void Dispose()
     {
         _iterator.Dispose();
-        RocksDbReader.DestroyReadOptions(_readOptions);
-        if (_lowerBound != IntPtr.Zero)
-        {
-            Marshal.FreeHGlobal(_lowerBound);
-        }
-        if (_upperBound != IntPtr.Zero)
-        {
-            Marshal.FreeHGlobal(_upperBound);
-        }
+        RocksDbInterop.DestroyReadOptions(_readOptions);
+        NativeMemory.Free((void*)_lowerBound);
+        NativeMemory.Free((void*)_upperBound);
     }
 
     public bool StartBefore(ReadOnlySpan<byte> value)

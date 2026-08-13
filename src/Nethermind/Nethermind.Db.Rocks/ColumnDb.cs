@@ -8,7 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
@@ -139,8 +139,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         string[] keys = ["write_buffer_size", "max_bytes_for_level_base"];
         string[] values = [sizeBytes.ToString(), (sizeBytes * 4).ToString()];
-        Native.Instance.rocksdb_set_options_cf(
-            _rocksDb.Handle, _columnFamily.Handle, keys.Length, keys, values);
+        RocksDbInterop.SetOptionsCf(_rocksDb.Handle, _columnFamily.Handle, keys, values);
     }
 
     public byte[]? FirstKey

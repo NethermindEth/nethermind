@@ -10,7 +10,7 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
@@ -24,12 +24,12 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private volatile T[]? _cachedColumnKeys;
     private volatile int _cachedMaxOrdinal = -1;
 
-    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
+    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, nint? sharedCache = null)
         : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, ResolveKeys(keys), sharedCache)
     {
     }
 
-    private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, IntPtr? sharedCache)
+    private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, nint? sharedCache)
         : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keyInfo.ColumnNames, sharedCache: sharedCache)
     {
         foreach (T key in keyInfo.Keys)
@@ -98,7 +98,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return (resolvedKeys, columnNames);
     }
 
-    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
+    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, nint? sharedCache, IMergeOperator? mergeOperator)
     {
         base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
         options.SetCreateMissingColumnFamilies();
@@ -118,7 +118,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         string[] values = options.Select<KeyValuePair<string, string>, string>(static e => e.Value).ToArray();
         foreach (KeyValuePair<T, ColumnDb> cols in _columnDbs)
         {
-            _rocksDbNative.rocksdb_set_options_cf(_db.Handle, cols.Value._columnFamily.Handle, keys.Length, keys, values);
+            RocksDbInterop.SetOptionsCf(_db.Handle, cols.Value._columnFamily.Handle, keys, values);
         }
         base.ApplyOptions(options);
     }
@@ -264,8 +264,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
-            RocksDbReader.DestroyReadOptions(_sharedReadOptions);
-            RocksDbReader.DestroyReadOptions(_sharedCacheMissReadOptions);
+            RocksDbInterop.DestroyReadOptions(_sharedReadOptions);
+            RocksDbInterop.DestroyReadOptions(_sharedCacheMissReadOptions);
 
             _snapshot.Dispose();
         }

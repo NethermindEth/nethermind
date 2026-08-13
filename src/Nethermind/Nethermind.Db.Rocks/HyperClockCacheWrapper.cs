@@ -4,7 +4,9 @@
 using System;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings.Native;
+
+using static Nethermind.RocksDbBindings.Native.RocksDbNative;
 
 namespace Nethermind.Db.Rocks;
 
@@ -14,11 +16,11 @@ public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
 
     private readonly long _capacity;
 
-    public HyperClockCacheWrapper(ulong capacity = 32_000_000) : base(ownsHandle: true)
+    public unsafe HyperClockCacheWrapper(ulong capacity = 32_000_000) : base(ownsHandle: true)
     {
         lock (_nativeCacheLock)
         {
-            SetHandle(Native.Instance.rocksdb_cache_create_hyper_clock(new UIntPtr(capacity), 0));
+            SetHandle((nint)rocksdb_cache_create_hyper_clock((nuint)capacity, 0));
         }
         // If the native call returned a zero/null handle, SafeHandle won't call ReleaseHandle,
         // so don't add pressure either — keep add/remove balanced.
@@ -26,21 +28,30 @@ public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
         if (_capacity > 0) GC.AddMemoryPressure(_capacity);
     }
 
-    public IntPtr Handle => DangerousGetHandle();
+    public nint Handle => DangerousGetHandle();
 
-    protected override bool ReleaseHandle()
+    protected override unsafe bool ReleaseHandle()
     {
         lock (_nativeCacheLock)
         {
-            Native.Instance.rocksdb_cache_destroy(handle);
+            rocksdb_cache_destroy((rocksdb_cache_t*)handle);
         }
         if (_capacity > 0) GC.RemoveMemoryPressure(_capacity);
         return true;
     }
 
-    public long GetUsage()
+    public unsafe long GetUsage()
     {
-        ObjectDisposedException.ThrowIf(IsClosed, this);
-        return (long)Native.Instance.rocksdb_cache_get_usage(DangerousGetHandle());
+        bool addedRef = false;
+        try
+        {
+            // Keep the cache alive if disposal races this call.
+            DangerousAddRef(ref addedRef);
+            return (long)rocksdb_cache_get_usage((rocksdb_cache_t*)DangerousGetHandle());
+        }
+        finally
+        {
+            if (addedRef) DangerousRelease();
+        }
     }
 }
