@@ -31,6 +31,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
+    private const ulong Eip2780NewAccountTransferGas = 204600;
+    private const string Eip2780FreshRecipient = "0xc278000000000000000000000000000000000000";
+
     [Test]
     public async Task Eth_call_web3_sample()
     {
@@ -250,6 +253,33 @@ public partial class EthRpcModuleTests
         Assert.That(
             JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
             Does.Contain("intrinsic gas too low"));
+    }
+
+    [TestCase(Eip2780NewAccountTransferGas - 1, true)]
+    [TestCase(Eip2780NewAccountTransferGas, false)]
+    public async Task Eth_call_value_transfer_to_fresh_account_reports_runtime_out_of_gas(ulong gasLimit, bool expectedError)
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        LegacyTransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<LegacyTransactionForRpc>(
+            $$"""{"from":"{{SecondaryTestAddress}}","to":"{{Eip2780FreshRecipient}}","value":"0x1","gas":"0x{{gasLimit:X}}"}""");
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{SecondaryTestAddress}\":{{\"balance\":\"0xde0b6b3a7640000\"}}}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        JToken response = JToken.Parse(serialized);
+
+        if (expectedError)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+                Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("out of gas"));
+            }
+        }
+        else
+        {
+            Assert.That(response["result"]!.Value<string>(), Is.EqualTo("0x"));
+        }
     }
 
     [Test]

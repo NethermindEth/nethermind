@@ -195,6 +195,29 @@ public partial class TransactionProcessorTests
         }
     }
 
+    [Test]
+    public void Eip8037_evm_path_value_transfer_to_dead_recipient_reports_runtime_out_of_gas()
+    {
+        (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(_specProvider);
+
+        Address deadRecipient = Address.FromNumber((UInt256)2102);
+        Transaction transaction = BuildSetCodeTransfer(deadRecipient, 1.Wei, TestItem.PrivateKeyA, TestItem.PrivateKeyD, 0);
+        Block block = BuildAmsterdamBlock(transaction);
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
+        transaction.GasLimit = intrinsicGas.Standard + (ulong)GasCostOf.NewAccountState - 1;
+
+        TransactionResult result = transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+            Assert.That(_stateProvider.GetBalance(deadRecipient), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
     // Regression: an empty precompile pays NEW_ACCOUNT like any other dead recipient.
     [Test]
     public void Eip8037_value_transfer_to_dead_precompile_charges_new_account_state_gas()
