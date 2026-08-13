@@ -41,9 +41,8 @@ public sealed class FrameTxPrefixSimulator(
     {
         token.ThrowIfCancellationRequested();
 
-        // IFrameTxPrefixSimulator is public API, so the frame-tx precondition is checked here rather
-        // than relying on the pool filter: any other type would run as an ordinary transaction whose
-        // mutations this read-only env would not restore.
+        // Public API, so the precondition cannot rely on the pool filter: any other type would run as an
+        // ordinary transaction whose mutations this read-only env would not restore.
         if (!tx.SupportsFrames)
         {
             return FrameTxSimulationResult.Reject("not a frame transaction");
@@ -156,14 +155,9 @@ public sealed class FrameTxPrefixSimulator(
         }
     }
 
-    /// <summary>
-    /// Whether the per-head simulation time budget still has room, resetting it on a new head.
-    /// </summary>
-    /// <remarks>
-    /// Checked before the simulation and charged after it, so the budget can overshoot by one simulation.
-    /// A head that stops advancing keeps its exhausted budget; declining is mempool-legal and a node whose
-    /// head has stalled is not usefully gossiping.
-    /// </remarks>
+    /// <summary>Whether the per-head simulation time budget still has room, resetting it on a new head.</summary>
+    /// <remarks>Checked before the simulation and charged after it, so it can overshoot by one simulation;
+    /// a stalled head keeps its exhausted budget.</remarks>
     private bool HasHeadBudget(BlockHeader head)
     {
         if (_headBudgetTicks <= 0) return true;

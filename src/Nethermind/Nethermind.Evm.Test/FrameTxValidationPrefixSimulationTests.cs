@@ -344,9 +344,8 @@ public class FrameTxValidationPrefixSimulationTests
     [Test]
     public void Simulate_AbortedInsideAChildFrame_ReleasesTheUnwoundFrames()
     {
-        // The helper violates the SLOAD scope rule and then spins, so the abort fires on a later poll,
-        // inside the child frame. The interpreter has to release the frames it unwound past, or their
-        // pooled data stacks stay rooted for the lifetime of the reused machine.
+        // The abort fires inside the child frame, so the interpreter has to release the frames it unwound
+        // past or their pooled data stacks stay rooted for the lifetime of the reused machine.
         DeployContract(TestItem.AddressC, Prepare.EvmCode
             .Op(Instruction.JUMPDEST)
             .PushData(0).Op(Instruction.SLOAD).Op(Instruction.POP)

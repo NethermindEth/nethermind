@@ -48,11 +48,8 @@ public sealed class FrameTxValidationTracer(
     bool ITxTracer.IsCancelable => true;
 
     /// <inheritdoc/>
-    /// <remarks>
-    /// Polled by the interpreter every 1024 opcodes. Aborting at the first violation denies a spammer the
-    /// rest of the <c>MAX_VERIFY_GAS</c> budget per rejected transaction; the frames the abort unwinds
-    /// past are released by the interpreter, so it is safe from any call depth.
-    /// </remarks>
+    /// <remarks>Polled by the interpreter every 1024 opcodes; aborting at the first violation denies a
+    /// spammer the rest of the <c>MAX_VERIFY_GAS</c> budget per rejected transaction.</remarks>
     bool ITxTracer.IsCancelled => Violated || TimedOut || token.IsCancellationRequested;
 
     /// <summary>True once the wall-clock bound was reached; the transaction is then rejected, not cancelled.</summary>
