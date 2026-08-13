@@ -48,6 +48,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private const int MaxNumberOfTxsInOneMsg = 256;
 
+        protected virtual int PooledTransactionsResponseSizeLimit => TransactionsMessage.MaxPacketSize;
+
         protected override bool HandleMessageCore(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
@@ -126,7 +128,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         {
             ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
 
-            int packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            int packetSizeLeft = PooledTransactionsResponseSizeLimit;
             foreach (Hash256 hash in msg.Hashes.AsSpan())
             {
                 if (cancellationToken.IsCancellationRequested) break;

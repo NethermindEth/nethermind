@@ -5,6 +5,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -26,10 +27,14 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Eth65GetPooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
+using Eth65PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 
@@ -401,7 +406,7 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_request_oversized_announced_transactions_in_one_message()
+    public void Should_request_small_oversized_announcements_in_one_message()
     {
         using ArrayPoolList<byte> types = new(3) { 0, 0, 0 };
         using ArrayPoolList<int> sizes = new(3) { 200_000, 200_000, 200_000 };
@@ -425,6 +430,65 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_split_large_oversized_announcements_by_response_size()
+    {
+        const int transactionSize = 200_000;
+        const int transactionCount = 12;
+        int transactionsInFirstRequest = 2 * MemorySizes.MiB / transactionSize;
+
+        using ArrayPoolList<byte> types = new(transactionCount);
+        using ArrayPoolList<int> sizes = new(transactionCount);
+        using ArrayPoolList<Hash256> hashes = new(transactionCount);
+
+        for (int i = 0; i < transactionCount; i++)
+        {
+            types.Add((byte)TxType.EIP1559);
+            sizes.Add(transactionSize);
+            hashes.Add(new Hash256(i.ToString("X64")));
+        }
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == transactionsInFirstRequest));
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == transactionCount - transactionsInFirstRequest));
+    }
+
+    [Test]
+    public void Should_not_mix_regular_and_oversized_announcements_in_one_request()
+    {
+        using ArrayPoolList<byte> types = new(3) { (byte)TxType.EIP1559, (byte)TxType.EIP1559, (byte)TxType.EIP1559 };
+        using ArrayPoolList<int> sizes = new(3) { 50_000, 200_000, 50_000 };
+        using ArrayPoolList<Hash256> hashes = new(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakA));
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakB));
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == TestItem.KeccakC));
+    }
+
+    [Test]
+    public async Task Should_serve_multiple_oversized_pooled_transactions_within_soft_limit()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[200_000]).SignedAndResolved().TestObject;
+        _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(new Hash256[12].ToPooledList());
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        Assert.That(response.Transactions.Count, Is.EqualTo(10));
+    }
+
+    [Test]
     public void Should_register_requested_hashes_for_timeout_retry()
     {
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
@@ -438,11 +502,11 @@ public class Eth68ProtocolHandlerTests
         _transactionPool.Received(1).NotifyAboutTx(TestItem.KeccakA, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
     }
 
-    [TestCase(0, (byte)TxType.Legacy)]
-    [TestCase(100, (byte)TxType.Blob)]
-    [TestCase(100, (byte)TxType.DepositTx)]
-    [TestCase(100, byte.MaxValue)]
-    public void Should_not_request_or_register_invalid_transaction_shape(int size, byte type)
+    [TestCase(0, (byte)TxType.Legacy, false)]
+    [TestCase(100, (byte)TxType.Blob, true)]
+    [TestCase(100, (byte)TxType.DepositTx, false)]
+    [TestCase(100, byte.MaxValue, false)]
+    public void Should_not_request_or_register_invalid_transaction_shape(int size, byte type, bool shouldRetainShape)
     {
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { type },
@@ -456,6 +520,11 @@ public class Eth68ProtocolHandlerTests
         _transactionPool.DidNotReceive().NotifyAboutTx(
             Arg.Any<Hash256>(),
             Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
+
+        _session.ClearReceivedCalls();
+        _handler.HandleMessages([TestItem.KeccakA]);
+
+        _session.Received(shouldRetainShape ? 0 : 1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
     [Test]
@@ -519,6 +588,7 @@ public class Eth68ProtocolHandlerTests
 
     private void ReplaceHandler(ITxPoolConfig txPoolConfig)
     {
+        // Complete the discarded handler's handshake so its pending init timeout cannot disconnect the shared session substitute.
         HandleIncomingStatusMessage();
         _handler.Dispose();
         _handler = CreateHandler(txPoolConfig);
