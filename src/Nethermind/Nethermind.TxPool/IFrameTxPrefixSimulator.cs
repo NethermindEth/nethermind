@@ -40,10 +40,8 @@ public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, st
     /// True when the rejection reflects an admission bound rather than the prefix, so it says nothing
     /// about validity and a pending transaction must be retained.
     /// </summary>
-    /// <remarks>
-    /// Admission still declines, but revalidation must leave such a transaction pending: evicting on an
-    /// exhausted budget would turn a bound into a mass eviction.
-    /// </remarks>
+    /// <remarks>Admission still declines, but revalidation must leave such a transaction pending: evicting
+    /// on an exhausted budget would turn a bound into a mass eviction.</remarks>
     public bool Indeterminate { get; } = indeterminate;
 
     /// <summary>

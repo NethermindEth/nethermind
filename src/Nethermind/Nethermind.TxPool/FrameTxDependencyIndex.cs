@@ -12,12 +12,8 @@ namespace Nethermind.TxPool;
 /// Maps the chain-head accounts a pending EIP-8141 frame transaction's validation prefix depends on
 /// back to that transaction, so a new head only revalidates the prefixes it could have invalidated.
 /// </summary>
-/// <remarks>
-/// Without it the only correct alternative is re-simulating the whole pool on every head, itself a
-/// denial-of-service vector. Account granularity is a conservative superset of the spec's slot
-/// granularity: a write to a sender storage slot also changes that sender's account. A missed entry is
-/// a missed revalidation, so mutation and collection are serialized rather than reasoned about lock-free.
-/// </remarks>
+/// <remarks>Account granularity is a conservative superset of the spec's slot granularity. A missed entry
+/// is a missed revalidation, so mutation and collection are serialized rather than reasoned about lock-free.</remarks>
 internal sealed class FrameTxDependencyIndex
 {
     private readonly Lock _lock = new();
