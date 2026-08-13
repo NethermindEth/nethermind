@@ -4,6 +4,8 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,6 +19,7 @@ namespace Nethermind.Core.Test
     {
         public const string KeccakOfAnEmptyString = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
         public const string KeccakZero = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
+        private const string ExperimentalSve2KeccakEnvironmentVariable = "NETHERMIND_EXPERIMENTAL_SVE2_KECCAK";
 
         [TestCase(true, "0xc5d246...85a470")]
         [TestCase(false, "c5d246...85a470")]
@@ -166,6 +169,77 @@ namespace Nethermind.Core.Test
                 Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(expected));
                 Assert.That(Keccak.Compute(byteArray), Is.EqualTo(expected));
             }
+        }
+
+        [Test]
+        public void Sve2_permutation_matches_scalar()
+        {
+            if (!KeccakHash.IsSve2KeccakSupported())
+                Assert.Ignore("SVE2 SHA3 is not supported on this platform.");
+
+            Span<ulong> scalarState = stackalloc ulong[25];
+            scalarState.Clear();
+            AssertSve2PermutationMatchesScalar(scalarState);
+
+            scalarState.Fill(ulong.MaxValue);
+            AssertSve2PermutationMatchesScalar(scalarState);
+
+            for (int lane = 0; lane < scalarState.Length; lane++)
+            {
+                scalarState[lane] = (ulong)(lane + 1) * 0x9E3779B97F4A7C15UL ^ 0xD1B54A32D192ED03UL;
+            }
+
+            AssertSve2PermutationMatchesScalar(scalarState);
+        }
+
+        [Test]
+        public void Experimental_sve2_opt_in_on_unsupported_host_does_not_poison_KeccakHash()
+        {
+            if (KeccakHash.IsSve2KeccakSupported())
+                Assert.Ignore("SVE2 SHA3 is supported on this platform.");
+
+            string resultsDirectory = Path.Combine(Path.GetTempPath(), $"Nethermind.KeccakTests.{Guid.NewGuid():N}");
+            try
+            {
+                ProcessStartInfo startInfo = new()
+                {
+                    FileName = "dotnet",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                startInfo.ArgumentList.Add(typeof(KeccakTests).Assembly.Location);
+                startInfo.ArgumentList.Add("--filter");
+                startInfo.ArgumentList.Add($"FullyQualifiedName~{nameof(Experimental_sve2_opt_in_child_computes_known_hash)}");
+                startInfo.ArgumentList.Add("--results-directory");
+                startInfo.ArgumentList.Add(resultsDirectory);
+                startInfo.ArgumentList.Add("--no-ansi");
+                startInfo.ArgumentList.Add("--progress");
+                startInfo.ArgumentList.Add("off");
+                startInfo.Environment[ExperimentalSve2KeccakEnvironmentVariable] = "1";
+
+                using Process process = Process.Start(startInfo)
+                    ?? throw new InvalidOperationException("Could not start the Keccak child test process.");
+                string standardOutput = process.StandardOutput.ReadToEnd();
+                string standardError = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+
+                Assert.That(process.ExitCode, Is.Zero, $"{standardOutput}{Environment.NewLine}{standardError}");
+            }
+            finally
+            {
+                TryDeleteDirectory(resultsDirectory);
+            }
+        }
+
+        [Test]
+        public void Experimental_sve2_opt_in_child_computes_known_hash()
+        {
+            if (Environment.GetEnvironmentVariable(ExperimentalSve2KeccakEnvironmentVariable) != "1")
+                Assert.Ignore("This test is executed by the isolated opt-in regression test.");
+
+            Assert.That(Keccak.Compute([]).ToString(), Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
@@ -1271,6 +1345,34 @@ namespace Nethermind.Core.Test
         ["0x34925cc5cf6ece6759f008716fd59af2a3fa41d384bfa1e5402e9842c384cc14aac1913d459679b3876584e5184c998723372a19341501e4647883ad062e7253592fe1ec699bee515601cf041f08350dcbbb5e8fde60074bba669fc2e27f4c2192a1c2d737f336d199ba309555bff182d22d5bf6a06e0d7fa789aa4dcc06b29419da41512b72eb3cbfb017d099e88d9f478b3e9694e0805e239647e32d7c795183453a976a32b8743a9c5ca563f8904d2ab671ac49e5ef8bf2f2e8580557523e7e2ce236ed08437de83357e595700759e8f8c9c09d91079ad3e6d4bf3d0e337db5eb312d0bd34242e02cbfa391a7c20e793483d9c8084f3ca40a6981bdc7e096b1cdce3c51f90a3767517be6b13ffd34ae2a5900e75b177f224eb8a083ba6690dcde5a252e1321e54d8687453b9cfb247a746c3ac7a74a259cab8b328b4cdc7d8600c6276929eaed5cb39e099c5881399483ef15c2cbebf912b7eab736d07d5784a15f7414f3678ad8a967d94ec10e85756610f3e60b2b42f3f8e92153784f52bf87ca5ba752826195ec907125a998b5a4b4a6dc3778c696cdc6e300dcfd09a01a0437da5a9112fba4c932f6b07bf8a98f56d709f439024447ba8836c8d3bac22e7e3bb88166560a2f50a2f9dab9e044fb261bb2d30d0e23cfdc35ad5efce9b47697209d73c02a55a76a779e47b675d7ab8e1a99bcad4b213ec164d25c108","52e42cc6e8ec4884dfd0682c3a055305894e6e822d31fb9c96fdd253382702e0"],
         ["0x1a625bc90b1e3a18b6a9c82fe4a755d787fef103c9042f5cc2dd7b5214112834390812a442f20ffdaf9f634f1d317eaccaef8495f4ec92d04bf3ff913dded21d1d7f5f603b5d3f86a95905b1274154b8d14d4efa33ea54dd85f239e804ea86756917b46332b1dc32c6b6881fef6443b419fc1639dea9f4956d7c3d3846b231767d8fe1e59d5944ce37281ea1fa5a87aa42257a20699a7ac9cd344aee895f933d3374152f86ad7948c1fa87388e879156a7bacbc0cc585a3117a62a0439282cf36022678bf2a22e7830bafc8f624d2785335f183526adeea543840e18d4c8442909ed6114b34f688ce7e9af31c8f13bee056be8e16ea9a967a10704130eb8a6662d21c125ae962ffbbc63dfb14d015244b3f92fed61e679cae4d2e90d43634e917dcecbb4cc8d60a6d8383e1e0bc6d76358ecc8418466c4a185042a69436154b6498615ba325b5c28545f6f791aeee9e00918fbcd9c1898485971ff9bfc7ad371d25245d2fb25727fed73de3c20b617719525a69f207192bb6badfe4047035041bdadefa314e34bf6a2c0a72c92dc392f3b3f31d96fa8e7f04f6854243bac757c6913a9bd043e58d5bd09ce2bcbd446bdea4ce442d4a27afdaca5b9c13fd02e93baf71ed019150a1db050f4499c65d0caddcb59071727c0b9adc3b4981d8d7e63e06257ffccdc15ceffbfb71190f037406254e98854338c4d02c0af79fa3a3e","7f849b09a7ead26acc15eaf80f9c5656098249dd70b7ddeed53e9f6bb8f5ed5f"],
             };
+
+        private static void AssertSve2PermutationMatchesScalar(Span<ulong> scalarState)
+        {
+            Span<ulong> sveState = stackalloc ulong[scalarState.Length];
+            scalarState.CopyTo(sveState);
+
+            KeccakHash.KeccakF1600Scalar(scalarState);
+            KeccakHash.KeccakF1600Sve2(sveState);
+
+            Assert.That(sveState.SequenceEqual(scalarState), Is.True);
+        }
+
+        private static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, recursive: true);
+            }
+            catch (IOException exception)
+            {
+                TestContext.Out.WriteLine($"Could not delete child test results directory '{path}': {exception.Message}");
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                TestContext.Out.WriteLine($"Could not delete child test results directory '{path}': {exception.Message}");
+            }
+        }
 
         private static byte[] EncodeItems(byte[][] items)
         {

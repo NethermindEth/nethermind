@@ -33,25 +33,49 @@ public sealed partial class KeccakHash
         0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
     ];
 
-#pragma warning disable SYSLIB5003
-    // .NET 10 lacks a FEAT_SVE_SHA3-specific probe, so explicit opt-in is required.
-    private static readonly bool ExperimentalSve2KeccakEnabled = GetExperimentalSve2KeccakEnabled();
-
-    private static bool GetExperimentalSve2KeccakEnabled()
+    private enum ExperimentalSve2KeccakStatus
     {
-        if (Environment.GetEnvironmentVariable("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK") != "1")
+        Disabled,
+        Unsupported,
+        VerificationFailed,
+        Enabled,
+    }
+
+    // .NET 10 lacks a FEAT_SVE_SHA3-specific probe, so explicit opt-in is required.
+    private static readonly ExperimentalSve2KeccakStatus ExperimentalSve2Keccak = GetExperimentalSve2KeccakStatus();
+
+    private static ExperimentalSve2KeccakStatus GetExperimentalSve2KeccakStatus()
+    {
+        try
+        {
+            if (Environment.GetEnvironmentVariable("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK") != "1")
+                return ExperimentalSve2KeccakStatus.Disabled;
+
+            if (!IsSve2KeccakSupported())
+                return ExperimentalSve2KeccakStatus.Unsupported;
+
+            return VerifySve2Keccak() ? ExperimentalSve2KeccakStatus.Enabled : ExperimentalSve2KeccakStatus.VerificationFailed;
+        }
+        catch (Exception)
+        {
+            return ExperimentalSve2KeccakStatus.VerificationFailed;
+        }
+    }
+
+#pragma warning disable SYSLIB5003
+    internal static bool IsSve2KeccakSupported()
+    {
+        try
+        {
+            return OperatingSystem.IsLinux()
+                && RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                && Sve2.IsSupported
+                && (GetAuxiliaryValue(AT_HWCAP2) & HWCAP2_SVESHA3) != 0;
+        }
+        catch (Exception)
+        {
             return false;
-
-        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
-            throw new PlatformNotSupportedException("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1 requires Linux ARM64.");
-
-        if (!Sve2.IsSupported)
-            throw new PlatformNotSupportedException("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1 requires SVE2, but .NET did not expose SVE2 support on this platform.");
-
-        if ((GetAuxiliaryValue(AT_HWCAP2) & HWCAP2_SVESHA3) == 0)
-            throw new PlatformNotSupportedException("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1 requires Linux HWCAP2_SVESHA3 support.");
-
-        return true;
+        }
     }
 
     [DllImport("libc", EntryPoint = "getauxval")]
@@ -61,15 +85,19 @@ public sealed partial class KeccakHash
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {
+        if (ExperimentalSve2Keccak == ExperimentalSve2KeccakStatus.Enabled)
+        {
+            KeccakF1600Sve2(st);
+            return;
+        }
+
         if (Avx512F.IsSupported)
             KeccakF1600Avx512F(st);
-        else if (ExperimentalSve2KeccakEnabled)
-            KeccakF1600Sve2(st);
         else
-            KeccakF1600(st);
+            KeccakF1600Scalar(st);
     }
 
-    private static void KeccakF1600(Span<ulong> st)
+    internal static void KeccakF1600Scalar(Span<ulong> st)
     {
         Debug.Assert(st.Length == 25);
 
@@ -281,79 +309,248 @@ public sealed partial class KeccakHash
         st[0] = aba;
     }
 
+    private static bool VerifySve2Keccak()
+    {
+        Span<ulong> scalarState = stackalloc ulong[25];
+        Span<ulong> sveState = stackalloc ulong[25];
+
+        scalarState.Clear();
+        if (!VerifySve2KeccakState(scalarState, sveState))
+            return false;
+
+        scalarState.Fill(ulong.MaxValue);
+        if (!VerifySve2KeccakState(scalarState, sveState))
+            return false;
+
+        for (int lane = 0; lane < scalarState.Length; lane++)
+        {
+            scalarState[lane] = (ulong)(lane + 1) * 0x9E3779B97F4A7C15UL ^ 0xD1B54A32D192ED03UL;
+        }
+
+        return VerifySve2KeccakState(scalarState, sveState);
+    }
+
+    private static bool VerifySve2KeccakState(Span<ulong> scalarState, Span<ulong> sveState)
+    {
+        scalarState.CopyTo(sveState);
+        KeccakF1600Scalar(scalarState);
+        KeccakF1600Sve2(sveState);
+        return scalarState.SequenceEqual(sveState);
+    }
+
 #pragma warning disable SYSLIB5003
-    private static void KeccakF1600Sve2(Span<ulong> st)
+    [SkipLocalsInit]
+    internal static void KeccakF1600Sve2(Span<ulong> st)
     {
         Debug.Assert(st.Length == 25);
 
-        Span<Vector<ulong>> a = stackalloc Vector<ulong>[25];
-        Span<Vector<ulong>> b = stackalloc Vector<ulong>[25];
-        Span<Vector<ulong>> c = stackalloc Vector<ulong>[5];
-        Span<Vector<ulong>> d = stackalloc Vector<ulong>[5];
+        Vector<ulong> aba, abe, abi, abo, abu;
+        Vector<ulong> aga, age, agi, ago, agu;
+        Vector<ulong> aka, ake, aki, ako, aku;
+        Vector<ulong> ama, ame, ami, amo, amu;
+        Vector<ulong> asa, ase, asi, aso, asu;
+        Vector<ulong> bCa, bCe, bCi, bCo, bCu;
+        Vector<ulong> da, de, di, @do, du;
+        Vector<ulong> eba, ebe, ebi, ebo, ebu;
+        Vector<ulong> ega, ege, egi, ego, egu;
+        Vector<ulong> eka, eke, eki, eko, eku;
+        Vector<ulong> ema, eme, emi, emo, emu;
+        Vector<ulong> esa, ese, esi, eso, esu;
 
-        for (int i = 0; i < 25; i++)
-            a[i] = new Vector<ulong>(st[i]);
+        asu = new Vector<ulong>(st[24]);
+        aso = new Vector<ulong>(st[23]);
+        asi = new Vector<ulong>(st[22]);
+        ase = new Vector<ulong>(st[21]);
+        asa = new Vector<ulong>(st[20]);
+        amu = new Vector<ulong>(st[19]);
+        amo = new Vector<ulong>(st[18]);
+        ami = new Vector<ulong>(st[17]);
+        ame = new Vector<ulong>(st[16]);
+        ama = new Vector<ulong>(st[15]);
+        aku = new Vector<ulong>(st[14]);
+        ako = new Vector<ulong>(st[13]);
+        aki = new Vector<ulong>(st[12]);
+        ake = new Vector<ulong>(st[11]);
+        aka = new Vector<ulong>(st[10]);
+        agu = new Vector<ulong>(st[9]);
+        ago = new Vector<ulong>(st[8]);
+        agi = new Vector<ulong>(st[7]);
+        age = new Vector<ulong>(st[6]);
+        aga = new Vector<ulong>(st[5]);
+        abu = new Vector<ulong>(st[4]);
+        abo = new Vector<ulong>(st[3]);
+        abi = new Vector<ulong>(st[2]);
+        abe = new Vector<ulong>(st[1]);
+        aba = new Vector<ulong>(st[0]);
 
-        for (int round = 0; round < ROUNDS; round++)
+        for (int round = 0; round < ROUNDS; round += 2)
         {
-            c[0] = Sve2.Xor(Sve2.Xor(a[0], a[5], a[10]), a[15], a[20]);
-            c[1] = Sve2.Xor(Sve2.Xor(a[1], a[6], a[11]), a[16], a[21]);
-            c[2] = Sve2.Xor(Sve2.Xor(a[2], a[7], a[12]), a[17], a[22]);
-            c[3] = Sve2.Xor(Sve2.Xor(a[3], a[8], a[13]), a[18], a[23]);
-            c[4] = Sve2.Xor(Sve2.Xor(a[4], a[9], a[14]), a[19], a[24]);
+            bCa = Sve2.Xor(Sve2.Xor(aba, aga, aka), ama, asa);
+            bCe = Sve2.Xor(Sve2.Xor(abe, age, ake), ame, ase);
+            bCi = Sve2.Xor(Sve2.Xor(abi, agi, aki), ami, asi);
+            bCo = Sve2.Xor(Sve2.Xor(abo, ago, ako), amo, aso);
+            bCu = Sve2.Xor(Sve2.Xor(abu, agu, aku), amu, asu);
 
-            d[0] = Vector.Xor(c[4], Vector.BitwiseOr(Vector.ShiftLeft(c[1], 1), Vector.ShiftRightLogical(c[1], 63)));
-            d[1] = Vector.Xor(c[0], Vector.BitwiseOr(Vector.ShiftLeft(c[2], 1), Vector.ShiftRightLogical(c[2], 63)));
-            d[2] = Vector.Xor(c[1], Vector.BitwiseOr(Vector.ShiftLeft(c[3], 1), Vector.ShiftRightLogical(c[3], 63)));
-            d[3] = Vector.Xor(c[2], Vector.BitwiseOr(Vector.ShiftLeft(c[4], 1), Vector.ShiftRightLogical(c[4], 63)));
-            d[4] = Vector.Xor(c[3], Vector.BitwiseOr(Vector.ShiftLeft(c[0], 1), Vector.ShiftRightLogical(c[0], 63)));
+            da = Vector.Xor(bCu, RotateLeftOne(bCe));
+            de = Vector.Xor(bCa, RotateLeftOne(bCi));
+            di = Vector.Xor(bCe, RotateLeftOne(bCo));
+            @do = Vector.Xor(bCi, RotateLeftOne(bCu));
+            du = Vector.Xor(bCo, RotateLeftOne(bCa));
 
-            b[0] = Vector.Xor(a[0], d[0]);
-            b[10] = Sve2.XorRotateRight(a[1], d[1], (byte)63);
-            b[20] = Sve2.XorRotateRight(a[2], d[2], (byte)2);
-            b[5] = Sve2.XorRotateRight(a[3], d[3], (byte)36);
-            b[15] = Sve2.XorRotateRight(a[4], d[4], (byte)37);
+            bCa = Vector.Xor(aba, da);
+            bCe = Sve2.XorRotateRight(age, de, (byte)20);
+            bCi = Sve2.XorRotateRight(aki, di, (byte)21);
+            eba = Vector.Xor(Sve2.BitwiseClearXor(bCa, bCi, bCe), new Vector<ulong>(RoundConstants[round]));
+            bCo = Sve2.XorRotateRight(amo, @do, (byte)43);
+            ebe = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(asu, du, (byte)50);
+            ebi = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            ebo = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            ebu = Sve2.BitwiseClearXor(bCu, bCe, bCa);
 
-            b[16] = Sve2.XorRotateRight(a[5], d[0], (byte)28);
-            b[1] = Sve2.XorRotateRight(a[6], d[1], (byte)20);
-            b[11] = Sve2.XorRotateRight(a[7], d[2], (byte)58);
-            b[21] = Sve2.XorRotateRight(a[8], d[3], (byte)9);
-            b[6] = Sve2.XorRotateRight(a[9], d[4], (byte)44);
+            bCa = Sve2.XorRotateRight(abo, @do, (byte)36);
+            bCe = Sve2.XorRotateRight(agu, du, (byte)44);
+            bCi = Sve2.XorRotateRight(aka, da, (byte)61);
+            ega = Sve2.BitwiseClearXor(bCa, bCi, bCe);
+            bCo = Sve2.XorRotateRight(ame, de, (byte)19);
+            ege = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(asi, di, (byte)3);
+            egi = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            ego = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            egu = Sve2.BitwiseClearXor(bCu, bCe, bCa);
 
-            b[7] = Sve2.XorRotateRight(a[10], d[0], (byte)61);
-            b[17] = Sve2.XorRotateRight(a[11], d[1], (byte)54);
-            b[2] = Sve2.XorRotateRight(a[12], d[2], (byte)21);
-            b[12] = Sve2.XorRotateRight(a[13], d[3], (byte)39);
-            b[22] = Sve2.XorRotateRight(a[14], d[4], (byte)25);
+            bCa = Sve2.XorRotateRight(abe, de, (byte)63);
+            bCe = Sve2.XorRotateRight(agi, di, (byte)58);
+            bCi = Sve2.XorRotateRight(ako, @do, (byte)39);
+            eka = Sve2.BitwiseClearXor(bCa, bCi, bCe);
+            bCo = Sve2.XorRotateRight(amu, du, (byte)56);
+            eke = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(asa, da, (byte)46);
+            eki = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            eko = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            eku = Sve2.BitwiseClearXor(bCu, bCe, bCa);
 
-            b[23] = Sve2.XorRotateRight(a[15], d[0], (byte)23);
-            b[8] = Sve2.XorRotateRight(a[16], d[1], (byte)19);
-            b[18] = Sve2.XorRotateRight(a[17], d[2], (byte)49);
-            b[3] = Sve2.XorRotateRight(a[18], d[3], (byte)43);
-            b[13] = Sve2.XorRotateRight(a[19], d[4], (byte)56);
+            bCa = Sve2.XorRotateRight(abu, du, (byte)37);
+            bCe = Sve2.XorRotateRight(aga, da, (byte)28);
+            bCi = Sve2.XorRotateRight(ake, de, (byte)54);
+            ema = Sve2.BitwiseClearXor(bCa, bCi, bCe);
+            bCo = Sve2.XorRotateRight(ami, di, (byte)49);
+            eme = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(aso, @do, (byte)8);
+            emi = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            emo = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            emu = Sve2.BitwiseClearXor(bCu, bCe, bCa);
 
-            b[14] = Sve2.XorRotateRight(a[20], d[0], (byte)46);
-            b[24] = Sve2.XorRotateRight(a[21], d[1], (byte)62);
-            b[9] = Sve2.XorRotateRight(a[22], d[2], (byte)3);
-            b[19] = Sve2.XorRotateRight(a[23], d[3], (byte)8);
-            b[4] = Sve2.XorRotateRight(a[24], d[4], (byte)50);
+            bCa = Sve2.XorRotateRight(abi, di, (byte)2);
+            bCe = Sve2.XorRotateRight(ago, @do, (byte)9);
+            bCi = Sve2.XorRotateRight(aku, du, (byte)25);
+            esa = Sve2.BitwiseClearXor(bCa, bCi, bCe);
+            bCo = Sve2.XorRotateRight(ama, da, (byte)23);
+            ese = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(ase, de, (byte)62);
+            esi = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            eso = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            esu = Sve2.BitwiseClearXor(bCu, bCe, bCa);
 
-            for (int y = 0; y < 25; y += 5)
-            {
-                a[y] = Sve2.BitwiseClearXor(b[y], b[y + 2], b[y + 1]);
-                a[y + 1] = Sve2.BitwiseClearXor(b[y + 1], b[y + 3], b[y + 2]);
-                a[y + 2] = Sve2.BitwiseClearXor(b[y + 2], b[y + 4], b[y + 3]);
-                a[y + 3] = Sve2.BitwiseClearXor(b[y + 3], b[y], b[y + 4]);
-                a[y + 4] = Sve2.BitwiseClearXor(b[y + 4], b[y + 1], b[y]);
-            }
+            bCe = Sve2.Xor(Sve2.Xor(ebe, ege, eke), eme, ese);
+            bCu = Sve2.Xor(Sve2.Xor(ebu, egu, eku), emu, esu);
 
-            a[0] = Vector.Xor(a[0], new Vector<ulong>(RoundConstants[round]));
+            da = Vector.Xor(bCu, RotateLeftOne(bCe));
+            bCa = Sve2.Xor(Sve2.Xor(eba, ega, eka), ema, esa);
+            bCi = Sve2.Xor(Sve2.Xor(ebi, egi, eki), emi, esi);
+            de = Vector.Xor(bCa, RotateLeftOne(bCi));
+            bCo = Sve2.Xor(Sve2.Xor(ebo, ego, eko), emo, eso);
+            di = Vector.Xor(bCe, RotateLeftOne(bCo));
+            @do = Vector.Xor(bCi, RotateLeftOne(bCu));
+            du = Vector.Xor(bCo, RotateLeftOne(bCa));
+
+            bCi = Sve2.XorRotateRight(eki, di, (byte)21);
+            bCe = Sve2.XorRotateRight(ege, de, (byte)20);
+            bCa = Vector.Xor(eba, da);
+            aba = Vector.Xor(Sve2.BitwiseClearXor(bCa, bCi, bCe), new Vector<ulong>(RoundConstants[round + 1]));
+            bCo = Sve2.XorRotateRight(emo, @do, (byte)43);
+            abe = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(esu, du, (byte)50);
+            abi = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            abo = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            abu = Sve2.BitwiseClearXor(bCu, bCe, bCa);
+
+            bCa = Sve2.XorRotateRight(ebo, @do, (byte)36);
+            bCe = Sve2.XorRotateRight(egu, du, (byte)44);
+            bCi = Sve2.XorRotateRight(eka, da, (byte)61);
+            aga = Sve2.BitwiseClearXor(bCa, bCi, bCe);
+            bCo = Sve2.XorRotateRight(eme, de, (byte)19);
+            age = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(esi, di, (byte)3);
+            agi = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            ago = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            agu = Sve2.BitwiseClearXor(bCu, bCe, bCa);
+
+            bCa = Sve2.XorRotateRight(ebe, de, (byte)63);
+            bCe = Sve2.XorRotateRight(egi, di, (byte)58);
+            bCi = Sve2.XorRotateRight(eko, @do, (byte)39);
+            aka = Sve2.BitwiseClearXor(bCa, bCi, bCe);
+            bCo = Sve2.XorRotateRight(emu, du, (byte)56);
+            ake = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(esa, da, (byte)46);
+            aki = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            ako = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            aku = Sve2.BitwiseClearXor(bCu, bCe, bCa);
+
+            bCa = Sve2.XorRotateRight(ebu, du, (byte)37);
+            bCe = Sve2.XorRotateRight(ega, da, (byte)28);
+            bCi = Sve2.XorRotateRight(eke, de, (byte)54);
+            ama = Sve2.BitwiseClearXor(bCa, bCi, bCe);
+            bCo = Sve2.XorRotateRight(emi, di, (byte)49);
+            ame = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(eso, @do, (byte)8);
+            ami = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            amo = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            amu = Sve2.BitwiseClearXor(bCu, bCe, bCa);
+
+            bCa = Sve2.XorRotateRight(ebi, di, (byte)2);
+            bCe = Sve2.XorRotateRight(ego, @do, (byte)9);
+            bCi = Sve2.XorRotateRight(eku, du, (byte)25);
+            asa = Sve2.BitwiseClearXor(bCa, bCi, bCe);
+            bCo = Sve2.XorRotateRight(ema, da, (byte)23);
+            ase = Sve2.BitwiseClearXor(bCe, bCo, bCi);
+            bCu = Sve2.XorRotateRight(ese, de, (byte)62);
+            asi = Sve2.BitwiseClearXor(bCi, bCu, bCo);
+            aso = Sve2.BitwiseClearXor(bCo, bCa, bCu);
+            asu = Sve2.BitwiseClearXor(bCu, bCe, bCa);
         }
 
-        for (int i = 0; i < 25; i++)
-            st[i] = a[i][0];
+        st[24] = asu[0];
+        st[23] = aso[0];
+        st[22] = asi[0];
+        st[21] = ase[0];
+        st[20] = asa[0];
+        st[19] = amu[0];
+        st[18] = amo[0];
+        st[17] = ami[0];
+        st[16] = ame[0];
+        st[15] = ama[0];
+        st[14] = aku[0];
+        st[13] = ako[0];
+        st[12] = aki[0];
+        st[11] = ake[0];
+        st[10] = aka[0];
+        st[9] = agu[0];
+        st[8] = ago[0];
+        st[7] = agi[0];
+        st[6] = age[0];
+        st[5] = aga[0];
+        st[4] = abu[0];
+        st[3] = abo[0];
+        st[2] = abi[0];
+        st[1] = abe[0];
+        st[0] = aba[0];
     }
 #pragma warning restore SYSLIB5003
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector<ulong> RotateLeftOne(Vector<ulong> value)
+        => Vector.BitwiseOr(Vector.ShiftLeft(value, 1), Vector.ShiftRightLogical(value, LANE_BITS - 1));
 
     [SkipLocalsInit]
     public static void KeccakF1600Avx512F(Span<ulong> state)

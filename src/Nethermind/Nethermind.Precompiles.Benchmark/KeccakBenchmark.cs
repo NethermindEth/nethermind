@@ -4,15 +4,15 @@
 using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Precompiles.Benchmark
 {
-    [MemoryDiagnoser]
     public class KeccakBenchmark
     {
-        private readonly byte[] _output = new byte[32];
-
         public readonly struct Param
         {
             private static readonly Random _random = new(42);
@@ -44,8 +44,51 @@ namespace Nethermind.Precompiles.Benchmark
 
         [Benchmark(Baseline = true)]
         public Span<byte> Baseline() => ValueKeccak.Compute(Input.Bytes).BytesAsSpan;
+    }
+
+    [Config(typeof(InProcessConfig))]
+    [MemoryDiagnoser]
+    public class KeccakPermutationBenchmark
+    {
+        private sealed class InProcessConfig : ManualConfig
+        {
+            public InProcessConfig()
+            {
+                WithUnionRule(ConfigUnionRule.AlwaysUseLocal);
+                AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Instance));
+            }
+        }
+
+        private const int LaneCount = 25;
+        private const ulong InitialLaneMultiplier = 0x9E3779B97F4A7C15UL;
+        private const ulong InitialLaneXor = 0xD1B54A32D192ED03UL;
+
+        private readonly ulong[] _scalarState = new ulong[LaneCount];
+        private readonly ulong[] _sveState = new ulong[LaneCount];
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            if (!KeccakHash.IsSve2KeccakSupported())
+                throw new PlatformNotSupportedException("KeccakPermutationBenchmark requires SVE2 SHA3 support.");
+
+            for (int lane = 0; lane < LaneCount; lane++)
+            {
+                _scalarState[lane] = (ulong)(lane + 1) * InitialLaneMultiplier ^ InitialLaneXor;
+            }
+
+            _scalarState.AsSpan().CopyTo(_sveState);
+            KeccakHash.KeccakF1600Scalar(_scalarState);
+            KeccakHash.KeccakF1600Sve2(_sveState);
+
+            if (!_scalarState.AsSpan().SequenceEqual(_sveState))
+                throw new InvalidOperationException("SVE2 Keccak does not match the scalar permutation.");
+        }
+
+        [Benchmark(Baseline = true)]
+        public void Scalar() => KeccakHash.KeccakF1600Scalar(_scalarState);
 
         [Benchmark]
-        public void ComputeHash() => KeccakHash.ComputeHash(Input.Bytes, _output);
+        public void Sve2() => KeccakHash.KeccakF1600Sve2(_sveState);
     }
 }
