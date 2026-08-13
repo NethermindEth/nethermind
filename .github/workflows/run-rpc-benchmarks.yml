@@ -671,6 +671,9 @@ jobs:
           # getb: '// empty' would swallow an explicit 0 (jq treats it as truthy-false).
           jb_mfr="$(getb '.max_fail_rate_pct')";         [[ -n "${jb_mfr}" ]] && export JB_MAX_FAIL_RATE_PCT="${jb_mfr}"
           export JB_EXTRA_ARGS="$(get '.extra_args')"
+          # The record cap is a property of the corpus, not of the dispatch mode: without this the
+          # sweep accepts a raised cap while this path still rejects the same corpus at 10k.
+          max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
           if [[ "${COMPARISON}" == "true" ]]; then
             export REFERENCE_RPC_URL="http://localhost:${REF_RPC_PORT}"
             export REFERENCE_CLIENT_TYPE="${REFERENCE_CLIENT}"
