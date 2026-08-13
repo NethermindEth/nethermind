@@ -143,8 +143,7 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameTxNoPayer = new(23, TxPoolErrorMessages.FrameTxNoPayer);
 
         /// <summary>
-        /// An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation:
-        /// it reverted, used a banned opcode, exceeded <c>MAX_VERIFY_GAS</c>, or never set a payer.
+        /// An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.
         /// </summary>
         public static readonly AcceptTxResult FrameSimulationFailed = new(24, TxPoolErrorMessages.FrameSimulationFailed);
 

@@ -13,22 +13,15 @@ namespace Nethermind.Evm.Tracing;
 /// Enforces the EIP-8141 validation-prefix trace and opcode rules while a frame transaction's
 /// prefix is simulated at mempool admission, and captures the resolved payer.
 /// </summary>
-/// <remarks>
-/// The gas bound and the "halt once payer is set" rule live in the processor's prefix loop; this
-/// enforces the per-opcode rules of EIP-8141 "Validation Trace Rules". <c>tx.sender</c> is exempt from
-/// the <c>CALL*</c>/<c>EXTCODE*</c> target rule because its code hash is a tracked dependency.
-/// The first-<c>deploy</c>-frame carve-outs are not honored, so the processor declines a prefix
-/// containing a deploy frame before entering it and the bans below never fire for one (EIP8141-GAP).
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </remarks>
+/// <remarks>Covers the per-opcode <see href="https://eips.ethereum.org/EIPS/eip-8141">validation trace rules</see>
+/// only. EIP8141-GAP: deploy-frame carve-outs unhandled, so the processor declines any prefix containing one.</remarks>
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
     : TxTracer, IFrameTxReceiptTracer
 {
     private const byte SetDelegateOpcode = 0xf6; // EIP-7819; not modelled as an Instruction on all forks.
 
-    // Stack slot (from the top) holding the target address of the CALL*/EXTCODE* op currently being
-    // traced, or -1 when the op is not one. Set in StartOperation, consumed in SetOperationStack for
-    // the same instruction (the stack operands are unavailable to StartOperation).
+    // Stack slot holding the current CALL*/EXTCODE* target, or -1. Set in StartOperation and consumed in
+    // SetOperationStack for the same instruction, as the stack operands aren't available any earlier.
     private int _targetStackIndex = -1;
 
     public override bool IsTracingInstructions => true;
@@ -59,10 +52,8 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
         switch (opcode)
         {
             case Instruction.GAS:
-                // GAS is permitted only when immediately followed by a *CALL (the standard gas-forwarding
-                // idiom, which adds no public-mempool dependency); otherwise it is banned (L836). GAS has
-                // no immediate operand, so the next opcode is the byte at pc + 1; an implicit STOP at the
-                // end of code is not a *CALL and is a violation.
+                // Permitted only in the gas-forwarding idiom, immediately followed by a *CALL (L836). GAS
+                // takes no immediate operand, so the next opcode is the byte at pc + 1.
                 ReadOnlySpan<byte> code = env.CodeInfo.CodeSpan;
                 int next = pc + 1;
                 if (next >= code.Length || !IsCall((Instruction)code[next]))
@@ -71,8 +62,7 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
                 }
                 break;
             case Instruction.TIMESTAMP:
-                // Permitted only inside a frame executing the canonical expiry verifier runtime code at
-                // EXPIRY_VERIFIER (L788); both the address and the code hash must match.
+                // Permitted only inside the canonical expiry verifier: address and code hash must match (L788).
                 if (env.ExecutingAccount != expiryVerifier || state.GetCodeHash(expiryVerifier) != Eip8141Constants.ExpiryVerifierCodeHash)
                 {
                     Violate("banned opcode TIMESTAMP in validation prefix");
@@ -145,15 +135,14 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
     }
 
     /// <summary>
-    /// A CALL*/EXTCODE* target is disallowed when it is neither an existing contract nor a precompile,
-    /// or when it uses an EIP-7702 delegation (spec L816). tx.sender is exempt: its code hash and nonce
-    /// are already tracked dependencies, covering the default-code behavior the spec carves out.
+    /// A CALL*/EXTCODE* target is disallowed unless it is an undelegated existing contract (spec L816);
+    /// tx.sender is exempt because its code hash and nonce are already tracked dependencies.
     /// </summary>
     private bool IsForbiddenCallTarget(Address target)
     {
         if (target == sender || spec.IsPrecompile(target)) return false;
-        if (!state.IsContract(target)) return true;      // codeless: not an existing contract
-        return state.IsDelegatedCode(target);            // EIP-7702-delegated targets are forbidden
+        if (!state.IsContract(target)) return true;
+        return state.IsDelegatedCode(target);
     }
 
     private static bool IsCall(Instruction opcode) => opcode is
