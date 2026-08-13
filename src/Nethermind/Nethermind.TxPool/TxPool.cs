@@ -85,8 +85,9 @@ namespace Nethermind.TxPool
         private bool _isDisposed;
         private long _pendingTransactionsAdded = 0;
 
-        // Lets the per-head expiry pass skip the pool walk when nothing can expire; maintained under the
-        // pool lock via the Inserted/Removed events.
+        // Count of pending frame txs carrying an EIP-8141 expiry deadline; lets the per-head expiry
+        // pass skip the pool walk entirely when there is nothing to expire (the case on every network
+        // where the fork is inactive). Maintained under the pool lock via the Inserted/Removed events.
         private int _expiringFrameTxCount;
 
         /// <summary>
@@ -151,8 +152,10 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            // Blob-carrying frame txs need the same bookkeeping as the normal pool. Frame expiry applies
-            // only under BlobsSupportMode.InMemory: a persisted LightTransaction hard-codes TxType.Blob.
+            // EIP-8141: blob-carrying frame txs live in the blob pool, so it wires the same insert/removal
+            // bookkeeping (delegations, frame expiry) as the normal pool. Frame expiry only takes effect
+            // under BlobsSupportMode.InMemory: persistent storage keeps a LightTransaction whose Type is
+            // hard-coded TxType.Blob, so SupportsFrames is false until the light record carries the tx type.
             _blobTransactions.Inserted += OnInsertedTx;
             _blobTransactions.Removed += OnRemovedTx;
             if (_blobTransactions.Count > 0)
@@ -488,8 +491,19 @@ namespace Nethermind.TxPool
             return removed;
         }
 
-        /// <summary>Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
-        /// <remarks>Matches the expiry predeploy's revert condition exactly (&gt;, not &gt;=), so the pool never drops a tx it would accept.</remarks>
+        /// <summary>
+        /// Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.
+        /// </summary>
+        /// <remarks>
+        /// An expired frame tx can never be included (the expiry-verifier predeploy reverts once
+        /// <c>block.timestamp &gt; deadline</c>), so it is evicted rather than re-propagated
+        /// (ethereum/EIPs#12007, "Revalidation"). The predicate matches that revert condition exactly (not
+        /// <c>&gt;=</c>) so the pool never drops a tx the predeploy would accept.
+        /// The count guard skips the pool walk when no expiring frame tx is present.
+        /// EIP8141: a deadline-ordered index (evict without scanning) is deferred to the scalable eviction layer;
+        /// so is sweeping expired frame txs held only in the broadcaster's persistent-broadcast pool (locally
+        /// submitted, then cheap-evicted from <see cref="_transactions"/>), which this pass does not yet reach.
+        /// </remarks>
         private void RemoveExpiredFrameTransactions(Block block)
         {
             if (Volatile.Read(ref _expiringFrameTxCount) == 0
