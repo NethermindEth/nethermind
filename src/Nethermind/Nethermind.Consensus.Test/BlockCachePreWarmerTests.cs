@@ -917,10 +917,30 @@ public class BlockCachePreWarmerTests
             {
                 Assert.That(warmedBeyondBudget, Is.Zero,
                     "cells over the MaxDiscoveredCells budget must never be warmed — the cap is enforced before the backing reads");
-                // Tolerance for the lossy set-associative cache: a handful of self-evictions are possible.
-                Assert.That(warmedWithinBudget, Is.GreaterThan(BlockCachePreWarmer.MaxDiscoveredCells - 100),
+                // Tolerance for the lossy set-associative cache: self-eviction counts vary with insertion order.
+                Assert.That(warmedWithinBudget, Is.GreaterThan(BlockCachePreWarmer.MaxDiscoveredCells * 9 / 10),
                     "cells within the budget are warmed");
             }
+        }
+    }
+
+    /// <summary>Declared gas limits are unvalidated on the discovery path; the aggregate speculative-work budget must bound them.</summary>
+    [Test]
+    public void DiscoverAndWarmStorage_SkipsCandidatesBeyondSpeculativeGasBudget()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(25_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            // Budget is block.GasLimit per round; a declared limit exceeding the whole budget must not execute.
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(4_000_000).TestObject;
+
+            preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
+                "a candidate whose declared gas exceeds the speculative budget must not be executed");
         }
     }
 

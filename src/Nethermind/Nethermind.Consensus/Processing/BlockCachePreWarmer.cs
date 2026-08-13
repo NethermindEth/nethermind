@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
@@ -46,6 +47,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
     internal const int MaxDiscoveredCells = 8192;
+    private const int MinCandidateCaptureCells = 256;
     // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
     private const ulong StorageDiscoveryGasThreshold = 10_000_000;
 
@@ -198,12 +200,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // Copy: the round swap below would otherwise mutate the caller's list.
         List<(int Index, Transaction Tx)> currentCandidates = [.. candidates];
         List<(int Index, Transaction Tx)> nextRoundCandidates = new(candidates.Count);
+        // Declared limits are unvalidated under SkipValidation and placeholder values can steer execution
+        // into paths real execution never takes; cap aggregate speculative work at re-executing the block
+        // once per round.
+        StrongBox<long> speculativeGasBudget = new((long)Math.Min(block.GasLimit, (ulong)(long.MaxValue / MaxDiscoveryRounds)) * MaxDiscoveryRounds);
 
         for (int round = 0; round < MaxDiscoveryRounds && currentCandidates.Count > 0; round++)
         {
             roundCells.Clear();
             nextRoundCandidates.Clear();
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
+            // Fair split across candidates; the merge below still clamps the round to cellBudget.
+            int captureBudget = Math.Max(MinCandidateCaptureCells, cellBudget / currentCandidates.Count);
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, currentCandidates.Count),
@@ -213,7 +221,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             try
             {
                 Parallel.ForEach(currentCandidates, parallelOptions, candidate =>
-                    DiscoverTransactionStorageReads(candidate, block, parent, spec, cellBudget, roundCells, roundCellsLock, nextRoundCandidates));
+                    DiscoverTransactionStorageReads(candidate, block, parent, spec, captureBudget, cellBudget, speculativeGasBudget, roundCells, roundCellsLock, nextRoundCandidates));
             }
             catch (OperationCanceledException)
             {
@@ -236,7 +244,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Block block,
         BlockHeader parent,
         IReleaseSpec spec,
+        int captureBudget,
         int cellBudget,
+        StrongBox<long> speculativeGasBudget,
         PooledSet<StorageCell> roundCells,
         Lock roundCellsLock,
         List<(int Index, Transaction Tx)> nextRoundCandidates)
@@ -245,10 +255,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (MainThreadTxIndex >= candidate.Index) return;
 
         Transaction tx = candidate.Tx;
+        long declaredGas = (long)Math.Min(tx.GasLimit, (ulong)long.MaxValue);
+        if (Interlocked.Add(ref speculativeGasBudget.Value, -declaredGas) < 0) return;
+
         IReadOnlyTxProcessorSource env = _envPool.Get();
         try
         {
-            using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(cellBudget);
+            using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(captureBudget);
             using IReadOnlyTxProcessingScope scope = env.Build(parent);
             scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
 
@@ -299,7 +312,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             discoveredCells.CopyTo(cells, 0);
-            // Group cells per contract so each range partition resolves the account and storage root once.
+            // Sorting by address keeps a contract's slots adjacent, so most partitions resolve one account and storage root.
             Array.Sort(cells, 0, cellCount, _cellAddressComparer);
             ParallelOptions parallelOptions = new()
             {
@@ -307,7 +320,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 CancellationToken = cancellationToken
             };
 
-            // Wide ranges so one scope serves many reads and a contract's sorted slots stay in one partition.
+            // Wide ranges so one scope build serves many reads rather than a handful.
             int rangeSize = Math.Max(16, cellCount / (parallelOptions.MaxDegreeOfParallelism * 4));
 
             // Reads through a prewarmer scope populate PreBlockCaches, so plain parallel reads are the warm-up.
