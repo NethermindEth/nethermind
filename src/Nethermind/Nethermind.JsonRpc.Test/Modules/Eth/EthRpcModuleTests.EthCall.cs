@@ -31,8 +31,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
-    private const ulong Eip2780NewAccountTransferGas = 204600;
-    private const string Eip2780FreshRecipient = "0xc278000000000000000000000000000000000000";
+    private const ulong Eip8037NewAccountTransferGas = GasCostOf.TransactionEip2780
+        + Eip8038Constants.ColdAccountAccess
+        + GasCostOf.TxValueCostEip2780
+        + GasCostOf.TransferLogEip2780
+        + (ulong)GasCostOf.NewAccountState;
+    private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
 
     [Test]
     public async Task Eth_call_web3_sample()
@@ -255,13 +259,13 @@ public partial class EthRpcModuleTests
             Does.Contain("intrinsic gas too low"));
     }
 
-    [TestCase(Eip2780NewAccountTransferGas - 1, true)]
-    [TestCase(Eip2780NewAccountTransferGas, false)]
+    [TestCase(Eip8037NewAccountTransferGas - 1, true)]
+    [TestCase(Eip8037NewAccountTransferGas, false)]
     public async Task Eth_call_value_transfer_to_fresh_account_reports_runtime_out_of_gas(ulong gasLimit, bool expectedError)
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         LegacyTransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<LegacyTransactionForRpc>(
-            $$"""{"from":"{{SecondaryTestAddress}}","to":"{{Eip2780FreshRecipient}}","value":"0x1","gas":"0x{{gasLimit:X}}"}""");
+            $$"""{"from":"{{SecondaryTestAddress}}","to":"{{FreshRecipientAddress}}","value":"0x1","gas":"0x{{gasLimit:X}}"}""");
         object stateOverride = JsonSerializer.Deserialize<object>(
             $"{{\"{SecondaryTestAddress}\":{{\"balance\":\"0xde0b6b3a7640000\"}}}}")!;
 
@@ -655,6 +659,33 @@ public partial class EthRpcModuleTests
 
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_contract_creation_reports_runtime_out_of_gas()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        Transaction tx = Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
+        tx.GasLimit = intrinsicGas.Standard + (ulong)GasCostOf.CreateState - 1;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.To = null;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        JToken response = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("out of gas"));
+        }
     }
 
     [TestCase(null)]

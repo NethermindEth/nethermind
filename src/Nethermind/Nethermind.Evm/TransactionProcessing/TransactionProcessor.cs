@@ -481,13 +481,20 @@ namespace Nethermind.Evm.TransactionProcessing
                 destroyList: null,
                 logs: logs,
                 shouldRevert: false,
-                isTracerConnected: false, // safe: the ctor reads this only when shouldRevert is true
+                isTracerConnected: false, // Keep IsError false: this is a valid transaction-level halt; EvmExceptionType is surfaced separately.
                 evmExceptionType: newAccountOutOfGas ? EvmExceptionType.OutOfGas : EvmExceptionType.None,
                 logger: Logger);
 
             if (isTracingActions)
             {
-                tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
+                if (newAccountOutOfGas)
+                {
+                    tracer.ReportActionError(EvmExceptionType.OutOfGas);
+                }
+                else
+                {
+                    tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
+                }
             }
 
             TGasPolicy floorGas = intrinsicGas.FloorGas;
@@ -644,7 +651,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (statusCode == StatusCode.Failure)
                 {
                     byte[] output = substate.ShouldRevert ? substate.Output.AsReadOnlyArray() : [];
-                    tracer.MarkAsFailed(executingAccount, spentGas, output, substate.Error, stateRoot);
+                    string? error = substate.Error;
+                    if (error is null && substate.EvmExceptionType is not EvmExceptionType.None)
+                    {
+                        error = substate.EvmExceptionType.FastToString();
+                    }
+                    tracer.MarkAsFailed(executingAccount, spentGas, output, error, stateRoot);
                 }
                 else
                 {
@@ -1341,6 +1353,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.ConsumeCreateStateGas(ref state.Gas))
                 {
+                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                     gasAvailable = state.Gas;
                     TGasPolicy.SetOutOfGas(ref gasAvailable);
                     WorldState.Restore(snapshot);

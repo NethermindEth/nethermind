@@ -84,6 +84,7 @@ public partial class TransactionProcessorTests
             Assert.That(tracer.ActionEndCalls, Is.EqualTo(1));
             Assert.That(tracer.ActionGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
             Assert.That(tracer.ActionEndGas, Is.EqualTo(tx.GasLimit - GasCostOf.Transaction));
+            Assert.That(tracer.ActionErrorCalls, Is.EqualTo(0));
             Assert.That(tracer.ActionValue, Is.EqualTo((UInt256)7.Wei));
             Assert.That(tracer.ActionFrom, Is.EqualTo(TestItem.AddressA));
             Assert.That(tracer.ActionTo, Is.EqualTo(recipient));
@@ -91,6 +92,37 @@ public partial class TransactionProcessorTests
             Assert.That(tracer.ActionType, Is.EqualTo(ExecutionType.TRANSACTION));
             Assert.That(tracer.IsPrecompileCall, Is.False);
             Assert.That(tracer.ActionOutput, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Eip8037_simple_transfer_reports_runtime_out_of_gas_to_action_trace()
+    {
+        IReleaseSpec spec = Amsterdam.Instance;
+        ISpecProvider specProvider = new TestSpecProvider(spec);
+        _stateProvider.Commit(spec);
+        _stateProvider.CommitTree(0);
+
+        (CountingVirtualMachine virtualMachine, EthereumTransactionProcessor transactionProcessor) = CreateProcessor(specProvider);
+
+        Address deadRecipient = Address.FromNumber((UInt256)2103);
+        Transaction tx = BuildSimpleTransfer(deadRecipient, 1.Wei, withAuthorizationList: false, gasLimit: 1_000_000);
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec);
+        tx.GasLimit = intrinsicGas.Standard + (ulong)GasCostOf.NewAccountState - 1;
+        Block block = BuildAmsterdamBlock(tx);
+        SimpleTransferActionTracer tracer = new();
+
+        TransactionResult result = transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
+            Assert.That(tracer.ActionCalls, Is.EqualTo(1));
+            Assert.That(tracer.ActionEndCalls, Is.EqualTo(0));
+            Assert.That(tracer.ActionErrorCalls, Is.EqualTo(1));
+            Assert.That(tracer.ActionErrorType, Is.EqualTo(EvmExceptionType.OutOfGas));
         }
     }
 
@@ -397,6 +429,8 @@ public partial class TransactionProcessorTests
         public override bool IsTracingActions { get; protected set; } = true;
         public int ActionCalls { get; private set; }
         public int ActionEndCalls { get; private set; }
+        public int ActionErrorCalls { get; private set; }
+        public EvmExceptionType ActionErrorType { get; private set; }
         public ulong ActionGas { get; private set; }
         public ulong ActionEndGas { get; private set; }
         public UInt256 ActionValue { get; private set; }
@@ -424,6 +458,12 @@ public partial class TransactionProcessorTests
             ActionEndCalls++;
             ActionEndGas = gas;
             ActionOutput = output.ToArray();
+        }
+
+        public override void ReportActionError(EvmExceptionType evmExceptionType)
+        {
+            ActionErrorCalls++;
+            ActionErrorType = evmExceptionType;
         }
     }
 
