@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
@@ -366,15 +367,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "gasUsed": "0x8406",
       "input": "0xa01234",
       "error": "execution reverted",
-      "logs": [
-        {
-          "address": "0x76e68a8696537e4141926f3e528733af9e237d69",
-          "data": "0x",
-          "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
-          ],
-          "position": "0x1"
-        }
-      ],
       "calls": [
         {
           "type": "CREATE",
@@ -397,15 +389,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "gasUsed": "0x8406",
       "input": "0x",
       "error": "execution reverted",
-      "logs": [
-        {
-          "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
-          "data": "0x",
-          "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
-          ],
-          "position": "0x1"
-        }
-      ],
       "calls": [
         {
           "type": "CREATE",
@@ -423,6 +406,47 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 }
 """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test(Description = "A nested frame that catches a child's revert and keeps running must stay successful and keep the log it emits")]
+    public void Test_CallTrace_NestedCall_CatchesChildRevert_KeepsPostCatchLog()
+    {
+        Address revertAddress = TestItem.AddressC;
+        byte[] revertCode = Prepare.EvmCode.Revert(0, 0).Done;
+        TestState.CreateAccount(revertAddress, 0);
+        TestState.InsertCode(revertAddress, revertCode, Spec);
+
+        Address catchAddress = TestItem.AddressD;
+        byte[] catchAndLogCode = Prepare.EvmCode.Call(TestItem.AddressC, 30000).Log(0, 0).STOP().Done;
+        TestState.CreateAccount(catchAddress, 0);
+        TestState.InsertCode(catchAddress, catchAndLogCode, Spec);
+
+        byte[] txCode = Prepare.EvmCode.Call(catchAddress, 60000).STOP().Done;
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, txCode);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        using GethLikeTxTrace trace = Execute(tracer, txCode, MainnetSpecProvider.CancunActivation).BuildResult();
+
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame catchFrame = topFrame.Calls.AssertSingle();
+        NativeCallTracerCallFrame revertFrame = catchFrame.Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Error, Is.Null);
+            Assert.That(topFrame.Logs, Is.Null);
+
+            Assert.That(catchFrame.To, Is.EqualTo(catchAddress));
+            Assert.That(catchFrame.Error, Is.Null, "a frame that swallows a child revert and returns must stay successful");
+            Assert.That(catchFrame.Logs, Is.Not.Null, "the post-catch log belongs to the catcher frame");
+
+            NativeCallTracerLogEntry catcherLog = catchFrame.Logs.AssertSingle();
+            Assert.That(catcherLog.Address, Is.EqualTo(catchAddress));
+            Assert.That(catcherLog.Position, Is.EqualTo(1UL));
+
+            Assert.That(revertFrame.To, Is.EqualTo(revertAddress));
+            Assert.That(revertFrame.Error, Is.EqualTo("execution reverted"));
+            Assert.That(revertFrame.Logs, Is.Null);
+        }
     }
 
     [Test]
