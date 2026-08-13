@@ -175,8 +175,7 @@ public class FrameTransactionForRpcTests
         }
     }
 
-    // A blobless frame tx must be 0 here per the EIP-8141 constraints, but a caller-supplied value must
-    // still reach the transaction so a simulation sees what TXPARAM 0x05 would see on chain.
+    // Must be 0 for a blobless tx, but the value still has to reach TXPARAM 0x05 in a simulation.
     [Test]
     public void FrameTransactionForRpc_ToTransaction_KeepsMaxFeePerBlobGas_WithoutBlobHashes()
     {

@@ -510,7 +510,6 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
     }
 
-    // EIP-8141 Constraints: "if len(tx.blob_versioned_hashes) == 0: assert tx.max_fee_per_blob_gas == 0".
     [TestCase(0ul, ExpectedResult = true, TestName = "IsWellFormed_BloblessFrameTxWithZeroMaxFeePerBlobGas_ReturnsTrue")]
     [TestCase(1ul, ExpectedResult = false, TestName = "IsWellFormed_BloblessFrameTxWithNonZeroMaxFeePerBlobGas_ReturnsFalse")]
     public bool IsWellFormed_BloblessFrameTxMaxFeePerBlobGas(ulong maxFeePerBlobGas)

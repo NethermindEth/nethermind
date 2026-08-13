@@ -12,13 +12,11 @@ using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-// The header counts a type-6's blob gas, so the bundle has to publish its blobs alongside type-3's or the
-// CL receives one that does not add up.
+// The header counts a type-6's blob gas, so the bundle has to publish its blobs alongside type-3's.
 [TestFixture]
 public class BlobsBundleTests
 {
-    // Symmetry only: type-6 exists only where BlobProofVersion is V1, and ResolveBlob declines any other
-    // version, so a V0-wrapped frame tx cannot actually reach a produced block or the V1 bundle.
+    // Symmetry only: ResolveBlob declines a V0 wrapper, so this shape cannot reach a produced block.
     [Test]
     public void BlobsBundleV1_includes_blob_carrying_frame_tx()
     {

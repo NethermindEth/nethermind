@@ -24,11 +24,11 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
-    /// <summary>EIP-8141 <c>max_fee_per_blob_gas</c>, an unconditional field of the signed payload.</summary>
+    /// <summary><c>max_fee_per_blob_gas</c>, an unconditional field of the signed payload.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxFeePerBlobGas { get; set; }
 
-    /// <summary>EIP-8141 <c>blob_versioned_hashes</c>, an unconditional field of the signed payload.</summary>
+    /// <summary><c>blob_versioned_hashes</c>, an unconditional field of the signed payload.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[][]? BlobVersionedHashes { get; set; }
 
@@ -41,8 +41,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
 
-        // Both fields are covered by the sig hash, so they are always reported: a consumer must be able
-        // to rebuild the signed payload from this view, as it can for type-3.
+        // Covered by the sig hash, so always reported: a consumer must be able to rebuild the payload.
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }

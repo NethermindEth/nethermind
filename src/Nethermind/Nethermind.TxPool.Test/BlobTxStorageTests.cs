@@ -68,8 +68,7 @@ public class BlobTxStorageTests
 
     private static Transaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
     {
-        // The count only has to satisfy the RLP round-trip; nothing here verifies KZG, and the light
-        // record carries the version explicitly rather than inferring it from the proofs/blobs ratio.
+        // The count only has to satisfy the RLP round-trip; nothing here verifies KZG.
         int proofsCount = version is ProofVersion.V1 ? blobCount * Ckzg.CellsPerExtBlob : blobCount;
         byte[][] versionedHashes = new byte[blobCount][];
         byte[][] blobs = new byte[blobCount][];
