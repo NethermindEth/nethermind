@@ -677,7 +677,7 @@
       "nethermind.consensus.aura": {
         "type": "Project",
         "dependencies": {
-          "BouncyCastle.Cryptography": "[2.6.2, )",
+          "BouncyCastle.Cryptography": "[2.7.0, )",
           "Nethermind.Abi": "[1.40.0-unstable, )",
           "Nethermind.Api": "[1.40.0-unstable, )",
           "Nethermind.Blockchain": "[1.40.0-unstable, )",
@@ -729,7 +729,7 @@
       "nethermind.crypto": {
         "type": "Project",
         "dependencies": {
-          "BouncyCastle.Cryptography": "[2.6.2, )",
+          "BouncyCastle.Cryptography": "[2.7.0, )",
           "Ckzg.Bindings": "[2.1.8.1641, )",
           "Nethermind.Core": "[1.40.0-unstable, )",
           "Nethermind.Crypto.Bls": "[1.1.0, )",
@@ -1342,9 +1342,9 @@
       },
       "BouncyCastle.Cryptography": {
         "type": "CentralTransitive",
-        "requested": "[2.6.2, )",
-        "resolved": "2.6.2",
-        "contentHash": "7oWOcvnntmMKNzDLsdxAYqApt+AjpRpP2CShjMfIa3umZ42UQMvH0tl1qAliYPNYO6vTdcGMqnRrCPmsfzTI1w=="
+        "requested": "[2.7.0, )",
+        "resolved": "2.7.0",
+        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
