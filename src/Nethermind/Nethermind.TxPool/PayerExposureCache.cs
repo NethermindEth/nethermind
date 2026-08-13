@@ -74,25 +74,30 @@ internal sealed class PayerExposureCache
                 continue;
             }
 
-            // Removes the entry only while its value is still the one this release priced against.
-            if (((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(
-                    new KeyValuePair<AddressAsKey, UInt256>(key, existing)))
-            {
-                Interlocked.Decrement(ref Metrics.FrameTxPayersWithReservedExposure);
-                return;
-            }
+            if (RemoveTracked(key, existing)) return;
         }
     }
 
-    /// <summary>Releases every held reservation, so a torn-down pool leaves nothing counted against the process-wide gauge.</summary>
+    /// <summary>Releases the reservations held when the owning pool is torn down.</summary>
+    /// <remarks>Nothing stops a submission already in flight from reserving after this, so it bounds the leak rather than closing it.</remarks>
     public void Clear()
     {
         foreach (KeyValuePair<AddressAsKey, UInt256> entry in _reserved)
         {
-            if (_reserved.TryRemove(entry.Key, out _))
-            {
-                Interlocked.Decrement(ref Metrics.FrameTxPayersWithReservedExposure);
-            }
+            RemoveTracked(entry.Key, entry.Value);
         }
+    }
+
+    /// <summary>Removes <paramref name="key"/> only while its reservation is still <paramref name="expected"/>, so the gauge stays paired with the entry count.</summary>
+    private bool RemoveTracked(AddressAsKey key, in UInt256 expected)
+    {
+        if (!((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(
+                new KeyValuePair<AddressAsKey, UInt256>(key, expected)))
+        {
+            return false;
+        }
+
+        Interlocked.Decrement(ref Metrics.FrameTxPayersWithReservedExposure);
+        return true;
     }
 }

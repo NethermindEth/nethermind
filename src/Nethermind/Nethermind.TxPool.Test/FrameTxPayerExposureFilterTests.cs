@@ -143,8 +143,8 @@ public class FrameTxPayerExposureFilterTests
     [Test]
     public void ExposureCache_ClearReleasesEveryReservation()
     {
-        // The pool clears on dispose: Removed is unsubscribed by then, so anything still held would be
-        // counted by the process-wide gauge with no pool left that could decrement it.
+        // Pins the drain only: its paired gauge decrement is a shared static, so asserting that would race
+        // the parallel fixtures. RemoveTracked keeps the pairing in one place instead.
         PayerExposureCache cache = new();
         cache.TryReserve(Payer, 1000, balance: 1000, out _);
         cache.TryReserve(TestItem.AddressC, 500, balance: 500, out _);
