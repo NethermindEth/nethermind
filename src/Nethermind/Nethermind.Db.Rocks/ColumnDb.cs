@@ -174,10 +174,10 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily);
 
     public bool TryGetCeiling(
-        scoped ReadOnlySpan<byte> seekKey, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
         Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
     ) => DbOnTheRocks.TryGetCeilingWithIterator(
-        seekKey, upperBoundExclusive, _seekIteratorManager.Value,
+        lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
         keyBuffer, out keyLength, valueBuffer, out valueLength
     );
 

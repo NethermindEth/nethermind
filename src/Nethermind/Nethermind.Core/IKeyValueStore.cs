@@ -125,7 +125,7 @@ namespace Nethermind.Core
         ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
 
         /// <summary>
-        /// Finds the first <c>key</c> with <c>seekKey &lt;= key &lt; upperBoundExclusive</c>,
+        /// Finds the first <c>key</c> with <c>lowerBoundIncl &lt;= key &lt; upperBoundExcl</c>,
         /// or returns <c>false</c> when there is none.
         /// </summary>
         /// <remarks>
@@ -133,11 +133,11 @@ namespace Nethermind.Core
         /// A buffer too short for its part is left untouched instead of throwing.
         /// </remarks>
         bool TryGetCeiling(
-            scoped ReadOnlySpan<byte> seekKey, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
             Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
         )
         {
-            using ISortedView view = GetViewBetween(seekKey, upperBoundExclusive);
+            using ISortedView view = GetViewBetween(lowerBoundIncl, upperBoundExcl);
             if (!view.MoveNext())
             {
                 keyLength = 0;
@@ -145,15 +145,13 @@ namespace Nethermind.Core
                 return false;
             }
 
-            keyLength = CopyIfFits(view.CurrentKey, keyBuffer);
-            valueLength = CopyIfFits(view.CurrentValue, valueBuffer);
+            ReadOnlySpan<byte> key = view.CurrentKey;
+            ReadOnlySpan<byte> value = view.CurrentValue;
+            keyLength = key.Length;
+            valueLength = value.Length;
+            key.TryCopyTo(keyBuffer);
+            value.TryCopyTo(valueBuffer);
             return true;
-
-            static int CopyIfFits(ReadOnlySpan<byte> source, Span<byte> destination)
-            {
-                if (source.Length <= destination.Length) source.CopyTo(destination);
-                return source.Length;
-            }
         }
     }
 

@@ -774,17 +774,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     internal Lazy<IteratorManager> CreateLazySeekIteratorManager(ColumnFamilyHandle? cf) =>
         new(() => new IteratorManager(_db, cf, _defaultReadOptions), LazyThreadSafetyMode.ExecutionAndPublication);
 
-    /// <summary>
-    /// The <see cref="GetWithIterator"/> path, but positioned at the first key at/after <paramref name="seekKey"/>
-    /// instead of an exact match. A pooled iterator's read options are fixed at creation, so the upper bound is a
-    /// span compare here rather than a native iterate bound.
-    /// </summary>
     internal static bool TryGetCeilingWithIterator(
-        scoped ReadOnlySpan<byte> seekKey,
-        scoped ReadOnlySpan<byte> upperBoundExclusive,
-        IteratorManager iteratorManager,
-        Span<byte> keyBuffer, out int keyLength,
-        Span<byte> valueBuffer, out int valueLength)
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, IteratorManager iteratorManager,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
     {
         keyLength = 0;
         valueLength = 0;
@@ -792,17 +784,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(ReadFlags.None);
         Iterator iterator = wrapper.Iterator;
 
-        iterator.Seek(seekKey);
+        iterator.Seek(lowerBoundIncl);
         if (!iterator.Valid()) return false;
 
+        // pooled iterator's read options are fixed at creation, so upper bound is a span compare instead of a native iterator bound
         ReadOnlySpan<byte> key = iterator.GetKeySpan();
-        if (key.SequenceCompareTo(upperBoundExclusive) >= 0) return false;
+        if (key.SequenceCompareTo(upperBoundExcl) >= 0) return false;
 
         ReadOnlySpan<byte> value = iterator.GetValueSpan();
         keyLength = key.Length;
         valueLength = value.Length;
-        if (keyLength <= keyBuffer.Length) key.CopyTo(keyBuffer);
-        if (valueLength <= valueBuffer.Length) value.CopyTo(valueBuffer);
+        key.TryCopyTo(keyBuffer);
+        value.TryCopyTo(valueBuffer);
         return true;
     }
 
