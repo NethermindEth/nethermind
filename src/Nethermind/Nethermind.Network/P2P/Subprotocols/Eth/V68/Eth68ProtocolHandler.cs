@@ -256,13 +256,23 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private bool CanRequestPooledTransaction(TxType txType, bool frameTxsEnabled) => txType switch
+    private bool CanRequestPooledTransaction(TxType txType, ref bool? frameTxsEnabled) => txType switch
     {
         TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.SetCode => true,
-        TxType.FrameTx => frameTxsEnabled,
+        TxType.FrameTx => frameTxsEnabled ??= FrameTxsEnabled(),
         TxType.Blob => _blobSupportEnabled,
         _ => false,
     };
+
+    /// <remarks>
+    /// Tracks the ingress filter's fork gate, but off <see cref="SyncServer"/>'s head rather than the best
+    /// suggested header, so it turns on one block later: at activation an announcement can be dropped.
+    /// </remarks>
+    private bool FrameTxsEnabled()
+    {
+        BlockHeader? head = SyncServer.Head;
+        return head is not null && specProvider.GetSpec(head).IsEip8141Enabled;
+    }
 
     private static bool ShouldSendCurrentRequest(int txSize, int packetSizeLeft, int toRequestCount) =>
         toRequestCount >= MaxPooledTransactionHashesPerRequest
@@ -274,10 +284,8 @@ public class Eth68ProtocolHandler(ISession session,
         ReadOnlySpan<byte> types,
         bool registerForRetry)
     {
-        // Mirrors NotSupportedTxFilter: without the fork a frame tx is rejected at ingress, so fetching one
-        // is always wasted work.
-        BlockHeader? head = SyncServer.Head;
-        bool frameTxsEnabled = head is not null && specProvider.GetSpec(head).IsEip8141Enabled;
+        // Resolved on the first type-6 byte, so a batch without one does no head lookup.
+        bool? frameTxsEnabled = null;
 
         ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(hashes.Length);
         for (int i = 0; i < hashes.Length; i++)
@@ -286,7 +294,7 @@ public class Eth68ProtocolHandler(ISession session,
             if (!_txPool.IsKnown(hash))
             {
                 (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
-                if (!CanRequestPooledTransaction(txShape.Type, frameTxsEnabled)
+                if (!CanRequestPooledTransaction(txShape.Type, ref frameTxsEnabled)
                     || txShape.Size <= 0
                     // Blob-sized only where a blob-carrying frame tx is admissible: tracks NotSupportedTxFilter.
                     || txShape.Size > (txShape.Type is TxType.Blob || (txShape.Type is TxType.FrameTx && _blobFrameTxsAdmissible)
