@@ -89,15 +89,10 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
-            StorageTreeWrapper storageTree = new(
-                baseScope.CreateStorageTree(address),
-                storageCache,
-                address,
-                isPrewarmer,
-                _metrics);
+            IWorldStateScopeProvider.IStorageTree baseTree = baseScope.CreateStorageTree(address);
             return storageReadCapture is not null
-                ? new CapturingStorageTreeWrapper(storageTree, storageReadCapture, storageCache, address)
-                : storageTree;
+                ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address)
+                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -167,7 +162,7 @@ public class PrewarmerScopeProvider(
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
-                mainScope?.HintWarmAccount(new ValueAddress(address.Bytes));
+                if (storageReadCapture is null) mainScope?.HintWarmAccount(new ValueAddress(address.Bytes));
                 if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
             }
@@ -177,12 +172,19 @@ public class PrewarmerScopeProvider(
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
-        // consumer hints go straight to the backend.
-        public void HintWarmAccount(in ValueAddress address) =>
+        // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
+        // values, so their hinted addresses and slots can be fictitious — never forward them.
+        public void HintWarmAccount(in ValueAddress address)
+        {
+            if (storageReadCapture is not null) return;
             (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(in address);
+        }
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) =>
+        public void HintWarmSlot(in ValueAddress address, in UInt256 index)
+        {
+            if (storageReadCapture is not null) return;
             (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(in address, in index);
+        }
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -281,14 +283,14 @@ public class PrewarmerScopeProvider(
         public byte[] Get(in UInt256 index)
         {
             StorageCell storageCell = new(address, in index);
-            if (!preBlockCache.TryGetValue(in storageCell, out _))
+            if (preBlockCache.TryGetValue(in storageCell, out byte[] value))
             {
-                storageReadCapture.Record(in storageCell);
-                // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
-                return SpeculativeStorageValue;
+                return value;
             }
 
-            return baseStorageTree.Get(in index);
+            storageReadCapture.Record(in storageCell);
+            // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
+            return SpeculativeStorageValue;
         }
 
         public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);

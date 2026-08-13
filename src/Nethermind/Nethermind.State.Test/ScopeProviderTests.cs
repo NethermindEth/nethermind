@@ -514,7 +514,7 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
         StorageCell cell = new(TestItem.AddressA, 1);
 
-        using (PreBlockCaches.StorageReadCapture capture = caches.BeginStorageReadCapture())
+        using (PreBlockCaches.StorageReadCapture capture = caches.BeginStorageReadCapture(maxCells: 16))
         {
             using IWorldStateScopeProvider.IScope readScope = populator.BeginScope(baseBlock);
             IWorldStateScopeProvider.IStorageTree capturedStorageTree = readScope.CreateStorageTree(TestItem.AddressA);

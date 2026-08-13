@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -70,10 +70,16 @@ public class PreBlockCaches
     /// While a capture is active, callers record each missed storage cell and use a speculative placeholder
     /// instead of reading the backing store. The speculative execution result must not be consumed.
     /// </remarks>
-    public StorageReadCapture BeginStorageReadCapture()
+    /// <param name="maxCells">Maximum number of distinct cells the capture records; reads past the cap still get the placeholder but are not recorded.</param>
+    /// <exception cref="InvalidOperationException">A capture is already active on this thread.</exception>
+    public StorageReadCapture BeginStorageReadCapture(int maxCells)
     {
-        Debug.Assert(_currentStorageReadCapture is null, "Storage-read captures must not nest; the previous capture would be orphaned.");
-        return _currentStorageReadCapture = new StorageReadCapture(this);
+        if (_currentStorageReadCapture is not null)
+        {
+            throw new InvalidOperationException("Storage-read captures must not nest; the previous capture would be orphaned.");
+        }
+
+        return _currentStorageReadCapture = new StorageReadCapture(this, maxCells);
     }
 
     /// <summary>The capture active on the current thread for this cache, if any.</summary>
@@ -101,27 +107,46 @@ public class PreBlockCaches
     /// A synchronous, thread-local storage-read capture. Not thread-safe: record and dispose only on the
     /// thread where it was created.
     /// </summary>
-    public sealed class StorageReadCapture(PreBlockCaches owner) : IDisposable
+    public sealed class StorageReadCapture : IDisposable
     {
         // Covers the modal candidate; genuinely heavy captures grow in a few doublings.
         private const int InitialCellCapacity = 256;
 
-        private readonly HashSet<StorageCell> _cells = new(InitialCellCapacity);
+        private readonly PooledSet<StorageCell> _cells;
         private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
+        private readonly int _maxCells;
         private bool _disposed;
 
-        internal PreBlockCaches Owner { get; } = owner;
+        internal StorageReadCapture(PreBlockCaches owner, int maxCells)
+        {
+            Owner = owner;
+            _maxCells = maxCells;
+            _cells = new PooledSet<StorageCell>(Math.Min(InitialCellCapacity, maxCells));
+        }
+
+        internal PreBlockCaches Owner { get; }
 
         /// <summary>Distinct cells encountered while backing reads were skipped.</summary>
-        public IReadOnlyCollection<StorageCell> Cells => _cells;
+        /// <remarks>Exposed as the concrete pooled set so consumers enumerate without boxing; treat as read-only.</remarks>
+        public PooledSet<StorageCell> Cells => _cells;
 
+        /// <summary>Records a missed storage cell, up to the capture's cell budget.</summary>
+        /// <exception cref="InvalidOperationException">Called from a thread other than the one that created the capture.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Record(in StorageCell storageCell)
         {
-            Debug.Assert(Environment.CurrentManagedThreadId == _ownerThreadId, "A capture must only record on the thread that created it.");
-            _cells.Add(storageCell);
+            if (Environment.CurrentManagedThreadId != _ownerThreadId)
+            {
+                throw new InvalidOperationException("A capture must only record on the thread that created it.");
+            }
+
+            if (_cells.Count < _maxCells)
+            {
+                _cells.Add(storageCell);
+            }
         }
 
+        /// <inheritdoc/>
         public void Dispose()
         {
             if (_disposed) return;
@@ -131,6 +156,8 @@ public class PreBlockCaches
             {
                 _currentStorageReadCapture = null;
             }
+
+            _cells.Dispose();
         }
     }
 
