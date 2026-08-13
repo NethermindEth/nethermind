@@ -47,7 +47,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
     internal const int MaxDiscoveredCells = 8192;
-    private const int MinCandidateCaptureCells = 256;
     // Iterative discovery is substantially costlier than ordinary warmup; reserve it for exceptional transactions.
     private const ulong StorageDiscoveryGasThreshold = 10_000_000;
 
@@ -200,18 +199,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // Copy: the round swap below would otherwise mutate the caller's list.
         List<(int Index, Transaction Tx)> currentCandidates = [.. candidates];
         List<(int Index, Transaction Tx)> nextRoundCandidates = new(candidates.Count);
-        // Declared limits are unvalidated under SkipValidation and placeholder values can steer execution
-        // into paths real execution never takes; cap aggregate speculative work at re-executing the block
-        // once per round.
-        StrongBox<long> speculativeGasBudget = new((long)Math.Min(block.GasLimit, (ulong)(long.MaxValue / MaxDiscoveryRounds)) * MaxDiscoveryRounds);
 
         for (int round = 0; round < MaxDiscoveryRounds && currentCandidates.Count > 0; round++)
         {
             roundCells.Clear();
             nextRoundCandidates.Clear();
-            int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
-            // Fair split across candidates; the merge below still clamps the round to cellBudget.
-            int captureBudget = Math.Max(MinCandidateCaptureCells, cellBudget / currentCandidates.Count);
+            DiscoveryRound roundState = new(
+                block,
+                parent,
+                spec,
+                CellBudget: MaxDiscoveredCells - allDiscoveredCells.Count,
+                RemainingCaptureCells: new StrongBox<int>(MaxDiscoveredCells - allDiscoveredCells.Count),
+                // Declared limits are unvalidated under SkipValidation and placeholder values can steer
+                // execution into paths real execution never takes; cap each round's speculative work at
+                // one re-execution of the block.
+                GasBudget: new StrongBox<long>((long)Math.Min(block.GasLimit, (ulong)long.MaxValue)),
+                roundCells,
+                roundCellsLock,
+                nextRoundCandidates);
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, currentCandidates.Count),
@@ -221,7 +226,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             try
             {
                 Parallel.ForEach(currentCandidates, parallelOptions, candidate =>
-                    DiscoverTransactionStorageReads(candidate, block, parent, spec, captureBudget, cellBudget, speculativeGasBudget, roundCells, roundCellsLock, nextRoundCandidates));
+                    DiscoverTransactionStorageReads(candidate, roundState));
             }
             catch (OperationCanceledException)
             {
@@ -239,31 +244,43 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void DiscoverTransactionStorageReads(
-        (int Index, Transaction Tx) candidate,
-        Block block,
-        BlockHeader parent,
-        IReleaseSpec spec,
-        int captureBudget,
-        int cellBudget,
-        StrongBox<long> speculativeGasBudget,
-        PooledSet<StorageCell> roundCells,
-        Lock roundCellsLock,
-        List<(int Index, Transaction Tx)> nextRoundCandidates)
+    /// <summary>Shared state of one discovery round.</summary>
+    private sealed record DiscoveryRound(
+        Block Block,
+        BlockHeader Parent,
+        IReleaseSpec Spec,
+        int CellBudget,
+        StrongBox<int> RemainingCaptureCells,
+        StrongBox<long> GasBudget,
+        PooledSet<StorageCell> Cells,
+        Lock CellsLock,
+        List<(int Index, Transaction Tx)> NextRoundCandidates);
+
+    private void DiscoverTransactionStorageReads((int Index, Transaction Tx) candidate, DiscoveryRound round)
     {
         // Already started by the main thread — warming it now is redundant and contends; skip.
         if (MainThreadTxIndex >= candidate.Index) return;
 
         Transaction tx = candidate.Tx;
         long declaredGas = (long)Math.Min(tx.GasLimit, (ulong)long.MaxValue);
-        if (Interlocked.Add(ref speculativeGasBudget.Value, -declaredGas) < 0) return;
+        if (Interlocked.Add(ref round.GasBudget.Value, -declaredGas) < 0)
+        {
+            // Refund and retry next round, so an over-declared candidate cannot poison the budget for smaller ones.
+            Interlocked.Add(ref round.GasBudget.Value, declaredGas);
+            using (round.CellsLock.EnterScope())
+            {
+                round.NextRoundCandidates.Add(candidate);
+            }
+
+            return;
+        }
 
         IReadOnlyTxProcessorSource env = _envPool.Get();
         try
         {
-            using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(captureBudget);
-            using IReadOnlyTxProcessingScope scope = env.Build(parent);
-            scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+            using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(round.RemainingCaptureCells);
+            using IReadOnlyTxProcessingScope scope = env.Build(round.Parent);
+            scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(round.Block.Header, round.Spec));
 
             try
             {
@@ -285,13 +302,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (capture.Cells.Count == 0) return;
 
-            using (roundCellsLock.EnterScope())
+            using (round.CellsLock.EnterScope())
             {
-                nextRoundCandidates.Add(candidate);
+                round.NextRoundCandidates.Add(candidate);
                 foreach (StorageCell cell in capture.Cells)
                 {
-                    if (roundCells.Count >= cellBudget) break;
-                    roundCells.Add(cell);
+                    if (round.Cells.Count >= round.CellBudget) break;
+                    round.Cells.Add(cell);
                 }
             }
         }

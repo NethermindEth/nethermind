@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -70,16 +71,19 @@ public class PreBlockCaches
     /// While a capture is active, callers record each missed storage cell and use a speculative placeholder
     /// instead of reading the backing store. The speculative execution result must not be consumed.
     /// </remarks>
-    /// <param name="maxCells">Maximum number of distinct cells the capture records; reads past the cap still get the placeholder but are not recorded.</param>
+    /// <param name="remainingCells">
+    /// Cell budget consumed by every distinct recorded cell; recording stops once it is exhausted, while reads
+    /// past the cap still get the placeholder. Share one box across concurrent captures to bound their aggregate.
+    /// </param>
     /// <exception cref="InvalidOperationException">A capture is already active on this thread.</exception>
-    public StorageReadCapture BeginStorageReadCapture(int maxCells)
+    public StorageReadCapture BeginStorageReadCapture(StrongBox<int> remainingCells)
     {
         if (_currentStorageReadCapture is not null)
         {
             throw new InvalidOperationException("Storage-read captures must not nest; the previous capture would be orphaned.");
         }
 
-        return _currentStorageReadCapture = new StorageReadCapture(this, maxCells);
+        return _currentStorageReadCapture = new StorageReadCapture(this, remainingCells);
     }
 
     /// <summary>The capture active on the current thread for this cache, if any.</summary>
@@ -114,14 +118,14 @@ public class PreBlockCaches
 
         private readonly PooledSet<StorageCell> _cells;
         private readonly int _ownerThreadId = Environment.CurrentManagedThreadId;
-        private readonly int _maxCells;
+        private readonly StrongBox<int> _remainingCells;
         private bool _disposed;
 
-        internal StorageReadCapture(PreBlockCaches owner, int maxCells)
+        internal StorageReadCapture(PreBlockCaches owner, StrongBox<int> remainingCells)
         {
             Owner = owner;
-            _maxCells = maxCells;
-            _cells = new PooledSet<StorageCell>(Math.Min(InitialCellCapacity, maxCells));
+            _remainingCells = remainingCells;
+            _cells = new PooledSet<StorageCell>(Math.Clamp(remainingCells.Value, 0, InitialCellCapacity));
         }
 
         internal PreBlockCaches Owner { get; }
@@ -130,7 +134,8 @@ public class PreBlockCaches
         /// <remarks>Exposed as the concrete pooled set so consumers enumerate without boxing; treat as read-only.</remarks>
         public PooledSet<StorageCell> Cells => _cells;
 
-        /// <summary>Records a missed storage cell, up to the capture's cell budget.</summary>
+        /// <summary>Records a missed storage cell while the shared cell budget lasts.</summary>
+        /// <remarks>The budget gate is approximate under concurrent captures (a small transient overshoot is possible); callers needing a hard bound must clamp when consuming <see cref="Cells"/>.</remarks>
         /// <exception cref="InvalidOperationException">Called from a thread other than the one that created the capture.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Record(in StorageCell storageCell)
@@ -140,9 +145,9 @@ public class PreBlockCaches
                 throw new InvalidOperationException("A capture must only record on the thread that created it.");
             }
 
-            if (_cells.Count < _maxCells)
+            if (Volatile.Read(ref _remainingCells.Value) > 0 && _cells.Add(storageCell))
             {
-                _cells.Add(storageCell);
+                Interlocked.Decrement(ref _remainingCells.Value);
             }
         }
 
