@@ -48,12 +48,15 @@ public sealed class NHistPeerSelector(ISyncPeerPool peerPool)
 
     public bool TryGetEligibleCloneSource(byte requiredRowFormatVersion, IReadOnlySet<PublicKey> excluded, out PeerInfo peer, out INHistSyncPeer syncPeer, Action<string>? skipDiagnostics)
     {
+        int seen = 0;
+        int withoutSatellite = 0;
         foreach (PeerInfo candidate in peerPool.InitializedPeers)
         {
+            seen++;
             if (excluded.Contains(candidate.SyncPeer.Node.Id)) continue;
             if (!candidate.SyncPeer.TryGetSatelliteProtocol(Protocol.NHist, out INHistSyncPeer handler))
             {
-                skipDiagnostics?.Invoke($"peer {candidate.SyncPeer.Node:s} has no nhist satellite protocol registered");
+                withoutSatellite++;
                 continue;
             }
 
@@ -72,6 +75,11 @@ public sealed class NHistPeerSelector(ISyncPeerPool peerPool)
             peer = candidate;
             syncPeer = handler;
             return true;
+        }
+
+        if (withoutSatellite > 0)
+        {
+            skipDiagnostics?.Invoke($"{withoutSatellite} of {seen} connected peers do not advertise the nhist satellite protocol");
         }
 
         peer = null!;

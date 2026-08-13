@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Init.FlatHistory;
 using Nethermind.Init.Steps;
+using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -76,6 +77,18 @@ public class FlatHistoryModule : Module
             IFlatDbConfig flatDbConfig = ctx.Resolve<IFlatDbConfig>();
             ISyncConfig syncConfig = ctx.Resolve<ISyncConfig>();
             syncConfig.HistoryServingEnabled ??= flatDbConfig.HistoryEnabled && flatDbConfig.HistoryRetentionBlocks > 0;
+
+            if (flatDbConfig.HistoryArchiveCloneEnabled && syncConfig.FastSync
+                && (!syncConfig.DownloadBodiesInFastSync || !syncConfig.DownloadReceiptsInFastSync
+                    || syncConfig.AncientBodiesBarrier > 0 || syncConfig.AncientReceiptsBarrier > 0))
+            {
+                syncConfig.DownloadBodiesInFastSync = true;
+                syncConfig.DownloadReceiptsInFastSync = true;
+                syncConfig.AncientBodiesBarrier = 0;
+                syncConfig.AncientReceiptsBarrier = 0;
+                ctx.Resolve<ILogManager>().GetClassLogger<FlatHistoryModule>().Info(
+                    "Flat.HistoryArchiveCloneEnabled targets a complete archive: enabling historical bodies and receipts download back to genesis (Sync.DownloadBodiesInFastSync=true, Sync.DownloadReceiptsInFastSync=true, ancient barriers 0).");
+            }
         });
     }
 }

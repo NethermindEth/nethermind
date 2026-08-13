@@ -135,6 +135,29 @@ public class NHistPeerSelectorTests
     }
 
     [Test]
+    public void TryGetEligibleCloneSource_ReportsPeersWithoutTheSatelliteAsOneAggregateLine()
+    {
+        HistoryServingScope scope = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 0, 200);
+        INHistSyncPeer windowedOnly = CreateNHistPeer([scope], supportsFullClone: false, rowFormatVersion: 3);
+        PeerInfo[] peers = [
+            CreatePeer(TestItem.PublicKeyA, nhist: null),
+            CreatePeer(TestItem.PublicKeyB, nhist: null),
+            CreatePeer(TestItem.PublicKeyC, windowedOnly)
+        ];
+        ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+        pool.InitializedPeers.Returns(peers);
+
+        NHistPeerSelector selector = new(pool);
+        List<string> reasons = [];
+
+        Assert.That(selector.TryGetEligibleCloneSource(3, NHistPeerSelector.NoExclusions, out _, out _, reasons.Add), Is.False);
+        Assert.That(reasons, Has.Exactly(1).Contains("2 of 3 connected peers do not advertise the nhist satellite protocol"),
+            "peers without the satellite must be summarized in a single line, not dumped one line per peer");
+        Assert.That(reasons, Has.Exactly(1).Contains("SupportsFullClone=false"),
+            "a peer that negotiated nhist but cannot source a clone is worth an individual line");
+    }
+
+    [Test]
     public void TryGetEligibleCloneSource_WhenFullCloneAndFormatMatch_IsEligible()
     {
         HistoryServingScope scope = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 0, 200);

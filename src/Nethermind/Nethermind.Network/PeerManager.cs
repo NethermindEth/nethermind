@@ -617,6 +617,11 @@ namespace Nethermind.Network
                     continue;
                 }
 
+                if (peer.Node.Id == _enode.PublicKey)
+                {
+                    continue;
+                }
+
                 _currentSelection.PreCandidates.Add(peer);
             }
 
