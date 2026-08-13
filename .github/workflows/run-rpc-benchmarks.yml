@@ -114,7 +114,7 @@ permissions:
 jobs:
   # Normalize inputs and decide how the Docker image is obtained.
   resolve:
-    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && github.event.label.name == 'rpc-benchmark' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && contains(fromJSON('["rpc-benchmark","performance is good"]'), github.event.label.name) && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
@@ -152,6 +152,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_LABEL: ${{ github.event.label.name }}
           PUSH_BRANCH: ${{ github.ref_name }}
           IN_TOOL: ${{ inputs.benchmark_tool }}
           IN_CLIENT: ${{ inputs.client }}
@@ -178,6 +179,21 @@ jobs:
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
             node_config="${IN_NODE_CONFIG:-}"
+          elif [[ "${PR_LABEL}" == "performance is good" ]]; then
+            # PR labeled 'performance is good': fixed eth_call corpus A/B against master. The
+            # config is hard-coded rather than read from an input so every PR is measured
+            # identically and results stay comparable across PRs and over time.
+            branch="${PR_HEAD_BRANCH}"
+            benchmark_tool="jsonbench-sweep"
+            client="nethermind"
+            reference_client="none"
+            snapshot_block="25490000"
+            docker_image=""
+            dottrace="false"
+            state_layout="flat"
+            additional_flags=""
+            tool_config='{"eth_call_corpus":true,"clients":"nethermind@nethermindeth/nethermind:master nethermind","rps_list":"100","duration":"120s","corpus_glob":"eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}'
+            node_config=""
           else
             # PR labeled with 'rpc-benchmark': run flood on common read methods.
             branch="${PR_HEAD_BRANCH}"
@@ -887,6 +903,24 @@ jobs:
         if: always() && needs.resolve.outputs.eth_call_corpus == 'true'
         shell: bash
         run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
+
+      # Built from the STAGED tree, so everything in a public PR comment has already passed the
+      # aggregate-only validator. Never posts raw output.
+      - name: Comment corpus comparison on the PR
+        if: always() && github.event_name == 'pull_request' && github.event.label.name == 'performance is good' && steps.stage-corpus-results.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python3 scripts/rpc-bench/corpus_results.py comment \
+            "${RUNNER_TEMP}/rpcbench-corpus-results" \
+            --baseline nethermind_master --candidate nethermind > comment.md
+          {
+            echo
+            echo "<sub>[workflow run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})</sub>"
+          } >> comment.md
+          gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file comment.md
 
       - name: Upload private corpus results
         if: always() && needs.resolve.outputs.eth_call_corpus == 'true' && steps.stage-corpus-results.outcome == 'success'

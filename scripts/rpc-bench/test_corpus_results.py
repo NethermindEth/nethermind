@@ -144,3 +144,57 @@ class CorpusResultsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommentRenderingTests(unittest.TestCase):
+    """The PR comment is public, so it must be built from staged data and stay content-free."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _cell(self, label, avg, p99, fail=0.0):
+        cell = self.root / "corpus" / "corpus-a" / label / "100"
+        cell.mkdir(parents=True)
+        (cell / "summary.json").write_text(json.dumps({"metrics": {
+            "http_req_duration": {"values": {"avg": avg, "med": avg, "p(90)": avg * 2,
+                                             "p(95)": avg * 2.2, "p(99)": p99, "max": p99 * 3}},
+            "http_reqs": {"values": {"count": 12000}},
+            "http_req_failed": {"values": {"rate": fail}}}}), encoding="utf-8")
+
+    def test_reports_regression_and_improvement_directions(self):
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind", 22.0, 90.0)          # avg worse, p99 better
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("+10.0%", body)                  # avg regression
+        self.assertIn("-10.0%", body)                  # p99 improvement
+        self.assertIn("master", body)
+
+    def test_flags_a_parity_divergence(self):
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind", 20.0, 100.0)
+        report = self.root / "corpus" / "corpus-a" / "nethermind" / "parity.json"
+        report.write_text(json.dumps({"total": 497, "matched": 490, "both_rpc_errors": 0,
+                                      "content_mismatches": 7}), encoding="utf-8")
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("DIVERGES", body)
+        self.assertIn("content_mismatches=7", body)
+
+    def test_clean_parity_is_stated_plainly(self):
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind", 20.0, 100.0)
+        report = self.root / "corpus" / "corpus-a" / "nethermind" / "parity.json"
+        report.write_text(json.dumps({"total": 497, "matched": 497, "both_rpc_errors": 0}),
+                          encoding="utf-8")
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("497/497 identical to master", body)
+        self.assertNotIn("DIVERGES", body)
+
+    def test_missing_client_does_not_crash(self):
+        self._cell("nethermind_master", 20.0, 100.0)
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("missing a client", body)
+
