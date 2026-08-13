@@ -53,6 +53,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // Archive-clone mode: a walk that cannot connect keeps recording into a pending range (published to reads
     // only once the imported watermark reaches its bottom) instead of disabling capture permanently.
     private readonly bool _detachedCaptureEnabled;
+    // Deduplicates the hole report: every capture walk while the clone still streams sees the same gap, and
+    // repeating it each persist is noise. One report per distinct imported watermark carries the same signal.
+    private ulong _lastReportedHoleWatermark = ulong.MaxValue;
     private readonly ILogger _logger;
 
     // Under the persistence lock a failed lease means the range below is gone for good (history enabled mid-life);
@@ -300,10 +303,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             {
                 _availability.PublishPendingCaptureRange(pendingFirst, target);
                 _history.SyncWal();
-                if (hasWatermark && _logger.IsError) _logger.Error(
-                    $"The imported history ends at block {watermark} but this node's own capture starts at block {pendingFirst}, " +
-                    $"leaving the hole [{watermark + 1}, {pendingFirst - 1}] no read can cross. The pending capture keeps recording; " +
-                    "wipe the flatHistory database and re-clone from a source whose watermark reaches past this node's sync pivot to serve reads.");
+                if (hasWatermark && watermark != _lastReportedHoleWatermark)
+                {
+                    _lastReportedHoleWatermark = watermark;
+                    if (_logger.IsInfo) _logger.Info(
+                        $"The imported history currently ends at block {watermark} while this node's own capture starts at block {pendingFirst}; " +
+                        $"as-of reads stay refused for [{watermark + 1}, {pendingFirst - 1}] until a clone pass covers it. The pending capture keeps recording.");
+                }
             }
         }
         else if (_detachedCaptureEnabled && capturedAny)
