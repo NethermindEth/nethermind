@@ -7,6 +7,28 @@
 log() { printf '%s | %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+# Record the machine state a benchmark ran on, so a step change in results can be attributed to
+# the host rather than to code. A reboot or kernel upgrade shifts results persistently and is
+# otherwise invisible: on 2026-08-13 a 38% step in one payload set was traced to a restart only by
+# noticing that /proc/stat's monotonic interrupt counter had gone backwards between two runs.
+# boot_id changes on every boot, so it identifies the reboot directly; the rest covers the settings
+# that most often move a benchmark across a kernel upgrade.
+log_system_provenance() {
+  log "=== host provenance ==="
+  log "  kernel:      $(uname -r 2>/dev/null || echo unknown)"
+  log "  boot_id:     $(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)"
+  log "  uptime_s:    $(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo unknown)"
+  log "  interrupts:  $(awk '/^intr /{print $2}' /proc/stat 2>/dev/null || echo unknown)"
+  log "  governor:    $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo n/a)"
+  log "  max_freq:    $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo n/a) kHz"
+  log "  thp:         $(sed -n 's/.*\[\(.*\)\].*/\1/p' /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || echo n/a)"
+  local vuln
+  for vuln in /sys/devices/system/cpu/vulnerabilities/*; do
+    [[ -r "$vuln" ]] || continue
+    log "  mitigation:  $(basename "$vuln")=$(tr -d '\n' < "$vuln" | cut -c1-60)"
+  done
+}
+
 # Run a command as root, using sudo only when not already root.
 as_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
