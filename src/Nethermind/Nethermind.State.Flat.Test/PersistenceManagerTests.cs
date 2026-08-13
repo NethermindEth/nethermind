@@ -424,7 +424,7 @@ public class PersistenceManagerTests
         // 16-wide compacted from Block0 — boundary, should win under the two-pass form.
         using Snapshot compactedSnap = CreateSnapshot(persisted, compactedTo, compacted: true);
 
-        PersistenceManager.ConversionCandidate? result = InvokeTryFindSnapshotToConvert(persisted);
+        PersistenceManager.ConversionCandidate? result = InvokeTryFindSnapshotToConvert(persisted, headBlockNumber: 1000);
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Compacted, Is.Not.Null);
@@ -433,6 +433,24 @@ public class PersistenceManagerTests
         Assert.That(result.Base, Is.Null);
 
         result.Compacted.Dispose();
+    }
+
+    [Test]
+    public void TryFindSnapshotToConvert_KeepsStatesWithinMinReorgDepthOfHead()
+    {
+        StateId persisted = Block0;
+        StateId baseTo = CreateStateId(1);
+        using Snapshot baseSnap = CreateSnapshot(persisted, baseTo, compacted: false);
+
+        PersistenceManager.ConversionCandidate? withinWindow = InvokeTryFindSnapshotToConvert(persisted, headBlockNumber: 65);
+        Assert.That(withinWindow, Is.Null,
+            "a state within MinReorgDepth of the head must stay in memory: conversion hands it to the persisted-tier compactor, which merges per-block snapshots away, and every state in the reorg window must remain materializable");
+
+        PersistenceManager.ConversionCandidate? belowWindow = InvokeTryFindSnapshotToConvert(persisted, headBlockNumber: 66);
+        Assert.That(belowWindow, Is.Not.Null,
+            "the same state becomes convertible once the head moves it out of the reorg window");
+        belowWindow!.Compacted?.Dispose();
+        belowWindow.Base?.Dispose();
     }
 
     [Test]
@@ -1220,14 +1238,14 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
-    private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
+    private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState, ulong headBlockNumber)
     {
         // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the
         // priority logic without driving the full DetermineSnapshotAction → AddToPersistence loop.
         System.Reflection.MethodInfo method = typeof(PersistenceManager).GetMethod(
             "TryFindSnapshotToConvert",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        return (PersistenceManager.ConversionCandidate?)method.Invoke(_persistenceManager, [currentPersistedState]);
+        return (PersistenceManager.ConversionCandidate?)method.Invoke(_persistenceManager, [currentPersistedState, headBlockNumber]);
     }
 
     private void InvokeConvertCompactedRange(Snapshot compacted)

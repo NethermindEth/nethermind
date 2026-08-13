@@ -170,7 +170,7 @@ public class PersistenceManager(
         if (!_enableLongFinality) return (null, null, null);
         if (snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return (null, null, null);
 
-        return (null, null, TryFindSnapshotToConvert(currentPersistedState));
+        return (null, null, TryFindSnapshotToConvert(currentPersistedState, latestSnapshot.BlockNumber));
     }
 
     /// <summary>
@@ -188,8 +188,17 @@ public class PersistenceManager(
     /// <c>span == _compactSize</c> guard so sub-CompactSize compacted (width 1/2/4/8/16,
     /// produced by <see cref="SnapshotCompactor"/> at non-boundary blocks) cannot be
     /// returned as boundary candidates.
+    /// Neither pass may return a state within <see cref="_minReorgDepth"/> of
+    /// <paramref name="headBlockNumber"/>: conversion hands the range to the persisted-tier
+    /// boundary compactor, which merges the per-block snapshots away, so a converted state stops
+    /// being individually materializable — but every state inside the reorg window must stay
+    /// materializable (reorg handling and snap serving both rely on it). The
+    /// <see cref="_maxInMemoryBaseSnapshotCount"/> trigger counts snapshots, not block distance,
+    /// and fork branches plus compacted overlays inflate the count, so without this bound the
+    /// scan can reach into the reorg window. When everything is inside the window no candidate
+    /// is returned and memory is allowed to grow until the window slides forward.
     /// </remarks>
-    private ConversionCandidate? TryFindSnapshotToConvert(StateId currentPersistedState)
+    private ConversionCandidate? TryFindSnapshotToConvert(StateId currentPersistedState, ulong headBlockNumber)
     {
         // long.MaxValue, not ulong.MaxValue: the latter is the PreGenesis sentinel that
         // GetStatesUpToBlock treats as "before any state" (returns empty). long.MaxValue is above every
@@ -199,6 +208,7 @@ public class PersistenceManager(
         // Pass 1 (global): boundary-CompactSize in-memory compacted → Branch A.
         foreach (StateId X in ordered)
         {
+            if (X.BlockNumber + _minReorgDepth >= headBlockNumber) break;
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryCompacted, out Snapshot? compacted)) continue;
 
             if (compacted!.To.BlockNumber - compacted.From.BlockNumber == _compactSize
@@ -212,6 +222,7 @@ public class PersistenceManager(
         // Pass 2 (fallback): in-memory base → Branch B.
         foreach (StateId X in ordered)
         {
+            if (X.BlockNumber + _minReorgDepth >= headBlockNumber) break;
             if (!snapshotRepository.TryLeaseInMemoryState(X, SnapshotTier.InMemoryBase, out Snapshot? baseSnap)) continue;
 
             if (IsOnDisk(baseSnap!.From, currentPersistedState))

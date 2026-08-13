@@ -430,10 +430,11 @@ public class LongFinalityIntegrationTests
     {
         // Long finality on; finality parked at genesis and depth far below the backstop, so neither
         // Phase-1 path fires — only the MaxInMemoryBaseSnapshotCount gate decides Phase-2 conversion.
+        // MinReorgDepth is kept tiny so the reorg-window keep-in-memory bound stays out of the way here.
         FlatDbConfig config = new()
         {
             CompactSize = 16,
-            MinReorgDepth = 64,
+            MinReorgDepth = 2,
             MaxInMemoryBaseSnapshotCount = 4,
             LongFinalityMaxReorgDepth = 90000,
             EnableLongFinality = true
