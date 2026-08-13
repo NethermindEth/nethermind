@@ -279,6 +279,61 @@ def stage(output_root: str, stage_root: str) -> None:
     print(f"staged {staged} aggregate file(s)")
 
 
+COMMENT_METRICS = (("avg", "avg"), ("med", "median"), ("p(90)", "p90"),
+                   ("p(95)", "p95"), ("p(99)", "p99"), ("max", "max"))
+
+
+def comment(stage_root: str, baseline_label: str, candidate_label: str) -> str:
+    """Render a PR comment from STAGED results only.
+
+    Reads the staged tree rather than the raw output dir on purpose: staging is what enforces the
+    aggregate-only boundary, so anything reaching a public PR comment has already passed it.
+    """
+    root = Path(stage_root)
+    cells: dict[tuple[str, str], dict] = {}
+    for path in sorted(root.rglob("summary.json")):
+        label, corpus = path.parent.parent.name, path.parent.parent.parent.name
+        cells[(corpus, label)] = json.loads(path.read_text(encoding="utf-8"))["metrics"]
+    if not cells:
+        return "No corpus cells were produced, so there is nothing to compare."
+
+    lines: list[str] = ["### `eth_call` corpus — PR vs master", ""]
+    for corpus in sorted({c for c, _ in cells}):
+        base = cells.get((corpus, baseline_label))
+        cand = cells.get((corpus, candidate_label))
+        if not base or not cand:
+            lines.append(f"`{corpus}`: missing a client, cannot compare.")
+            continue
+        b_fail = base["http_req_failed"]["values"]["rate"] * 100
+        c_fail = cand["http_req_failed"]["values"]["rate"] * 100
+        lines += [f"**`{corpus}`** · {int(cand['http_reqs']['values']['count'])} requests/client", "",
+                  "| metric | master | PR | delta |", "|---|---|---|---|"]
+        for key, name in COMMENT_METRICS:
+            bv = base["http_req_duration"]["values"][key]
+            cv = cand["http_req_duration"]["values"][key]
+            delta = (cv - bv) / bv * 100 if bv else float("nan")
+            arrow = "🟢" if delta < -1 else ("🔴" if delta > 1 else "⚪")
+            lines.append(f"| {name} | {bv:.2f} ms | {cv:.2f} ms | {arrow} {delta:+.1f}% |")
+        lines += ["", f"Failure rate — master {b_fail:.2f}%, PR {c_fail:.2f}%.", ""]
+
+        report = root / "corpus" / corpus / candidate_label / "parity.json"
+        if report.is_file():
+            data = json.loads(report.read_text(encoding="utf-8"))
+            agree = data["matched"] + data["both_rpc_errors"]
+            verdict = "identical to master" if agree == data["total"] else "**DIVERGES from master**"
+            lines.append(f"Response parity: {agree}/{data['total']} {verdict}.")
+            if agree != data["total"]:
+                defects = ", ".join(f"{k}={v}" for k, v in sorted(data.items())
+                                    if isinstance(v, int) and v
+                                    and k not in ("total", "matched", "both_rpc_errors"))
+                lines.append(f"Divergence counts: {defects}")
+        lines.append("")
+    lines.append("<sub>Fixed corpus and rate; a PR that changes results is a correctness "
+                 "regression regardless of latency. Latency deltas under ~2.5% are within "
+                 "run-to-run noise.</sub>")
+    return "\n".join(lines)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -290,6 +345,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     stage_parser = subparsers.add_parser("stage", help="stage only validated aggregate files")
     stage_parser.add_argument("output_root")
     stage_parser.add_argument("stage_root")
+
+    comment_parser = subparsers.add_parser("comment", help="render a PR comment from staged results")
+    comment_parser.add_argument("stage_root")
+    comment_parser.add_argument("--baseline", required=True)
+    comment_parser.add_argument("--candidate", required=True)
 
     arguments = parser.parse_args(argv)
     try:

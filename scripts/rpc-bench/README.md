@@ -278,6 +278,22 @@ the corpus DB is how you constrain the workload. Corpus resolution order:
 the `corpus-v1` release asset of `kamilchodola/EthCallChaos`) → a DB committed
 in the tool repo → fresh evolution from scratch.
 
+## `performance is good` label — automatic PR vs master
+
+Adding the **`performance is good`** label to a PR runs a fixed `eth_call` corpus A/B and
+posts the result as a PR comment. The configuration is hard-coded in `resolve` rather
+than read from an input, so every PR is measured identically and results stay comparable
+across PRs and over time: the 497-record corpus, 100 rps for 120s, PR build against
+`nethermind:master` as the parity baseline.
+
+The comment carries per-metric latency deltas and the response-parity verdict. It is
+rendered by `corpus_results.py comment` from the **staged** tree, not the raw output, so
+everything posted publicly has already passed the aggregate-only validator.
+
+Read it correctly: a parity divergence is a correctness regression regardless of the
+latency numbers, and latency deltas under roughly 2.5% are within run-to-run noise on
+this corpus.
+
 ## Private `eth_call` corpus (`tool_config.eth_call_corpus: true`)
 
 For call sets that must not appear in GitHub logs or artifacts (e.g. shared by a
