@@ -256,9 +256,10 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private bool CanRequestPooledTransaction(TxType txType) => txType switch
+    private bool CanRequestPooledTransaction(TxType txType, bool frameTxsEnabled) => txType switch
     {
-        TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.SetCode or TxType.FrameTx => true,
+        TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.SetCode => true,
+        TxType.FrameTx => frameTxsEnabled,
         TxType.Blob => _blobSupportEnabled,
         _ => false,
     };
@@ -273,6 +274,11 @@ public class Eth68ProtocolHandler(ISession session,
         ReadOnlySpan<byte> types,
         bool registerForRetry)
     {
+        // Mirrors NotSupportedTxFilter: without the fork a frame tx is rejected at ingress, so fetching one
+        // is always wasted work.
+        BlockHeader? head = SyncServer.Head;
+        bool frameTxsEnabled = head is not null && specProvider.GetSpec(head).IsEip8141Enabled;
+
         ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(hashes.Length);
         for (int i = 0; i < hashes.Length; i++)
         {
@@ -280,7 +286,7 @@ public class Eth68ProtocolHandler(ISession session,
             if (!_txPool.IsKnown(hash))
             {
                 (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
-                if (!CanRequestPooledTransaction(txShape.Type)
+                if (!CanRequestPooledTransaction(txShape.Type, frameTxsEnabled)
                     || txShape.Size <= 0
                     // Blob-sized only where a blob-carrying frame tx is admissible: tracks NotSupportedTxFilter.
                     || txShape.Size > (txShape.Type is TxType.Blob || (txShape.Type is TxType.FrameTx && _blobFrameTxsAdmissible)
