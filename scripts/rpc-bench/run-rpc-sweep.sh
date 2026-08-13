@@ -253,6 +253,8 @@ fi
 # Listing the same image twice is how a sweep measures its own run-to-run drift, so repeats get a
 # distinct label: sharing one would make each repeat overwrite the previous one's cells and state,
 # and the sweep would silently report fewer results than it ran.
+log_system_provenance
+
 declare -A LABEL_SEEN=()
 for entry in $CLIENTS; do
   ctype="${entry%%@*}"
