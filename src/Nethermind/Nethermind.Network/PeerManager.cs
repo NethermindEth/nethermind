@@ -447,11 +447,23 @@ namespace Nethermind.Network
                     continue;
                 }
 
+                // The queued dial only marks IsAwaitingConnection once a worker picks it up, so back-to-back
+                // loop iterations would re-queue (and re-log) the same peer during that window.
+                long now = Environment.TickCount64;
+                if (_lastStaticDialAttempt.TryGetValue(peer.Node.Id, out long last) && now - last < StaticDialDebounceMs)
+                {
+                    continue;
+                }
+
+                _lastStaticDialAttempt[peer.Node.Id] = now;
                 DeactivatePeerIfDisconnected(peer, "static peer reconnect");
                 if (_logger.IsInfo) _logger.Info($"Static peer {peer.Node:s} is not connected; dialing it regardless of available peer slots.");
                 await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
             }
         }
+
+        private const long StaticDialDebounceMs = 5_000;
+        private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
 
         private void SignalPeerUpdateNeeded()
         {

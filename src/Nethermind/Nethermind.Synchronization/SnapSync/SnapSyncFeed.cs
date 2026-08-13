@@ -17,6 +17,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         internal const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
+        // Guards the stale-pivot heuristic below: a pivot update wipes the result log, so a peer that keeps
+        // failing while staying the allocator's favorite would re-trip the same path forever without ever being
+        // punished. Set when the heuristic fires, cleared by the first useful response from anyone.
+        private bool _pivotUpdatedSinceLastSuccess;
 
         private const SnapSyncBatch EmptyBatch = null;
 
@@ -135,6 +139,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (result == AddRangeResult.OK)
             {
+                _pivotUpdatedSinceLastSuccess = false;
                 return SyncResponseHandlingResult.OK;
             }
             else
@@ -181,12 +186,24 @@ namespace Nethermind.Synchronization.SnapSync
                                 {
                                     // With a single peer in the entire window and no successes, the
                                     // failure stream is more likely a stale pivot than a misbehaving
-                                    // peer — punishing the only available peer would stall sync.
+                                    // peer — punishing the only available peer would stall sync. But when
+                                    // the pivot was already updated for this exact reason and nothing has
+                                    // succeeded since, the peer itself is the problem: without a punishment
+                                    // the allocator keeps picking the same fastest-but-useless peer and the
+                                    // heuristic loops forever on a wiped log.
                                     if (!seenOtherPeer && allLastSuccess == 0)
                                     {
+                                        bool repeatOffender = _pivotUpdatedSinceLastSuccess;
+                                        _pivotUpdatedSinceLastSuccess = true;
                                         _snapProvider.UpdatePivot();
 
                                         _resultLog.Clear();
+
+                                        if (repeatOffender)
+                                        {
+                                            _logger.Trace($"SNAP - peer kept failing across a pivot update, punishing:{peer}");
+                                            return SyncResponseHandlingResult.LesserQuality;
+                                        }
 
                                         break;
                                     }
@@ -199,9 +216,17 @@ namespace Nethermind.Synchronization.SnapSync
 
                                     if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
                                     {
+                                        bool repeatOffender = _pivotUpdatedSinceLastSuccess;
+                                        _pivotUpdatedSinceLastSuccess = true;
                                         _snapProvider.UpdatePivot();
 
                                         _resultLog.Clear();
+
+                                        if (repeatOffender)
+                                        {
+                                            _logger.Trace($"SNAP - peer kept failing across a pivot update, punishing:{peer}");
+                                            return SyncResponseHandlingResult.LesserQuality;
+                                        }
 
                                         break;
                                     }

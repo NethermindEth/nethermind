@@ -48,6 +48,41 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         }
 
         [Test]
+        public void Punishes_the_only_peer_once_it_keeps_failing_across_a_pivot_update()
+        {
+            PeerInfo peer1 = new(null!);
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+
+            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
+            for (int i = 0; i <= Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses; i++)
+            {
+                result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
+            }
+
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress),
+                "the first failure streak from the only peer reads as a stale pivot, not a bad peer");
+            snapProvider.Received(1).UpdatePivot();
+
+            for (int i = 0; i <= Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses; i++)
+            {
+                result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
+            }
+
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality),
+                "a second streak with no success since the pivot update means the peer itself is the problem");
+
+            feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
+            for (int i = 0; i <= Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses; i++)
+            {
+                result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
+            }
+
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.NoProgress),
+                "a success in between resets the guard back to the stale-pivot reading");
+        }
+
+        [Test]
         public void Test02()
         {
             PeerInfo peer1 = new(null!);
