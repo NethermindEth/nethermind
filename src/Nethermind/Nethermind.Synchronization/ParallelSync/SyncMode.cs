@@ -116,7 +116,16 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.StateNodes) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
-        internal static string ToFlagsString(this SyncMode syncMode)
+        /// <summary>
+        /// Formats the flags in <paramref name="syncMode"/> by name.
+        /// </summary>
+        /// <remarks>
+        /// The default flags formatting falls back to printing a raw number when two or more flags that share a
+        /// bit are combined, so this checks each flag independently instead, walking from the largest value down
+        /// and skipping a flag once its bits are already covered by one already printed. Bits that match no defined
+        /// flag are reported as unknown instead of being silently dropped.
+        /// </remarks>
+        public static string ToFlagsString(this SyncMode syncMode)
         {
             if (syncMode == SyncMode.None)
             {
