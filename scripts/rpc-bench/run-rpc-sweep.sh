@@ -98,10 +98,22 @@ layout_flags() { [[ "$1" == "nethermind" && "$STATE_LAYOUT" == "flat" ]] && echo
 # Per-client isolation used to differ (reth direct, others overlay), which made cross-client
 # storage numbers incomparable: overlayfs adds a layer and changes readahead and page-cache
 # behaviour, so disk-read-per-request measured a harness difference as much as a client one.
-# DB_ISOLATION_ALL forces one mode for every client. `direct` mounts the pristine snapshot
-# READ-WRITE and the node's startup writes mutate it — only use it on snapshots no other
-# consumer shares; `copy` gives the same overlay-free path while leaving the snapshot intact.
+# DB_ISOLATION_ALL forces one mode for every client. Use `copy`: it is overlay-free (so the
+# comparison is fair) and leaves the snapshot intact.
+#
+# `direct` is refused here. It bind-mounts the snapshot READ-WRITE, and a node's startup alone
+# rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column family. The
+# Nethermind snapshots under /mnt/sda are shared with expb, so one direct run silently replaces
+# the fixture every later benchmark compares against — which happened on 2026-08-13 and cost a
+# day of measurements (eth_call p99 tripled while reth, untouched, moved 2%).
+# Override only with a snapshot nobody else consumes.
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
+DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
+if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION" != "true" ]]; then
+  echo "::error::DB_ISOLATION_ALL=direct mutates the shared snapshot. Use 'copy' for an overlay-free"
+  echo "::error::comparison, or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot."
+  exit 1
+fi
 isolation() {
   if [[ -n "$DB_ISOLATION_ALL" ]]; then echo "$DB_ISOLATION_ALL"; return; fi
   [[ "$1" == "reth" ]] && echo "direct" || echo "overlay"
