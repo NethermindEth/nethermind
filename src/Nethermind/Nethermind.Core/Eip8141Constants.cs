@@ -24,8 +24,7 @@ public static class Eip8141Constants
     public const ulong MaxVerifyGas = 100_000;
 
     /// <summary>
-    /// Public-mempool cap on how many pending frame transactions may pay through any one non-canonical
-    /// paymaster, bounding the set a single sponsor's balance or code change can invalidate at once.
+    /// Public-mempool cap on the pending frame transactions one non-canonical paymaster may sponsor.
     /// </summary>
     public const int MaxPendingTxsUsingNonCanonicalPaymaster = 1;
 

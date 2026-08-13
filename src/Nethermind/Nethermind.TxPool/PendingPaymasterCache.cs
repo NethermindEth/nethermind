@@ -8,14 +8,10 @@ using Nethermind.Core;
 namespace Nethermind.TxPool;
 
 /// <summary>
-/// Counts the pending frame transactions paying through each paymaster, so admission can cap how many
-/// of them a single non-canonical paymaster may sponsor at once.
+/// Counts the pending frame transactions paying through each <c>pay</c> frame target.
 /// </summary>
-/// <remarks>
-/// EIP-8141 <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>. Keyed on the <c>pay</c> frame target and
-/// counting every paymaster rather than only the currently non-canonical ones, so increment and decrement
-/// stay symmetric even if the paymaster's code changes while the transaction is pending.
-/// </remarks>
+/// <remarks>Counts every paymaster, not only the currently non-canonical ones, so increment and decrement
+/// stay symmetric even if the target's code changes while the transaction is pending.</remarks>
 internal sealed class PendingPaymasterCache
 {
     private readonly ConcurrentDictionary<AddressAsKey, int> _pending = new();
@@ -27,8 +23,7 @@ internal sealed class PendingPaymasterCache
 
     public void Decrement(AddressAsKey key)
     {
-        // Clamped at zero so a double release can never take the count negative and permanently
-        // disable the cap for a paymaster.
+        // Clamped at zero: a double release must not permanently disable the cap for a paymaster.
         int updated = _pending.AddOrUpdate(key, 0, static (_, count) => count > 0 ? count - 1 : 0);
         if (updated == 0)
         {

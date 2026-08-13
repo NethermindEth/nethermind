@@ -12,14 +12,8 @@ namespace Nethermind.TxPool.Filters;
 /// Enforces the EIP-8141 public-mempool cap on how many pending frame transactions may pay through one
 /// non-canonical paymaster.
 /// </summary>
-/// <remarks>
-/// EIP-8141 "Non-canonical paymaster" bounds the set one sponsor's balance or code change can invalidate
-/// to <see cref="Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster"/>. Only a code-carrying
-/// <c>pay</c> target is a paymaster; a default-code sponsor is bounded by
-/// <see cref="FrameTxPayerExposureFilter"/> alone. The check reads the pending count rather than
-/// reserving, so nothing needs releasing when a later filter rejects, at the cost of concurrent
-/// submissions naming one paymaster briefly exceeding the cap.
-/// </remarks>
+/// <remarks>Reads the pending count rather than reserving, so a later filter's rejection needs no release,
+/// at the cost of concurrent submissions naming one paymaster briefly exceeding the cap.</remarks>
 internal sealed class FrameTxPaymasterFilter(
     IReadOnlyStateProvider stateProvider,
     TxDistinctSortedPool standardPool,
@@ -54,8 +48,7 @@ internal sealed class FrameTxPaymasterFilter(
         return AcceptTxResult.Accepted;
     }
 
-    // No canonical paymaster runtime is pinned in production yet, so every code-carrying pay target is
-    // capped. Exempting a canonical instance additionally requires its balance reservation (EIP8141-GAP).
+    // EIP8141-GAP: no canonical paymaster runtime is pinned yet, so every code-carrying pay target is capped.
     private bool IsNonCanonicalPaymaster(Address paymaster) =>
         stateProvider.TryGetAccount(paymaster, out AccountStruct account) && account.HasCode;
 
@@ -63,11 +56,8 @@ internal sealed class FrameTxPaymasterFilter(
     /// Whether a pending transaction from the same sender holds the same nonce and pays through
     /// <paramref name="paymaster"/>, so <paramref name="tx"/> would replace it rather than join it.
     /// </summary>
-    /// <remarks>
-    /// Matching on the paymaster too: replacing a tx sponsored elsewhere frees that sponsor's slot while
-    /// still taking one here. A blob-carrying frame tx lives in the blob pool, so the displaced tx is
-    /// looked for in whichever pool holds transactions of this shape.
-    /// </remarks>
+    /// <remarks>Matches on the paymaster too: replacing a tx sponsored elsewhere frees that sponsor's slot
+    /// while still taking one here.</remarks>
     private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster)
     {
         ReplacementSearch search = new(tx.Nonce, paymaster);

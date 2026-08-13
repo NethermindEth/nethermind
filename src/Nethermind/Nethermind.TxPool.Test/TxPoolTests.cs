@@ -2474,9 +2474,8 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void SubmitTx_FrameTransactions_SharingNonCanonicalPaymaster_BoundByPendingCap_ReleasedOnRemoval()
         {
-            // Distinct senders share one code-carrying pay target. No canonical paymaster runtime is pinned,
-            // so it is non-canonical and only MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER of its sponsored
-            // transactions may be pending at once (EIP-8141).
+            // Distinct senders share one code-carrying pay target, so the non-canonical paymaster cap
+            // bounds how many of its sponsored transactions may be pending at once.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);

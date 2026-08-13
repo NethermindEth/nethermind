@@ -79,8 +79,7 @@ public class FrameTxPaymasterFilterTests
     [Test]
     public void Accept_CodeCarryingSenderPayingItself_IsCapped()
     {
-        // The spec's carve-out from the cap is the empty code hash, not self-payment, so a code-carrying
-        // sender naming itself in the pay frame is a non-canonical paymaster like any other.
+        // The carve-out is the empty code hash, not self-payment, so a code-carrying self-sponsor is capped.
         TestReadOnlyStateProvider state = new();
         state.InsertCode([0x60, 0x00], Sender);
         PendingPaymasterCache cache = new();
@@ -148,8 +147,7 @@ public class FrameTxPaymasterFilterTests
     [Test]
     public void Accept_FeeBumpOfBlobCarryingSponsoredTx_Accepted()
     {
-        // A blob-carrying frame tx is counted against the cap from the blob pool, so its replacement has
-        // to be discounted from there too or it could never be re-priced.
+        // A blob-carrying frame tx is counted from the blob pool, so its replacement must be discounted there.
         TestReadOnlyStateProvider state = new();
         state.InsertCode([0x60, 0x00], Paymaster);
 
