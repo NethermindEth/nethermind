@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -105,5 +106,53 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
+
+        private static readonly SyncMode[] s_flagsDescending = CreateDescendingFlags();
+
+        private static SyncMode[] CreateDescendingFlags()
+        {
+            SyncMode[] flags = Enum.GetValues<SyncMode>();
+            Array.Reverse(flags);
+            return flags;
+        }
+
+        public static string ToFlagsString(this SyncMode syncMode)
+        {
+            if (syncMode == SyncMode.None)
+            {
+                return nameof(SyncMode.None);
+            }
+
+            StringBuilder builder = new();
+            SyncMode printed = SyncMode.None;
+            foreach (SyncMode flag in s_flagsDescending)
+            {
+                if ((syncMode & flag) != flag || (printed & flag) == flag)
+                {
+                    continue;
+                }
+
+                if (builder.Length > 0)
+                {
+                    builder.Append(", ");
+                }
+
+                builder.Append(flag);
+                printed |= flag;
+            }
+
+            SyncMode unknown = syncMode & ~printed;
+            if (unknown != SyncMode.None)
+            {
+                if (builder.Length > 0)
+                {
+                    builder.Append(", ");
+                }
+
+                builder.Append("unknown: ").Append((int)unknown);
+            }
+
+            return builder.ToString();
+        }
     }
 }
