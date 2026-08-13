@@ -15,12 +15,14 @@ import argparse
 import concurrent.futures
 import csv
 import gzip
+import http.client
 import json
 import os
 import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zlib
 from pathlib import Path
@@ -141,28 +143,74 @@ def _node_identity(url: str) -> tuple[int, int, str]:
     return head, int(chain_id, 16), block_hash
 
 
+# One keep-alive connection per worker thread. A fresh TCP connection per call folds connect
+# cost into every measurement and churns ephemeral ports across a 100k-request replay.
+_CONNECTIONS = threading.local()
+
+
+def _release_connection() -> None:
+    entry = getattr(_CONNECTIONS, "entry", None)
+    if entry is not None:
+        try:
+            entry[1].close()
+        except Exception:  # noqa: BLE001 — a failed close must not mask the caller's outcome
+            pass
+        _CONNECTIONS.entry = None
+
+
+def _fetch(url: str, body: bytes) -> tuple[int, bytes] | None:
+    """POST body and return (status, raw), or None on transport failure.
+
+    Retries once: a pooled connection can be closed by the peer between requests, which is
+    indistinguishable from a real failure on the first attempt.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    key = (parsed.scheme, parsed.hostname, parsed.port)
+    path = parsed.path or "/"
+    for attempt in (0, 1):
+        entry = getattr(_CONNECTIONS, "entry", None)
+        if entry is None or entry[0] != key:
+            _release_connection()
+            factory = (http.client.HTTPSConnection if parsed.scheme == "https"
+                       else http.client.HTTPConnection)
+            _CONNECTIONS.entry = (key, factory(parsed.hostname, parsed.port,
+                                               timeout=REQUEST_TIMEOUT_SECONDS))
+        conn = _CONNECTIONS.entry[1]
+        try:
+            conn.request("POST", path, body=body, headers={"Content-Type": "application/json"})
+            response = conn.getresponse()
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+            # An over-long body leaves unread bytes on the socket, so the connection cannot be
+            # reused; drop it rather than corrupting the next request on this thread.
+            if len(raw) > MAX_RESPONSE_BYTES:
+                _release_connection()
+            return response.status, raw
+        except (http.client.HTTPException, OSError, ValueError):
+            _release_connection()
+            if attempt:
+                return None
+    return None
+
+
 def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
     """POST one eth_call; return (category, result_hex). category is None on success."""
     body = json.dumps(
         {"jsonrpc": "2.0", "id": index, "method": "eth_call", "params": params},
         separators=(",", ":"),
     ).encode()
-    request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            raw = response.read(MAX_RESPONSE_BYTES + 1)
-    except urllib.error.HTTPError as error:
+    fetched = _fetch(url, body)
+    if fetched is None:
+        return "transport_failure", ""
+    status, raw = fetched
+    if status >= 400:
         # Some clients/proxies answer JSON-RPC errors with a non-200 status — that is a
         # response, not a transport failure. The body is parsed but never stored.
         try:
-            raw = error.read(MAX_RESPONSE_BYTES + 1)
             envelope = json.loads(raw)
-        except (OSError, ValueError):
+        except ValueError:
             return "transport_failure", ""
         if isinstance(envelope, dict) and "error" in envelope and envelope.get("id") in (index, None):
             return "rpc_error", ""
-        return "transport_failure", ""
-    except (urllib.error.URLError, OSError, ValueError):
         return "transport_failure", ""
     if len(raw) > MAX_RESPONSE_BYTES:
         return "transport_failure", ""

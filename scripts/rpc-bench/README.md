@@ -308,11 +308,13 @@ summary, the parity table, artifact paths, and `summaries.manifest`. That is
 deliberate — scenarios have to be told apart — so name files by workload shape,
 never after anything sensitive.
 
-Two operational limits worth knowing before capturing: `corpus_parity.py`
-enforces `MAX_CORPUS_RECORDS = 10_000`, and the k6 fixture scales with record
-count (~142 MB for 497 records, since eth_call records with state overrides run
-to hundreds of KB each). Large captures need sampling down to a representative
-subset, not a raised cap.
+Two operational limits worth knowing before capturing. `corpus_parity.py` guards at
+10,000 records by default — raise it deliberately with `max_corpus_records` when the
+runner has the memory, since the replay holds every record's params at once. And the k6
+fixture scales with record count (~142 MB for 497 records, since `eth_call` records with
+state overrides run to hundreds of KB each), so the k6 cells are the binding constraint
+on a large capture, not parity: prefer sampling down to a representative subset, or run
+parity/timings only with an empty `rps_list`.
 
 **Corpus files** (JSON Lines, one `{"method":"eth_call","params":[...]}` per
 line, extra fields ignored, optionally gzipped) go to the runner at
@@ -336,22 +338,33 @@ uniformly *with replacement* without recording which record it drew. To get a
 record-by-record profile, replay the corpus directly against a running node:
 
 ```bash
-scripts/rpc-bench/corpus_parity.py timings   --corpus /mnt/sda/expb-data/rpc-bench/eth-call-corpus-<label>.jsonl.gz   --rpc-url http://localhost:8545 --out timings.csv --passes 5 --rps 100 --concurrency 16
+python3 scripts/rpc-bench/corpus_parity.py timings \
+  --corpus "/mnt/sda/expb-data/rpc-bench/eth-call-corpus-<label>.jsonl.gz" \
+  --rpc-url http://localhost:8545 \
+  --out timings.csv --passes 5 --rps 100 --concurrency 16
 ```
 
 Walks the corpus in order, `--passes` times, pacing submissions to `--rps` (0 = unpaced),
-and writes one row per record with one column per pass:
+and writes one row per record with a duration **and an outcome** per pass:
 
 ```
-record_index,pass_1_ms,pass_2_ms,pass_3_ms,pass_4_ms,pass_5_ms
-1,6.855,9.761,12.712,7.105,7.004
-2,37.086,37.002,58.363,36.698,37.114
+record_index,pass_1_ms,pass_1_status,pass_2_ms,pass_2_status
+1,6.855,ok,9.761,ok
+2,37.086,ok,58.363,rpc_error:-32000
 ```
+
+The status column exists because a rejected call returns early: without it a node shedding
+load reads as a fast one. Exclude any measurement whose status is not `ok` before computing
+percentiles — the run also prints a warning when any are present.
 
 Every record is hit exactly `--passes` times — unlike the k6 cells, where coverage is a
-random draw. The CSV carries record indexes and milliseconds only, so it is safe to
-publish under the same boundary as the parity reports. The achieved rate is printed so a
-run that could not keep up with `--rps` is visible rather than silently slower.
+random draw. The CSV carries record indexes, milliseconds and outcome names only, so it is
+safe to publish under the same boundary as the parity reports.
+
+A `timings.meta.json` sidecar records the head block hash, record/pass counts, target and
+achieved rate, and concurrency. **Only compare matrices whose metadata matches** — a
+different head, rate or concurrency makes the numbers incomparable, and nothing in the CSV
+itself would reveal that.
 
 **What a corpus sweep does per client:** one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
