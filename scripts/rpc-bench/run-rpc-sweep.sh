@@ -110,15 +110,22 @@ isolation() {
 # One json-bench cell: $1=config (repo-relative) $2=rps $3=duration $4=out dir $5=client
 # $6=label $7=corpus file (empty = normal cell; set = private corpus cell, aggregate-only output)
 run_cell() {
-  local cfg="$1" rps="$2" dur="$3" cell="$4" ctype="$5" label="$6" corpus="${7:-}"
+  local cfg="$1" rps="$2" dur="$3" cell="$4" ctype="$5" label="$6" corpus="${7:-}" node="${8:-}"
   local is_corpus="false" deep="true"
   [[ -n "$corpus" ]] && { is_corpus="true"; deep="false"; }
   mkdir -p "$cell"
+  # run-jsonbench.sh owns the sampling window so it covers container execution only, and it
+  # normalizes against the request count k6 reports rather than one derived from the duration.
+  local sampler_container="" sampler_out=""
+  if [[ -n "$node" && "$CORPUS_RESOURCE_SAMPLING" == "true" ]]; then
+    sampler_container="$node"; sampler_out="$cell/resources.json"
+  fi
   OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$ctype" LABEL="$label" \
     SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
     JB_BENCHMARK_CONFIG="$cfg" JB_RPS="$rps" JB_DURATION="$dur" \
     JB_DEEP_CHECK="$deep" JB_HTML_REPORT="false" \
     JB_ETH_CALL_CORPUS="$is_corpus" JB_ETH_CALL_CORPUS_FILE="$corpus" \
+    RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
     "$here/run-jsonbench.sh"
 }
 
@@ -145,21 +152,6 @@ corpus_cell_duration() {
   fi
   # Round up so the cell never delivers fewer than the requested count.
   printf '%ss' "$(( (target + rps - 1) / rps ))"
-}
-
-# Resource sampling brackets the measured load window only, so node startup and DB warmup do not
-# dilute the per-request figures.
-SAMPLER_PID=""
-start_sampler() {
-  [[ "$CORPUS_RESOURCE_SAMPLING" == "true" ]] || return 0
-  python3 "$here/sample-resources.py" --container "$1" --out "$2" --requests "$3" &
-  SAMPLER_PID=$!
-}
-stop_sampler() {
-  [[ -n "$SAMPLER_PID" ]] || return 0
-  kill -TERM "$SAMPLER_PID" 2>/dev/null
-  wait "$SAMPLER_PID" 2>/dev/null
-  SAMPLER_PID=""
 }
 
 # Short scenario label from a corpus filename: eth-call-corpus[-<label>].jsonl.gz -> <label> | default
@@ -252,10 +244,8 @@ for entry in $CLIENTS; do
         cell="$OUT_DIR/corpus/${clabel}/${label}/${rps}"
         cell_duration="$(corpus_cell_duration "$corpus" "$rps")"
         echo "-- CORPUS ${clabel} ${label} @ rps=${rps} for ${cell_duration} --"
-        start_sampler "$cname" "$cell/resources.json" "$(( rps * ${cell_duration%s} ))"
-        run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" \
+        run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$cell_duration" "$cell" "$ctype" "$label" "$corpus" "$cname" \
           || { echo "::warning::corpus ${clabel}/${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
-        stop_sampler
         [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${clabel}|${label}|${rps}=$cell/jsonbench-summary.md")
       done
       if [[ -z "$BASELINE_LABEL" ]]; then

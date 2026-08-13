@@ -101,8 +101,7 @@ def _io_totals(path: Path) -> tuple[int, int]:
     return read, write
 
 
-def sample(container: str, out_path: str, interval: float, requests: int,
-           should_stop=None) -> None:
+def sample(container: str, out_path: str, interval: float, should_stop=None) -> None:
     """Sample until should_stop() is true; by default until SIGTERM/SIGINT.
 
     The predicate is injectable so the loop and its arithmetic can be exercised without
@@ -120,6 +119,7 @@ def sample(container: str, out_path: str, interval: float, requests: int,
 
     started = time.monotonic()
     cpu_start = cpu_usec()
+    throttled_start = _read_kv(cgroup / "cpu.stat").get("throttled_usec", 0)
     io_start = _io_totals(cgroup / "io.stat")
     psi_start = {name: _pressure_total(cgroup / f"{name}.pressure")
                  for name in ("cpu", "io", "memory")}
@@ -149,28 +149,41 @@ def sample(container: str, out_path: str, interval: float, requests: int,
         start = psi_start.get(name)
         return None if end is None or start is None else end - start
 
-    # memory.peak is the kernel's own high-water mark; fall back to the sampled maximum.
-    kernel_peak = _read_int(cgroup / "memory.peak")
+    # Every figure here is a delta or a sample taken inside the window. cgroup lifetime values
+    # (memory.peak, the raw throttled_usec) would fold node startup and DB warmup into what is
+    # reported as a per-cell number, so the peak is the sampled maximum and throttling is a delta.
     summary = {
         "wall_seconds": round(wall, 3),
         "samples": len(memory_samples),
         "cpu_seconds": round(cpu_seconds, 3),
         "cpu_avg_cores": round(cpu_seconds / wall, 3) if wall > 0 else 0.0,
         "cpu_peak_cores": round(peak_cores, 3),
-        "cpu_throttled_usec": throttle.get("throttled_usec", 0),
+        "cpu_throttled_usec": throttle.get("throttled_usec", 0) - throttled_start,
         "memory_avg_bytes": int(sum(memory_samples) / len(memory_samples)) if memory_samples else 0,
-        "memory_peak_bytes": kernel_peak if kernel_peak is not None else (max(memory_samples) if memory_samples else 0),
+        "memory_peak_bytes": max(memory_samples) if memory_samples else 0,
         "io_read_bytes": io_end[0] - io_start[0],
         "io_write_bytes": io_end[1] - io_start[1],
         "stall_cpu_usec": psi_delta("cpu"),
         "stall_io_usec": psi_delta("io"),
         "stall_memory_usec": psi_delta("memory"),
-        "requests": requests,
+        # The delivered count is not known until the cell reports it; `normalize` fills it in.
+        "requests": 0,
     }
-    if requests > 0:
-        summary["cpu_ms_per_request"] = round(cpu_seconds * 1000 / requests, 4)
-        summary["io_read_bytes_per_request"] = round((io_end[0] - io_start[0]) / requests, 1)
+    _write(out_path, _with_rates(summary))
 
+
+def _with_rates(summary: dict) -> dict:
+    """Add per-request costs when a request count is known; drop stale ones when it is not."""
+    summary.pop("cpu_ms_per_request", None)
+    summary.pop("io_read_bytes_per_request", None)
+    requests = summary.get("requests", 0)
+    if isinstance(requests, int) and requests > 0:
+        summary["cpu_ms_per_request"] = round(summary["cpu_seconds"] * 1000 / requests, 4)
+        summary["io_read_bytes_per_request"] = round(summary["io_read_bytes"] / requests, 1)
+    return summary
+
+
+def _write(out_path: str, summary: dict) -> None:
     target = Path(out_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8") as handle:
@@ -180,16 +193,45 @@ def sample(container: str, out_path: str, interval: float, requests: int,
           f"{summary.get('cpu_ms_per_request', 'n/a')} CPU-ms/request", flush=True)
 
 
+def normalize(out_path: str, requests: int) -> None:
+    """Restate an existing sample against the request count the load actually delivered.
+
+    The sampler cannot know it: deriving requests from rate x duration assumes an integer-second
+    duration and that k6 dropped no iterations. Both are false in general, so the count comes from
+    the benchmark's own `http_reqs` after the cell.
+    """
+    target = Path(out_path)
+    try:
+        with target.open("r", encoding="utf-8") as handle:
+            summary = json.load(handle)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ResourceSampleError(f"cannot read sample: {error.__class__.__name__}") from None
+    if not isinstance(summary, dict) or "cpu_seconds" not in summary:
+        raise ResourceSampleError("sample is not a resource summary")
+    summary["requests"] = requests
+    _write(out_path, _with_rates(summary))
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--container", required=True)
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--interval", type=float, default=0.25)
-    parser.add_argument("--requests", type=int, default=0,
-                        help="request count for the cell, to derive per-request cost")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    sample_parser = subparsers.add_parser("sample", help="sample until SIGTERM")
+    sample_parser.add_argument("--container", required=True)
+    sample_parser.add_argument("--out", required=True)
+    sample_parser.add_argument("--interval", type=float, default=0.25)
+
+    normalize_parser = subparsers.add_parser(
+        "normalize", help="restate a sample against the delivered request count")
+    normalize_parser.add_argument("--out", required=True)
+    normalize_parser.add_argument("--requests", type=int, required=True)
+
     arguments = parser.parse_args(argv)
     try:
-        sample(arguments.container, arguments.out, arguments.interval, arguments.requests)
+        if arguments.command == "sample":
+            sample(arguments.container, arguments.out, arguments.interval)
+        else:
+            normalize(arguments.out, arguments.requests)
     except ResourceSampleError as error:
         print(f"resource sampling unavailable: {error}", file=sys.stderr)
         return 0  # never fail a benchmark because sampling could not start

@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -142,10 +144,6 @@ class CorpusResultsTests(unittest.TestCase):
             corpus_results.stage(str(out_root), str(self.dir / "stage3"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class CommentRenderingTests(unittest.TestCase):
     """The PR comment is public, so it must be built from staged data and stay content-free."""
 
@@ -197,4 +195,27 @@ class CommentRenderingTests(unittest.TestCase):
         self._cell("nethermind_master", 20.0, 100.0)
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
         self.assertIn("missing a client", body)
+
+    def test_comment_cli_matches_the_workflow_invocation(self):
+        """Every subcommand must dispatch to itself — `comment` once fell through to `stage`."""
+        self._cell("nethermind_master", 20.0, 100.0)
+        self._cell("nethermind", 19.0, 90.0)
+        argv = ["comment", str(self.root), "--baseline", "nethermind_master",
+                "--candidate", "nethermind"]
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(corpus_results.main(argv), 0)
+        body = out.getvalue()
+        self.assertIn("corpus-a", body)
+        self.assertIn("| metric | master | PR | delta |", body)
+
+    def test_stage_cli_still_dispatches_to_stage(self):
+        """Dispatching to the wrong handler raises AttributeError; reaching stage returns 1."""
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(corpus_results.main(
+                ["stage", str(self.root / "absent"), str(self.root / "staged-cli")]), 1)
+        self.assertIn("output root does not exist", err.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()
 
