@@ -127,9 +127,7 @@ public class XdcModule : Module
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
             .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
-            .AddMessageSerializer<XdcNewPooledTransactionHashesMessage, XdcNewPooledTransactionHashesMessageSerializer>()
             .AddMessageSerializer<XdcGetPooledTransactionsMessage, XdcGetPooledTransactionsMessageSerializer>()
-            .AddMessageSerializer<XdcPooledTransactionsMessage, XdcPooledTransactionsMessageSerializer>()
 
             .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
             .AddLast<IP2PCapabilityResolver, XdcP2PCapabilityResolver>()

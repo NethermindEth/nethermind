@@ -30,6 +30,17 @@ public class XdcForkInfoTests
         Assert.That(XdcForkId(headNumber: 1).ForkHash, Is.EqualTo(ForkId(headNumber: 1).ForkHash));
 
     [Test]
+    public void Fork_summary_sees_the_switch_as_a_pending_fork()
+    {
+        // The summary must read the same schedule the checksum was built from, or eth_config reports no
+        // pending fork while the consensus switch is still ahead.
+        ForkActivationsSummary summary = CreateXdcForkInfo().GetForkActivationsSummary(Build.A.BlockHeader.WithNumber(100).TestObject);
+
+        Assert.That(summary.Next?.Activation, Is.EqualTo(new ForkActivation(SwitchBlock)));
+        Assert.That(summary.Last?.Activation, Is.EqualTo(new ForkActivation(SwitchBlock)));
+    }
+
+    [Test]
     public void Switch_at_genesis_is_not_a_transition()
     {
         Nethermind.Network.ForkId forkId = XdcForkId(headNumber: 100, switchBlock: 0);
@@ -37,12 +48,11 @@ public class XdcForkInfoTests
         Assert.That(forkId, Is.EqualTo(ForkId(headNumber: 100)));
     }
 
-    private static Nethermind.Network.ForkId XdcForkId(ulong headNumber, ulong switchBlock = SwitchBlock)
-    {
-        XdcChainSpecEngineParameters engineParameters = new() { SwitchBlock = switchBlock };
-        XdcForkInfo forkInfo = new(SpecProvider(), SyncServer(), engineParameters);
-        return forkInfo.GetForkId(headNumber, 0);
-    }
+    private static Nethermind.Network.ForkId XdcForkId(ulong headNumber, ulong switchBlock = SwitchBlock) =>
+        CreateXdcForkInfo(switchBlock).GetForkId(headNumber, 0);
+
+    private static XdcForkInfo CreateXdcForkInfo(ulong switchBlock = SwitchBlock) =>
+        new(SpecProvider(), SyncServer(), new XdcChainSpecEngineParameters { SwitchBlock = switchBlock });
 
     private static Nethermind.Network.ForkId ForkId(ulong headNumber)
     {

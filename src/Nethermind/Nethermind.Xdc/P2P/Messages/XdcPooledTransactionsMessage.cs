@@ -10,6 +10,7 @@ namespace Nethermind.Xdc.P2P.Messages;
 /// <summary>
 /// <see cref="PooledTransactionsMessage"/> on the code XDC relocated it to.
 /// </summary>
+/// <inheritdoc cref="XdcNewPooledTransactionHashesMessage" path="/remarks"/>
 public class XdcPooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions) : PooledTransactionsMessage(transactions)
 {
     public override int PacketType => XdcMessageCode.PooledTransactions;

@@ -23,6 +23,7 @@ namespace Nethermind.Network
         private bool _wasInitialized = false;
         private Dictionary<uint, Fork> DictForks { get; set; }
         internal Fork[] Forks { get; set; }
+        private ForkActivation[] _activations = [];
         private bool _hasTimestampFork;
 
         internal void EnsureInitialized()
@@ -35,7 +36,7 @@ namespace Nethermind.Network
             Hash256 genesisHash = syncServer.Genesis!.Hash;
 
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
-            ForkActivation[] transitionActivations = GetForkActivations();
+            ForkActivation[] transitionActivations = _activations = GetForkActivations();
             DictForks = [];
             Forks = new Fork[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
@@ -189,7 +190,7 @@ namespace Nethermind.Network
                 currentFork = new Fork(new ForkActivation(0, 0), currentFork.Id);
             }
 
-            bool isNextPresent = GetNextActivation(indexOfActive - 1, specProvider.TransitionActivations) is not 0;
+            bool isNextPresent = GetNextActivation(indexOfActive - 1, _activations) is not 0;
 
             return new ForkActivationsSummary
             {

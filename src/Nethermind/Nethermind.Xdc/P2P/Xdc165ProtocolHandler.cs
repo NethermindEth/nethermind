@@ -12,7 +12,6 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;

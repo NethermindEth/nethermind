@@ -14,5 +14,5 @@ internal class XdcStateSyncDownloader(ILogManager logManager) : StateSyncDownloa
     /// sit above the eth/67 cut-off the base class checks against.
     /// </remarks>
     protected override bool ProtocolSupportsNodeData(ISyncPeer peer) =>
-        peer.ProtocolVersion >= XdcProtocolVersions.Legacy || base.ProtocolSupportsNodeData(peer);
+        XdcProtocolVersions.IsXdcVersion(peer.ProtocolVersion) || base.ProtocolSupportsNodeData(peer);
 }

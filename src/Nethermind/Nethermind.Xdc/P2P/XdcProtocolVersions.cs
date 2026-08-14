@@ -26,4 +26,11 @@ public static class XdcProtocolVersions
 
     /// <summary>Message ID space for <see cref="Xdc165"/>, whose highest code is <see cref="XdcMessageCode.PooledTransactions"/>.</summary>
     public const int MessageIdSpaceSize = XdcMessageCode.PooledTransactions + 1;
+
+    /// <summary>Whether <paramref name="protocolVersion"/> is one of XDC's <c>eth</c> versions.</summary>
+    /// <remarks>
+    /// Sync-side capability checks compare against the mainline <c>ethNN</c> numbers, which XDC's <c>1NN</c>
+    /// versions sit above; anything gated on such a comparison has to ask this instead.
+    /// </remarks>
+    public static bool IsXdcVersion(byte protocolVersion) => protocolVersion is Legacy or Xdc164 or Xdc165;
 }

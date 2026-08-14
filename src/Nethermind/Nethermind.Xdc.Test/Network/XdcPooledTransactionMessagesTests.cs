@@ -8,8 +8,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.P2P.Messages;
 using NUnit.Framework;
@@ -20,6 +20,10 @@ namespace Nethermind.Xdc.Test.Network;
 /// XDC relocates the three EIP-2464 messages to <c>0xe3</c>-<c>0xe5</c> but leaves their payloads untouched,
 /// so each message must encode byte-for-byte like its upstream counterpart.
 /// </summary>
+/// <remarks>
+/// Each message is serialized by whichever serializer production dispatches to, which for the announcement and
+/// the response is the upstream one - serializer lookup binds the static type at the send site.
+/// </remarks>
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcPooledTransactionMessagesTests
 {
@@ -30,10 +34,11 @@ public class XdcPooledTransactionMessagesTests
     {
         using XdcNewPooledTransactionHashesMessage message = new(Hashes.ToPooledList());
         using NewPooledTransactionHashesMessage upstream = new(Hashes.ToPooledList());
+        NewPooledTransactionHashesMessageSerializer serializer = new();
 
         Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.NewPooledTransactionHashes));
-        Assert.That(Hex(buffer => new XdcNewPooledTransactionHashesMessageSerializer().Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => new NewPooledTransactionHashesMessageSerializer().Serialize(buffer, upstream))));
+        Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
+            Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
     }
 
     [Test]
@@ -52,10 +57,11 @@ public class XdcPooledTransactionMessagesTests
     {
         using XdcPooledTransactionsMessage message = new(Transactions());
         using PooledTransactionsMessage upstream = new(Transactions());
+        PooledTransactionsMessageSerializer serializer = new();
 
         Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.PooledTransactions));
-        Assert.That(Hex(buffer => new XdcPooledTransactionsMessageSerializer().Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => new PooledTransactionsMessageSerializer().Serialize(buffer, upstream))));
+        Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
+            Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
     }
 
     [Test]
