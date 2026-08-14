@@ -245,6 +245,7 @@ public sealed class FrameTxEnvelopeTxValidator : ITxValidator
             : "recent root references are not enabled";
     }
 }
+
 public sealed class ContractSizeTxValidator : ITxValidator
 {
     public static readonly ContractSizeTxValidator Instance = new();
