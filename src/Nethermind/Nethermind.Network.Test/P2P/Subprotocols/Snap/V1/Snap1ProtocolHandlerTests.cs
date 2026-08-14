@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -31,17 +32,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1;
 
 public class Snap1ProtocolHandlerTests
 {
-    private sealed class ManualTimeProvider : TimeProvider
-    {
-        private long _timestamp;
-
-        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-
-        public override long GetTimestamp() => _timestamp;
-
-        public void Advance(TimeSpan delta) => _timestamp += delta.Ticks;
-    }
-
     private class Context
     {
         private readonly ManualTimeProvider _timeProvider = new();
@@ -95,9 +85,9 @@ public class Snap1ProtocolHandlerTests
             }
         }
 
-        public TimeSpan SimulatedLatency { get; set; } = TimeSpan.Zero;
+        public TimeSpan VirtualLatency { get; set; } = TimeSpan.Zero;
 
-        public TimeSpan SimulatedStall { get; set; } = TimeSpan.Zero;
+        public TimeSpan RealTimeStall { get; set; } = TimeSpan.Zero;
 
         private readonly List<long> _recordedResponseBytesLength = [];
 
@@ -112,11 +102,11 @@ public class Snap1ProtocolHandlerTests
                         GetAccountRangeMessage accountRangeMessage = (GetAccountRangeMessage)callInfo[0];
                         _recordedResponseBytesLength.Add(accountRangeMessage.ResponseBytes);
 
-                        _timeProvider.Advance(SimulatedLatency);
+                        _timeProvider.Advance(VirtualLatency);
 
-                        if (SimulatedStall > TimeSpan.Zero)
+                        if (RealTimeStall > TimeSpan.Zero)
                         {
-                            Task.Delay(SimulatedStall).Wait();
+                            Task.Delay(RealTimeStall).Wait();
                         }
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
@@ -151,17 +141,17 @@ public class Snap1ProtocolHandlerTests
 
         Snap1ProtocolHandler protocolHandler = ctx.Snap1ProtocolHandler;
 
-        ctx.SimulatedLatency = TimeSpan.Zero;
+        ctx.VirtualLatency = TimeSpan.Zero;
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldIncrease();
 
-        ctx.SimulatedLatency = TimeSpan.FromMilliseconds(2001);
+        ctx.VirtualLatency = TimeSpan.FromMilliseconds(2001);
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldNotChange();
 
-        ctx.SimulatedLatency = TimeSpan.FromMilliseconds(3501);
+        ctx.VirtualLatency = TimeSpan.FromMilliseconds(3501);
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();
@@ -244,9 +234,9 @@ public class Snap1ProtocolHandlerTests
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldIncrease();
 
-        ctx.SimulatedStall = Timeouts.Eth + TimeSpan.FromSeconds(1);
+        ctx.RealTimeStall = Timeouts.Eth + TimeSpan.FromSeconds(1);
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
-        ctx.SimulatedStall = TimeSpan.Zero; // The read value is the request down, but it is adjusted on above request
+        ctx.RealTimeStall = TimeSpan.Zero; // The read value is the request down, but it is adjusted on above request
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();
     }

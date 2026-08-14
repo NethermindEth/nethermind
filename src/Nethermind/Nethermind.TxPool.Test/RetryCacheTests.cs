@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Logging;
 using NUnit.Framework;
 using System;
@@ -98,53 +99,6 @@ public class RetryCacheTests
     private sealed class BlockingHandler : IMessageHandler<BlockingRequestMessage>
     {
         public void HandleMessage(BlockingRequestMessage message) { }
-    }
-
-    private sealed class ManualTimeProvider : TimeProvider
-    {
-        private sealed class Timer : System.Threading.ITimer
-        {
-            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
-            public void Dispose() { }
-            public ValueTask DisposeAsync() => default;
-        }
-
-        private static readonly Timer _timer = new();
-        private readonly TaskCompletionSource _timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private TimerCallback _timerCallback;
-        private object _timerState;
-        private long _elapsedTicks;
-        private long _utcTicks;
-
-        public Task TimerCreated => _timerCreated.Task;
-
-        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-
-        public override long GetTimestamp() => Volatile.Read(ref _elapsedTicks);
-
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(Volatile.Read(ref _utcTicks));
-
-        public override System.Threading.ITimer CreateTimer(TimerCallback callback, object state, TimeSpan dueTime, TimeSpan period)
-        {
-            _timerCallback = callback;
-            _timerState = state;
-            _timerCreated.TrySetResult();
-            return _timer;
-        }
-
-        public void Elapse(TimeSpan elapsed)
-        {
-            Interlocked.Add(ref _elapsedTicks, elapsed.Ticks);
-            Interlocked.Add(ref _utcTicks, elapsed.Ticks);
-        }
-
-        public void JumpUtc(TimeSpan delta) => Interlocked.Add(ref _utcTicks, delta.Ticks);
-
-        public void Advance(TimeSpan elapsed)
-        {
-            Elapse(elapsed);
-            _timerCallback(_timerState);
-        }
     }
 
     public interface ITestHandler : IMessageHandler<ResourceRequestMessage>;
@@ -254,11 +208,11 @@ public class RetryCacheTests
         _cache.Announced(1, request2);
         _cache.Announced(1, request3);
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(
             () => request2.HandleMessageCallCount + request3.HandleMessageCallCount,
             Is.EqualTo(1).After(AssertTimeoutMs, 10));
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
 
         using (Assert.EnterMultipleScope())
         {
@@ -282,7 +236,7 @@ public class RetryCacheTests
         _cache.Announced(2, request3);
         _cache.Announced(2, request4);
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(() => request4.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(request1.WasCalled, Is.False);
@@ -302,7 +256,7 @@ public class RetryCacheTests
         _cache.Announced(2, request3);
         _cache.Announced(2, batchRequest);
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => batchRequest.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 100));
 
         using (Assert.EnterMultipleScope())
@@ -337,7 +291,7 @@ public class RetryCacheTests
             cache.Announced(2, sharedHandler);
             cache.Announced(2, otherHandler);
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
 
             Assert.That(() => sharedHandler.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
             using (Assert.EnterMultipleScope())
@@ -397,7 +351,7 @@ public class RetryCacheTests
                 cache.Announced(resourceId, sharedHandler);
             }
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
 
             Assert.That(() => sharedHandler.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
             Assert.That(sharedHandler.BatchResourceValues, Has.Length.EqualTo(resourceCount));
@@ -431,7 +385,7 @@ public class RetryCacheTests
             cache.Announced(2, new TestHandler());
             cache.Announced(2, secondHandler);
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
 
             Assert.That(
                 () => firstHandler.HandleMessagesCallCount + secondHandler.HandleMessagesCallCount,
@@ -478,17 +432,17 @@ public class RetryCacheTests
             cache.Announced(1, new TestHandler());
             cache.Announced(1, controlHandler);
 
-            timeProvider.Elapse(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
             cache.Announced(2, new TestHandler());
             cache.Announced(2, retryHandler);
 
             timeProvider.JumpUtc(TimeSpan.FromDays(1));
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
             Assert.That(() => controlHandler.WasCalled, Is.True.After(AssertTimeoutMs, 10));
             Assert.That(retryHandler.WasCalled, Is.False);
 
             timeProvider.JumpUtc(TimeSpan.FromDays(-2));
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
             Assert.That(() => retryHandler.WasCalled, Is.True.After(AssertTimeoutMs, 10));
         }
         finally
@@ -510,7 +464,7 @@ public class RetryCacheTests
         _cache.Announced(1, request3);
         _cache.Received(1);
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => _cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
 
         using (Assert.EnterMultipleScope())
@@ -546,11 +500,11 @@ public class RetryCacheTests
 
             for (int retry = 1; retry <= 4; retry++)
             {
-                timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+                timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
                 Assert.That(() => GetTotalCalls(handlers), Is.EqualTo(retry * 100).After(AssertTimeoutMs, 10));
             }
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
 
             Assert.That(() => cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
         }
@@ -583,10 +537,10 @@ public class RetryCacheTests
                 cache.Announced(resourceId, retryHandler);
             }
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
             Assert.That(() => retryHandler.HandleMessageCallCount, Is.EqualTo(256).After(AssertTimeoutMs, 10));
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(1));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(1));
             Assert.That(() => retryHandler.HandleMessageCallCount, Is.EqualTo(resourceCount).After(AssertTimeoutMs, 10));
         }
         finally
@@ -607,7 +561,7 @@ public class RetryCacheTests
         _cache.Announced(2, new TestHandler());
         _cache.Announced(2, normalRequest);
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => normalRequest.WasCalled, Is.True.After(AssertTimeoutMs, 100));
     }
 
@@ -621,13 +575,13 @@ public class RetryCacheTests
         _cache.Announced(1, request2);
         _cache.Announced(1, request3);
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(
             () => request2.HandleMessageCallCount + request3.HandleMessageCallCount,
             Is.EqualTo(1).After(AssertTimeoutMs, 100));
 
         _cache.Received(1);
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => _cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
 
         Assert.That(request2.HandleMessageCallCount + request3.HandleMessageCallCount, Is.EqualTo(1));
@@ -641,7 +595,7 @@ public class RetryCacheTests
         Assert.That(_cache.Announced(1, source), Is.EqualTo(AnnounceResult.RequestRequired));
         Assert.That(_cache.Announced(1, source), Is.EqualTo(AnnounceResult.Delayed));
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => _cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
 
         Assert.That(source.HandleMessageCallCount, Is.Zero);
@@ -655,11 +609,11 @@ public class RetryCacheTests
 
         _cache.Announced(1, new TestHandler());
         _cache.Announced(1, firstAlternate);
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => firstAlternate.WasCalled, Is.True.After(AssertTimeoutMs, 100));
 
         Assert.That(_cache.Announced(1, lateAlternate), Is.EqualTo(AnnounceResult.Delayed));
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => lateAlternate.WasCalled, Is.True.After(AssertTimeoutMs, 100));
     }
 
@@ -670,11 +624,11 @@ public class RetryCacheTests
 
         _cache.Announced(1, new TestHandler());
         _cache.Announced(1, batchHandler);
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => batchHandler.HandleMessagesCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 100));
 
         Assert.That(_cache.Announced(1, batchHandler), Is.EqualTo(AnnounceResult.Delayed));
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => _cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
 
         Assert.That(batchHandler.HandleMessagesCallCount, Is.EqualTo(1));
@@ -696,19 +650,19 @@ public class RetryCacheTests
         {
             await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
             cache.Announced(1, new TestHandler());
-            timeProvider.Elapse(TimeSpan.FromMilliseconds(timeoutMs / 2));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(timeoutMs / 2));
 
             cache.Received(1);
             TestHandler retryHandler = new();
             cache.Announced(1, new TestHandler());
             cache.Announced(1, retryHandler);
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(timeoutMs / 2));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(timeoutMs / 2));
 
             Assert.That(() => cache.ResourcesInRetryQueue, Is.EqualTo(1).After(AssertTimeoutMs, 10));
             Assert.That(retryHandler.WasCalled, Is.False);
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(timeoutMs / 2));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(timeoutMs / 2));
 
             Assert.That(() => retryHandler.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         }
@@ -736,7 +690,7 @@ public class RetryCacheTests
     {
         _cache.Announced(1, new TestHandler());
 
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
         Assert.That(() => _cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
 
         Assert.That(_cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
@@ -769,11 +723,11 @@ public class RetryCacheTests
             AnnounceResult result2 = cache.Announced(1, request3);
             AnnounceResult result3 = cache.Announced(1, rejectedRequest);
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
             Assert.That(
                 () => request2.HandleMessageCallCount + request3.HandleMessageCallCount,
                 Is.EqualTo(1).After(AssertTimeoutMs, 100));
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
             Assert.That(
                 () => request2.HandleMessageCallCount + request3.HandleMessageCallCount,
                 Is.EqualTo(2).After(AssertTimeoutMs, 100));
@@ -1108,11 +1062,11 @@ public class RetryCacheTests
 
             Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(staleResources + 1));
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
             Assert.That(() => cache.ResourcesInRetryQueue, Is.EqualTo(2).After(AssertTimeoutMs, 10));
             Assert.That(retryHandler.WasCalled, Is.False);
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 5));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs / 5));
 
             Assert.That(() => retryHandler.WasCalled, Is.True.After(AssertTimeoutMs, 10));
         }
@@ -1153,7 +1107,7 @@ public class RetryCacheTests
                 }
 
                 Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(resourcesPerBatch));
-                timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+                timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
                 Assert.That(() => cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
             }
 
@@ -1222,16 +1176,16 @@ public class RetryCacheTests
         {
             await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
 
-            timeProvider.Elapse(TimeSpan.FromMilliseconds(CacheTimeoutMs - 1));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs - 1));
             AnnounceResult initial = cache.Announced(1, new TestHandler());
             AnnounceResult duplicate = cache.Announced(1, new TestHandler());
             cache.Announced(2, new TestHandler());
             AnnounceResult full = cache.Announced(3, new TestHandler());
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(1));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(1));
             AnnounceResult acrossBoundary = cache.Announced(1, new TestHandler());
             AnnounceResult capacityAcrossBoundary = cache.Announced(3, new TestHandler());
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
             AnnounceResult afterTimeout = cache.Announced(1, new TestHandler());
 
             using (Assert.EnterMultipleScope())
@@ -1273,7 +1227,7 @@ public class RetryCacheTests
             Assert.That(cache.Announced(2, new TestHandler()), Is.EqualTo(AnnounceResult.Delayed));
 
             timeProvider.JumpUtc(TimeSpan.FromDays(-2));
-            timeProvider.Elapse(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
             Assert.That(cache.Announced(2, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
         }
         finally
@@ -1300,10 +1254,10 @@ public class RetryCacheTests
         {
             Assert.That(cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
 
-            timeProvider.Elapse(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2 - 1));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2 - 1));
             Assert.That(cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.Delayed));
 
-            timeProvider.Elapse(TimeSpan.FromMilliseconds(1));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(1));
             Assert.That(cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired));
         }
         finally
@@ -1342,7 +1296,7 @@ public class RetryCacheTests
 
             AnnounceResult limited = cache.Announced(new CollisionResourceId(overflowLimit), handler);
             int retainedCapacityAtLimit = cache.OverflowRetainedCapacity;
-            timeProvider.Elapse(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
             AnnounceResult afterExpiry = cache.Announced(new CollisionResourceId(overflowLimit), handler);
 
             using (Assert.EnterMultipleScope())
@@ -1386,7 +1340,7 @@ public class RetryCacheTests
             int retainedCapacityAtPeak = cache.OverflowRetainedCapacity;
             Assert.That(retainedCapacityAtPeak, Is.GreaterThan(resourceCount));
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
 
             Assert.That(() => cache.OverflowRequestsInUse, Is.Zero.After(AssertTimeoutMs, 10));
             Assert.That(() => cache.OverflowRetainedCapacity, Is.Zero.After(AssertTimeoutMs, 10));
@@ -1564,7 +1518,7 @@ public class RetryCacheTests
                 cache.Announced(resourceId, alternate);
             }
 
-            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
             Assert.That(() => alternate.HandleMessageCallCount, Is.EqualTo(2).After(AssertTimeoutMs, 100));
         }
         finally
@@ -1663,7 +1617,7 @@ public class RetryCacheTests
 
         _cache.Announced(42, new TestHandler());
         _cache.Announced(42, retryHandler);
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
 
         Assert.That(() => receivedResourceId, Is.EqualTo(42).After(AssertTimeoutMs, 100));
     }
