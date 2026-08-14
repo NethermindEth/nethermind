@@ -7,8 +7,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Init.Steps;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -20,6 +24,8 @@ namespace Nethermind.Core.Test
         public const string KeccakOfAnEmptyString = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
         public const string KeccakZero = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
         private const string ExperimentalSve2KeccakEnvironmentVariable = "NETHERMIND_EXPERIMENTAL_SVE2_KECCAK";
+        private const string ExperimentalSve2KeccakChildMarker = "NETHERMIND_SVE2_KECCAK_CHILD_EXECUTED";
+        private static readonly TimeSpan ExperimentalSve2KeccakChildTimeout = TimeSpan.FromMinutes(1);
 
         [TestCase(true, "0xc5d246...85a470")]
         [TestCase(false, "c5d246...85a470")]
@@ -193,10 +199,9 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Experimental_sve2_opt_in_on_unsupported_host_does_not_poison_KeccakHash()
+        public async Task Experimental_sve2_opt_in_initializes_and_logs_in_child_process()
         {
-            if (KeccakHash.IsSve2KeccakSupported())
-                Assert.Ignore("SVE2 SHA3 is supported on this platform.");
+            bool sve2Supported = KeccakHash.IsSve2KeccakSupported();
 
             string resultsDirectory = Path.Combine(Path.GetTempPath(), $"Nethermind.KeccakTests.{Guid.NewGuid():N}");
             try
@@ -211,21 +216,52 @@ namespace Nethermind.Core.Test
                 };
                 startInfo.ArgumentList.Add(typeof(KeccakTests).Assembly.Location);
                 startInfo.ArgumentList.Add("--filter");
-                startInfo.ArgumentList.Add($"FullyQualifiedName~{nameof(Experimental_sve2_opt_in_child_computes_known_hash)}");
+                startInfo.ArgumentList.Add($"FullyQualifiedName~{nameof(Experimental_sve2_opt_in_child_initializes_and_logs)}");
                 startInfo.ArgumentList.Add("--results-directory");
                 startInfo.ArgumentList.Add(resultsDirectory);
                 startInfo.ArgumentList.Add("--no-ansi");
                 startInfo.ArgumentList.Add("--progress");
                 startInfo.ArgumentList.Add("off");
+                startInfo.ArgumentList.Add("--output");
+                startInfo.ArgumentList.Add("Detailed");
+                startInfo.ArgumentList.Add("--show-stdout");
+                startInfo.ArgumentList.Add("All");
                 startInfo.Environment[ExperimentalSve2KeccakEnvironmentVariable] = "1";
 
                 using Process process = Process.Start(startInfo)
                     ?? throw new InvalidOperationException("Could not start the Keccak child test process.");
-                string standardOutput = process.StandardOutput.ReadToEnd();
-                string standardError = process.StandardError.ReadToEnd();
-                process.WaitForExit();
+                Task<string> standardOutputTask = process.StandardOutput.ReadToEndAsync();
+                Task<string> standardErrorTask = process.StandardError.ReadToEndAsync();
+                using CancellationTokenSource timeout = new(ExperimentalSve2KeccakChildTimeout);
 
-                Assert.That(process.ExitCode, Is.Zero, $"{standardOutput}{Environment.NewLine}{standardError}");
+                try
+                {
+                    await process.WaitForExitAsync(timeout.Token);
+                }
+                catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+
+                    await process.WaitForExitAsync();
+                    string timedOutStandardOutput = await standardOutputTask;
+                    string timedOutStandardError = await standardErrorTask;
+                    Assert.Fail($"The Keccak child test process timed out after {ExperimentalSve2KeccakChildTimeout}.{Environment.NewLine}{timedOutStandardOutput}{Environment.NewLine}{timedOutStandardError}");
+                }
+
+                string standardOutput = await standardOutputTask;
+                string standardError = await standardErrorTask;
+                string childOutput = $"{standardOutput}{Environment.NewLine}{standardError}";
+                string expectedDiagnostic = sve2Supported
+                    ? "Experimental SVE2 Keccak permutation enabled."
+                    : "Experimental SVE2 Keccak permutation was requested but is unsupported; falling back to the existing Keccak implementation.";
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(process.ExitCode, Is.Zero, childOutput);
+                    Assert.That(standardOutput, Does.Contain(ExperimentalSve2KeccakChildMarker), childOutput);
+                    Assert.That(childOutput, Does.Contain(expectedDiagnostic), childOutput);
+                }
             }
             finally
             {
@@ -234,12 +270,21 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Experimental_sve2_opt_in_child_computes_known_hash()
+        public async Task Experimental_sve2_opt_in_child_initializes_and_logs()
         {
             if (Environment.GetEnvironmentVariable(ExperimentalSve2KeccakEnvironmentVariable) != "1")
                 Assert.Ignore("This test is executed by the isolated opt-in regression test.");
 
+            bool sve2Supported = KeccakHash.IsSve2KeccakSupported();
+            KeccakHash.ExperimentalSve2KeccakStatus expectedState = sve2Supported
+                ? KeccakHash.ExperimentalSve2KeccakStatus.Enabled
+                : KeccakHash.ExperimentalSve2KeccakStatus.Unsupported;
+
+            Assert.That(KeccakHash.ExperimentalSve2KeccakState, Is.EqualTo(expectedState));
             Assert.That(Keccak.Compute([]).ToString(), Is.EqualTo(KeccakOfAnEmptyString));
+
+            await new LogHardwareInfo(new TestLogManager(LogLevel.Info)).Execute(CancellationToken.None);
+            TestContext.Out.WriteLine(ExperimentalSve2KeccakChildMarker);
         }
 
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
