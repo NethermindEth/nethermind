@@ -120,6 +120,12 @@ if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION"
   echo "::error::comparison, or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot."
   exit 1
 fi
+# reth's default stays `direct` without the consent flag, deliberately: /mnt/sda/reth-<block> is
+# consumed only by this harness (every expb scenario reads a nethermind-* snapshot), and reth has
+# run direct since the harness existed, so its post-first-boot state IS the steady-state fixture
+# every historical reth number was measured on. Switching it to copy would churn ~1 TB per run;
+# switching to overlay would change readahead behaviour and break comparability with history.
+# The guard above protects the snapshots that other consumers share.
 isolation() {
   if [[ -n "$DB_ISOLATION_ALL" ]]; then echo "$DB_ISOLATION_ALL"; return; fi
   [[ "$1" == "reth" ]] && echo "direct" || echo "overlay"
@@ -294,14 +300,28 @@ for entry in $CLIENTS; do
       # and reports roughly 60% higher p99 than the same node warm — an effect larger than any
       # code change this harness is used to detect. Burn that off into a discarded cell first.
       # 2026-08-13 evidence: with 120s/cell, cell 1 failed 1.97%, cell 2 <1%, cell 3 0.000%.
-      if [[ -n "$RPS_LIST" && "$CORPUS_WARMUP_DURATION" != "0" ]]; then
-        warm_rps="${RPS_LIST%% *}"
-        warm_cell="$OUT_DIR/corpus/${clabel}/${label}/warmup"
+      # Parity/timings-only runs (empty rps_list) warm too — they measure the same node, and a
+      # cold matrix looks exactly as authoritative as a warm one. Runs once per corpus on
+      # purpose: different corpora can touch disjoint state.
+      if [[ "$CORPUS_WARMUP_DURATION" != "0" ]]; then
+        # Warm at the highest rate the run will measure — warming at less leaves the faster
+        # cells partly cold. Timings-only runs use their own rate; unpaced (0) falls back flat.
+        warm_rps=0
+        for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
+        (( warm_rps == 0 )) && warm_rps="${CORPUS_TIMINGS_RPS}"
+        (( warm_rps == 0 )) && warm_rps=100
+        # Discarded output must stay OUT of OUT_DIR: stage() publishes by filename and comment()
+        # keys cells by directory position, so a staged warmup/summary.json would displace the
+        # measured cell in the published PR comment.
+        warm_cell="$SCRATCH_ROOT/warmup-cell/${clabel}/${label}"
         echo "-- WARMUP ${clabel} ${label} @ rps=${warm_rps} for ${CORPUS_WARMUP_DURATION} (discarded) --"
         run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "$CORPUS_WARMUP_DURATION" "$warm_cell" \
           "$ctype" "$label" "$corpus" "" \
           || echo "::warning::warmup cell for ${label} did not complete cleanly — measured cells may still be cold"
         report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
+        WARMED_SECONDS="${CORPUS_WARMUP_DURATION%s}"
+      else
+        WARMED_SECONDS=0
       fi
 
       # An empty rps_list runs no k6 cells: for a large corpus the JSON-array fixture alone can
@@ -350,10 +370,13 @@ for entry in $CLIENTS; do
       if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
         tdir="$OUT_DIR/corpus/${clabel}/${label}"; mkdir -p "$tdir"
         echo "-- TIMINGS ${clabel}: ${label} (${CORPUS_TIMINGS_PASSES} passes @ ${CORPUS_TIMINGS_RPS} rps) --"
+        # Non-integer durations (e.g. "2m") cannot be stated as seconds — record 0 rather than guess.
+        [[ "$WARMED_SECONDS" =~ ^[0-9]+$ ]] || WARMED_SECONDS=0
         if ! python3 "$here/corpus_parity.py" timings \
             --corpus "$corpus" --rpc-url "http://localhost:8545" \
             --out "$tdir/timings.csv" --passes "$CORPUS_TIMINGS_PASSES" \
-            --rps "$CORPUS_TIMINGS_RPS" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"; then
+            --rps "$CORPUS_TIMINGS_RPS" --concurrency "$CORPUS_TIMINGS_CONCURRENCY" \
+            --warmup-seconds "$WARMED_SECONDS"; then
           echo "::warning::timings replay failed for ${label} on corpus ${clabel}"
           cell_fail=$((cell_fail + 1))
         fi

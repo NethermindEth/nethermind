@@ -224,10 +224,10 @@ def _validate_timings_meta(path: Path) -> None:
     with path.open("r", encoding="utf-8") as source:
         data = json.load(source)
     required = {"head", "chain_id", "block_hash", "records", "passes", "requests",
-                "target_rps", "achieved_rps", "concurrency", "outcomes"}
+                "target_rps", "achieved_rps", "concurrency", "warmup_seconds", "outcomes"}
     if not isinstance(data, dict) or set(data) != required:
         raise CorpusResultsError(f"{path.name} does not match the timings metadata schema")
-    for key in ("head", "chain_id", "records", "passes", "requests", "concurrency"):
+    for key in ("head", "chain_id", "records", "passes", "requests", "concurrency", "warmup_seconds"):
         if isinstance(data[key], bool) or not isinstance(data[key], int) or data[key] < 0:
             raise CorpusResultsError(f"{path.name}: {key} is not a non-negative integer")
     for key in ("target_rps", "achieved_rps"):
@@ -274,6 +274,11 @@ def stage(output_root: str, stage_root: str) -> None:
     shutil.rmtree(destination_root, ignore_errors=True)
     for path in sorted(source_root.rglob("*")):
         if not path.is_file() or path.is_symlink() or path.name not in STAGED_FILENAMES:
+            continue
+        # Discarded warm-up output must never publish: comment() keys cells by directory position,
+        # so a staged warmup/summary.json would displace a measured cell in the PR comment. The
+        # sweep writes warm-ups to scratch, but staging is the boundary, so it enforces this too.
+        if "warmup" in path.relative_to(source_root).parts:
             continue
         try:
             if path.name == "summary.json":
