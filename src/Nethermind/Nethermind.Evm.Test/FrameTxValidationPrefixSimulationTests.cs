@@ -365,6 +365,41 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    [Test]
+    public void Simulate_PrefixDeclaringAnUncommittedRecentRootReference_RejectedBeforeAnyFrameRuns()
+    {
+        // RECENTROOTREFLOAD reads the envelope on the strength of the pre-state check, so a prefix must
+        // never run against references the main path would reject.
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.RecentRootReferences = [new RecentRootReference(TestItem.KeccakA, slot: 9, TestItem.KeccakB)];
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx, slotNumber: 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.ErrorDescription, Does.Contain("recent root reference"));
+            Assert.That(tracer.Payer, Is.Null, "the prefix must not have resolved a payer");
+        }
+    }
+
+    [Test]
+    public void Simulate_DeployFrameAfterANonExpiryVerifyFrame_NotClaimedAsTheDeployGap()
+    {
+        // RecognizedPrefixLength reaches index 1 only past an expiry-verify frame, so a deploy frame
+        // sitting behind any other frame is not the shape the deploy-gap decline describes.
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecution), 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressC, gasLimit: 200_000, UInt256.Zero, default),
+            SelfVerifyFrame());
+
+        (TransactionResult result, _) = Simulate(tx);
+
+        Assert.That(result.ErrorDescription, Does.Not.Contain("deploy frame"));
+    }
+
     /// <summary>Runs a prefix the tracer may abort mid-execution, returning the tracer either way.</summary>
     private (TransactionResult, FrameTxValidationTracer) SimulateAllowingAbort(Transaction tx)
     {
@@ -424,20 +459,21 @@ public class FrameTxValidationPrefixSimulationTests
         return data;
     }
 
-    private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx)
+    private (TransactionResult, FrameTxValidationTracer) Simulate(Transaction tx, ulong? slotNumber = null)
     {
         FrameTxValidationTracer tracer = Tracer(tx);
-        return (Run(tx, tracer), tracer);
+        return (Run(tx, tracer, slotNumber), tracer);
     }
 
     private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default) =>
         new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, default, timeout);
 
-    private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer)
+    private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer, ulong? slotNumber = null)
     {
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
             .WithTransactions(tx)
+            .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
         return _transactionProcessor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
