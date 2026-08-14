@@ -1947,6 +1947,23 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindHeader_ignores_a_resolved_header_whose_decoded_number_does_not_match_requested_number()
+    {
+        // Simulates a corrupted/stale record: the caller asks for a header at a given block number and hash,
+        // but the header actually decoded from the store (e.g. via the legacy hash-only fallback key) reports
+        // a different Number - a leftover/garbage record surviving an unclean shutdown. Trusting header.Number
+        // here would silently poison callers that index by number (e.g. LoadBestKnown -> BestSuggestedHeader).
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+
+        ulong requestedNumber = 1;
+        Hash256 requestedHash = blockTree.FindHeader(requestedNumber, BlockTreeLookupOptions.None)!.Hash!;
+        BlockHeader header = blockTree.FindHeader(requestedHash, BlockTreeLookupOptions.None)!;
+        header.Number = requestedNumber + 100; // corrupt the decoded number without touching the hash
+
+        Assert.That(blockTree.FindHeader(requestedHash, BlockTreeLookupOptions.None, blockNumber: requestedNumber), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_one_block()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;

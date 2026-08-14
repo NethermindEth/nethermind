@@ -546,6 +546,16 @@ namespace Nethermind.Blockchain
                 return header;
             }
 
+            if (blockNumber is not null && header.Number != blockNumber.Value)
+            {
+                // The number-prefixed lookup missed and the legacy hash-only fallback resolved to a
+                // header for a different block number than requested (e.g. a stale/corrupted record).
+                // Trusting header.Number here would silently poison callers that index by number
+                // (e.g. BlockTree.FindHeader(ulong, ...) / LoadBestKnown), so treat it as not found.
+                if (Logger.IsWarn) Logger.Warn($"Header lookup for block {blockNumber.Value} with hash {blockHash} resolved to a header for block {header.Number} instead; ignoring mismatched record.");
+                return null;
+            }
+
             header.Hash ??= blockHash;
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
             bool createLevelIfMissing = (options & BlockTreeLookupOptions.DoNotCreateLevelIfMissing) == BlockTreeLookupOptions.None;
