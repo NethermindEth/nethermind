@@ -97,7 +97,12 @@ public sealed class ArchiveCloneCoordinator : IDisposable
                     diagnostics = reason => _logger.Info($"Archive clone waiting for an eligible source: {reason}.");
                 }
 
-                if (_selector.TryGetEligibleCloneSource(_rowFormat.FormatVersion, NHistPeerSelector.NoExclusions, out PeerInfo peer, out INHistSyncPeer syncPeer, diagnostics))
+                // A pass interrupted mid-stream resumes against the target it froze, so a replacement source has to
+                // cover at least that height - one that stops below it would leave the top of the range unfetched
+                // while the pass went on to publish the frozen target as covered.
+                ArchiveCloneImporter.TryReadStoredTargetWatermark(_metadataDb, out ulong resumeWatermark);
+
+                if (_selector.TryGetEligibleCloneSource(_rowFormat.FormatVersion, resumeWatermark, NHistPeerSelector.NoExclusions, out PeerInfo peer, out INHistSyncPeer syncPeer, diagnostics))
                 {
                     NHistArchiveCloneSource source = NHistArchiveCloneSource.FromPeer(peer, syncPeer);
                     if (_logger.IsInfo) _logger.Info($"Full archive clone starting from peer {peer} (row format {source.RowFormatVersion}, source watermark {source.Watermark}).");

@@ -135,12 +135,27 @@ public sealed class ArchiveCloneImporter
         _metadata.SyncWal();
     }
 
-    private ulong ReadOrStoreTargetWatermark()
+    /// <summary>The target watermark a started pass froze, if one is in progress. A resumed pass keeps streaming
+    /// against this height even when it switches to a different source, so a replacement source whose own coverage
+    /// ends below it cannot serve the rest of the pass and must not be selected.</summary>
+    public static bool TryReadStoredTargetWatermark(IDb metadata, out ulong watermark)
     {
-        byte[]? stored = _metadata.Get(TargetWatermarkKey);
+        byte[]? stored = metadata.Get(TargetWatermarkKey);
         if (stored is { Length: BlockBytes })
         {
-            return BinaryPrimitives.ReadUInt64BigEndian(stored);
+            watermark = BinaryPrimitives.ReadUInt64BigEndian(stored);
+            return true;
+        }
+
+        watermark = 0;
+        return false;
+    }
+
+    private ulong ReadOrStoreTargetWatermark()
+    {
+        if (TryReadStoredTargetWatermark(_metadata, out ulong storedWatermark))
+        {
+            return storedWatermark;
         }
 
         ulong watermark = _source.Watermark;

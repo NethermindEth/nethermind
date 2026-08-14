@@ -44,9 +44,12 @@ public sealed class NHistPeerSelector(ISyncPeerPool peerPool)
     /// which would otherwise silently corrupt a byte-identical clone - is caught by peer selection, before
     /// <see cref="Nethermind.State.Flat.History.ArchiveCloneImporter"/>'s own defense-in-depth check ever runs.</summary>
     public bool TryGetEligibleCloneSource(byte requiredRowFormatVersion, IReadOnlySet<PublicKey> excluded, out PeerInfo peer, out INHistSyncPeer syncPeer)
-        => TryGetEligibleCloneSource(requiredRowFormatVersion, excluded, out peer, out syncPeer, null);
+        => TryGetEligibleCloneSource(requiredRowFormatVersion, minimumWatermark: 0, excluded, out peer, out syncPeer, null);
 
-    public bool TryGetEligibleCloneSource(byte requiredRowFormatVersion, IReadOnlySet<PublicKey> excluded, out PeerInfo peer, out INHistSyncPeer syncPeer, Action<string>? skipDiagnostics)
+    /// <summary>A pass that already froze its target keeps streaming against that height after it switches source,
+    /// so <paramref name="minimumWatermark"/> excludes a peer whose own coverage ends below it: taking one would
+    /// leave the rows above its watermark unfetched while the pass still published the frozen target as covered.</summary>
+    public bool TryGetEligibleCloneSource(byte requiredRowFormatVersion, ulong minimumWatermark, IReadOnlySet<PublicKey> excluded, out PeerInfo peer, out INHistSyncPeer syncPeer, Action<string>? skipDiagnostics)
     {
         int seen = 0;
         int withoutSatellite = 0;
@@ -69,6 +72,13 @@ public sealed class NHistPeerSelector(ISyncPeerPool peerPool)
             if (handler.PeerRowFormatVersion != requiredRowFormatVersion)
             {
                 skipDiagnostics?.Invoke($"peer {candidate.SyncPeer.Node:s} serves row format {handler.PeerRowFormatVersion} but this node requires {requiredRowFormatVersion}");
+                continue;
+            }
+
+            ulong candidateWatermark = NHistArchiveCloneSource.WatermarkOf(handler);
+            if (candidateWatermark < minimumWatermark)
+            {
+                skipDiagnostics?.Invoke($"peer {candidate.SyncPeer.Node:s} serves history up to block {candidateWatermark} but the clone pass in progress needs it up to block {minimumWatermark}");
                 continue;
             }
 

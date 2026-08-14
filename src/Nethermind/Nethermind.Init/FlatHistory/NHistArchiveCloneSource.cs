@@ -24,10 +24,10 @@ public sealed class NHistArchiveCloneSource(PeerInfo peer, INHistSyncPeer syncPe
     /// - there is exactly one entry in the ordinary case this is meant to support, so its watermark is taken as
     /// the clone's watermark; a peer with zero scopes has nothing usable yet.</summary>
     public static NHistArchiveCloneSource FromPeer(PeerInfo peer, INHistSyncPeer syncPeer)
-    {
-        ulong watermark = syncPeer.PeerServedScopes.Length > 0 ? syncPeer.PeerServedScopes[0].WatermarkBlock : 0;
-        return new NHistArchiveCloneSource(peer, syncPeer, syncPeer.PeerRowFormatVersion, watermark);
-    }
+        => new(peer, syncPeer, syncPeer.PeerRowFormatVersion, WatermarkOf(syncPeer));
+
+    public static ulong WatermarkOf(INHistSyncPeer syncPeer)
+        => syncPeer.PeerServedScopes.Length > 0 ? syncPeer.PeerServedScopes[0].WatermarkBlock : 0;
 
     public PeerInfo Peer => peer;
 

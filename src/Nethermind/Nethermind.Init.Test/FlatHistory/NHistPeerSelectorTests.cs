@@ -150,11 +150,31 @@ public class NHistPeerSelectorTests
         NHistPeerSelector selector = new(pool);
         List<string> reasons = [];
 
-        Assert.That(selector.TryGetEligibleCloneSource(3, NHistPeerSelector.NoExclusions, out _, out _, reasons.Add), Is.False);
+        Assert.That(selector.TryGetEligibleCloneSource(3, 0, NHistPeerSelector.NoExclusions, out _, out _, reasons.Add), Is.False);
         Assert.That(reasons, Has.Exactly(1).Contains("2 of 3 connected peers do not advertise the nhist satellite protocol"),
             "peers without the satellite must be summarized in a single line, not dumped one line per peer");
         Assert.That(reasons, Has.Exactly(1).Contains("SupportsFullClone=false"),
             "a peer that negotiated nhist but cannot source a clone is worth an individual line");
+    }
+
+    [Test]
+    public void TryGetEligibleCloneSource_WhenPeerCoversLessThanTheResumedPassNeeds_IsExcluded()
+    {
+        HistoryServingScope behind = new(ValueKeccak.Zero, ValueKeccak.MaxValue, 0, 150);
+        INHistSyncPeer nhist = CreateNHistPeer([behind], supportsFullClone: true, rowFormatVersion: 3);
+        PeerInfo peer = CreatePeer(TestItem.PublicKeyA, nhist);
+        ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+        pool.InitializedPeers.Returns([peer]);
+
+        NHistPeerSelector selector = new(pool);
+        List<string> reasons = [];
+
+        Assert.That(selector.TryGetEligibleCloneSource(3, 200, NHistPeerSelector.NoExclusions, out _, out _, reasons.Add), Is.False,
+            "an interrupted pass resumes against its frozen target, so a source that stops below it would leave the top of the range unfetched while the pass still published the target as covered");
+        Assert.That(reasons, Has.Exactly(1).Contains("serves history up to block 150"));
+
+        Assert.That(selector.TryGetEligibleCloneSource(3, 150, NHistPeerSelector.NoExclusions, out _, out _, null), Is.True,
+            "a source that reaches exactly the frozen target can serve the rest of the pass");
     }
 
     [Test]
