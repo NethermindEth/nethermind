@@ -17,6 +17,7 @@ public sealed class ArchiveCloneImporter
 {
     private const int BlockBytes = sizeof(ulong);
     private const int MaxConcurrentStreams = IHistoryServer.MaxInFlightRequestsPerPeer - 1;
+    private const int VerificationSampleCount = 8;
     private const int TimeoutRetryLimit = 5;
     private const int RefusedRetryLimit = 90;
     private static readonly TimeSpan RefusedRetryDelay = TimeSpan.FromSeconds(2);
@@ -45,6 +46,7 @@ public sealed class ArchiveCloneImporter
     private readonly HistoryWindowPruner _pruner;
     private readonly HistoryAvailability _availability;
     private readonly HistoryRowFormat _rowFormat;
+    private readonly ArchiveCloneVerifier _verifier;
     private readonly int _shardCount;
     private readonly int _shardBufferBudget;
     private readonly int _streamCount;
@@ -67,6 +69,7 @@ public sealed class ArchiveCloneImporter
         HistoryWindowPruner pruner,
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
+        ArchiveCloneVerifier verifier,
         ILogManager logManager)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -77,6 +80,8 @@ public sealed class ArchiveCloneImporter
         ArgumentNullException.ThrowIfNull(pruner);
         ArgumentNullException.ThrowIfNull(availability);
         ArgumentNullException.ThrowIfNull(rowFormat);
+        ArgumentNullException.ThrowIfNull(verifier);
+        _verifier = verifier;
         _source = source;
         _history = history;
         _code = codeDb;
@@ -112,6 +117,8 @@ public sealed class ArchiveCloneImporter
             await CloneColumnAsync(column, cancellationToken);
         }
 
+        VerifyBeforePublish(targetWatermark);
+
         _availability.PublishWatermark(targetWatermark, _source.RowFormatVersion);
         return targetWatermark;
     }
@@ -133,6 +140,40 @@ public sealed class ArchiveCloneImporter
         }
 
         _metadata.SyncWal();
+    }
+
+    /// <summary>Refuses to publish a range whose imported state roots disagree with the headers this node synced
+    /// on its own. The source chose the rows it served but had no say in those headers, so a fabricated or shifted
+    /// root index cannot satisfy both - and publishing an unchecked range would also hand it to the next consumer,
+    /// since a node that finished a clone goes on to serve one. Costs a lookup per sample against hours of
+    /// streaming, so it gates every clone rather than being an opt-in pass.</summary>
+    private void VerifyBeforePublish(ulong targetWatermark)
+    {
+        _availability.TryGetGlobalFloor(out ulong floor);
+        if (targetWatermark <= floor)
+        {
+            // Nothing was imported above the floor, so there is no root to disagree about.
+            return;
+        }
+
+        ArchiveCloneVerdict verdict = _verifier.VerifyImportedRange(floor, targetWatermark, VerificationSampleCount);
+        if (verdict.Verified)
+        {
+            int verified = 0;
+            foreach (SampledHeightVerdict sample in verdict.Samples)
+            {
+                if (sample.Status == HeightVerificationStatus.Verified) verified++;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Archive clone: the imported state roots match this node's own headers at {verified} sampled heights.");
+            return;
+        }
+
+        string detail = verdict.Samples.Count == 0
+            ? "no height could be sampled"
+            : string.Join(", ", verdict.Samples.Select(static s => $"{s.Block}:{s.Status}"));
+        throw new InvalidOperationException(
+            $"The cloned history disagrees with the headers this node synced independently, so it was not published ({detail}).");
     }
 
     /// <summary>The target watermark a started pass froze, if one is in progress. A resumed pass keeps streaming

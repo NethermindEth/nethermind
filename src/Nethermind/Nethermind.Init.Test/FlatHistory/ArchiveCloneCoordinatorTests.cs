@@ -33,6 +33,7 @@ public class ArchiveCloneCoordinatorTests
             null!,
             availability,
             rowFormat,
+            new ArchiveCloneVerifier(availability, Substitute.For<ICloneHeaderSource>(), LimboLogs.Instance),
             LimboLogs.Instance);
     }
 

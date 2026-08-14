@@ -23,6 +23,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.Enr;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -368,6 +369,54 @@ namespace Nethermind.Network.Test
 
             Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(staticNode.Id), Is.True.After(30_000, 100),
                 "a disconnected static peer must be dialed even with zero free peer slots");
+        }
+
+        [Test]
+        public async Task History_server_found_through_discovery_is_dialed_even_when_the_active_peer_pool_is_full()
+        {
+            await using Context ctx = new(maxActivePeers: 3);
+            ctx.NetworkConfig.ConnectTimeoutMs = 0;
+            ctx.SetupPersistedPeers(10);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(3, TimeSpan.FromSeconds(30));
+            Assert.That(ctx.PeerPool.ActivePeers.Count, Is.AtLeast(3));
+
+            ctx.PeerPool.GetOrAdd(CreateHistoryServerNode(TestItem.PrivateKeyB, "1.2.3.10"));
+
+            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.True.After(30_000, 100),
+                "the importer can only use a server it is connected to, so a discovered one is dialed under its own budget rather than waiting for a free general slot");
+        }
+
+        [Test]
+        public async Task History_source_slots_bound_how_many_discovered_servers_are_dialed()
+        {
+            await using Context ctx = new(maxActivePeers: 1);
+            ctx.NetworkConfig.ConnectTimeoutMs = 0;
+            ctx.SyncConfig.HistorySourcePeerSlots = 1;
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            ctx.PeerPool.GetOrAdd(CreateHistoryServerNode(TestItem.PrivateKeyB, "1.2.3.10"));
+            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.True.After(30_000, 100));
+
+            ctx.PeerPool.GetOrAdd(CreateHistoryServerNode(TestItem.PrivateKeyC, "1.2.3.11"));
+
+            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyC), Is.False.After(2_000, 100),
+                "the reservation is a budget, not a bypass: a second server waits for a slot instead of growing the peer count without bound");
+        }
+
+        private static Node CreateHistoryServerNode(PrivateKey privateKey, string host)
+        {
+            NodeRecord enr = new();
+            enr.SetEntry(IdEntry.Instance);
+            enr.SetEntry(new NHistEntry(rowFormatVersion: 3, servesFullArchive: true));
+            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+            enr.EnrSequence = 1;
+            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
+
+            return new Node(privateKey.PublicKey, host, 30303) { Enr = enr };
         }
 
         [Test]

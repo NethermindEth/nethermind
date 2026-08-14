@@ -134,6 +134,21 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                         nodeRecord.SetEntry(new Udp6Entry(udpPort));
                         break;
                     }
+                case 5 when key.SequenceEqual(EnrContentKey.NHistU8):
+                    {
+                        int nhistEnd = reader.ReadSequenceLength() + reader.Position;
+                        byte rowFormatVersion = (byte)reader.DecodePositiveInt();
+                        bool servesFullArchive = reader.DecodeBool();
+                        // Tolerate fields a later version appends, the way the eth entry does.
+                        while (reader.Position < nhistEnd)
+                        {
+                            reader.SkipItem();
+                        }
+
+                        reader.Check(nhistEnd);
+                        nodeRecord.SetEntry(new NHistEntry(rowFormatVersion, servesFullArchive));
+                        break;
+                    }
                 case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):
                     ReadOnlySpan<byte> keyBytes = reader.DecodeByteArraySpan();
                     CompressedPublicKey reportedKey = new(keyBytes);

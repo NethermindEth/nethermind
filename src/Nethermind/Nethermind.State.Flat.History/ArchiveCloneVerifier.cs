@@ -50,13 +50,44 @@ public sealed class ArchiveCloneVerifier
         return [.. heights];
     }
 
-    public SampledHeightVerdict VerifyHeight(ulong block)
+    public SampledHeightVerdict VerifyHeight(ulong block) => VerifyHeight(block, requireCoverage: true);
+
+    /// <summary>Checks an imported height before its range is published, so coverage is not required yet - the
+    /// point of the check is to decide whether publishing is safe at all.</summary>
+    public SampledHeightVerdict VerifyImportedHeight(ulong block) => VerifyHeight(block, requireCoverage: false);
+
+    private SampledHeightVerdict VerifyHeight(ulong block, bool requireCoverage)
     {
         ValueHash256? expectedRoot = _headers.TryGetStateRoot(block);
         if (expectedRoot is null) return new SampledHeightVerdict(block, HeightVerificationStatus.CannotEvaluate);
 
-        bool markerMatches = _availability.IsCoveredAndRootMatches(block, expectedRoot.Value);
+        bool markerMatches = requireCoverage
+            ? _availability.IsCoveredAndRootMatches(block, expectedRoot.Value)
+            : _availability.RootMatches(block, expectedRoot.Value);
         return new SampledHeightVerdict(block, markerMatches ? HeightVerificationStatus.Verified : HeightVerificationStatus.Mismatch);
+    }
+
+    /// <summary>Cross-checks the state roots a clone imported against the headers this node synced independently,
+    /// over an explicit range because the watermark is not published yet. The source picked the rows; it did not
+    /// pick the headers, so a source that shipped a shifted or fabricated root index cannot agree with both.
+    /// Cheap enough to gate every clone: a lookup per sample, against hours of streaming.</summary>
+    public ArchiveCloneVerdict VerifyImportedRange(ulong floorInclusive, ulong watermarkInclusive, int sampleCount)
+    {
+        ulong[] heights = LogSpacedHeights(floorInclusive, watermarkInclusive, sampleCount);
+        if (heights.Length == 0) return new ArchiveCloneVerdict(false, []);
+
+        List<SampledHeightVerdict> results = new(heights.Length);
+        bool anyMismatch = false;
+        bool anyVerified = false;
+        foreach (ulong height in heights)
+        {
+            SampledHeightVerdict verdict = VerifyImportedHeight(height);
+            results.Add(verdict);
+            if (verdict.Status == HeightVerificationStatus.Mismatch) anyMismatch = true;
+            if (verdict.Status == HeightVerificationStatus.Verified) anyVerified = true;
+        }
+
+        return new ArchiveCloneVerdict(anyVerified && !anyMismatch, results);
     }
 
     public ArchiveCloneVerdict VerifySampledHeights(int sampleCount)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -28,6 +29,7 @@ public class ArchiveCloneImporterTests
     private HistoryAvailability _availability = null!;
     private HistoryRowFormat _rowFormat = null!;
     private FlatDbConfig _config = null!;
+    private FakeHeaderSource _headers = null!;
 
     [SetUp]
     public void SetUp()
@@ -36,6 +38,7 @@ public class ArchiveCloneImporterTests
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _codeDb = new SnapshotableMemDb();
         _metadataDb = new SnapshotableMemDb();
+        _headers = new FakeHeaderSource();
         _config = new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 0, HistoryImportShardCount = 4, HistoryImportShardBufferBudgetEntries = 6 };
         (_availability, _rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, _config);
         _writer = new HistoryWriter(_db, _historyColumns, _config, _availability, _rowFormat, LimboLogs.Instance);
@@ -54,7 +57,18 @@ public class ArchiveCloneImporterTests
     }
 
     private ArchiveCloneImporter CreateImporter(IArchiveCloneSource source) =>
-        new(source, _historyColumns, _codeDb, _metadataDb, _config, _pruner, _availability, _rowFormat, LimboLogs.Instance);
+        new(source, _historyColumns, _codeDb, _metadataDb, _config, _pruner, _availability, _rowFormat,
+            new ArchiveCloneVerifier(_availability, _headers, LimboLogs.Instance), LimboLogs.Instance);
+
+    /// Seeds a block's state root on the source and on this node's headers at once: a clone only publishes when
+    /// the two agree, so a test that wants a successful clone has to set up both sides.
+    private void SeedAgreedBlock(FakeCloneSource source, ulong block, ValueHash256 root)
+    {
+        byte[] key = new byte[8];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        source.Seed(HistoryRowColumn.AvailableBlocks, (key, root.BytesAsSpan.ToArray()));
+        _headers.Roots[block] = root;
+    }
 
     [Test]
     public void CloneAsync_WhenSourceCannotServeFullClone_RefusesWithoutTouchingAnyColumn()
@@ -92,7 +106,7 @@ public class ArchiveCloneImporterTests
             source.Seed(HistoryRowColumn.StorageClears, (key, [(byte)(i + 2)]));
             source.Seed(HistoryRowColumn.Code, (key, [(byte)(i + 3)]));
         }
-        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         ArchiveCloneImporter importer = CreateImporter(source);
         await importer.CloneAsync(CancellationToken.None);
@@ -121,7 +135,7 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_AvailableBlocks_FiltersOutReservedKeysOnImport()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
-        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
         source.Seed(HistoryRowColumn.AvailableBlocks, ("history:some-reserved-key"u8.ToArray(), [1]));
 
         ArchiveCloneImporter importer = CreateImporter(source);
@@ -160,14 +174,16 @@ public class ArchiveCloneImporterTests
         FakeCloneSource throwingSource = new(rowFormat.FormatVersion) { PageSize = 3, ThrowOnCallNumber = 3 };
         foreach ((byte[] key, byte[] value) in rows) throwingSource.Seed(HistoryRowColumn.Code, (key, value));
 
-        ArchiveCloneImporter firstAttempt = new(throwingSource, _historyColumns, _codeDb, _metadataDb, singleShardConfig, _pruner, availability, rowFormat, LimboLogs.Instance);
+        ArchiveCloneImporter firstAttempt = new(throwingSource, _historyColumns, _codeDb, _metadataDb, singleShardConfig, _pruner, availability, rowFormat,
+            new ArchiveCloneVerifier(availability, _headers, LimboLogs.Instance), LimboLogs.Instance);
         Assert.That(async () => await firstAttempt.CloneAsync(CancellationToken.None), Throws.InstanceOf<InvalidOperationException>(),
             "precondition: the fake source must actually interrupt the clone partway through the Code column");
 
         FakeCloneSource resumedSource = new(rowFormat.FormatVersion) { PageSize = 3 };
         foreach ((byte[] key, byte[] value) in rows) resumedSource.Seed(HistoryRowColumn.Code, (key, value));
 
-        ArchiveCloneImporter resumedAttempt = new(resumedSource, _historyColumns, _codeDb, _metadataDb, singleShardConfig, _pruner, availability, rowFormat, LimboLogs.Instance);
+        ArchiveCloneImporter resumedAttempt = new(resumedSource, _historyColumns, _codeDb, _metadataDb, singleShardConfig, _pruner, availability, rowFormat,
+            new ArchiveCloneVerifier(availability, _headers, LimboLogs.Instance), LimboLogs.Instance);
         await resumedAttempt.CloneAsync(CancellationToken.None);
 
         (HistoryRowColumn Column, byte[] StartKey) firstResumedCallForCode = resumedSource.Calls.First(c => c.Column == HistoryRowColumn.Code);
@@ -184,7 +200,7 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_RerunAfterCompletion_SkipsEveryColumnAndRepublishesTheOriginalWatermark()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
-        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
         FakeCloneSource newer = new(_rowFormat.FormatVersion) { Watermark = 99 };
@@ -202,12 +218,12 @@ public class ArchiveCloneImporterTests
     public async Task ResetForNewTarget_MakesTheNextCloneRestreamAgainstTheSourcesCurrentWatermark()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
-        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
         FakeCloneSource newer = new(_rowFormat.FormatVersion) { Watermark = 99 };
         newer.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [7]));
-        newer.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 99], ValueKeccak.Compute("root99"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(newer, 99, ValueKeccak.Compute("root99"u8));
         ArchiveCloneImporter second = CreateImporter(newer);
         second.ResetForNewTarget();
         ulong republished = await second.CloneAsync(CancellationToken.None);
@@ -227,7 +243,7 @@ public class ArchiveCloneImporterTests
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, TimeoutFirstNCalls = 2 };
         source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
-        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
@@ -240,7 +256,7 @@ public class ArchiveCloneImporterTests
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 2 };
         source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
-        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
@@ -253,12 +269,29 @@ public class ArchiveCloneImporterTests
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 6 };
         source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
-        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("root"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
         Assert.That(_codeDb.Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
             "refusal is explicit backpressure from a live source; a persist window longer than the timeout budget must be waited out, not treated as fatal");
+    }
+
+    [Test]
+    public void CloneAsync_WhenImportedRootsDisagreeWithOwnHeaders_RefusesToPublish()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
+        byte[] blockKey = new byte[8];
+        BinaryPrimitives.WriteUInt64BigEndian(blockKey, 5UL);
+        source.Seed(HistoryRowColumn.AvailableBlocks, (blockKey, ValueKeccak.Compute("forged"u8).BytesAsSpan.ToArray()));
+        _headers.Roots[5] = ValueKeccak.Compute("real"u8);
+
+        ArchiveCloneImporter importer = CreateImporter(source);
+
+        Assert.That(async () => await importer.CloneAsync(CancellationToken.None), Throws.InstanceOf<InvalidOperationException>(),
+            "the source picked the rows but not this node's headers, so a state root that disagrees with them means the import cannot be trusted");
+        Assert.That(_availability.TryGetWatermark(out _), Is.False,
+            "an unverified range must not be published: this node would answer historical queries from it and serve it to the next consumer");
     }
 
     [Test]
@@ -268,8 +301,7 @@ public class ArchiveCloneImporterTests
         Dictionary<ulong, Account> accounts = [];
         for (ulong block = 1; block <= 20; block++)
         {
-            ValueHash256 root = ValueKeccak.Compute(BitConverter.GetBytes(block));
-            source.Seed(HistoryRowColumn.AvailableBlocks, (BitConverter.GetBytes(block).Reverse().ToArray(), root.BytesAsSpan.ToArray()));
+            SeedAgreedBlock(source, block, ValueKeccak.Compute(BitConverter.GetBytes(block)));
         }
 
         ArchiveCloneImporter importer = CreateImporter(source);
@@ -297,11 +329,12 @@ public class ArchiveCloneImporterTests
     public async Task VerifyAndBan_MarkerMismatch_BansTheSource()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
-        source.Seed(HistoryRowColumn.AvailableBlocks, ([0, 0, 0, 0, 0, 0, 0, 5], ValueKeccak.Compute("wrong"u8).BytesAsSpan.ToArray()));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         ArchiveCloneImporter importer = CreateImporter(source);
         await importer.CloneAsync(CancellationToken.None);
 
+        // A later, deeper pass reads headers this node did not have at clone time and finds them disagreeing.
         FakeHeaderSource headers = new();
         headers.Roots[5] = ValueKeccak.Compute("real"u8);
 

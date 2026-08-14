@@ -10,6 +10,7 @@ using Nethermind.Init.FlatHistory;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
+using Nethermind.Network;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
@@ -63,6 +64,8 @@ public class FlatHistoryModule : Module
             // sinks and coordinators are one per feed since ban/alternate-selection policy and the DI-primitive
             // (byte requiredRowFormatVersion) they need differ between "any served scope" (import) and "full
             // clone with a matching row format" (clone).
+            .AddSingleton<NHistRecordContributor>()
+            .Bind<INodeRecordContributor, NHistRecordContributor>()
             .AddSingleton<NHistPeerSelector>()
             .AddSingleton<NHistImportPeerSink>()
             .AddSingleton<NHistArchiveClonePeerSink>(ctx =>

@@ -22,6 +22,7 @@ public sealed class NodeRecordProvider(
     IBlockTree blockTree,
     IForkInfo forkInfo,
     ITimestamper timestamper,
+    IEnumerable<INodeRecordContributor> contributors,
     ILogManager logManager
 ) : INodeRecordProvider
 {
@@ -126,6 +127,14 @@ public sealed class NodeRecordProvider(
             selfNodeRecord.SetEntry(new UdpEntry(state.UdpPort));
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
+        foreach (INodeRecordContributor contributor in contributors)
+        {
+            if (contributor.TryGetEntry(out EnrContentEntry? entry))
+            {
+                selfNodeRecord.SetEntry(entry);
+            }
+        }
+
         selfNodeRecord.EnrSequence = sequence;
         _enrSigner.Sign(selfNodeRecord);
         if (!_enrSigner.Verify(selfNodeRecord))

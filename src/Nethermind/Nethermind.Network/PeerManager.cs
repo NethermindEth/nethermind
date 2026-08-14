@@ -23,6 +23,7 @@ using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Config;
+using Nethermind.Network.Enr;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -311,6 +312,7 @@ namespace Nethermind.Network
                     if (_isStarted)
                     {
                         await EnsureStaticPeersConnectedAsync(taskChannel);
+                        await EnsureHistorySourcesConnectedAsync(taskChannel);
                     }
 
                     if (!await CanRunPeerUpdateIterationAsync())
@@ -478,6 +480,57 @@ namespace Nethermind.Network
             }
         }
 
+        /// <summary>Dials history servers found through discovery under their own budget, on top of the general
+        /// peer limit. Without it the importer can only reach a server that was configured as a static peer: a
+        /// discovered one sits in the candidate pool competing with block, body and receipt sync, which are all
+        /// running at the same time and keep the pool full. The budget is sized to what the importer can use at
+        /// once, so the reservation stays small.</summary>
+        private async Task EnsureHistorySourcesConnectedAsync(Channel<Peer> taskChannel)
+        {
+            int slots = _syncConfig.HistorySourcePeerSlots;
+            if (slots <= 0) return;
+
+            DateTime nowUTC = DateTime.UtcNow;
+            int connected = 0;
+            List<Peer>? toDial = null;
+
+            foreach ((_, Peer peer) in _peerPool.Peers)
+            {
+                if (!AdvertisesHistoryServing(peer.Node)) continue;
+
+                if (IsConnected(peer) || peer.IsAwaitingConnection)
+                {
+                    connected++;
+                    continue;
+                }
+
+                if (peer.Node.IsStatic) continue;
+                if (peer.Stats.IsConnectionDelayed(nowUTC).Result) continue;
+
+                (toDial ??= []).Add(peer);
+            }
+
+            if (toDial is null) return;
+
+            long now = Environment.TickCount64;
+            foreach (Peer peer in toDial)
+            {
+                if (connected >= slots) return;
+
+                if (_lastHistorySourceDialAttempt.TryGetValue(peer.Node.Id, out long last) && now - last < StaticDialDebounceMs)
+                {
+                    continue;
+                }
+
+                _lastHistorySourceDialAttempt[peer.Node.Id] = now;
+                connected++;
+                if (_logger.IsDebug) _logger.Debug($"History server {peer.Node:s} found through discovery; dialing it in a history-source slot ({connected}/{slots}).");
+                await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
+            }
+        }
+
+        private static bool AdvertisesHistoryServing(Node node) => node.Enr?.HasEntry(EnrContentKey.NHist) == true;
+
         private void LogStaticPeerSkip(Peer peer, string reason)
         {
             if (!_logger.IsInfo) return;
@@ -494,6 +547,7 @@ namespace Nethermind.Network
         private static readonly TimeSpan StalePongThreshold = TimeSpan.FromSeconds(35);
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticSkipLog = new();
+        private readonly ConcurrentDictionary<PublicKey, long> _lastHistorySourceDialAttempt = new();
 
         private void SignalPeerUpdateNeeded()
         {

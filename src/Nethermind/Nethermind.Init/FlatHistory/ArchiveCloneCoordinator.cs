@@ -20,10 +20,11 @@ namespace Nethermind.Init.FlatHistory;
 /// <summary>
 /// Owns the one-shot, node-lifetime full-archive-clone attempt when <c>Flat.HistoryArchiveCloneEnabled</c> is on:
 /// once <see cref="ArchiveCloneImporter.CloneAsync"/> completes and publishes the source's watermark, this node
-/// has the same complete history the source does and the loop stops. A verification pass
-/// (<see cref="ArchiveCloneImporter.VerifyAndBan"/>) is deliberately not wired in here - it needs a sampling
-/// policy this runner has no opinion on, and stays available as an explicit, separately-callable step instead of
-/// being forced into the automatic kickoff path.
+/// has the same complete history the source does and the loop stops. Publishing is gated on the imported state
+/// roots agreeing with the headers this node synced independently; a source that fails the gate throws instead of
+/// publishing, and this loop then retries against whichever source is eligible next. The deeper, per-height
+/// re-derivation (<see cref="ArchiveCloneImporter.VerifyAndBan"/>) stays a separately-callable step - it needs a
+/// sampling policy this runner has no opinion on.
 /// </summary>
 public sealed class ArchiveCloneCoordinator : IDisposable
 {
@@ -39,6 +40,7 @@ public sealed class ArchiveCloneCoordinator : IDisposable
     private readonly HistoryWindowPruner _pruner;
     private readonly HistoryAvailability _availability;
     private readonly HistoryRowFormat _rowFormat;
+    private readonly ArchiveCloneVerifier _verifier;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts = new();
@@ -53,6 +55,7 @@ public sealed class ArchiveCloneCoordinator : IDisposable
         HistoryWindowPruner pruner,
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
+        ArchiveCloneVerifier verifier,
         ILogManager logManager)
     {
         if (config.HistoryArchiveCloneEnabled && config.HistoryRetentionBlocks > 0)
@@ -69,6 +72,7 @@ public sealed class ArchiveCloneCoordinator : IDisposable
         _pruner = pruner;
         _availability = availability;
         _rowFormat = rowFormat;
+        _verifier = verifier;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<ArchiveCloneCoordinator>();
 
@@ -107,7 +111,7 @@ public sealed class ArchiveCloneCoordinator : IDisposable
                     NHistArchiveCloneSource source = NHistArchiveCloneSource.FromPeer(peer, syncPeer);
                     if (_logger.IsInfo) _logger.Info($"Full archive clone starting from peer {peer} (row format {source.RowFormatVersion}, source watermark {source.Watermark}).");
                     ArchiveCloneImporter importer = new(
-                        source, _history, _codeDb, _metadataDb, _config, _pruner, _availability, _rowFormat, _logManager);
+                        source, _history, _codeDb, _metadataDb, _config, _pruner, _availability, _rowFormat, _verifier, _logManager);
                     ulong targetWatermark = await importer.CloneAsync(token);
                     if (_logger.IsInfo) _logger.Info($"Full archive clone from peer {peer} completed at watermark {targetWatermark}.");
 
