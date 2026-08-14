@@ -12,7 +12,7 @@ public class FutureNonceFilter(ITxPoolConfig txPoolConfig) : IIncomingTxFilter
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        int relevantMaxPendingTxsPerSender = (tx.SupportsBlobs
+        int relevantMaxPendingTxsPerSender = (tx.CarriesBlobs
             ? _txPoolConfig.MaxPendingBlobTxsPerSender
             : _txPoolConfig.MaxPendingTxsPerSender);
 

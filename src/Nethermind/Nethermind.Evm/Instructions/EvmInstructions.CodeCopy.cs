@@ -37,8 +37,8 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Copy-to-memory core with operands already popped, for instructions whose stack layout
-    /// differs from the CODECOPY/CALLDATACOPY order.
+    /// Copy-to-memory core with the three copy operands (destination offset, source offset, length)
+    /// already popped, for callers that pop preceding operands first (e.g. SIGPARAM and FRAMEDATACOPY).
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

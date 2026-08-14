@@ -97,7 +97,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         transaction.Nonce = DecodeNonce(ref decoderContext);
         DecodeGasPrice(transaction, ref decoderContext);
         transaction.GasLimit = decoderContext.DecodeULong();
-        transaction.To = decoderContext.DecodeAddress();
+        transaction.To = decoderContext.DecodeAddressOrNull();
         transaction.Value = decoderContext.DecodeUInt256();
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }

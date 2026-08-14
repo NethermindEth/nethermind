@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -74,6 +75,59 @@ public class ReceiptDecoderTests
         OptimismTxReceipt decodedReceipt = TestNetworkEncodingRoundTrip(rlp, includesNonce, includesVersion);
         TestStorageEncodingRoundTrip(decodedReceipt, includesNonce, includesVersion);
         TestTrieEncoding(decodedReceipt, shouldIncludeNonceAndVersionForTxTrie);
+    }
+
+    [Test]
+    public void Can_decode_compact_storage_receipt_with_null_sender()
+    {
+        OptimismTxReceipt receipt = new()
+        {
+            StatusCode = 1,
+            GasUsedTotal = 1,
+            Logs = []
+        };
+
+        OptimismCompactReceiptStorageDecoder decoder = new();
+        Rlp rlp = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts);
+
+        RlpReader reader = new(rlp.Bytes);
+        OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.Decode(ref reader, RlpBehaviors.Eip658Receipts);
+
+        Assert.That(decoded.Sender, Is.Null);
+    }
+
+    [Test]
+    public void Can_decode_network_receipt_with_legacy_sequence_form_bloom()
+    {
+        OptimismReceiptMessageDecoder decoder = new();
+        byte[] receiptRlp = CreateReceiptWithLegacyBloom();
+        RlpReader reader = new(receiptRlp);
+        OptimismTxReceipt decoded = (OptimismTxReceipt)decoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping);
+
+        Assert.That(decoded.Bloom, Is.EqualTo(Bloom.Empty));
+    }
+
+    private static byte[] CreateReceiptWithLegacyBloom()
+    {
+        byte[] receiptRlp = new byte[1 + 3 + 1 + 1 + 5 + Bloom.ByteLength + 1];
+        int position = 0;
+
+        receiptRlp[position++] = (byte)TxType.DepositTx;
+        receiptRlp[position++] = 0xF9;
+        receiptRlp[position++] = 0x01;
+        receiptRlp[position++] = 0x08;
+        receiptRlp[position++] = 0x01;
+        receiptRlp[position++] = 0x01;
+        receiptRlp[position++] = 0xF9;
+        receiptRlp[position++] = 0x01;
+        receiptRlp[position++] = 0x02;
+        receiptRlp[position++] = 0x81;
+        receiptRlp[position++] = 0x7F;
+        position += Bloom.ByteLength;
+        receiptRlp[position++] = 0xC0;
+
+        Assert.That(position, Is.EqualTo(receiptRlp.Length), "setup: receipt RLP length");
+        return receiptRlp;
     }
 
 
