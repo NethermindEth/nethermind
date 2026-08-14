@@ -206,6 +206,12 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The number of results cached per read-only method (`eth_call`, `eth_getBalance`) across recent blocks, in entries. Identical requests against the same block are served from the cache. 0 disables the caches.", DefaultValue = "0")]
     int EthCallCacheSize { get; set; }
 
+    [ConfigItem(Description = "Whether to enable experimental guarded call templates for `eth_call`: single-mapping-read calls (e.g. ERC-20 `balanceOf`) are learned from real executions and can be served by a direct storage read.", DefaultValue = "false")]
+    bool EthCallTemplates { get; set; }
+
+    [ConfigItem(Description = "Whether learned `eth_call` templates run in shadow mode: the EVM result is still computed and served while the template answer is only compared against it, recording mismatches. Disable to serve template answers directly.", DefaultValue = "true")]
+    bool EthCallTemplatesShadowMode { get; set; }
+
     [ConfigItem(Description = "Maximum total tx fee (gasPrice * gasLimit, in wei) the node will sign in eth_signTransaction. 0 disables the cap. Default 1 ETH.", DefaultValue = "1000000000000000000")]
     ulong RpcTxFeeCap { get; set; }
 

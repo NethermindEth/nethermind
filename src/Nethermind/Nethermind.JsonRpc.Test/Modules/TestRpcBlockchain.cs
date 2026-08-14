@@ -75,6 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
         public IFeeHistoryOracle? FeeHistoryOracle { get; private set; }
+        public EthCallTemplates? EthCallTemplates { get; private set; }
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType, long? testTimeout = null) => ForTest<TestRpcBlockchain>(sealEngineType, testTimeout);
 
         public static Builder<T> ForTest<T>(string sealEngineType, long? testTimeout = null) where T : TestRpcBlockchain, new() =>
@@ -185,39 +186,50 @@ namespace Nethermind.JsonRpc.Test.Modules
             });
         }
 
-        private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this => new EthRpcModule(
-            @this.RpcConfig,
-            @this.Bridge,
-            @this.BlockFinder,
-            @this.BlockTree,
-            @this.ReceiptFinder,
-            @this.StateReader,
-            @this.TxPool,
-            @this.TxSender,
-            @this.TestWallet,
-            LimboLogs.Instance,
-            @this.SpecProvider,
-            @this.GasPriceOracle,
-            new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
-            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
-            @this.FeeHistoryOracle ??
-            new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
-            @this.ProtocolsManager,
-            @this.ForkInfo,
-            @this.LogIndexConfig,
-            @this.ReceiptConfig,
-            @this.BlocksConfig.SecondsPerSlot,
-            new HeadBlockSignal(@this.BlockTree),
-            new EthCapabilitiesProvider(
-                @this.BlockTree.AsReadOnly(),
-                @this.Container.Resolve<IStateBoundary>(),
-                @this.Container.Resolve<ISyncConfig>(),
-                Substitute.For<ISyncPointers>(),
-                Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>()),
-            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
-            EthResponseCache.CreateCallCacheIfEnabled(@this.RpcConfig),
-            EthResponseCache.CreateBalanceCacheIfEnabled(@this.RpcConfig));
+        private Func<TestRpcBlockchain, IEthRpcModule> _ethRpcModuleBuilder = static @this =>
+        {
+            @this.EthCallTemplates = @this.RpcConfig.EthCallTemplates
+                ? EthCallTemplates.CreateIfEnabled(
+                    @this.RpcConfig,
+                    @this.Container.Resolve<IShareableTxProcessorSource>(),
+                    @this.StateReader,
+                    @this.SpecProvider)
+                : null;
+            return new EthRpcModule(
+                @this.RpcConfig,
+                @this.Bridge,
+                @this.BlockFinder,
+                @this.BlockTree,
+                @this.ReceiptFinder,
+                @this.StateReader,
+                @this.TxPool,
+                @this.TxSender,
+                @this.TestWallet,
+                LimboLogs.Instance,
+                @this.SpecProvider,
+                @this.GasPriceOracle,
+                new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
+                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), @this.LogManager),
+                @this.FeeHistoryOracle ??
+                new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
+                @this.ProtocolsManager,
+                @this.ForkInfo,
+                @this.LogIndexConfig,
+                @this.ReceiptConfig,
+                @this.BlocksConfig.SecondsPerSlot,
+                new HeadBlockSignal(@this.BlockTree),
+                new EthCapabilitiesProvider(
+                    @this.BlockTree.AsReadOnly(),
+                    @this.Container.Resolve<IStateBoundary>(),
+                    @this.Container.Resolve<ISyncConfig>(),
+                    Substitute.For<ISyncPointers>(),
+                    Substitute.For<IHistoryConfig>(),
+                    Substitute.For<IHistoryPruner>()),
+                @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
+                EthResponseCache.CreateCallCacheIfEnabled(@this.RpcConfig),
+                EthResponseCache.CreateBalanceCacheIfEnabled(@this.RpcConfig),
+                @this.EthCallTemplates);
+        };
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {

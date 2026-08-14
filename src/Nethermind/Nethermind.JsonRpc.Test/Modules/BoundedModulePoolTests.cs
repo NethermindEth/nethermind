@@ -70,7 +70,8 @@ public class BoundedModulePoolTests
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
-            new BlockForRpcFactory()),
+            new BlockForRpcFactory(),
+            Substitute.For<IShareableTxProcessorSource>()),
              1, 1000);
 
         return Task.CompletedTask;

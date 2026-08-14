@@ -77,7 +77,8 @@ public partial class EthRpcModule(
     IEthCapabilitiesProvider capabilitiesProvider,
     IBlockForRpcFactory blockForRpcFactory,
     EthResponseCache<HexBytes>? ethCallCache = null,
-    EthResponseCache<UInt256?>? ethBalanceCache = null) : IEthRpcModule
+    EthResponseCache<UInt256?>? ethBalanceCache = null,
+    EthCallTemplates? ethCallTemplates = null) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -105,6 +106,7 @@ public partial class EthRpcModule(
     private readonly IReceiptConfig _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
     private readonly EthResponseCache<HexBytes>? _ethCallCache = ethCallCache;
     private readonly EthResponseCache<UInt256?>? _ethBalanceCache = ethBalanceCache;
+    private readonly EthCallTemplates? _ethCallTemplates = ethCallTemplates;
     private ResultWrapper<ulong>? _chainIdResponse;
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
@@ -626,8 +628,8 @@ public partial class EthRpcModule(
     {
         CallTxExecutor executor = new(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider);
 
-        // Overrides make the call non-deterministic across requests, so they bypass the cache entirely.
-        if (_ethCallCache is null || stateOverride is not null || blockOverride is not null)
+        // Overrides make the call non-deterministic across requests, so they bypass the cache and templates entirely.
+        if ((_ethCallCache is null && _ethCallTemplates is null) || stateOverride is not null || blockOverride is not null)
         {
             return executor.ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
         }
@@ -641,14 +643,21 @@ public partial class EthRpcModule(
             return executor.Execute(transactionCall, blockParameter, searchResult: headerSearch);
         }
 
-        ValueHash256 cacheKey = EthResponseCache.ComputeCallKey(blockHash, transactionCall);
-        if (_ethCallCache.TryGet(cacheKey, out ResultWrapper<HexBytes>? cached))
+        ValueHash256 cacheKey = default;
+        if (_ethCallCache is not null)
         {
-            return cached;
+            cacheKey = EthResponseCache.ComputeCallKey(blockHash, transactionCall);
+            if (_ethCallCache.TryGet(cacheKey, out ResultWrapper<HexBytes>? cached))
+            {
+                return cached;
+            }
         }
 
-        ResultWrapper<HexBytes> result = executor.Execute(transactionCall, blockParameter, searchResult: headerSearch);
-        _ethCallCache.SetIfCacheable(cacheKey, result);
+        ResultWrapper<HexBytes> result = _ethCallTemplates is null
+            ? executor.Execute(transactionCall, blockParameter, searchResult: headerSearch)
+            : _ethCallTemplates.Execute(transactionCall, headerSearch.Object!,
+                () => executor.Execute(transactionCall, blockParameter, searchResult: headerSearch));
+        _ethCallCache?.SetIfCacheable(cacheKey, result);
         return result;
     }
 

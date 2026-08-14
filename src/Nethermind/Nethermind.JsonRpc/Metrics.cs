@@ -70,6 +70,26 @@ namespace Nethermind.JsonRpc
         public static long EthCallCacheMisses;
 
         [CounterMetric]
+        [Description("Number of eth_call requests answered directly from a guarded call template.")]
+        public static long EthCallTemplateHits;
+
+        [CounterMetric]
+        [Description("Number of shadow-mode eth_call template answers that matched the EVM result.")]
+        public static long EthCallTemplateShadowMatches;
+
+        [CounterMetric]
+        [Description("Number of shadow-mode eth_call template answers that diverged from the EVM result.")]
+        public static long EthCallTemplateShadowMismatches;
+
+        [CounterMetric]
+        [Description("Number of guarded eth_call templates derived from recorded executions.")]
+        public static long EthCallTemplatesDerived;
+
+        [CounterMetric]
+        [Description("Number of (to, selector) pairs blacklisted for eth_call templating.")]
+        public static long EthCallTemplatesBlacklisted;
+
+        [CounterMetric]
         [Description("Number of eth_getBalance requests served from the balance response cache.")]
         public static long EthBalanceCacheHits;
 
