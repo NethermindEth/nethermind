@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -44,30 +45,49 @@ public class TrustedNodesManagerTests
     [Test]
     public async Task AddAsync_WithUpdateFile_PersistsNodePreviouslyAddedInMemoryOnly()
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-trusted-nodes-{System.Guid.NewGuid():N}.json");
-        await File.WriteAllTextAsync(path, "[]");
-        TrustedNodesManager manager = new(path, LimboLogs.Instance);
+        using TempPath tempPath = TempPath.GetTempFile();
+        TrustedNodesManager manager = await CreateManagerWithLoadedFile(tempPath);
         Enode enode = new(EnodeString);
 
         await manager.AddAsync(enode, updateFile: false);
         await manager.AddAsync(enode, updateFile: true);
 
-        Assert.That(await File.ReadAllTextAsync(path), Does.Contain(enode.PublicKey.ToString(false)), "upgrading an in-memory node to persistent must write the file");
+        Assert.That(await File.ReadAllTextAsync(tempPath.Path), Does.Contain(enode.PublicKey.ToString(false)), "upgrading an in-memory node to persistent must write the file");
     }
 
     [Test]
     public async Task RemoveAsync_WithUpdateFile_UnpersistsNodePreviouslyRemovedInMemoryOnly()
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-trusted-nodes-{System.Guid.NewGuid():N}.json");
-        await File.WriteAllTextAsync(path, "[]");
-        TrustedNodesManager manager = new(path, LimboLogs.Instance);
+        using TempPath tempPath = TempPath.GetTempFile();
+        TrustedNodesManager manager = await CreateManagerWithLoadedFile(tempPath);
         Enode enode = new(EnodeString);
         await manager.AddAsync(enode, updateFile: true);
 
         await manager.RemoveAsync(enode, updateFile: false);
         await manager.RemoveAsync(enode, updateFile: true);
 
-        Assert.That(await File.ReadAllTextAsync(path), Does.Not.Contain(enode.PublicKey.ToString(false)), "a persistent remove of an already-forgotten node must still scrub the file");
+        Assert.That(await File.ReadAllTextAsync(tempPath.Path), Does.Not.Contain(enode.PublicKey.ToString(false)), "a persistent remove of an already-forgotten node must still scrub the file");
+    }
+
+    [Test]
+    public async Task NoOpRemove_WhenNodesWereNeverLoaded_DoesNotRewriteFile()
+    {
+        using TempPath tempPath = TempPath.GetTempFile();
+        string original = $"[\"{EnodeString}\"]";
+        await File.WriteAllTextAsync(tempPath.Path, original);
+        TrustedNodesManager manager = new(tempPath.Path, LimboLogs.Instance);
+
+        await manager.RemoveAsync(new Enode(EnodeString), updateFile: true);
+
+        Assert.That(await File.ReadAllTextAsync(tempPath.Path), Is.EqualTo(original), "a no-op remove must not clobber a file that was never loaded (e.g. after a failed init)");
+    }
+
+    private static async Task<TrustedNodesManager> CreateManagerWithLoadedFile(TempPath tempPath)
+    {
+        await File.WriteAllTextAsync(tempPath.Path, "[]");
+        TrustedNodesManager manager = new(tempPath.Path, LimboLogs.Instance);
+        await manager.InitAsync();
+        return manager;
     }
 
     [Test]

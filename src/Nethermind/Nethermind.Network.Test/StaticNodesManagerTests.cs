@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -127,26 +126,47 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task add_with_update_file_should_persist_node_previously_added_in_memory_only()
         {
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-static-nodes-{Guid.NewGuid():N}.json");
-            StaticNodesManager manager = new(path, LimboLogs.Instance);
+            using TempPath tempPath = TempPath.GetTempFile();
+            StaticNodesManager manager = await CreateManagerWithLoadedFile(tempPath);
 
             await manager.AddAsync(Enode, updateFile: false);
             await manager.AddAsync(Enode, updateFile: true);
 
-            Assert.That(await File.ReadAllTextAsync(path), Does.Contain(EnodeString), "upgrading an in-memory node to persistent must write the file");
+            Assert.That(await File.ReadAllTextAsync(tempPath.Path), Does.Contain(EnodeString), "upgrading an in-memory node to persistent must write the file");
         }
 
         [Test]
         public async Task remove_with_update_file_should_unpersist_node_previously_removed_in_memory_only()
         {
-            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-static-nodes-{Guid.NewGuid():N}.json");
-            StaticNodesManager manager = new(path, LimboLogs.Instance);
+            using TempPath tempPath = TempPath.GetTempFile();
+            StaticNodesManager manager = await CreateManagerWithLoadedFile(tempPath);
             await manager.AddAsync(Enode, updateFile: true);
 
             await manager.RemoveAsync(Enode, updateFile: false);
             await manager.RemoveAsync(Enode, updateFile: true);
 
-            Assert.That(await File.ReadAllTextAsync(path), Does.Not.Contain(EnodeString), "a persistent remove of an already-forgotten node must still scrub the file");
+            Assert.That(await File.ReadAllTextAsync(tempPath.Path), Does.Not.Contain(EnodeString), "a persistent remove of an already-forgotten node must still scrub the file");
+        }
+
+        [Test]
+        public async Task no_op_remove_should_not_rewrite_file_when_nodes_were_never_loaded()
+        {
+            using TempPath tempPath = TempPath.GetTempFile();
+            string original = $"[\"{EnodeString}\"]";
+            await File.WriteAllTextAsync(tempPath.Path, original);
+            StaticNodesManager manager = new(tempPath.Path, LimboLogs.Instance);
+
+            await manager.RemoveAsync(Enode, updateFile: true);
+
+            Assert.That(await File.ReadAllTextAsync(tempPath.Path), Is.EqualTo(original), "a no-op remove must not clobber a file that was never loaded (e.g. after a failed init)");
+        }
+
+        private static async Task<StaticNodesManager> CreateManagerWithLoadedFile(TempPath tempPath)
+        {
+            await File.WriteAllTextAsync(tempPath.Path, "[]");
+            StaticNodesManager manager = new(tempPath.Path, LimboLogs.Instance);
+            await manager.InitAsync();
+            return manager;
         }
 
         [Test]

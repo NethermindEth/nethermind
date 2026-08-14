@@ -36,6 +36,9 @@ public abstract class NodesManager(string path, ILogger logger)
     /// <summary>Returns <see langword="true"/> when any managed node is reachable at <paramref name="ip"/>.</summary>
     public bool ContainsIp(IPAddress ip) => _ipCounts.ContainsKey(ip);
 
+    /// <summary>Set once the nodes file has been successfully loaded, so no-op calls never rewrite the file from a never-loaded state.</summary>
+    protected bool Loaded { get; private set; }
+
     /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
     protected bool TryAddNode(NetworkNode node)
     {
@@ -58,6 +61,8 @@ public abstract class NodesManager(string path, ILogger logger)
             {
                 _ipCounts.AddOrUpdate(kvp.Value.HostIp, 1, static (_, count) => count + 1);
             }
+
+            Loaded = true;
         }
     }
 
