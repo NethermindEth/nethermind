@@ -546,8 +546,18 @@ public sealed class HistoryAvailability
     /// per-block capture batches so it advances only after the whole captured range is durable — a partial or
     /// failed capture leaves the watermark where it was, so reads above the gap fail closed.
     /// </summary>
+    /// <summary>Publishes coverage up to <paramref name="watermark"/>. Monotonic on purpose: a completed clone
+    /// keeps its stored target on disk, so a restart re-runs the pass, skips every already-done column and
+    /// republishes that same target - which by then sits far below the head this node has been capturing since.
+    /// Lowering it there would un-cover everything captured in between and leave the clone coordinator waiting
+    /// for a connection that can never happen, re-streaming the whole archive on every restart.</summary>
     public void PublishWatermark(ulong watermark, byte formatVersion)
     {
+        if (TryGetWatermark(out ulong current) && current >= watermark)
+        {
+            return;
+        }
+
         Span<byte> value = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(value, watermark);
         _availableBlocks.PutSpan(WatermarkKey, value);

@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -438,6 +439,11 @@ public sealed class ArchiveCloneImporter
                     foreach (HistoryRowEntry entry in page.Entries)
                     {
                         if (column == HistoryRowColumn.AvailableBlocks && entry.Key.Length != BlockBytes) continue;
+                        if (column == HistoryRowColumn.Code && !IsCodeRowAuthentic(entry))
+                        {
+                            throw new InvalidOperationException(
+                                $"The clone source served a code row whose value does not hash to its key; the source is serving forged code and the import was abandoned.");
+                        }
 
                         WriteRow(batch, entry);
                         lastWritten = entry.Key;
@@ -501,6 +507,13 @@ public sealed class ArchiveCloneImporter
             await Task.Delay(RefusedRetryDelay, cancellationToken);
         }
     }
+
+    /// <summary>Code rows land in the node's live code database, and code is read back by hash without ever being
+    /// re-hashed, so an unchecked row would let a source put bytecode of its choosing behind a hash the EVM
+    /// executes. The key is that hash, which makes the check exact and local: no peer, header or consensus data is
+    /// needed to tell a forged row from a real one.</summary>
+    private static bool IsCodeRowAuthentic(HistoryRowEntry entry)
+        => entry.Key.Length == Hash256.Size && ValueKeccak.Compute(entry.Value.Span) == new ValueHash256(entry.Key);
 
     private static void WriteRow(IWriteBatch batch, HistoryRowEntry entry)
     {

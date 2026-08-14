@@ -1037,7 +1037,10 @@ namespace Nethermind.Network
             if (session.Direction != ConnectionDirection.In) return false;
             if (!session.HasAgreedCapability(NHistCapability)) return false;
 
-            lock (_nhistServingSessions)
+            // Guarded by _sessionLock, like every other session-lifetime collection here: a disconnect can run
+            // synchronously inside a session conflict that already holds it, so a second lock would invert the
+            // order between that thread and any thread tearing another session down.
+            lock (_sessionLock)
             {
                 _nhistServingSessions.RemoveAll(static s => s.IsClosing);
                 if (_nhistServingSessions.Contains(session)) return true;
@@ -1325,13 +1328,10 @@ namespace Nethermind.Network
 
         private void OnDisconnected(object sender, ISession session, DisconnectEventArgs e)
         {
-            lock (_nhistServingSessions)
-            {
-                _nhistServingSessions.Remove(session);
-            }
-
             lock (_sessionLock)
             {
+                _nhistServingSessions.Remove(session);
+
                 ToggleSessionEventListeners(session, false);
                 _sessions.TryRemove(session.SessionId, out _);
                 if (_isStopping)

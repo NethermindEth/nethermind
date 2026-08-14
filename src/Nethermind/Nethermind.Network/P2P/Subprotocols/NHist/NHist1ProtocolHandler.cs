@@ -224,9 +224,24 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             TimeSpan remaining = ServedBytesWindow - TimeSpan.FromSeconds((double)ticksIntoWindow / Stopwatch.Frequency);
             if (remaining > TimeSpan.Zero)
             {
-                await Task.Delay(remaining, CancellationToken.None);
+                // The token matters: this runs on one of a handful of shared background executors, so an
+                // uncancellable wait here parks capacity that every other subprotocol's serving needs, and keeps
+                // it parked through block processing and session teardown.
+                await Task.Delay(remaining, cancellationToken);
             }
         }
+    }
+
+    /// <summary>Whether this peer has already spent its byte budget for the current window. Checked before a scan
+    /// so an over-budget peer is refused outright: the alternative, serving it and then sleeping off the overrun,
+    /// holds a shared background executor for the rest of the window and starves every other peer's serving.</summary>
+    private bool IsOverServedBytesBudget()
+    {
+        long snapshot = Volatile.Read(ref _windowState);
+        long snapshotWindow = snapshot >> 32;
+        if (snapshotWindow != Stopwatch.GetTimestamp() / TicksPerWindow) return false;
+
+        return (snapshot & 0xFFFFFFFFL) > _servedBytesPerWindowCap;
     }
 
     private void Handle(HistoryRangeAtHeightMessage msg, long size) => _getHistoryRangeRequests.Handle(msg.RequestId, msg, size);
@@ -310,6 +325,11 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         try
         {
             using GetHistoryRowsMessage message = getMessage;
+            if (IsOverServedBytesBudget())
+            {
+                return new HistoryRowsMessage { RequestId = message.RequestId, Entries = ArrayPoolList<HistoryRowEntry>.Empty(), Refused = true };
+            }
+
             long byteLimit = NHistMessageLimits.ClampResponseBytes(message.ResponseBytes);
             byte[]? cursor = message.Cursor.Length == 0 ? null : message.Cursor;
             byte[]? nextCursor;

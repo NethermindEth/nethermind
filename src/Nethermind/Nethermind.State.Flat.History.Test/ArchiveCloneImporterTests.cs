@@ -74,13 +74,13 @@ public class ArchiveCloneImporterTests
     public void CloneAsync_WhenSourceCannotServeFullClone_RefusesWithoutTouchingAnyColumn()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { SupportsFullClone = false };
-        source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
 
         ArchiveCloneImporter importer = CreateImporter(source);
 
         Assert.That(async () => await importer.CloneAsync(CancellationToken.None), Throws.InstanceOf<InvalidConfigurationException>(),
             "a windowed/partial source must be refused outright rather than silently imported as if it were a complete history");
-        Assert.That(_codeDb.Get(new byte[] { 1, 2, 3 }), Is.Null, "no row may land locally before the refusal check");
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.Null, "no row may land locally before the refusal check");
     }
 
     [Test]
@@ -104,7 +104,8 @@ public class ArchiveCloneImporterTests
             source.Seed(HistoryRowColumn.AccountHistory, (key, [(byte)i]));
             source.Seed(HistoryRowColumn.StorageHistory, (key, [(byte)(i + 1)]));
             source.Seed(HistoryRowColumn.StorageClears, (key, [(byte)(i + 2)]));
-            source.Seed(HistoryRowColumn.Code, (key, [(byte)(i + 3)]));
+            byte[] code = [(byte)(i + 3)];
+            source.Seed(HistoryRowColumn.Code, (ValueKeccak.Compute(code).BytesAsSpan.ToArray(), code));
         }
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
@@ -123,7 +124,8 @@ public class ArchiveCloneImporterTests
                 Assert.That(accountHistory.Get(key), Is.EqualTo(new byte[] { (byte)i }), $"AccountHistory row {i} spread across the full byte range must land in whichever shard covers it");
                 Assert.That(storageHistory.Get(key), Is.EqualTo(new byte[] { (byte)(i + 1) }));
                 Assert.That(storageClears.Get(key), Is.EqualTo(new byte[] { (byte)(i + 2) }));
-                Assert.That(_codeDb.Get(key), Is.EqualTo(new byte[] { (byte)(i + 3) }));
+                byte[] code = [(byte)(i + 3)];
+                Assert.That(_codeDb.Get(ValueKeccak.Compute(code).BytesAsSpan), Is.EqualTo(code), "code is keyed by its own hash");
             }
 
             Assert.That(_availability.TryGetWatermark(out ulong watermark), Is.True, "a fully completed clone must publish the source's watermark");
@@ -150,7 +152,7 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_InterruptedBeforeAvailableBlocksCompletes_LeavesAFreshReaderSeeingNothingCovered()
     {
         FakeCloneSource throwingSource = new(_rowFormat.FormatVersion) { Watermark = 5 };
-        throwingSource.Seed(HistoryRowColumn.Code, ([1], [1]));
+        throwingSource.Seed(HistoryRowColumn.AccountHistory, ([1], [1]));
         throwingSource.ThrowOnColumn = HistoryRowColumn.AvailableBlocks;
 
         ArchiveCloneImporter interrupted = CreateImporter(throwingSource);
@@ -171,8 +173,9 @@ public class ArchiveCloneImporterTests
         List<(byte[] Key, byte[] Value)> rows = [];
         for (byte i = 0; i < 12; i++) rows.Add(([i], [i]));
 
-        FakeCloneSource throwingSource = new(rowFormat.FormatVersion) { PageSize = 3, ThrowOnCallNumber = 3 };
-        foreach ((byte[] key, byte[] value) in rows) throwingSource.Seed(HistoryRowColumn.Code, (key, value));
+        // Call 1 is the empty Code column, so the throw lands on the third AccountHistory page.
+        FakeCloneSource throwingSource = new(rowFormat.FormatVersion) { PageSize = 3, ThrowOnCallNumber = 4 };
+        foreach ((byte[] key, byte[] value) in rows) throwingSource.Seed(HistoryRowColumn.AccountHistory, (key, value));
 
         ArchiveCloneImporter firstAttempt = new(throwingSource, _historyColumns, _codeDb, _metadataDb, singleShardConfig, _pruner, availability, rowFormat,
             new ArchiveCloneVerifier(availability, _headers, LimboLogs.Instance), LimboLogs.Instance);
@@ -180,19 +183,20 @@ public class ArchiveCloneImporterTests
             "precondition: the fake source must actually interrupt the clone partway through the Code column");
 
         FakeCloneSource resumedSource = new(rowFormat.FormatVersion) { PageSize = 3 };
-        foreach ((byte[] key, byte[] value) in rows) resumedSource.Seed(HistoryRowColumn.Code, (key, value));
+        foreach ((byte[] key, byte[] value) in rows) resumedSource.Seed(HistoryRowColumn.AccountHistory, (key, value));
 
         ArchiveCloneImporter resumedAttempt = new(resumedSource, _historyColumns, _codeDb, _metadataDb, singleShardConfig, _pruner, availability, rowFormat,
             new ArchiveCloneVerifier(availability, _headers, LimboLogs.Instance), LimboLogs.Instance);
         await resumedAttempt.CloneAsync(CancellationToken.None);
 
-        (HistoryRowColumn Column, byte[] StartKey) firstResumedCallForCode = resumedSource.Calls.First(c => c.Column == HistoryRowColumn.Code);
-        Assert.That(Bytes.BytesComparer.Compare(firstResumedCallForCode.StartKey, new byte[] { 5 }), Is.GreaterThan(0),
+        (HistoryRowColumn Column, byte[] StartKey) firstResumedCall = resumedSource.Calls.First(c => c.Column == HistoryRowColumn.AccountHistory);
+        Assert.That(Bytes.BytesComparer.Compare(firstResumedCall.StartKey, new byte[] { 5 }), Is.GreaterThan(0),
             "the resumed run must start strictly after the last durably-committed row (index 5, the end of the first 6-row batch) - a deleted resume mechanism would start again from the shard's own beginning");
 
+        IDb accountHistory = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
         foreach ((byte[] key, byte[] value) in rows)
         {
-            Assert.That(_codeDb.Get(key), Is.EqualTo(value), $"row {Convert.ToHexString(key)} must be present and correct after resuming from the interrupted attempt");
+            Assert.That(accountHistory.Get(key), Is.EqualTo(value), $"row {Convert.ToHexString(key)} must be present and correct after resuming from the interrupted attempt");
         }
     }
 
@@ -242,12 +246,12 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_PageTimeout_IsRetriedAndSucceedsWhenTheSourceRecovers()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, TimeoutFirstNCalls = 2 };
-        source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
-        Assert.That(_codeDb.Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
             "a page timeout (a paused or briefly overloaded source) must be retried at page level, not tear the whole stream down");
     }
 
@@ -255,12 +259,12 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_RefusedPage_IsRetriedAndSucceedsWhenTheSourceRecovers()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 2 };
-        source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
-        Assert.That(_codeDb.Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
             "a transiently refusing source (server-side deadline, cancellation) must be retried, not treated as fatal");
     }
 
@@ -268,12 +272,12 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_RefusalStreakLongerThanTheTimeoutBudget_IsWaitedOut()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 6 };
-        source.Seed(HistoryRowColumn.Code, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
-        Assert.That(_codeDb.Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
             "refusal is explicit backpressure from a live source; a persist window longer than the timeout budget must be waited out, not treated as fatal");
     }
 
