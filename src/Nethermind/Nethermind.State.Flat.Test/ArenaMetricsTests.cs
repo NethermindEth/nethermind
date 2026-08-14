@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -19,6 +20,31 @@ namespace Nethermind.State.Flat.Test;
 public class ArenaMetricsTests
 {
     private string _testDir = null!;
+
+    private static ArenaManager CreateArenaManager(string arenaDir) => new(arenaDir, new FlatDbConfig
+    {
+        PersistedSnapshotArenaPageCacheBytes = 0,
+        ArenaFileSizeBytes = 64 * 1024,
+    }, LimboLogs.Instance);
+
+    private static SnapshotLocation WritePersistedArena(ArenaManager arena, int size = 4096)
+    {
+        using ArenaWriter writer = arena.CreateWriter(size);
+        writer.GetWriter().GetSpan(size).Clear();
+        writer.GetWriter().Advance(size);
+        (SnapshotLocation location, ArenaReservation reservation) = writer.Complete();
+        using (reservation)
+        {
+            reservation.PersistOnShutdown();
+        }
+        return location;
+    }
+
+    private static void PreserveArena(ArenaManager arena, in SnapshotLocation location)
+    {
+        using ArenaReservation reservation = arena.Open(location);
+        reservation.PersistOnShutdown();
+    }
 
     [SetUp]
     public void SetUp()
@@ -120,5 +146,53 @@ public class ArenaMetricsTests
         // Arena gauges stay flat — blob writes never touch them.
         Assert.That(Metrics.ArenaAllocatedBytes, Is.EqualTo(arenaBytesBefore));
         Assert.That(Metrics.ArenaFileCount, Is.EqualTo(arenaCountBefore));
+    }
+
+    [Test]
+    public void Initialize_ReportsMissingArenaEntriesWithoutReusingTheirIds()
+    {
+        string arenaDir = Path.Combine(_testDir, "arena");
+        SnapshotLocation liveLocation;
+        using (ArenaManager arena = CreateArenaManager(arenaDir))
+        {
+            liveLocation = WritePersistedArena(arena);
+        }
+
+        CatalogEntry live = new(default, default, liveLocation, SnapshotTier.PersistedBase);
+        CatalogEntry orphan = new(default, default,
+            new SnapshotLocation(liveLocation.ArenaId + 1, 0, liveLocation.Size), SnapshotTier.PersistedBase);
+        CatalogEntry maxIdOrphan = new(default, default,
+            new SnapshotLocation(int.MaxValue, 0, liveLocation.Size), SnapshotTier.PersistedBase);
+        List<CatalogEntry> catalogEntries = [live, orphan, maxIdOrphan];
+        List<CatalogEntry> firstLoad = [.. catalogEntries];
+        SnapshotLocation replacementLocation;
+
+        using (ArenaManager reopened = CreateArenaManager(arenaDir))
+        {
+            IReadOnlySet<int> missingArenas = reopened.Initialize(firstLoad);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(missingArenas, Is.EquivalentTo(new[] { orphan.Location.ArenaId, int.MaxValue }));
+                Assert.That(firstLoad, Is.EqualTo(catalogEntries));
+            }
+
+            PreserveArena(reopened, liveLocation);
+            replacementLocation = WritePersistedArena(reopened);
+        }
+
+        Assert.That(replacementLocation.ArenaId, Is.GreaterThan(orphan.Location.ArenaId));
+
+        CatalogEntry replacement = new(default, default, replacementLocation, SnapshotTier.PersistedBase);
+        catalogEntries.Add(replacement);
+        List<CatalogEntry> secondLoad = [.. catalogEntries];
+
+        using ArenaManager restarted = CreateArenaManager(arenaDir);
+        IReadOnlySet<int> missingAfterRestart = restarted.Initialize(secondLoad);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingAfterRestart, Is.EquivalentTo(new[] { orphan.Location.ArenaId, int.MaxValue }));
+            Assert.That(secondLoad, Is.EqualTo(catalogEntries));
+        }
     }
 }
