@@ -453,15 +453,20 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
-        [Test]
+        [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
         public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created([Values] bool midFlush, [Values] bool postFlush)
         {
+            const int keyCount = 50, flushCount = 5;
+
             ISortedKeyValueStore sorted = (ISortedKeyValueStore)_db;
 
-            // Shuffled so about half the seeks go backwards
-            byte[] suffixes = [.. Enumerable.Range(1, 49).Select(static i => (byte)i)];
+            // Odd suffixes only, so every even one is a gap a seek has to walk over, shuffled so about half the seeks go backwards
+            byte[] suffixes = [.. Enumerable.Range(0, keyCount).Select(static i => (byte)(2 * i + 1))];
             Random rng = new(42);
             rng.Shuffle(suffixes);
+
+            // Spreads the writes over that many L0 files rather than one, so a seek can trim the files it misses
+            int flushEvery = Math.Max(1, keyCount / flushCount);
 
             // Keep updating the DB and checking that iterator sees the latest value
             for (int written = 0; written < suffixes.Length; written++)
@@ -470,7 +475,7 @@ namespace Nethermind.Db.Test
                 _db[[1, i]] = [i];
                 AssertSeesLatest(i);
 
-                if (midFlush && written % 10 == 9) _db.Flush();
+                if (midFlush && written % flushEvery == flushEvery - 1) _db.Flush();
             }
 
             if (postFlush) _db.Flush();
@@ -478,14 +483,38 @@ namespace Nethermind.Db.Test
             foreach (byte i in suffixes)
                 AssertSeesLatest(i);
 
+            const byte pastLast = 2 * keyCount + 1;
+            AssertFindsNothing([1, pastLast], [1, pastLast + 1], "past the last key");
+
             void AssertSeesLatest(byte i)
+            {
+                byte below = (byte)(i - 1);
+                byte above = (byte)(i + 1);
+
+                AssertFinds(i, [1, i], [1, above], "exact hit");
+                AssertFinds(i, [1, below], [1, above], "ceiling walk");
+                AssertFindsNothing([1, below], [1, i], $"gap below {i}");
+            }
+
+            void AssertFinds(byte i, ReadOnlySpan<byte> lowerBoundIncl, ReadOnlySpan<byte> upperBoundExcl, string because)
             {
                 Span<byte> key = stackalloc byte[2];
                 Span<byte> value = stackalloc byte[1];
 
-                bool found = sorted.TryGetCeiling([1, i], [1, (byte)(i + 1)], key, out _, value, out int valueLength);
-                Assert.That(found, Is.True, $"write {i} must be visible to the pooled iterator");
-                Assert.That(value[..valueLength].ToArray(), Is.EqualTo([i]));
+                bool found = sorted.TryGetCeiling(lowerBoundIncl, upperBoundExcl, key, out int keyLength, value, out int valueLength);
+
+                Assert.That(found, Is.True, $"write {i} must be visible to the pooled iterator ({because})");
+                Assert.That(key[..keyLength].ToArray(), Is.EqualTo([1, i]), $"key of {i} ({because})");
+                Assert.That(value[..valueLength].ToArray(), Is.EqualTo([i]), $"value of {i} ({because})");
+            }
+
+            void AssertFindsNothing(ReadOnlySpan<byte> lowerBoundIncl, ReadOnlySpan<byte> upperBoundExcl, string because)
+            {
+                Span<byte> key = stackalloc byte[2];
+                Span<byte> value = stackalloc byte[1];
+
+                bool found = sorted.TryGetCeiling(lowerBoundIncl, upperBoundExcl, key, out _, value, out _);
+                Assert.That(found, Is.False, $"the pooled iterator must not report a stale hit ({because})");
             }
         }
 
