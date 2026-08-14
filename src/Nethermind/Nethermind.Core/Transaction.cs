@@ -243,6 +243,14 @@ namespace Nethermind.Core
         public RecentRootReference[]? RecentRootReferences { get; set; }
 
         /// <summary>
+        /// The zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, which EIP-8141
+        /// prices in addition to frame and signature data. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>Set from the canonical encoding by the decoder and the frame processor, so the charge is
+        /// counted off the very bytes the wire form carries rather than recomputed.</remarks>
+        public (int ZeroBytes, int NonZeroBytes) ReferenceCalldataStats { get; set; }
+
+        /// <summary>
         /// Zero and non-zero byte counts of the type-specific calldata EIP-8141 prices in addition to the
         /// frame and signature data — EIP-8250's <c>nonce_calldata</c>. In-memory only (not encoded).
         /// </summary>
@@ -372,6 +380,7 @@ namespace Nethermind.Core
                 obj.PayerAddress = default;
                 obj.NonceKeys = default;
                 obj.RecentRootReferences = default;
+                obj.ReferenceCalldataStats = default;
                 obj.FrameCalldataStats = default;
 
                 return true;
@@ -410,6 +419,7 @@ namespace Nethermind.Core
             tx.PayerAddress = PayerAddress;
             tx.NonceKeys = NonceKeys;
             tx.RecentRootReferences = RecentRootReferences;
+            tx.ReferenceCalldataStats = ReferenceCalldataStats;
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 

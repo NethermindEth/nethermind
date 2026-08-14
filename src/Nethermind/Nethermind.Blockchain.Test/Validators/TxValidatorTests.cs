@@ -994,6 +994,25 @@ public class TxValidatorTests
         .WithShardBlobTxTypeAndFields(blobCount)
         .SignedAndResolved().TestObject;
 
+    private static IEnumerable<TestCaseData> RecentRootReferenceEnvelopeCases()
+    {
+        yield return new TestCaseData(null, false, true).SetName("IsWellFormed_FrameTxAbsentReferences_BeforeEip8272_ReturnTrue");
+        yield return new TestCaseData(null, true, true).SetName("IsWellFormed_FrameTxAbsentReferences_AfterEip8272_ReturnTrue");
+        yield return new TestCaseData(Array.Empty<RecentRootReference>(), false, false).SetName("IsWellFormed_FrameTxEmptyReferences_BeforeEip8272_ReturnFalse");
+        yield return new TestCaseData(Array.Empty<RecentRootReference>(), true, true).SetName("IsWellFormed_FrameTxEmptyReferences_AfterEip8272_ReturnTrue");
+        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences], true, true).SetName("IsWellFormed_FrameTxFullReferences_AfterEip8272_ReturnTrue");
+        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1], true, false).SetName("IsWellFormed_FrameTxOverCapReferences_AfterEip8272_ReturnFalse");
+    }
+
+    [TestCaseSource(nameof(RecentRootReferenceEnvelopeCases))]
+    public void IsWellFormed_FrameTxRecentRootReferences_GatedOnEip8272(RecentRootReference[]? references, bool eip8272Enabled, bool expectedWellFormed)
+    {
+        Transaction tx = new() { Type = TxType.FrameTx, RecentRootReferences = references };
+        IReleaseSpec releaseSpec = new ReleaseSpec { IsEip8272Enabled = eip8272Enabled };
+
+        Assert.That(FrameTxEnvelopeTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
+    }
+
     private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
     {
         byte[][] versionedHashes = new byte[blobCount][];
