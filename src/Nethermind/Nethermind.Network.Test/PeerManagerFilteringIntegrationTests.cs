@@ -93,6 +93,28 @@ public class PeerManagerFilteringIntegrationTests
     }
 
     [Test]
+    public async Task OwnRecord_IsRejectedBeforeTheIpFilterSeesIt()
+    {
+        await using Context ctx = new();
+        Node self = new(TestItem.PublicKeyA, "203.0.113.50", 30303);
+        Node other = new(new PrivateKeyGenerator().Generate().PublicKey, "198.51.100.7", 30303) { IsStatic = true };
+
+        ctx.TestNodeSource.AddNode(self);
+        ctx.TestNodeSource.AddNode(other);
+
+        ctx.PeerPool.Start();
+        ctx.PeerManager.Start();
+
+        await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Contain(other.Address.Address),
+            "the dial of the other peer has to reach the filter, otherwise the assertion below passes for the wrong reason");
+        Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Not.Contain(self.Address.Address),
+            "the IP filter records every address it accepts, so our own record must be rejected before it reaches the filter - otherwise it keeps re-arming it for our own subnet and locks out real peers there");
+        Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(self.Id));
+    }
+
+    [Test]
     public async Task RegularPeer_BlockedByIpFilter()
     {
         await using Context ctx = new();
@@ -178,9 +200,14 @@ public class PeerManagerFilteringIntegrationTests
     private class FilterRejectingRlpxMock : IRlpxHost
     {
         public ConcurrentBag<PublicKey> ConnectedNodeIds { get; } = [];
+        public ConcurrentBag<IPAddress> CallsToShouldContact { get; } = [];
         public TaskCompletionSource<Node> FirstConnect { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public bool ShouldContact(IPAddress ip, bool exactOnly = false) => exactOnly;
+        public bool ShouldContact(IPAddress ip, bool exactOnly = false)
+        {
+            CallsToShouldContact.Add(ip);
+            return exactOnly;
+        }
 
         public Task<bool> ConnectAsync(Node node)
         {

@@ -544,6 +544,14 @@ namespace Nethermind.Network
                     continue;
                 }
 
+                // Also dropped at dial time, but a candidate that can never be dialed and never records a stat
+                // stays eligible for every future round, and the loop re-runs immediately whenever a slot is
+                // still free - so leaving it in the selection spins this loop with no delay between rounds.
+                if (peer.Node.Id == _enode.PublicKey)
+                {
+                    continue;
+                }
+
                 _currentSelection.PreCandidates.Add(peer);
             }
 
@@ -936,9 +944,15 @@ namespace Nethermind.Network
                 => _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
         }
 
-        // Sits ahead of the recent-IP filter on purpose: that filter records every address it accepts, so letting
-        // our own record through would keep re-arming it for our own subnet and lock out real peers sharing it.
-        // Both dial paths - the update loop's workers and the quick-connect on peer-added - pass through here.
+        /// <summary>
+        /// Whether an outbound dial to <paramref name="peer"/> should be attempted.
+        /// </summary>
+        /// <remarks>
+        /// The self-identity check deliberately precedes the recent-IP filter: that filter records every address
+        /// it accepts, so letting our own record through would keep re-arming it for our own subnet and lock out
+        /// real peers sharing it. Both dial paths - the update loop's workers and the quick-connect on
+        /// peer-added - pass through here.
+        /// </remarks>
         private bool ShouldContactPeer(Peer peer)
             => peer.Node.Id != _enode.PublicKey
                && _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
