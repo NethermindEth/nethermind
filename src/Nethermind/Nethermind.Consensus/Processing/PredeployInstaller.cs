@@ -14,17 +14,13 @@ namespace Nethermind.Consensus.Processing;
 /// processing.
 /// </summary>
 /// <remarks>
-/// Each predeploy is described as data — address, runtime code, nonce, and the fork gate that
-/// activates it — so a new predeploy (e.g. a keyed-nonce or recent-roots manager) is added as a list
-/// entry rather than another installer and interface method. The install is idempotent: code + nonce
-/// are written only when the account's current code differs from the canonical bytecode or its nonce
-/// is below the predeploy nonce, so exactly one account update is produced at the first block after
-/// each predeploy's activation and none afterwards. The nonce probe is what carries a predeploy whose
-/// canonical code is empty — a protocol-managed storage namespace such as EIP-8272's — since its code
-/// matches from the start. The predeploy nonce is 1, matching the EIP-2935/4788/7002/7251 predeploy
-/// convention, so the resulting state root and the EIP-7928 block-level access list agree across
-/// clients. Whether an existing higher nonce is preserved or overwritten is per-predeploy, because
-/// only EIP-8272 specifies <c>max(existing_nonce, 1)</c>.
+/// Each predeploy is described as data — address, code, nonce, and fork gate — so a new one is a list
+/// entry rather than another installer. The install is idempotent: a non-empty predeploy re-installs only
+/// when the account's code differs from the canonical bytecode or its nonce is below the predeploy nonce;
+/// an empty-canonical predeploy (a protocol-managed storage namespace such as EIP-8272's) is gated on the
+/// nonce alone, since it writes no code to compare against. The predeploy nonce is 1, matching the
+/// EIP-2935/4788/7002/7251 convention. <c>max(existing_nonce, 1)</c> is applied only where a predeploy
+/// sets <see cref="Predeploy.PreservesHigherNonce"/> (EIP-8272).
 /// </remarks>
 public static class PredeployInstaller
 {
@@ -77,7 +73,8 @@ public static class PredeployInstaller
 
             ReadOnlyMemory<byte> code = predeploy.Code;
             ulong nonce = readState.GetNonce(predeploy.Address);
-            if (readState.GetCode(predeploy.Address).AsSpan().SequenceEqual(code.Span) && nonce >= predeploy.Nonce)
+            bool codeSatisfied = code.IsEmpty || readState.GetCode(predeploy.Address).AsSpan().SequenceEqual(code.Span);
+            if (codeSatisfied && nonce >= predeploy.Nonce)
             {
                 continue;
             }
