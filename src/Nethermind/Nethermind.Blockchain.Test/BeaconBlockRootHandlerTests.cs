@@ -17,6 +17,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BeaconBlockRootHandlerTests
 {
     private BeaconBlockRootHandler _beaconBlockRootHandler;
@@ -138,11 +140,11 @@ public class BeaconBlockRootHandlerTests
 
         Transaction transaction = new()
         {
-            Value = UInt256.Zero,
+            Value = 0ul,
             Data = header.ParentBeaconBlockRoot!.Bytes.ToArray(),
             To = Eip4788Constants.BeaconRootsAddress,
             SenderAddress = Address.SystemUser,
-            GasLimit = 30_000_000L,
+            GasLimit = 30_000_000ul,
             GasPrice = UInt256.Zero,
             AccessList = new AccessList.Builder().AddAddress(Eip4788Constants.BeaconRootsAddress).Build()
         };

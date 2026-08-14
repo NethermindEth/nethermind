@@ -21,17 +21,11 @@ namespace Nethermind.Consensus.Transactions
             SupportsBlobs = _transactionSources.Any(s => s.SupportsBlobs);
         }
 
-        public void Then(ITxSource txSource)
-        {
-            _transactionSources.Add(txSource);
-        }
+        public void Then(ITxSource txSource) => _transactionSources.Add(txSource);
 
-        public void First(ITxSource txSource)
-        {
-            _transactionSources.Insert(0, txSource);
-        }
+        public void First(ITxSource txSource) => _transactionSources.Insert(0, txSource);
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             for (int i = 0; i < _transactionSources.Count; i++)
             {

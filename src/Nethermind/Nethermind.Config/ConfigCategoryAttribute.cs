@@ -7,7 +7,7 @@ namespace Nethermind.Config
 {
     public class ConfigCategoryAttribute : Attribute
     {
-        public string Description { get; set; }
+        public string Description { get; set; } = "";
 
         public bool HiddenFromDocs { get; set; }
 

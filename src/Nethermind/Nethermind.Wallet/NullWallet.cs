@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Security;
 using System.Threading;
 using Nethermind.Core;
@@ -26,10 +27,7 @@ namespace Nethermind.Wallet
 
         public static NullWallet Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, static () => new NullWallet());
 
-        public Address NewAccount(SecureString passphrase)
-        {
-            throw new NotImplementedException();
-        }
+        public Address NewAccount(SecureString passphrase) => throw new NotImplementedException();
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
         {
@@ -43,24 +41,14 @@ namespace Nethermind.Wallet
             return true;
         }
 
-        public Signature Sign(Hash256 message, Address address, SecureString passphrase)
-        {
-            return null;
-        }
+        public Address[] GetAccounts() => [];
 
-        public Address[] GetAccounts()
-        {
-            return [];
-        }
+        public bool IsUnlocked(Address address) => true;
 
-        public bool IsUnlocked(Address address)
+        public bool TrySign(in ValueHash256 message, Address address, [NotNullWhen(true)] out Signature signature)
         {
-            return true;
-        }
-
-        public Signature Sign(Hash256 message, Address address)
-        {
-            return null;
+            signature = null;
+            return false;
         }
     }
 }

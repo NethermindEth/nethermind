@@ -4,7 +4,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.RequestSizer;
 
 /// <summary>
 /// Encapsulate the pattern of adjusting request size depending on returned direction.

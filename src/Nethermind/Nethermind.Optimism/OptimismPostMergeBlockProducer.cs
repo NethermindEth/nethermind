@@ -18,38 +18,32 @@ using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
+public class OptimismPostMergeBlockProducer(
+    ITxSource payloadAttrsTxSource,
+    ITxSource txPoolTxSource,
+    IBlockchainProcessor processor,
+    IBlockTree blockTree,
+    IWorldState stateProvider,
+    IGasLimitCalculator gasLimitCalculator,
+    ISealEngine sealEngine,
+    ITimestamper timestamper,
+    ISpecProvider specProvider,
+    IOptimismSpecHelper specHelper,
+    ILogManager logManager,
+    IBlocksConfig? blocksConfig) : PostMergeBlockProducer(
+    payloadAttrsTxSource.Then(txPoolTxSource),
+    processor,
+    blockTree,
+    stateProvider,
+    gasLimitCalculator,
+    sealEngine,
+    timestamper,
+    specProvider,
+    logManager,
+    blocksConfig)
 {
-    private readonly ITxSource _payloadAttrsTxSource;
-    private readonly IOptimismSpecHelper _specHelper;
-
-    public OptimismPostMergeBlockProducer(
-        ITxSource payloadAttrsTxSource,
-        ITxSource txPoolTxSource,
-        IBlockchainProcessor processor,
-        IBlockTree blockTree,
-        IWorldState stateProvider,
-        IGasLimitCalculator gasLimitCalculator,
-        ISealEngine sealEngine,
-        ITimestamper timestamper,
-        ISpecProvider specProvider,
-        IOptimismSpecHelper specHelper,
-        ILogManager logManager,
-        IBlocksConfig? blocksConfig) : base(
-        payloadAttrsTxSource.Then(txPoolTxSource),
-        processor,
-        blockTree,
-        stateProvider,
-        gasLimitCalculator,
-        sealEngine,
-        timestamper,
-        specProvider,
-        logManager,
-        blocksConfig)
-    {
-        _payloadAttrsTxSource = payloadAttrsTxSource;
-        _specHelper = specHelper;
-    }
+    private readonly ITxSource _payloadAttrsTxSource = payloadAttrsTxSource;
+    private readonly IOptimismSpecHelper _specHelper = specHelper;
 
     protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
     {

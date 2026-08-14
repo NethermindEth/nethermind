@@ -53,21 +53,17 @@ public class InvalidHeaderSealInterceptorTest
     }
 
     [Test]
-    public void Test_seal_valid()
-    {
+    public void Test_seal_valid() =>
         new Context()
             .GivenSealIsValid()
             .OnValidateSeal()
             .InvalidBlockShouldNotGetReported();
-    }
 
     [Test]
-    public void Test_seal_not_valid()
-    {
+    public void Test_seal_not_valid() =>
         new Context()
             .GivenSealIsNotValid()
             .OnValidateSeal()
             .InvalidBlockShouldGetReported();
-    }
 }
 

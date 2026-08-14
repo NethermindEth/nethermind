@@ -19,8 +19,5 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
         writer.WriteEndObject();
     }
 
-    public override ParityVmTrace? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        throw new NotSupportedException();
-    }
+    public override ParityVmTrace? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
 }

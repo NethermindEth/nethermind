@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -14,10 +16,11 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Repositories;
 
@@ -37,10 +40,13 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
+        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb, (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>());
         SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
-        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore);
-        BlockTreeOverlay overrideBlockTree = new BlockTreeOverlay(baseBlockTree, tempBlockTree);
+
+        IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
+
+        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore, mainBalStore);
+        BlockTreeOverlay overrideBlockTree = new(baseBlockTree, tempBlockTree);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(overridableEnv) // worldstate related override here
@@ -51,19 +57,33 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockhashCache, BlockhashCache>()
             .AddModule(validationModules)
+            .AddSingleton<IUnresolvedBlockhashPolicy, NullUnresolvedBlockhashPolicy>()
             .AddDecorator<IBlockhashProvider, SimulateBlockhashProvider>()
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
-            .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, SimulateBlobBaseFeeCalculatorDecorator>()
+            .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
-            .AddSingleton<ITransactionProcessorAdapter, SimulateTransactionProcessorAdapter>()
+            .Intercept<ITransactionProcessor>(SkipSenderCodeCheckTransactionProcessorFactory.Apply)
+            .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderCodeCheckTransactionProcessorFactory(inner))
+            .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
+                txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
-
             .AddScoped<SimulateRequestState>()
+            .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
             .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());
 
         envLifetimeScope.Disposer.AddInstanceForDisposal(editableDbProvider);
-        rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(envLifetimeScope);
-        return envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
+
+        SimulateReadOnlyBlocksProcessingEnv env = envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
+        return new DisposableSimulateReadOnlyBlocksProcessingEnv(env, envLifetimeScope);
+    }
+
+    private sealed class DisposableSimulateReadOnlyBlocksProcessingEnv(
+        SimulateReadOnlyBlocksProcessingEnv inner,
+        ILifetimeScope scope) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
+    {
+        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock) => inner.Begin(baseBlock);
+
+        public void Dispose() => scope.Dispose();
     }
 
     private static BlockTree CreateTempBlockTree(
@@ -71,23 +91,26 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         ISpecProvider? specProvider,
         ILogManager logManager,
         IReadOnlyDbProvider editableDbProvider,
-        SimulateDictionaryHeaderStore tmpHeaderStore)
+        SimulateDictionaryHeaderStore tmpHeaderStore,
+        IBlockAccessListStore tmpBalStore)
     {
-        IBlockStore mainblockStore = new BlockStore(editableDbProvider.BlocksDb);
+        IHeaderDecoder headerDecoder = (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>();
+        IBlockStore mainBlockStore = new BlockStore(editableDbProvider.BlocksDb, headerDecoder);
         const int badBlocksStored = 1;
 
-        SimulateDictionaryBlockStore tmpBlockStore = new(mainblockStore);
-        IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
+        SimulateDictionaryBlockStore tmpBlockStore = new(mainBlockStore);
+        IBadBlockStore badBlockStore = new BadBlockStore(editableDbProvider.BadBlocksDb, badBlocksStored, headerDecoder);
 
         return new(tmpBlockStore,
             tmpHeaderStore,
             editableDbProvider.BlockInfosDb,
             editableDbProvider.MetadataDb,
             badBlockStore,
+            tmpBalStore,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
-            NullBloomStorage.Instance,
             new SyncConfig(),
+            NullStateBoundary.Instance,
             new BlockTreeLogHider(logManager));
     }
 
@@ -105,14 +128,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             return !baseLogger.IsDebug ? NullLogger.Instance : baseLogger;
         }
 
-        public ILogger GetClassLogger(string filePath = "")
-        {
-            return baseLogManager.GetClassLogger(filePath);
-        }
-
-        public ILogger GetLogger(string loggerName)
-        {
-            return baseLogManager.GetLogger(loggerName);
-        }
+        public ILogger GetLogger(string loggerName) => baseLogManager.GetLogger(loggerName);
     }
 }

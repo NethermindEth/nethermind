@@ -9,11 +9,9 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
@@ -31,20 +29,20 @@ namespace Nethermind.Db.Test
     public class DbOnTheRocksTests
     {
         private RocksDbConfigFactory _rocksdbConfigFactory;
-        string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
-
+        private DbConfig _dbConfig = new();
+        string DbPath => Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
 
         [SetUp]
         public void Setup()
         {
             Directory.CreateDirectory(DbPath);
-            _rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
         }
 
         [TearDown]
         public void TearDown()
         {
-            Directory.Delete(DbPath, true);
+            if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
         }
 
         [Test]
@@ -54,16 +52,16 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeFalse();
+            Assert.That(Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle), Is.EqualTo(1));
+            Assert.That(Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle), Is.EqualTo(0));
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
+            Assert.That(Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle), Is.EqualTo(1));
+            Assert.That(Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle), Is.EqualTo(1));
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeFalse();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
+            Assert.That(Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle), Is.EqualTo(0));
+            Assert.That(Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle), Is.EqualTo(1));
         }
 
         [Test]
@@ -95,16 +93,16 @@ namespace Nethermind.Db.Test
 
             task.Start();
 
-            firstWriteWait.Wait(TimeSpan.FromSeconds(1)).Should().BeTrue();
+            Assert.That(firstWriteWait.Wait(TimeSpan.FromSeconds(1)), Is.True);
 
             db.Dispose();
 
             await Task.Delay(100);
 
             cancelSource.Cancel();
-            writeCompleted.Should().BeFalse();
+            Assert.That(writeCompleted, Is.False);
 
-            task.IsFaulted.Should().BeTrue();
+            Assert.That(task.IsFaulted, Is.True);
             task.Dispose();
         }
 
@@ -124,20 +122,21 @@ namespace Nethermind.Db.Test
             config.EnableFileWarmer = true;
             {
                 using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+                IKeyValueStore asKv = db;
                 for (int i = 0; i < 1000; i++)
                 {
-                    db[i.ToBigEndianByteArray()] = i.ToBigEndianByteArray();
+                    asKv[i.ToBigEndianByteArray()] = i.ToBigEndianByteArray();
                 }
             }
 
             {
-                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+                using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
             }
         }
 
-        [TestCase("compaction_pri=kByCompensatedSize", true)]
-        [TestCase("compaction_pri=kByCompensatedSize;num_levels=4", true)]
-        [TestCase("compaction_pri=kSomethingElse", false)]
+        [TestCase("compaction_pri=kByCompensatedSize", true, TestName = "CanOpenWithAdditionalConfig_SingleOption")]
+        [TestCase("compaction_pri=kByCompensatedSize;num_levels=4", true, TestName = "CanOpenWithAdditionalConfig_MultipleOptions")]
+        [TestCase("compaction_pri=kSomethingElse", false, TestName = "CanOpenWithAdditionalConfig_InvalidOption")]
         public void CanOpenWithAdditionalConfig(string opts, bool success)
         {
             IDbConfig config = new DbConfig();
@@ -145,22 +144,101 @@ namespace Nethermind.Db.Test
 
             Action act = () =>
             {
-                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
-                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
+                RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+                using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
             if (success)
             {
-                act.Should().NotThrow();
+                Assert.That(act, Throws.Nothing);
             }
             else
             {
-                act.Should().Throw<RocksDbException>();
+                Assert.That(act, Throws.TypeOf<RocksDbException>());
+            }
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void UseSharedCacheIfNoCacheIsSpecified(bool explicitCache)
+        {
+            if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
+            long sharedCacheSize = 10.KiB;
+
+            using HyperClockCacheWrapper cache = new((ulong)sharedCacheSize);
+            _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
+            if (explicitCache)
+            {
+                _dbConfig.BlocksDbRocksDbOptions += "block_based_table_factory.block_cache=1000000;";
+            }
+
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, DbNames.Blocks), _dbConfig,
+                _rocksdbConfigFactory, LimboLogs.Instance, sharedCache: cache.Handle);
+
+            Random rng = new();
+            byte[] buffer = new byte[1024];
+            for (int i = 0; i < 100; i++)
+            {
+                Hash256 someKey = Keccak.Compute(i.ToBigEndianByteArray());
+                rng.NextBytes(buffer);
+                db.PutSpan(someKey.Bytes, buffer, WriteFlags.None);
+            }
+            db.Flush();
+
+            if (explicitCache)
+            {
+                Assert.That(db.GatherMetric().CacheSize, Is.GreaterThan(sharedCacheSize));
+            }
+            else
+            {
+                Assert.That(db.GatherMetric().CacheSize, Is.LessThan(sharedCacheSize));
             }
         }
 
         [Test]
-        public void Corrupted_exception_on_open_would_create_marker()
+        public void UseExplicitlyGivenCache()
+        {
+            _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
+
+            long cacheSize = 10.KiB;
+            using HyperClockCacheWrapper cache = new((ulong)cacheSize);
+
+            IRocksDbConfigFactory rocksDbConfigFactory = Substitute.For<IRocksDbConfigFactory>();
+            rocksDbConfigFactory.GetForDatabase(Arg.Any<string>(), Arg.Any<string?>())
+                .Returns<IRocksDbConfig>((c) =>
+                {
+                    string? arg1 = (string?)c[0];
+                    string? arg2 = (string?)c[0];
+
+                    IRocksDbConfig baseConfig = _rocksdbConfigFactory.GetForDatabase(arg1, arg2);
+
+                    baseConfig = new AdjustedRocksdbConfig(baseConfig,
+                        "",
+                        0,
+                        cache.Handle);
+
+                    return baseConfig;
+                });
+
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, DbNames.Blocks), _dbConfig,
+                rocksDbConfigFactory, LimboLogs.Instance);
+
+            Random rng = new();
+            byte[] buffer = new byte[1024];
+            for (int i = 0; i < 100; i++)
+            {
+                Hash256 someKey = Keccak.Compute(i.ToBigEndianByteArray());
+                rng.NextBytes(buffer);
+                db.PutSpan(someKey.Bytes, buffer, WriteFlags.None);
+            }
+            db.Flush();
+
+            Assert.That(db.GatherMetric().CacheSize, Is.EqualTo(cache.GetUsage()));
+            Assert.That(cache.GetUsage(), Is.LessThan(cacheSize));
+        }
+
+        [Test]
+        public void Corrupted_exception_on_open_writes_marker_and_shuts_down()
         {
             IDbConfig config = new DbConfig();
 
@@ -169,20 +247,59 @@ namespace Nethermind.Db.Test
             fileSystem.File.Returns(file);
 
             bool exceptionThrown = false;
+            bool didShutDown = false;
             try
             {
-                CorruptedDbOnTheRocks db = new("test", GetRocksDbSettings("test", "test"), config,
+                _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
                     _rocksdbConfigFactory,
                     LimboLogs.Instance,
-                    fileSystem: fileSystem);
+                    fileSystem: fileSystem,
+                    onFatalShutdown: () => didShutDown = true);
             }
             catch (RocksDbSharpException)
             {
                 exceptionThrown = true;
             }
 
-            exceptionThrown.Should().BeTrue();
+            Assert.That(exceptionThrown, Is.True);
+            // Genuine "Corruption:" writes the marker (schedules repair on restart) and shuts down.
             file.Received().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+            Assert.That(didShutDown, Is.True);
+        }
+
+        // An "IO error" (fd exhaustion, full disk, permissions) is not on-disk corruption, so it
+        // must NOT write the marker (that would run the lossy repair on a healthy DB on restart),
+        // but it must still fast-shut down so partial writes aren't built upon.
+        [TestCase("IO error: While open a file for random read: /db/000123.sst: Too many open files")]
+        [TestCase("IO error: No space left on device")]
+        [TestCase("IO error: While fsync: /db/000123.sst: Permission denied")]
+        public void Io_error_on_open_shuts_down_without_writing_marker(string exceptionMessage)
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            bool exceptionThrown = false;
+            bool didShutDown = false;
+            try
+            {
+                _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
+                    _rocksdbConfigFactory,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem,
+                    openExceptionMessage: exceptionMessage,
+                    onFatalShutdown: () => didShutDown = true);
+            }
+            catch (RocksDbSharpException)
+            {
+                exceptionThrown = true;
+            }
+
+            Assert.That(exceptionThrown, Is.True);
+            file.DidNotReceive().WriteAllText(Arg.Any<string>(), Arg.Any<string>());
+            Assert.That(didShutDown, Is.True);
         }
 
         [Test]
@@ -201,7 +318,7 @@ namespace Nethermind.Db.Test
 
             try
             {
-                DbOnTheRocks db = new(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
+                _ = new DbOnTheRocks(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
                     LimboLogs.Instance,
                     fileSystem: fileSystem,
                     rocksDbNative: native);
@@ -214,34 +331,74 @@ namespace Nethermind.Db.Test
             file.Received().Delete(markerFile);
         }
 
-        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
+        [Test]
+        public void TestExtractOptions()
         {
-            return new(dbName, dbPath)
+            string options = "compression=kSnappyCompression;optimize_filters_for_hits=true;optimize_filters_for_hits=false;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;advise_random_on_open=true;block_based_table_factory.block_size=16000;block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;block_based_table_factory.format_version=5;block_based_table_factory.index_type=kTwoLevelIndexSearch;block_based_table_factory.partition_filters=true;block_based_table_factory.metadata_block_size=4096;";
+            IDictionary<string, string> parsedOptions = DbOnTheRocks.ExtractOptions(options);
+            using (Assert.EnterMultipleScope())
             {
-            };
+                Assert.That(parsedOptions["compression"], Is.EqualTo("kSnappyCompression"));
+                Assert.That(parsedOptions["block_based_table_factory.metadata_block_size"], Is.EqualTo("4096"));
+                Assert.That(parsedOptions["optimize_filters_for_hits"], Is.EqualTo("false"));
+                Assert.That(parsedOptions["memtable_whole_key_filtering"], Is.EqualTo("true"));
+            }
         }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_RemovesDuplicateOptimizeFiltersForHits()
+        {
+            string options = "optimize_filters_for_hits=true;compression=kSnappyCompression;optimize_filters_for_hits=false;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            Assert.That(normalized, Is.EqualTo("compression=kSnappyCompression;optimize_filters_for_hits=false;"));
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_HandlesEmptyString()
+        {
+            Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(""), Is.EqualTo(""));
+            Assert.That(DbOnTheRocks.NormalizeRocksDbOptions(null!), Is.EqualTo(""));
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_PreservesStringWithoutDuplicates()
+        {
+            string options = "compression=kSnappyCompression;block_size=16000;optimize_filters_for_hits=true;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            Assert.That(normalized, Is.EqualTo(options));
+        }
+
+        [Test]
+        public void TestNormalizeRocksDbOptions_HandlesMultipleDuplicates()
+        {
+            string options = "optimize_filters_for_hits=true;foo=bar;optimize_filters_for_hits=false;baz=qux;optimize_filters_for_hits=true;";
+            string normalized = DbOnTheRocks.NormalizeRocksDbOptions(options);
+
+            Assert.That(normalized, Is.EqualTo("foo=bar;baz=qux;optimize_filters_for_hits=true;"));
+        }
+
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
+        {
+        };
     }
 
     [TestFixture(true)]
     [TestFixture(false)]
     [Parallelizable(ParallelScope.None)]
-    public class DbOnTheRocksDbTests
+    public class DbOnTheRocksDbTests(bool useColumnDb)
     {
-        string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
+        string DbPath => Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
         private IDb _db = null!;
         IDisposable? _dbDisposable = null!;
 
-        private readonly bool _useColumnDb = false;
-
-        public DbOnTheRocksDbTests(bool useColumnDb)
-        {
-            _useColumnDb = useColumnDb;
-        }
+        private readonly bool _useColumnDb = useColumnDb;
 
         [SetUp]
         public void Setup()
         {
-            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            RocksDbConfigFactory rocksdbConfigFactory = new(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
 
             if (Directory.Exists(DbPath))
             {
@@ -272,10 +429,10 @@ namespace Nethermind.Db.Test
             {
                 if (_db is ColumnDb columnDb)
                 {
-                    return columnDb._mainDb._allocatedSpan;
+                    return columnDb._mainDb._allocatedSpan.Value;
                 }
 
-                return (_db as DbOnTheRocks)._allocatedSpan;
+                return (_db as DbOnTheRocks)._allocatedSpan.Value;
             }
         }
 
@@ -289,11 +446,49 @@ namespace Nethermind.Db.Test
         [Test]
         public void Smoke_test()
         {
-            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
-            Assert.That(_db[new byte[] { 1, 2, 3 }], Is.EqualTo(new byte[] { 4, 5, 6 }));
+            _db[[1, 2, 3]] = [4, 5, 6];
+            AssertCanGetViaAllMethod(_db, [1, 2, 3], [4, 5, 6]);
 
-            _db.Set(new byte[] { 2, 3, 4 }, new byte[] { 5, 6, 7 }, WriteFlags.LowPriority);
-            Assert.That(_db[new byte[] { 2, 3, 4 }], Is.EqualTo(new byte[] { 5, 6, 7 }));
+            _db.Set([2, 3, 4], [5, 6, 7], WriteFlags.LowPriority);
+            AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
+        }
+
+        [Test]
+        public void Snapshot_test()
+        {
+            IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
+
+            byte[] key = new byte[] { 1, 2, 3 };
+
+            _db[key] = new byte[] { 4, 5, 6 };
+            AssertCanGetViaAllMethod(_db, key, new byte[] { 4, 5, 6 });
+
+            using IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
+            AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
+
+            _db.Set(key, new byte[] { 5, 6, 7 });
+            AssertCanGetViaAllMethod(_db, key, new byte[] { 5, 6, 7 });
+
+            AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
+
+            Assert.That(_db.KeyExists(new byte[] { 99, 99, 99 }), Is.False);
+        }
+
+        [Test]
+        public void Snapshot_dispose_cleans_up_read_options()
+        {
+            IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
+
+            _db[[1, 2, 3]] = [4, 5, 6];
+
+            IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
+            AssertCanGetViaAllMethod(snapshot, [1, 2, 3], [4, 5, 6]);
+
+            // Dispose should clean up owned ReadOptions without throwing
+            snapshot.Dispose();
+
+            // Double dispose must be safe
+            snapshot.Dispose();
         }
 
         [Test]
@@ -310,7 +505,7 @@ namespace Nethermind.Db.Test
 
             for (int i = 0; i < 1000; i++)
             {
-                _db[i.ToBigEndianByteArray()].Should().BeEquivalentTo(i.ToBigEndianByteArray());
+                AssertCanGetViaAllMethod(_db, i.ToBigEndianByteArray(), i.ToBigEndianByteArray());
             }
         }
 
@@ -341,9 +536,9 @@ namespace Nethermind.Db.Test
             Span<byte> readSpan = _db.GetSpan(key);
             Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
 
-            AllocatedSpan.Should().Be(1);
+            Assert.That(AllocatedSpan, Is.EqualTo(1));
             _db.DangerousReleaseMemory(readSpan);
-            AllocatedSpan.Should().Be(0);
+            Assert.That(AllocatedSpan, Is.EqualTo(0));
         }
 
         [Test]
@@ -359,23 +554,17 @@ namespace Nethermind.Db.Test
             Memory<byte> theMemory = manager.Memory;
             Assert.That(theMemory.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
 
-            AllocatedSpan.Should().Be(1);
+            Assert.That(AllocatedSpan, Is.EqualTo(1));
             manager.Dispose();
-            AllocatedSpan.Should().Be(0);
+            Assert.That(AllocatedSpan, Is.EqualTo(0));
         }
 
-        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
-            return new(dbName, dbPath)
-            {
-            };
-        }
+        };
 
         [Test]
-        public void Can_get_all_on_empty()
-        {
-            _ = _db.GetAll().ToList();
-        }
+        public void Can_get_all_on_empty() => Assert.That(_db.GetAll(), Is.Empty);
 
         [Test]
         public void Smoke_test_iterator()
@@ -383,14 +572,113 @@ namespace Nethermind.Db.Test
             _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
 
             KeyValuePair<byte[], byte[]>[] allValues = _db.GetAll().ToArray()!;
-            allValues[0].Key.Should().BeEquivalentTo(new byte[] { 1, 2, 3 });
-            allValues[0].Value.Should().BeEquivalentTo(new byte[] { 4, 5, 6 });
+            Assert.That(allValues[0].Key, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(allValues[0].Value, Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+
+        [Test]
+        public void Full_enumerations_can_be_repeated_across_batches()
+        {
+            (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
+            IEnumerable<KeyValuePair<byte[], byte[]?>> all = _db.GetAll(ordered: true);
+            IEnumerable<byte[]> keys = _db.GetAllKeys(ordered: true);
+            IEnumerable<byte[]> values = _db.GetAllValues(ordered: true);
+
+            _ = all.Take(1).Single();
+            _ = keys.Take(1).Single();
+            _ = values.Take(1).Single();
+
+            KeyValuePair<byte[], byte[]?>[] firstAll = all.ToArray();
+            KeyValuePair<byte[], byte[]?>[] secondAll = all.ToArray();
+            byte[][] firstKeys = keys.ToArray();
+            byte[][] secondKeys = keys.ToArray();
+            byte[][] firstValues = values.ToArray();
+            byte[][] secondValues = values.ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstAll.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+                Assert.That(firstAll.Select(static item => item.Value), Is.EqualTo(expectedValues));
+                Assert.That(secondAll.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+                Assert.That(secondAll.Select(static item => item.Value), Is.EqualTo(expectedValues));
+                Assert.That(firstKeys, Is.EqualTo(expectedKeys));
+                Assert.That(secondKeys, Is.EqualTo(expectedKeys));
+                Assert.That(firstValues, Is.EqualTo(expectedValues));
+                Assert.That(secondValues, Is.EqualTo(expectedValues));
+            }
+        }
+
+        [Test]
+        public void Full_enumerations_resume_after_deleted_boundary()
+        {
+            (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
+            int boundaryIndex = DbOnTheRocks.FullEnumerationBatchSize - 1;
+
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAll(ordered: true).Select(static item => item.Key),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedKeys[boundaryIndex + 1]);
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAllKeys(ordered: true),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedKeys[boundaryIndex + 1]);
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAllValues(ordered: true),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedValues[boundaryIndex + 1]);
+        }
+
+        private (byte[][] Keys, byte[][] Values) SeedFullEnumerationBatches()
+        {
+            int count = DbOnTheRocks.FullEnumerationBatchSize + 1;
+            byte[][] keys = new byte[count][];
+            byte[][] values = new byte[count][];
+
+            using IWriteBatch batch = _db.StartWriteBatch();
+            for (int i = 0; i < count; i++)
+            {
+                keys[i] = i.ToBigEndianByteArray();
+                values[i] = (i + count).ToBigEndianByteArray();
+                batch.Set(keys[i], values[i]);
+            }
+
+            return (keys, values);
+        }
+
+        private void AssertResumesAfterDeletedBoundary(
+            IEnumerable<byte[]> items,
+            byte[] boundaryKey,
+            byte[] boundaryValue,
+            byte[] expectedNext)
+        {
+            using IEnumerator<byte[]> enumerator = items.GetEnumerator();
+            for (int i = 0; i < DbOnTheRocks.FullEnumerationBatchSize; i++)
+            {
+                if (!enumerator.MoveNext())
+                {
+                    Assert.Fail($"Enumeration stopped at item {i} before reaching the batch boundary.");
+                }
+            }
+
+            _db.Remove(boundaryKey);
+            try
+            {
+                Assert.That(enumerator.MoveNext(), Is.True);
+                Assert.That(enumerator.Current, Is.EqualTo(expectedNext));
+            }
+            finally
+            {
+                _db.Set(boundaryKey, boundaryValue);
+            }
         }
 
         [Test]
         public void IteratorWorks()
         {
-            _db.Should().BeAssignableTo<ISortedKeyValueStore>();
+            Assert.That(_db, Is.AssignableTo<ISortedKeyValueStore>());
             ISortedKeyValueStore sortedKeyValue = (ISortedKeyValueStore)_db;
 
             int entryCount = 3;
@@ -401,59 +689,121 @@ namespace Nethermind.Db.Test
             }
 
             i--;
-            sortedKeyValue.FirstKey.Should().BeEquivalentTo(new byte[] { 0, 0, 0 });
-            sortedKeyValue.LastKey.Should().BeEquivalentTo(new byte[] { i, i, i });
 
-            using var view = sortedKeyValue.GetViewBetween([0], [9]);
-
-            i = 0;
-            while (view.MoveNext())
+            void CheckView(ISortedKeyValueStore sortedKeyValueStore)
             {
-                view.CurrentKey.ToArray().Should().BeEquivalentTo([i, i, i]);
-                view.CurrentValue.ToArray().Should().BeEquivalentTo([i, i, i]);
-                i++;
+                Assert.That(sortedKeyValue.FirstKey, Is.EqualTo(new byte[] { 0, 0, 0 }));
+                Assert.That(sortedKeyValue.LastKey, Is.EqualTo(new byte[] { (byte)(entryCount - 1), (byte)(entryCount - 1), (byte)(entryCount - 1) }));
+                using ISortedView view = sortedKeyValueStore.GetViewBetween([0], [9]);
+
+                i = 0;
+                while (view.MoveNext())
+                {
+                    Assert.That(view.CurrentKey.ToArray(), Is.EqualTo([i, i, i]));
+                    Assert.That(view.CurrentValue.ToArray(), Is.EqualTo([i, i, i]));
+                    i++;
+                }
+
+                Assert.That(i, Is.EqualTo((byte)entryCount));
             }
 
-            i.Should().Be((byte)entryCount);
-        }
+            CheckView(sortedKeyValue);
 
-        [Test]
-        public void TestExtractOptions()
-        {
-            string options = "compression=kSnappyCompression;optimize_filters_for_hits=true;optimize_filters_for_hits=false;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;advise_random_on_open=true;block_based_table_factory.block_size=16000;block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;block_based_table_factory.format_version=5;block_based_table_factory.index_type=kTwoLevelIndexSearch;block_based_table_factory.partition_filters=true;block_based_table_factory.metadata_block_size=4096;";
-            IDictionary<string, string> parsedOptions = DbOnTheRocks.ExtractOptions(options);
-            parsedOptions["compression"].Should().Be("kSnappyCompression");
-            parsedOptions["block_based_table_factory.metadata_block_size"].Should().Be("4096");
-            parsedOptions["optimize_filters_for_hits"].Should().Be("false");
-            parsedOptions["memtable_whole_key_filtering"].Should().Be("true");
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+            for (i = 0; i < entryCount; i++)
+            {
+                _db[[i, i, i]] = [(byte)(i + 1), (byte)(i + 1), (byte)(i + 1)];
+            }
+
+            CheckView((ISortedKeyValueStore)snapshot);
         }
 
         [Test]
         public void Can_GetMetric_AfterDispose()
         {
             _db.Dispose();
-            _db.GatherMetric().Size.Should().Be(0);
+            Assert.That(_db.GatherMetric().Size, Is.EqualTo(0));
+        }
+
+        private void AssertCanGetViaAllMethod(IReadOnlyKeyValueStore kv, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            Assert.That(kv[key], Is.EqualTo(value.ToArray()));
+            Assert.That(kv.KeyExists(key), Is.True);
+
+            ReadFlags[] flags = [ReadFlags.None, ReadFlags.HintReadAhead, ReadFlags.HintCacheMiss];
+            Span<byte> outBuffer = stackalloc byte[value.Length];
+            foreach (ReadFlags flag in flags)
+            {
+                Assert.That(kv.Get(key, flags: flag), Is.EqualTo(value.ToArray()));
+
+                Span<byte> buffer = kv.GetSpan(key, flag);
+                Assert.That(buffer.ToArray(), Is.EqualTo(value.ToArray()));
+                kv.DangerousReleaseMemory(buffer);
+
+                int length = kv.Get(key, outBuffer);
+                Assert.That(outBuffer[..length].ToArray(), Is.EqualTo(value.ToArray()));
+            }
+
+            using ISortedView iterator = ((ISortedKeyValueStore)kv).GetViewBetween(key, CreateNextKey(key));
+            if (iterator.MoveNext())
+            {
+                Assert.That(iterator.CurrentKey.ToArray(), Is.EqualTo(key.ToArray()));
+                Assert.That(iterator.CurrentValue.ToArray(), Is.EqualTo(value.ToArray()));
+            }
+
+            Assert.That(iterator.MoveNext(), Is.False);
+
+            // Ai generated
+            static byte[] CreateNextKey(ReadOnlySpan<byte> key)
+            {
+                // 1. Create a copy of the key to modify
+                byte[] nextKey = key.ToArray();
+
+                // 2. Iterate backwards (from the last byte to the first)
+                for (int i = nextKey.Length - 1; i >= 0; i--)
+                {
+                    // If the byte is NOT 0xFF (255), we can just increment it and we are done.
+                    if (nextKey[i] < 0xFF)
+                    {
+                        nextKey[i]++;
+                        return nextKey;
+                    }
+
+                    // If the byte IS 0xFF, it rolls over to 0x00, and we "carry" the 1 to the next byte loop.
+                    nextKey[i] = 0x00;
+                }
+
+                // 3. Handle Overflow (Edge Case: All bytes were 0xFF)
+                // If we are here, the key was something like [FF, FF, FF].
+                // The loop turned it into [00, 00, 00].
+                // The "Next" lexicographical key is mathematically [01, 00, 00, 00].
+
+                // Resize array to fit the new leading '1'
+                byte[] overflowKey = new byte[nextKey.Length + 1];
+                overflowKey[0] = 1;
+                // The rest are already 0 from default initialization, so we return.
+                return overflowKey;
+            }
         }
     }
 
-    class CorruptedDbOnTheRocks : DbOnTheRocks
+    class CorruptedDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager,
+        IList<string>? columnFamilies = null,
+        RocksDbSharp.Native? rocksDbNative = null,
+        IFileSystem? fileSystem = null,
+        string openExceptionMessage = "Corruption: test corruption",
+        Action? onFatalShutdown = null
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
     {
-        public CorruptedDbOnTheRocks(
-            string basePath,
-            DbSettings dbSettings,
-            IDbConfig dbConfig,
-            IRocksDbConfigFactory rocksDbConfigFactory,
-            ILogManager logManager,
-            IList<string>? columnFamilies = null,
-            RocksDbSharp.Native? rocksDbNative = null,
-            IFileSystem? fileSystem = null
-        ) : base(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
-        {
-        }
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException(openExceptionMessage);
 
-        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
-        {
-            throw new RocksDbSharpException("Corruption: test corruption");
-        }
+        // The open path throws from the base constructor, so the caller never gets a reference to
+        // observe FatalShutdown on; report it through the injected callback instead of exiting.
+        protected override void FatalShutdown() => onFatalShutdown?.Invoke();
     }
 }

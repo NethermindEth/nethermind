@@ -4,15 +4,16 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 
 namespace Nethermind.JsonRpc.Modules.Web3;
 
+#pragma warning disable IDE0290 // logManager is part of the DI contract but unused
 public class Web3RpcModule : IWeb3RpcModule
 {
     public Web3RpcModule(ILogManager logManager)
     {
     }
+#pragma warning restore IDE0290
 
     public ResultWrapper<string> web3_clientVersion() => ResultWrapper<string>.Success(ProductInfo.PublicClientId);
 

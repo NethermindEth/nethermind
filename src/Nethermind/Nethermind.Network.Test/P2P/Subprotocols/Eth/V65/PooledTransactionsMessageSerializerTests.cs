@@ -67,7 +67,7 @@ public class PooledTransactionsMessageSerializerTests
         PooledTransactionsMessageSerializer serializer = new();
         using PooledTransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
 
-        SerializerTester.TestZero(serializer, message);
+        SerializerTester.TestZero(serializer, message, EthSerializerGoldens.EmptyListRlp);
     }
 
     [Test]
@@ -76,8 +76,11 @@ public class PooledTransactionsMessageSerializerTests
         using PooledTransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
         using PooledTransactionsMessage message2 = new(null);
 
-        _ = message.ToString();
-        _ = message2.ToString();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.ToString(), Does.StartWith(nameof(PooledTransactionsMessage)));
+            Assert.That(message2.ToString(), Does.StartWith(nameof(PooledTransactionsMessage)));
+        }
     }
 
     [TestCaseSource(nameof(GetTransactionMessages))]
@@ -85,17 +88,14 @@ public class PooledTransactionsMessageSerializerTests
     {
         SerializerTester.TestZero(
             new PooledTransactionsMessageSerializer(),
-            transactionsMessage,
-            additionallyExcluding: static (o) =>
-                o.For(static msg => msg.Transactions)
-                    .Exclude(static tx => tx.SenderAddress));
+            transactionsMessage);
         transactionsMessage.Dispose();
     }
 
     [TestCaseSource(nameof(GetTransactionMessages))]
     public void Should_contain_network_form_tx_wrapper(PooledTransactionsMessage transactionsMessage)
     {
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130);
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
         PooledTransactionsMessageSerializer serializer = new();
         serializer.Serialize(buffer, transactionsMessage);
         using PooledTransactionsMessage deserializedMessage = serializer.Deserialize(buffer);

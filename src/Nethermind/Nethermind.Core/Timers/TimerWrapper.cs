@@ -52,9 +52,6 @@ namespace Nethermind.Core.Timers
             _timer.Dispose();
         }
 
-        private void OnElapsed(object? sender, ElapsedEventArgs e)
-        {
-            Elapsed?.Invoke(sender, e);
-        }
+        private void OnElapsed(object? sender, ElapsedEventArgs e) => Elapsed?.Invoke(sender, e);
     }
 }

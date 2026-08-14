@@ -4,7 +4,6 @@
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using NUnit.Framework;
@@ -25,8 +24,8 @@ public class ProtectedPrivateKeyTests
 
         ProtectedPrivateKey key = new(TestItem.PrivateKeyA, keyStoreDir);
 
-        Directory.EnumerateFiles(Path.Combine(keyStoreDir, "protection_keys")).Count().Should().Be(1);
+        Assert.That(Directory.EnumerateFiles(Path.Combine(keyStoreDir, "protection_keys")).Count(), Is.EqualTo(1));
 
-        key.Unprotect().Should().Be(TestItem.PrivateKeyA);
+        Assert.That(key.Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
     }
 }

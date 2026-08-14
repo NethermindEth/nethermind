@@ -14,20 +14,13 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.Init.Steps.Migrations;
 
-public class TotalDifficultyFixMigration : IDatabaseMigration
+public class TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager) : IDatabaseMigration
 {
-    private readonly ILogger _logger;
-    private readonly ISyncConfig _syncConfig;
-    private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-    private readonly IBlockTree _blockTree;
-
-    public TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager)
-    {
-        _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _logger = logManager.GetClassLogger();
-        _syncConfig = syncConfig;
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger<TotalDifficultyFixMigration>();
+    private readonly ISyncConfig _syncConfig = syncConfig;
+    private readonly IChainLevelInfoRepository _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    private readonly ILogManager _logManager = logManager;
 
     public Task Run(CancellationToken cancellationToken)
     {
@@ -46,13 +39,17 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
         return Task.CompletedTask;
     }
 
-    private void RunMigration(long startingBlock, long? lastBlock, CancellationToken cancellationToken)
+    private void RunMigration(ulong startingBlock, ulong? lastBlock, CancellationToken cancellationToken)
     {
         lastBlock ??= _blockTree.BestKnownNumber;
+        if (lastBlock < startingBlock) return;
 
         if (_logger.IsInfo) _logger.Info($"Starting TotalDifficultyFixMigration. From block {startingBlock} to block {lastBlock}");
 
-        for (long blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
+        using ProgressReporter reporter = new("TD Fix", _logManager, lastBlock.Value - startingBlock + 1);
+        ulong fixedEntries = 0;
+
+        for (ulong blockNumber = startingBlock; blockNumber <= lastBlock; ++blockNumber)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -75,6 +72,7 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
                             $"Found discrepancy in block {header.ToString(BlockHeader.Format.Short)} total difficulty: should be {expectedTd}, was {actualTd}. Fixing.");
                     blockInfo.TotalDifficulty = expectedTd;
                     shouldPersist = true;
+                    fixedEntries++;
                 }
             }
 
@@ -82,12 +80,14 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
             {
                 _chainLevelInfoRepository.PersistLevel(blockNumber, currentLevel);
             }
+
+            reporter.Update(blockNumber - startingBlock + 1);
         }
 
-        if (_logger.IsInfo) _logger.Info("Ended TotalDifficultyFixMigration.");
+        if (_logger.IsInfo) _logger.Info($"Ended TotalDifficultyFixMigration. Fixed {fixedEntries} entries.");
     }
 
-    UInt256? FindParentTd(BlockHeader blockHeader, long level)
+    UInt256? FindParentTd(BlockHeader blockHeader, ulong level)
     {
         if (blockHeader.ParentHash is null) return null;
         Hash256? parentHash = _blockTree.FindHeader(blockHeader.ParentHash)?.Hash;

@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -23,7 +22,7 @@ namespace Nethermind.AuRa.Test
         public void BinarySearchTest(int searchFor)
         {
             IList<int> iList = _list;
-            iList.BinarySearch(searchFor, static (a, b) => a.CompareTo(b)).Should().Be(_list.BinarySearch(searchFor));
+            Assert.That(iList.BinarySearch(searchFor, static (a, b) => a.CompareTo(b)), Is.EqualTo(_list.BinarySearch(searchFor)));
         }
     }
 }

@@ -29,7 +29,7 @@ public class EncryptionHandshakeServiceTests
             SerializerInfo.Create(new AckEip8MessageSerializer(new Eip8MessagePad(_testRandom)))
         );
 
-        _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and epehemeral key for testing
+        _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and ephemeral key for testing
 
         _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, LimboLogs.Instance);
         _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, LimboLogs.Instance);
@@ -68,20 +68,11 @@ public class EncryptionHandshakeServiceTests
     private Packet _auth;
     private Packet _ack;
 
-    private void Auth(bool preEip8Format = false)
-    {
-        _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake, preEip8Format);
-    }
+    private void Auth(bool preEip8Format = false) => _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake, preEip8Format);
 
-    private void Ack()
-    {
-        _ack = _recipientService.Ack(_recipientHandshake, _auth);
-    }
+    private void Ack() => _ack = _recipientService.Ack(_recipientHandshake, _auth);
 
-    private void Agree()
-    {
-        _initiatorService.Agree(_initiatorHandshake, _ack);
-    }
+    private void Agree() => _initiatorService.Agree(_initiatorHandshake, _ack);
 
     private void InitializeRandom(bool preEip8Format = false)
     {

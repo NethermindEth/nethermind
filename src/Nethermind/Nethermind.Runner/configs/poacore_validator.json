@@ -25,9 +25,6 @@
   "Metrics": {
     "NodeName": "POA Core Validator"
   },
-  "Bloom": {
-    "Index": false
-  },
   "Merge": {
     "Enabled": false
   },

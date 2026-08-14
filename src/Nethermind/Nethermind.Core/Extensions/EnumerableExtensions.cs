@@ -20,6 +20,32 @@ namespace Nethermind.Core.Extensions
         public static ArrayPoolListRef<T> ToPooledListRef<T>(this IReadOnlyCollection<T> collection) => new(collection.Count, collection);
         public static ArrayPoolListRef<T> ToPooledListRef<T>(this ReadOnlySpan<T> span) => new(span);
 
+        public static (T Min, T Max) MinMax<T>(this IEnumerable<T> source)
+            where T : IComparable<T>
+        {
+            T? min = default;
+            T? max = default;
+            bool hasValue = false;
+            foreach (T item in source)
+            {
+                if (!hasValue)
+                {
+                    min = item;
+                    max = item;
+                    hasValue = true;
+                }
+                else
+                {
+                    if (item.CompareTo(min!) < 0) min = item;
+                    if (item.CompareTo(max!) > 0) max = item;
+                }
+            }
+
+            return hasValue
+                ? (min!, max!)
+                : throw new InvalidOperationException("Sequence contains no elements.");
+        }
+
         public static IEnumerable<T> Shuffle<T>(this IEnumerable<T> enumerable, Random rng, int maxSize = 100)
         {
             using ArrayPoolList<T> buffer = new(maxSize, enumerable);

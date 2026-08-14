@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
@@ -13,28 +15,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     {
         private readonly IZeroInnerMessageSerializer<TEthMessage> _ethMessageSerializer;
 
-        protected Eth66MessageSerializer(IZeroInnerMessageSerializer<TEthMessage> ethMessageSerializer)
-        {
-            _ethMessageSerializer = ethMessageSerializer;
-        }
+        protected Eth66MessageSerializer(IZeroInnerMessageSerializer<TEthMessage> ethMessageSerializer) => _ethMessageSerializer = ethMessageSerializer;
 
         public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            rlpStream.StartSequence(contentLength);
-            rlpStream.Encode(message.RequestId);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
+            writer.Encode(message.RequestId);
             _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);
         }
 
         public TEth66Message Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new(byteBuffer);
+            int startReaderIndex = byteBuffer.ReaderIndex;
+            RlpReader ctx = new(byteBuffer.AsSpan());
+            int sequenceLength = ctx.ReadSequenceLength();
+            int checkPosition = ctx.Position + sequenceLength;
             TEth66Message eth66Message = new();
-            rlpStream.ReadSequenceLength();
-            eth66Message.RequestId = rlpStream.DecodeLong();
+            eth66Message.RequestId = ctx.DecodeLong();
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
             eth66Message.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
+
+            if (byteBuffer.ReaderIndex - startReaderIndex != checkPosition)
+            {
+                ThrowUnexpectedTrailingData();
+            }
+
             return eth66Message;
         }
 
@@ -47,5 +55,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
             return Rlp.LengthOfSequence(contentLength);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowUnexpectedTrailingData() =>
+            throw new RlpException("Unexpected trailing data in eth66 message");
     }
 }

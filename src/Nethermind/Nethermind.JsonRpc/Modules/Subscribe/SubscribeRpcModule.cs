@@ -11,6 +11,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         public ResultWrapper<string> eth_subscribe(string subscriptionName, string? args = null)
         {
+            if (Subscription.ValidateArgs(args) is { } failure) return failure;
+
             try
             {
                 ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
@@ -24,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
             }
-            catch (JsonException)
+            catch (Exception e) when (e is JsonException or FormatException or OverflowException)
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams);
             }

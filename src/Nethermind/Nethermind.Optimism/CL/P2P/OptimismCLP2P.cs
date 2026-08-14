@@ -8,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -24,6 +23,7 @@ using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Network;
 using Snappier;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core.Discovery;
@@ -43,7 +43,7 @@ public class OptimismCLP2P : IDisposable
     private readonly IOptimismConfig _config;
     private readonly string _blocksV2TopicId;
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
-    private readonly IPAddress _externalIp;
+    private readonly IIPResolver _ipResolver;
     private readonly Random _random = new();
 
     private PubsubRouter? _router;
@@ -60,15 +60,15 @@ public class OptimismCLP2P : IDisposable
         IOptimismConfig config,
         Address sequencerP2PAddress,
         ITimestamper timestamper,
-        IPAddress externalIp,
+        IIPResolver ipResolver,
         ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<OptimismCLP2P>();
         _config = config;
         _executionEngineManager = executionEngineManager;
         _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
-        _externalIp = externalIp;
+        _ipResolver = ipResolver;
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
 
@@ -98,7 +98,7 @@ public class OptimismCLP2P : IDisposable
     {
         try
         {
-            if (TryValidateAndDecodePayload(msg, out var payload))
+            if (TryValidateAndDecodePayload(msg, out ExecutionPayloadV3? payload))
             {
                 if (_logger.IsTrace) _logger.Trace($"Received payload prom p2p: {payload}");
                 if ((ulong)payload.BlockNumber <= _headNumber)
@@ -134,7 +134,7 @@ public class OptimismCLP2P : IDisposable
 
                 if (_headNumber is not null)
                 {
-                    List<ExecutionPayloadV3> missingPayloads = new();
+                    List<ExecutionPayloadV3> missingPayloads = [];
                     Hash256 previousParentHash = payload.ParentHash;
                     // Rollback missing payloads
                     for (ulong i = (ulong)payload.BlockNumber - 1; i > _headNumber.Value; i--)
@@ -150,7 +150,7 @@ public class OptimismCLP2P : IDisposable
                         await UpdateHead();
                     }
 
-                    foreach (var missingPayload in missingPayloads.AsEnumerable().Reverse())
+                    foreach (ExecutionPayloadV3? missingPayload in missingPayloads.AsEnumerable().Reverse())
                     {
                         if ((ulong)missingPayload.BlockNumber <= _headNumber)
                         {
@@ -190,7 +190,7 @@ public class OptimismCLP2P : IDisposable
     {
         // TODO: Remove nullable annotations if possible
         (_, BlockId finalized, _) = await _executionEngineManager.GetCurrentBlocks();
-        var currentFinalized = finalized.Number != 0 ? finalized.Number : (ulong?)null;
+        ulong? currentFinalized = finalized.Number != 0 ? finalized.Number : (ulong?)null;
 
         if (_headNumber is not null && currentFinalized > _headNumber)
         {
@@ -304,7 +304,7 @@ public class OptimismCLP2P : IDisposable
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        string hostIp = _config.ClP2PHost ?? _externalIp.ToString();
+        string hostIp = _config.ClP2PHost ?? (await _ipResolver.Resolve(token)).ExternalIp.ToString();
         string address = $"/ip4/{hostIp}/tcp/{_config.ClP2PPort}";
         _localPeer = (LocalPeer)peerFactory.Create(new Identity());
 
@@ -317,7 +317,7 @@ public class OptimismCLP2P : IDisposable
             await _router.StartAsync(_localPeer, token);
 
             _peerStore = _serviceProvider.GetService<PeerStore>()!;
-            foreach (var multiaddress in _staticPeerList)
+            foreach (Multiaddress multiaddress in _staticPeerList)
             {
                 _peerStore.Discover([multiaddress]);
             }
@@ -335,17 +335,14 @@ public class OptimismCLP2P : IDisposable
 
     private MessageId CalculateMessageId(Message message)
     {
-        var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         sha256.AppendData(BitConverter.GetBytes((ulong)message.Topic.Length));
         sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
         sha256.AppendData(message.Data.Span);
         return new MessageId(sha256.GetHashAndReset());
     }
 
-    public void Reset(ulong headNumber)
-    {
-        _headNumber = headNumber;
-    }
+    public void Reset(ulong headNumber) => _headNumber = headNumber;
 
     public void Dispose()
     {

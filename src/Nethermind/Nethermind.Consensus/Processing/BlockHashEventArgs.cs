@@ -6,18 +6,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockHashEventArgs : EventArgs
+public class BlockHashEventArgs(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null) : EventArgs
 {
-    public Hash256 BlockHash { get; }
-    public ProcessingResult ProcessingResult { get; }
-    public Exception? Exception { get; }
-
-    public BlockHashEventArgs(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
-    {
-        BlockHash = blockHash;
-        ProcessingResult = processingResult;
-        Exception = exception;
-    }
+    public Hash256 BlockHash { get; } = blockHash;
+    public ProcessingResult ProcessingResult { get; } = processingResult;
+    public Exception? Exception { get; } = exception;
 }
 
 public enum ProcessingResult

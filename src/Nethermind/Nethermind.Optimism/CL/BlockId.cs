@@ -35,8 +35,5 @@ public readonly record struct BlockId
 
     public bool IsNewerThan(ulong otherBlockNumber) => Number > otherBlockNumber;
 
-    public override string ToString()
-    {
-        return $"{Number} ({Hash.ToShortString()})";
-    }
+    public override string ToString() => $"{Number} ({Hash.ToShortString()})";
 }

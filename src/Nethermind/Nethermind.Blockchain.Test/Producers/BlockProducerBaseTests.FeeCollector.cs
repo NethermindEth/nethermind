@@ -47,32 +47,32 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task FeeCollector_should_collect_burned_fees_when_eip1559_and_fee_collector_are_set()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3000000ul;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .WithFeeCollector(TestItem.AddressE)
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .AssertNewBlockFeeCollected(4500000.GWei());
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
+            .SendEip1559Transaction(gasTarget / 2, 1.GWei, 20.GWei)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
+            .AssertNewBlockFeeCollected(4500000.GWei);
         await scenario.Finish();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task FeeCollector_should_not_collect_burned_fees_when_eip1559_is_not_set()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3000000ul;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithFeeCollector(TestItem.AddressE)
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
+            .SendEip1559Transaction(gasTarget / 2, 1.GWei, 20.GWei)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei)
             .AssertNewBlockFeeCollected(0);
         await scenario.Finish();
     }
@@ -80,16 +80,16 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task FeeCollector_should_not_collect_burned_fees_when_transaction_is_free()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3000000ul;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .WithFeeCollector(TestItem.AddressE)
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei(), true)
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei(), true)
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei(), true)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei, true)
+            .SendEip1559Transaction(gasTarget / 2, 1.GWei, 20.GWei, true)
+            .SendLegacyTransaction(gasTarget / 2, 20.GWei, true)
             .AssertNewBlockFeeCollected(0);
         await scenario.Finish();
     }

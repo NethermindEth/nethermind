@@ -81,14 +81,12 @@ public sealed record OptimismRollupConfig
     public static OptimismRollupConfig Build(
         CLChainSpecEngineParameters clParameters,
         OptimismChainSpecEngineParameters engineParameters,
-        ChainSpec chainSpec)
-    {
-        return new OptimismRollupConfig
+        ChainSpec chainSpec) => new()
         {
             Genesis = new OptimismGenesis
             {
                 L1 = new BlockId { Number = clParameters.L1ChainId!.Value, Hash = clParameters.L1GenesisHash! },
-                L2 = new BlockId { Number = (ulong)chainSpec.Genesis.Number, Hash = chainSpec.Genesis.GetOrCalculateHash() },
+                L2 = new BlockId { Number = chainSpec.Genesis.Number, Hash = chainSpec.Genesis.GetOrCalculateHash() },
                 L2Time = chainSpec.Genesis.Timestamp,
                 SystemConfig = clParameters.GenesisSystemConfig!
             },
@@ -120,5 +118,4 @@ public sealed record OptimismRollupConfig
                 EIP1559DenominatorCanyon = (ulong)engineParameters.CanyonBaseFeeChangeDenominator!.Value
             }
         };
-    }
 }

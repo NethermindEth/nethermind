@@ -15,20 +15,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public static GetReceiptsMessage Deserialize(byte[] bytes)
         {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            ArrayPoolList<Hash256>? hashes = rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak(), limit: RlpLimit);
+            RlpReader ctx = new(bytes);
+            ArrayPoolList<Hash256>? hashes = ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: RlpLimit);
             return new GetReceiptsMessage(hashes);
         }
 
-        public override GetReceiptsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
+        public override GetReceiptsMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
-        public static GetReceiptsMessage Deserialize(RlpStream rlpStream)
+        public static GetReceiptsMessage Deserialize(ref RlpReader ctx)
         {
-            ArrayPoolList<Hash256>? hashes = DeserializeHashesArrayPool(rlpStream, RlpLimit);
+            ArrayPoolList<Hash256>? hashes = DeserializeHashesArrayPool(ref ctx, RlpLimit);
             return new GetReceiptsMessage(hashes);
         }
     }

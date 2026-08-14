@@ -11,10 +11,7 @@ namespace Nethermind.Core.Test.Builders
     {
         private ValidationResult _always;
 
-        public TransactionValidatorBuilder()
-        {
-            TestObject = Substitute.For<ITxValidator>();
-        }
+        public TransactionValidatorBuilder() => TestObject = Substitute.For<ITxValidator>();
 
         public TransactionValidatorBuilder ThatAlwaysReturnsFalse
         {

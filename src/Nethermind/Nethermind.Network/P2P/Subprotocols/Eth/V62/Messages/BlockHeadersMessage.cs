@@ -18,15 +18,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
         }
 
-        public BlockHeadersMessage(IOwnedReadOnlyList<BlockHeader>? blockHeaders)
-        {
-            BlockHeaders = blockHeaders;
-        }
+        public BlockHeadersMessage(IOwnedReadOnlyList<BlockHeader>? blockHeaders) => BlockHeaders = blockHeaders;
 
-        public override void Dispose()
-        {
-            BlockHeaders?.Dispose();
-        }
+        public override void Dispose() => BlockHeaders?.Dispose();
 
         public override string ToString() => $"{nameof(BlockHeadersMessage)}({BlockHeaders?.Count ?? 0})";
     }

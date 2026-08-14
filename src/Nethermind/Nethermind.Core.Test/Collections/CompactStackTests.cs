@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -12,7 +11,7 @@ public class CompactStackTests
     [Test]
     public void TestPush_then_Pop()
     {
-        CompactStack<int> stack = new CompactStack<int>();
+        CompactStack<int> stack = new();
         for (int i = 0; i < 1024; i++)
         {
             stack.Push(i);
@@ -21,7 +20,7 @@ public class CompactStackTests
         int expected = 1023;
         while (stack.TryPop(out int item))
         {
-            item.Should().Be(expected);
+            Assert.That(item, Is.EqualTo(expected));
             expected--;
         }
     }

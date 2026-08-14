@@ -8,19 +8,13 @@ namespace Nethermind.Core
     /// <summary>
     /// Each time this timestamper is asked about the time it move the time forward by some constant
     /// </summary>
-    public class IncrementalTimestamper : ITimestamper
+    public class IncrementalTimestamper(DateTime initialValue, TimeSpan increment) : ITimestamper
     {
-        private readonly TimeSpan _increment;
-        private DateTime _utcNow;
+        private readonly TimeSpan _increment = increment;
+        private DateTime _utcNow = initialValue;
 
         public IncrementalTimestamper()
             : this(DateTime.UtcNow, TimeSpan.FromSeconds(1)) { }
-
-        public IncrementalTimestamper(DateTime initialValue, TimeSpan increment)
-        {
-            _increment = increment;
-            _utcNow = initialValue;
-        }
 
         public DateTime UtcNow
         {

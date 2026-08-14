@@ -7,6 +7,6 @@ using Nethermind.Evm.State;
 namespace Nethermind.Blockchain;
 
 // Mainly used by tests
-public class EthereumCodeInfoRepository(IWorldState worldState) : CodeInfoRepository(worldState, new EthereumPrecompileProvider())
+public class EthereumCodeInfoRepository(IWorldState worldState) : CacheCodeInfoRepository(worldState, new EthereumPrecompileProvider(), StaticCodeCache.Instance)
 {
 }

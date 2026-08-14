@@ -1,0 +1,1764 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+#nullable enable
+
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Microsoft.Extensions.ObjectPool;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
+using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.Trie;
+using NUnit.Framework;
+
+namespace Nethermind.Consensus.Test;
+
+[TestFixture]
+public class BlockCachePreWarmerTests
+{
+    private IContainer _container;
+    private ILifetimeScope _processingScope;
+    private Nethermind.Core.Crypto.Hash256 _genesisStateRoot;
+
+    [SetUp]
+    public void Setup()
+    {
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Osaka.Instance))
+            .Build();
+
+        IMainProcessingModule[] mainModules = _container.Resolve<IMainProcessingModule[]>();
+        IWorldStateManager wsm = _container.Resolve<IWorldStateManager>();
+        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
+
+        _processingScope = _container.BeginLifetimeScope(b =>
+        {
+            b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
+            b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
+            b.AddModule(mainModules);
+        });
+
+        // Seed genesis state for all sender accounts and storage, then capture the root.
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 1_000_000.Ether);
+            worldState.CreateAccount(TestItem.AddressB, 1_000_000.Ether);
+            // Seed storage for BAL-based prewarming tests
+            worldState.Set(new StorageCell(TestItem.AddressA, 1), new byte[] { 0x42 });
+            worldState.Set(new StorageCell(TestItem.AddressA, 2), new byte[] { 0x43 });
+            worldState.Set(new StorageCell(TestItem.AddressB, 10), new byte[] { 0x99 });
+            // Contract reading a slot whose index is the value of slot 0: PUSH0 SLOAD SLOAD POP STOP
+            byte[] sloadChainCode = [0x5F, 0x54, 0x54, 0x50, 0x00];
+            worldState.CreateAccount(TestItem.AddressE, 0);
+            worldState.InsertCode(TestItem.AddressE, Keccak.Compute(sloadChainCode), sloadChainCode, Osaka.Instance);
+            worldState.Set(new StorageCell(TestItem.AddressE, 0), [5]);
+            worldState.Set(new StorageCell(TestItem.AddressE, 5), [7]);
+            // Contract reading more distinct slots than the discovery cell budget allows
+            byte[] sloadManyCode = BuildSloadManyCode(SloadManySlotCount);
+            worldState.CreateAccount(TestItem.AddressF, 0);
+            worldState.InsertCode(TestItem.AddressF, Keccak.Compute(sloadManyCode), sloadManyCode, Osaka.Instance);
+            // Non-empty storage root, or reads short-circuit to defaults without touching the tree
+            worldState.Set(new StorageCell(TestItem.AddressF, 0), [1]);
+            worldState.Commit(Osaka.Instance);
+            worldState.CommitTree(0);
+            _genesisStateRoot = worldState.StateRoot;
+        }
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _processingScope?.Dispose();
+        _container?.Dispose();
+    }
+
+    /// <summary>
+    /// Verifies that an env returned to a full pool is disposed immediately.
+    /// </summary>
+    [Test]
+    public void EnvPool_ReturnedBeyondCapacity_IsDisposedImmediately()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+
+        ConcurrentBag<IReadOnlyTxProcessorSource> created = [];
+        ConcurrentBag<IReadOnlyTxProcessorSource> disposed = [];
+        DisposalTrackingPolicy trackingPolicy = new(envFactory, preBlockCaches, created, disposed);
+
+        ObjectPool<IReadOnlyTxProcessorSource> envPool = new DefaultObjectPoolProvider { MaximumRetained = 1 }.Create(trackingPolicy);
+
+        IReadOnlyTxProcessorSource first = envPool.Get();
+        IReadOnlyTxProcessorSource second = envPool.Get();
+        Assert.That(created.Count, Is.EqualTo(2), "precondition: an empty pool must create one env per overlapping rental");
+
+        envPool.Return(first);
+        envPool.Return(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposed.Count, Is.EqualTo(1), "the env returned beyond pool capacity must be disposed on the spot");
+            Assert.That(disposed, Does.Contain(second), "the first return fills the capacity-1 pool, so the second is the evicted one");
+        }
+
+        (envPool as IDisposable)?.Dispose();
+    }
+
+    /// <summary>
+    /// Verifies that envs retained in the pool are disposed when the prewarmer itself is
+    /// disposed, releasing their child LifetimeScopes at processing-scope shutdown rather
+    /// than waiting for the parent scope to close.
+    /// </summary>
+    [Test]
+    public async Task Dispose_WhenCalled_DisposesRetainedEnvsInPool()
+    {
+        (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
+            ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(minPoolSize: 10);
+
+        await RunPreWarmCaches(preWarmer, BuildReactiveWarmBlock(), BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(disposed.Count, Is.EqualTo(0), "no eviction should have occurred with a large pool");
+        Assert.That(created.Count, Is.GreaterThanOrEqualTo(1), "at least one env must have been created");
+
+        preWarmer.Dispose();
+
+        Assert.That(disposed.Count, Is.EqualTo(created.Count), "all retained envs must be disposed when the prewarmer is disposed");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_TinyBlock_SkipsReactiveWarming()
+    {
+        (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        }
+
+        Assert.That(created, Is.Empty, "tiny blocks must not rent reactive warming environments");
+    }
+
+    /// <summary>
+    /// Verifies that BAL-based prewarming populates the account state cache for all
+    /// addresses listed in the BlockAccessList.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WithBal_PopulatesStateCacheForBalAddresses()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA is in the BAL and should be pre-warmed");
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressB, out _), Is.True, "AddressB is in the BAL and should be pre-warmed");
+    }
+
+    /// <summary>
+    /// Verifies that BAL-based prewarming populates the storage cache for storage slots
+    /// listed as both changed and read-only in the BAL.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WithBal_PopulatesStorageCacheForBalSlots()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithStorageChanges(1, new StorageChange(0, 0xFF)) // slot 1 written
+                    .WithStorageReads(2) // slot 2 read-only
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressB)
+                    .WithStorageReads(10) // slot 10 read-only
+                    .TestObject)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _), Is.True, "slot 1 (changed) should be pre-warmed via BAL");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _), Is.True, "slot 2 (read-only) should be pre-warmed via BAL");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _), Is.True, "slot 10 on AddressB should be pre-warmed via BAL");
+        }
+    }
+
+    /// <summary>
+    /// Verifies that when ParallelExecutionBatchRead is disabled, the BAL path is not used
+    /// even when a BAL is present and EIP-7928 is enabled.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WithBalButFlagDisabled_SkipsBalPath()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10, parallelExecutionBatchRead: false);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressC).TestObject)
+            .TestObject;
+
+        // Block has < 3 txs — with BAL disabled, prewarming is skipped entirely
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _), Is.False, "BAL path should be skipped when ParallelExecutionBatchRead is disabled");
+    }
+
+    /// <summary>
+    /// Verifies that the BAL path is not triggered for pre-Amsterdam specs even when a
+    /// BAL is attached to the block.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WithBalButPreAmsterdam_UsesSpeculativePath()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+
+        // Block has enough txs to trigger speculative prewarming
+        Block block = Build.A.Block
+            .WithTransactions(BuildReactiveWarmBlock().Transactions)
+            .WithGasLimit(30_000_000)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        // Use Osaka which does NOT have EIP-7928 — BAL path should not trigger
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        // AddressA should still be warmed via speculative tx execution (not BAL path)
+        // since it's a sender in the transactions
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA should be warmed via speculative execution even without BAL path");
+    }
+
+    /// <summary>Prewarming warms a transaction's declared EIP-2930 access-list slots for the main thread.</summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsAccessList_AndHonorsCancellation()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        StorageCell declaredSlot = new(TestItem.AddressB, 10); // seeded in genesis
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(TestItem.AddressB)
+            .AddStorage(declaredSlot.Index)
+            .Build();
+
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithType(TxType.AccessList).WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                .WithAccessList(accessList).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in declaredSlot, out _), Is.True,
+            "declared access-list slots are warmed for the main thread");
+    }
+
+    /// <summary>A cancelled token stops the access-list warm (storage-key dimension): live warms the tail slot, cancelled does not.</summary>
+    [Test]
+    public void WarmUp_AccessList_StopsOnCancellation()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+
+        AccessList.Builder builder = new AccessList.Builder().AddAddress(TestItem.AddressB);
+        for (int i = 0; i < 256; i++) builder.AddStorage((UInt256)(1000 + i));
+        AccessList accessList = builder.Build();
+        StorageCell tailSlot = new(TestItem.AddressB, 1255);
+
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            worldState.WarmUp(accessList, CancellationToken.None);
+            bool warmedLive = preBlockCaches.StorageCache.TryGetValue(in tailSlot, out _);
+
+            preBlockCaches.StorageCache.Clear();
+            worldState.WarmUp(accessList, new CancellationToken(canceled: true));
+            bool warmedCancelled = preBlockCaches.StorageCache.TryGetValue(in tailSlot, out _);
+
+            Assert.That(warmedLive, Is.True, "a live token warms the whole access list");
+            Assert.That(warmedCancelled, Is.False, "a cancelled token stops the warm before the tail");
+        }
+    }
+
+    /// <summary>A cancelled token stops the per-address access-list warm (many address-only entries): live warms the tail address, cancelled does not.</summary>
+    [Test]
+    public void WarmUp_AccessList_StopsOnCancellation_ManyAddresses()
+    {
+        static Address AddrFromIndex(int i)
+        {
+            byte[] b = new byte[20];
+            b[16] = (byte)(i >> 24); b[17] = (byte)(i >> 16); b[18] = (byte)(i >> 8); b[19] = (byte)i;
+            return new Address(b);
+        }
+
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+
+        AccessList.Builder builder = new();
+        for (int i = 0; i < 256; i++) builder.AddAddress(AddrFromIndex(i)); // address-only entries, no storage keys
+        AccessList accessList = builder.Build();
+        Address tail = AddrFromIndex(255);
+
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            worldState.WarmUp(accessList, CancellationToken.None);
+            bool warmedLive = preBlockCaches.StateCache.TryGetValue(tail, out _);
+
+            preBlockCaches.StateCache.Clear();
+            worldState.WarmUp(accessList, new CancellationToken(canceled: true));
+            bool warmedCancelled = preBlockCaches.StateCache.TryGetValue(tail, out _);
+
+            Assert.That(warmedLive, Is.True, "a live token warms every declared address");
+            Assert.That(warmedCancelled, Is.False, "a cancelled token stops the per-address warm before the tail");
+        }
+    }
+
+    /// <summary>
+    /// Verifies that the prewarmer does not inherit the <see cref="ProcessingThread.IsBlockProcessingThread"/>
+    /// flag from the caller, so speculative EVM work is attributed to the _other* metric counters.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_DoesNotFlowIsBlockProcessingThread_IntoTask()
+    {
+        bool observedFlag = true;
+        using ManualResetEventSlim observed = new(initialState: false);
+
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        FlagCapturingPolicy flagPolicy = new(envFactory, preBlockCaches, observed, v => observedFlag = v);
+        using BlockCachePreWarmer flagWarmer = new(
+            flagPolicy,
+            minPoolSize: 10,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Task prewarmTask = Task.CompletedTask;
+        ProcessingThread.IsBlockProcessingThread = true;
+        try
+        {
+            prewarmTask = flagWarmer.PreWarmCaches(BuildReactiveWarmBlock(), BuildParentHeader(), Osaka.Instance);
+            Assert.That(
+                ProcessingThread.IsBlockProcessingThread,
+                Is.True,
+                "scheduling prewarming must not disturb the caller's thread-local flag");
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = false;
+        }
+
+        await prewarmTask;
+        Assert.That(observed.Wait(TimeSpan.FromSeconds(5)), Is.True, "the flag-capturing policy must have been invoked");
+        Assert.That(observedFlag, Is.False, "IsBlockProcessingThread must be false inside the prewarmer task");
+    }
+
+    /// <summary>
+    /// Verifies the prewarmer gate logic: ParallelExecution ON skips speculative prewarming
+    /// only when BAL is active for the spec (so parallel execution can actually run); when
+    /// BAL is not active, speculative prewarming runs regardless of ParallelExecution.
+    /// </summary>
+    [TestCase(true, true, true, true, TestName = "ParallelExec ON, BALs ON, BatchRead ON => BAL warming")]
+    [TestCase(true, true, false, false, TestName = "ParallelExec ON, BALs ON, BatchRead OFF => skipped")]
+    [TestCase(true, false, true, true, TestName = "ParallelExec ON, BALs OFF, BatchRead ON => speculative")]
+    [TestCase(true, false, false, true, TestName = "ParallelExec ON, BALs OFF, BatchRead OFF => speculative")]
+    [TestCase(false, true, true, true, TestName = "ParallelExec OFF, BALs ON, BatchRead ON => BAL warming")]
+    [TestCase(false, false, false, true, TestName = "ParallelExec OFF, BALs OFF, BatchRead OFF => speculative")]
+    public async Task PreWarmCaches_GateLogic(bool parallelExecution, bool hasBal, bool batchRead, bool expectWarmed)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution, batchRead);
+
+        ReadOnlyBlockAccessList? bal = hasBal
+            ? Build.A.BlockAccessList
+                .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+                .TestObject
+            : null;
+
+        // Use Amsterdam (EIP-7928) when testing BALs, Osaka otherwise
+        IReleaseSpec spec = hasBal ? Amsterdam.Instance : Osaka.Instance;
+
+        Block block = Build.A.Block
+            .WithTransactions(BuildReactiveWarmBlock().Transactions)
+            .WithGasLimit(30_000_000)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), spec);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.EqualTo(expectWarmed), $"ParallelExec={parallelExecution}, BALs={hasBal}, BatchRead={batchRead} => warmed={expectWarmed}");
+    }
+
+    [Test]
+    public async Task ParentReaderEnvPolicy_SharesBalWarmupCachesAndPopulatesMisses()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: true);
+
+        StorageCell warmedCell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithStorageReads(1)
+                    .TestObject)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        AddressAsKey warmedAddress = TestItem.AddressA;
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _), Is.True);
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _), Is.True);
+
+        preBlockCaches.StateCache.Set(in warmedAddress, new Account(777UL));
+        preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
+
+        AddressAsKey missedAddress = TestItem.AddressB;
+        StorageCell missedCell = new(TestItem.AddressB, 10);
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out _), Is.False);
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out _), Is.False);
+
+        BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy validationPolicy = new(envFactory, preBlockCaches);
+        using IReadOnlyTxProcessorSource source = validationPolicy.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(BuildParentHeader());
+
+        Assert.That(scope.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)777));
+        Assert.That(new UInt256(scope.WorldState.Get(warmedCell), isBigEndian: true), Is.EqualTo((UInt256)0x24));
+
+        Assert.That(scope.WorldState.GetBalance(TestItem.AddressB), Is.EqualTo(1_000_000.Ether));
+        Assert.That(new UInt256(scope.WorldState.Get(missedCell), isBigEndian: true), Is.EqualTo((UInt256)0x99));
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True,
+            "parallel validation parent readers must populate cache misses");
+        Assert.That(populatedAccount!.Balance, Is.EqualTo(1_000_000.Ether));
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage), Is.True);
+        Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
+    }
+
+    [TestCase(false, true, false, TestName = "PreWarmCaches_TinyBlockWithoutSpeculativePass_Clears")]
+    [TestCase(true, true, true, TestName = "PreWarmCaches_TinyBlockWithSameParent_HandsOff")]
+    [TestCase(true, false, false, TestName = "PreWarmCaches_TinyBlockWithDifferentParent_Clears")]
+    public async Task PreWarmCaches_TinyBlockHandoffSentinelSurvival(
+        bool speculative,
+        bool sameParent,
+        bool expectHandoff)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        BlockHeader head = BuildParentHeader();
+
+        if (speculative) RunSpeculativePreWarm(preWarmer, head, Osaka.Instance);
+
+        AddressAsKey sentinel = TestItem.AddressD;
+        preBlockCaches.StateCache.Set(in sentinel, new Account(123));
+
+        Nethermind.Core.Crypto.Hash256 parentHash = sameParent ? head.Hash! : TestItem.KeccakA;
+        Block next = Build.A.Block.WithTransactions(BuildTwoSenderBlock().Transactions)
+            .WithGasLimit(30_000_000).WithParentHash(parentHash).TestObject;
+        await RunPreWarmCaches(preWarmer, next, head, Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.EqualTo(expectHandoff),
+                "sentinel survives only on a matching-parent handoff");
+            Assert.That(nodeStorageCache.Enabled, Is.EqualTo(expectHandoff),
+                "RLP caching remains enabled only for a matching-parent tiny-block handoff");
+        }
+    }
+
+    [Test]
+    public async Task PreWarmCaches_TinyBlockHandoffMarker_IsConsumedOnce()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        BlockHeader head = BuildParentHeader();
+        RunSpeculativePreWarm(preWarmer, head, Osaka.Instance);
+
+        await RunPreWarmCaches(preWarmer, BuildChildBlock(head), head, Osaka.Instance);
+
+        AddressAsKey sentinel = TestItem.AddressD;
+        preBlockCaches.StateCache.Set(in sentinel, new Account(123));
+
+        await RunPreWarmCaches(preWarmer, BuildChildBlock(head), head, Osaka.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.False,
+            "the tiny-block handoff marker must only be honored once");
+    }
+
+    /// <summary>
+    /// A session's spec comes from a synthetic next-block header, so it can be started for a spec that enables warming
+    /// and then met by a block whose spec disables it — a fork boundary. Joining is not enough there: the session's
+    /// entries describe the head it warmed, so a block on a different parent must not read them.
+    /// </summary>
+    [Test]
+    public void PreWarmCaches_WhenSpecDisablesPreWarming_StillJoinsAndClearsOtherHeadEntries()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
+        using (preWarmer)
+        {
+            BlockHeader head = BuildParentHeader();
+            using CancellationTokenSource cancellation = new();
+            // Osaka has no block-level access lists, so warming is enabled and the session starts.
+            Task session = preWarmer.StartSpeculativePreWarm(
+                head, Osaka.Instance, generation: 1, _ => null, idlePassDelayMs: 5, cancellation.Token);
+            Assert.That(session.IsCompleted, Is.False, "precondition: the speculative session must be running");
+
+            AddressAsKey sentinel = TestItem.AddressD;
+            preBlockCaches.StateCache.Set(in sentinel, new Account(123));
+
+            // A side branch: this block's parent is not the head the session warmed.
+            Block sideBranch = Build.A.Block.WithTransactions(BuildTwoSenderBlock().Transactions)
+                .WithGasLimit(30_000_000).WithParentHash(TestItem.KeccakA).TestObject;
+            // Amsterdam enables access lists, which disables warming for this configuration.
+            preWarmer.PreWarmCaches(sideBranch, head, Amsterdam.Instance).GetAwaiter().GetResult();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.IsCompleted, Is.True, "a speculative session must never outlive the reactive path");
+                Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.False,
+                    "entries warmed against another head must not survive into execution");
+            }
+        }
+    }
+
+    [Test]
+    public void StartSpeculativePreWarm_CachesCommittedBaseState_NotSpeculativeWrites()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance);
+
+        AddressAsKey senderA = TestItem.AddressA;
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in senderA, out Account? cachedA), Is.True,
+            "sender A must be warmed by speculative execution");
+        Assert.That(cachedA!.Balance, Is.EqualTo(1_000_000.Ether),
+            "the cache must hold A's committed balance, not the post-execution (value + gas deducted) balance");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_AfterHandoff_SkipsSpeculativelyWarmedSenders()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        int warmups = 0;
+        using ManualResetEventSlim openGate = new(initialState: true);
+        WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmups));
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: 2,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        BlockHeader head = BuildParentHeader();
+        Block reactiveBlock = BuildReactiveWarmBlock();
+        RunSpeculativePreWarm(preWarmer, head, Osaka.Instance, reactiveBlock);
+        int speculativeWarmups = Volatile.Read(ref warmups);
+        Volatile.Write(ref warmups, 0);
+
+        await RunPreWarmCaches(preWarmer, BuildChildBlock(head, reactiveBlock), head, Osaka.Instance);
+
+        Assert.That(speculativeWarmups, Is.GreaterThan(0), "precondition: the speculative pass warmed the transactions");
+        Assert.That(Volatile.Read(ref warmups), Is.EqualTo(0), "the reactive pass must skip senders already fully warmed speculatively");
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_SameSenderStaysGroupedInOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(2));
+            ArrayPoolList<(int Index, Transaction Tx)> senderA = FindGroup(groups, TestItem.AddressA);
+            Assert.That(senderA.Count, Is.EqualTo(2));
+            Assert.That(senderA[0].Index, Is.EqualTo(0));
+            Assert.That(senderA[1].Index, Is.EqualTo(2));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    // The split threshold is strictly greater-than 4,000,000 aggregate declared gas.
+    [TestCase(1_900_000u, 1)]
+    [TestCase(2_000_000u, 1)]
+    [TestCase(2_000_001u, 2)]
+    [TestCase(3_000_000u, 2)]
+    public void GroupTransactionsBySender_SplitsOnlyAboveAggregateThreshold(uint gasPerTx, int expectedJobs)
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: gasPerTx),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: gasPerTx)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(expectedJobs));
+            if (expectedJobs > 1)
+            {
+                foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
+                {
+                    Assert.That(job.Transactions.Count, Is.EqualTo(1), "a split group must warm per-tx");
+                }
+            }
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_DoesNotSplitSingleHeavyTransaction()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(1), "there is nothing to parallelize within a single transaction");
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    // Below two workers a split cannot add parallelism; it only discards same-sender state
+    // propagation. Negative means unlimited, matching ParallelOptions.MaxDegreeOfParallelism.
+    [TestCase(1, 1)]
+    [TestCase(2, 2)]
+    [TestCase(-1, 2)]
+    public void GroupTransactionsBySender_SplitsOnlyWithParallelWorkers(int maxWorkers, int expectedJobs)
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(expectedJobs));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_SaturatesAggregateGasInsteadOfWrapping()
+    {
+        // Without saturation these two declared limits sum to exactly 4,000,000 (mod 2^64),
+        // which is not above the threshold, and the wrap would suppress the split.
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: ulong.MaxValue),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 4_000_001)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(2), "an extreme declared gas limit must saturate, not wrap, the aggregate");
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_HoistsHeavyGroupsAndKeepsRestInBlockOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 1, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(3));
+            Assert.That(groups[0].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "heavy group is hoisted to the front");
+            Assert.That(groups[1].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "light groups keep block order");
+            Assert.That(groups[2].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressC));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    // Pins the current policy: split children below the individual hoist threshold are ordinary
+    // jobs and stay in block order rather than inheriting the parent group's weight.
+    [Test]
+    public void GroupTransactionsBySender_SplitChildrenBelowHoistThresholdKeepBlockOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(3));
+            Assert.That(groups[0].Transactions[0].Tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "the light sender at block index 0 warms first");
+            Assert.That(groups[1].FirstIndex, Is.EqualTo(1));
+            Assert.That(groups[2].FirstIndex, Is.EqualTo(2));
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_EqualHeavyEstimatesKeepBlockOrder()
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 5_000_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 5_000_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(3));
+            for (int i = 0; i < groups.Count; i++)
+            {
+                Assert.That(groups[i].FirstIndex, Is.EqualTo(i), "equal-estimate heavy jobs tie-break by first block index");
+            }
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void SelectDiscoveryCandidates_ReturnsNullWhenAllBelowThreshold()
+    {
+        Transaction belowThreshold = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block belowThresholdBlock = Build.A.Block.WithTransactions(belowThreshold).TestObject;
+
+        Assert.That(BlockCachePreWarmer.SelectDiscoveryCandidates(belowThresholdBlock, speculativelyWarmed: null), Is.Null);
+    }
+
+    [Test]
+    public void SelectDiscoveryCandidates_PicksHeavyCallsSkippingWarmedAndCreates()
+    {
+        Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction heavyCreate = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(null)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction heavyWarmed = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+            .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        Transaction belowThreshold = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithTransactions(heavy, heavyCreate, heavyWarmed, belowThreshold).TestObject;
+
+        List<(int Index, Transaction Tx)>? candidates = BlockCachePreWarmer.SelectDiscoveryCandidates(
+            block, speculativelyWarmed: new HashSet<Hash256> { heavyWarmed.Hash! });
+
+        Assert.That(candidates, Is.EqualTo(new[] { (0, heavy) }));
+    }
+
+    [Test]
+    public void DiscoverAndWarmStorage_WarmsValueDependentReads()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
+
+            preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out byte[]? slot0), Is.True,
+                    "the directly-read slot is warmed");
+                Assert.That(slot0, Is.EqualTo(new byte[] { 5 }), "the warmed value must be the real one, never the speculative placeholder");
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out byte[]? slot5), Is.True,
+                    "the slot whose index is slot 0's value requires a second discovery round");
+                Assert.That(slot5, Is.EqualTo(new byte[] { 7 }), "the warmed value must be the real one, never the speculative placeholder");
+            }
+        }
+    }
+
+    [Test]
+    public void DiscoverAndWarmStorage_SkipsCandidatesMainThreadHasStarted()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
+
+            preWarmer.OnBeforeTxExecution(); // main thread reports it has started tx[0]
+
+            preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
+                "a candidate the main thread has already started must not be re-executed by discovery");
+        }
+    }
+
+    [Test]
+    public void DiscoverAndWarmStorage_EnforcesCellBudgetBeforeWarming()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(25_000_000).WithTo(TestItem.AddressF)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(30_000_000).TestObject;
+
+            preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+
+            int warmedWithinBudget = 0;
+            for (int slot = 0; slot < BlockCachePreWarmer.MaxDiscoveredCells; slot++)
+            {
+                if (preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressF, (UInt256)slot), out _)) warmedWithinBudget++;
+            }
+
+            int warmedBeyondBudget = 0;
+            for (int slot = BlockCachePreWarmer.MaxDiscoveredCells; slot < SloadManySlotCount; slot++)
+            {
+                if (preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressF, (UInt256)slot), out _)) warmedBeyondBudget++;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(warmedBeyondBudget, Is.Zero,
+                    "cells over the MaxDiscoveredCells budget must never be warmed — the cap is enforced before the backing reads");
+                // Tolerance for the lossy set-associative cache: self-eviction counts vary with insertion order.
+                Assert.That(warmedWithinBudget, Is.GreaterThan(BlockCachePreWarmer.MaxDiscoveredCells * 9 / 10),
+                    "cells within the budget are warmed");
+            }
+        }
+    }
+
+    /// <summary>Declared gas limits are unvalidated on the discovery path; the aggregate speculative-work budget must bound them.</summary>
+    [Test]
+    public void DiscoverAndWarmStorage_SkipsCandidatesBeyondSpeculativeGasBudget()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction heavy = Build.A.Transaction.WithGasLimit(25_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            // Admission charges declared gas per round against block.GasLimit per round, so 25M > 4M is never admitted.
+            Block block = Build.A.Block.WithTransactions(heavy).WithGasLimit(4_000_000).TestObject;
+
+            preWarmer.DiscoverAndWarmStorage([(0, heavy)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.False,
+                "a candidate whose declared gas exceeds the speculative budget must not be executed");
+        }
+    }
+
+    [Test]
+    public void SplitByRoundGasBudget_AdmitsGreedyFirstFitInBlockOrder()
+    {
+        Transaction tx30M = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction tx20M = Build.A.Transaction.WithGasLimit(20_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction tx10M = Build.A.Transaction.WithGasLimit(10_000_001).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+
+        List<(int Index, Transaction Tx)> admitted = [];
+        List<(int Index, Transaction Tx)> deferred = [];
+        BlockCachePreWarmer.SplitByRoundGasBudget([(0, tx30M), (1, tx20M), (2, tx10M)], 45_000_000, admitted, deferred);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted, Is.EqualTo(new[] { (0, tx30M), (2, tx10M) }),
+                "greedy first-fit in block order: 30M fits, 20M exceeds the 15M remainder, 10M fits it");
+            Assert.That(deferred, Is.EqualTo(new[] { (1, tx20M) }));
+        }
+    }
+
+    [Test]
+    public void SplitByRoundGasBudget_DefersAllWhenNothingFits()
+    {
+        Transaction heavy = Build.A.Transaction.WithGasLimit(25_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        List<(int Index, Transaction Tx)> admitted = [];
+        List<(int Index, Transaction Tx)> deferred = [];
+        BlockCachePreWarmer.SplitByRoundGasBudget([(0, heavy)], 4_000_000, admitted, deferred);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(admitted, Is.Empty, "a declared limit exceeding the round budget is never admitted");
+            Assert.That(deferred, Is.EqualTo(new[] { (0, heavy) }));
+        }
+    }
+
+    /// <summary>Budget freed by an unproductive candidate is reclaimed, so a deferred heavy contract is still discovered in a later round.</summary>
+    [Test]
+    public void DiscoverAndWarmStorage_ReclaimsBudgetFromUnproductiveCandidates()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction toEoa = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressD)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Transaction toContract = Build.A.Transaction.WithGasLimit(30_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            // Round 1's 45M budget admits only the over-declared transfer; it captures nothing and drops out,
+            // freeing budget for the deferred heavy contract in round 2.
+            Block block = Build.A.Block.WithTransactions(toEoa, toContract).WithGasLimit(45_000_000).TestObject;
+
+            preWarmer.DiscoverAndWarmStorage([(0, toEoa), (1, toContract)], block, BuildParentHeader(), Osaka.Instance, CancellationToken.None);
+
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True,
+                "a heavy contract crowded out of round 1 by an over-declared transfer must be discovered once that budget is reclaimed");
+        }
+    }
+
+    /// <summary>End-to-end: a heavy transaction is routed from <see cref="BlockCachePreWarmer.PreWarmCaches"/> through storage discovery.</summary>
+    [Test]
+    public async Task PreWarmCaches_WithHeavyTransaction_RunsStorageDiscovery()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        DiscoveryDetectingPolicy policy = new(envFactory, preBlockCaches);
+
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 4, concurrency: 2,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        Block block = BuildHeavyDiscoveryBlock();
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.DiscoveryBuilds, Is.GreaterThan(0),
+                "the heavy transaction must be routed through storage discovery");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out byte[]? slot0), Is.True);
+            Assert.That(slot0, Is.EqualTo(new byte[] { 5 }), "the warmed value must be the real one, never the speculative placeholder");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out byte[]? slot5), Is.True);
+            Assert.That(slot5, Is.EqualTo(new byte[] { 7 }), "the warmed value must be the real one, never the speculative placeholder");
+        }
+    }
+
+    /// <summary>A block that carries a BAL already enumerates its reads, so discovery must not run.</summary>
+    [Test]
+    public async Task PreWarmCaches_WithBalAndHeavyTransaction_SkipsDiscovery()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        DiscoveryDetectingPolicy policy = new(envFactory, preBlockCaches);
+
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 4, concurrency: 2,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        Block block = BuildHeavyDiscoveryBlock(bal);
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        Assert.That(policy.DiscoveryBuilds, Is.Zero, "a block carrying a BAL must skip storage discovery");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_WhenDiscoveryEnvThrows_StillCompletes()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        ThrowingBuildPolicy policy = new();
+
+        using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 1, concurrency: 2,
+            parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+        Block block = BuildHeavyDiscoveryBlock();
+        block.Header.Beneficiary = null;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(policy.Returned, Is.EqualTo(policy.Created),
+            "every env, including discovery's, must be returned when scope construction throws");
+    }
+
+    /// <summary>A discovery-eligible heavy call plus enough light transactions to pass the reactive-warming gate.</summary>
+    private static Block BuildHeavyDiscoveryBlock(ReadOnlyBlockAccessList? bal = null)
+    {
+        Transaction heavy = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        BlockBuilder builder = Build.A.Block.WithTransactions(
+                heavy,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .WithGasLimit(30_000_000);
+        if (bal is not null) builder = builder.WithBlockAccessList(bal);
+        return builder.TestObject;
+    }
+
+    [Test]
+    public void GroupTransactionsBySender_PrunesWarmedGroupsAndSplitChildren()
+    {
+        Transaction[] heavyChain =
+        [
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 2, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 3, gasLimit: 1_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 4, gasLimit: 1_000_000),
+        ];
+        Transaction warmedLight = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        Block block = Build.A.Block.WithTransactions([.. heavyChain, warmedLight]).TestObject;
+
+        HashSet<Nethermind.Core.Crypto.Hash256> warmed =
+            [heavyChain[0].Hash!, heavyChain[1].Hash!, heavyChain[2].Hash!, warmedLight.Hash!];
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups =
+            BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, warmed);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(2), "already-warmed split children are pruned");
+            foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
+            {
+                Assert.That(job.FirstIndex, Is.InRange(3, 4), "only the unwarmed tail of the chain remains");
+            }
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that a job whose whole transaction range has been overtaken by the main thread
+    /// is skipped before a transaction-processing scope is built. Two workers are parked inside
+    /// their first job's scope setup, the main thread's progress is published past the entire
+    /// block, and the remaining jobs must then produce no scope and no warm execution.
+    /// </summary>
+    [Test]
+    [CancelAfter(15_000)]
+    public void PreWarmCaches_SkipsWhollyOvertakenJobsBeforeScopeConstruction(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(2);
+        int txScopes = 0;
+        int warmedTxs = 0;
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: () => Interlocked.Increment(ref txScopes),
+            onWarmup: () => Interlocked.Increment(ref warmedTxs));
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Transaction[] txs =
+        [
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000),
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: two workers must be parked inside their first job's scope setup");
+
+                // Publish main-thread progress past the whole block while the workers are parked.
+                for (int i = 0; i < txs.Length; i++)
+                {
+                    preWarmer.OnBeforeTxExecution();
+                }
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txScopes, Is.EqualTo(2), "jobs claimed after the overtake must not build a scope");
+            Assert.That(warmedTxs, Is.EqualTo(0), "the per-tx guard must discard every overtaken transaction");
+        }
+    }
+
+    /// <summary>
+    /// Verifies that warm workers rent one environment for their whole lifetime instead of one
+    /// per job: two workers parked on their first jobs then draining four jobs must produce
+    /// exactly two tx-warm env returns, not four.
+    /// </summary>
+    [Test]
+    [CancelAfter(15_000)]
+    public void PreWarmCaches_RentsOneEnvPerWorkerAcrossJobs(CancellationToken testToken)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(2);
+        int txWarmEnvReturns = 0;
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: static () => { },
+            onWarmup: static () => { },
+            onTxWarmEnvReturn: () => Interlocked.Increment(ref txWarmEnvReturns));
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Transaction[] txs =
+        [
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000),
+        ];
+        Block block = Build.A.Block.WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: two workers must be parked inside their first job's scope setup");
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(txWarmEnvReturns, Is.EqualTo(2),
+            "each worker returns its env once; per-job rental would return four");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_ReturnsAddressWarmEnvWhenScopeBuildThrows()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        ThrowingBuildPolicy policy = new();
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 1,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        Block block = BuildReactiveWarmBlock();
+        block.Header.Beneficiary = null;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.Created, Is.GreaterThan(0), "the address worker must rent an env");
+            Assert.That(policy.Returned, Is.EqualTo(policy.Created),
+                "every env must be returned when scope construction fails");
+        }
+    }
+
+    private const int SloadManySlotCount = BlockCachePreWarmer.MaxDiscoveredCells + 808;
+
+    /// <summary>Bytecode SLOADing slots 0..<paramref name="slotCount"/>-1 (unrolled PUSH2/SLOAD/POP per slot).</summary>
+    private static byte[] BuildSloadManyCode(int slotCount)
+    {
+        byte[] code = new byte[slotCount * 5 + 1];
+        int offset = 0;
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            code[offset++] = 0x61; // PUSH2
+            code[offset++] = (byte)(slot >> 8);
+            code[offset++] = (byte)slot;
+            code[offset++] = 0x54; // SLOAD
+            code[offset++] = 0x50; // POP
+        }
+
+        code[offset] = 0x00; // STOP
+        return code;
+    }
+
+    private static Transaction GroupingTx(PrivateKey sender, uint nonce, ulong gasLimit) =>
+        Build.A.Transaction.WithNonce(nonce).WithGasLimit(gasLimit).WithTo(TestItem.AddressD).SignedAndResolved(sender).TestObject;
+
+    private static ArrayPoolList<(int Index, Transaction Tx)> FindGroup(
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups, Address sender)
+    {
+        foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
+        {
+            if (job.Transactions[0].Tx.SenderAddress == sender) return job.Transactions;
+        }
+
+        throw new InvalidOperationException($"No group for {sender}");
+    }
+
+    private static void DisposeGroups(ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups)
+    {
+        foreach (BlockCachePreWarmer.WarmupJob job in groups.AsSpan())
+        {
+            job.Transactions.Dispose();
+        }
+        groups.Dispose();
+    }
+
+    private Block BuildChildBlock(BlockHeader head, Block? body = null) =>
+        Build.A.Block.WithTransactions((body ?? BuildTwoSenderBlock()).Transactions)
+            .WithGasLimit(30_000_000).WithParentHash(head.Hash!).TestObject;
+
+    private void RunSpeculativePreWarm(BlockCachePreWarmer preWarmer, BlockHeader head, IReleaseSpec spec, Block? delta = null) =>
+        preWarmer.RunSpeculativePreWarm(
+            head,
+            spec,
+            delta ?? BuildTwoSenderBlock(),
+            () => preWarmer.SpeculativeMarkerPublished);
+
+    private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        BlocksConfig config = new()
+        {
+            PreWarming = PreWarmMode.Block,
+            PreWarmStateConcurrency = 2,
+            ParallelExecution = parallelExecution,
+            ParallelExecutionBatchRead = parallelExecutionBatchRead
+        };
+
+        return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+    }
+
+    private (BlockCachePreWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, ConcurrentBag<IReadOnlyTxProcessorSource> disposed) CreatePreWarmer(int minPoolSize, bool parallelExecutionBatchRead = true)
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+        ConcurrentBag<IReadOnlyTxProcessorSource> created = [];
+        ConcurrentBag<IReadOnlyTxProcessorSource> disposed = [];
+        DisposalTrackingPolicy trackingPolicy = new(envFactory, preBlockCaches, created, disposed);
+
+        BlockCachePreWarmer preWarmer = new(
+            trackingPolicy,
+            minPoolSize: minPoolSize,
+            concurrency: 2,
+            parallelExecutionBatchRead: parallelExecutionBatchRead,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        return (preWarmer, created, disposed);
+    }
+
+    private BlockHeader BuildParentHeader() =>
+        Build.A.BlockHeader
+            .WithNumber(0)
+            .WithStateRoot(_genesisStateRoot)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+    // Sync on purpose — TrieStore's Lock-based BeginScope dispose must run on the same thread.
+    private Task RunPreWarmCaches(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec)
+    {
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)
+                ? mainWorldState.HintBal(block.BlockAccessList)
+                : null;
+            preWarmer.PreWarmCaches(block, parent, spec).GetAwaiter().GetResult();
+            hintBalTask?.GetAwaiter().GetResult();
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Builds a block with transactions from two distinct senders, producing two parallel
+    /// sender groups in <c>WarmupTransactions</c> and guaranteeing concurrent pool usage.
+    /// </summary>
+    private static Block BuildTwoSenderBlock()
+    {
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        ];
+
+        return Build.A.Block
+            .WithTransactions(txs)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+    }
+
+    private static Block BuildReactiveWarmBlock() =>
+        Build.A.Block
+            .WithTransactions([
+                .. BuildTwoSenderBlock().Transactions,
+                Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                    .SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            ])
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+    /// <summary>
+    /// Pool policy that captures the processing-thread flag when the prewarmer builds an env.
+    /// </summary>
+    private sealed class FlagCapturingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim observed,
+        Action<bool> capture)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private readonly ManualResetEventSlim _observed = observed;
+        private readonly Action<bool> _capture = capture;
+        private int _captured;
+
+        public IReadOnlyTxProcessorSource Create()
+        {
+            IReadOnlyTxProcessorSource inner = factory.Create(caches);
+            return new CapturingEnv(inner, this);
+        }
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class CapturingEnv(
+            IReadOnlyTxProcessorSource inner,
+            FlagCapturingPolicy owner)
+            : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                if (Interlocked.CompareExchange(ref owner._captured, 1, 0) == 0)
+                {
+                    owner._capture(ProcessingThread.IsBlockProcessingThread);
+                    owner._observed.Set();
+                }
+
+                return inner.Build(baseBlock);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Pool policy that delegates to <see cref="PrewarmerEnvFactory"/> and records
+    /// every env created and every env disposed via <see cref="TrackingEnv"/> wrappers.
+    /// </summary>
+    private sealed class DisposalTrackingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ConcurrentBag<IReadOnlyTxProcessorSource> created,
+        ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        public IReadOnlyTxProcessorSource Create()
+        {
+            TrackingEnv env = new(factory.Create(caches), disposed);
+            created.Add(env);
+            return env;
+        }
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        /// <summary>
+        /// Wraps an inner env and records itself in <paramref name="disposed"/> when
+        /// <see cref="Dispose"/> is called, allowing the test to distinguish envs
+        /// disposed by pool eviction from those still retained.
+        /// </summary>
+        private sealed class TrackingEnv(
+            IReadOnlyTxProcessorSource inner,
+            ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
+            : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
+                inner.Build(baseBlock);
+
+            public void Dispose()
+            {
+                disposed.Add(this);
+                inner.Dispose();
+            }
+        }
+    }
+
+    /// <summary>Counts env builds made under an active storage-read capture, i.e. by storage discovery.</summary>
+    private sealed class DiscoveryDetectingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private readonly PreBlockCaches _caches = caches;
+        private int _discoveryBuilds;
+
+        public int DiscoveryBuilds => Volatile.Read(ref _discoveryBuilds);
+
+        public IReadOnlyTxProcessorSource Create() => new DetectingEnv(factory.Create(_caches), this);
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class DetectingEnv(
+            IReadOnlyTxProcessorSource inner,
+            DiscoveryDetectingPolicy owner)
+            : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                if (owner._caches.CurrentStorageReadCapture is not null) Interlocked.Increment(ref owner._discoveryBuilds);
+                return inner.Build(baseBlock);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+    }
+
+    private sealed class ThrowingBuildPolicy : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private int _created;
+        private int _returned;
+
+        public int Created => Volatile.Read(ref _created);
+        public int Returned => Volatile.Read(ref _returned);
+
+        public IReadOnlyTxProcessorSource Create()
+        {
+            Interlocked.Increment(ref _created);
+            return new ThrowingBuildEnv();
+        }
+
+        /// <remarks>
+        /// Refuses retention so every rental is a fresh <see cref="Create"/>: a pooled env rented
+        /// twice would otherwise increment <see cref="Returned"/> twice against a single create,
+        /// failing the <c>Returned == Created</c> assertion on timing-dependent pool hits.
+        /// </remarks>
+        public bool Return(IReadOnlyTxProcessorSource obj)
+        {
+            Interlocked.Increment(ref _returned);
+            return false;
+        }
+
+        private sealed class ThrowingBuildEnv : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
+                throw new InvalidOperationException("scope build failure");
+
+            public void Dispose() { }
+        }
+    }
+
+    [Test]
+    public async Task PreWarmCaches_SkipStarted_SkipsTransactionsMainThreadHasStarted()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        Block block = BuildReactiveWarmBlock();
+
+        // Control: main thread has not started any tx, so every tx is speculatively warmed.
+        int warmedWhenNoneStarted = 0;
+        using (ManualResetEventSlim openGate = new(initialState: true))
+        {
+            WarmupCountingPolicy policy = new(envFactory, preBlockCaches, openGate, () => Interlocked.Increment(ref warmedWhenNoneStarted));
+            using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: 2,
+                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+        }
+        Assert.That(warmedWhenNoneStarted, Is.EqualTo(block.Transactions.Length),
+            "with the main thread not started, all transactions must be speculatively warmed");
+
+        // Skip: main thread reports it has started every tx (while warming is gated before building its scopes),
+        // so all speculative warming must be skipped.
+        int warmedWhenAllStarted = 0;
+        using (ManualResetEventSlim gate = new(initialState: false))
+        {
+            WarmupCountingPolicy policy = new(envFactory, preBlockCaches, gate, () => Interlocked.Increment(ref warmedWhenAllStarted));
+            using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 10, concurrency: 2,
+                parallelExecutionBatchRead: true, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
+
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(BuildParentHeader()))
+            {
+                Task task = preWarmer.PreWarmCaches(block, BuildParentHeader(), Osaka.Instance);
+                // Advance the prewarmer's view of main-thread progress past every tx while warming is gated at env.Build.
+                for (int i = 0; i < block.Transactions.Length; i++)
+                {
+                    preWarmer.OnBeforeTxExecution();
+                }
+                gate.Set();
+                task.GetAwaiter().GetResult();
+            }
+        }
+        Assert.That(warmedWhenAllStarted, Is.EqualTo(0),
+            "transactions the main thread has already started must not be speculatively warmed");
+    }
+
+    /// <summary>
+    /// Only the main execution reports per-tx progress to the prewarmer; the prewarmer's own speculative envs
+    /// must stay silent, otherwise they would advance its view of main-thread progress and suppress warming.
+    /// The two are told apart by the injected <see cref="IPrewarmerState"/>.
+    /// </summary>
+    [TestCase(false, 0, TestName = "PrewarmerTxAdapter_MainExecution_ReportsTxProgress")]
+    [TestCase(true, -1, TestName = "PrewarmerTxAdapter_PrewarmerEnv_DoesNotReportTxProgress")]
+    public void PrewarmerTxAdapter_ReportsTxProgress_OnlyWhenNotPrewarmer(bool isPrewarmer, int expectedTxIndex)
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 1);
+        using (preWarmer)
+        {
+            PrewarmerTxAdapter adapter = new(
+                new NoopTxProcessorAdapter(),
+                preWarmer,
+                new PrewarmerState(preBlockCaches, isPrewarmer));
+
+            adapter.Execute(Build.A.Transaction.TestObject, NullTxTracer.Instance);
+
+            Assert.That(preWarmer.MainThreadTxIndex, Is.EqualTo(expectedTxIndex));
+        }
+    }
+
+    private sealed class NoopTxProcessorAdapter : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) => TransactionResult.Ok;
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
+    }
+
+    /// <summary>Gates scope construction and counts speculative Warmup executions.</summary>
+    private sealed class WarmupCountingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim gate,
+        Action onWarmup)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        public IReadOnlyTxProcessorSource Create() => new CountingEnv(factory.Create(caches), gate, onWarmup);
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class CountingEnv(IReadOnlyTxProcessorSource inner, ManualResetEventSlim gate, Action onWarmup) : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                gate.Wait();
+                return new CountingScope(inner.Build(baseBlock), onWarmup);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountingScope(IReadOnlyTxProcessingScope inner, Action onWarmup) : IReadOnlyTxProcessingScope
+        {
+            private readonly CountingTxProcessor _processor = new(inner.TransactionProcessor, onWarmup);
+            public Nethermind.Evm.TransactionProcessing.ITransactionProcessor TransactionProcessor => _processor;
+            public IWorldState WorldState => inner.WorldState;
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountingTxProcessor(Nethermind.Evm.TransactionProcessing.ITransactionProcessor inner, Action onWarmup)
+            : Nethermind.Evm.TransactionProcessing.ITransactionProcessor
+        {
+            public Nethermind.Evm.TransactionProcessing.TransactionResult Process(Transaction transaction, Nethermind.Evm.Tracing.ITxTracer txTracer, Nethermind.Evm.TransactionProcessing.ExecutionOptions options)
+            {
+                if ((options & Nethermind.Evm.TransactionProcessing.ExecutionOptions.Warmup) != 0) onWarmup();
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+            public void SetBlockExecutionContext(in Nethermind.Evm.BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+        }
+    }
+
+    /// <summary>
+    /// Gates transaction-warm scopes at <c>SetBlockExecutionContext</c> — which the address
+    /// warmer never calls, so its scope builds on the shared env pool pass through ungated —
+    /// signalling arrival and counting warm executions for deterministic overtake tests.
+    /// </summary>
+    private sealed class TxWarmGatePolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim gate,
+        CountdownEvent txScopesInFlight,
+        Action onTxScope,
+        Action onWarmup,
+        Action? onTxWarmEnvReturn = null)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private readonly ManualResetEventSlim _gate = gate;
+        private readonly CountdownEvent _txScopesInFlight = txScopesInFlight;
+        private readonly Action _onTxScope = onTxScope;
+        private readonly Action _onWarmup = onWarmup;
+        private readonly Action? _onTxWarmEnvReturn = onTxWarmEnvReturn;
+
+        public IReadOnlyTxProcessorSource Create() => new GateEnv(factory.Create(caches), this);
+
+        public bool Return(IReadOnlyTxProcessorSource obj)
+        {
+            // The address warmer shares the pool; count only envs that built a tx-warm scope,
+            // and clear the mark so pooled reuse by another section does not double-count.
+            if (obj is GateEnv { BuiltTxWarmScope: true } env)
+            {
+                env.BuiltTxWarmScope = false;
+                _onTxWarmEnvReturn?.Invoke();
+            }
+            return true;
+        }
+
+        private sealed class GateEnv(IReadOnlyTxProcessorSource inner, TxWarmGatePolicy owner) : IReadOnlyTxProcessorSource
+        {
+            public bool BuiltTxWarmScope;
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => new GateScope(inner.Build(baseBlock), owner, this);
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class GateScope(IReadOnlyTxProcessingScope inner, TxWarmGatePolicy owner, GateEnv env) : IReadOnlyTxProcessingScope
+        {
+            private readonly GateTxProcessor _processor = new(inner.TransactionProcessor, owner, env);
+            public Nethermind.Evm.TransactionProcessing.ITransactionProcessor TransactionProcessor => _processor;
+            public IWorldState WorldState => inner.WorldState;
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class GateTxProcessor(Nethermind.Evm.TransactionProcessing.ITransactionProcessor inner, TxWarmGatePolicy owner, GateEnv env)
+            : Nethermind.Evm.TransactionProcessing.ITransactionProcessor
+        {
+            public Nethermind.Evm.TransactionProcessing.TransactionResult Process(Transaction transaction, Nethermind.Evm.Tracing.ITxTracer txTracer, Nethermind.Evm.TransactionProcessing.ExecutionOptions options)
+            {
+                if ((options & Nethermind.Evm.TransactionProcessing.ExecutionOptions.Warmup) != 0) owner._onWarmup();
+                return inner.Process(transaction, txTracer, options);
+            }
+
+            public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+
+            public void SetBlockExecutionContext(in Nethermind.Evm.BlockExecutionContext blockExecutionContext)
+            {
+                env.BuiltTxWarmScope = true;
+                owner._onTxScope();
+                // Once the gate is open, later scopes pass straight through without signalling.
+                if (!owner._gate.IsSet) owner._txScopesInFlight.Signal();
+                owner._gate.Wait();
+                inner.SetBlockExecutionContext(in blockExecutionContext);
+            }
+        }
+    }
+}

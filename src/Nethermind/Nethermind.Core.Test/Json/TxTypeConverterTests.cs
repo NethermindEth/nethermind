@@ -11,9 +11,6 @@ namespace Nethermind.Core.Test.Json
     public class TxTypeConverterTests : ConverterTestBase<TxType>
     {
         [TestCaseSource(typeof(TxTypeSource), nameof(TxTypeSource.Any))]
-        public void Test_roundtrip(TxType arg)
-        {
-            TestConverter(arg, static (before, after) => before.Equals(after), new TxTypeConverter());
-        }
+        public void Test_roundtrip(TxType arg) => TestConverter(arg, static (before, after) => before.Equals(after), new TxTypeConverter());
     }
 }

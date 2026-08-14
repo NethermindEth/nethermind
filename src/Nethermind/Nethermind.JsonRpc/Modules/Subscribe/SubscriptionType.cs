@@ -12,6 +12,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             public const string NewPendingTransactions = "newPendingTransactions";
             public const string DroppedPendingTransactions = "droppedPendingTransactions";
             public const string Syncing = "syncing";
+            public const string TransactionReceipts = "transactionReceipts";
         }
 
         public struct AdminSubscription

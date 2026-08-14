@@ -11,21 +11,12 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public sealed class HealingStorageTree : StorageTree
+public sealed class HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery) : StorageTree(trieStore, rootHash, logManager)
 {
-    private readonly INodeStorage _nodeStorage;
-    private readonly Address _address;
-    private readonly Hash256 _stateRoot;
-    private readonly Lazy<IPathRecovery> _recovery;
-
-    public HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery)
-        : base(trieStore, rootHash, logManager)
-    {
-        _nodeStorage = nodeStorage;
-        _address = address;
-        _stateRoot = stateRoot;
-        _recovery = recovery;
-    }
+    private readonly INodeStorage _nodeStorage = nodeStorage;
+    private readonly Address _address = address;
+    private readonly Hash256 _stateRoot = stateRoot;
+    private readonly Lazy<IPathRecovery> _recovery = recovery;
 
     public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
@@ -35,7 +26,7 @@ public sealed class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 return base.Get(rawKey, rootHash);
@@ -53,7 +44,7 @@ public sealed class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 base.Set(rawKey, value);

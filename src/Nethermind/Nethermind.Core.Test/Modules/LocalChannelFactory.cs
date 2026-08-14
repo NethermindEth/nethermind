@@ -27,22 +27,13 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="networkConfig">Network config for LocalEndpoint.</param>
 public class LocalChannelFactory(string networkGroup, INetworkConfig networkConfig) : IChannelFactory
 {
-    private IPEndPoint LocalEndpoint = new IPEndPoint(IPAddress.Parse(networkConfig.LocalIp ?? "127.0.0.1"), networkConfig.P2PPort);
+    private IPEndPoint LocalEndpoint = new(IPAddress.Parse(networkConfig.LocalIp ?? "127.0.0.1"), networkConfig.P2PPort);
 
-    public IServerChannel CreateServer()
-    {
-        return new LocalServerChannelInterceptor(networkGroup);
-    }
+    public IServerChannel CreateServer() => new LocalServerChannelInterceptor(networkGroup);
 
-    public IChannel CreateClient()
-    {
-        return new LocalClientChannel(networkGroup, LocalEndpoint);
-    }
+    public IChannel CreateClient() => new LocalClientChannel(networkGroup, LocalEndpoint);
 
-    public IChannel CreateDatagramChannel()
-    {
-        return new LocalDatagramChannel(networkGroup);
-    }
+    public IChannel CreateDatagramChannel() => new LocalDatagramChannel(networkGroup);
 
     private class LocalClientChannel(string networkGroup, IPEndPoint localIPEndpoint) : LocalChannel
     {
@@ -104,10 +95,7 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
             return false;
         }
 
-        public override int GetHashCode()
-        {
-            return Id.GetHashCode();
-        }
+        public override int GetHashCode() => Id.GetHashCode();
     }
 
     private class LocalDatagramChannel(string networkGroup) : EmbeddedChannel(EmbeddedChannelId.Instance, false, false, []), IDatagramChannel
@@ -116,11 +104,9 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
 
         private EndPoint? _bondedEndpoint;
 
-        protected override bool IsCompatible(IEventLoop eventLoop)
-        {
+        protected override bool IsCompatible(IEventLoop eventLoop) =>
             // Not sure why its only compatible with EmbeddedEventLoop originally..
-            return true;
-        }
+            true;
 
         protected override void DoBind(EndPoint localAddress)
         {
@@ -149,7 +135,7 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
                 {
                     if (channelRegistry.TryGetValue((networkGroup, addressedEnvelope.Recipient), out WeakReference<LocalDatagramChannel>? reference) && reference.TryGetTarget(out LocalDatagramChannel? recipient))
                     {
-                        DatagramPacket newEnvelop = new DatagramPacket(addressedEnvelope.Content, _bondedEndpoint, addressedEnvelope.Recipient);
+                        DatagramPacket newEnvelop = new(addressedEnvelope.Content, _bondedEndpoint, addressedEnvelope.Recipient);
                         ReferenceCountUtil.Retain(newEnvelop);
                         recipient!.WriteInbound(newEnvelop);
                     }
@@ -163,71 +149,32 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
             }
         }
 
-        public bool IsConnected()
-        {
-            return true;
-        }
+        public bool IsConnected() => true;
 
-        public Task JoinGroup(IPEndPoint multicastAddress)
-        {
-            return Task.CompletedTask;
-        }
+        public Task JoinGroup(IPEndPoint multicastAddress) => Task.CompletedTask;
 
-        public Task JoinGroup(IPEndPoint multicastAddress, TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
+        public Task JoinGroup(IPEndPoint multicastAddress, TaskCompletionSource promise) => Task.CompletedTask;
 
-        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface)
-        {
-            return Task.CompletedTask;
-        }
+        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface) => Task.CompletedTask;
 
-        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
+        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, TaskCompletionSource promise) => Task.CompletedTask;
 
-        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source)
-        {
-            return Task.CompletedTask;
-        }
+        public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source) => Task.CompletedTask;
 
         public Task JoinGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source,
-            TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
+            TaskCompletionSource promise) => Task.CompletedTask;
 
-        public Task LeaveGroup(IPEndPoint multicastAddress)
-        {
-            return Task.CompletedTask;
-        }
+        public Task LeaveGroup(IPEndPoint multicastAddress) => Task.CompletedTask;
 
-        public Task LeaveGroup(IPEndPoint multicastAddress, TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
+        public Task LeaveGroup(IPEndPoint multicastAddress, TaskCompletionSource promise) => Task.CompletedTask;
 
-        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface)
-        {
-            return Task.CompletedTask;
-        }
+        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface) => Task.CompletedTask;
 
-        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
+        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, TaskCompletionSource promise) => Task.CompletedTask;
 
-        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source)
-        {
-            return Task.CompletedTask;
-        }
+        public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source) => Task.CompletedTask;
 
         public Task LeaveGroup(IPEndPoint multicastAddress, NetworkInterface networkInterface, IPEndPoint source,
-            TaskCompletionSource promise)
-        {
-            return Task.CompletedTask;
-        }
+            TaskCompletionSource promise) => Task.CompletedTask;
     }
 }

@@ -5,14 +5,9 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public class StaticPeerAllocationStrategyFactory<T> : IPeerAllocationStrategyFactory<T>
+    public class StaticPeerAllocationStrategyFactory<T>(IPeerAllocationStrategy allocationStrategy) : IPeerAllocationStrategyFactory<T>
     {
-        private readonly IPeerAllocationStrategy _allocationStrategy;
-
-        public StaticPeerAllocationStrategyFactory(IPeerAllocationStrategy allocationStrategy)
-        {
-            _allocationStrategy = allocationStrategy;
-        }
+        private readonly IPeerAllocationStrategy _allocationStrategy = allocationStrategy;
 
         public IPeerAllocationStrategy Create(T request) => _allocationStrategy;
     }

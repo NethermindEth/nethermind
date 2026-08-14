@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Extensions
 {
@@ -36,9 +37,14 @@ namespace Nethermind.Core.Extensions
                 if (!CreateDirectorySilent(topDir))
                     return [];
             }
-            HashSet<IDriveInfo> driveInfos = new();
+            HashSet<IDriveInfo> driveInfos = [];
             //the following processing is to overcome specific behaviour on linux where creating DriveInfo for multiple paths on same logical drive
             //gives instances with these paths (and not logical drive)
+            // DriveInfo.GetDrives() crashes with a fatal AccessViolationException
+            // on macOS ARM64 in native GetAllMountPoints().
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                return [];
+
             IDriveInfo[] allDrives = fileSystem.DriveInfo.GetDrives();
             IDriveInfo? topLevelDrive = FindDriveForDirectory(allDrives, topDir);
             if (topLevelDrive is not null)

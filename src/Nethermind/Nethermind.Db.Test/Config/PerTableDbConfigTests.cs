@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
-using FluentAssertions;
+using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
-using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Config;
@@ -15,7 +15,7 @@ public class PerTableDbConfigTests
     [Test]
     public void CanReadAllConfigForAllTable()
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         string[] tables =
         [
             DbNames.Storage,
@@ -25,13 +25,12 @@ public class PerTableDbConfigTests
             DbNames.Headers,
             DbNames.Receipts,
             DbNames.BlockInfos,
-            DbNames.Bloom,
             DbNames.Metadata
         ];
 
         foreach (string table in tables)
         {
-            PerTableDbConfig config = new PerTableDbConfig(dbConfig, table);
+            PerTableDbConfig config = new(dbConfig, table, validate: false);
 
             object _ = config.RocksDbOptions;
             _ = config.AdditionalRocksDbOptions;
@@ -44,35 +43,64 @@ public class PerTableDbConfigTests
     [Test]
     public void When_ColumnDb_UsePerTableConfig()
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         dbConfig.RocksDbOptions = "some_option=1;";
         dbConfig.ReceiptsDbRocksDbOptions = "some_option=2;";
         dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts, "Blocks");
-        config.RocksDbOptions.Should().Be("some_option=1;some_option=2;some_option=3;");
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts, "Blocks");
+        Assert.That(config.RocksDbOptions, Is.EqualTo("some_option=1;some_option=2;some_option=3;"));
     }
 
     [Test]
     public void When_PerTableConfigIsAvailable_UsePerTableConfig()
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         dbConfig.RocksDbOptions = "some_option=1;";
         dbConfig.ReceiptsDbRocksDbOptions = "some_option=2;";
         dbConfig.ReceiptsBlocksDbRocksDbOptions = "some_option=3;";
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts);
-        config.RocksDbOptions.Should().Be("some_option=1;some_option=2;");
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
+        Assert.That(config.RocksDbOptions, Is.EqualTo("some_option=1;some_option=2;"));
     }
 
     [Test]
     public void When_PerTableConfigIsNotAvailable_UseGeneralConfig()
     {
-        DbConfig dbConfig = new DbConfig();
+        DbConfig dbConfig = new();
         dbConfig.MaxOpenFiles = 2;
 
-        PerTableDbConfig config = new PerTableDbConfig(dbConfig, DbNames.Receipts);
-        config.MaxOpenFiles.Should().Be(2);
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
+        Assert.That(config.MaxOpenFiles, Is.EqualTo(2));
+    }
+
+    [TestCase(null, FlushOnExitMode.WalOnly, TestName = "FlushOnExit defaults to WalOnly")]
+    [TestCase(FlushOnExitMode.None, FlushOnExitMode.None)]
+    [TestCase(FlushOnExitMode.Full, FlushOnExitMode.Full)]
+    public void FlushOnExit_reads_general_config(FlushOnExitMode? configured, FlushOnExitMode expected)
+    {
+        DbConfig dbConfig = new();
+        if (configured is not null) dbConfig.FlushOnExit = configured.Value;
+
+        PerTableDbConfig config = new(dbConfig, DbNames.Receipts);
+        Assert.That(config.FlushOnExit, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ReceiptsBlocksDb_write_buffer_is_not_shrunk_by_the_receipts_defaults()
+    {
+        DbConfig dbConfig = new();
+        IDictionary<string, string> generic = DbOnTheRocks.ExtractOptions(dbConfig.RocksDbOptions);
+        IDictionary<string, string> receiptsBlocks = DbOnTheRocks.ExtractOptions(
+            new PerTableDbConfig(dbConfig, DbNames.Receipts, nameof(ReceiptsColumns.Blocks)).RocksDbOptions);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ulong.Parse(receiptsBlocks["write_buffer_size"]),
+                Is.GreaterThanOrEqualTo(ulong.Parse(generic["write_buffer_size"])));
+            Assert.That(int.Parse(receiptsBlocks["max_write_buffer_number"]),
+                Is.GreaterThanOrEqualTo(int.Parse(generic["max_write_buffer_number"])));
+        });
     }
 
     [Test]
@@ -81,9 +109,9 @@ public class PerTableDbConfigTests
         Type dbConfigType = typeof(DbConfig);
         Type iDbConfigType = typeof(IDbConfig);
 
-        foreach (PropertyInfo propertyInfo in dbConfigType.Properties())
+        foreach (PropertyInfo propertyInfo in dbConfigType.GetProperties())
         {
-            iDbConfigType.GetProperty(propertyInfo.Name).Should().NotBeNull($"{propertyInfo.Name} is missing in {nameof(IDbConfig)}");
+            Assert.That(iDbConfigType.GetProperty(propertyInfo.Name), Is.Not.Null, $"{propertyInfo.Name} is missing in {nameof(IDbConfig)}");
         }
     }
 }

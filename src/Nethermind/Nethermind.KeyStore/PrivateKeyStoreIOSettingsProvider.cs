@@ -7,15 +7,10 @@ using Nethermind.KeyStore.Config;
 
 namespace Nethermind.KeyStore
 {
-    public class PrivateKeyStoreIOSettingsProvider : BaseKeyStoreIOSettingsProvider, IKeyStoreIOSettingsProvider
+    public class PrivateKeyStoreIOSettingsProvider(
+        IKeyStoreConfig keyStoreConfig) : BaseKeyStoreIOSettingsProvider, IKeyStoreIOSettingsProvider
     {
-        private readonly IKeyStoreConfig _config;
-
-        public PrivateKeyStoreIOSettingsProvider(
-            IKeyStoreConfig keyStoreConfig)
-        {
-            _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-        }
+        private readonly IKeyStoreConfig _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
 
         public string StoreDirectory => GetStoreDirectory(_config.KeyStoreDirectory);
 

@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Producers
             _blockProcessingQueue = blockProcessingQueue;
             _blockTree = blockTree;
             _canProduce = waitForInitialSync ? 0 : 1;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<BuildBlocksOnlyWhenNotProcessing>();
 
             _blockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
             _blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;

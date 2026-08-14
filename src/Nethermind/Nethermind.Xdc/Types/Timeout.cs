@@ -8,13 +8,22 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
-public class Timeout(ulong round, Signature? signature, ulong gapNumber) : IXdcPoolItem
+public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool isMyVote = false) : RlpHashEqualityBase, IXdcPoolItem
 {
-    private readonly TimeoutDecoder _decoder = new();
+    private static readonly TimeoutDecoder _timeoutDecoder = new();
     public ulong Round { get; set; } = round;
     public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
     public Address? Signer { get; set; }
+    public bool IsMyVote { get; } = isMyVote;
     public override string ToString() => $"{Round}:{GapNumber}";
-    public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
+    public (ulong Round, Hash256 hash) PoolKey()
+    {
+        KeccakRlpWriter writer = new();
+        _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.ForSealing);
+        return (Round, writer.GetHash());
+    }
+
+    protected override void Encode(ref KeccakRlpWriter writer) =>
+        _timeoutDecoder.Encode(ref writer, this, RlpBehaviors.None);
 }

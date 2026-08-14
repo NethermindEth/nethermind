@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
@@ -31,18 +30,18 @@ namespace Nethermind.AuRa.Test.Transactions
             IStateReader stateReader = Substitute.For<IStateReader>();
             Address nodeAddress = TestItem.AddressA;
 
-            UInt256 expectedNonce = 10;
+            ulong expectedNonce = 10;
             stateReader.TryGetAccount(blockHeader, nodeAddress, out Arg.Any<AccountStruct>())
                 .Returns(x =>
                 {
-                    x[2] = new AccountStruct(expectedNonce, UInt256.Zero);
+                    x[2] = new AccountStruct(expectedNonce, 0UL);
                     return true;
                 });
 
             ulong expectedTimeStamp = 100;
             timestamper.UnixTime.Returns(UnixTime.FromSeconds(expectedTimeStamp));
 
-            int gasLimit = 200;
+            ulong gasLimit = 200;
             ITxSource innerTxSource = Substitute.For<ITxSource>();
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] { tx1, tx2 });
 
@@ -53,16 +52,18 @@ namespace Nethermind.AuRa.Test.Transactions
             Transaction sealedTx1 = sealedTxs.First();
             Transaction sealedTx2 = sealedTxs.Skip(1).First();
 
-            sealedTx1.IsSigned.Should().BeTrue();
-            sealedTx1.Nonce.Should().Be(expectedNonce);
-            sealedTx1.Hash.Should().Be(tx1.CalculateHash());
-            sealedTx1.Timestamp.Should().Be(expectedTimeStamp);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sealedTx1.IsSigned, Is.True);
+                Assert.That(sealedTx1.Nonce, Is.EqualTo(expectedNonce));
+                Assert.That(sealedTx1.Hash, Is.EqualTo(tx1.CalculateHash()));
+                Assert.That(sealedTx1.Timestamp, Is.EqualTo((UInt256)expectedTimeStamp));
 
-            sealedTx2.IsSigned.Should().BeTrue();
-            sealedTx2.Nonce.Should().Be(expectedNonce + 1);
-            sealedTx2.Hash.Should().NotBe(tx1.CalculateHash());
-            sealedTx2.Timestamp.Should().Be(expectedTimeStamp);
-
+                Assert.That(sealedTx2.IsSigned, Is.True);
+                Assert.That(sealedTx2.Nonce, Is.EqualTo(expectedNonce + 1));
+                Assert.That(sealedTx2.Hash, Is.Not.EqualTo(tx1.CalculateHash()));
+                Assert.That(sealedTx2.Timestamp, Is.EqualTo((UInt256)expectedTimeStamp));
+            }
         }
     }
 }

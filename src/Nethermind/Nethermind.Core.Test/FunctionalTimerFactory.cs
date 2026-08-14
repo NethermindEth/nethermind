@@ -8,8 +8,5 @@ namespace Nethermind.Core.Test;
 
 public class FunctionalTimerFactory(Func<TimeSpan, ITimer> timerFactory) : ITimerFactory
 {
-    public ITimer CreateTimer(TimeSpan interval)
-    {
-        return timerFactory(interval);
-    }
+    public ITimer CreateTimer(TimeSpan interval) => timerFactory(interval);
 }

@@ -13,7 +13,7 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": true,
-    "FastSyncCatchUpHeightDelta": "10000000000"
+    "FastSyncCatchUpHeightDelta": 10000000000
   },
   "Pruning": {
     "PruningBoundary": 1000
@@ -30,6 +30,7 @@
   },
   "JsonRpc": {
     "Enabled": true,
-    "EnginePort": 8551
+    "EnginePort": 8551,
+    "StrictHexFormat": false
   }
 }

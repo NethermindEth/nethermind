@@ -19,39 +19,32 @@ namespace Nethermind.Era1;
 /// Main reader for era file. Uses E2StoreReader which internally mmap the whole file. This reader is thread safe
 /// allowing multiple thread to read from it at the same time.
 /// </summary>
-public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
+public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
-    private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
-    private readonly HeaderDecoder _headerDecoder = new();
-    private readonly E2StoreReader _fileReader;
+    private readonly IRlpDecoder<BlockBody> _blockBodyDecoder = Rlp.GetDecoderOrThrow<BlockBody>();
+    private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
+    private readonly E2StoreReader _fileReader = e2;
 
-    public long FirstBlock => _fileReader.First;
-    public long LastBlock => _fileReader.LastBlock;
-
+    public ulong FirstBlock => _fileReader.First;
+    public ulong LastBlock => _fileReader.LastBlock;
 
     public EraReader(string fileName) : this(new E2StoreReader(fileName))
     {
     }
 
-
-    public EraReader(E2StoreReader e2)
-    {
-        _fileReader = e2;
-    }
-
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        foreach (var blockNumber in EnumerateBlockNumber())
+        foreach (ulong blockNumber in EnumerateBlockNumber())
         {
             EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
             yield return (result.Block, result.Receipts);
         }
     }
 
-    private IEnumerable<long> EnumerateBlockNumber()
+    private IEnumerable<ulong> EnumerateBlockNumber()
     {
-        long blockNumber = _fileReader.First;
+        ulong blockNumber = _fileReader.First;
         while (blockNumber <= _fileReader.LastBlock)
         {
             yield return blockNumber;
@@ -73,15 +66,15 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
         ValueHash256 accumulator = ReadAccumulator();
 
-        long startBlock = _fileReader.First;
+        ulong startBlock = _fileReader.First;
         int blockCount = (int)_fileReader.BlockCount;
         using ArrayPoolList<(Hash256, UInt256)> blockHashes = new(blockCount, blockCount);
 
-        ConcurrentQueue<long> blockNumbers = new(EnumerateBlockNumber());
+        ConcurrentQueue<ulong> blockNumbers = new(EnumerateBlockNumber());
 
         using ArrayPoolList<Task> workers = Enumerable.Range(0, verifyConcurrency).Select((_) => Task.Run(async () =>
         {
-            while (blockNumbers.TryDequeue(out long blockNumber))
+            while (blockNumbers.TryDequeue(out ulong blockNumber))
             {
                 EntryReadResult? result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
                 EntryReadResult err = result.Value;
@@ -101,7 +94,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
                 {
                     throw new EraVerificationException($"Mismatched receipt root. Block number {blockNumber}.");
                 }
-
 
                 // Note: Header.Hash is calculated by HeaderDecoder.
                 blockHashes[(int)(err.Block.Header.Number - startBlock)] = (err.Block.Header.Hash!, err.Block.TotalDifficulty!.Value);
@@ -134,7 +126,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return hash;
     }
 
-    public async Task<(Block, TxReceipt[])> GetBlockByNumber(long number, CancellationToken cancellation = default)
+    public async Task<(Block, TxReceipt[])> GetBlockByNumber(ulong number, CancellationToken cancellation = default)
     {
         if (number < _fileReader.First)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_fileReader.First}. Number is {number}.");
@@ -144,11 +136,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         return (result.Block, result.Receipts);
     }
 
-    private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
+    private async Task<EntryReadResult> ReadBlockAndReceipts(ulong blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
         if (blockNumber < _fileReader.First
-            || blockNumber > _fileReader.First + _fileReader.BlockCount)
-            throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
+            || blockNumber > _fileReader.LastBlock)
+            throw new ArgumentOutOfRangeException(nameof(blockNumber), blockNumber, "Value is outside the range of the archive.");
 
         long position = _fileReader.BlockOffset(blockNumber);
 
@@ -181,43 +173,36 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             out UInt256 currentTotalDifficulty);
         header.TotalDifficulty = currentTotalDifficulty;
 
-        Block block = new Block(header, body);
+        Block block = new(header, body);
         return new EntryReadResult(block, receipts);
     }
 
     private BlockBody DecodeBody(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        RlpReader ctx = new(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 
     private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(buffer.Span);
-        return RlpDecoderExtensions.DecodeArray(_receiptDecoder, ref ctx, RlpBehaviors.None);
+        RlpReader ctx = new(buffer.Span);
+        // ReceiptMessageDecoder returns null for empty-list (0xC0) items
+        return ctx.DecodeArray<TxReceipt>(_receiptDecoder, allowNulls: true);
     }
 
-    public ValueHash256 CalculateChecksum()
-    {
-        return _fileReader.CalculateChecksum();
-    }
+    public ValueHash256 CalculateChecksum() => _fileReader.CalculateChecksum();
 
     public void Dispose() => _fileReader.Dispose();
 
-    private struct EntryReadResult
+    private struct EntryReadResult(Block block, TxReceipt[] receipts)
     {
-        public EntryReadResult(Block block, TxReceipt[] receipts)
-        {
-            Block = block;
-            Receipts = receipts;
-        }
-        public Block Block { get; }
-        public TxReceipt[] Receipts { get; }
+        public Block Block { get; } = block;
+        public TxReceipt[] Receipts { get; } = receipts;
     }
 }

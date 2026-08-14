@@ -39,10 +39,10 @@ namespace Nethermind.Core
                         _ => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee)
                     };
 
-                    return effectiveGasPrice * (ulong)tx.GasLimit + tx.ValueRef;
+                    return effectiveGasPrice * tx.GasLimit + tx.ValueRef;
                 }
 
-                return tx.MaxPriorityFeePerGas * (ulong)tx.GasLimit + tx.ValueRef;
+                return tx.MaxPriorityFeePerGas * tx.GasLimit + tx.ValueRef;
             }
 
             public UInt256 CalculateEffectiveGasPrice(bool eip1559Enabled, in UInt256 baseFee) =>
@@ -56,13 +56,21 @@ namespace Nethermind.Core
             public bool IsAboveInitCode(IReleaseSpec spec) =>
                 tx.IsContractCreation && spec.IsEip3860Enabled && tx.DataLength > spec.MaxInitCodeSize;
 
-            public ulong GetBlobGas() => (uint)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
+            public ulong GetBlobGas() => (ulong)tx.GetBlobCount() * Eip4844Constants.GasPerBlob;
             public int GetBlobCount() => tx.BlobVersionedHashes?.Length ?? 0;
+
+            public void CapGasLimit(ulong? gasCap)
+            {
+                if (gasCap.IsGasCapped())
+                {
+                    tx.GasLimit = ulong.Min(tx.GasLimit, gasCap!.Value);
+                }
+            }
         }
 
         public static bool TryGetByTxType<T>(this T?[] array, TxType txType, [NotNullWhen(true)] out T? item)
         {
-            var type = (byte)txType;
+            byte type = (byte)txType;
             if (type > Transaction.MaxTxType)
             {
                 item = default;

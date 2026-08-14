@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.BeaconBlockRoot;
 
 public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
 {
-    private const long GasLimit = 30_000_000L;
+    private const ulong GasLimit = 30_000_000UL;
 
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
         => BeaconRootsAccessList(block, spec, includeStorageCells: true).accessList;
@@ -37,7 +37,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             return (null, null);
         }
 
-        var builder = new AccessList.Builder()
+        AccessList.Builder builder = new AccessList.Builder()
             .AddAddress(eip4788ContractAddress);
 
         if (includeStorageCells)
@@ -64,12 +64,12 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             BlockHeader? header = block.Header;
             Transaction transaction = new()
             {
-                Value = UInt256.Zero,
+                Value = 0,
                 Data = header.ParentBeaconBlockRoot.Bytes.ToArray(),
                 To = toAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = GasLimit,
-                GasPrice = UInt256.Zero,
+                GasPrice = 0,
                 AccessList = accessList
             };
 

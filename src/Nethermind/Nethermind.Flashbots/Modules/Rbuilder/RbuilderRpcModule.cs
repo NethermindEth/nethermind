@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.State;
@@ -21,10 +20,7 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
     : IRbuilderRpcModule
 {
 
-    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash)
-    {
-        return ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
-    }
+    public ResultWrapper<byte[]?> rbuilder_getCodeByHash(Hash256 hash) => ResultWrapper<byte[]?>.Success(stateReader.GetCode(hash));
 
     public ResultWrapper<Hash256> rbuilder_calculateStateRoot(BlockParameter blockParam, IDictionary<Address, AccountChange> accountDiff)
     {

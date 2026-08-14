@@ -9,18 +9,18 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
-using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.State.SnapServer;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Test;
 using Nethermind.TxPool;
@@ -46,6 +46,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
             .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
+            .AddSingleton(NodeFilter.AcceptAll) // Disable inbound rate limiting for in-memory channels
 
             .AddSingleton<PseudoNethermindRunner>()
             .AddSingleton<TestBlockchainUtil>()
@@ -64,7 +65,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 return new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
             })
             .AddKeyedSingleton(NodeKey, nodeKey)
-            .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), (_) => new InMemoryDictionaryFileStoreFactory())
 
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {
@@ -85,12 +85,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 ISyncServer syncServer = ctx.Resolve<ISyncServer>();
                 IEnode enode = ctx.Resolve<IEnode>();
-                IWorldStateManager worldStateManager = ctx.Resolve<IWorldStateManager>();
-                ISnapSyncPeer? snapSyncPeer = null;
-                if (worldStateManager.SnapServer is not null)
-                {
-                    snapSyncPeer = new MockSnapSyncPeer(worldStateManager.SnapServer);
-                }
+                ISnapServer snapServer = ctx.Resolve<ISnapServer>();
+                ISnapSyncPeer? snapSyncPeer = snapServer.CanServe ? new MockSnapSyncPeer(snapServer) : null;
 
                 return new SyncPeerMock(blockTree, syncServer, enode.PublicKey, snapSyncPeer: snapSyncPeer);
             })
@@ -107,8 +103,10 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
             .AddDecorator<IBlocksConfig>((_, blocksConfig) =>
             {
                 blocksConfig.PreWarmStateConcurrency = Math.Min(4, Environment.ProcessorCount);
+                blocksConfig.PreWarming = PreWarmMode.Block;
                 return blocksConfig;
             })
+            .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = SeqlockCache<StorageCell, byte[]>.DefaultSetsBits })
             .AddDecorator<INetworkConfig>((_, networkConfig) =>
             {
                 networkConfig.DiscoveryDns = null;
@@ -125,7 +123,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 return pruningConfig;
             })
 
-            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB()))
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
             ;
     }
 }

@@ -1,29 +1,29 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using static Nethermind.Evm.VirtualMachine;
+using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
+using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for two-parameter mathematical operations on 256-bit unsigned integers.
     /// Implementers define a specific binary math operation (e.g. addition, subtraction).
     /// </summary>
-    public interface IOpMath2Param
+    public interface IOpMath2Param : IGasCost
     {
         /// <summary>
         /// The gas cost for executing this math operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        static ulong IGasCost.GasCost => GasCostOf.VeryLow;
         /// <summary>
         /// Executes the math operation on two 256-bit operands.
         /// </summary>
@@ -38,34 +38,47 @@ internal static partial class EvmInstructions
     /// This method pops two UInt256 operands from the stack, applies the operation,
     /// and then pushes the result onto the stack.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath2Param"/> that defines the specific operation.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The gas state which is updated by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully;
     /// otherwise, <see cref="EvmExceptionType.StackUnderflow"/> if insufficient stack elements are available.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath2Param<TOpMath, TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath2Param
         where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost for the specific math operation.
-        gasAvailable -= TOpMath.GasCost;
+        TGasPolicy.Consume<TOpMath>(ref gas);
 
-        // Pop two operands from the stack. If either pop fails, jump to the underflow handler.
-        if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b)) goto StackUnderflow;
+        return Math2ParamCore<TOpMath, TTracingInst>(ref stack);
+    }
 
-        // Execute the math operation defined by TOpMath.
+    /// <summary>Gas-free body of <see cref="InstructionMath2Param{TGasPolicy, TOpMath, TTracingInst}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType Math2ParamCore<TOpMath, TTracingInst>(ref EvmStack stack)
+        where TOpMath : struct, IOpMath2Param
+        where TTracingInst : struct, IFlag
+    {
+        // Pop a and peek the new top slot for in-place write; skips the push's overflow check
+        // since the net stack delta (-1) cannot overflow a previously non-overflowing stack.
+        ref byte topRef = ref stack.Pop1Peek32Bytes(out UInt256 a, out bool ok);
+        if (!ok) goto StackUnderflow;
+
+        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
         TOpMath.Operation(in a, in b, out UInt256 result);
+        EvmStack.WriteUInt256ToSlot(ref topRef, in result);
 
-        // Push the computed result onto the stack.
-        stack.PushUInt256<TTracingInst>(in result);
-
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -94,7 +107,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpMul : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Multiply(in a, in b, out result);
     }
@@ -105,7 +118,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpDiv : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -129,7 +142,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSDiv : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZero)
@@ -160,9 +173,19 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpMod : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-            => UInt256.Mod(in a, in b, out result);
+        {
+            if (b.IsZeroOrOne)
+            {
+                // Modulo with 0 or 1 yields zero.
+                result = default;
+            }
+            else
+            {
+                UInt256.Mod(in a, in b, out result);
+            }
+        }
     }
 
     /// <summary>
@@ -172,7 +195,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSMod : IOpMath2Param
     {
-        public static long GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
         {
             if (b.IsZeroOrOne)
@@ -199,10 +222,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpLt : IOpMath2Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-        {
-            result = a < b ? UInt256.One : default;
-        }
+        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a < b ? UInt256.One : default;
     }
 
     /// <summary>
@@ -211,10 +231,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpGt : IOpMath2Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-        {
-            result = a > b ? UInt256.One : default;
-        }
+        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = a > b ? UInt256.One : default;
     }
 
     /// <summary>
@@ -223,13 +240,10 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSLt : IOpMath2Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-        {
-            result = As<UInt256, Int256>(ref AsRef(in a))
+        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = As<UInt256, Int256>(ref AsRef(in a))
                 .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) < 0 ?
                 UInt256.One :
                 default;
-        }
     }
 
     /// <summary>
@@ -238,13 +252,10 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpSGt : IOpMath2Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
-        {
-            result = As<UInt256, Int256>(ref AsRef(in a))
+        public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result) => result = As<UInt256, Int256>(ref AsRef(in a))
                 .CompareTo(As<UInt256, Int256>(ref AsRef(in b))) > 0 ?
                 UInt256.One :
                 default;
-        }
     }
 
     /// <summary>
@@ -253,56 +264,50 @@ internal static partial class EvmInstructions
     /// </summary>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack where the program counter is pushed.</param>
-    /// <param name="gasAvailable">Reference to the remaining gas; reduced by the gas cost.</param>
+    /// <param name="gas">Reference to the gas state; updated by the gas cost.</param>
     /// <param name="programCounter">The current program counter.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success; or <see cref="EvmExceptionType.StackUnderflow"/> if not enough items on stack.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionExp<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        gasAvailable -= GasCostOf.Exp;
+        TGasPolicy.Consume<ExpGasCost>(ref gas);
 
-        // Pop the base value from the stack.
-        if (!stack.PopUInt256(out UInt256 a))
+        // Pop the base value and exponent from the stack.
+        if (!stack.PopUInt256(out UInt256 a, out UInt256 exponent))
+        {
             goto StackUnderflow;
-
-        // Pop the exponent as a 256-bit word.
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        }
 
         // Determine the effective byte-length of the exponent.
-        int leadingZeros = bytes.LeadingZerosCount();
+        int leadingZeros = exponent.CountLeadingZeros() >> 3;
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            stack.PushOne<TTracingInst>();
+            return stack.PushOne<TTracingInst>();
         }
-        else
+
+        ulong expSize = (ulong)(32 - leadingZeros);
+        // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
+        TGasPolicy.ConsumeExpBytes(ref gas, vm.Spec, expSize);
+
+        if (a.IsZero)
         {
-            int expSize = 32 - leadingZeros;
-            // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-            gasAvailable -= vm.Spec.GetExpByteCost() * expSize;
-
-            if (a.IsZero)
-            {
-                stack.PushZero<TTracingInst>();
-            }
-            else if (a.IsOne)
-            {
-                stack.PushOne<TTracingInst>();
-            }
-            else
-            {
-                // Perform exponentiation and push the 256-bit result onto the stack.
-                UInt256.Exp(a, new UInt256(bytes, true), out UInt256 result);
-                stack.PushUInt256<TTracingInst>(in result);
-            }
+            return stack.PushZero<TTracingInst>();
+        }
+        if (a.IsOne)
+        {
+            return stack.PushOne<TTracingInst>();
         }
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Perform exponentiation and push the 256-bit result onto the stack.
+        UInt256.Exp(in a, in exponent, out UInt256 expResult);
+        return stack.PushUInt256<TTracingInst>(in expResult);
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

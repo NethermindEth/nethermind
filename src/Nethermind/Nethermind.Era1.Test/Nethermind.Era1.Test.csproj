@@ -10,7 +10,7 @@
   <ItemGroup>
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Snappier" />
-    <PackageReference Include="TestableIO.System.IO.Abstractions.TestingHelpers" />
+    <PackageReference Include="Testably.Abstractions.Testing" />
   </ItemGroup>
 
   <ItemGroup>

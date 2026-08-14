@@ -6,6 +6,7 @@ using System;
 
 namespace Nethermind.Core;
 
+// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-7702.md
 public static class Eip7702Constants
 {
     private readonly static byte[] _delegationHeader = [0xef, 0x01, 0x00];
@@ -13,6 +14,9 @@ public static class Eip7702Constants
     public static ReadOnlySpan<byte> DelegationHeader => _delegationHeader.AsSpan();
 
     public static readonly UInt256 DelegationDesignatorLength = 23;
+
+    /// <summary> Gas cost to process one authorization tuple and set the delegation destination. </summary>
+    public const ulong PerAuthBaseCost = 12_500;
 
     private static readonly int HeaderLength = DelegationHeader.Length;
     public static bool IsDelegatedCode(ReadOnlySpan<byte> code) =>

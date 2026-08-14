@@ -10,28 +10,18 @@ using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 
-public readonly struct EIP1559Parameters
+public readonly struct EIP1559Parameters(byte version, UInt32 denominator, UInt32 elasticity)
 {
     public static readonly byte[] ByteLengthByVersion = [9, 17];
 
-    public byte Version { get; }
-    public UInt32 Denominator { get; }
-    public UInt32 Elasticity { get; }
+    public byte Version { get; } = version;
+    public UInt32 Denominator { get; } = denominator;
+    public UInt32 Elasticity { get; } = elasticity;
     public UInt64 MinBaseFee { get; }
 
     public int ByteLength => ByteLengthByVersion[Version];
 
-    public EIP1559Parameters(byte version, UInt32 denominator, UInt32 elasticity)
-    {
-        Version = version;
-        Denominator = denominator;
-        Elasticity = elasticity;
-    }
-
-    public EIP1559Parameters(byte version, UInt32 denominator, UInt32 elasticity, UInt64 minBaseFee) : this(version, denominator, elasticity)
-    {
-        MinBaseFee = minBaseFee;
-    }
+    public EIP1559Parameters(byte version, UInt32 denominator, UInt32 elasticity, UInt64 minBaseFee) : this(version, denominator, elasticity) => MinBaseFee = minBaseFee;
 
     public static bool TryCreateV0(UInt32 denominator, UInt32 elasticity, out EIP1559Parameters parameters, [NotNullWhen(false)] out string? error)
     {

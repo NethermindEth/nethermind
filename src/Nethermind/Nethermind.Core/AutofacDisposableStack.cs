@@ -15,13 +15,7 @@ public class AutofacDisposableStack(ILifetimeScope lifetime) : IDisposableStack
 {
     private readonly IDisposer _disposer = lifetime.Disposer;
 
-    public void Push(IAsyncDisposable item)
-    {
-        _disposer.AddInstanceForAsyncDisposal(item);
-    }
+    public void Push(IAsyncDisposable item) => _disposer.AddInstanceForAsyncDisposal(item);
 
-    public void Push(IDisposable item)
-    {
-        _disposer.AddInstanceForDisposal(item);
-    }
+    public void Push(IDisposable item) => _disposer.AddInstanceForDisposal(item);
 }

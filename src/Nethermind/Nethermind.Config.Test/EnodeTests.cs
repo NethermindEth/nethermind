@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Net;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -17,9 +16,12 @@ namespace Nethermind.Config.Test
         {
             PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
             Enode enode = new($"enode://{publicKey.ToString(false)}@{IPAddress.Loopback}:{1234}");
-            enode.HostIp.Should().BeEquivalentTo(IPAddress.Loopback);
-            enode.Port.Should().Be(1234);
-            enode.PublicKey.Should().BeEquivalentTo(publicKey);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.HostIp, Is.EqualTo(IPAddress.Loopback));
+                Assert.That(enode.Port, Is.EqualTo(1234));
+                Assert.That(enode.PublicKey, Is.EqualTo(publicKey));
+            }
         }
 
         [Test]
@@ -28,9 +30,12 @@ namespace Nethermind.Config.Test
             PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
             string domain = "nethermind.io";
             Enode enode = new($"enode://{publicKey.ToString(false)}@{domain}:{1234}");
-            Dns.GetHostAddresses(domain).Should().NotBeEmpty();
-            enode.Port.Should().Be(1234);
-            enode.PublicKey.Should().BeEquivalentTo(publicKey);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Dns.GetHostAddresses(domain), Is.Not.Empty);
+                Assert.That(enode.Port, Is.EqualTo(1234));
+                Assert.That(enode.PublicKey, Is.EqualTo(publicKey));
+            }
         }
 
         [Test]
@@ -39,7 +44,24 @@ namespace Nethermind.Config.Test
             PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
             string domain = "i_do_not_exist";
             Action action = () => _ = new Enode($"enode://{publicKey.ToString(false)}@{domain}:{1234}");
-            action.Should().Throw<ArgumentException>();
+            Assert.That(action, Throws.TypeOf<ArgumentException>());
+        }
+
+        [Test]
+        public void info_normalizes_ipv4_mapped_ipv6_host()
+        {
+            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            IPAddress mapped = IPAddress.Parse("::ffff:192.168.2.54");
+            Enode enode = new(publicKey, mapped, 0, 40306);
+
+            // HostIp is preserved verbatim (matches legacy persisted-node decoding behavior)...
+            Assert.That(enode.HostIp, Is.EqualTo(mapped));
+
+            // ...but Info must bracket-free normalize it to plain IPv4, otherwise it produces an
+            // invalid URI that fails to reload as a persisted node on the next startup.
+            Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
+            Enode reparsed = new(enode.Info);
+            Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse("192.168.2.54")));
         }
 
         public static IEnumerable Ipv4vs6TestCases

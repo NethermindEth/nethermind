@@ -1,11 +1,12 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -27,7 +28,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong ChainId { get; set; }
 
-        public NetworkNode[] Bootnodes { get; set; }
+        public NetworkNode[] Bootnodes { get; set; } = [];
 
         public bool GenesisStateUnavailable { get; set; }
         public Block Genesis { get; set; }
@@ -42,35 +43,35 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long? FixedDifficulty { get; set; }
 
-        public long? DaoForkBlockNumber { get; set; }
+        public ulong? DaoForkBlockNumber { get; set; }
 
-        public long? HomesteadBlockNumber { get; set; }
+        public ulong? HomesteadBlockNumber { get; set; }
 
-        public long? TangerineWhistleBlockNumber { get; set; }
+        public ulong? TangerineWhistleBlockNumber { get; set; }
 
-        public long? SpuriousDragonBlockNumber { get; set; }
+        public ulong? SpuriousDragonBlockNumber { get; set; }
 
-        public long? ByzantiumBlockNumber { get; set; }
+        public ulong? ByzantiumBlockNumber { get; set; }
 
-        public long? ConstantinopleBlockNumber { get; set; }
+        public ulong? ConstantinopleBlockNumber { get; set; }
 
-        public long? ConstantinopleFixBlockNumber { get; set; }
+        public ulong? ConstantinopleFixBlockNumber { get; set; }
 
-        public long? IstanbulBlockNumber { get; set; }
+        public ulong? IstanbulBlockNumber { get; set; }
 
-        public long? MuirGlacierNumber { get; set; }
+        public ulong? MuirGlacierNumber { get; set; }
 
-        public long? BerlinBlockNumber { get; set; }
+        public ulong? BerlinBlockNumber { get; set; }
 
-        public long? LondonBlockNumber { get; set; }
+        public ulong? LondonBlockNumber { get; set; }
 
-        public long? ArrowGlacierBlockNumber { get; set; }
+        public ulong? ArrowGlacierBlockNumber { get; set; }
 
-        public long? GrayGlacierBlockNumber { get; set; }
+        public ulong? GrayGlacierBlockNumber { get; set; }
 
-        public long? MergeForkIdBlockNumber { get; set; }
+        public ulong? MergeForkIdBlockNumber { get; set; }
 
-        public long? TerminalPoWBlockNumber { get; set; }
+        public ulong? TerminalPoWBlockNumber { get; set; }
 
         public UInt256? TerminalTotalDifficulty { get; set; }
 
@@ -81,5 +82,13 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? PragueTimestamp { get; set; }
 
         public ulong? OsakaTimestamp { get; set; }
+        public ulong? AmsterdamTimestamp { get; set; }
+
+        /// <summary>
+        /// Raw engine-specific genesis seal sections (<c>genesis.seal.*</c>) other than the standard
+        /// <c>ethereum</c> one, keyed by engine name. Applied to <see cref="Genesis"/> by the owning
+        /// consensus plugin — core doesn't act on it.
+        /// </summary>
+        public Dictionary<string, JsonElement>? CustomSeal { get; set; }
     }
 }

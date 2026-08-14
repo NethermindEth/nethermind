@@ -19,29 +19,20 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 /// Tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to be invalid.
 ///
 /// </summary>
-public class InvalidChainTracker : IInvalidChainTracker
+public class InvalidChainTracker(
+    IPoSSwitcher poSSwitcher,
+    IBlockFinder blockFinder,
+    IBlockCacheService blockCacheService,
+    ILogManager logManager) : IInvalidChainTracker
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IBlockFinder _blockFinder;
-    private readonly IBlockCacheService _blockCacheService;
-    private readonly ILogger _logger;
-    private readonly LruCache<ValueHash256, Node> _tree;
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IBlockCacheService _blockCacheService = blockCacheService;
+    private readonly ILogger _logger = logManager.GetClassLogger<InvalidChainTracker>();
+    private readonly LruCache<ValueHash256, Node> _tree = new(1024, nameof(InvalidChainTracker));
 
     // CompositeDisposable only available on System.Reactive. So this will do for now.
-    private readonly List<Action> _disposables = new();
-
-    public InvalidChainTracker(
-        IPoSSwitcher poSSwitcher,
-        IBlockFinder blockFinder,
-        IBlockCacheService blockCacheService,
-        ILogManager logManager)
-    {
-        _poSSwitcher = poSSwitcher;
-        _blockFinder = blockFinder;
-        _tree = new(1024, nameof(InvalidChainTracker));
-        _logger = logManager.GetClassLogger<InvalidChainTracker>();
-        _blockCacheService = blockCacheService;
-    }
+    private readonly List<Action> _disposables = [];
 
     public void SetupBlockchainProcessorInterceptor(IBlockchainProcessor blockchainProcessor)
     {
@@ -70,22 +61,13 @@ public class InvalidChainTracker : IInvalidChainTracker
         }
     }
 
-    private Node GetNode(Hash256 hash)
-    {
-        if (!_tree.TryGet(hash, out Node node))
-        {
-            node = new Node();
-            _tree.Set(hash, node);
-        }
-
-        return node;
-    }
+    private Node GetNode(Hash256 hash) => _tree.SetOrGet(hash, 0, static (_, _) => new Node());
 
     private void PropagateLastValidHash(Node node)
     {
         Queue<Node> bfsQue = new();
         bfsQue.Enqueue(node);
-        HashSet<Node> visited = new() { node };
+        HashSet<Node> visited = [node];
 
         while (bfsQue.Count > 0)
         {
@@ -161,21 +143,21 @@ public class InvalidChainTracker : IInvalidChainTracker
     public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash)
     {
         lastValidHash = null;
-        Node node = GetNode(blockHash);
+        if (!_tree.TryGet(blockHash, out Node node))
+        {
+            return false;
+        }
+
         lock (node)
         {
-            if (node.LastValidHash is not null)
-            {
-                lastValidHash = node.LastValidHash;
-            }
-
+            lastValidHash = node.LastValidHash;
             return node.LastValidHash is not null;
         }
     }
 
     class Node
     {
-        public HashSet<Hash256> Children { get; } = new();
+        public HashSet<Hash256> Children { get; } = [];
         public Hash256? LastValidHash { get; set; }
     }
 

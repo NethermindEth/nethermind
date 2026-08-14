@@ -10,10 +10,7 @@ namespace Nethermind.Core.Test.Builders
     {
         private bool _alwaysTrue;
 
-        public HeaderValidatorBuilder()
-        {
-            TestObject = Substitute.For<IHeaderValidator>();
-        }
+        public HeaderValidatorBuilder() => TestObject = Substitute.For<IHeaderValidator>();
 
         public HeaderValidatorBuilder ThatAlwaysReturnsFalse
         {

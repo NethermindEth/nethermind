@@ -7,22 +7,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public class BlockInfoForRpc
+    public class BlockInfoForRpc(BlockInfo blockInfo)
     {
-        public BlockInfoForRpc(BlockInfo blockInfo)
-        {
-            BlockHash = blockInfo.BlockHash;
-            TotalDifficulty = blockInfo.TotalDifficulty;
-            WasProcessed = blockInfo.WasProcessed;
-            IsFinalized = blockInfo.IsFinalized;
-        }
+        public Hash256 BlockHash { get; set; } = blockInfo.BlockHash;
 
-        public Hash256 BlockHash { get; set; }
+        public UInt256 TotalDifficulty { get; set; } = blockInfo.TotalDifficulty;
 
-        public UInt256 TotalDifficulty { get; set; }
+        public bool WasProcessed { get; set; } = blockInfo.WasProcessed;
 
-        public bool WasProcessed { get; set; }
-
-        public bool IsFinalized { get; set; }
+        public bool IsFinalized { get; set; } = blockInfo.IsFinalized;
     }
 }

@@ -12,14 +12,11 @@ namespace Nethermind.Facade.Eth
     {
         public static SyncingResult NotSyncing = new();
         public bool IsSyncing { get; set; }
-        public long StartingBlock { get; set; }
-        public long CurrentBlock { get; set; }
-        public long HighestBlock { get; set; }
+        public ulong StartingBlock { get; set; }
+        public ulong CurrentBlock { get; set; }
+        public ulong HighestBlock { get; set; }
         public SyncMode SyncMode { get; set; }
 
-        public override readonly string ToString()
-        {
-            return $"IsSyncing: {IsSyncing}, StartingBlock: {StartingBlock}, CurrentBlock {CurrentBlock}, HighestBlock {HighestBlock}";
-        }
+        public override readonly string ToString() => $"IsSyncing: {IsSyncing}, StartingBlock: {StartingBlock}, CurrentBlock {CurrentBlock}, HighestBlock {HighestBlock}";
     }
 }

@@ -17,6 +17,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         void Init();
         void HandleMessage(Packet message);
         void DisconnectProtocol(DisconnectReason disconnectReason, string details);
+        void RegisterWith(ISession session, IProtocolRegistrar registrar);
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }

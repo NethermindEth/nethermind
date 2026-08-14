@@ -21,27 +21,15 @@ namespace Nethermind.Db
 
         public string Name { get; } = "NullDb";
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return null;
-        }
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-        {
-            throw new NotSupportedException();
-        }
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException();
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(static k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray();
 
-        public void Remove(ReadOnlySpan<byte> key)
-        {
-            throw new NotSupportedException();
-        }
+        public void Remove(ReadOnlySpan<byte> key) => throw new NotSupportedException();
 
-        public bool KeyExists(ReadOnlySpan<byte> key)
-        {
-            return false;
-        }
+        public bool KeyExists(ReadOnlySpan<byte> key) => false;
 
         public void Flush(bool onlyWal = false) { }
 
@@ -52,10 +40,7 @@ namespace Nethermind.Db
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => [];
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => [];
 
-        public IWriteBatch StartWriteBatch()
-        {
-            throw new NotSupportedException();
-        }
+        public IWriteBatch StartWriteBatch() => throw new NotSupportedException();
 
         public void Dispose()
         {

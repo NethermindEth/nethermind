@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -9,7 +11,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
@@ -20,16 +21,16 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class UnsafeStartingSyncPivotUpdater(
     IBlockTree blockTree,
-    ISyncModeSelector syncModeSelector,
     ISyncPeerPool syncPeerPool,
     ISyncConfig syncConfig,
+    ISyncProgressResolver syncProgressResolver,
     IBlockCacheService blockCacheService,
     IBeaconSyncStrategy beaconSyncStrategy,
     ILogManager logManager)
-    : StartingSyncPivotUpdater(blockTree, syncModeSelector, syncPeerPool, syncConfig,
+    : StartingSyncPivotUpdater(blockTree, syncPeerPool, syncConfig, syncProgressResolver,
         blockCacheService, beaconSyncStrategy, logManager)
 {
-    protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
+    protected override async Task<(Hash256 Hash, ulong Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting potentially unsafe head block hash, because some chains (e.g. optimism) aren't providing finalized block hash until fully synced
         Hash256? headBlockHash = _beaconSyncStrategy.GetHeadBlockHash();
@@ -37,13 +38,13 @@ public class UnsafeStartingSyncPivotUpdater(
         if (headBlockHash is not null && headBlockHash != Keccak.Zero)
         {
             const string head = "head";
-            long? headBlockNumber = TryGetBlockNumberFromBlockCache(headBlockHash, head)
+            ulong headBlockNumber = TryGetBlockNumberFromBlockCache(headBlockHash, head)
                                     ?? await TryGetFromPeers(headBlockHash, cancellationToken, head)
-                                    ?? 0;
+                                    ?? 0UL;
 
             if (headBlockNumber > Reorganization.MaxDepth)
             {
-                long potentialPivotBlockNumber = headBlockNumber.Value - Reorganization.MaxDepth;
+                ulong potentialPivotBlockNumber = headBlockNumber - Reorganization.MaxDepth;
 
                 Hash256? potentialPivotBlockHash =
                     TryGetPotentialPivotBlockNumberFromBlockCache(potentialPivotBlockNumber)
@@ -60,19 +61,22 @@ public class UnsafeStartingSyncPivotUpdater(
         return null;
     }
 
-    private Task<BlockHeader?> TryGetFromPeers(long blockNumber, CancellationToken cancellationToken) =>
+    private Task<BlockHeader?> TryGetFromPeers(ulong blockNumber, CancellationToken cancellationToken) =>
         TryGetFromPeers(blockNumber, cancellationToken, static async (peer, number, token) =>
         {
             using IOwnedReadOnlyList<BlockHeader>? x = await peer.GetBlockHeaders(number, 1, 0, token);
-            return x?.Count == 1 ? x[0] : null;
+            ReadOnlySpan<BlockHeader> headers = x is null ? [] : x.AsSpan();
+            // Only accept the header that is actually at the requested number; a peer must not substitute another.
+            return headers.Length == 1 && headers[0].Number == number ? headers[0] : null;
         });
 
-    private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(long potentialPivotBlockNumber)
+    private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(ulong potentialPivotBlockNumber)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in block cache");
 
-        foreach (Block block in _blockCacheService.BlockCache.Values)
+        foreach (KeyValuePair<Hash256AsKey, Block> kvp in _blockCacheService.BlockCache)
         {
+            Block block = kvp.Value;
             if (block.Number == potentialPivotBlockNumber && HeaderValidator.ValidateHash(block.Header))
             {
                 if (_logger.IsInfo) _logger.Info($"Loaded potential pivot block {potentialPivotBlockNumber} from block cache. Hash: {block.Hash}");

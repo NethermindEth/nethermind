@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -35,19 +36,14 @@ namespace Nethermind.Network
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
-        private readonly ConcurrentDictionary<PublicKeyAsKey, Peer> _staticPeers = new();
 
-        public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(static p => !p.Node.IsStatic);
-        public IEnumerable<Peer> StaticPeers => _staticPeers.Values;
+        public IEnumerable<Peer> NonStaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => !p.Node.IsStatic);
+        public IEnumerable<Peer> StaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => p.Node.IsStatic);
 
         public int PeerCount => Peers.Count;
         public int ActivePeerCount => ActivePeers.Count;
-        public int StaticPeerCount => _staticPeers.Count;
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-
-        readonly Func<PublicKeyAsKey, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNodePeer;
-        readonly Func<PublicKeyAsKey, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
 
         public PeerPool(
             INodeSource nodeSource,
@@ -63,77 +59,86 @@ namespace Nethermind.Network
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerStorage.StartBatch();
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PeerPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
-
-            // Early explicit closure
-            _createNewNodePeer = CreateNew;
-            _createNewNetworkNodePeer = CreateNew;
 
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
 
         private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
         {
+            if (!Peers.TryGetValue(e.Node.Id, out Peer? peer))
+                return;
+
+            if (e is not ExplicitNodeRemovalEventArgs)
+            {
+                // Only remove the peer if no P2P session is active.
+                // The dictionary removals are done inside SessionLock so the session check and
+                // removal are atomic against AttachSession. PeerRemoved is fired outside the lock
+                // to avoid holding it across arbitrary event handler code.
+                bool removed;
+                lock (peer.SessionLock)
+                {
+                    removed = peer.InSession is null && peer.OutSession is null && !peer.IsAwaitingConnection
+                              && Peers.TryRemove(e.Node.Id, out _);
+                }
+                if (removed) PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
+                return;
+            }
+
             TryRemove(e.Node.Id, out _);
         }
 
         public Peer GetOrAdd(Node node)
         {
-            return Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
+            if (Peers.TryGetValue(node.Id, out Peer? existing)) return existing;
+
+            // ConcurrentDictionary may run the factory on a losing thread; only the thread whose value is
+            // actually inserted (reference-equal) fires PeerAdded.
+            Peer created = new(node, _stats.GetOrAdd(node));
+            Peer peer = Peers.GetOrAdd(node.Id, created);
+            if (ReferenceEquals(peer, created))
+            {
+                if ((node.IsBootnode || node.IsStatic) && _logger.IsDebug) DebugAddingCandidatePeer(node);
+                PeerAdded?.Invoke(this, new PeerEventArgs(peer));
+            }
+            return peer;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void DebugAddingCandidatePeer(Node n)
+                => _logger.Debug($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
         }
 
-        public Peer GetOrAdd(NetworkNode node)
+        public Peer GetOrAdd(NetworkNode networkNode)
         {
-            return Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
-        }
+            if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing)) return existing;
 
-        private Peer CreateNew(PublicKeyAsKey key, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
-        {
-            if (arg.Node.IsBootnode || arg.Node.IsStatic)
+            Node node = new(networkNode) { IsTrusted = _trustedNodesManager.IsTrusted(networkNode.Enode) };
+            Peer created = new(node, _stats.GetOrAdd(node));
+            Peer peer = Peers.GetOrAdd(node.Id, created);
+            if (ReferenceEquals(peer, created))
             {
-                if (_logger.IsDebug) _logger.Debug(
-                    $"Adding a {(arg.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {arg.Node:s}");
+                PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             }
-            Peer peer = new(arg.Node, _stats.GetOrAdd(arg.Node));
-            if (arg.Node.IsStatic)
-            {
-                arg.Statics.TryAdd(arg.Node.Id, peer);
-            }
-
-            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
         }
 
-        private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
-        {
-            Node node = new(arg.Node) { IsTrusted = _trustedNodesManager.IsTrusted(arg.Node.Enode) };
-
-            Peer peer = new(node, _stats.GetOrAdd(node));
-
-            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
-            return peer;
-        }
-
-        public bool TryGet(PublicKey id, out Peer peer)
-        {
-            return Peers.TryGetValue(id, out peer);
-        }
+        public bool TryGet(PublicKey id, out Peer peer) => Peers.TryGetValue(id, out peer);
 
         public bool TryRemove(PublicKey id, out Peer peer)
         {
-            if (Peers.TryRemove(id, out peer))
+            if (!Peers.TryRemove(id, out peer))
+                return false;
+
+            lock (peer.SessionLock)
             {
-                _staticPeers.TryRemove(id, out _);
                 peer.InSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.OutSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
                 peer.InSession = null;
                 peer.OutSession = null;
-                PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
-                return true;
             }
-
-            return false;
+            PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
+            return true;
         }
 
         public Peer Replace(ISession session)
@@ -143,20 +148,9 @@ namespace Nethermind.Network
                 // this should happen
                 if (previousPeer.InSession == session || previousPeer.OutSession == session)
                 {
-                    if (previousPeer.Node.IsStatic)
-                    {
-                        session.Node.IsStatic = true;
-                    }
-
                     // (what with the other session?)
-
-                    _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-
-                    if (previousPeer is not null)
-                    {
-                        previousPeer.InSession = null;
-                        previousPeer.OutSession = null;
-                    }
+                    previousPeer.InSession = null;
+                    previousPeer.OutSession = null;
                 }
                 else
                 {
@@ -184,7 +178,7 @@ namespace Nethermind.Network
 
         private async Task RunPeerCommit()
         {
-            var token = _cancellationTokenSource.Token;
+            CancellationToken token = _cancellationTokenSource.Token;
             while (!token.IsCancellationRequested
                 && await _peerPersistenceTimer.WaitForNextTickAsync(token))
             {
@@ -203,9 +197,13 @@ namespace Nethermind.Network
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Error during peer storage commit: {ex}");
+                    _peerStorage.StartBatch();
+                    if (_logger.IsError) ErrorPeerStorageCommit(ex);
                 }
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void ErrorPeerStorageCommit(Exception ex) => _logger.Error($"Error during peer storage commit: {ex}");
         }
 
         private void UpdateReputationAndMaxPeersCount()
@@ -230,27 +228,31 @@ namespace Nethermind.Network
             //if we have more persisted nodes then the threshold, we run cleanup process
             if (storedNodes.Length > _networkConfig.PersistedPeerCountCleanupThreshold)
             {
-                ICollection<Peer> activePeers = ActivePeers.Values;
+                Peer[] activePeers = ActivePeers.Select(static kvp => kvp.Value).ToArray();
                 CleanupPersistedPeers(activePeers, storedNodes);
             }
         }
 
         private void CleanupPersistedPeers(ICollection<Peer> activePeers, NetworkNode[] storedNodes)
         {
-            HashSet<PublicKey> activeNodeIds = new(activePeers.Select(x => x.Node.Id));
+            HashSet<PublicKey> activeNodeIds = [.. activePeers.Select(x => x.Node.Id)];
             NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;
-            var nodesToRemove = nonActiveNodes.Take(countToRemove);
+            IEnumerable<NetworkNode> nodesToRemove = nonActiveNodes.Take(countToRemove);
 
             int removedNodes = 0;
-            foreach (var item in nodesToRemove)
+            foreach (NetworkNode item in nodesToRemove)
             {
                 _peerStorage.RemoveNode(item.NodeId);
                 removedNodes++;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {removedNodes}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.PersistedNodesCount}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
+            if (_logger.IsDebug) DebugRemovingPersistedPeers(removedNodes, storedNodes.Length);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void DebugRemovingPersistedPeers(int removed, int prevCount)
+                => _logger.Debug($"Removing persisted peers: {removed}, prevPersistedCount: {prevCount}, newPersistedCount: {_peerStorage.PersistedNodesCount}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
         }
 
         private void StopTimers()
@@ -279,7 +281,9 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
-                while (PeerCount >= _networkConfig.MaxCandidatePeerCount && ActivePeerCount >= _networkConfig.MaxActivePeers)
+                // Static and trusted nodes bypass throttling so they are always registered (static to stay
+                // dialable, trusted so inbound connections are recognized and counted even at capacity).
+                while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
                     if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
                     await Task.Delay(1000, token);
@@ -291,6 +295,7 @@ namespace Nethermind.Network
 
         public async Task StopAsync()
         {
+            _nodeSource.NodeRemoved -= NodeSourceOnNodeRemoved;
             _cancellationTokenSource.Cancel();
 
             StopTimers();

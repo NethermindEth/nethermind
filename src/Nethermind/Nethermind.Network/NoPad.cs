@@ -7,10 +7,7 @@ namespace Nethermind.Network
 {
     public class NoPad : IMessagePad
     {
-        public byte[] Pad(byte[] bytes)
-        {
-            return bytes;
-        }
+        public byte[] Pad(byte[] bytes) => bytes;
         public void Pad(IByteBuffer bytes) { }
     }
 }

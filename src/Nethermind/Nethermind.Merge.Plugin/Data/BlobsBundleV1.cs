@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -58,7 +59,7 @@ public class BlobsBundleV1
         Proofs = proofs;
     }
 
-    public byte[][] Commitments { get; }
-    public byte[][] Blobs { get; }
-    public byte[][] Proofs { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Commitments { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Blobs { get; }
+    [JsonConverter(typeof(BlobsBundleByteArrayArrayConverter))] public byte[][] Proofs { get; }
 }

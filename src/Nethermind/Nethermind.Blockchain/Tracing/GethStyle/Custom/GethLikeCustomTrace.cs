@@ -11,8 +11,5 @@ public class GethLikeCustomTrace
     private static readonly object _empty = new { };
     public object Value { get; set; } = _empty;
 
-    public override string ToString()
-    {
-        return Value.ToString() ?? string.Empty;
-    }
+    public override string ToString() => Value.ToString() ?? string.Empty;
 }

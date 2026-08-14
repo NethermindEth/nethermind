@@ -1,17 +1,15 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Precompiles;
 
 public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 {
-    public static readonly IdentityPrecompile Instance = new();
+    public static IdentityPrecompile Instance { get; } = new();
 
     private IdentityPrecompile()
     {
@@ -21,10 +19,14 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 
     public static string Name => "ID";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 15L;
+    // Caching disabled: the copy operation is O(n) and the cache key hash is also O(n),
+    // making caching strictly worse than direct execution for this precompile.
+    public bool SupportsCaching => false;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        3L * EvmCalculations.Div32Ceiling((ulong)inputData.Length);
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => 15UL;
+
+    public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        3UL * EvmCalculations.Div32Ceiling(inputData.Length);
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inputData.ToArray();
 }

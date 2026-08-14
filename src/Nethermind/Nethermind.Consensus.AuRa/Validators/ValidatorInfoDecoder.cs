@@ -6,65 +6,53 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal sealed class ValidatorInfoDecoder : RlpStreamDecoder<ValidatorInfo>, IRlpObjectDecoder<ValidatorInfo>
+    internal sealed class ValidatorInfoDecoder : RlpDecoder<ValidatorInfo>
     {
-        protected override ValidatorInfo? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override ValidatorInfo? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpStream.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
-                rlpStream.ReadByte();
+                decoderContext.ReadByte();
                 return null;
             }
 
-            var length = rlpStream.ReadSequenceLength();
-            int check = rlpStream.Position + length;
-            var finalizingBlockNumber = rlpStream.DecodeLong();
-            var previousFinalizingBlockNumber = rlpStream.DecodeLong();
+            int length = decoderContext.ReadSequenceLength();
+            int check = decoderContext.Position + length;
+            ulong finalizingBlockNumber = decoderContext.DecodeULong();
+            ulong previousFinalizingBlockNumber = decoderContext.DecodeULong();
 
-            int addressesSequenceLength = rlpStream.ReadSequenceLength();
-            int addressesCheck = rlpStream.Position + addressesSequenceLength;
-            var count = addressesSequenceLength / Rlp.LengthOfAddressRlp;
-            rlpStream.GuardLimit(count);
+            int addressesSequenceLength = decoderContext.ReadSequenceLength();
+            int addressesCheck = decoderContext.Position + addressesSequenceLength;
+            int count = addressesSequenceLength / Rlp.LengthOfAddressRlp;
+            decoderContext.GuardLimit(count);
             Address[] addresses = new Address[count];
             int i = 0;
-            while (rlpStream.Position < addressesCheck)
+            while (decoderContext.Position < addressesCheck)
             {
-                addresses[i++] = rlpStream.DecodeAddress();
+                addresses[i++] = decoderContext.DecodeAddress();
             }
-            rlpStream.Check(addressesCheck);
-            rlpStream.Check(check);
+            decoderContext.Check(addressesCheck);
+            decoderContext.Check(check);
 
             return new ValidatorInfo(finalizingBlockNumber, previousFinalizingBlockNumber, addresses);
         }
 
-        public Rlp Encode(ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence;
-            }
-
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data.ToArray());
-        }
-
-        public override void Encode(RlpStream stream, ValidatorInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                stream.EncodeNullObject();
+                writer.EncodeNullObject();
                 return;
             }
 
-            var (contentLength, validatorLength) = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            stream.Encode(item.FinalizingBlockNumber);
-            stream.Encode(item.PreviousFinalizingBlockNumber);
-            stream.StartSequence(validatorLength);
+            (int contentLength, int validatorLength) = GetContentLength(item, rlpBehaviors);
+            writer.StartSequence(contentLength);
+            writer.Encode(item.FinalizingBlockNumber);
+            writer.Encode(item.PreviousFinalizingBlockNumber);
+            writer.StartSequence(validatorLength);
             for (int i = 0; i < item.Validators.Length; i++)
             {
-                stream.Encode(item.Validators[i]);
+                writer.Encode(item.Validators[i]);
             }
         }
 

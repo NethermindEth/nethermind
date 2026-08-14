@@ -11,21 +11,18 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json;
 
-public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256>>
+public class BlockRewardConverter : JsonConverter<SortedDictionary<ulong, UInt256>>
 {
-    public override void Write(Utf8JsonWriter writer, SortedDictionary<long, UInt256> value,
-        JsonSerializerOptions options)
-    {
-        throw new NotSupportedException();
-    }
+    public override void Write(Utf8JsonWriter writer, SortedDictionary<ulong, UInt256> value,
+        JsonSerializerOptions options) => throw new NotSupportedException();
 
-    public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
+    public override SortedDictionary<ulong, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)
     {
-        var value = new SortedDictionary<long, UInt256>();
+        SortedDictionary<ulong, UInt256> value = [];
         if (reader.TokenType == JsonTokenType.String)
         {
-            var blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
+            UInt256 blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
             value.Add(0, blockReward);
         }
         else if (reader.TokenType == JsonTokenType.Number)
@@ -42,16 +39,14 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256
                     throw new ArgumentException("Cannot deserialize dictionary.");
                 }
 
-                var property =
-                    UInt256Converter.ReadHex(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
-                var key = (long)property;
+                ulong key = ULongConverter.FromString(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
                 reader.Read();
                 if (reader.TokenType != JsonTokenType.String)
                 {
                     throw new ArgumentException("Cannot deserialize dictionary.");
                 }
 
-                var blockReward =
+                UInt256 blockReward =
                     UInt256Converter.ReadHex(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
                 value.Add(key, blockReward);
 

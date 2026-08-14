@@ -3,35 +3,154 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class CodeInfo(ReadOnlyMemory<byte> code) : ICodeInfo, IThreadPoolWorkItem
+public sealed class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 {
-    private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-    public static CodeInfo Empty { get; } = new(ReadOnlyMemory<byte>.Empty);
-    public ReadOnlyMemory<byte> Code { get; } = code;
-    ReadOnlySpan<byte> ICodeInfo.CodeSpan => Code.Span;
+    public static CodeInfo Empty { get; }
+    // Empty code sentinel
+    private static readonly JumpDestinationAnalyzer _emptyAnalyzer;
 
-    private readonly JumpDestinationAnalyzer _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
+    static CodeInfo()
+    {
+        CodeInfo stub = new(); // allocate without analyzer
+        _emptyAnalyzer = new JumpDestinationAnalyzer(stub, skipAnalysis: true);
+        Empty = new CodeInfo(_emptyAnalyzer);
+    }
 
+    // Empty
+    private CodeInfo() { }
+    private CodeInfo(JumpDestinationAnalyzer analyzer)
+    {
+        _analyzer = analyzer;
+        _streamBuildState = StreamBuildUnavailable;
+    }
+
+    // Regular contract
+    public CodeInfo(ReadOnlyMemory<byte> code)
+    {
+        Code = code;
+        if (code.Length == 0)
+        {
+            _analyzer = _emptyAnalyzer;
+            _streamBuildState = StreamBuildUnavailable;
+        }
+        else
+        {
+            _analyzer = new JumpDestinationAnalyzer(this);
+        }
+    }
+
+    // Precompile
+    public CodeInfo(IPrecompile? precompile)
+    {
+        Precompile = precompile;
+        _analyzer = null;
+        _streamBuildState = StreamBuildUnavailable;
+    }
+
+    public ReadOnlyMemory<byte> Code { get; }
+    public ReadOnlySpan<byte> CodeSpan => Code.Span;
+
+    public IPrecompile? Precompile { get; }
+
+    private readonly JumpDestinationAnalyzer? _analyzer;
+    private int _streamHits;
+
+    private const int StreamBuildIdle = 0;
+    private const int StreamBuildScheduled = 1;
+    private const int StreamBuildUnavailable = 2;
+    private int _streamBuildState;
+
+    // Key into the shared InstructionStreamCache (set by the repository), so a built stream
+    // survives this instance's eviction.
+    public ValueHash256 CodeHash { get; set; }
+
+    /// <summary>
+    /// Built stream from the shared cache, or <c>null</c> until built (scheduled once past
+    /// <see cref="StreamInterpreter.BuildThreshold"/>, never blocks). Held only by the shared cache, not this instance.
+    /// </summary>
+    internal InstructionStream? GetOrBuildStream()
+    {
+        if (Volatile.Read(ref _streamBuildState) == StreamBuildUnavailable)
+            return null;
+        if (CodeHash == default)
+            return null;
+        if (InstructionStreamCache.TryGet(CodeHash, out InstructionStream? cached))
+            return cached;
+        if (Interlocked.Increment(ref _streamHits) < StreamInterpreter.BuildThreshold)
+            return null;
+
+        if (Interlocked.CompareExchange(ref _streamBuildState, StreamBuildScheduled, StreamBuildIdle) == StreamBuildIdle)
+            ThreadPool.UnsafeQueueUserWorkItem(new StreamBuilder(this), preferLocal: false);
+
+        return null;
+    }
+
+    private void BuildStream()
+    {
+        InstructionStream? stream = InstructionStream.TryBuild(CodeSpan);
+        if (stream is not null && CodeHash != default && stream.RetainedBytes <= StreamInterpreter.MaxStreamRetainedBytes)
+        {
+            InstructionStreamCache.Set(CodeHash, stream);
+        }
+        else
+        {
+            Volatile.Write(ref _streamBuildState, StreamBuildUnavailable);
+        }
+    }
+
+    private sealed class StreamBuilder(CodeInfo codeInfo) : IThreadPoolWorkItem
+    {
+        public void Execute() => codeInfo.BuildStream();
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when this instance represents non-executable empty bytecode.
+    /// </summary>
+    /// <remarks>
+    /// Empty code is represented by the shared analyzer sentinel so fast paths can test this without inspecting bytecode.
+    /// Constructors that create zero-length executable bytecode must assign the sentinel to preserve that invariant.
+    /// </remarks>
     public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
+    public bool IsPrecompile => Precompile is not null;
 
     public bool ValidateJump(int destination)
-    {
-        return _analyzer.ValidateJump(destination);
-    }
+        => _analyzer?.ValidateJump(destination) ?? false;
 
     void IThreadPoolWorkItem.Execute()
-    {
-        _analyzer.Execute();
-    }
+        => _analyzer?.Execute();
 
     public void AnalyzeInBackgroundIfRequired()
     {
-        if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
-        {
+#if !ZK_EVM
+        if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
-        }
+#endif
+    }
+
+    public override bool Equals(object? obj)
+        => Equals(obj as CodeInfo);
+
+    public override int GetHashCode()
+    {
+        if (IsPrecompile)
+            return Precompile?.GetType().GetHashCode() ?? 0;
+        return CodeSpan.FastHash();
+    }
+
+    public bool Equals(CodeInfo? other)
+    {
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+        if (IsPrecompile || other.IsPrecompile)
+            return Precompile?.GetType() == other.Precompile?.GetType();
+        return CodeSpan.SequenceEqual(other.CodeSpan);
     }
 }

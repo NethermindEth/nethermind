@@ -9,10 +9,7 @@ public readonly struct ReceiveResult
 
     public readonly bool IsNull => !_isNotNull;
 
-    public ReceiveResult()
-    {
-        _isNotNull = true;
-    }
+    public ReceiveResult() => _isNotNull = true;
 
     public int Read { get; init; }
     public bool EndOfMessage { get; init; }

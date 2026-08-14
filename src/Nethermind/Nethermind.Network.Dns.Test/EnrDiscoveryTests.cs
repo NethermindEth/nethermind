@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -30,7 +29,9 @@ public class EnrDiscoveryTests
         TestErrorLogManager testErrorLogManager = new();
         INetworkConfig config = new NetworkConfig();
         config.DiscoveryDns = url;
-        EnrDiscovery enrDiscovery = new(new EnrRecordParser(singer), config, testErrorLogManager);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.IsForkIdCompatible(Arg.Any<ForkId>()).Returns(true);
+        EnrDiscovery enrDiscovery = new(new EnrRecordParser(singer), config, forkInfo, testErrorLogManager);
         long startTime = Stopwatch.GetTimestamp();
         List<Node> addedRecords = enrDiscovery.DiscoverNodes(default).ToBlockingEnumerable().ToList();
 
@@ -39,7 +40,7 @@ public class EnrDiscoveryTests
         {
             await TestContext.Out.WriteLineAsync(error.Text);
         }
-        addedRecords.Count.Should().Be(3000);
+        Assert.That(addedRecords.Count, Is.EqualTo(3000));
     }
 
     [Test]
@@ -48,14 +49,14 @@ public class EnrDiscoveryTests
 
         NodeRecordSigner singer = new(new Ecdsa(), TestItem.PrivateKeyA);
         EnrRecordParser parser = new(singer);
-        EnrTreeCrawler crawler = new(new(Substitute.For<InterfaceLogger>()));
+        EnrTreeCrawler crawler = new(LimboTraceLogger.Instance);
         int verified = 0;
         await foreach (string record in crawler.SearchTree("all.mainnet.ethdisco.net", default))
         {
             NodeRecord nodeRecord = parser.ParseRecord(record);
             if (!nodeRecord.Snap)
             {
-                nodeRecord.EnrString.Should().BeEquivalentTo(record);
+                Assert.That(nodeRecord.ToString(), Is.EqualTo(record));
                 verified++;
             }
         }

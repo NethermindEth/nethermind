@@ -3,22 +3,22 @@
 
 using System;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
+using Nethermind.Core.RequestSizer;
 
 namespace Nethermind.Core.Test.RequestSizer;
 
 public class LatencyBasedRequestSizerTests
 {
     [TestCase(0, 3)]
-    [TestCase(20, 2)]
-    [TestCase(100, 1)]
+    [TestCase(50, 2)]
+    [TestCase(500, 1)]
     public async Task TestWait(int waitTimeMs, int afterRequestSize)
     {
         LatencyBasedRequestSizer sizer = new(
             1, 4,
-            TimeSpan.FromMilliseconds(10),
-            TimeSpan.FromMilliseconds(50));
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromMilliseconds(200));
 
         await sizer.MeasureLatency((_ => Task.FromResult(0)));
         await sizer.MeasureLatency((async _ =>
@@ -29,6 +29,6 @@ public class LatencyBasedRequestSizerTests
 
         int modifiedRequestSize = await sizer.MeasureLatency((Task.FromResult));
 
-        modifiedRequestSize.Should().Be(afterRequestSize);
+        Assert.That(modifiedRequestSize, Is.EqualTo(afterRequestSize));
     }
 }

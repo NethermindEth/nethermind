@@ -15,6 +15,12 @@ namespace Nethermind.Network.Enr
         public static ReadOnlySpan<byte> EthU8 => "eth"u8;
 
         /// <summary>
+        /// Consensus-layer information.
+        /// </summary>
+        public const string Eth2 = "eth2";
+        public static ReadOnlySpan<byte> Eth2U8 => "eth2"u8;
+
+        /// <summary>
         /// Name of identity scheme, e.g. "v4"
         /// </summary>
         public const string Id = "id";
@@ -35,8 +41,8 @@ namespace Nethermind.Network.Enr
         /// <summary>
         /// Compressed secp256k1 public key, 33 bytes
         /// </summary>
-        public const string Secp256K1 = "secp256k1";
-        public static ReadOnlySpan<byte> Secp256K1U8 => "secp256k1"u8;
+        public const string SecP256k1 = "secp256k1";
+        public static ReadOnlySpan<byte> SecP256k1U8 => "secp256k1"u8;
 
         /// <summary>
         /// TCP port, big endian integer

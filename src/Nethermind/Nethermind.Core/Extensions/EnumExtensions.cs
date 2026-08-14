@@ -43,7 +43,7 @@ public static class EnumExtensions
             max |= valuesBinary[i];
         }
 
-        List<T> result = new();
+        List<T> result = [];
         for (int i = 0; i <= max; i++)
         {
             int unaccountedBits = i;

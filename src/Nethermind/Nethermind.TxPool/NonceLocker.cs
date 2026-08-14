@@ -29,8 +29,5 @@ public ref struct NonceLocker
         }
     }
 
-    public readonly void Accept()
-    {
-        _acceptAction();
-    }
+    public readonly void Accept() => _acceptAction();
 }

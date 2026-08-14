@@ -30,7 +30,6 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FluentAssertions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>

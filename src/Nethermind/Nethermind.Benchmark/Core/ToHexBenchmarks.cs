@@ -24,15 +24,9 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark(Baseline = true)]
-        public string Current()
-        {
-            return bytes.ToHexString();
-        }
+        public string Current() => bytes.ToHexString();
 
         [Benchmark]
-        public string Improved()
-        {
-            return HexConverter.ToString(bytes);
-        }
+        public string Improved() => HexConverter.ToString(bytes);
     }
 }

@@ -5,12 +5,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Events;
-using Nethermind.Evm.State;
 using Nethermind.Network;
 using Nethermind.Network.Rlpx;
 using Nethermind.Synchronization;
@@ -86,7 +83,7 @@ public class PseudoNethermindRunner(IComponentContext ctx) : IAsyncDisposable
         await ctx.Resolve<IStaticNodesManager>().InitAsync();
 
         _discoveryApp = ctx.Resolve<IDiscoveryApp>();
-        _ = _discoveryApp.StartAsync(); // Bootstrap is not blocking by default
+        await _discoveryApp.StartAsync();
 
         _peerPool = ctx.Resolve<IPeerPool>();
         _peerPool.Start();

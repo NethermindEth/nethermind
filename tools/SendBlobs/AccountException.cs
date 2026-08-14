@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace SendBlobs;
+
 internal class AccountException : Exception
 {
     public AccountException()

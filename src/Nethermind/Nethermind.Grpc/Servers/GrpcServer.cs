@@ -10,22 +10,16 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Grpc.Servers
 {
-    public class GrpcServer : NethermindService.NethermindServiceBase, IGrpcServer
+    public class GrpcServer(IJsonSerializer jsonSerializer, ILogManager logManager) : NethermindService.NethermindServiceBase, IGrpcServer
     {
         private const int MaxCapacity = 1000;
-        private readonly IJsonSerializer _jsonSerializer;
-        private static readonly QueryResponse EmptyQueryResponse = new QueryResponse();
+        private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
+        private static readonly QueryResponse EmptyQueryResponse = new();
 
         private readonly ConcurrentDictionary<string, BlockingCollection<string>> _clientResults =
-            new ConcurrentDictionary<string, BlockingCollection<string>>();
+            new();
 
-        private readonly ILogger _logger;
-
-        public GrpcServer(IJsonSerializer jsonSerializer, ILogManager logManager)
-        {
-            _jsonSerializer = jsonSerializer;
-            _logger = logManager.GetClassLogger();
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger<GrpcServer>();
 
         public override Task<QueryResponse> Query(QueryRequest request, ServerCallContext context)
             => Task.FromResult(EmptyQueryResponse);
@@ -33,8 +27,8 @@ namespace Nethermind.Grpc.Servers
         public override async Task Subscribe(SubscriptionRequest request,
             IServerStreamWriter<SubscriptionResponse> responseStream, ServerCallContext context)
         {
-            var client = request.Client ?? string.Empty;
-            var results = _clientResults.AddOrUpdate(client,
+            string client = request.Client ?? string.Empty;
+            BlockingCollection<string> results = _clientResults.AddOrUpdate(client,
                 static (_) => new BlockingCollection<string>(MaxCapacity),
                 static (_, r) => r);
 
@@ -43,7 +37,7 @@ namespace Nethermind.Grpc.Servers
             {
                 while (true)
                 {
-                    var result = results.Take();
+                    string result = results.Take();
                     await responseStream.WriteAsync(new SubscriptionResponse
                     {
                         Client = client,
@@ -51,13 +45,16 @@ namespace Nethermind.Grpc.Servers
                     });
                 }
             }
+            catch (ObjectDisposedException)
+            {
+            }
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error(ex.Message, ex);
             }
             finally
             {
-                _clientResults.TryRemove(client, out _);
+                if (_clientResults.TryRemove(client, out BlockingCollection<string> removed)) removed.Dispose();
                 if (_logger.IsInfo) _logger.Info($"Finished the data stream for client: '{client}'.");
             }
         }
@@ -74,14 +71,17 @@ namespace Nethermind.Grpc.Servers
                 return Task.CompletedTask;
             }
 
-            var payload = _jsonSerializer.Serialize(data);
+            string payload = _jsonSerializer.Serialize(data);
             if (string.IsNullOrWhiteSpace(client))
             {
-                foreach (var (_, results) in _clientResults)
+                foreach ((string _, BlockingCollection<string> results) in _clientResults)
                 {
                     try
                     {
                         results.TryAdd(payload);
+                    }
+                    catch (ObjectDisposedException)
+                    {
                     }
                     catch (Exception ex)
                     {
@@ -92,12 +92,18 @@ namespace Nethermind.Grpc.Servers
                 return Task.CompletedTask;
             }
 
-            if (!_clientResults.TryGetValue(client, out var clientResult))
+            if (!_clientResults.TryGetValue(client, out BlockingCollection<string> clientResult))
             {
                 return Task.CompletedTask;
             }
 
-            clientResult.Add(payload);
+            try
+            {
+                clientResult.Add(payload);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
 
             return Task.CompletedTask;
         }

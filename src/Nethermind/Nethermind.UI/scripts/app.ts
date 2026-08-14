@@ -202,7 +202,7 @@ function updateTxPool(txPool: TxPool) {
 const logWindow = new LogWindow("nodeLog");
 const gasInfo = new GasInfo("minGas", "medianGas", "aveGas", "maxGas", "gasLimit", "gasLimitDelta");
 
-const sse = new EventSource("/data/events");
+const sse = new EventSource("data/events");
 
 sse.addEventListener("log", (e) => logWindow.receivedLog(e));
 sse.addEventListener("processed", (e) => gasInfo.parseEvent(e));
@@ -300,7 +300,7 @@ sse.addEventListener("forkChoice", (e) => {
   txsToAdd.push(...mergedData);
   lastBlockTxs = txsToAdd.length;
 
-  if (txsToAdd.length > 250000) txsToAdd.slice(txsToAdd.length - 25000);
+  if (txsToAdd.length > 250000) txsToAdd = txsToAdd.slice(txsToAdd.length - 25000);
 
   blockTxs = mapByHash(mergedData)
 });

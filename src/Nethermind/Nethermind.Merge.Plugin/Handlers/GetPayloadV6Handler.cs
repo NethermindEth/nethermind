@@ -1,0 +1,25 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Consensus.Producers;
+
+namespace Nethermind.Merge.Plugin.Handlers;
+
+/// <summary>
+/// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/experimental/blob-extension.md#engine_getpayloadv3">
+/// engine_getpayloadv3</a>
+/// </summary>
+public class GetPayloadV6Handler(
+    IPayloadPreparationService payloadPreparationService,
+    ISpecProvider specProvider,
+    ILogManager logManager,
+    IBuilderOverridePolicy builderOverridePolicy)
+    : GetPayloadHandlerBase<GetPayloadV6Result>(EngineApiVersions.GetPayload.V6, payloadPreparationService, specProvider, logManager, builderOverridePolicy)
+{
+    protected override GetPayloadV6Result GetPayloadResultFromBlock(IBlockProductionContext context) => new GetPayloadV6DirectResponse(context.CurrentBestBlock!, context.BlockFees, new BlobsBundleV2(context.CurrentBestBlock!), context.CurrentBestBlock!.ExecutionRequests!, ShouldOverrideBuilder(context.CurrentBestBlock!));
+}

@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using System.Linq;
 using Nethermind.Evm.State;
+using System.Reflection;
+using System.IO;
 
 namespace Nethermind.Optimism;
 
@@ -21,7 +23,7 @@ public class Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, I
         {
             IReleaseSpec spec = specProvider.GetSpec(header);
 
-            var code = GetCreate2DeployerCode();
+            byte[] code = GetCreate2DeployerCode();
 
             worldState.CreateAccountIfNotExists(PreInstalls.Create2Deployer, 0);
             worldState.InsertCode(PreInstalls.Create2Deployer, code, spec);
@@ -30,12 +32,12 @@ public class Create2DeployerContractRewriter(IOptimismSpecHelper opSpecHelper, I
 
     private static byte[] GetCreate2DeployerCode()
     {
-        var asm = typeof(Create2DeployerContractRewriter).Assembly;
-        var name = asm.GetManifestResourceNames()
+        Assembly asm = typeof(Create2DeployerContractRewriter).Assembly;
+        string name = asm.GetManifestResourceNames()
             .Single(name => name.EndsWith("Create2Deployer.data"));
 
-        using var stream = asm.GetManifestResourceStream(name);
-        var buffer = new byte[stream!.Length];
+        using Stream? stream = asm.GetManifestResourceStream(name);
+        byte[] buffer = new byte[stream!.Length];
         stream.ReadExactly(buffer, 0, buffer.Length);
         return buffer;
     }

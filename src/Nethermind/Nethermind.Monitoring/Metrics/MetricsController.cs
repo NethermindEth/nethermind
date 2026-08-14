@@ -14,6 +14,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -29,19 +30,18 @@ namespace Nethermind.Monitoring.Metrics
     public partial class MetricsController : IMetricsController
     {
         private readonly int _intervalMilliseconds;
-        private Timer _timer = null!;
-        private static bool _staticLabelsInitialized = false;
+        private static bool _staticLabelsInitialized;
 
-        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
-        private readonly HashSet<Type> _metricTypes = new();
+        private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = [];
+        private volatile IMetricUpdater[][] _updaterValues = [];
 
         // Largely for testing reason
-        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
+        internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = [];
 
         private readonly bool _useCounters;
         private readonly bool _enableDetailedMetric;
 
-        private readonly List<Action> _callbacks = new();
+        private volatile Action[] _callbacks = [];
 
         public interface IMetricUpdater
         {
@@ -56,17 +56,17 @@ namespace Nethermind.Monitoring.Metrics
 
         public class GaugePerKeyMetricUpdater(IDictionary dict, string dictionaryName) : IMetricUpdater
         {
-            private readonly Dictionary<string, Gauge> _gauges = new();
+            private readonly Dictionary<string, Gauge> _gauges = [];
             public IReadOnlyDictionary<string, Gauge> Gauges => _gauges;
 
             public void Update()
             {
                 // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
                 // impact the performance of whatever is updating the metrics.
-                foreach (object keyObj in dict.Keys) // Different dictionary seems to iterate to different KV type. So need to use `Keys` here.
+                foreach (DictionaryEntry entry in dict)
                 {
-                    string keyStr = keyObj.ToString()!;
-                    double value = Convert.ToDouble(dict[keyObj]);
+                    string keyStr = entry.Key.ToString()!;
+                    double value = Convert.ToDouble(entry.Value);
                     string gaugeName = GetGaugeNameKey(dictionaryName, keyStr);
                     ref Gauge? gauge = ref CollectionsMarshal.GetValueRefOrAddDefault(_gauges, gaugeName, out _);
                     gauge ??= CreateGauge(BuildGaugeName(keyStr));
@@ -79,9 +79,10 @@ namespace Nethermind.Monitoring.Metrics
         {
             public void Update()
             {
-                foreach (object key in dict.Keys)
+                foreach (DictionaryEntry entry in dict)
                 {
-                    double value = Convert.ToDouble(dict[key]);
+                    object key = entry.Key;
+                    double value = Convert.ToDouble(entry.Value);
                     switch (key)
                     {
                         case IMetricLabels label:
@@ -157,14 +158,6 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        public void RegisterMetrics(Type type)
-        {
-            if (_metricTypes.Add(type))
-            {
-                EnsurePropertiesCached(type);
-            }
-        }
-
         internal record CommonMetricInfo(string Name, string Description, Dictionary<string, string> Tags);
 
         private static CommonMetricInfo DetermineMetricInfo(MemberInfo member)
@@ -182,7 +175,7 @@ namespace Nethermind.Monitoring.Metrics
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
         {
-            var metricInfo = DetermineMetricInfo(member);
+            CommonMetricInfo metricInfo = DetermineMetricInfo(member);
             return CreateGauge(metricInfo.Name, metricInfo.Description, metricInfo.Tags, labels);
         }
 
@@ -214,11 +207,11 @@ namespace Nethermind.Monitoring.Metrics
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
             PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName) ?? throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
-            object value = info.GetValue(null) ?? throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
+            object value = info.GetValue(null) ?? throw new NotSupportedException("Developer error: a requested static description field was not initialized!");
             return value.ToString()!;
         }
 
-        private void EnsurePropertiesCached(Type type)
+        public void RegisterMetrics(Type type)
         {
             if (!_metricUpdaters.ContainsKey(type))
             {
@@ -228,10 +221,15 @@ namespace Nethermind.Monitoring.Metrics
                     meter = new(type.Namespace!);
                 }
 
-                IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
+                IList<IMetricUpdater> metricUpdaters = [];
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
-                foreach (var member in members)
+                foreach (MemberInfo member in members)
                 {
+                    if (member.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null)
+                    {
+                        (member as PropertyInfo)?.SetValue(null, _enableDetailedMetric);
+                        continue;
+                    }
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
                     if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {
@@ -239,6 +237,7 @@ namespace Nethermind.Monitoring.Metrics
                     }
                 }
                 _metricUpdaters[type] = metricUpdaters.ToArray();
+                _updaterValues = [.. _metricUpdaters.Values];
             }
         }
 
@@ -258,6 +257,24 @@ namespace Nethermind.Monitoring.Metrics
                     });
 
                 metricUpdater = new SummaryMetricUpdater(summary);
+                memberInfo.SetValue(metricUpdater);
+
+                _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
+                return true;
+            }
+
+            if (memberType.IsAssignableTo(typeof(IMetricObserver)) && memberInfo.GetCustomAttribute<HistogramMetricAttribute>() is HistogramMetricAttribute explicitHistogramAttribute)
+            {
+                CommonMetricInfo metricInfo = DetermineMetricInfo(memberInfo);
+
+                Histogram histogram = Prometheus.Metrics.WithLabels(metricInfo.Tags).CreateHistogram(metricInfo.Name, metricInfo.Description,
+                    new HistogramConfiguration()
+                    {
+                        LabelNames = explicitHistogramAttribute.LabelNames,
+                        Buckets = explicitHistogramAttribute.Buckets
+                    });
+
+                metricUpdater = new HistogramMetricUpdater(histogram);
                 memberInfo.SetValue(metricUpdater);
 
                 _individualUpdater.Add(GetGaugeNameKey(type.Name, memberInfo.Name), metricUpdater);
@@ -335,55 +352,39 @@ namespace Nethermind.Monitoring.Metrics
             _enableDetailedMetric = metricsConfig.EnableDetailedMetric;
         }
 
-        public void StartUpdating() => _timer = new Timer(UpdateAllMetrics, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(_intervalMilliseconds));
-
-        public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
-
-        private void UpdateAllMetrics(object? state) => UpdateAllMetrics();
-
-        private bool _isUpdating = false;
-        public void UpdateAllMetrics()
+        public async Task RunTimer(CancellationToken cancellationToken)
         {
-            if (!Interlocked.Exchange(ref _isUpdating, true))
+            using PeriodicTimer standardTimer = new(TimeSpan.FromMilliseconds(_intervalMilliseconds));
+
+            try
             {
-                try
+                while (await standardTimer.WaitForNextTickAsync(cancellationToken))
                 {
-                    UpdateAllMetricsInner();
+                    UpdateAllMetrics();
                 }
-                finally
-                {
-                    Volatile.Write(ref _isUpdating, false);
-                }
+            }
+            catch (OperationCanceledException)
+            {
             }
         }
 
-        private void UpdateAllMetricsInner()
+        public void UpdateAllMetrics()
         {
             foreach (Action callback in _callbacks)
             {
                 callback();
             }
 
-            foreach (Type metricType in _metricTypes)
+            foreach (IMetricUpdater[] updaters in _updaterValues)
             {
-                UpdateMetrics(metricType);
+                foreach (IMetricUpdater metricUpdater in updaters)
+                {
+                    metricUpdater.Update();
+                }
             }
         }
 
-        public void AddMetricsUpdateAction(Action callback)
-        {
-            _callbacks.Add(callback);
-        }
-
-        private void UpdateMetrics(Type type)
-        {
-            EnsurePropertiesCached(type);
-
-            foreach (IMetricUpdater metricUpdater in _metricUpdaters[type])
-            {
-                metricUpdater.Update();
-            }
-        }
+        public void AddMetricsUpdateAction(Action callback) => _callbacks = [.. _callbacks, callback];
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 

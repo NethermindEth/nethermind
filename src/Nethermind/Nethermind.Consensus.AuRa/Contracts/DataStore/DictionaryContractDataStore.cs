@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             ILogManager logManager) =>
-            new ContractDataStore<T>(collection, dataContract, blockTree, receiptFinder, logManager);
+            new(collection, dataContract, blockTree, receiptFinder, logManager);
 
         private static ContractDataStoreWithLocalData<T> CreateContractDataStoreWithLocalData(
             IDictionaryContractDataStoreCollection<T> collection,
@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) =>
-            new ContractDataStoreWithLocalData<T>(
+            new(
                 collection,
                 dataContract ?? new EmptyDataContract<T>(),
                 blockTree,
@@ -61,10 +61,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 logManager,
                 localDataSource);
 
-        private DictionaryContractDataStore(ContractDataStore<T> contractDataStore)
-        {
-            ContractDataStore = contractDataStore;
-        }
+        private DictionaryContractDataStore(ContractDataStore<T> contractDataStore) => ContractDataStore = contractDataStore;
 
         public bool TryGetValue(BlockHeader header, T key, out T value)
         {
@@ -75,9 +72,6 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader) => ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
 
-        public void Dispose()
-        {
-            ContractDataStore?.Dispose();
-        }
+        public void Dispose() => ContractDataStore?.Dispose();
     }
 }

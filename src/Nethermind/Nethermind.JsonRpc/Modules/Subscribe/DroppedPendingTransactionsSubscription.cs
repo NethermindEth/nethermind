@@ -18,23 +18,20 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<DroppedPendingTransactionsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _txPool.EvictedPending += OnEvicted;
             if (_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will track DroppedPendingTransactions");
         }
 
-        private void OnEvicted(object? sender, TxEventArgs e)
+        private void OnEvicted(object? sender, TxEventArgs e) => ScheduleAction(async () =>
         {
-            ScheduleAction(async () =>
-            {
-                using JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
-            });
-        }
+            using JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
+            await JsonRpcDuplexClient.SendJsonRpcResult(result);
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
+        });
 
         public override string Type => SubscriptionType.EthSubscription.DroppedPendingTransactions;
 

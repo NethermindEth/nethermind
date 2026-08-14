@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Specs;
 using NUnit.Framework;
 using Nethermind.Evm.Precompiles;
@@ -9,9 +10,9 @@ namespace Nethermind.Evm.Test;
 
 public class Eip1108Tests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
+    protected override ulong BlockNumber => AdjustBlockNumber(MainnetSpecProvider.IstanbulBlockNumber, _blockNumberAdjustment);
 
-    private int _blockNumberAdjustment;
+    private long _blockNumberAdjustment;
 
     [TearDown]
     public override void TearDown()
@@ -21,72 +22,42 @@ public class Eip1108Tests : VirtualMachineTestsBase
         _blockNumberAdjustment = 0;
     }
 
-    [Test]
-    public void Test_add_before_istanbul()
+    [TestCase(-1L, 500UL, Description = "Before Istanbul")]
+    [TestCase(0L, 150UL, Description = "After Istanbul")]
+    public void Test_add(long blockAdjustment, ulong expectedPrecompileGas)
     {
-        _blockNumberAdjustment = -1;
+        _blockNumberAdjustment = blockAdjustment;
         byte[] code = Prepare.EvmCode
             .CallWithInput(BN254AddPrecompile.Address, 1000L, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 500);
+        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
     }
 
-    [Test]
-    public void Test_add_after_istanbul()
+    [TestCase(-1L, 50000L, 40000UL, Description = "Before Istanbul")]
+    [TestCase(0L, 10000L, 6000UL, Description = "After Istanbul")]
+    public void Test_mul(long blockAdjustment, long gasLimit, ulong expectedPrecompileGas)
     {
+        _blockNumberAdjustment = blockAdjustment;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(BN254AddPrecompile.Address, 1000L, new byte[128])
+            .CallWithInput(BN254MulPrecompile.Address, gasLimit, new byte[128])
             .Done;
         TestAllTracerWithOutput result = Execute(code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 150);
+        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
     }
 
-    [Test]
-    public void Test_mul_before_istanbul()
+    [TestCase(-1L, 180000UL, Description = "Before Istanbul")]
+    [TestCase(0L, 79000UL, Description = "After Istanbul")]
+    public void Test_pairing(long blockAdjustment, ulong expectedPrecompileGas)
     {
-        _blockNumberAdjustment = -1;
+        _blockNumberAdjustment = blockAdjustment;
         byte[] code = Prepare.EvmCode
-            .CallWithInput(BN254MulPrecompile.Address, 50000L, new byte[128])
-            .Done;
-        TestAllTracerWithOutput result = Execute(code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 40000L);
-    }
-
-    [Test]
-    public void Test_mul_after_istanbul()
-    {
-        byte[] code = Prepare.EvmCode
-            .CallWithInput(BN254MulPrecompile.Address, 10000L, new byte[128])
-            .Done;
-        TestAllTracerWithOutput result = Execute(code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 4 * 12 + 7 * 3 + GasCostOf.CallEip150 + 6000L);
-    }
-
-    [Test]
-    public void Test_pairing_before_istanbul()
-    {
-        _blockNumberAdjustment = -1;
-        byte[] code = Prepare.EvmCode
-            .CallWithInput(BN254PairingPrecompile.Address, 200000L, new byte[192])
+            .CallWithInput(BN254PairingCheckPrecompile.Address, 200000L, new byte[192])
             .Done;
         TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + 100000L + 80000L);
-    }
-
-    [Test]
-    public void Test_pairing_after_istanbul()
-    {
-        byte[] code = Prepare.EvmCode
-            .CallWithInput(BN254PairingPrecompile.Address, 200000L, new byte[192])
-            .Done;
-        TestAllTracerWithOutput result = Execute(BlockNumber, 1000000L, code);
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + 45000L + 34000L);
+        AssertGas(result, 21000 + 6 * 12 + 7 * 3 + GasCostOf.CallEip150 + expectedPrecompileGas);
     }
 }

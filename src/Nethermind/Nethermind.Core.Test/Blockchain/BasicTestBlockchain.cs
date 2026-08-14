@@ -2,15 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
-using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -31,7 +26,7 @@ public class BasicTestBlockchain : TestBlockchain
 
     public async Task BuildSomeBlocks(int numOfBlocks)
     {
-        var nonce = WorldStateManager.GlobalStateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
+        ulong nonce = WorldStateManager.GlobalStateReader.GetNonce(BlockTree.Head!.Header, TestItem.PrivateKeyA.Address);
         for (int i = 0; i < numOfBlocks; i++)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(BlockTree.Head!.Header);

@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Trie.Pruning
 {
     public static class Metrics
     {
+        private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
+
         [GaugeMetric]
         [Description("Nodes that are currently kept in cache (either persisted or not)")]
         public static long DirtyNodesCount { get; set; }
@@ -42,11 +47,21 @@ namespace Nethermind.Trie.Pruning
 
         [CounterMetric]
         [Description("Number of DB reads.")]
-        public static long LoadedFromDbNodesCount { get; set; }
+        public static long LoadedFromDbNodesCount => _mainLoadedFromDbNodesCount.Value + _otherLoadedFromDbNodesCount.Value;
+        private static CacheLinePaddedLong _mainLoadedFromDbNodesCount;
+        private static CacheLinePaddedLong _otherLoadedFromDbNodesCount;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void IncrementLoadedFromDbNodesCount() =>
+            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromDbNodesCount.Value : ref _otherLoadedFromDbNodesCount.Value);
 
         [CounterMetric]
         [Description("Number of reads from the node cache.")]
-        public static long LoadedFromCacheNodesCount { get; set; }
+        public static long LoadedFromCacheNodesCount => _mainLoadedFromCacheNodesCount.Value + _otherLoadedFromCacheNodesCount.Value;
+        private static CacheLinePaddedLong _mainLoadedFromCacheNodesCount;
+        private static CacheLinePaddedLong _otherLoadedFromCacheNodesCount;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void IncrementLoadedFromCacheNodesCount() =>
+            Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainLoadedFromCacheNodesCount.Value : ref _otherLoadedFromCacheNodesCount.Value);
 
         [CounterMetric]
         [Description("Number of reads from the RLP cache.")]
@@ -57,24 +72,24 @@ namespace Nethermind.Trie.Pruning
         public static long ReplacedNodesCount { get; set; }
 
         [GaugeMetric]
-        [Description("Time taken by the last snapshot persistence.")]
-        public static long SnapshotPersistenceTime { get; set; }
+        [Description("Time taken by the last snapshot persistence, in milliseconds.")]
+        public static long SnapshotPersistenceTimeMs { get; set; }
 
         [GaugeMetric]
-        [Description("Time taken by the last pruning.")]
-        public static long PruningTime { get; set; }
+        [Description("Time taken by the last pruning, in milliseconds.")]
+        public static long PruningTimeMs { get; set; }
 
         [GaugeMetric]
-        [Description("Time taken by the last persisted node pruning.")]
-        public static long PersistedNodePruningTime { get; set; }
+        [Description("Time taken by the last persisted node pruning, in milliseconds.")]
+        public static long PersistedNodePruningTimeMs { get; set; }
 
         [GaugeMetric]
-        [Description("Time taken by the last deep pruning.")]
-        public static long DeepPruningTime { get; set; }
+        [Description("Time taken by the last deep pruning, in milliseconds.")]
+        public static long DeepPruningTimeMs { get; set; }
 
         [GaugeMetric]
         [Description("Last persisted block number (snapshot).")]
-        public static long LastPersistedBlockNumber { get; set; }
+        public static ulong LastPersistedBlockNumber { get; set; }
 
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]

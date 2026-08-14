@@ -13,7 +13,7 @@ namespace Nethermind.Consensus;
 
 public class TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter, ILogManager logManager, ISpecProvider specProvider) : IIncomingTxFilter
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<TxFilterAdapter>();
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {

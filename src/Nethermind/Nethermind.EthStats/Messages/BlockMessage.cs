@@ -7,15 +7,10 @@ using Nethermind.EthStats.Messages.Models;
 
 namespace Nethermind.EthStats.Messages
 {
-    public class BlockMessage : IMessage
+    public class BlockMessage(Block block) : IMessage
     {
         public string? Id { get; set; }
 
-        public Block Block { get; }
-
-        public BlockMessage(Block block)
-        {
-            Block = block;
-        }
+        public Block Block { get; } = block;
     }
 }

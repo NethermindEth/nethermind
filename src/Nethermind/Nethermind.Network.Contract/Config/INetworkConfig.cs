@@ -12,9 +12,19 @@ public interface INetworkConfig : IConfig
     public const int MaxNettyArenaOrder = 14;
     public const int DefaultMaxNettyArenaCount = 8;
 
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual external IP must resolve it through
+    /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
+    /// supplies an override.
+    /// </remarks>
     [ConfigItem(Description = "The external IP. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
+    /// <remarks>
+    /// User-facing override only. Code that needs the actual local IP must resolve it through
+    /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
+    /// supplies an override.
+    /// </remarks>
     [ConfigItem(Description = "The local IP. Use only when the local IP cannot be resolved automatically.", DefaultValue = "null")]
     string? LocalIp { get; set; }
 
@@ -76,7 +86,7 @@ public interface INetworkConfig : IConfig
     uint MaxNettyArenaCount { get; set; }
 
     [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.")]
-    string Bootnodes { get; set; }
+    NetworkNode[] Bootnodes { get; set; }
 
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable automatic port forwarding via UPnP.")]
     bool EnableUPnP { get; set; }
@@ -105,9 +115,21 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Shutdown timeout when closing TCP port.")]
     long RlpxHostShutdownCloseTimeoutMs { get; set; }
 
-    [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{os}` `{runtime}`.")]
+    [ConfigItem(DefaultValue = ProductInfo.DefaultPublicClientIdFormat, Description = "A template string for the public client id provided to external clients. Allowed placeholders: `{name}` `{version}` `{versionPostfix}` `{os}` `{runtime}`.")]
     string PublicClientIdFormat { get; set; }
 
     [ConfigItem(DefaultValue = "true", Description = "Enable Enr discovery", HiddenFromDocs = true)]
     bool EnableEnrDiscovery { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "Reject peers whose IP key was seen recently (time-windowed), using the peer IP filter.")]
+    bool FilterPeersByRecentIp { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "When filtering by recent IP, bucket peers by subnet (e.g., IPv4 /24, IPv6 /64) so multiple IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
+    bool FilterPeersBySameSubnet { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "Reject discovery nodes whose IP key was seen recently (time-windowed), using the peer IP filter.")]
+    bool FilterDiscoveryNodesByRecentIp { get; set; }
+
+    [ConfigItem(DefaultValue = "true", Description = "When filtering discovery nodes by recent IP, bucket discovery node IPs by subnet (e.g., IPv4 /24, IPv6 /64) so multiple discovery node IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
+    bool FilterDiscoveryNodesBySameSubnet { get; set; }
 }

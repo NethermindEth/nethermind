@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Net;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -24,19 +23,19 @@ namespace Nethermind.Network.Test.Stats
             ITimer timer = Substitute.For<ITimer>();
             timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
 
-            var manager = new NodeStatsManager(timerFactory, LimboLogs.Instance, 3);
-            var nodes = TestItem.PublicKeys.Take(3).Select(k => new Node(k, new IPEndPoint(IPAddress.Loopback, 30303))).ToArray();
+            NodeStatsManager manager = new(timerFactory, LimboLogs.Instance, 3);
+            Node[] nodes = TestItem.PublicKeys.Take(3).Select(k => new Node(k, new IPEndPoint(IPAddress.Loopback, 30303))).ToArray();
             manager.ReportSyncEvent(nodes[0], NodeStatsEventType.SyncStarted);
             manager.ReportSyncEvent(nodes[1], NodeStatsEventType.SyncStarted);
             manager.ReportSyncEvent(nodes[2], NodeStatsEventType.SyncStarted);
             Node removedNode = new(TestItem.PublicKeyD, IPEndPoint.Parse("192.168.0.4:30303"));
             manager.ReportHandshakeEvent(removedNode, ConnectionDirection.In);
-            manager.GetCurrentReputation(removedNode).Should().NotBe(0);
+            Assert.That(manager.GetCurrentReputation(removedNode), Is.Not.EqualTo(0));
 
             timer.Elapsed += Raise.Event();
 
-            manager.GetCurrentReputation(removedNode).Should().Be(0);
-            nodes.Select(n => manager.GetCurrentReputation(n)).Should().NotContain(0);
+            Assert.That(manager.GetCurrentReputation(removedNode), Is.EqualTo(0));
+            Assert.That(nodes.Select(n => manager.GetCurrentReputation(n)), Does.Not.Contain(0));
         }
     }
 }

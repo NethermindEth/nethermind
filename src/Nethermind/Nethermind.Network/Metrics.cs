@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
-using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
@@ -103,7 +103,7 @@ namespace Nethermind.Network
         [KeyIsLabel("protocol", "message")]
         public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessageBytes { get; } = new();
 
-        [CounterMetric]
+        [GaugeMetric]
         [Description("Number of candidate peers in peer manager")]
         [DetailedMetric]
         public static int PeerCandidateCount { get; set; }

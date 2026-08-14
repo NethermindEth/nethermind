@@ -18,29 +18,20 @@ namespace Nethermind.Benchmarks.Core
             Keccak.Zero.BytesToArray(),
             Keccak.EmptyTreeHash.BytesToArray(),
             Keccak.OfAnEmptyString.BytesToArray(),
-            TestItem.AddressA.Bytes,
-            Address.Zero.Bytes,
+            TestItem.AddressA.Bytes.ToArray(),
+            Address.Zero.Bytes.ToArray(),
         };
 
         [Params(0, 1, 2, 3, 4)]
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _a = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _a = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public bool Improved()
-        {
-            return _a.IsZero();
-        }
+        public bool Improved() => _a.IsZero();
 
         [Benchmark]
-        public bool Current()
-        {
-            return _a.IsZero();
-        }
+        public bool Current() => _a.IsZero();
     }
 }

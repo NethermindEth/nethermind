@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using BenchmarkDotNet.Attributes;
-using FluentAssertions;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Rlp;
 
@@ -22,7 +22,7 @@ public class RlpTrieNodeEncodingBenchmark
     public RlpTrieNodeEncodingBenchmark()
     {
         _store = new RawScopedTrieStore(new NodeStorage(new MemDb()), null);
-        var tree = new PatriciaTree(_store, NullLogManager.Instance);
+        PatriciaTree tree = new(_store, NullLogManager.Instance);
 
         // Some simple nodes to create E->B->L1, ...
         tree.Set([0b0000_0000], [1, 2, 3, 4, 5, 6, 7, 1]);
@@ -36,10 +36,10 @@ public class RlpTrieNodeEncodingBenchmark
 
         tree.Commit();
 
-        var extension = tree.Root;
+        TrieNode extension = tree.Root;
 
         _extension = extension;
-        _extension.NodeType.Should().Be(NodeType.Extension);
+        Assert.That(_extension.NodeType, Is.EqualTo(NodeType.Extension));
 
         TreePath path = default;
 
@@ -47,29 +47,29 @@ public class RlpTrieNodeEncodingBenchmark
 
         path.AppendMut(0);
         _branch.TryResolveNode(_store, ref path);
-        _branch.NodeType.Should().Be(NodeType.Branch);
+        Assert.That(_branch.NodeType, Is.EqualTo(NodeType.Branch));
 
         _leaf = _branch.GetChild(_store, ref path, 0);
         _leaf.TryResolveNode(_store, ref path);
-        _leaf.NodeType.Should().Be(NodeType.Leaf);
+        Assert.That(_leaf.NodeType, Is.EqualTo(NodeType.Leaf));
     }
 
     [Benchmark]
-    public SpanSource Encode_Extension()
+    public CappedArray<byte> Encode_Extension()
     {
         TreePath path = default;
         return _extension.RlpEncode(_store, ref path);
     }
 
     [Benchmark]
-    public SpanSource Encode_Branch()
+    public CappedArray<byte> Encode_Branch()
     {
         TreePath path = default;
         return _branch.RlpEncode(_store, ref path);
     }
 
     [Benchmark]
-    public SpanSource Encode_Leaf()
+    public CappedArray<byte> Encode_Leaf()
     {
         TreePath path = default;
         return _leaf.RlpEncode(_store, ref path);

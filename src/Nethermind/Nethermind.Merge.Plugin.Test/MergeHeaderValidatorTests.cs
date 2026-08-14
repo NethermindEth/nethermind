@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -49,9 +48,9 @@ public class MergeHeaderValidatorTests
             .WithTotalDifficulty(900)
             .TestObject;
 
-        Context ctx = new Context();
+        Context ctx = new();
         ctx.PoSSwitcher.IsPostMerge(header).Returns(false);
 
-        ctx.MergeHeaderValidator.Validate(header, parent).Should().BeFalse();
+        Assert.That(ctx.MergeHeaderValidator.Validate(header, parent), Is.False);
     }
 }

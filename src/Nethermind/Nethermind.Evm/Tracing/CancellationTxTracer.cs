@@ -19,6 +19,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingMemory;
     private readonly bool _isTracingInstructions;
     private readonly bool _isTracingRefunds;
+    private readonly bool _isTracingReturnData;
     private readonly bool _isTracingCode;
     private readonly bool _isTracingStack;
     private readonly bool _isTracingState;
@@ -67,6 +68,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     {
         get => _isTracingRefunds || innerTracer.IsTracingRefunds;
         init => _isTracingRefunds = value;
+    }
+
+    public bool IsTracingReturnData
+    {
+        get => _isTracingReturnData || innerTracer.IsTracingReturnData;
+        init => _isTracingReturnData = value;
     }
 
     public bool IsTracingCode
@@ -172,7 +179,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
@@ -181,7 +188,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReceipt)
@@ -190,12 +197,12 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
         {
-            innerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
+            innerTracer.StartOperation(pc, opcode, gas, env);
         }
     }
 
@@ -208,7 +215,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -244,15 +251,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportStackPush(in ZeroPaddedSpan stackItem)
-    {
-        token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
-        {
-            innerTracer.ReportStackPush(stackItem);
-        }
-    }
-
     public void ReportStackPush(byte stackItem)
     {
         token.ThrowIfCancellationRequested();
@@ -280,16 +278,16 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
     {
         token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        if (innerTracer.IsTracingReturnData)
         {
-            innerTracer.ReportMemoryChange(offset, data);
+            innerTracer.SetOperationReturnData(returnData);
         }
     }
 
-    public void ReportMemoryChange(UInt256 offset, in ZeroPaddedSpan data)
+    public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -310,7 +308,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
         token.ThrowIfCancellationRequested();
-        if (innerTracer.IsTracingInstructions)
+        if (innerTracer.IsTracingStorage)
         {
             innerTracer.ReportStorageChange(key, value);
         }
@@ -334,6 +332,24 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingOpLevelStorage)
+        {
+            innerTracer.SetOperationTransientStorage(address, storageIndex, newValue, currentValue);
+        }
+    }
+
+    public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingOpLevelStorage)
+        {
+            innerTracer.LoadOperationTransientStorage(address, storageIndex, value);
+        }
+    }
+
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
         token.ThrowIfCancellationRequested();
@@ -343,7 +359,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
@@ -352,7 +368,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
@@ -370,7 +386,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
+    public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
@@ -379,7 +395,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
@@ -406,7 +422,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
@@ -424,7 +440,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportExtraGasPressure(long extraGasPressure)
+    public void ReportExtraGasPressure(ulong extraGasPressure)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingRefunds)
@@ -451,8 +467,5 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void Dispose()
-    {
-        innerTracer.Dispose();
-    }
+    public void Dispose() => innerTracer.Dispose();
 }

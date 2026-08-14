@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            long transitionBlock,
+            ulong transitionBlock,
             ISigner signer)
             : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)))
         {
@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Constant = GetConstant(readOnlyTxProcessorSource);
         }
 
-        public long Activation { get; }
+        public ulong Activation { get; }
 
         public (IRandomContract.Phase Phase, UInt256 Round) GetPhase(BlockHeader parentHeader)
         {
@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             bool isCommitted = IsCommitted(parentHeader, round);
             bool revealed = SentReveal(parentHeader, round);
 
-            var phase = isCommitPhase
+            IRandomContract.Phase phase = isCommitPhase
                 ? revealed
                     ? throw new AuRaException("Revealed random number during commit phase.")
                     : !isCommitted
@@ -166,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </remarks>
         public (Hash256 Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, in UInt256 collectRound)
         {
-            var (hash, cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), SignerAddress, collectRound, SignerAddress);
+            (byte[] hash, byte[] cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), SignerAddress, collectRound, SignerAddress);
             return (new Hash256(hash), cipher);
         }
 

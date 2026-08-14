@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Nethermind.StatsAnalyzer.Plugin.Test\Nethermind.StatsAnalyzer.Plugin.Test.csproj"/>
+  <Project Path="Nethermind.StatsAnalyzer.Plugin\Nethermind.StatsAnalyzer.Plugin.csproj"/>
+</Solution>

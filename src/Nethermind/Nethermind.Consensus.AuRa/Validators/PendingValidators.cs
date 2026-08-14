@@ -7,23 +7,13 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class PendingValidators
+    public class PendingValidators(ulong blockNumber, Hash256 blockHash, Address[] addresses)
     {
-        static PendingValidators()
-        {
-            Rlp.RegisterDecoder(typeof(PendingValidators), new PendingValidatorsDecoder());
-        }
+        static PendingValidators() => Rlp.RegisterDecoder(typeof(PendingValidators), new PendingValidatorsDecoder());
 
-        public PendingValidators(long blockNumber, Hash256 blockHash, Address[] addresses)
-        {
-            BlockNumber = blockNumber;
-            BlockHash = blockHash;
-            Addresses = addresses;
-        }
-
-        public Address[] Addresses { get; }
-        public long BlockNumber { get; }
-        public Hash256 BlockHash { get; }
+        public Address[] Addresses { get; } = addresses;
+        public ulong BlockNumber { get; } = blockNumber;
+        public Hash256 BlockHash { get; } = blockHash;
         public bool AreFinalized { get; set; }
     }
 }

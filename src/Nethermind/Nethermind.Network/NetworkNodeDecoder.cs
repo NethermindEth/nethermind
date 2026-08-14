@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
+using System.Text;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -10,27 +10,42 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public sealed class NetworkNodeDecoder : RlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
+    public sealed class NetworkNodeDecoder : RlpDecoder<NetworkNode>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB(), nameof(NetworkNode.HostIp));
+        public static NetworkNodeDecoder Instance { get; } = new();
 
-        static NetworkNodeDecoder()
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
+
+        protected override NetworkNode DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
+            int contentEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
+            ReadOnlySpan<byte> firstItem = decoderContext.DecodeByteArraySpan(RlpLimit);
+            return IsNodeString(firstItem)
+                ? DecodeNodeStringFormat(ref decoderContext, firstItem, contentEnd)
+                : DecodeLegacyFormat(ref decoderContext, firstItem);
         }
 
-        protected override NetworkNode DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        private static NetworkNode DecodeNodeStringFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> firstItem, int contentEnd)
         {
-            rlpStream.ReadSequenceLength();
+            string nodeString = Encoding.UTF8.GetString(firstItem);
+            long reputation = decoderContext.DecodeLong();
+            decoderContext.Check(contentEnd);
+            return new NetworkNode(nodeString)
+            {
+                Reputation = reputation
+            };
+        }
 
-            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan(RlpLimit.L64));
-            string ip = rlpStream.DecodeString(RlpLimit);
-            int port = (int)rlpStream.DecodeByteArraySpan(RlpLimit.L8).ReadEthUInt64();
-            rlpStream.SkipItem();
+        private static NetworkNode DecodeLegacyFormat(ref RlpReader decoderContext, ReadOnlySpan<byte> publicKeyBytes)
+        {
+            PublicKey publicKey = new(publicKeyBytes);
+            string ip = decoderContext.DecodeString(RlpLimit);
+            int port = (int)decoderContext.DecodeByteArraySpan(RlpLimit.L8).ReadEthUInt64();
+            decoderContext.SkipItem();
             long reputation = 0L;
             try
             {
-                reputation = rlpStream.DecodeLong();
+                reputation = decoderContext.DecodeLong();
             }
             catch (RlpException)
             {
@@ -41,52 +56,45 @@ namespace Nethermind.Network
             return networkNode;
         }
 
-        public override void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
-            stream.StartSequence(contentLength);
-            stream.Encode(item.NodeId.Bytes);
-            stream.Encode(item.Host);
-            stream.Encode(item.Port);
-            stream.Encode(string.Empty);
-            stream.Encode(item.Reputation);
+            writer.StartSequence(contentLength);
+            if (!ShouldEncodeNodeString(item))
+            {
+                EncodeLegacyFormat(ref writer, item);
+                return;
+            }
+
+            writer.Encode(item.ToString());
+            writer.Encode(item.Reputation);
         }
 
-        public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+
+        private static void EncodeLegacyFormat<TWriter>(ref TWriter writer, NetworkNode item)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            int contentLength = GetContentLength(item, rlpBehaviors);
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            stream.StartSequence(contentLength);
-            stream.Encode(item.NodeId.Bytes);
-            stream.Encode(item.Host);
-            stream.Encode(item.Port);
-            stream.Encode(string.Empty);
-            stream.Encode(item.Reputation);
-            return new Rlp(stream.Data.ToArray());
+            writer.Encode(item.NodeId.Bytes);
+            writer.Encode(item.Host);
+            writer.Encode(item.Port);
+            writer.Encode(string.Empty);
+            writer.Encode(item.Reputation);
         }
 
-        public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            throw new NotImplementedException();
-        }
+        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors) => ShouldEncodeNodeString(item)
+            ? Rlp.LengthOf(item.ToString())
+                + Rlp.LengthOf(item.Reputation)
+            : Rlp.LengthOf(item.NodeId.Bytes)
+                + Rlp.LengthOf(item.Host)
+                + Rlp.LengthOf(item.Port)
+                + 1
+                + Rlp.LengthOf(item.Reputation);
 
-        public override int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-        }
+        private static bool ShouldEncodeNodeString(NetworkNode item) => item.IsEnr || item.DiscoveryPort != item.Port;
 
-        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOf(item.NodeId.Bytes)
-                   + Rlp.LengthOf(item.Host)
-                   + Rlp.LengthOf(item.Port)
-                   + 1
-                   + Rlp.LengthOf(item.Reputation);
-        }
-
-        public static void Init()
-        {
-            // here to register with RLP in static constructor
-        }
+        private static bool IsNodeString(ReadOnlySpan<byte> value) =>
+            value.Length != PublicKey.LengthInBytes &&
+            (value.StartsWith("enr:"u8) || value.StartsWith("enode:"u8));
     }
 }

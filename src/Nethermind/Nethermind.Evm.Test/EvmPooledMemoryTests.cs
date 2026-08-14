@@ -16,51 +16,68 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
-    protected override IEvmMemory CreateEvmMemory()
+    private static IEnumerable<TestCaseData> ZeroExtendedCopyCases()
     {
-        return new EvmPooledMemory();
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, UInt256.Zero, 4, new byte[] { 1, 2, 3, 4 })
+            .SetName("CopyFromZeroExtendedAfterGas_exact_range");
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, (UInt256)1, 5, new byte[] { 2, 3, 4, 0, 0 })
+            .SetName("CopyFromZeroExtendedAfterGas_partial_range");
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, (UInt256)4, 3, new byte[] { 0, 0, 0 })
+            .SetName("CopyFromZeroExtendedAfterGas_offset_at_end");
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, (UInt256)100, 3, new byte[] { 0, 0, 0 })
+            .SetName("CopyFromZeroExtendedAfterGas_offset_beyond_end");
+        yield return new TestCaseData(
+            new byte[] { 1, 2, 3, 4 }, new UInt256(0, 1, 0, 0), 3, new byte[] { 0, 0, 0 })
+            .SetName("CopyFromZeroExtendedAfterGas_256_bit_offset");
+
+        byte[] longSource = Enumerable.Range(1, 35).Select(static value => (byte)value).ToArray();
+        yield return new TestCaseData(
+            longSource, UInt256.Zero, 40, longSource.Concat(new byte[5]).ToArray())
+            .SetName("CopyFromZeroExtendedAfterGas_multiword_range");
     }
 
-    [TestCase(32, 1)]
-    [TestCase(0, 0)]
-    [TestCase(33, 2)]
-    [TestCase(64, 2)]
-    [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
-    public void Div32Ceiling(int input, int expectedResult)
+    [TestCase(32UL, 1UL)]
+    [TestCase(0UL, 0UL)]
+    [TestCase(33UL, 2UL)]
+    [TestCase(64UL, 2UL)]
+    [TestCase((ulong)int.MaxValue, (ulong)(int.MaxValue / 32 + 1))]
+    public void Div32Ceiling(ulong input, ulong expectedResult)
     {
-        long result = EvmCalculations.Div32Ceiling((ulong)input);
+        ulong result = EvmCalculations.Div32Ceiling(input);
         TestContext.Out.WriteLine($"Memory cost (gas): {result}");
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    private const int MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
+    private const ulong MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
 
-    [TestCase(0, 0)]
-    [TestCase(0, 32)]
-    [TestCase(0, 256)]
-    [TestCase(0, 2048)]
-    [TestCase(0, MaxCodeSize)]
-    [TestCase(10 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(100 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(1000 * MaxCodeSize, MaxCodeSize)]
-    [TestCase(0, 1024 * 1024)]
+    [TestCase(0UL, 0UL)]
+    [TestCase(0UL, 32UL)]
+    [TestCase(0UL, 256UL)]
+    [TestCase(0UL, 2048UL)]
+    [TestCase(0UL, MaxCodeSize)]
+    [TestCase(10UL * MaxCodeSize, MaxCodeSize)]
+    [TestCase(100UL * MaxCodeSize, MaxCodeSize)]
+    [TestCase(1000UL * MaxCodeSize, MaxCodeSize)]
+    [TestCase(0UL, (ulong)MemorySizes.MiB)]
     // Note: Int32.MaxValue was removed as a test case because after word alignment
     // it exceeds the maximum allowed memory size and correctly returns out-of-gas.
-    public void MemoryCost(int destination, int memoryAllocation)
+    public void MemoryCost(ulong destination, ulong memoryAllocation)
     {
         EvmPooledMemory memory = new();
-        UInt256 dest = (UInt256)destination;
-        long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation, out bool outOfGas);
+        UInt256 dest = destination;
+        ulong result = memory.CalculateMemoryCost(in dest, memoryAllocation, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
         TestContext.Out.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
     }
@@ -70,9 +87,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 location = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
-        long result = memory.CalculateMemoryCost(in location, 32, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(in location, 32, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -80,9 +97,89 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 length = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
-        long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
+    }
+
+    [TestCase(1024)]
+    [TestCase(4096)]
+    [TestCase(32 * 1024)]
+    [TestCase(70 * 1024)]
+    [TestCase(2 * 1024 * 1024)]
+    public void Pooled_buffer_is_zeroed_on_reuse(int size)
+    {
+        EvmPooledMemory dirty = new();
+        UInt256 zero = UInt256.Zero;
+        Span<byte> pattern = new byte[size];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(in zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory clean = new();
+        UInt256 length = (UInt256)size;
+        Assert.That(clean.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
+        Assert.That(data.Length, Is.EqualTo(size));
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
+        clean.Dispose();
+    }
+
+    [Test]
+    public void Grow_after_dirty_reuse_preserves_written_prefix_and_zeroes_tail()
+    {
+        const int firstSize = 2048;
+        const int secondSize = 8192;
+
+        EvmPooledMemory dirty = new();
+        Span<byte> pattern = new byte[firstSize];
+        pattern.Fill(0xaa);
+        Assert.That(dirty.TrySave(UInt256.Zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory next = new();
+        try
+        {
+            byte[] firstWord = TestItem.KeccakA.BytesToArray();
+            Assert.That(next.TrySaveWord(UInt256.Zero, firstWord), Is.True);
+
+            UInt256 growOffset = (UInt256)(secondSize - EvmPooledMemory.WordSize);
+            Assert.That(next.TryLoadSpan(in growOffset, (UInt256)EvmPooledMemory.WordSize, out Span<byte> tail), Is.True);
+            Assert.That(tail.ToArray(), Is.EqualTo(new byte[EvmPooledMemory.WordSize]));
+
+            Assert.That(next.TryLoadSpan(UInt256.Zero, (UInt256)EvmPooledMemory.WordSize, out Span<byte> head), Is.True);
+            Assert.That(head.ToArray(), Is.EqualTo(firstWord));
+        }
+        finally
+        {
+            next.Dispose();
+        }
+    }
+
+    [Test]
+    public void GetTrace_slice_past_size_does_not_leak_dirty_bytes()
+    {
+        // Must exceed the 4 KiB RentSlow zero chunk, otherwise the whole buffer is zeroed anyway.
+        const int dirtySize = 32 * 1024;
+        EvmPooledMemory dirty = new();
+        Span<byte> pattern = new byte[dirtySize];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(UInt256.Zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory memory = new();
+        try
+        {
+            // TrySaveWord rents (unlike CalculateMemoryCost), so the dirty buffer is reused with Size = 32.
+            Assert.That(memory.TrySaveWord(UInt256.Zero, new byte[EvmPooledMemory.WordSize]), Is.True);
+
+            TraceMemory trace = memory.GetTrace();
+            Assert.That(trace.Size, Is.EqualTo((ulong)EvmPooledMemory.WordSize));
+            Assert.That(trace.Slice(0, 8 * 1024).ToArray(), Is.EqualTo(new byte[8 * 1024]), "trace leaked dirty tail bytes past Size");
+        }
+        finally
+        {
+            memory.Dispose();
+        }
     }
 
     [Test]
@@ -90,9 +187,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 length = (UInt256)long.MaxValue + 1; // just over long.MaxValue
-        long result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -100,9 +197,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 location = ulong.MaxValue;
-        long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -110,9 +207,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         UInt256 location = (UInt256)long.MaxValue;
-        long result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -125,14 +222,34 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         // Request exactly at the limit should succeed
         UInt256 maxAllowedSize = (UInt256)(int.MaxValue - EvmPooledMemory.WordSize + 1);
-        long result = memory.CalculateMemoryCost(0, in maxAllowedSize, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(0, in maxAllowedSize, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false), "Size at limit should be allowed");
 
         // Request one byte over the limit should fail
         UInt256 overLimitSize = maxAllowedSize + 1;
         result = memory.CalculateMemoryCost(0, in overLimitSize, out outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true), "Size over limit should return out of gas");
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void CalculateMemoryCost_MaxAllowedSize_ShouldReturnExpectedCostForBothLengthOverloads()
+    {
+        decimal maxWords = EvmPooledMemory.MaxMemoryWords;
+        ulong expectedCost = decimal.ToUInt64(
+            maxWords * GasCostOf.Memory +
+            decimal.Floor((maxWords * maxWords) / 512m));
+
+        EvmPooledMemory ulongMemory = new();
+        ulong ulongResult = ulongMemory.CalculateMemoryCost(0, EvmPooledMemory.MaxMemorySize, out bool ulongOutOfGas);
+        Assert.That(ulongOutOfGas, Is.EqualTo(false));
+        Assert.That(ulongResult, Is.EqualTo(expectedCost));
+
+        EvmPooledMemory uint256Memory = new();
+        UInt256 maxAllowedSize = (UInt256)EvmPooledMemory.MaxMemorySize;
+        ulong uint256Result = uint256Memory.CalculateMemoryCost(0, in maxAllowedSize, out bool uint256OutOfGas);
+        Assert.That(uint256OutOfGas, Is.EqualTo(false));
+        Assert.That(uint256Result, Is.EqualTo(expectedCost));
     }
 
     [Test]
@@ -142,9 +259,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         // instead of causing integer overflow crash in array operations.
         EvmPooledMemory memory = new();
         UInt256 size4GB = 0xffffffffUL;
-        long result = memory.CalculateMemoryCost(0, in size4GB, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(0, in size4GB, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true), "4GB memory request should return out of gas");
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -154,9 +271,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 location = (UInt256)(int.MaxValue / 2);
         UInt256 length = (UInt256)(int.MaxValue / 2 + 100); // Sum exceeds limit
-        long result = memory.CalculateMemoryCost(in location, in length, out bool outOfGas);
+        ulong result = memory.CalculateMemoryCost(in location, in length, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(true), "Location + length exceeding limit should return out of gas");
-        Assert.That(result, Is.EqualTo(0L));
+        Assert.That(result, Is.EqualTo(0UL));
     }
 
     [Test]
@@ -269,28 +386,85 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
     }
 
+    [TestCase(32)]
+    [TestCase(64)]
+    [TestCase(1024)]
+    [TestCase(4096)]
+    public void IncrementalGrowth_preserves_written_data_and_zeroes_new_regions(int step)
+    {
+        EvmPooledMemory memory = new();
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        Assert.That(memory.TrySaveWord(0, word), Is.True);
+
+        for (int offset = step; offset <= 64 * 1024; offset += step)
+        {
+            Assert.That(memory.TryLoadSpan((UInt256)offset, (UInt256)EvmPooledMemory.WordSize, out Span<byte> read), Is.True);
+            Assert.That(read.ToArray(), Is.EqualTo(new byte[EvmPooledMemory.WordSize]),
+                $"memory at offset {offset} must read as zero after growth to {memory.Size}");
+        }
+
+        Assert.That(memory.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> first), Is.True);
+        Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
+    }
+
+    [TestCaseSource(nameof(ZeroExtendedCopyCases))]
+    public void CopyFromZeroExtendedAfterGas_copies_and_zeroes_only_the_destination(
+        byte[] source,
+        UInt256 sourceOffset,
+        int length,
+        byte[] expected)
+    {
+        const int destinationOffset = 3;
+        const int inspectedLength = 64;
+        EvmPooledMemory memory = new();
+        UInt256 memoryStart = UInt256.Zero;
+        UInt256 destination = destinationOffset;
+
+        try
+        {
+            memory.CalculateMemoryCost(in memoryStart, inspectedLength, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+            memory.LoadSpanAfterGas(in memoryStart, inspectedLength).Fill(0xff);
+
+            memory.CopyFromZeroExtendedAfterGas(in destination, source, in sourceOffset, length);
+
+            ReadOnlySpan<byte> actual = memory.Inspect(memoryStart, inspectedLength).Span;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[..destinationOffset].ToArray(), Is.EqualTo(new byte[] { 0xff, 0xff, 0xff }));
+                Assert.That(actual.Slice(destinationOffset, length).ToArray(), Is.EqualTo(expected));
+                Assert.That(actual[destinationOffset + length], Is.EqualTo(0xff));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     [Test]
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {
         EvmPooledMemory memory = new();
         memory.CalculateMemoryCost(0, 32, out bool outOfGas);
         Assert.That(outOfGas, Is.EqualTo(false));
-        memory.GetTrace().ToHexWordList().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
+        Assert.That(memory.GetTrace().ToHexWordList(), Is.EqualTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" }));
     }
 
     [Test]
     public void GetTrace_memory_should_not_bleed_between_txs()
     {
-        var first = new byte[] {
+        byte[] first = new byte[] {
             0x5b, 0x38, 0x36, 0x59, 0x59, 0x59, 0x59, 0x52, 0x3a, 0x60, 0x05, 0x30,
             0xf4, 0x05, 0x56};
-        var second = new byte[] {
+        byte[] second = new byte[] {
             0x5b, 0x36, 0x59, 0x3a, 0x34, 0x60, 0x5b, 0x59, 0x05, 0x30, 0xf4, 0x3a,
             0x56};
 
-        var a = Run(second).ToString();
+        string a = Run(second).ToString();
         Run(first);
-        var b = Run(second).ToString();
+        string b = Run(second).ToString();
 
         Assert.That(b, Is.EqualTo(a));
     }
@@ -298,32 +472,32 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void GetTrace_memory_should_not_overflow()
     {
-        var input = new byte[] {
+        byte[] input = new byte[] {
             0x5b, 0x59, 0x60, 0x20, 0x59, 0x81, 0x91, 0x52, 0x44, 0x36, 0x5a, 0x3b,
             0x59, 0xf4, 0x5b, 0x31, 0x56, 0x08};
         Run(input);
     }
 
     private static readonly PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
-    private static readonly Address sender = new Address("0x59ede65f910076f60e07b2aeb189c72348525e72");
+    private static readonly Address sender = new("0x59ede65f910076f60e07b2aeb189c72348525e72");
 
-    private static readonly Address to = new Address("0x000000000000000000000000636f6e7472616374");
-    private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
+    private static readonly Address to = new("0x000000000000000000000000636f6e7472616374");
+    private static readonly Address coinbase = new("0x4444588443C3a91288c5002483449Aba1054192b");
     // for testing purposes, particular chain id does not matter. Maybe make random id so it captures the idea that signature should would irrespective of chain
     private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork);
     private static string Run(byte[] input)
     {
-        long blocknr = 12965000;
-        long gas = 34218;
+        ulong blocknr = 12965000;
+        ulong gas = 34218;
         ulong ts = 123456;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        VirtualMachine virtualMachine = new(
+        EthereumVirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
             specProvider,
             LimboLogs.Instance);
-        ITransactionProcessor transactionProcessor = new TransactionProcessor(
+        ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,
             specProvider,
             stateProvider,
@@ -332,7 +506,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             LimboLogs.Instance);
 
         Hash256 stateRoot = null;
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(to, 123);
         stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
 
@@ -377,6 +551,7 @@ public class MyTracer : ITxTracer, IDisposable
     public bool IsTracingDetailedMemory { get; set; } = true;
     public bool IsTracingInstructions => true;
     public bool IsTracingRefunds { get; } = false;
+    public bool IsTracingReturnData { get; } = false;
     public bool IsTracingCode => true;
     public bool IsTracingStack { get; set; } = true;
     public bool IsTracingState => false;
@@ -400,15 +575,15 @@ public class MyTracer : ITxTracer, IDisposable
 
     public string lastmemline;
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
     }
 
@@ -416,7 +591,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportOperationRemainingGas(long gas)
+    public void ReportOperationRemainingGas(ulong gas)
     {
     }
 
@@ -428,12 +603,13 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void SetOperationMemory(TraceMemory memoryTrace)
-    {
-        lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
-    }
+    public void SetOperationMemory(TraceMemory memoryTrace) => lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
 
     public void SetOperationMemorySize(ulong newSize)
+    {
+    }
+
+    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
     {
     }
 
@@ -453,77 +629,35 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => throw new NotSupportedException();
 
-    public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new NotSupportedException();
 
-    public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
-    public void ReportAccountRead(Address address)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportAccountRead(Address address) => throw new NotImplementedException();
 
-    public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after) => throw new NotSupportedException();
 
-    public void ReportStorageRead(in StorageCell storageCell)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportStorageRead(in StorageCell storageCell) => throw new NotImplementedException();
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
 
-    public void ReportActionError(EvmExceptionType exceptionType)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportActionError(EvmExceptionType exceptionType) => throw new NotSupportedException();
 
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new NotSupportedException();
 
-    public void ReportBlockHash(Hash256 blockHash)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportBlockHash(Hash256 blockHash) => throw new NotImplementedException();
 
-    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) => throw new NotSupportedException();
 
-    public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+    public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
     }
 
@@ -535,24 +669,15 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportExtraGasPressure(long extraGasPressure)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportExtraGasPressure(ulong extraGasPressure) => throw new NotImplementedException();
 
-    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => throw new NotImplementedException();
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
     {
     }
 
-    public void ReportFees(UInt256 fees, UInt256 burntFees)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new NotImplementedException();
 
     public void Dispose() { }
 }

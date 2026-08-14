@@ -9,29 +9,31 @@ using Nethermind.Stats.Model;
 namespace Nethermind.Network.P2P.Messages
 {
     /// <summary>
-    /// This is probably used in NDM
+    /// Serializes P2P capability negotiation messages.
     /// </summary>
     public class AddCapabilityMessageSerializer : IZeroMessageSerializer<AddCapabilityMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<Capability>((int)1.KiB(), nameof(Capability.ProtocolCode));
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<Capability>((int)1.KiB, nameof(Capability.ProtocolCode));
 
         public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
         {
             int totalLength = GetLength(msg, out int contentLength);
             byteBuffer.EnsureWritable(totalLength);
 
-            NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(contentLength);
-            stream.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
-            stream.Encode(msg.Capability.Version);
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.StartSequence(contentLength);
+            writer.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
+            writer.Encode(msg.Capability.Version);
         }
 
-        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer)
+        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static AddCapabilityMessage Deserialize(ref RlpReader ctx)
         {
-            NettyRlpStream context = new(byteBuffer);
-            context.ReadSequenceLength();
-            string protocolCode = context.DecodeString(RlpLimit);
-            byte version = context.DecodeByte();
+            ctx.ReadSequenceLength();
+            string protocolCode = ctx.DecodeString(RlpLimit);
+            byte version = ctx.DecodeByte();
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
         }

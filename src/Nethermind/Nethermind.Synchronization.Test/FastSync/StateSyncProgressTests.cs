@@ -15,8 +15,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Start_values_are_correct()
         {
             BranchProgress progress = new(7, LimboTraceLogger.Instance);
-            Assert.That(progress.CurrentSyncBlock, Is.EqualTo(7));
-            Assert.That(progress.LastProgress, Is.EqualTo(0M));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(progress.CurrentSyncBlock, Is.EqualTo(7));
+                Assert.That(progress.LastProgress, Is.EqualTo(0M));
+            }
         }
 
         [TestCase(0, -1, -1, 1d)]

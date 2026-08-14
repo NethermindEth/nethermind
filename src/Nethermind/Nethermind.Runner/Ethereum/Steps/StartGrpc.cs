@@ -13,7 +13,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         public async Task Execute(CancellationToken cancellationToken)
         {
-            ILogger logger = logManager.GetClassLogger();
+            ILogger logger = logManager.GetClassLogger<StartGrpc>();
             await grpcRunner.Start(cancellationToken).ContinueWith(x =>
             {
                 if (x.IsFaulted && logger.IsError)

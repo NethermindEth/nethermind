@@ -13,16 +13,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip()
         {
-            using NewBlockHashesMessage message = new((Keccak.Compute("1"), 1), (Keccak.Compute("2"), 2));
-            var serializer = new NewBlockHashesMessageSerializer();
-            SerializerTester.TestZero(serializer, message);
+            using NewBlockHashesMessage message = new((Keccak.Compute("1"), 1UL), (Keccak.Compute("2"), 2UL));
+            NewBlockHashesMessageSerializer serializer = new();
+            // Each pair encodes as a 34-byte-payload list (0xe2): 0xa0 + hash, then the block number.
+            SerializerTester.TestZero(serializer, message,
+                "f846e2a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc601e2a0ad7c5bef027816a800da1736444fb58a807ef4c9603b7848673f7e3a68eb14a502");
         }
 
         [Test]
         public void To_string()
         {
             using NewBlockHashesMessage statusMessage = new();
-            _ = statusMessage.ToString();
+            Assert.That(statusMessage.ToString(), Does.StartWith(nameof(NewBlockHashesMessage)));
         }
     }
 }

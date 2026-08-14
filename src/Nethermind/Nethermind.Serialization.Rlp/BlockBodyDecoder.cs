@@ -1,30 +1,33 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
+[method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
+public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
+    private static RlpLimit TransactionsCountLimit => RlpLimit.For<BlockBody>(
+        checked((int)(RlpLimit.MaxBlockGas / GasCostOf.Transaction + 1)),
+        nameof(BlockBody.Transactions)
+    );
+
+    private static readonly RlpLimit UnclesCountLimit = RlpLimit.For<BlockBody>(2, nameof(BlockBody.Uncles));
+
+    // Actual consensus-level max is 16, see MAX_WITHDRAWALS_PER_PAYLOAD at https://github.com/ethereum/consensus-specs/blob/master/specs/capella/beacon-chain.md
+    // Increased here for compatibility with execution spec tests and benchmarks
+    private static readonly RlpLimit WithdrawalsCountLimit = RlpLimit.For<BlockBody>(64_000, nameof(BlockBody.Withdrawals));
+
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-    private readonly IHeaderDecoder _headerDecoder;
+    private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
 
-    private static BlockBodyDecoder? _instance = null;
+    private static BlockBodyDecoder? _instance;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
 
-    // Cant set to private because of `Rlp.RegisterDecoder`.
-    public BlockBodyDecoder(IHeaderDecoder headerDecoder = null)
-    {
-        _headerDecoder = headerDecoder ?? new HeaderDecoder();
-    }
-
-    public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOfSequence(GetBodyLength(item));
-    }
+    public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetBodyLength(item));
 
     public int GetBodyLength(BlockBody b)
     {
@@ -80,7 +83,7 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
         return sum;
     }
 
-    protected override BlockBody? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override BlockBody? DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int startingPosition = ctx.Position;
@@ -92,51 +95,42 @@ public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
         return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
     }
 
-    public BlockBody? DecodeUnwrapped(ref Rlp.ValueDecoderContext ctx, int lastPosition)
+    public BlockBody? DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
     {
-        Transaction[] transactions = ctx.DecodeArray(_txDecoder);
-        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
+        Transaction[] transactions = ctx.DecodeArray(_txDecoder, limit: TransactionsCountLimit);
+        BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;
 
         if (ctx.PeekNumberOfItemsRemaining(lastPosition, 1) > 0)
         {
-            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
+            withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder, limit: WithdrawalsCountLimit);
         }
 
+        ctx.Check(lastPosition);
         return new BlockBody(transactions, uncles, withdrawals);
     }
 
-    protected override BlockBody DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter writer, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
-        BlockBody response = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return response;
-    }
-
-    public override void Encode(RlpStream stream, BlockBody body, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        stream.StartSequence(GetBodyLength(body));
-        stream.StartSequence(GetTxLength(body.Transactions));
+        writer.StartSequence(GetBodyLength(body));
+        writer.StartSequence(GetTxLength(body.Transactions));
         foreach (Transaction? txn in body.Transactions)
         {
-            stream.Encode(txn);
+            _txDecoder.Encode(ref writer, txn);
         }
 
-        stream.StartSequence(GetUnclesLength(body.Uncles));
+        writer.StartSequence(GetUnclesLength(body.Uncles));
         foreach (BlockHeader? uncle in body.Uncles)
         {
-            stream.Encode(uncle);
+            _headerDecoder.Encode(ref writer, uncle);
         }
 
         if (body.Withdrawals is not null)
         {
-            stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
+            writer.StartSequence(GetWithdrawalsLength(body.Withdrawals));
             foreach (Withdrawal? withdrawal in body.Withdrawals)
             {
-                stream.Encode(withdrawal);
+                _withdrawalDecoderDecoder.Encode(ref writer, withdrawal);
             }
         }
     }

@@ -10,14 +10,9 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions where nonce is lower than the current sender account nonce.
     /// </summary>
-    internal sealed class LowNonceFilter : IIncomingTxFilter
+    internal sealed class LowNonceFilter(ILogger logger) : IIncomingTxFilter
     {
-        private readonly ILogger _logger;
-
-        public LowNonceFilter(ILogger logger)
-        {
-            _logger = logger;
-        }
+        private readonly ILogger _logger = logger;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {

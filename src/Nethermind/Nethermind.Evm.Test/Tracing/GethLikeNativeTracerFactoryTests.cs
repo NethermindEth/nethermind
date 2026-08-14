@@ -3,10 +3,13 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -19,25 +22,36 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void CreateTracer_NativeTracerExists()
     {
-        var options = new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer };
+        GethTraceOptions options = new() { Tracer = Native4ByteTracer.FourByteTracer };
 
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!);
+        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
         Assert.That(nativeTracer is Native4ByteTracer, Is.True);
     }
 
     [Test]
+    public void CreateTracer_StateGasTracerExists()
+    {
+        GethTraceOptions options = new() { Tracer = NativeStateGasTracer.StateGasTracer };
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+
+        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, spec);
+
+        Assert.That(nativeTracer is NativeStateGasTracer, Is.True);
+    }
+
+    [Test]
     public void CreateTracer_NativeTracerDoesNotExist()
     {
-        var options = new GethTraceOptions { Tracer = "nonExistentTracer" };
+        GethTraceOptions options = new() { Tracer = "nonExistentTracer" };
 
-        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!));
+        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>()));
     }
 
     [Test]
     public void IsNativeTracer_TracerNameExists()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(Native4ByteTracer.FourByteTracer);
+        bool isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(Native4ByteTracer.FourByteTracer);
 
         Assert.That(isNativeTracer, Is.True);
     }
@@ -45,7 +59,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void IsNativeTracer_TracerNameDoesNotExist()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer("nonExistentTracer");
+        bool isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer("nonExistentTracer");
 
         Assert.That(isNativeTracer, Is.False);
     }
@@ -53,7 +67,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void CreateTracer_TracerNameIsEmpty()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(string.Empty);
+        bool isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(string.Empty);
 
         Assert.That(isNativeTracer, Is.False);
     }
@@ -61,7 +75,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void CreateTracer_TracerNameIsNull()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(null);
+        bool isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(null);
 
         Assert.That(isNativeTracer, Is.False);
     }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
 namespace Nethermind.Evm.Precompiles;
@@ -11,6 +12,9 @@ public static class PrecompileHelper
 {
     private static readonly ConcurrentDictionary<Type, string> _names = new();
 
+    [UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "The precompile types are statically known, and their Name properties are preserved."
+    )]
     public static string GetStaticName(this IPrecompile precompile)
     {
         Type? type = precompile.GetType();

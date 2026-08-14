@@ -21,9 +21,7 @@ public static class ContainerBuilderExtensions
     /// <param name="dbName">Service key</param>
     /// <param name="storePath">Path relative to BaseDbPath to store db</param>
     /// <returns></returns>
-    public static ContainerBuilder AddNetworkStorage(this ContainerBuilder builder, string dbName, string storePath)
-    {
-        return builder
+    public static ContainerBuilder AddNetworkStorage(this ContainerBuilder builder, string dbName, string storePath) => builder
             .AddKeyedSingleton<IFullDb>(dbName, ctx =>
             {
                 ILogManager logManager = ctx.Resolve<ILogManager>();
@@ -41,7 +39,6 @@ public static class ContainerBuilderExtensions
                 IFullDb db = ctx.ResolveKeyed<IFullDb>(dbName);
                 return new NetworkStorage(db, logManager);
             });
-    }
 
     // Note: The convention for `dbName` is that it is camelCase.
     // this is not necessarily true for plugins. More importantly, this is also the path. Use the second overload for a more

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Test.Builders;
@@ -8,7 +10,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
-using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -33,12 +34,14 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Will_unregister_on_disconnect()
+        public void Can_remove_session()
         {
             ISession session = CreateSession();
             SessionMonitor sessionMonitor = new(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
-            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
+            sessionMonitor.RemoveSession(session);
+
+            Assert.That(sessionMonitor.Sessions, Is.Empty);
         }
 
         [Test]
@@ -71,6 +74,30 @@ namespace Nethermind.Network.Test
             session.Handshake(TestItem.PublicKeyB);
             session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
             return session;
+        }
+
+        [Test]
+        public void AddSession_Staggers_Ping_Times()
+        {
+            NetworkConfig networkConfig = new() { P2PPingInterval = 10_000 };
+            SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
+
+            const int sessionCount = 20;
+            ISession[] sessions = new ISession[sessionCount];
+            for (int i = 0; i < sessionCount; i++)
+            {
+                sessions[i] = CreateSession();
+                sessionMonitor.AddSession(sessions[i]);
+            }
+
+            // Sessions should have different LastPingUtc values due to jitter
+            DateTime[] pingTimes = sessions.Select(s => s.LastPingUtc).ToArray();
+            int distinctCount = pingTimes.Distinct().Count();
+            Assert.That(distinctCount, Is.GreaterThan(1), "Sessions added at the same time should have staggered ping times");
+
+            // The spread should cover a meaningful portion of the interval
+            TimeSpan spread = pingTimes.Max() - pingTimes.Min();
+            Assert.That(spread, Is.GreaterThan(TimeSpan.FromMilliseconds(100)), "Ping time spread should be non-trivial");
         }
 
         private ISession CreateUnresponsiveSession()

@@ -10,7 +10,7 @@ namespace Nethermind.State.Snap
 {
     public class StorageRange : IDisposable
     {
-        public long? BlockNumber { get; set; }
+        public ulong? BlockNumber { get; set; }
 
         /// <summary>
         /// Root hash of the account trie to serve
@@ -32,26 +32,17 @@ namespace Nethermind.State.Snap
         /// </summary>
         public ValueHash256? LimitHash { get; set; }
 
-        public StorageRange Copy()
+        public StorageRange Copy() => new()
         {
-            return new StorageRange()
-            {
-                BlockNumber = BlockNumber,
-                RootHash = RootHash,
-                Accounts = Accounts.ToPooledList(Accounts.Count),
-                StartingHash = StartingHash,
-                LimitHash = LimitHash,
-            };
-        }
+            BlockNumber = BlockNumber,
+            RootHash = RootHash,
+            Accounts = Accounts.AsSpan().ToPooledList(),
+            StartingHash = StartingHash,
+            LimitHash = LimitHash,
+        };
 
-        public override string ToString()
-        {
-            return $"StorageRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
-        }
+        public override string ToString() => $"StorageRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
 
-        public void Dispose()
-        {
-            Accounts?.Dispose();
-        }
+        public void Dispose() => Accounts?.Dispose();
     }
 }

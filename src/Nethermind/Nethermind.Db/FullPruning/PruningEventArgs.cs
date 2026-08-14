@@ -5,15 +5,9 @@ using System;
 
 namespace Nethermind.Db.FullPruning;
 
-public class PruningEventArgs : EventArgs
+public class PruningEventArgs(IPruningContext context, bool success) : EventArgs
 {
-    public PruningEventArgs(IPruningContext context, bool success)
-    {
-        Context = context;
-        Success = success;
-    }
+    public IPruningContext Context { get; } = context;
 
-    public IPruningContext Context { get; }
-
-    public bool Success { get; }
+    public bool Success { get; } = success;
 }

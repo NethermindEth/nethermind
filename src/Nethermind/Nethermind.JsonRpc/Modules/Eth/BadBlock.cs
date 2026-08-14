@@ -6,12 +6,17 @@ using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
+using System.Text.Json.Serialization;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvider specProvider, BlockDecoder blockDecoder)
+public class BadBlock(Block block, bool includeFullTransactionData, ISpecProvider specProvider, IRlpDecoder<Block> blockDecoder, IBlockForRpcFactory blockForRpcFactory)
 {
-    public BlockForRpc Block { get; } = new BlockForRpc(block, includeFullTransactionData, specProvider);
+    public BlockForRpc Block { get; } = blockForRpcFactory.Create(block, includeFullTransactionData, specProvider);
     public Hash256 Hash { get; } = block.Header.Hash;
-    public byte[] Rlp { get; } = blockDecoder.Encode(block).Bytes;
+    public byte[] Rlp { get; } = blockDecoder.EncodeAsBytes(block);
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GeneratedBlockAccessList? GeneratedBlockAccessList { get; } = block.GeneratedBlockAccessList;
 }

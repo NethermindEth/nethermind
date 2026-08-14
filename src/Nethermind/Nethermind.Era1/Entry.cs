@@ -1,18 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Snappier;
-
 namespace Nethermind.Era1;
 
-public readonly struct Entry
+public readonly struct Entry(ushort type, ulong length)
 {
-    public ushort Type { get; }
-    public ulong Length { get; }
-    public Entry(ushort type, ulong length)
-    {
-        Length = length;
-        Type = type;
-    }
+    public ushort Type { get; } = type;
+    public ulong Length { get; } = length;
 }
 

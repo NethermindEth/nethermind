@@ -6,12 +6,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -22,76 +22,72 @@ using Polly;
 
 namespace Nethermind.Init.Steps.Migrations
 {
-    public class ReceiptFixMigration : IDatabaseMigration
+    public class ReceiptFixMigration(
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        ISyncPeerPool syncPeerPool,
+        ISyncConfig syncConfig,
+        ILogManager logManager) : IDatabaseMigration
     {
-        private readonly IApiWithNetwork _api;
-
-        public ReceiptFixMigration(IApiWithNetwork api)
-        {
-            _api = api;
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger<ReceiptFixMigration>();
 
         public async Task Run(CancellationToken cancellationToken)
         {
-            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            ILogger logger = _api.LogManager.GetClassLogger();
-            if (syncConfig.FixReceipts && _api.BlockTree is not null)
+            if (syncConfig.FixReceipts)
             {
-                MissingReceiptsFixVisitor visitor = new(
-                    syncConfig.AncientReceiptsBarrierCalc,
-                    _api.BlockTree.Head?.Number - 2 ?? 0,
-                    _api.ReceiptStorage!,
-                    _api.LogManager,
-                    _api.SyncPeerPool!,
-                    _api.BlockTree,
+                ulong startIncl = syncConfig.FixReceiptsStartingBlock ?? syncConfig.AncientReceiptsBarrierCalc;
+                ulong endExcl = syncConfig.FixReceiptsLastBlock + 1 ?? ulong.MaxValue;
+                endExcl = Math.Clamp(endExcl, 0UL, (blockTree.Head?.Number ?? 0UL).SaturatingSub(2UL));
+
+                if (endExcl <= startIncl)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"{nameof(ReceiptFixMigration)} skipped: computed range [{startIncl}, {endExcl}) is empty");
+                    return;
+                }
+
+                using MissingReceiptsFixVisitor visitor = new(
+                    startIncl,
+                    endExcl,
+                    receiptStorage,
+                    logManager,
+                    syncPeerPool,
+                    blockTree,
                     cancellationToken
                 );
 
                 try
                 {
-                    await _api.BlockTree.Accept(visitor, cancellationToken);
+                    await blockTree.Accept(visitor, cancellationToken);
                 }
                 catch (InvalidOperationException)
                 {
-                    if (logger.IsWarn) logger.Warn("Fixing receipts in DB canceled.");
+                    if (_logger.IsWarn) _logger.Warn("Fixing receipts in DB canceled.");
                 }
                 catch (Exception e)
                 {
-                    if (logger.IsError) logger.Error("Fixing receipts in DB failed.", e);
+                    if (_logger.IsError) _logger.Error("Fixing receipts in DB failed.", e);
                 }
             }
         }
 
-        private class MissingReceiptsFixVisitor : ReceiptsVerificationVisitor
+        private class MissingReceiptsFixVisitor(
+            ulong startLevel,
+            ulong endLevel,
+            IReceiptStorage receiptStorage,
+            ILogManager logManager,
+            ISyncPeerPool syncPeerPool,
+            IBlockTree blockTree,
+            CancellationToken cancellationToken
+            ) : ReceiptsVerificationVisitor(startLevel, endLevel, receiptStorage, logManager)
         {
-            private readonly IReceiptStorage _receiptStorage;
-            private readonly ISyncPeerPool _syncPeerPool;
-            private readonly CancellationToken _cancellationToken;
-            private readonly TimeSpan _delay;
-            private readonly IBlockTree _blockTree;
+            private readonly IReceiptStorage _receiptStorage = receiptStorage;
+            private readonly TimeSpan _delay = TimeSpan.FromSeconds(5);
 
-            public MissingReceiptsFixVisitor(
-                long startLevel,
-                long endLevel,
-                IReceiptStorage receiptStorage,
-                ILogManager logManager,
-                ISyncPeerPool syncPeerPool,
-                IBlockTree blockTree,
-                CancellationToken cancellationToken
-            ) : base(startLevel, endLevel, receiptStorage, logManager)
+            public override async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken ct)
             {
-                _receiptStorage = receiptStorage;
-                _syncPeerPool = syncPeerPool;
-                _cancellationToken = cancellationToken;
-                _delay = TimeSpan.FromSeconds(5);
-                _blockTree = blockTree;
-            }
+                BlockVisitOutcome outcome = await base.VisitBlock(block, ct);
 
-            public override async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
-            {
-                BlockVisitOutcome outcome = await base.VisitBlock(block, cancellationToken);
-
-                if (_blockTree.IsMainChain(block.Header))
+                if (blockTree.IsMainChain(block.Header))
                 {
                     _receiptStorage.EnsureCanonical(block);
                 }
@@ -116,14 +112,14 @@ namespace Nethermind.Init.Steps.Migrations
                     throw new ArgumentException("Cannot download receipts for a block without a known hash.");
                 }
 
-                FastBlocksAllocationStrategy strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true);
-                SyncPeerAllocation peer = await _syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
+                FastBlocksAllocationStrategy strategy = new(TransferSpeedType.Receipts, block.Number, true);
+                SyncPeerAllocation peer = await syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
                 if (currentSyncPeer is not null)
                 {
                     try
                     {
-                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, _cancellationToken);
+                        using IOwnedReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, cancellationToken);
                         TxReceipt[]? txReceipts = receipts.FirstOrDefault();
                         if (txReceipts is not null)
                         {
@@ -142,7 +138,7 @@ namespace Nethermind.Init.Steps.Migrations
                     }
                     finally
                     {
-                        _syncPeerPool.Free(peer);
+                        syncPeerPool.Free(peer);
                     }
                 }
                 else

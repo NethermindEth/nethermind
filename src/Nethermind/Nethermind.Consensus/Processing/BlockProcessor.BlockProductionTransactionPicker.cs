@@ -18,32 +18,25 @@ namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {
-        public class BlockProductionTransactionPicker : IBlockProductionTransactionPicker
+        public class BlockProductionTransactionPicker(
+            ISpecProvider specProvider,
+            long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes,
+            bool ignoreEip3607 = false)
+            : IBlockProductionTransactionPicker
         {
-            private readonly long _maxTxLengthBytes;
+            private readonly long _maxTxLengthBytes = maxTxLengthKilobytes.KiB;
 
-            protected readonly ISpecProvider _specProvider;
-            private readonly bool _ignoreEip3607;
-
-            public BlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes, bool ignoreEip3607 = false)
-            {
-                _specProvider = specProvider;
-                _maxTxLengthBytes = maxTxLengthKilobytes.KiB();
-                _ignoreEip3607 = ignoreEip3607;
-            }
+            protected readonly ISpecProvider _specProvider = specProvider;
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            protected void OnAddingTransaction(AddingTxEventArgs e)
-            {
-                AddingTransaction?.Invoke(this, e);
-            }
+            protected void OnAddingTransaction(AddingTxEventArgs e) => AddingTransaction?.Invoke(this, e);
 
-            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
+            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                long gasRemaining = block.Header.GasLimit - block.GasUsed;
+                ulong gasRemaining = block.Header.GasLimit - block.GasUsed;
 
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
@@ -81,12 +74,12 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
                 }
 
-                if (!_ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                if (!ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
 
-                UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                 if (expectedNonce != currentTx.Nonce)
                 {
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");

@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -10,39 +11,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
-        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashes(nettyRlpStream);
-        }
+        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(static (ref RlpReader ctx) => DeserializeHashes(ref ctx));
 
-        protected static Hash256[] DeserializeHashes(RlpStream rlpStream, RlpLimit? limit = null)
-        {
-            Hash256[] hashes = rlpStream.DecodeArray(static itemContext => itemContext.DecodeKeccak(), limit: limit);
-            return hashes;
-        }
+        protected static Hash256[] DeserializeHashes(ref RlpReader ctx, RlpLimit? limit = null) =>
+            ctx.DecodeArray(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
 
-        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null)
-        {
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashesArrayPool(nettyRlpStream, limit);
-        }
+        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null) =>
+            byteBuffer.DeserializeRlp((ref RlpReader ctx) => DeserializeHashesArrayPool(ref ctx, limit));
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream, RlpLimit? limit = null)
-        {
-            return rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak(), limit: limit);
-        }
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref RlpReader ctx, RlpLimit? limit = null) => ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            ByteBufferRlpWriter writer = new(byteBuffer);
 
-            rlpStream.StartSequence(contentLength);
-            foreach (Hash256 hash in message.Hashes.AsSpan())
+            writer.StartSequence(contentLength);
+            ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
+            for (int i = 0; i < hashes.Length; i++)
             {
-                rlpStream.Encode(hash);
+                writer.Encode(hashes[i]);
             }
         }
 
@@ -50,9 +40,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public int GetLength(T message, out int contentLength)
         {
             contentLength = 0;
-            for (int i = 0; i < message.Hashes.Count; i++)
+            ReadOnlySpan<Hash256> hashes = message.Hashes.AsSpan();
+            for (int i = 0; i < hashes.Length; i++)
             {
-                contentLength += Rlp.LengthOf(message.Hashes[i]);
+                contentLength += Rlp.LengthOf(hashes[i]);
             }
 
             return Rlp.LengthOfSequence(contentLength);

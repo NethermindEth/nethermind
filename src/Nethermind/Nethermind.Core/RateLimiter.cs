@@ -28,25 +28,16 @@ public class RateLimiter
         _nextSlot = GetCurrentTick();
     }
 
-    public static long GetCurrentTick()
-    {
-        return Stopwatch.GetTimestamp();
-    }
+    public static long GetCurrentTick() => Stopwatch.GetTimestamp();
 
-    private static double TickToMs(long tick)
-    {
-        return tick * 1000.0 / Stopwatch.Frequency;
-    }
+    private static double TickToMs(long tick) => tick * 1000.0 / Stopwatch.Frequency;
 
     /// <summary>
     /// Return true if its definitely will be throttled when calling WaitAsync. May still get throttled even if this
     /// return false.
     /// </summary>
     /// <returns></returns>
-    public bool IsThrottled()
-    {
-        return GetCurrentTick() < _nextSlot;
-    }
+    public bool IsThrottled() => GetCurrentTick() < _nextSlot;
 
     public Task WaitAsync(CancellationToken ctx)
     {

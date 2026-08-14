@@ -88,7 +88,7 @@ public class OptimismHeaderValidatorTests(Fork fork)
     {
         (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b.WithExtraDataHex(testCase.hexString));
 
-        var validator = new OptimismHeaderValidator(
+        OptimismHeaderValidator validator = new(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance, Spec.BuildFor(header),
@@ -107,9 +107,9 @@ public class OptimismHeaderValidatorTests(Fork fork)
     [TestCaseSource(nameof(WithdrawalsRequestHashTestCases))]
     public void ValidateRequestHash((Hash256? requestHash, Valid isValid) testCase)
     {
-        var (genesis, header) = BuildHeaders(b => b.WithRequestsHash(testCase.requestHash));
+        (BlockHeader? genesis, BlockHeader? header) = BuildHeaders(b => b.WithRequestsHash(testCase.requestHash));
 
-        var validator = new OptimismHeaderValidator(
+        OptimismHeaderValidator validator = new(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance, Spec.BuildFor(header),
@@ -121,23 +121,23 @@ public class OptimismHeaderValidatorTests(Fork fork)
 
     private static IEnumerable<TestCaseData> GasLimitTestCases()
     {
-        yield return new(1_000, 500, 0, Valid.Always);
-        yield return new(1_000, 1_000, 0, Valid.Always);
-        yield return new(1_000, 1_000, 500, Valid.Always);
-        yield return new(1_000, 1_000, 1_000, Valid.Always);
+        yield return new(1_000UL, 500UL, 0, Valid.Always);
+        yield return new(1_000UL, 1_000UL, 0, Valid.Always);
+        yield return new(1_000UL, 1_000UL, 500, Valid.Always);
+        yield return new(1_000UL, 1_000UL, 1_000, Valid.Always);
 
-        yield return new TestCaseData(1_000, 500, null, Valid.Never).SetName("blobGasUsed missing");
-        yield return new TestCaseData(1_000, 1_000, null, Valid.Never).SetName("blobGasUsed missing, gasUsed = gasLimit");
+        yield return new TestCaseData(1_000UL, 500UL, null, Valid.Never).SetName("blobGasUsed missing");
+        yield return new TestCaseData(1_000UL, 1_000UL, null, Valid.Never).SetName("blobGasUsed missing, gasUsed = gasLimit");
 
-        yield return new TestCaseData(1_000, 1_000 + 1, 500, Valid.Never).SetName("gasUsed > gasLimit");
-        yield return new TestCaseData(1_000, 1_000 + 1, 1_000, Valid.Never).SetName("gasUsed > gasLimit, blobGasUsed = gasLimit");
-        yield return new TestCaseData(1_000, 1_000 + 1, 1_000 + 1, Valid.Never).SetName("blobGasUsed & gasUsed > gasLimit");
+        yield return new TestCaseData(1_000UL, 1_000UL + 1UL, 500, Valid.Never).SetName("gasUsed > gasLimit");
+        yield return new TestCaseData(1_000UL, 1_000UL + 1UL, 1_000, Valid.Never).SetName("gasUsed > gasLimit, blobGasUsed = gasLimit");
+        yield return new TestCaseData(1_000UL, 1_000UL + 1UL, 1_000 + 1, Valid.Never).SetName("blobGasUsed & gasUsed > gasLimit");
 
-        yield return new TestCaseData(1_000, 1_000, 1_000 + 1, Valid.Before(Spec.JovianTimeStamp)).SetName("blobGasUsed > gasLimit post Jovian");
+        yield return new TestCaseData(1_000UL, 1_000UL, 1_000 + 1, Valid.Before(Spec.JovianTimeStamp)).SetName("blobGasUsed > gasLimit post Jovian");
     }
 
     [TestCaseSource(nameof(GasLimitTestCases))]
-    public void ValidateGasLimit(int gasLimit, int gasUsed, int? blobGasUsed, Valid isValid)
+    public void ValidateGasLimit(ulong gasLimit, ulong gasUsed, int? blobGasUsed, Valid isValid)
     {
         (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b
             .WithGasLimit(gasLimit)
@@ -145,7 +145,7 @@ public class OptimismHeaderValidatorTests(Fork fork)
             .WithGasUsed(gasUsed)
         );
 
-        var validator = new OptimismHeaderValidator(
+        OptimismHeaderValidator validator = new(
             AlwaysPoS.Instance,
             Substitute.For<IBlockTree>(),
             Always.Valid, Spec.Instance, Spec.BuildFor(header),

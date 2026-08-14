@@ -38,35 +38,35 @@ jobs:
         run: scripts/build/archive.sh
 
       - name: Upload Nethermind Linux arm64 package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PACKAGE_PREFIX }}-linux-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind Linux x64 package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind macOS arm64 package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind macOS x64 package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind Windows x64 package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PACKAGE_PREFIX }}-windows-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*

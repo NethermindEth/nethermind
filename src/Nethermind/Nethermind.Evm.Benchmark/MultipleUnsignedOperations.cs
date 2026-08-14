@@ -9,16 +9,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
-using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.Blockchain;
 
 namespace Nethermind.Evm.Benchmark;
@@ -31,8 +29,9 @@ public class MultipleUnsignedOperations
     private IVirtualMachine _virtualMachine;
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
     private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
-    private EvmState _evmState;
+    private VmState<EthereumGasPolicy> _evmState;
     private IWorldState _stateProvider;
+    private IDisposable _stateScope;
 
     private readonly byte[] _bytecode = Prepare.EvmCode
         .PushData(2)
@@ -72,12 +71,13 @@ public class MultipleUnsignedOperations
     public void GlobalSetup()
     {
         _stateProvider = TestWorldStateFactory.CreateForTest();
-        _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
+        _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
         _stateProvider.Commit(_spec);
 
         Console.WriteLine(MuirGlacier.Instance);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
+        _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
         _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
         _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 
@@ -88,11 +88,10 @@ public class MultipleUnsignedOperations
             codeInfo: new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
             callDepth: 0,
             value: 0,
-            transferValue: 0,
             inputData: default
         );
 
-        _evmState = EvmState.RentTopLevel(100_000_000L, ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
+        _evmState = VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromULong(100_000_000UL), ExecutionType.TRANSACTION, _environment, new StackAccessTracker(), _stateProvider.TakeSnapshot());
     }
 
     [GlobalCleanup]
@@ -100,6 +99,7 @@ public class MultipleUnsignedOperations
     {
         _evmState.Dispose();
         _environment.Dispose();
+        _stateScope.Dispose();
     }
 
     [Benchmark]
@@ -110,8 +110,5 @@ public class MultipleUnsignedOperations
     }
 
     [Benchmark(Baseline = true)]
-    public void No_machine_running()
-    {
-        _stateProvider.Reset();
-    }
+    public void No_machine_running() => _stateProvider.Reset();
 }

@@ -37,9 +37,6 @@ namespace Nethermind.Blockchain.FullPruning
 
         public event EventHandler<PruningTriggerEventArgs>? Prune;
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

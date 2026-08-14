@@ -8,7 +8,6 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Grpc;
@@ -31,7 +30,7 @@ namespace Nethermind.Runner.Ethereum.Modules;
 /// <param name="plugins"></param>
 /// <param name="logManager"></param>
 public class NethermindRunnerModule(
-    IJsonSerializer jsonSerializer,
+    EthereumJsonSerializer jsonSerializer,
     ChainSpec chainSpec,
     IConfigProvider configProvider,
     IProcessExitSource processExitSource,
@@ -73,8 +72,8 @@ public class NethermindRunnerModule(
             .AddSingleton<NethermindApi.Dependencies>()
             .Bind<INethermindApi, NethermindApi>()
 
-            .AddSingleton<IBlockPreprocessorStep, INethermindApi>((api) => api.BlockPreprocessor)
             .AddSingleton(jsonSerializer)
+            .AddSingleton<IJsonSerializer>(jsonSerializer)
             .AddSingleton<IConsensusPlugin>(consensusPlugin)
             ;
 

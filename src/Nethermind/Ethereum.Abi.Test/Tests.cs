@@ -8,7 +8,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -66,7 +65,7 @@ namespace Ethereum.Abi.Test
 
                 AbiEncoder encoder = new();
                 byte[] abi = encoder.Encode(AbiEncodingStyle.None, signature, abiTest.Args.Select(JsonToObject).ToArray());
-                abi.Should().BeEquivalentTo(Bytes.FromHexString(abiTest.Result));
+                Assert.That(abi, Is.EqualTo(Bytes.FromHexString(abiTest.Result)));
             }
         }
 

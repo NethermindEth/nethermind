@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -14,13 +13,10 @@ namespace Nethermind.Benchmarks.Rlp
     {
         private Transaction[] _scenarios;
 
-        public RlpEncodeTransactionBenchmark()
-        {
-            _scenarios = new[]
+        public RlpEncodeTransactionBenchmark() => _scenarios = new[]
             {
                 Build.A.Transaction.TestObject,
             };
-        }
 
         [Params(0)]
         public int ScenarioIndex { get; set; }
@@ -45,15 +41,9 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public byte[] Improved()
-        {
-            throw new NotImplementedException();
-        }
+        public byte[] Improved() => throw new NotImplementedException();
 
         [Benchmark]
-        public byte[] Current()
-        {
-            return Serialization.Rlp.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
-        }
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
     }
 }

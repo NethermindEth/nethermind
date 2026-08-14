@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
@@ -18,41 +17,43 @@ namespace Nethermind.Blockchain
     public class BlockhashProvider(
         IBlockhashCache blockhashCache,
         IWorldState worldState,
-        ILogManager? logManager)
+        ILogManager? logManager,
+        IUnresolvedBlockhashPolicy? unresolvedBlockhashPolicy = null)
         : IBlockhashProvider
     {
-        public const int MaxDepth = 256;
+        public const ulong MaxDepth = 256;
         private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
-        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ILogger _logger = logManager?.GetClassLogger<BlockhashProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IUnresolvedBlockhashPolicy _unresolvedBlockhashPolicy = unresolvedBlockhashPolicy ?? ThrowingUnresolvedBlockhashPolicy.Instance;
         private Hash256[]? _hashes;
+        private long _prefetchVersion;
 
-        public Hash256? GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
-            if (number < 0)
-            {
-                return ReturnOutOfBounds(currentBlock, number);
-            }
-
             if (spec.IsBlockHashInStateAvailable)
             {
                 return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
             }
 
-            long depth = currentBlock.Number - number;
-            Hash256[]? hashes = _hashes;
+            ulong depth = currentBlock.Number - number;
+            if (depth == 0 || depth > MaxDepth)
+            {
+                return ReturnOutOfBounds(currentBlock, number);
+            }
+
+            Hash256[]? hashes = Volatile.Read(ref _hashes);
 
             return depth switch
             {
-                <= 0 or > MaxDepth => ReturnOutOfBounds(currentBlock, number),
-                1 => currentBlock.ParentHash,
+                1UL => currentBlock.ParentHash,
                 _ => hashes is not null
-                    ? hashes[depth - 1]
-                    : blockhashCache.GetHash(currentBlock, (int)depth)
-                      ?? throw new InvalidDataException("Hash cannot be found when executing BLOCKHASH operation")
+                    ? hashes[(int)(depth - 1)]
+                    : blockhashCache.GetHash(currentBlock, depth)
+                      ?? _unresolvedBlockhashPolicy.Resolve(currentBlock, number)
             };
         }
 
-        private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, long number)
+        private Hash256? ReturnOutOfBounds(BlockHeader currentBlock, ulong number)
         {
             if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
             return null;
@@ -60,7 +61,8 @@ namespace Nethermind.Blockchain
 
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
         {
-            _hashes = null;
+            long prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
+            Volatile.Write(ref _hashes, null);
             Hash256[]? hashes = await blockhashCache.Prefetch(currentBlock, token);
 
             // This leverages that branch processing is single threaded
@@ -69,9 +71,9 @@ namespace Nethermind.Blockchain
             // This allows us to avoid await on Prefetch in BranchProcessor
             lock (_blockhashStore)
             {
-                if (!token.IsCancellationRequested)
+                if (!token.IsCancellationRequested && prefetchVersion == Interlocked.Read(ref _prefetchVersion))
                 {
-                    _hashes = hashes;
+                    Volatile.Write(ref _hashes, hashes);
                 }
             }
         }

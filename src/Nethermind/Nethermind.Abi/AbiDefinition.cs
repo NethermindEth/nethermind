@@ -11,11 +11,11 @@ namespace Nethermind.Abi
     [JsonConverter(typeof(AbiDefinitionConverter))]
     public class AbiDefinition
     {
-        private readonly List<AbiFunctionDescription> _constructors = new();
-        private readonly Dictionary<string, AbiFunctionDescription> _functions = new();
-        private readonly Dictionary<string, AbiEventDescription> _events = new();
-        private readonly Dictionary<string, AbiErrorDescription> _errors = new();
-        private readonly List<AbiBaseDescription> _items = new();
+        private readonly List<AbiFunctionDescription> _constructors = [];
+        private readonly Dictionary<string, AbiFunctionDescription> _functions = [];
+        private readonly Dictionary<string, AbiEventDescription> _events = [];
+        private readonly Dictionary<string, AbiErrorDescription> _errors = [];
+        private readonly List<AbiBaseDescription> _items = [];
 
         public byte[]? Bytecode { get; private set; }
         public byte[]? DeployedBytecode { get; private set; }
@@ -26,15 +26,9 @@ namespace Nethermind.Abi
         public IReadOnlyList<AbiBaseDescription> Items => _items;
         public string Name { get; set; } = string.Empty;
 
-        public void SetBytecode(byte[] bytecode)
-        {
-            Bytecode = bytecode;
-        }
+        public void SetBytecode(byte[] bytecode) => Bytecode = bytecode;
 
-        public void SetDeployedBytecode(byte[] deployedBytecode)
-        {
-            DeployedBytecode = deployedBytecode;
-        }
+        public void SetDeployedBytecode(byte[] deployedBytecode) => DeployedBytecode = deployedBytecode;
 
         public void Add(AbiFunctionDescription function)
         {

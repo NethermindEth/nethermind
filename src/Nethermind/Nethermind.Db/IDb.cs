@@ -21,11 +21,17 @@ namespace Nethermind.Db
     // Some metadata options
     public interface IDbMeta
     {
-        DbMetric GatherMetric(bool includeSharedCache = false) => new DbMetric();
+        DbMetric GatherMetric() => new();
+
+        long EstimatedCount => 0;
 
         void Flush(bool onlyWal = false);
+
+        /// <summary>Syncs the write-ahead log to durable storage, throwing on failure (<see cref="Flush"/> swallows).</summary>
+        void SyncWal() => Flush(onlyWal: true);
         void Clear() { }
         void Compact() { }
+        void SetWriteBuffer(long sizeBytes) { }
 
         readonly struct DbMetric
         {

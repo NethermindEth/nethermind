@@ -23,21 +23,12 @@ namespace Nethermind.Benchmarks.Rlp
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _account = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _account = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public Account Improved()
-        {
-            return Serialization.Rlp.Rlp.Decode<Account>(_account);
-        }
+        public Account Improved() => Serialization.Rlp.Rlp.Decode<Account>(_account);
 
         [Benchmark]
-        public Account Current()
-        {
-            return Serialization.Rlp.Rlp.Decode<Account>(_account);
-        }
+        public Account Current() => Serialization.Rlp.Rlp.Decode<Account>(_account);
     }
 }

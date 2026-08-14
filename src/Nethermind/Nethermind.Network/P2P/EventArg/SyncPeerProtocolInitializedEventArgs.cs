@@ -7,7 +7,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 
 namespace Nethermind.Network.P2P.EventArg
 {
-    public class SyncPeerProtocolInitializedEventArgs : ProtocolInitializedEventArgs
+    public class SyncPeerProtocolInitializedEventArgs(SyncPeerProtocolHandlerBase protocolHandler) : ProtocolInitializedEventArgs(protocolHandler)
     {
         public string Protocol { get; set; }
         public byte ProtocolVersion { get; set; }
@@ -16,9 +16,5 @@ namespace Nethermind.Network.P2P.EventArg
         public Hash256 BestHash { get; set; }
         public Hash256 GenesisHash { get; set; }
         public ForkId? ForkId { get; set; }
-
-        public SyncPeerProtocolInitializedEventArgs(SyncPeerProtocolHandlerBase protocolHandler) : base(protocolHandler)
-        {
-        }
     }
 }

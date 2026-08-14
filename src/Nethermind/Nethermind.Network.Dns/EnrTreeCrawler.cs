@@ -6,14 +6,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Dns;
 
-public class EnrTreeCrawler
+public class EnrTreeCrawler(ILogger logger)
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logger;
 
-    public EnrTreeCrawler(ILogger logger)
-    {
-        _logger = logger;
-    }
     public IAsyncEnumerable<string> SearchTree(string domain, CancellationToken cancellationToken = default)
     {
         if (domain.StartsWith("enrtree://", StringComparison.OrdinalIgnoreCase))
@@ -33,11 +29,13 @@ public class EnrTreeCrawler
             }
         }
         DnsClient client = new(domain);
-        SearchContext searchContext = new(string.Empty);
-        return SearchTree(client, searchContext, cancellationToken);
+        return SearchTree(client, cancellationToken);
     }
 
-    private async IAsyncEnumerable<string> SearchTree(DnsClient client, SearchContext searchContext, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    internal IAsyncEnumerable<string> SearchTree(IDnsClient client, CancellationToken cancellationToken = default) =>
+        SearchTree(client, new SearchContext(string.Empty), cancellationToken);
+
+    private async IAsyncEnumerable<string> SearchTree(IDnsClient client, SearchContext searchContext, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         while (searchContext.RefsToVisit.Count > 0)
         {
@@ -57,7 +55,25 @@ public class EnrTreeCrawler
             IEnumerable<string> lookupResult = await client.Lookup(query, cancellationToken);
             foreach (string node in lookupResult)
             {
-                EnrTreeNode treeNode = EnrTreeParser.ParseNode(node);
+                // An empty query is a tree root, which EIP-1459 serves from a bare domain with no hash label.
+                if (query.Length != 0 && !EnrTreeHash.Matches(query, node))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting ENR tree record from DNS query '{query}': content does not hash to the subdomain it was served from.");
+                    continue;
+                }
+
+                EnrTreeNode treeNode;
+                try
+                {
+                    treeNode = EnrTreeParser.ParseNode(node);
+                }
+                catch (Exception e) when (e is FormatException or NotSupportedException)
+                {
+                    // A single malformed record from an untrusted DNS server must not abort the whole crawl.
+                    if (_logger.IsDebug) _logger.Debug($"Skipping malformed ENR tree record from DNS query '{query}': {e.Message}");
+                    continue;
+                }
+
                 foreach (string link in treeNode.Links)
                 {
                     DnsClient linkedTreeLookup = new(link);
@@ -82,12 +98,9 @@ public class EnrTreeCrawler
 
     private class SearchContext
     {
-        public SearchContext(string startRef)
-        {
-            RefsToVisit.Enqueue(startRef);
-        }
+        public SearchContext(string startRef) => RefsToVisit.Enqueue(startRef);
 
-        public HashSet<string> VisitedRefs { get; } = new();
+        public HashSet<string> VisitedRefs { get; } = [];
 
         public Queue<string> RefsToVisit { get; } = new();
     }

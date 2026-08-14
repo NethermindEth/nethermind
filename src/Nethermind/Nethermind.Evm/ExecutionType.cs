@@ -3,33 +3,35 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
     public static class ExecutionTypeExtensions
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCreateLegacy(this ExecutionType executionType) =>
-            executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCreateEof(this ExecutionType executionType) =>
-            executionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE;
-        // did not want to use flags here specifically
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsAnyCreate(this ExecutionType executionType) =>
-            IsAnyCreateLegacy(executionType) || IsAnyCreateEof(executionType);
+            executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsAnyCall(this ExecutionType executionType) =>
-            IsAnyCallLegacy(executionType) || IsAnyCallEof(executionType);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCallLegacy(this ExecutionType executionType) =>
             executionType is ExecutionType.CALL or ExecutionType.STATICCALL or ExecutionType.DELEGATECALL or ExecutionType.CALLCODE;
 
+        /// <summary>
+        /// Returns <c>true</c> when entering this frame credits the executing account balance with the frame value.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ExecutionType.DELEGATECALL"/> carries the caller's value without moving ETH, while
+        /// <see cref="ExecutionType.STATICCALL"/> cannot transfer ETH. <see cref="ExecutionType.CALLCODE"/>
+        /// still credits the executing account, which is a self-transfer when caller and target are the same account.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCallEof(this ExecutionType executionType) =>
-            executionType is ExecutionType.EOFCALL or ExecutionType.EOFSTATICCALL or ExecutionType.EOFDELEGATECALL;
+        public static bool CreditsBalance(this ExecutionType executionType) =>
+            executionType is ExecutionType.TRANSACTION or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE or ExecutionType.CREATE2;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ref readonly UInt256 GetBalanceCredit(this ExecutionType executionType, in UInt256 value) =>
+            ref executionType.CreditsBalance() ? ref value : ref UInt256.Zero;
 
         public static Instruction ToInstruction(this ExecutionType executionType) =>
             executionType switch
@@ -41,10 +43,6 @@ namespace Nethermind.Evm
                 ExecutionType.DELEGATECALL => Instruction.DELEGATECALL,
                 ExecutionType.CREATE => Instruction.CREATE,
                 ExecutionType.CREATE2 => Instruction.CREATE2,
-                ExecutionType.EOFCREATE => Instruction.EOFCREATE,
-                ExecutionType.EOFCALL => Instruction.EXTCALL,
-                ExecutionType.EOFSTATICCALL => Instruction.EXTSTATICCALL,
-                ExecutionType.EOFDELEGATECALL => Instruction.EXTDELEGATECALL,
                 _ => throw new NotSupportedException($"Execution type {executionType} is not supported.")
             };
     }
@@ -59,11 +57,6 @@ namespace Nethermind.Evm
         CALLCODE,
         CREATE,
         CREATE2,
-        EOFCREATE,
-        TXCREATE,
-        EOFCALL,
-        EOFSTATICCALL,
-        EOFDELEGATECALL,
     }
     // ReSharper restore IdentifierTypo InconsistentNaming
 }

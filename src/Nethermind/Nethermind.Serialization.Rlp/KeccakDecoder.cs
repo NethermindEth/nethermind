@@ -2,22 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class KeccakDecoder : RlpValueDecoder<Hash256>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(KeccakDecoder))]
+    public sealed class KeccakDecoder() : RlpDecoder<Hash256>
     {
         public static readonly KeccakDecoder Instance = new();
 
-        protected override Hash256? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
-
-        protected override Hash256? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => rlpStream.DecodeKeccak();
+        protected override Hash256? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccakOrNull();
 
         public override int GetLength(Hash256 item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
 
-        public override void Encode(RlpStream stream, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            stream.Encode(item);
-        }
+        public override void Encode<TWriter>(ref TWriter writer, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => writer.Encode(item);
     }
 }

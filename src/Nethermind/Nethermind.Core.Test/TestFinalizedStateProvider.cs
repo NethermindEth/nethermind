@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Test;
@@ -13,12 +14,12 @@ namespace Nethermind.Core.Test;
 /// TrieStore must be set later.
 /// </summary>
 /// <param name="depth"></param>
-public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
+public class TestFinalizedStateProvider(ulong depth) : IFinalizedStateProvider
 {
     public TrieStore TrieStore { get; set; } = null!;
     private BlockHeader? _manualFinalizedPoint = null;
 
-    public long FinalizedBlockNumber
+    public ulong FinalizedBlockNumber
     {
         get
         {
@@ -26,23 +27,20 @@ public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
             {
                 return _manualFinalizedPoint.Number;
             }
-            return TrieStore.LatestCommittedBlockNumber - depth;
+            return TrieStore.LatestCommittedBlockNumber.SaturatingSub(depth);
         }
     }
 
-    public Hash256? GetFinalizedStateRootAt(long blockNumber)
+    public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
     {
         if (_manualFinalizedPoint is not null && _manualFinalizedPoint.Number == blockNumber)
         {
             return _manualFinalizedPoint.StateRoot;
         }
-        using var commitSets = TrieStore.CommitSetQueue.GetCommitSetsAtBlockNumber(blockNumber);
+        using ArrayPoolListRef<BlockCommitSet> commitSets = TrieStore.CommitSetQueue.GetCommitSetsAtBlockNumber(blockNumber);
         if (commitSets.Count != 1) return null;
         return commitSets[0].StateRoot;
     }
 
-    public void SetFinalizedPoint(BlockHeader baseBlock)
-    {
-        _manualFinalizedPoint = baseBlock;
-    }
+    public void SetFinalizedPoint(BlockHeader baseBlock) => _manualFinalizedPoint = baseBlock;
 }

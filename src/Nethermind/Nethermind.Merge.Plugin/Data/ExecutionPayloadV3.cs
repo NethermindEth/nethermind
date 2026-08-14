@@ -25,15 +25,15 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
     public new static ExecutionPayloadV3 Create(Block block) => Create<ExecutionPayloadV3>(block);
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        BlockDecodingResult baseResult = base.TryGetBlock(totalDifficulty);
-        Block? block = baseResult.Block;
-        if (block is null)
+        Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
+        if (baseResult.IsError)
         {
             return baseResult;
         }
 
+        Block block = baseResult.Data;
         block.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;

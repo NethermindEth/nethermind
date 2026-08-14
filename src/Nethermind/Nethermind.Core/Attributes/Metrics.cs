@@ -22,14 +22,9 @@ public sealed class GaugeMetricAttribute : Attribute { }
 /// Mark that the attribute is a dictionary whose key is used as a label of name LabelName.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
-public sealed class KeyIsLabelAttribute : Attribute
+public sealed class KeyIsLabelAttribute(params string[] labelNames) : Attribute
 {
-    public string[] LabelNames { get; }
-
-    public KeyIsLabelAttribute(params string[] labelNames)
-    {
-        LabelNames = labelNames;
-    }
+    public string[] LabelNames { get; } = labelNames;
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
@@ -40,6 +35,13 @@ public sealed class SummaryMetricAttribute : Attribute
     // Summary objective in quantile-epsilon pair
     public double[] ObjectiveQuantile { get; set; } = [];
     public double[] ObjectiveEpsilon { get; set; } = [];
+}
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class HistogramMetricAttribute : Attribute
+{
+    public string[] LabelNames { get; init; } = [];
+    public double[] Buckets { get; init; } = [];
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
@@ -56,6 +58,14 @@ public sealed class ExponentialPowerHistogramMetric : Attribute
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class DetailedMetricAttribute : Attribute
+{
+}
+
+/// <summary>
+/// Mark a property that is used to enable detailed metrics (not a metric itself)
+/// </summary>
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class DetailedMetricOnFlagAttribute : Attribute
 {
 }
 

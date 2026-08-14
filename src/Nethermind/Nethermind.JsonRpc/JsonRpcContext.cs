@@ -9,7 +9,7 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcContext : IDisposable
     {
-        public static AsyncLocal<JsonRpcContext?> Current { get; private set; } = new();
+        public static AsyncLocal<JsonRpcContext?> Current { get; } = new();
 
         public static JsonRpcContext Http(JsonRpcUrl url) => new(RpcEndpoint.Http, url: url);
         public static JsonRpcContext WebSocket(JsonRpcUrl url) => new(RpcEndpoint.Ws, url: url);
@@ -27,6 +27,7 @@ namespace Nethermind.JsonRpc
         public IJsonRpcDuplexClient? DuplexClient { get; }
         public JsonRpcUrl? Url { get; }
         public bool IsAuthenticated { get; }
+
         public void Dispose()
         {
             if (Current.Value == this)

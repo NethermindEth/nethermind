@@ -24,7 +24,7 @@ public interface IEraAdminRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Import a range of historic block from era1 directory.",
     EdgeCaseHint = "",
-    ExampleResponse = "\"Export task started.\"",
+    ExampleResponse = "\"Import task started.\"",
     IsImplemented = true)]
     Task<ResultWrapper<string>> admin_importHistory(
         [JsonRpcParameter(Description = "Source path to import from.", ExampleValue = "/tmp/eradir")]

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -16,6 +17,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -24,17 +26,27 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
+public sealed class BeaconHeadersSyncFeed(
+    IPoSSwitcher poSSwitcher,
+    IBlockTree? blockTree,
+    ISyncPeerPool? syncPeerPool,
+    ISyncConfig? syncConfig,
+    ISyncReport? syncReport,
+    IPivot? pivot,
+    IInvalidChainTracker invalidChainTracker,
+    ILogManager logManager,
+    IChainLevelInfoRepository? chainLevelInfoRepository,
+    IHeaderStore? headerStore) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, chainLevelInfoRepository, headerStore, alwaysStartHeaderSync: true)
 {
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly IPivot _pivot;
-    private readonly ILogger _logger;
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+    private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
+    private readonly IPivot _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
+    private readonly ILogger _logger = logManager.GetClassLogger<BeaconHeadersSyncFeed>();
     private bool _chainMerged;
 
-    protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
+    protected override ulong HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
-    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
+    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? ulong.MaxValue) <=
                                                     _pivot.PivotDestinationNumber || _chainMerged;
 
     protected override BlockHeader? LowestInsertedBlockHeader
@@ -47,27 +59,10 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
     }
 
-    protected override long TotalBlocks => _pivotNumber - HeadersDestinationNumber + 1;
+    protected override ulong TotalBlocks => _pivotNumber - HeadersDestinationNumber + 1;
 
     protected override ProgressLogger HeadersSyncProgressLoggerReport => _syncReport.BeaconHeaders;
     public override string FeedName => nameof(BeaconHeadersSyncFeed);
-
-    public BeaconHeadersSyncFeed(
-        IPoSSwitcher poSSwitcher,
-        IBlockTree? blockTree,
-        ISyncPeerPool? syncPeerPool,
-        ISyncConfig? syncConfig,
-        ISyncReport? syncReport,
-        IPivot? pivot,
-        IInvalidChainTracker invalidChainTracker,
-        ILogManager logManager)
-        : base(blockTree, syncPeerPool, syncConfig, syncReport, poSSwitcher, logManager, alwaysStartHeaderSync: true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
-    {
-        _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-        _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
-        _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger();
-    }
 
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.BeaconHeaders;
@@ -76,7 +71,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     public override AllocationContexts Contexts => AllocationContexts.Headers;
 
-    private long ExpectedPivotNumber =>
+    private ulong ExpectedPivotNumber =>
         _pivot.PivotParentHash is not null ? _pivot.PivotNumber - 1 : _pivot.PivotNumber;
 
     private Hash256 ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Keccak.Zero;
@@ -89,7 +84,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _pivotNumber = ExpectedPivotNumber;
         _expectedNextHeader = new NextHeader(ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
 
-        long startNumber = _pivotNumber;
+        ulong startNumber = _pivotNumber;
 
         // In case we already have beacon sync happened before
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
@@ -102,8 +97,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         // the base class with starts with _lowestRequestedHeaderNumber - 1, so we offset it here.
         _lowestRequestedHeaderNumber = startNumber + 1;
 
-        _logger.Info($"Initialized beacon headers sync. lowestRequestedHeaderNumber: {_lowestRequestedHeaderNumber}," +
-                     $"lowestInsertedBlockHeader: {lowestInserted?.ToString(BlockHeader.Format.FullHashAndNumber)}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
+        if (_logger.IsDebug)
+            _logger.Debug($"Initialized beacon headers sync. lowestRequestedHeaderNumber: {_lowestRequestedHeaderNumber}," +
+                          $"lowestInsertedBlockHeader: {lowestInserted?.ToString(BlockHeader.Format.FullHashAndNumber)}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
     }
 
     protected override void FinishAndCleanUp()
@@ -112,16 +108,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         FallAsleep();
         PostFinishCleanUp();
     }
-
-    protected override void PostFinishCleanUp()
-    {
-        HeadersSyncProgressLoggerReport.Update(TotalBlocks);
-        HeadersSyncProgressLoggerReport.MarkEnd();
-        ClearDependencies(); // there may be some dependencies from wrong branches
-        _pending.Clear(); // there may be pending wrong branches
-        _sent.Clear(); // we my still be waiting for some bad branches
-    }
-
     public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
     {
         if (_pivotNumber != ExpectedPivotNumber)
@@ -222,11 +208,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (mergeWhenInserted) _chainMerged = true;
     }
 
-    protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header)
-    {
+    protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header) =>
         // Beacon header don't seem to care about TD.
-        return header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
+        header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
             ? header.TotalDifficulty - header.Difficulty
             : null;
-    }
 }

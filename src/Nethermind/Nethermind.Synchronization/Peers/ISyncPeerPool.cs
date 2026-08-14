@@ -11,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Peers
@@ -115,14 +114,11 @@ namespace Nethermind.Synchronization.Peers
             Func<ISyncPeer, Task<T>> func,
             IPeerAllocationStrategy peerAllocationStrategy,
             AllocationContexts allocationContexts,
-            CancellationToken cancellationToken)
-        {
-            return syncPeerPool.AllocateAndRun(
+            CancellationToken cancellationToken) => syncPeerPool.AllocateAndRun(
                 (peerInfo) => func(peerInfo?.SyncPeer),
                 peerAllocationStrategy,
                 allocationContexts,
                 cancellationToken);
-        }
 
         public static async Task<T> AllocateAndRun<T>(
             this ISyncPeerPool syncPeerPool,
@@ -148,6 +144,13 @@ namespace Nethermind.Synchronization.Peers
         }
 
 
+        /// <summary>
+        /// Asks the connected peers for the header of <paramref name="hash"/>.
+        /// </summary>
+        /// <returns>
+        /// The header whose hash is <paramref name="hash"/>, or <c>null</c> if no peer supplied it in time.
+        /// A response for any other block is discarded, so the result never depends on which peer answered.
+        /// </returns>
         public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default)
         {
             try
@@ -155,17 +158,65 @@ namespace Nethermind.Synchronization.Peers
                 using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
 
-                using IOwnedReadOnlyList<BlockHeader>? headers = await syncPeerPool.AllocateAndRun(
-                    peer => peer.GetBlockHeaders(hash, 1, 0, cancellationToken),
-                    BySpeedStrategy.FastestHeader,
-                    AllocationContexts.Headers,
-                    cts.Token);
+                List<Task<BlockHeader?>> requests = new(syncPeerPool.InitializedPeersCount);
+                foreach (PeerInfo peer in syncPeerPool.InitializedPeers)
+                {
+                    requests.Add(FetchHeader(syncPeerPool, peer, hash, cts.Token));
+                }
 
-                return headers?.Count == 1 ? headers[0] : null;
+                while (requests.Count > 0)
+                {
+                    Task<BlockHeader?> completedRequest = await Task.WhenAny(requests);
+                    requests.Remove(completedRequest);
+
+                    BlockHeader? header = await completedRequest;
+                    if (header is not null)
+                    {
+                        await cts.CancelAsync();
+                        return header;
+                    }
+                }
+
+                return await FetchAllocatedHeader(syncPeerPool, hash, cts.Token);
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
             {
                 // Timeout or no peer.
+                return null;
+            }
+
+            static Task<BlockHeader?> FetchAllocatedHeader(ISyncPeerPool syncPeerPool, Hash256 headerHash, CancellationToken token) =>
+                syncPeerPool.AllocateAndRun(
+                    async (PeerInfo peer) =>
+                    {
+                        using IOwnedReadOnlyList<BlockHeader>? headers = await peer.SyncPeer.GetBlockHeaders(headerHash, 1, 0, token);
+
+                        ReadOnlySpan<BlockHeader> headersSpan = headers is null ? [] : headers.AsSpan();
+                        return headersSpan.Length == 1 ? Validate(syncPeerPool, peer, headersSpan[0], headerHash) : null;
+                    },
+                    BySpeedStrategy.FastestHeader,
+                    AllocationContexts.Headers,
+                    token);
+
+            static async Task<BlockHeader?> FetchHeader(ISyncPeerPool syncPeerPool, PeerInfo peer, Hash256 headerHash, CancellationToken token)
+            {
+                try
+                {
+                    return Validate(syncPeerPool, peer, await peer.SyncPeer.GetHeadBlockHeader(headerHash, token), headerHash);
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+                {
+                    return null;
+                }
+            }
+
+            // A peer without the block answers with an empty list, or with an item that decodes to a null header.
+            static BlockHeader? Validate(ISyncPeerPool syncPeerPool, PeerInfo peer, BlockHeader? header, Hash256 headerHash)
+            {
+                if (header is null) return null;
+                if (header.Hash == headerHash) return header;
+
+                syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.UnexpectedHeaderHash, "header hash inconsistent with request");
                 return null;
             }
         }

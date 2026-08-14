@@ -29,9 +29,7 @@ namespace Nethermind.Synchronization.Test.Mocks
         {
         }
 
-        public PeerInfo Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
-        {
-            return peers.FirstOrDefault() ?? currentPeer!;
-        }
+        public PeerInfo Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree) =>
+            peers.FirstOrDefault() ?? currentPeer!;
     }
 }

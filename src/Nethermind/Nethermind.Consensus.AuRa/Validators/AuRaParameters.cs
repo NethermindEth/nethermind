@@ -30,7 +30,7 @@ public class AuRaParameters
         ///
         /// This has to sorted in order of starting blocks.
         /// </remarks>
-        public IDictionary<long, Validator>? Validators { get; set; }
+        public IDictionary<ulong, Validator>? Validators { get; set; }
 
         /// <summary>
         /// Addresses for validator.
@@ -42,14 +42,11 @@ public class AuRaParameters
         /// </remarks>
         public Address[]? Addresses { get; set; }
 
-        public Address GetContractAddress()
+        public Address GetContractAddress() => ValidatorType switch
         {
-            return ValidatorType switch
-            {
-                ValidatorType.Contract or ValidatorType.ReportingContract => Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses)),
-                _ => throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address."),
-            };
-        }
+            ValidatorType.Contract or ValidatorType.ReportingContract => Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses)),
+            _ => throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address."),
+        };
     }
 }
 

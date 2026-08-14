@@ -10,8 +10,6 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State.OverridableEnv;
 
@@ -23,6 +21,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules
     ) : ModuleFactoryBase<IProofRpcModule>
     {
+        private static ITransactionProcessorAdapter CreateTraceAdapter(ITransactionProcessor transactionProcessor)
+            => new TraceTransactionProcessorAdapter(transactionProcessor);
 
         public override IProofRpcModule Create()
         {
@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
                 // Standard read only chain setting
                 .AddModule(validationBlockProcessingModules)
-                .AddScoped<ITransactionProcessorAdapter, TraceTransactionProcessorAdapter>()
+                .AddScoped<TransactionProcessorAdapterFactory>(CreateTraceAdapter)
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
                 .AddScoped<IBlockValidator>(Always.Valid) // Why?
@@ -46,6 +46,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             // The tracer need a in memory receipts while the proof RPC does not.
             // Eh, its a good idea to separate what need block processing and what does not anyway.
+            // IWitnessGeneratingBlockProcessingEnvFactory used by proof_call is resolved from the parent scope.
             ILifetimeScope proofRpcScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddSingleton<IOverridableEnv<ITracer>>(tracerScope.Resolve<IOverridableEnv<ITracer>>()));
 

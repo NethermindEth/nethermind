@@ -9,22 +9,15 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class LruKeyCache<TKey> where TKey : notnull
+    public sealed class LruKeyCache<TKey>(int maxCapacity, int startCapacity, string name) where TKey : notnull
     {
-        private readonly int _maxCapacity;
-        private readonly string _name;
-        private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
+        private readonly int _maxCapacity = maxCapacity;
+        private readonly string _name = name ?? throw new ArgumentNullException(nameof(name));
+        private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap = typeof(TKey) == typeof(byte[])
+                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity);
         private readonly McsLock _lock = new();
         private LinkedListNode<TKey>? _leastRecentlyUsed;
-
-        public LruKeyCache(int maxCapacity, int startCapacity, string name)
-        {
-            _maxCapacity = maxCapacity;
-            _name = name ?? throw new ArgumentNullException(nameof(name));
-            _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<TKey>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<TKey>>(startCapacity); // do not initialize it at the full capacity
-        }
 
         public LruKeyCache(int maxCapacity, string name)
             : this(maxCapacity, 0, name)
@@ -33,7 +26,7 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
@@ -41,7 +34,7 @@ namespace Nethermind.Core.Caching
 
         public bool Get(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
@@ -54,7 +47,7 @@ namespace Nethermind.Core.Caching
 
         public bool Set(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
@@ -80,7 +73,7 @@ namespace Nethermind.Core.Caching
 
         public bool Delete(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
@@ -107,11 +100,8 @@ namespace Nethermind.Core.Caching
             _cacheMap.Add(key, node);
 
             [DoesNotReturn]
-            static void ThrowInvalidOperation()
-            {
-                throw new InvalidOperationException(
+            static void ThrowInvalidOperation() => throw new InvalidOperationException(
                                     $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
-            }
         }
     }
 }

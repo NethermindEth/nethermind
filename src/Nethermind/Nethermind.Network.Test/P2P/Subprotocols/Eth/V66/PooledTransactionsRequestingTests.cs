@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
@@ -31,9 +30,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
-using System;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
@@ -52,8 +49,8 @@ public class PooledTransactionsRequestingTests
     private Block _genesisBlock = null!;
     private CompositeDisposable _disposables = null!;
 
-    private readonly int Timeout = 3000;
-    private readonly int InTime = 1000;
+    private const int RetryObservationMs = 5000;
+    private const int InTimeMs = 1000;
 
     [SetUp]
     public void Setup()
@@ -77,11 +74,10 @@ public class PooledTransactionsRequestingTests
             new BlobTxStorage(),
             new ChainHeadInfoProvider(
                 new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2),
-            new TxPoolConfig(),
+            new TxPoolConfig() { AcceptTxWhenNotSynced = true },
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer());
-
         ISyncServer syncManager = Substitute.For<ISyncServer>();
         syncManager.Head.Returns(_genesisBlock.Header);
         syncManager.Genesis.Returns(_genesisBlock.Header);
@@ -150,20 +146,18 @@ public class PooledTransactionsRequestingTests
     }
 
     [Test]
-    public async Task Should_request_from_others_after_timeout()
-    {
-        await Task.Delay(Timeout);
-
-        _session2.Received(1).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
-    }
+    public void Should_request_from_others_after_timeout() =>
+        Assert.That(
+            () => _session2.Received(1).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash))),
+            Throws.Nothing.After(10_000, 100));
 
 
     [Test]
     public async Task Should_not_request_from_others_if_received()
     {
-        await Task.Delay(InTime);
+        await Task.Delay(InTimeMs);
         HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
-        await Task.Delay(Timeout);
+        await Task.Delay(RetryObservationMs);
 
         _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
     }
@@ -173,25 +167,25 @@ public class PooledTransactionsRequestingTests
     public async Task Should_not_request_from_others_if_received_immediately()
     {
         HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
-        await Task.Delay(Timeout);
+        await Task.Delay(RetryObservationMs);
 
         _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
     }
 
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)
     {
-        using var statusMsg = new StatusMessage();
+        using StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : MessageBase
     {
-        IByteBuffer packet = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
         handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
     }

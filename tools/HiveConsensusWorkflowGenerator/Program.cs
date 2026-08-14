@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace HiveConsensusWorkflowGenerator;
@@ -16,27 +14,28 @@ public static class Program
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
 
         // Sort the tests by size in descending order
-        var sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
+        List<KeyValuePair<string, long>> sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
 
-        var groupedTestNames = new SortedList<long, List<string>>();
+        SortedList<long, List<string>> groupedTestNames = [];
 
-        foreach (var test in sortedTests)
+        foreach (KeyValuePair<string, long> test in sortedTests)
         {
             long size = 0;
             List<string>? testsList = null;
 
             if (groupedTestNames.Count == MaxJobsCount)
             {
-                testsList = new List<string>(groupedTestNames.First().Value);
-                size = groupedTestNames.First().Key;
+                KeyValuePair<long, List<string>> smallestGroup = groupedTestNames.First();
+                testsList = [.. smallestGroup.Value];
+                size = smallestGroup.Key;
                 testsList.Add(test.Key);
                 size += test.Value;
-                groupedTestNames.Remove(groupedTestNames.First().Key);
+                groupedTestNames.Remove(smallestGroup.Key);
             }
             else
             {
                 size = test.Value;
-                testsList = new List<string> { test.Key };
+                testsList = [test.Key];
             }
 
             //Hack to use SortedList
@@ -91,7 +90,7 @@ public static class Program
 
     private static Dictionary<string, long> GetPathsToBeTested(IEnumerable<string> directories)
     {
-        Dictionary<string, long> pathsToBeTested = new();
+        Dictionary<string, long> pathsToBeTested = [];
 
         foreach (string directory in directories)
         {

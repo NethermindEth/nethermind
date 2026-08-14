@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -16,23 +17,17 @@ namespace Nethermind.State
 {
     public class StateTree : PatriciaTree
     {
-        private readonly AccountDecoder _decoder = new();
+        private static readonly AccountDecoder _decoder = new();
 
-        public static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
+        public static readonly Rlp EmptyAccountRlp = _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool)
-        {
-            TrieType = TrieType.State;
-        }
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool) => TrieType = TrieType.State;
 
         [DebuggerStepThrough]
         public StateTree(IScopedTrieStore? store, ILogManager? logManager)
-            : base(store, Keccak.EmptyTreeHash, true, logManager)
-        {
-            TrieType = TrieType.State;
-        }
+            : base(store, Keccak.EmptyTreeHash, true, logManager) => TrieType = TrieType.State;
 
         public StateTree(ITrieStore? store, ILogManager? logManager)
             : base(store.GetTrieStore(null), logManager)
@@ -43,40 +38,78 @@ namespace Nethermind.State
         public Account? Get(Address address, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
-            return bytes.IsEmpty ? null : _decoder.Decode(bytes);
+            if (bytes.IsEmpty)
+            {
+                return null;
+            }
+
+            RlpReader context = new(bytes);
+            return _decoder.Decode(ref context);
         }
 
         [DebuggerStepThrough]
         public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
-            Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(bytes);
+            RlpReader reader = new(bytes);
             if (bytes.IsEmpty)
             {
                 account = AccountStruct.TotallyEmpty;
                 return false;
             }
 
-            return _decoder.TryDecodeStruct(ref valueDecoderContext, out account);
+            return _decoder.TryDecodeStruct(ref reader, out account);
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Hash256 keccak) // for testing
         {
             ReadOnlySpan<byte> bytes = Get(keccak.Bytes);
-            return bytes.IsEmpty ? null : _decoder.Decode(bytes);
+            if (bytes.IsEmpty)
+            {
+                return null;
+            }
+
+            RlpReader context = new(bytes);
+            return _decoder.Decode(ref context);
         }
 
         public void Set(Address address, Account? account)
         {
             KeccakCache.ComputeTo(address.Bytes, out ValueHash256 keccak);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account));
+        }
+
+        public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);
+
+        public class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IDisposable
+        {
+            readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
+
+            public void Set(Address key, Account? account)
+            {
+                KeccakCache.ComputeTo(key.Bytes, out ValueHash256 keccak);
+
+                // EncodeAsBytes skips the throwaway Rlp wrapper that _decoder.Encode(account) would
+                // allocate for every changed account on each block commit.
+                byte[]? accountBytes = account is null ? null
+                    : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes
+                    : _decoder.EncodeAsBytes(account);
+
+                _bulkWrite.Add(new BulkSetEntry(keccak, accountBytes));
+            }
+
+            public void Dispose()
+            {
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
+                tree.BulkSet(asRef);
+            }
         }
 
         [DebuggerStepThrough]
         public Rlp? Set(Hash256 keccak, Account? account)
         {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;
@@ -84,10 +117,16 @@ namespace Nethermind.State
 
         public Rlp? Set(in ValueHash256 keccak, Account? account)
         {
-            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : _decoder.Encode(account);
 
             Set(keccak.Bytes, rlp);
             return rlp;
         }
+
+        public Account? Get(Address address) => Get(address, null);
+
+        public void UpdateRootHash() => UpdateRootHash(true);
+
+        public void Commit() => Commit(false, WriteFlags.None);
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
@@ -10,6 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
 
+[Parallelizable(ParallelScope.All)]
 public class BuildBlockOnEachPendingTxTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -24,6 +24,6 @@ public class BuildBlockOnEachPendingTxTests
             txPool.NewPending += Raise.EventWith(new TxEventArgs(Build.A.Transaction.TestObject));
         }
 
-        triggered.Should().Be(2);
+        Assert.That(triggered, Is.EqualTo(2));
     }
 }

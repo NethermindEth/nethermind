@@ -3,36 +3,36 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using static System.Runtime.CompilerServices.Unsafe;
-using static Nethermind.Evm.VirtualMachine;
+using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
-using Word = Vector256<byte>;
-
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for single-parameter mathematical operations on 256‐bit vectors.
     /// Implementations provide a specific operation that takes one 256‐bit operand and returns a 256‐bit result.
     /// </summary>
-    public interface IOpMath1Param
+    public interface IOpMath1Param : IGasCost
     {
         /// <summary>
         /// The gas cost for executing the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        static ulong IGasCost.GasCost => GasCostOf.VeryLow;
 
         /// <summary>
         /// Executes the operation on the provided 256‐bit operand.
         /// </summary>
         /// <param name="value">The input 256‐bit vector.</param>
         /// <returns>The result of the operation as a 256‐bit vector.</returns>
-        abstract static Word Operation(Word value);
+        abstract static EvmWord Operation(EvmWord value);
     }
 
     /// <summary>
@@ -40,35 +40,46 @@ internal static partial class EvmInstructions
     /// The operation is defined by the generic parameter <typeparamref name="TOpMath"/>,
     /// which implements <see cref="IOpMath1Param"/>.
     /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath1Param"/> for the specific math operation.</typeparam>
     /// <param name="_">An unused virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the operand is read and where the result is written.</param>
-    /// <param name="gasAvailable">Reference to the available gas, reduced by the operation's cost.</param>
+    /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
     /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> if the operation completes successfully; otherwise,
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TOpMath>(VirtualMachine _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(VirtualMachine<TGasPolicy> _, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
     {
         // Deduct the gas cost associated with the math operation.
-        gasAvailable -= TOpMath.GasCost;
+        TGasPolicy.Consume<TOpMath>(ref gas);
 
+        return Math1ParamCore<TOpMath>(ref stack);
+    }
+
+    /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>, also run directly by the stream executor inside precharged blocks.</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType Math1ParamCore<TOpMath>(ref EvmStack stack)
+        where TOpMath : struct, IOpMath1Param
+    {
         // Peek at the top element of the stack without removing it.
         // This avoids an unnecessary pop/push sequence.
         ref byte bytesRef = ref stack.PeekBytesByRef();
         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
 
         // Read a 256-bit value from unaligned memory on the stack.
-        Word result = TOpMath.Operation(ReadUnaligned<Word>(ref bytesRef));
+        EvmWord result = TOpMath.Operation(ReadUnaligned<EvmWord>(ref bytesRef));
 
         // Write the computed result directly back to the stack slot.
         WriteUnaligned(ref bytesRef, result);
 
         return EvmExceptionType.None;
-    // Label for error handling when the stack does not have the required element.
+        // Label for error handling when the stack does not have the required element.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -79,7 +90,7 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpNot : IOpMath1Param
     {
-        public static Word Operation(Word value) => Vector256.OnesComplement(value);
+        public static EvmWord Operation(EvmWord value) => Vector256.OnesComplement(value);
     }
 
     /// <summary>
@@ -89,7 +100,18 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpIsZero : IOpMath1Param
     {
-        public static Word Operation(Word value) => value == default ? OpBitwiseEq.One : default;
+#if ZK_EVM
+        // The zkVM has no hardware SIMD, so Vector256<byte> == default falls back to an 8-iteration
+        // element loop. ISZERO is hot (every require/conditional), so compare as a flat 4x ulong OR
+        // (endianness-agnostic for a zero test).
+        public static EvmWord Operation(EvmWord value)
+        {
+            ref ulong p = ref As<EvmWord, ulong>(ref value);
+            return (p | Add(ref p, 1) | Add(ref p, 2) | Add(ref p, 3)) == 0UL ? OpBitwiseEq.One : default;
+        }
+#else
+        public static EvmWord Operation(EvmWord value) => value == default ? OpBitwiseEq.One : default;
+#endif
     }
 
     /// <summary>
@@ -98,9 +120,9 @@ internal static partial class EvmInstructions
     /// </summary>
     public struct OpCLZ : IOpMath1Param
     {
-        public static long GasCost => GasCostOf.Low;
+        static ulong IGasCost.GasCost => GasCostOf.Low;
 
-        public static Word Operation(Word value) => value == default
+        public static EvmWord Operation(EvmWord value) => value == default
             ? Vector256.Create((byte)0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0)
             : Vector256.Create(0UL, 0UL, 0UL, (ulong)value.CountLeadingZeroBits() << 56).AsByte();
     }
@@ -110,37 +132,32 @@ internal static partial class EvmInstructions
     /// Extracts a byte from a 256-bit word at the position specified by the stack.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionByte<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        gasAvailable -= GasCostOf.VeryLow;
+        TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
         // Pop the byte position and the 256-bit word.
         if (!stack.PopUInt256(out UInt256 a))
             goto StackUnderflow;
-        Span<byte> bytes = stack.PopWord256();
+        if (!stack.PopWord256(out Span<byte> bytes))
+            goto StackUnderflow;
 
-        // If the position is out-of-range, push zero.
-        if (a >= BigInt32)
+        // If the position is out-of-range, push zero. Using direct limb access avoids the
+        // full 256-bit vector compare + defensive `in` copy the JIT emits for `a >= BigInt32`,
+        // and skips the overflow-check path of `(int)a`.
+        if (!a.IsUint64 || a.u0 >= 32)
         {
-            stack.PushZero<TTracingInst>();
-        }
-        else
-        {
-            int adjustedPosition = bytes.Length - 32 + (int)a;
-            if (adjustedPosition < 0)
-            {
-                stack.PushZero<TTracingInst>();
-            }
-            else
-            {
-                // Push the extracted byte.
-                stack.PushByte<TTracingInst>(bytes[adjustedPosition]);
-            }
+            return stack.PushZero<TTracingInst>();
         }
 
-        return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // PopWord256 always returns 32 bytes and we've just checked a.u0 < 32, so bypass the
+        // span bounds check: JIT can't prove 0 <= (int)a.u0 < bytes.Length across the ulong->int cast.
+        return stack.PushByte<TTracingInst>(
+            Unsafe.Add(ref MemoryMarshal.GetReference(bytes), (nint)a.u0));
+
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -150,9 +167,10 @@ internal static partial class EvmInstructions
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TTracingInst>(VirtualMachine vm, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        gasAvailable -= GasCostOf.Low;
+        TGasPolicy.Consume<LowGasCost>(ref gas);
 
         // Pop the index to determine which byte to use for sign extension.
         if (!stack.PopUInt256(out UInt256 a))
@@ -168,7 +186,11 @@ internal static partial class EvmInstructions
         int position = 31 - (int)a;
 
         // Peek at the 256-bit word without removing it.
-        Span<byte> bytes = stack.PeekWord256();
+        ref byte bytesRef = ref stack.PeekBytesByRef();
+        if (IsNullRef(ref bytesRef))
+            goto StackUnderflow;
+
+        Span<byte> bytes = MemoryMarshal.CreateSpan(ref bytesRef, EvmStack.WordSize);
         sbyte sign = (sbyte)bytes[position];
 
         // Extend the sign by replacing higher-order bytes.
@@ -184,7 +206,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

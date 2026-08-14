@@ -6,13 +6,8 @@ using Nethermind.Config;
 
 namespace Nethermind.Network.StaticNodes
 {
-    public class NetworkNodeEventArgs : EventArgs
+    public class NetworkNodeEventArgs(NetworkNode node) : EventArgs
     {
-        public NetworkNode Node { get; }
-
-        public NetworkNodeEventArgs(NetworkNode node)
-        {
-            Node = node;
-        }
+        public NetworkNode Node { get; } = node;
     }
 }

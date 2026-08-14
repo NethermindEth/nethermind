@@ -5,6 +5,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.Proofs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
@@ -13,14 +14,9 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture(true)]
 [TestFixture(false)]
 [Parallelizable(ParallelScope.Self)]
-public class ProofTxTracerTests : VirtualMachineTestsBase
+public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMachineTestsBase
 {
-    private readonly bool _treatSystemAccountDifferently;
-
-    public ProofTxTracerTests(bool treatSystemAccountDifferently)
-    {
-        _treatSystemAccountDifferently = treatSystemAccountDifferently;
-    }
+    private readonly bool _treatSystemAccountDifferently = treatSystemAccountDifferently;
 
     [Test]
     public void Can_trace_sender_recipient_miner()
@@ -69,7 +65,7 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
     {
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(TestItem.AddressC.Bytes)
+            .PushData(TestItem.AddressC)
             .Op(Instruction.BALANCE)
             .Done;
 
@@ -86,7 +82,7 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
 
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(TestItem.AddressC.Bytes)
+            .PushData(TestItem.AddressC)
             .Op(Instruction.BALANCE)
             .Done;
 
@@ -100,7 +96,7 @@ public class ProofTxTracerTests : VirtualMachineTestsBase
     {
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(SenderRecipientAndMiner.Default.Miner.Bytes)
+            .PushData(SenderRecipientAndMiner.Default.Miner)
             .Op(Instruction.BALANCE)
             .Done;
 

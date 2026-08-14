@@ -1,72 +1,78 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Nethermind.Xdc.Test;
+namespace Nethermind.Xdc.Test.ModuleTests;
 
-[Parallelizable(ParallelScope.All)]
 internal class ProposedBlockTests
 {
     [Test]
     public async Task TestShouldSendVoteMsgAndCommitGreatGrandparentBlockAsync()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
-        var head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
-        var spec = blockChain.SpecProvider.GetXdcSpec(head, blockChain.XdcContext.CurrentRound);
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
+        IXdcReleaseSpec spec = blockChain.SpecProvider.GetXdcSpec(head, blockChain.XdcContext.CurrentRound);
 
         EpochSwitchInfo switchInfo = blockChain.EpochSwitchManager.GetEpochSwitchInfo(head)!;
         PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
-        if (masternodes.Any((m) => m.Address == head.Beneficiary))
-        {
-            //If we randomly picked the block proposer we need to remove him with a another voting masternode
-            var extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
-            var extraMasterkey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
-            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterkey];
-        }
 
-        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
+        ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
+        ulong gapNumber = epochSwitchNumber.SaturatingSub(offset);
         //We skip 1 vote so we are 1 under the vote threshold, proving that if the round advances the module cast a vote itself
-        foreach (var key in masternodes.Skip(1))
+        foreach (PrivateKey? key in masternodes.Skip(1))
         {
-            var vote = XdcTestHelper.BuildSignedVote(votingBlock, (ulong)gapNumber, key);
+            Vote vote = XdcTestHelper.BuildSignedVote(votingBlock, gapNumber, key);
             await blockChain.VotesManager.HandleVote(vote);
         }
 
-        var newRoundWaitHandle = new TaskCompletionSource();
+        TaskCompletionSource newRoundWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
+
+        //Set current signer as the one that didn't vote
+        blockChain.Signer.SetSigner(masternodes.First());
+
+        // Align timestamper with block timestamps so TryPropose does not block on the mine-period gate
+        blockChain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
 
         //Starting here will trigger the final vote to be cast and round should advance
         blockChain.StartHotStuffModule();
 
-        var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
+        Task waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
         if (waitTask != newRoundWaitHandle.Task)
         {
             Assert.Fail("Timed out waiting for the round to start. The vote threshold was not reached?");
         }
 
-        var parentOfHead = blockChain.BlockTree.FindHeader(head.ParentHash!);
-        var grandParentOfHead = blockChain.BlockTree.FindHeader(parentOfHead!.ParentHash!);
+        BlockHeader? parentOfHead = blockChain.BlockTree.FindHeader(head.ParentHash!);
+        BlockHeader? grandParentOfHead = blockChain.BlockTree.FindHeader(parentOfHead!.ParentHash!);
 
-        grandParentOfHead!.Hash!.Should().Be(blockChain.XdcContext.HighestCommitBlock.Hash);
+        Assert.That(grandParentOfHead!.Hash!, Is.EqualTo(blockChain.XdcContext.HighestCommitBlock.Hash));
     }
 
     [Test]
     public async Task TestShouldNotCommitIfRoundsNotContinousFor3Rounds()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlock();
 
@@ -76,8 +82,8 @@ internal class ProposedBlockTests
 
         await blockChain.SimulateVoting();
 
-        var beforeTimeoutFinalized = blockChain.XdcContext.HighestCommitBlock;
-        var beforeTimeoutQC = blockChain.XdcContext.HighestQC;
+        BlockRoundInfo beforeTimeoutFinalized = blockChain.XdcContext.HighestCommitBlock;
+        QuorumCertificate beforeTimeoutQC = blockChain.XdcContext.HighestQC;
 
         //Simulate timeout
         blockChain.XdcContext.SetNewRound();
@@ -86,56 +92,59 @@ internal class ProposedBlockTests
 
         await blockChain.SimulateVoting();
 
-        blockChain.XdcContext.HighestCommitBlock.Should().Be(beforeTimeoutFinalized);
-        blockChain.XdcContext.HighestQC.Should().NotBe(beforeTimeoutQC);
+        Assert.That(blockChain.XdcContext.HighestCommitBlock, Is.EqualTo(beforeTimeoutFinalized));
+        Assert.That(blockChain.XdcContext.HighestQC, Is.Not.EqualTo(beforeTimeoutQC));
     }
 
     [Test]
     public async Task TestProposedBlockMessageHandlerSuccessfullyGenerateVote()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
-        var head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
-        var spec = blockChain.SpecProvider.GetXdcSpec(head, blockChain.XdcContext.CurrentRound);
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
+        IXdcReleaseSpec spec = blockChain.SpecProvider.GetXdcSpec(head, blockChain.XdcContext.CurrentRound);
 
         EpochSwitchInfo switchInfo = blockChain.EpochSwitchManager.GetEpochSwitchInfo(head)!;
-        PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
-        if (masternodes.Any((m) => m.Address == head.Beneficiary))
-        {
-            //If we randomly picked the block proposer we need to remove him with a another voting masternode
-            var extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
-            var extraMasterkey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
-            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterkey];
-        }
 
-        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
+
+        BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
+        ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
+        ulong gapNumber = epochSwitchNumber.SaturatingSub(offset);
         //We skip 1 vote so we are 1 under the vote threshold
-        foreach (var key in masternodes.Skip(1))
+        foreach (PrivateKey? key in masternodes.Skip(1))
         {
-            var vote = XdcTestHelper.BuildSignedVote(votingBlock, (ulong)gapNumber, key);
+            Vote vote = XdcTestHelper.BuildSignedVote(votingBlock, gapNumber, key);
             await blockChain.VotesManager.HandleVote(vote);
         }
 
-        var beforeFinalVote = blockChain.XdcContext.HighestQC!;
+        QuorumCertificate beforeFinalVote = blockChain.XdcContext.HighestQC!;
         //Our highest QC should be 1 number behind head
-        beforeFinalVote.ProposedBlockInfo.BlockNumber.Should().Be(head.Number - 1);
+        // Our highest QC should be 1 number behind head
+        Assert.That(beforeFinalVote.ProposedBlockInfo.BlockNumber, Is.EqualTo(head.Number - 1));
 
-        var newRoundWaitHandle = new TaskCompletionSource();
+        TaskCompletionSource newRoundWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
+
+        //Set current signer as the one that didn't vote
+        blockChain.Signer.SetSigner(masternodes.First());
+
+        // Align timestamper with block timestamps so TryPropose does not block on the mine-period gate
+        blockChain.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(head.Timestamp + spec.MinePeriod)).UtcDateTime);
 
         //Starting here will trigger the final vote to be cast
         blockChain.StartHotStuffModule();
 
-        var waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(5_000));
+        Task waitTask = await Task.WhenAny(newRoundWaitHandle.Task, Task.Delay(10_000));
         if (waitTask != newRoundWaitHandle.Task)
         {
             Assert.Fail("Timed out waiting for the round to start. The vote threshold was not reached?");
         }
 
-        blockChain.XdcContext.HighestQC!.ProposedBlockInfo.Hash.Should().Be(head.Hash!);
+        Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.Hash, Is.EqualTo(head.Hash!));
     }
 
     [TestCase(1)]
@@ -143,67 +152,128 @@ internal class ProposedBlockTests
     [TestCase(30)]
     public async Task CanBuildAFinalizedChain(int count)
     {
-        var blockChain = await XdcTestBlockchain.Create(0, true);
+        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(0, true);
         blockChain.ChangeReleaseSpec((s) =>
         {
-            s.EpochLength = 90;
-            s.Gap = 45;
+            s.EpochLength = 90UL;
+            s.Gap = 45UL;
         });
 
         await blockChain.AddBlocks(3);
 
         blockChain.StartHotStuffModule();
 
-        var startBlock = blockChain.BlockTree.Head!.Header;
+        BlockHeader startBlock = blockChain.BlockTree.Head!.Header;
 
-        for (int i = 1; i <= count; i++)
+        for (ulong i = 1; i <= (ulong)count; i++)
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            blockChain.BlockTree.Head.Number.Should().Be(startBlock.Number + i);
-            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be(startBlock.Number + i);
-            blockChain.XdcContext.HighestCommitBlock.BlockNumber.Should().Be(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2);
+            Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(startBlock.Number + i));
+            Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber, Is.EqualTo(startBlock.Number + i));
+            Assert.That(blockChain.XdcContext.HighestCommitBlock.BlockNumber, Is.EqualTo(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2UL));
         }
     }
 
     [Test]
     public async Task TestProposedBlockMessageHandlerNotGenerateVoteIfSignerNotInMNlist()
     {
-        var blockChain = await XdcTestBlockchain.Create(2, true);
+        using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(2, true);
 
         await blockChain.AddBlockWithoutCommitQc();
 
-        var head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
-        var spec = blockChain.SpecProvider.GetXdcSpec(head, blockChain.XdcContext.CurrentRound);
+        XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
+        IXdcReleaseSpec spec = blockChain.SpecProvider.GetXdcSpec(head, blockChain.XdcContext.CurrentRound);
 
         EpochSwitchInfo switchInfo = blockChain.EpochSwitchManager.GetEpochSwitchInfo(head)!;
         PrivateKey[] masternodes = blockChain.TakeRandomMasterNodes(spec, switchInfo);
         if (masternodes.Any((m) => m.Address == head.Beneficiary))
         {
             //If we randomly picked the block proposer we need to remove him with a another voting masternode
-            var extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
-            var extraMasterkey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
-            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterkey];
+            Address extraMaster = switchInfo.Masternodes.First((m) => m != head.Beneficiary && masternodes.Any(x => x.Address != m));
+            PrivateKey extraMasterKey = blockChain.MasterNodeCandidates.First(x => x.Address == extraMaster);
+            masternodes = [.. masternodes.Where(x => x.Address != head.Beneficiary), extraMasterKey];
         }
 
-        BlockRoundInfo votingBlock = new BlockRoundInfo(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
-        long gapNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber == 0 ? 0 : Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % spec.EpochLength - spec.Gap);
+        BlockRoundInfo votingBlock = new(head.Hash!, blockChain.XdcContext.CurrentRound, head.Number);
+        ulong epochSwitchNumber = switchInfo.EpochSwitchBlockInfo.BlockNumber;
+        ulong offset = epochSwitchNumber % spec.EpochLength + spec.Gap;
+        ulong gapNumber = epochSwitchNumber.SaturatingSub(offset);
         //We skip 1 vote so we are 1 under the vote threshold
-        foreach (var key in masternodes.Skip(1))
+        foreach (PrivateKey? key in masternodes.Skip(1))
         {
-            var vote = XdcTestHelper.BuildSignedVote(votingBlock, (ulong)gapNumber, key);
+            Vote vote = XdcTestHelper.BuildSignedVote(votingBlock, gapNumber, key);
             await blockChain.VotesManager.HandleVote(vote);
         }
 
         //Setting the signer to a non master node
         blockChain.Signer.SetSigner(TestItem.PrivateKeyA);
 
-        var roundCountBeforeStart = blockChain.XdcContext.CurrentRound;
+        ulong roundCountBeforeStart = blockChain.XdcContext.CurrentRound;
 
-        //Should not cause any new vote to be cast 
+        //Should not cause any new vote to be cast
         blockChain.StartHotStuffModule();
 
         await Task.Delay(100);
 
-        blockChain.XdcContext.CurrentRound.Should().Be(roundCountBeforeStart);
+        Assert.That(blockChain.XdcContext.CurrentRound, Is.EqualTo(roundCountBeforeStart));
+    }
+
+    /// <summary>
+    /// When HighestQC points to a fork block, we should reorg and build on top of that
+    /// </summary>
+    [Test]
+    public async Task TryPropose_WhenHighestQCIsUnprocessedForkBlock_ReorgsToForkBlockThenProposesOnIt()
+    {
+        IReadOnlyList<PrivateKey> keys = new PrivateKeyGenerator().Generate(210).ToList();
+        using XdcTestBlockchain mainChain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true, keys: keys);
+        using XdcTestBlockchain forkChain = await XdcTestBlockchain.Create(blocksToAdd: 0, useHotStuffModule: true, keys: keys);
+
+
+        int blockCount = 10;
+
+        for (int i = 0; i < blockCount; i++)
+        {
+            Block b = await mainChain.AddBlockWithoutCommitQc();
+            forkChain.BlockTree.SuggestBlock(b);
+
+            mainChain.CreateAndCommitQC((XdcBlockHeader)b.Header);
+            forkChain.CreateAndCommitQC((XdcBlockHeader)b.Header);
+        }
+
+        Assert.That(mainChain.BlockTree.Head!.Header.Hash, Is.EqualTo(forkChain.BlockTree.Head!.Header.Hash));
+
+        Block mainBlock = await mainChain.AddBlockFromParent(
+            mainChain.BlockTree.Head!.Header,
+            withQC: false,
+            mainChain.CreateTransactionBuilder().To(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyB).TestObject
+        );
+
+        Block forkBlock = await forkChain.AddBlockFromParent(
+            forkChain.BlockTree.Head!.Header,
+            withQC: false,
+            forkChain.CreateTransactionBuilder().To(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyB).TestObject
+        );
+
+        Assert.That(mainChain.BlockTree.Head!.Header.Hash, Is.Not.EqualTo(forkChain.BlockTree.Head!.Header.Hash));
+
+
+
+        // Round-trip through RLP to simulate receiving the block from a peer and remove IsSelfMined
+        BlockDecoder blockDecoder = mainChain.Container.Resolve<BlockDecoder>();
+        Block externalForkBlock = blockDecoder.Decode(blockDecoder.Encode(forkBlock).Bytes);
+        AddBlockResult result = mainChain.BlockTree.SuggestBlock(externalForkBlock);
+
+        Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+
+        Assert.That(mainChain.StateReader.HasStateForBlock(mainBlock.Header), Is.True);
+        Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.False);
+
+        mainChain.StartHotStuffModule();
+
+        mainChain.CreateAndCommitQC((XdcBlockHeader)forkBlock.Header);
+        await mainChain.TriggerBlockProposal();
+
+        Assert.That(mainChain.StateReader.HasStateForBlock(externalForkBlock.Header), Is.True);
+        Assert.That(mainChain.BlockTree.Head!.Header.ParentHash, Is.EqualTo(externalForkBlock.Hash));
     }
 }

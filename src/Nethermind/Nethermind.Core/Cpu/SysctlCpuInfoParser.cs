@@ -12,14 +12,14 @@ internal static class SysctlCpuInfoParser
 {
     internal static CpuInfo ParseOutput(string? content)
     {
-        var sysctl = SectionsHelper.ParseSection(content, ':');
+        Dictionary<string, string> sysctl = SectionsHelper.ParseSection(content, ':');
         string processorName = sysctl.GetValueOrDefault("machdep.cpu.brand_string") ?? "";
-        var physicalProcessorCount = GetPositiveIntValue(sysctl, "hw.packages");
-        var physicalCoreCount = GetPositiveIntValue(sysctl, "hw.physicalcpu");
-        var logicalCoreCount = GetPositiveIntValue(sysctl, "hw.logicalcpu");
-        var nominalFrequency = GetPositiveLongValue(sysctl, "hw.cpufrequency");
-        var minFrequency = GetPositiveLongValue(sysctl, "hw.cpufrequency_min");
-        var maxFrequency = GetPositiveLongValue(sysctl, "hw.cpufrequency_max");
+        int? physicalProcessorCount = GetPositiveIntValue(sysctl, "hw.packages");
+        int? physicalCoreCount = GetPositiveIntValue(sysctl, "hw.physicalcpu");
+        int? logicalCoreCount = GetPositiveIntValue(sysctl, "hw.logicalcpu");
+        long? nominalFrequency = GetPositiveLongValue(sysctl, "hw.cpufrequency");
+        long? minFrequency = GetPositiveLongValue(sysctl, "hw.cpufrequency_min");
+        long? maxFrequency = GetPositiveLongValue(sysctl, "hw.cpufrequency_max");
         return new CpuInfo(processorName, physicalProcessorCount, physicalCoreCount, logicalCoreCount, nominalFrequency, minFrequency, maxFrequency);
     }
 

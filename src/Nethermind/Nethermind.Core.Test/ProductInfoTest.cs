@@ -10,6 +10,7 @@ public class ProductInfoTest
     [TearDown]
     public void TearDown()
     {
+        ProductInfo.VersionPostfix = "";
         ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
     }
 
@@ -39,9 +40,20 @@ public class ProductInfoTest
             Is.EqualTo($"{ProductInfo.Name}/v{ProductInfo.Version}"));
     }
 
-    [Test]
-    public void Public_client_id_not_initialized_returns_the_default_client_id()
+    [TestCase("-hp")]
+    [TestCase("-f")]
+    [TestCase("")]
+    public void Public_client_id_includes_version_postfix(string postfix)
     {
-        Assert.That(ProductInfo.PublicClientId, Is.EqualTo(ProductInfo.ClientId));
+        ProductInfo.VersionPostfix = postfix;
+        ProductInfo.InitializePublicClientId(ProductInfo.DefaultPublicClientIdFormat);
+        Assert.That(
+            ProductInfo.PublicClientId, Is.EqualTo(
+                $"{ProductInfo.Name}/v{ProductInfo.Version}{postfix}/{ProductInfo.OS.ToLowerInvariant()}-{ProductInfo.OSArchitecture}/dotnet{ProductInfo.Runtime[5..]}"
+            )
+        );
     }
+
+    [Test]
+    public void Public_client_id_not_initialized_returns_the_default_client_id() => Assert.That(ProductInfo.PublicClientId, Is.EqualTo(ProductInfo.ClientId));
 }

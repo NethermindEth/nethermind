@@ -19,11 +19,21 @@ namespace Nethermind.Serialization.Json;
 
 public class UInt256Converter : JsonConverter<UInt256>
 {
-    public override UInt256 Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options) =>
-        ReadInternal(ref reader, JsonTokenType.String);
+    private readonly bool _strictQuantity;
+
+    public UInt256Converter() { }
+    public UInt256Converter(bool strictQuantity) => _strictQuantity = strictQuantity;
+
+    public override UInt256 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (_strictQuantity)
+        {
+            if (reader.TokenType != JsonTokenType.String) ThrowJsonException();
+            ReadOnlySpan<byte> s = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            QuantityValidator.AssertNoLeadingZero(s);
+        }
+        return ReadInternal(ref reader, JsonTokenType.String);
+    }
 
     // length of UIn256.MaxValue decimal string "115792089237316195423570985008687907853269984665640564039457584007913129639935"
     const int maxLength = 78;
@@ -83,6 +93,8 @@ public class UInt256Converter : JsonConverter<UInt256>
         if (hex.StartsWith("0x"u8))
         {
             hex = hex[2..];
+            if (hex.IsEmpty) ThrowJsonException();     // bare "0x" is not a valid QUANTITY
+            if (hex.Length > 64) ThrowJsonException(); // more than 256 bits
         }
         else if (hex[0] != (byte)'0')
         {
@@ -99,28 +111,16 @@ public class UInt256Converter : JsonConverter<UInt256>
         return new UInt256(in readOnlyBytes, isBigEndian: true);
     }
 
-    [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         UInt256 value,
         JsonSerializerOptions options)
     {
-        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
-        if (value.IsZero)
-        {
-            writer.WriteRawValue(usedConversion == NumberConversion.ZeroPaddedHex
-                ? "\"0x0000000000000000000000000000000000000000000000000000000000000000\""u8
-                : "\"0x0\""u8);
-            return;
-        }
-        switch (usedConversion)
+        NumberConversion conversion = ForcedNumberConversion.Value;
+        switch (conversion)
         {
             case NumberConversion.Hex:
-                {
-                    Span<byte> bytes = stackalloc byte[32];
-                    value.ToBigEndian(bytes);
-                    ByteArrayConverter.Convert(writer, bytes);
-                }
+                HexWriter.WriteUInt256HexRawValue(writer, value);
                 break;
             case NumberConversion.Decimal:
                 writer.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
@@ -129,35 +129,23 @@ public class UInt256Converter : JsonConverter<UInt256>
                 writer.WriteStringValue(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
             case NumberConversion.ZeroPaddedHex:
-                {
-                    Span<byte> bytes = stackalloc byte[32];
-                    value.ToBigEndian(bytes);
-                    ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);
-                }
+                HexWriter.WriteUInt256HexRawValue(writer, value, zeroPadded: true);
                 break;
             default:
-                throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
+                throw new NotSupportedException($"{conversion} format is not supported for {nameof(UInt256)}");
         }
     }
 
     public override UInt256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         ReadInternal(ref reader, JsonTokenType.PropertyName);
 
-    [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer, UInt256 value, JsonSerializerOptions options)
     {
-        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
-        if (value.IsZero)
-        {
-            writer.WritePropertyName(usedConversion == NumberConversion.ZeroPaddedHex
-                ? "0x0000000000000000000000000000000000000000000000000000000000000000"u8
-                : "0x0"u8);
-            return;
-        }
-        switch (usedConversion)
+        NumberConversion conversion = ForcedNumberConversion.Value;
+        switch (conversion)
         {
             case NumberConversion.Hex:
-                WriteHexPropertyName(writer, value, false);
+                HexWriter.WriteUInt256HexPropertyName(writer, value);
                 break;
             case NumberConversion.Decimal:
                 writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
@@ -166,28 +154,13 @@ public class UInt256Converter : JsonConverter<UInt256>
                 writer.WritePropertyName(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
             case NumberConversion.ZeroPaddedHex:
-                WriteHexPropertyName(writer, value, true);
+                HexWriter.WriteUInt256HexPropertyName(writer, value, zeroPadded: true);
                 break;
             default:
-                throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
+                throw new NotSupportedException($"{conversion} format is not supported for {nameof(UInt256)}");
         }
     }
 
-    private static void WriteHexPropertyName(Utf8JsonWriter writer, UInt256 value, bool isZeroPadded)
-    {
-        Span<byte> bytes = stackalloc byte[32];
-        value.ToBigEndian(bytes);
-        ByteArrayConverter.Convert(
-            writer,
-            bytes,
-            static (w, h) => w.WritePropertyName(h),
-            skipLeadingZeros: !isZeroPadded,
-            addQuotations: false);
-    }
-
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowJsonException()
-    {
-        throw new JsonException();
-    }
+    private static void ThrowJsonException() => throw new JsonException();
 }

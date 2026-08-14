@@ -10,16 +10,10 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions which gas payments overflow uint256 or simply exceed sender balance
     /// </summary>
-    internal sealed class BalanceZeroFilter : IIncomingTxFilter
+    internal sealed class BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger) : IIncomingTxFilter
     {
-        private readonly bool _thereIsPriorityContract;
-        private readonly ILogger _logger;
-
-        public BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger)
-        {
-            _thereIsPriorityContract = thereIsPriorityContract;
-            _logger = logger;
-        }
+        private readonly bool _thereIsPriorityContract = thereIsPriorityContract;
+        private readonly ILogger _logger = logger;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {

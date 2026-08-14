@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <!-- Emit transitive package assemblies (JetBrains.Profiler.Api + its deps) next to the plugin dll
+         so `dotnet publish` on this project alone yields a self-contained drop-in plugin set. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JetBrains.Profiler.Api" />
+  </ItemGroup>
+
+</Project>

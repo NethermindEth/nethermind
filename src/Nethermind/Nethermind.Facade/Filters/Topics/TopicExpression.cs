@@ -4,10 +4,12 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Facade.Filters.Topics
 {
     public abstract class TopicExpression
     {
+        public abstract bool AcceptsAnyBlock { get; }
+
         public abstract bool Accepts(Hash256 topic);
 
         public abstract bool Accepts(ref Hash256StructRef topic);

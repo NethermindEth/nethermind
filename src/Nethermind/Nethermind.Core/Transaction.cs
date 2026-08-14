@@ -21,9 +21,8 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
-        public static ReadOnlySpan<byte> EofMagic => [0xEF, 0x00];
         public const byte MaxTxType = 0x7F;
-        public const int BaseTxGasCost = 21000;
+        public const uint BaseTxGasCost = 21000;
 
         public ulong? ChainId { get; set; }
 
@@ -44,20 +43,28 @@ namespace Nethermind.Core
         public bool IsOPSystemTransaction { get; set; }
 
         private UInt256 _gasPrice;
-        public UInt256 Nonce { get; set; }
+        public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
         public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
+        public UInt256 CalculateFeeCap() => !MaxFeePerGas.IsZero ? MaxFeePerGas : GasPrice;
         public bool SupportsAccessList => Type.SupportsAccessList();
         public bool Supports1559 => Type.Supports1559();
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
-        public long GasLimit { get; set; }
-        private long _spentGas;
+        public ulong GasLimit { get; set; }
+        private ulong _spentGas;
+        private ulong _blockGasUsed;
         [JsonIgnore]
-        public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+        public ulong SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+        /// <summary>
+        /// Gas used for block accounting (pre-refund when EIP-7778 is enabled).
+        /// Defaults to <see cref="GasLimit"/> when unknown.
+        /// </summary>
+        [JsonIgnore]
+        public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
         public Address? To { get; set; }
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
@@ -68,8 +75,6 @@ namespace Nethermind.Core
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
-        public bool IsEofContractCreation => IsContractCreation && Data.Span.StartsWith(EofMagic);
-        public bool IsLegacyContractCreation => IsContractCreation && !IsEofContractCreation;
         public bool IsMessageCall => To is not null;
 
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
@@ -77,6 +82,9 @@ namespace Nethermind.Core
             Type == TxType.SetCode &&
             AuthorizationList is not null &&
             AuthorizationList.Length > 0;
+
+        [JsonIgnore]
+        public IIntrinsicGasMemo? IntrinsicGasMemo;
 
         private Hash256? _hash;
 
@@ -116,6 +124,7 @@ namespace Nethermind.Core
                 lock (this)
                 {
                     ClearPreHash();
+                    IntrinsicGasMemo = null;
                     _hash = value;
                 }
             }
@@ -136,6 +145,7 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
+            IntrinsicGasMemo = null;
 
             int size = transactionSequence.Length;
             _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(size);
@@ -147,6 +157,7 @@ namespace Nethermind.Core
         {
             // Used to delay hash generation, as may be filtered as having too low gas etc
             _hash = null;
+            IntrinsicGasMemo = null;
             _preHash = transactionSequence;
             _preHashMemoryOwner = preHashMemoryOwner;
         }
@@ -207,12 +218,9 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
-        {
-            return shouldCountBlobs
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
-        }
 
         public string ToShortString()
         {
@@ -270,10 +278,7 @@ namespace Nethermind.Core
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
-            public Transaction Create()
-            {
-                return new Transaction();
-            }
+            public Transaction Create() => new();
 
             public bool Return(Transaction obj)
             {
@@ -284,14 +289,21 @@ namespace Nethermind.Core
                     return false;
 
                 obj.ClearPreHash();
+                obj.IntrinsicGasMemo = null;
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
+                obj.IsAnchorTx = default;
+                obj.SourceHash = default;
+                obj.Mint = default;
+                obj.IsOPSystemTransaction = default;
                 obj.Nonce = default;
                 obj.GasPrice = default;
                 obj.GasBottleneck = default;
                 obj.DecodedMaxFeePerGas = default;
                 obj.GasLimit = default;
+                obj._spentGas = default;
+                obj._blockGasUsed = default;
                 obj.To = default;
                 obj.Value = default;
                 obj.Data = default;
@@ -315,6 +327,7 @@ namespace Nethermind.Core
         {
             tx.ChainId = ChainId;
             tx.Type = Type;
+            tx.IsAnchorTx = IsAnchorTx;
             tx.SourceHash = SourceHash;
             tx.Mint = Mint;
             tx.IsOPSystemTransaction = IsOPSystemTransaction;
@@ -355,7 +368,7 @@ namespace Nethermind.Core
     /// </summary>
     public sealed class SystemTransaction : Transaction
     {
-        private new const long GasLimit = 30_000_000L;
+        private new const ulong GasLimit = 30_000_000UL;
     }
 
     /// <summary>

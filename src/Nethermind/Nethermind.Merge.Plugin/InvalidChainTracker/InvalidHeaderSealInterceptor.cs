@@ -7,18 +7,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public class InvalidHeaderSealInterceptor : ISealValidator
+public class InvalidHeaderSealInterceptor(ISealValidator baseValidator, IInvalidChainTracker invalidChainTracker, ILogManager logManager) : ISealValidator
 {
-    private readonly ISealValidator _baseValidator;
-    private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly ILogger _logger;
-
-    public InvalidHeaderSealInterceptor(ISealValidator baseValidator, IInvalidChainTracker invalidChainTracker, ILogManager logManager)
-    {
-        _baseValidator = baseValidator;
-        _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
-    }
+    private readonly ISealValidator _baseValidator = baseValidator;
+    private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
+    private readonly ILogger _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {

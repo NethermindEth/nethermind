@@ -48,17 +48,10 @@ public class AuthMessageSerializerTests
     [TestCase(BlockchainIds.DefaultGethPrivateChain)]
     [TestCase(BlockchainIds.EthereumClassicMainnet)]
     [TestCase(BlockchainIds.EthereumClassicTestnet)]
-    public void Encode_decode_before_eip155(int chainId)
-    {
-        EthereumEcdsa ecdsa = new(BlockchainIds.Olympic);
-        TestEncodeDecode(ecdsa);
-    }
-
-    [TestCase(BlockchainIds.Mainnet)]
     [TestCase(BlockchainIds.Sepolia)]
-    public void Encode_decode_with_eip155(int chainId)
+    public void Encode_decode(ulong chainId)
     {
-        EthereumEcdsa ecdsa = new(BlockchainIds.Olympic);
+        EthereumEcdsa ecdsa = new(chainId);
         TestEncodeDecode(ecdsa);
     }
 }

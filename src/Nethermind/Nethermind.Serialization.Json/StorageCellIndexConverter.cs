@@ -36,7 +36,7 @@ namespace Nethermind.Serialization.Json
             List<UInt256>? value = null;
             while (reader.TokenType != JsonTokenType.EndArray)
             {
-                value ??= new();
+                value ??= [];
                 value.Add(_converter.Read(ref reader, typeToConvert, options));
                 reader.Read();
             }
@@ -59,7 +59,7 @@ namespace Nethermind.Serialization.Json
             writer.WriteStartArray();
             Span<byte> bytes = stackalloc byte[32];
 
-            foreach (var value in values)
+            foreach (UInt256 value in values)
             {
                 value.ToBigEndian(bytes);
                 ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);

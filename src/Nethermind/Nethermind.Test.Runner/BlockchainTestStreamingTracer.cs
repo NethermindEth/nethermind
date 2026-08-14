@@ -11,8 +11,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
@@ -31,7 +33,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
     // Track metrics for test end marker
     private int _transactionCount;
     private int _blockCount;
-    private long _totalGasUsed;
+    private ulong _totalGasUsed;
 
     public bool IsTracingRewards => false;
 
@@ -60,13 +62,13 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
             GethLikeTxTrace? trace = _currentTxTracer.BuildResult();
 
             // Write the final summary line for this transaction
-            using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions { Indented = false });
+            using Utf8JsonWriter writer = new(_output, new JsonWriterOptions { Indented = false });
 
             writer.WriteStartObject();
             writer.WritePropertyName("output");
             writer.WriteStringValue(trace.ReturnValue.ToHexString(true));
             writer.WritePropertyName("gasUsed");
-            writer.WriteStringValue($"0x{trace.Gas:x}");
+            HexWriter.WriteUlongHexStringValue(writer, trace.Gas);
             writer.WriteEndObject();
 
             writer.Flush();
@@ -83,11 +85,9 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         }
     }
 
-    public void EndBlockTrace()
-    {
+    public void EndBlockTrace() =>
         // Track block count for end marker
         _blockCount++;
-    }
 
     /// <summary>
     /// Writes a JSONL-compliant test end marker to the trace stream.
@@ -96,7 +96,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
     /// </summary>
     public void TestFinished(string testName, bool pass, IReleaseSpec spec, TimeSpan? duration, Hash256? headStateRoot)
     {
-        using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions
+        using Utf8JsonWriter writer = new(_output, new JsonWriterOptions
         {
             Indented = false  // Critical: Single line for JSONL compliance
         });
@@ -116,7 +116,10 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
             writer.WriteNumber("d", Math.Round(duration.Value.TotalSeconds, 3));
 
         if (_totalGasUsed > 0)
-            writer.WriteString("gasUsed", $"0x{_totalGasUsed:x}");
+        {
+            writer.WritePropertyName("gasUsed");
+            HexWriter.WriteUlongHexStringValue(writer, _totalGasUsed);
+        }
 
         if (_transactionCount > 0)
             writer.WriteNumber("txs", _transactionCount);
@@ -139,7 +142,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
 
     private void WriteTraceEntry(GethTxFileTraceEntry entry)
     {
-        using var writer = new Utf8JsonWriter(_output, new JsonWriterOptions { Indented = false });
+        using Utf8JsonWriter writer = new(_output, new JsonWriterOptions { Indented = false });
 
         // Write trace entry (same format as GethLikeTxTraceJsonLinesConverter)
         writer.WriteStartObject();
@@ -151,27 +154,27 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         writer.WriteNumberValue((byte)entry.OpcodeRaw!);
 
         writer.WritePropertyName("gas");
-        writer.WriteStringValue($"0x{entry.Gas:x}");
+        HexWriter.WriteUlongHexStringValue(writer, entry.Gas);
 
         writer.WritePropertyName("gasCost");
-        writer.WriteStringValue($"0x{entry.GasCost:x}");
+        HexWriter.WriteUlongHexStringValue(writer, entry.GasCost);
 
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(entry.MemorySize ?? 0UL);
 
-        if ((entry.Memory?.Length ?? 0) != 0)
+        if (entry.Memory is { Length: > 0 } mem)
         {
-            var memory = string.Concat(entry.Memory);
             writer.WritePropertyName("memory");
-            writer.WriteStringValue($"0x{memory}");
+            HexWriter.WriteHexStringValue(writer, mem.Span);
         }
 
-        if (entry.Stack is not null)
+        if (entry.Stack is { Length: > 0 } stack)
         {
             writer.WritePropertyName("stack");
             writer.WriteStartArray();
-            foreach (var s in entry.Stack)
-                writer.WriteStringValue(s);
+            ReadOnlySpan<byte> sp = stack.Span;
+            for (int i = 0; i < sp.Length; i += EvmStack.WordSize)
+                HexWriter.WriteUInt256HexRawValue(writer, new UInt256(sp.Slice(i, EvmStack.WordSize), isBigEndian: true), zeroPadded: false);
             writer.WriteEndArray();
         }
 
@@ -196,9 +199,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         _output.Write(_newLine);
     }
 
-    public void Dispose()
-    {
+    public void Dispose() =>
         // Don't dispose of Console.Error, but flush it
         _output.Flush();
-    }
 }

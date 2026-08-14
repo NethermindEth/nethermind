@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using Nethermind.Tools.Kute.Metrics;
 
 namespace Nethermind.Tools.Kute;
@@ -89,20 +90,20 @@ public static class Config
 
     public static Option<bool> UnwrapBatch { get; } = new("--unwrapBatch", "-u")
     {
-        Description = "Batch requests will be unwraped to single requests",
+        Description = "Batch requests will be unwrapped to single requests",
     };
 
     public static Option<Dictionary<string, string>> Labels { get; } = new("--labels", "-l")
     {
-        DefaultValueFactory = _ => new Dictionary<string, string>(),
+        DefaultValueFactory = _ => [],
         CustomParser = r =>
         {
-            var labels = new Dictionary<string, string>();
-            foreach (var token in r.Tokens)
+            Dictionary<string, string> labels = [];
+            foreach (Token token in r.Tokens)
             {
-                foreach (var pair in token.Value.Split(','))
+                foreach (string pair in token.Value.Split(','))
                 {
-                    var parts = pair.Split('=', 2);
+                    string[] parts = pair.Split('=', 2);
                     if (parts.Length == 2)
                     {
                         labels.Add(parts[0], parts[1]);

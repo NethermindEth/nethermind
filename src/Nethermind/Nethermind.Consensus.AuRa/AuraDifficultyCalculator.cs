@@ -6,35 +6,29 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuraDifficultyCalculator : IDifficultyCalculator
+    public class AuraDifficultyCalculator(IAuRaStepCalculator auRaStepCalculator) : IDifficultyCalculator
     {
-        private readonly IAuRaStepCalculator _auRaStepCalculator;
+        private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator;
         public static readonly UInt256 MaxDifficulty;
 
-        static AuraDifficultyCalculator()
-        {
-            MaxDifficulty = UInt256.UInt128MaxValue;
-        }
+        static AuraDifficultyCalculator() => MaxDifficulty = UInt256.UInt128MaxValue;
 
-        public AuraDifficultyCalculator(IAuRaStepCalculator auRaStepCalculator)
+        public static UInt256 CalculateDifficulty(ulong parentStep, ulong currentStep, ulong emptyStepsCount = 0UL)
         {
-            _auRaStepCalculator = auRaStepCalculator;
-        }
-
-        public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L)
-        {
-            long mod = parentStep - currentStep + emptyStepsCount;
-            if (mod > 0)
+            ulong parentStepWithEmpty = parentStep + emptyStepsCount;
+            if (parentStepWithEmpty >= currentStep)
             {
-                return MaxDifficulty + (UInt256)mod;
+                ulong diff = parentStepWithEmpty - currentStep;
+                return MaxDifficulty + (UInt256)diff;
             }
             else
             {
-                return MaxDifficulty - (UInt256)(-mod);
+                ulong diff = currentStep - parentStepWithEmpty;
+                return MaxDifficulty - (UInt256)diff;
             }
         }
 
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
-            CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
+            CalculateDifficulty(parent.GetAuRaStepOrZero(), _auRaStepCalculator.CurrentStep);
     }
 }

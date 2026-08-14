@@ -3,7 +3,6 @@
   <Import Project="../tests.props" />
 
   <ItemGroup>
-    <PackageReference Include="FluentAssertions" />
   </ItemGroup>
 
   <ItemGroup>

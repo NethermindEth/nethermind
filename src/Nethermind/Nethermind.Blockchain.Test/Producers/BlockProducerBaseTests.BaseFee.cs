@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using System.Security;
 using System.Threading.Tasks;
@@ -38,19 +37,19 @@ public partial class BlockProducerBaseTests
             private Address _contractAddress = null!;
             private TestRpcBlockchain _testRpcBlockchain = null!;
 
-            private long _eip1559TransitionBlock;
+            private ulong _eip1559TransitionBlock;
             private bool _eip1559Enabled;
             private Task<ScenarioBuilder>? _antecedent;
-            private UInt256 _currentNonce = 1;
+            private ulong _currentNonce = 1ul;
 
-            public ScenarioBuilder WithEip1559TransitionBlock(long transitionBlock)
+            public ScenarioBuilder WithEip1559TransitionBlock(ulong transitionBlock)
             {
                 _eip1559Enabled = true;
                 _eip1559TransitionBlock = transitionBlock;
                 return this;
             }
 
-            private async Task<ScenarioBuilder> CreateTestBlockchainAsync(long gasLimit)
+            private async Task<ScenarioBuilder> CreateTestBlockchainAsync(ulong gasLimit)
             {
                 await ExecuteAntecedentIfNeeded();
                 TestSingleReleaseSpecProvider spec = new(
@@ -70,11 +69,11 @@ public partial class BlockProducerBaseTests
                         })
                     );
                 _testRpcBlockchain.TestWallet.UnlockAccount(_address, new SecureString());
-                await _testRpcBlockchain.AddFunds(_address, 1.Ether());
+                await _testRpcBlockchain.AddFunds(_address, 1.Ether);
                 return this;
             }
 
-            public ScenarioBuilder CreateTestBlockchain(long gasLimit = 10000000000)
+            public ScenarioBuilder CreateTestBlockchain(ulong gasLimit = 10000000000ul)
             {
                 _antecedent = CreateTestBlockchainAsync(gasLimit);
                 return this;
@@ -96,25 +95,25 @@ public partial class BlockProducerBaseTests
                     Value = 0,
                     Data = bytecode,
                     GasLimit = 1000000,
-                    GasPrice = 20.GWei(),
+                    GasPrice = 20.GWei,
                     SenderAddress = _address,
                 };
                 await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
                 return this;
             }
 
-            public ScenarioBuilder SendEip1559Transaction(long gasLimit = 1000000, UInt256? gasPremium = null, UInt256? feeCap = null, bool serviceTransaction = false)
+            public ScenarioBuilder SendEip1559Transaction(ulong gasLimit = 1000000ul, UInt256? gasPremium = null, UInt256? feeCap = null, bool serviceTransaction = false)
             {
-                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), feeCap ?? UInt256.Zero, serviceTransaction);
+                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei, (ulong)(feeCap ?? UInt256.Zero), serviceTransaction);
                 return this;
             }
 
-            public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null, bool serviceTransaction = false, UInt256? nonce = null)
+            public ScenarioBuilder SendLegacyTransaction(ulong gasLimit = 1000000ul, UInt256? gasPremium = null, bool serviceTransaction = false, ulong? nonce = null)
             {
-                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero, serviceTransaction, nonce);
+                _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei, 0UL, serviceTransaction, nonce);
                 return this;
             }
-            private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap, bool serviceTransaction, UInt256? nonce = null)
+            private async Task<ScenarioBuilder> SendTransactionAsync(ulong gasLimit, UInt256 gasPrice, ulong feeCap, bool serviceTransaction, ulong? nonce = null)
             {
                 await ExecuteAntecedentIfNeeded();
                 byte[] txData = _abiEncoder.Encode(
@@ -133,7 +132,7 @@ public partial class BlockProducerBaseTests
                     IsServiceTransaction = serviceTransaction
                 };
 
-                var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
+                (Core.Crypto.Hash256 _, AcceptTxResult? result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                 return this;
             }
@@ -168,7 +167,8 @@ public partial class BlockProducerBaseTests
                 IBlockTree blockTree = _testRpcBlockchain.BlockTree;
                 Block startingBlock = blockTree.Head!;
                 Assert.That(startingBlock.Header.BaseFeePerGas, Is.EqualTo(UInt256.Zero));
-                for (long i = startingBlock.Number; i < _eip1559TransitionBlock - 1; ++i)
+                ulong limit = _eip1559TransitionBlock.SaturatingSub(1ul);
+                for (ulong i = startingBlock.Number; i < limit; ++i)
                 {
                     await _testRpcBlockchain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
                     Block currentBlock = blockTree.Head!;
@@ -222,10 +222,7 @@ public partial class BlockProducerBaseTests
                     await _antecedent;
             }
 
-            public async Task Finish()
-            {
-                await ExecuteAntecedentIfNeeded();
-            }
+            public async Task Finish() => await ExecuteAntecedentIfNeeded();
 
             private async Task<byte[]> GetContractBytecode(string contract)
             {
@@ -240,10 +237,7 @@ public partial class BlockProducerBaseTests
             }
         }
 
-        public static ScenarioBuilder GoesLikeThis()
-        {
-            return new();
-        }
+        public static ScenarioBuilder GoesLikeThis() => new();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -285,15 +279,15 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task BaseFee_should_decrease_when_we_send_transactions_below_gas_target()
     {
-        long gasLimit = 3000000;
+        ulong gasLimit = 3000000ul;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .CreateTestBlockchain(gasLimit)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasLimit / 3, 20.GWei())
-            .SendEip1559Transaction(gasLimit / 3, 1.GWei(), 20.GWei())
+            .SendLegacyTransaction(gasLimit / 3ul, 20.GWei)
+            .SendEip1559Transaction(gasLimit / 3ul, 1.GWei, 20.GWei)
             .AssertNewBlock(875000000)
             .AssertNewBlockWithDecreasedBaseFee()
             .AssertNewBlockWithDecreasedBaseFee();
@@ -303,15 +297,15 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task BaseFee_should_not_change_when_we_send_transactions_equal_gas_target()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3000000ul;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
+            .SendLegacyTransaction(gasTarget / 2ul, 20.GWei)
+            .SendEip1559Transaction(gasTarget / 2ul, 1.GWei, 20.GWei)
             .AssertNewBlock(875000000)
             .AssertNewBlock(875000000)
             .AssertNewBlockWithDecreasedBaseFee();
@@ -321,16 +315,16 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task BaseFee_should_increase_when_we_send_transactions_above_gas_target()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3000000ul;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .CreateTestBlockchain(gasTarget)
             .DeployContract()
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
-            .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
-            .SendLegacyTransaction(gasTarget / 2, 20.GWei())
+            .SendLegacyTransaction(gasTarget / 2ul, 20.GWei)
+            .SendEip1559Transaction(gasTarget / 2ul, 1.GWei, 20.GWei)
+            .SendLegacyTransaction(gasTarget / 2ul, 20.GWei)
             .AssertNewBlock(875000000)
             .AssertNewBlockWithIncreasedBaseFee()
             .AssertNewBlockWithDecreasedBaseFee();
@@ -340,13 +334,13 @@ public partial class BlockProducerBaseTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task When_base_fee_decreases_previously_fee_too_low_transaction_is_included()
     {
-        long gasTarget = 3000000;
+        ulong gasTarget = 3000000ul;
         BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
             .WithEip1559TransitionBlock(6)
             .CreateTestBlockchain(gasTarget)
             .BlocksBeforeTransitionShouldHaveZeroBaseFee()
             .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
-            .SendLegacyTransaction(gasTarget / 2, 7.GWei() / 10, nonce: UInt256.Zero)
+            .SendLegacyTransaction(gasTarget / 2ul, 7.GWei / 10, nonce: 0ul)
             .AssertNewBlock(875000000)
             .AssertNewBlock(765625000)
             .AssertNewBlock(669921875) // added tx in 9th block

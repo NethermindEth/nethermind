@@ -52,10 +52,23 @@ namespace Nethermind.Crypto
 
         public Address Address => PublicKey.Address;
 
-        private bool Equals(PrivateKey other)
-        {
-            return Bytes.AreEqual(KeyBytes, other.KeyBytes);
-        }
+        /// <summary>
+        /// Computes the compressed secp256k1 ECDH shared EC point for this private key and a remote public key.
+        /// </summary>
+        /// <param name="publicKey">The remote public key.</param>
+        /// <returns>The 33-byte compressed ECDH shared EC point.</returns>
+        public byte[] GetCompressedSharedPoint(PublicKey publicKey) =>
+            SecP256k1Ecdh.GetCompressedSharedPoint(publicKey.PrefixedBytes, KeyBytes);
+
+        /// <summary>
+        /// Computes the compressed secp256k1 ECDH shared EC point for this private key and a remote compressed public key.
+        /// </summary>
+        /// <param name="publicKey">The remote compressed public key.</param>
+        /// <returns>The 33-byte compressed ECDH shared EC point.</returns>
+        public byte[] GetCompressedSharedPoint(CompressedPublicKey publicKey) =>
+            SecP256k1Ecdh.GetCompressedSharedPoint(publicKey.Bytes, KeyBytes);
+
+        private bool Equals(PrivateKey other) => Bytes.AreEqual(KeyBytes, other.KeyBytes);
 
         public override bool Equals(object obj)
         {
@@ -77,25 +90,13 @@ namespace Nethermind.Crypto
             return Equals((PrivateKey)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return MemoryMarshal.Read<int>(KeyBytes);
-        }
+        public override int GetHashCode() => MemoryMarshal.Read<int>(KeyBytes);
 
-        private PublicKey ComputePublicKey()
-        {
-            return new(SecP256k1.GetPublicKey(KeyBytes, false));
-        }
+        private PublicKey ComputePublicKey() => new(SecP256k1.GetPublicKey(KeyBytes, false));
 
-        private CompressedPublicKey ComputeCompressedPublicKey()
-        {
-            return new(SecP256k1.GetPublicKey(KeyBytes, true));
-        }
+        private CompressedPublicKey ComputeCompressedPublicKey() => new(SecP256k1.GetPublicKey(KeyBytes, true));
 
-        public override string ToString()
-        {
-            return KeyBytes.ToHexString(true);
-        }
+        public override string ToString() => KeyBytes.ToHexString(true);
 
         public void Dispose()
         {

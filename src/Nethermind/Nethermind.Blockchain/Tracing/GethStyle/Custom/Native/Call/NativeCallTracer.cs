@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -26,23 +27,26 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 {
     public const string CallTracer = "callTracer";
 
-    private readonly long _gasLimit;
+    private readonly ulong _gasLimit;
     private readonly Hash256? _txHash;
+    private readonly bool _isEip8037Enabled;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
-    private readonly CompositeDisposable _disposables = new();
+    private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
-    private long _remainingGas;
+    private ulong _remainingGas;
     private bool _resultBuilt = false;
 
     public NativeCallTracer(
         Transaction? tx,
+        IReleaseSpec spec,
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
         _gasLimit = tx!.GasLimit;
         _txHash = tx.Hash;
+        _isEip8037Enabled = spec.IsEip8037Enabled;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -57,16 +61,20 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
-        NativeCallTracerCallFrame firstCallFrame = _callStack[0];
 
-        Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
+        Debug.Assert(_callStack.Count <= 1, $"Unexpected frames on call stack, expected at most one master frame, found {_callStack.Count} frames.");
 
-        _callStack.RemoveAt(0);
-        _disposables.Add(firstCallFrame);
+        if (_callStack.Count is not 0)
+        {
+            NativeCallTracerCallFrame firstCallFrame = _callStack[0];
+            _callStack.RemoveAt(0);
+            _disposables.Add(firstCallFrame);
+
+            result.TxHash = _txHash;
+            result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
+        }
 
         result.TxHash = _txHash;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
-
         _resultBuilt = true;
 
         return result;
@@ -83,7 +91,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         _callStack.Dispose();
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
@@ -122,19 +130,19 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         callFrame.Logs.Add(callLog);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         base.ReportOperationRemainingGas(gas);
         _remainingGas = gas > 0 ? gas : 0;
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         OnExit(gas, deployedCode);
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         OnExit(gas, output);
         base.ReportActionEnd(gas, output);
@@ -147,7 +155,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.ReportActionError(evmExceptionType);
     }
 
-    public override void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         _error = EvmExceptionType.Revert;
         OnExit(gas, output, _error);
@@ -159,7 +167,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.ReportSelfDestruct(address, balance, refundAddress);
         if (!_config.OnlyTopCall && _callStack.Count > 0)
         {
-            NativeCallTracerCallFrame callFrame = new NativeCallTracerCallFrame
+            NativeCallTracerCallFrame callFrame = new()
             {
                 Type = Instruction.SELFDESTRUCT,
                 From = address,
@@ -170,36 +178,57 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+
+        if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         firstCallFrame.Output = new ArrayPoolList<byte>(output);
+        ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
+
+        if (_config.WithLog)
+        {
+            ClearFailedLogs(firstCallFrame, parentFailed: false);
+        }
     }
 
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+
+        if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
+        ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
         if (output is not null)
             firstCallFrame.Output = new ArrayPoolList<byte>(output);
 
-        EvmExceptionType errorType = _error!.Value;
-        firstCallFrame.Error = errorType.GetEvmExceptionDescription();
-        if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
+        if (_error is not null)
         {
-            firstCallFrame.RevertReason = ValidateRevertReason(error);
+            EvmExceptionType errorType = _error.Value;
+            firstCallFrame.Error = errorType.GetEvmExceptionDescription();
+            if (errorType == EvmExceptionType.Revert && error is not TransactionSubstate.Revert)
+            {
+                firstCallFrame.RevertReason = ValidateRevertReason(error);
+            }
         }
 
         if (_config.WithLog)
         {
-            ClearFailedLogs(firstCallFrame, false);
+            ClearFailedLogs(firstCallFrame, parentFailed: true);
         }
     }
 
-    private void OnExit(long gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
+    private void ApplyTwoDimensionalGas(NativeCallTracerCallFrame firstCallFrame, in GasConsumed gasSpent)
+    {
+        if (!_isEip8037Enabled) return;
+
+        firstCallFrame.Eip8037Gas = new TwoDimensionalGas(gasSpent.EffectiveBlockGas, gasSpent.BlockStateGas, gasSpent.GasRefund);
+    }
+
+    private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
         if (!_config.OnlyTopCall && Depth > 0)
         {
@@ -265,6 +294,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         bool failed = callFrame.Error is not null || parentFailed;
         if (failed)
         {
+            callFrame.Logs?.Dispose();
             callFrame.Logs = null;
         }
 

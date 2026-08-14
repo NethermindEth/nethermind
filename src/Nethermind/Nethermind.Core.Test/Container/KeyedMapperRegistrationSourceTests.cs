@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Container;
@@ -18,7 +17,7 @@ public class KeyedMapperRegistrationSourceTests
             .AddKeyedAdapter<ClassB, ClassA>((a) => new ClassB(a.Property))
             .Build();
 
-        cont.ResolveKeyed<ClassB>("Key").Property.Should().Be("Property1");
+        Assert.That(cont.ResolveKeyed<ClassB>("Key").Property, Is.EqualTo("Property1"));
     }
 
     [TestCase(true)]
@@ -27,7 +26,7 @@ public class KeyedMapperRegistrationSourceTests
     {
         bool adapterWasDisposed = false;
 
-        var builder = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddKeyedSingleton<ClassA>("Key", new ClassA("Property1"));
 
         if (shouldDispose)
@@ -41,20 +40,17 @@ public class KeyedMapperRegistrationSourceTests
 
         IContainer cont = builder.Build();
 
-        cont.ResolveKeyed<ClassB>("Key").Property.Should().Be("Property1");
+        Assert.That(cont.ResolveKeyed<ClassB>("Key").Property, Is.EqualTo("Property1"));
 
         cont.Dispose();
 
-        adapterWasDisposed.Should().Be(shouldDispose);
+        Assert.That(adapterWasDisposed, Is.EqualTo(shouldDispose));
     }
 
     private record ClassA(string Property);
 
     private record ClassB(string Property, Action? onDispose = null) : IDisposable
     {
-        public void Dispose()
-        {
-            onDispose?.Invoke();
-        }
+        public void Dispose() => onDispose?.Invoke();
     }
 }

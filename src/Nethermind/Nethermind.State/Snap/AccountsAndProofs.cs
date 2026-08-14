@@ -9,7 +9,7 @@ namespace Nethermind.State.Snap
     public class AccountsAndProofs : IDisposable
     {
         public IOwnedReadOnlyList<PathWithAccount> PathAndAccounts { get; set; }
-        public IOwnedReadOnlyList<byte[]> Proofs { get; set; }
+        public IByteArrayList Proofs { get; set; }
 
         public void Dispose()
         {

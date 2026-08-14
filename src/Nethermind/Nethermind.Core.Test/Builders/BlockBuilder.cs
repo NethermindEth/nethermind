@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -16,6 +16,8 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockBuilder : BuilderBase<Block>
     {
+        private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
+
         public BlockBuilder()
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
@@ -29,11 +31,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithNumber(long number)
+        public BlockBuilder WithNumber(ulong number)
         {
             TestObjectInternal.Header.Number = number;
             return this;
         }
+
+        public BlockBuilder WithNumber(int number) => WithNumber((ulong)number);
 
         public BlockBuilder WithBaseFeePerGas(UInt256 baseFeePerGas)
         {
@@ -47,7 +51,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithGasLimit(long gasLimit)
+        public BlockBuilder WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.Header.GasLimit = gasLimit;
             return this;
@@ -98,7 +102,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, ReceiptDecoder);
             TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }
@@ -136,6 +140,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithTotalDifficulty(ulong difficulty)
+        {
+            TestObjectInternal.Header.TotalDifficulty = difficulty;
+            return this;
+        }
+
         public BlockBuilder WithTotalDifficulty(UInt256? difficulty)
         {
             TestObjectInternal.Header.TotalDifficulty = difficulty;
@@ -168,10 +178,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithParent(Block block)
-        {
-            return WithParent(block.Header);
-        }
+        public BlockBuilder WithParent(Block block) => WithParent(block.Header);
 
         public BlockBuilder WithPostMergeRules()
         {
@@ -222,13 +229,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithAura(long step, byte[]? signature = null)
-        {
-            TestObjectInternal.Header.AuRaStep = step;
-            TestObjectInternal.Header.AuRaSignature = signature;
-            return this;
-        }
-
         public BlockBuilder WithAuthor(Address? author)
         {
             TestObjectInternal.Header.Author = author;
@@ -262,7 +262,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithGasUsed(long gasUsed)
+        public BlockBuilder WithGasUsed(ulong gasUsed)
         {
             TestObjectInternal.Header.GasUsed = gasUsed;
             return this;
@@ -270,9 +270,9 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithWithdrawals(int count)
         {
-            var withdrawals = new Withdrawal[count];
+            Withdrawal[] withdrawals = new Withdrawal[count];
 
-            for (var i = 0; i < count; i++)
+            for (int i = 0; i < count; i++)
                 withdrawals[i] = new();
 
             return WithWithdrawals(withdrawals);
@@ -299,6 +299,30 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithEncodedSize(int? encodedSize)
         {
             TestObjectInternal.EncodedSize = encodedSize;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessListHash(Hash256? hash)
+        {
+            TestObjectInternal.Header.BlockAccessListHash = hash;
+            return this;
+        }
+
+        public BlockBuilder WithSlotNumber(ulong? slotNumber)
+        {
+            TestObjectInternal.Header.SlotNumber = slotNumber;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessList(ReadOnlyBlockAccessList? bal)
+        {
+            TestObjectInternal.BlockAccessList = bal;
+            return this;
+        }
+
+        public BlockBuilder WithEncodedBlockAccessList(byte[]? bal)
+        {
+            TestObjectInternal.EncodedBlockAccessList = bal;
             return this;
         }
     }

@@ -5,14 +5,9 @@
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.EthStats.Messages
 {
-    public class StatsMessage : IMessage
+    public class StatsMessage(Models.Stats stats) : IMessage
     {
         public string? Id { get; set; }
-        public Models.Stats Stats { get; }
-
-        public StatsMessage(Models.Stats stats)
-        {
-            Stats = stats;
-        }
+        public Models.Stats Stats { get; } = stats;
     }
 }

@@ -1,17 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots.Handlers;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -43,7 +40,7 @@ namespace Nethermind.Flashbots.Modules.Flashbots
                 .AddModule(overridableEnv));
 
             rootLifetime.Disposer.AddInstanceForAsyncDisposal(moduleLifetime);
-            ValidateSubmissionHandler validateSubmissionHandler = new ValidateSubmissionHandler(
+            ValidateSubmissionHandler validateSubmissionHandler = new(
                 headerValidator,
                 blockTree,
                 blockValidator,

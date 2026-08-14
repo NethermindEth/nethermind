@@ -21,7 +21,7 @@ namespace Nethermind.TxPool.Collections
         public delegate void UpdateTransactionDelegate(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement);
 
         private readonly UpdateTransactionDelegate _updateTx;
-        private readonly List<Transaction> _transactionsToRemove = new();
+        private readonly List<Transaction> _transactionsToRemove = [];
         protected int _poolCapacity;
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
