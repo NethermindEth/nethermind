@@ -569,7 +569,7 @@ public static partial class EvmInstructions
                     {
                         vm.CreditStateGasRefund(ref gas, TGasPolicy.GetStorageSetStateCost());
                         if (!spec.IsEip8038Enabled)
-                            refundFromReversal = (long)(GasCostOf.SSetRegular - GasCostOf.WarmStateRead);
+                            refundFromReversal = (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead);
                     }
 
                     vmState.Refund += refundFromReversal;

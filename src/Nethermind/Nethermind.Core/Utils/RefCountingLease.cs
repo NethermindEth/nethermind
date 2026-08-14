@@ -14,7 +14,7 @@ namespace Nethermind.Core.Utils;
 /// (cache-line-padded vs. inline); the compare-and-swap logic operating on it is identical and lives
 /// here so it is not duplicated between them.
 /// </summary>
-internal static class RefCountingLease
+public static class RefCountingLease
 {
     public const int Single = 1;
     public const int NoAccessors = 0;

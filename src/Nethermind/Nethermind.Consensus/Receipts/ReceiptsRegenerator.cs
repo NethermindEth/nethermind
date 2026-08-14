@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -35,6 +36,7 @@ public sealed class ReceiptsRegenerator(
     IBlockFinder blockFinder,
     ISpecProvider specProvider,
     IEthereumEcdsa ecdsa,
+    IPoSSwitcher poSSwitcher,
     ILogManager logManager)
 {
     private readonly ILogger _logger = logManager.GetClassLogger<ReceiptsRegenerator>();
@@ -57,13 +59,31 @@ public sealed class ReceiptsRegenerator(
         if (parent is null) return false;
 
         foreach (Transaction tx in block.Transactions)
-            tx.SenderAddress ??= ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+        {
+            if (tx.SenderAddress is not null)
+            {
+                continue;
+            }
+
+            if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress, !spec.ValidateChainId))
+            {
+                return FailUnrecoverableSender(block, tx);
+            }
+
+            tx.SenderAddress = senderAddress;
+        }
 
         // Re-execute on a throwaway copy: block processing writes back the resolved state root, account-change
         // buffers, and generated access list, and this runs on RPC threads against the shared block-tree instance —
         // so it must never see that instance. The parent header is cloned for the same reason (BuildAndOverride
         // assigns the resolved state root into whatever header it is handed).
-        Block isolated = new(block.Header.Clone(), block.Body, block.BlockAccessList);
+        BlockHeader isolatedHeader = block.Header.Clone();
+        // Storage does not persist the post-merge flag and this path bypasses the recovery step that restores it;
+        // without it PREVRANDAO evaluates to the pre-merge difficulty and any transaction reading it regenerates
+        // receipts that fail the root check. The switcher owns the classification - a difficulty heuristic would
+        // misread chains that repurpose the field, like Taiko's per-block ZK gas.
+        isolatedHeader.IsPostMerge = poSSwitcher.IsPostMerge(isolatedHeader);
+        Block isolated = new(isolatedHeader, block.Body, block.BlockAccessList);
         try
         {
             using Scope<ReceiptsRegenerationEnv> scope = envSource.BuildAndOverride(parent.Clone());
@@ -103,5 +123,12 @@ public sealed class ReceiptsRegenerator(
             // defensively so a pooled buffer can never outlive this call regardless of where regeneration runs.
             isolated.DisposeAccountChanges();
         }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool FailUnrecoverableSender(Block block, Transaction tx)
+    {
+        if (_logger.IsWarn) _logger.Warn($"Could not regenerate receipts for block {block.Number} ({block.Hash}): transaction {tx.Hash} sender address is not recoverable.");
+        return false;
     }
 }

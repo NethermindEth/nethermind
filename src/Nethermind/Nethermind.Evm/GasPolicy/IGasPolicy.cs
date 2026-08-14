@@ -25,12 +25,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract ulong GetRemainingGas(in TSelf gas);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual ulong CombineBlockGas(ulong blockRegularGas, ulong blockStateGas) => Math.Max(blockRegularGas, blockStateGas);
+    static virtual ulong CombineBlockGas(ulong blockExecutionGas, ulong blockStateGas) => Math.Max(blockExecutionGas, blockStateGas);
 
     /// <summary>EIP-8037 pre-refund spent gas: <c>txGasLimit - gas_left - state reservoir</c>.</summary>
     /// <remarks>
-    /// The reservoir may be negative due to net child spill. If the accounting invariant is
-    /// violated, the full transaction gas limit is returned to keep accounting conservative
+    /// Centralizes the execution↔state boundary conversion: the reservoir may be negative due to net child spill.
+    /// If the accounting invariant is violated, the full transaction gas limit is returned to keep accounting conservative
     /// without unsigned wraparound.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -120,7 +120,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         where TOpCreate : struct, EvmInstructions.IOpCreate
     {
         ulong baseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
-            : TEip8037.IsActive ? GasCostOf.CreateRegular
+            : TEip8037.IsActive ? GasCostOf.CreateExecution
             : GasCostOf.Create;
         ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
         ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
@@ -203,13 +203,13 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static abstract bool UpdateGas(ref TSelf gas, ulong gasCost);
 
-    // Pre-EIP-8037 fallback: state gas folded into regular gas.
+    // Pre-EIP-8037 fallback: state gas folded into execution gas.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool ConsumeStateGas(ref TSelf gas, long stateGasCost) => TSelf.UpdateGas(ref gas, (ulong)stateGasCost);
 
-    // Regular gas charged first to prevent state-gas spill-then-halt from inflating
+    // Execution gas charged first to prevent state-gas spill-then-halt from inflating
     // the reservoir via the error refund path.
-    static abstract bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, ulong regularGasCost);
+    static abstract bool TryConsumeStateAndExecutionGas(ref TSelf gas, long stateGasCost, ulong executionGasCost);
 
     static abstract void UpdateGasUp(ref TSelf gas, ulong refund);
 
@@ -217,7 +217,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         where TEip8037 : struct, IFlag
         where TIsSlotCreation : struct, IFlag;
 
-    // Pre-EIP-8037 fallback: refund into regular gas.
+    // Pre-EIP-8037 fallback: refund into execution gas.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, (ulong)amount);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -251,15 +251,15 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual void FoldTopFrameStateGas(ref TSelf gas, ref TSelf baseline, long stateGasUsed) { }
 
-    // EIP-7702 code-insert refund regular-gas portion. Pre-EIP-8037: (NewAccount - PerAuthBaseCost) each.
+    // EIP-7702 code-insert refund execution-gas portion. Pre-EIP-8037: (NewAccount - PerAuthBaseCost) each.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual ulong GetCodeInsertRegularRefund(ulong codeInsertRefunds, IReleaseSpec spec) =>
+    static virtual ulong GetCodeInsertExecutionRefund(ulong codeInsertRefunds, IReleaseSpec spec) =>
         codeInsertRefunds > 0UL ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0UL;
 
     // EIP-8037: replenishes tx state reservoir before exec (intrinsic state gas already charged).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong ApplyCodeInsertRefunds(ref TSelf gas, ulong codeInsertRefunds, IReleaseSpec spec, long stateGasFloor) =>
-        TSelf.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
+        TSelf.GetCodeInsertExecutionRefund(codeInsertRefunds, spec);
 
     static abstract bool ConsumeCallValueTransfer(ref TSelf gas);
     static abstract bool ConsumeCallValueTransferEip2780(ref TSelf gas);
@@ -275,7 +275,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract TSelf CreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childRegularGas) => TSelf.FromULong(childRegularGas);
+    static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childExecutionGas) => TSelf.FromULong(childExecutionGas);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual bool TryReserveChildGas(ref TSelf gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
@@ -325,14 +325,14 @@ public readonly record struct IntrinsicGas<TGasPolicy>(TGasPolicy Standard, TGas
     public ulong MinRequiredGasLimit => Math.Max(StandardGas, TGasPolicy.GetRemainingGas(FloorGas));
 
     /// <summary>
-    /// EIP-8037: rejects a transaction whose intrinsic regular or floor gas exceeds <paramref name="cap"/>.
+    /// EIP-8037: rejects a transaction whose intrinsic execution or floor gas exceeds <paramref name="cap"/>.
     /// </summary>
-    public bool ExceedsCap(ulong cap, out ulong regular, out ulong floor)
+    public bool ExceedsCap(ulong cap, out ulong execution, out ulong floor)
     {
         TGasPolicy standard = Standard;
         TGasPolicy floorGas = FloorGas;
-        regular = TGasPolicy.GetRemainingGas(in standard);
+        execution = TGasPolicy.GetRemainingGas(in standard);
         floor = TGasPolicy.GetRemainingGas(in floorGas);
-        return regular > cap || floor > cap;
+        return execution > cap || floor > cap;
     }
 }

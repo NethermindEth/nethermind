@@ -90,10 +90,10 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
     [TestCase(100UL, 40UL)]
     [TestCase(40UL, 100UL)]
     [TestCase(0UL, 0UL)]
-    public void CombineBlockGas_is_at_least_each_dimension(ulong regular, ulong state)
+    public void CombineBlockGas_is_at_least_each_dimension(ulong execution, ulong state)
     {
-        ulong combined = TGasPolicy.CombineBlockGas(regular, state);
-        Assert.That(combined, Is.GreaterThanOrEqualTo(regular));
+        ulong combined = TGasPolicy.CombineBlockGas(execution, state);
+        Assert.That(combined, Is.GreaterThanOrEqualTo(execution));
         Assert.That(combined, Is.GreaterThanOrEqualTo(state));
     }
 

@@ -1487,6 +1487,25 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.RemoveTransaction(null), Is.EqualTo(false));
         }
 
+        [Test]
+        public void should_refresh_pending_transactions_snapshot_after_removing_transaction()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactions(), Has.One.Matches<Transaction>(transaction => transaction.Hash == tx.Hash));
+            Assert.That(_txPool.RemoveTransaction(tx.Hash), Is.True);
+
+            Transaction[] snapshot = _txPool.GetPendingTransactions();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot, Is.Empty);
+                Assert.That(snapshot.Length, Is.EqualTo(_txPool.GetPendingTransactionsCount()));
+            }
+        }
+
         [TestCase(0, 0, false)]
         [TestCase(0, 1, true)]
         [TestCase(1, 2, true)]
@@ -2476,30 +2495,32 @@ namespace Nethermind.TxPool.Test
         public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
         {
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
-            // shape reaching the exposure gate here; it is refused because the incumbent is still reserved.
+            // shape reaching the exposure gate here.
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
 
             Transaction first = SelfPayingFrameTx(nonce: 0, feePerGas: 6);
-            Transaction blocked = SelfPayingFrameTx(nonce: 0, feePerGas: 7);
+            Transaction bumped = SelfPayingFrameTx(nonce: 0, feePerGas: 7);
             Transaction afterRelease = SelfPayingFrameTx(nonce: 0, feePerGas: 8);
 
             // Priced with the gate's own helper: enough for either transaction alone, never for both.
             Assert.That(FrameTxValidation.TryCalculateMaxCost(first, Bogota.Instance, out UInt256 firstCost), Is.True);
-            Assert.That(FrameTxValidation.TryCalculateMaxCost(blocked, Bogota.Instance, out UInt256 blockedCost), Is.True);
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, firstCost + blockedCost - 1);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(bumped, Bogota.Instance, out UInt256 bumpedCost), Is.True);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, firstCost + bumpedCost - 1);
 
             AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
-            AcceptTxResult blockedResult = _txPool.SubmitTx(blocked, TxHandlingOptions.None);
+            // 6 + 7 exceeds the balance, but the bump displaces the incumbent rather than joining it, so
+            // the pending set never holds both and the payer's exposure ends at 7.
+            AcceptTxResult bumpedResult = _txPool.SubmitTx(bumped, TxHandlingOptions.None);
             // Within the bound but too small a bump to replace: no Removed fires, so only AddCore's
             // explicit release keeps the payer from leaking.
             AcceptTxResult unreplaceableResult = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 6, distinctHash: true), TxHandlingOptions.None);
-            _txPool.RemoveTransaction(first.Hash);
+            _txPool.RemoveTransaction(bumped.Hash);
             AcceptTxResult afterReleaseResult = _txPool.SubmitTx(afterRelease, TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(blockedResult, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the first tx's reservation must be visible to the second");
+                Assert.That(bumpedResult, Is.EqualTo(AcceptTxResult.Accepted), "a fee bump must not be gated on the reservation it displaces");
                 Assert.That(unreplaceableResult, Is.EqualTo(AcceptTxResult.ReplacementNotAllowed));
                 Assert.That(afterReleaseResult, Is.EqualTo(AcceptTxResult.Accepted), "both the refused replacement and the removed tx must have released");
             }
