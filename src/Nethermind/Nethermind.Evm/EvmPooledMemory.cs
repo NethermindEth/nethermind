@@ -553,11 +553,12 @@ public struct EvmPooledMemory
         ulong size = Size;
         if (size > _lastZeroedSize)
         {
-            // Over-zero to a chunk boundary so sequential MSTORE growth does not take RentSlow per word.
-            const ulong zeroChunk = 4 * 1024;
-            ulong target = Math.Min((ulong)memory.Length, (size + (zeroChunk - 1)) & ~(zeroChunk - 1));
-            Array.Clear(memory, (int)_lastZeroedSize, (int)(target - _lastZeroedSize));
-            _lastZeroedSize = target;
+            // EXPERIMENT (benchmark branch, not for merge): zero exactly the newly exposed range
+            // instead of rounding up to a 4KB boundary. The rounding saves a RentSlow call per word
+            // during sequential MSTORE growth, but a frame whose high-water is under 4KB then zeroes
+            // a full 4KB — and most eth_call frames are ABI-sized. Measuring which side wins.
+            Array.Clear(memory, (int)_lastZeroedSize, (int)(size - _lastZeroedSize));
+            _lastZeroedSize = size;
         }
     }
 
