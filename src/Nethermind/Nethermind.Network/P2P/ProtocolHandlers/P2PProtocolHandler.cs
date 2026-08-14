@@ -266,6 +266,13 @@ public class P2PProtocolHandler(
 
         if (Logger.IsTrace) TraceReceivedHello();
 
+        if (hello.NodeId == _localNodeId || Session.RemoteNodeId == _localNodeId)
+        {
+            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Session}: remote identity is this node's own identity");
+            Session.InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, "connection to self");
+            return;
+        }
+
         if (!hello.NodeId.Equals(Session.RemoteNodeId))
         {
             if (Logger.IsDebug) DebugInconsistentNodeId(hello, isInbound);
