@@ -97,6 +97,20 @@ public class ArchiveCloneImporterTests
     }
 
     [Test]
+    public void CloneAsync_WhenSourceCursorDoesNotAdvance_AbandonsTheImportInsteadOfScanningForever()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RepeatCursorForever = true };
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
+        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
+
+        ArchiveCloneImporter importer = CreateImporter(source);
+        using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
+
+        Assert.That(async () => await importer.CloneAsync(cancellation.Token), Throws.InstanceOf<InvalidOperationException>(),
+            "a cursor that never moves past the one it was given can never reach the end of the shard, so the page loop must abandon the import rather than request the same page forever");
+    }
+
+    [Test]
     public void CloneAsync_WhenSourceFormatDoesNotMatchLocallyResolvedFormat_Refuses()
     {
         FakeCloneSource source = new((byte)(_rowFormat.FormatVersion + 1));
@@ -393,6 +407,8 @@ public class ArchiveCloneImporterTests
 
         public HistoryRowColumn? ThrowOnColumn { get; set; }
 
+        public bool RepeatCursorForever { get; set; }
+
         public void Seed(HistoryRowColumn column, (byte[] Key, byte[] Value) row)
         {
             if (!_rows.TryGetValue(column, out List<(byte[] Key, byte[] Value)>? list))
@@ -434,6 +450,11 @@ public class ArchiveCloneImporterTests
                 if (cursor is not null)
                 {
                     matching = matching.Where(r => Bytes.BytesComparer.Compare(r.Key, cursor) > 0).ToList();
+                }
+
+                if (RepeatCursorForever)
+                {
+                    return Task.FromResult(new ArchiveCloneRowPage([], cursor ?? startKey, false));
                 }
 
                 List<HistoryRowEntry> page = matching.Take(PageSize).Select(r => new HistoryRowEntry(r.Key, r.Value)).ToList();

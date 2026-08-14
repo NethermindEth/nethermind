@@ -8,6 +8,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -466,6 +467,13 @@ public sealed class ArchiveCloneImporter
                     {
                         exhausted = true;
                         break;
+                    }
+
+                    int advance = Bytes.BytesComparer.Compare(page.NextCursor, sourceCursor ?? from);
+                    if (sourceCursor is null ? advance < 0 : advance <= 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"The clone source returned a {column} cursor for shard {shard} that does not advance past the one it was given, so the scan would never reach the end of the shard; the import was abandoned.");
                     }
 
                     sourceCursor = page.NextCursor;
