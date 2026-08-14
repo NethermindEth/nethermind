@@ -34,10 +34,8 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
-concurrency:
-  group: sync-master-validation-${{ github.event_name }}
-  cancel-in-progress: true
-
+# No concurrency group on purpose: every master push must get its own full
+# validation run so a failure is attributable to the exact commit that caused it.
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest
