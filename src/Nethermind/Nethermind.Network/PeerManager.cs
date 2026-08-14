@@ -177,6 +177,11 @@ namespace Nethermind.Network
         {
             e.Peer.IsAwaitingConnection = false;
             _peerPool.ActivePeers.TryRemove(e.Peer.Node.Id, out Peer _);
+
+            PublicKey id = e.Peer.Node.Id;
+            _lastStaticDialAttempt.TryRemove(id, out _);
+            _lastStaticSkipLog.TryRemove(id, out _);
+            _lastHistorySourceDialAttempt.TryRemove(id, out _);
         }
 
         public void Start()

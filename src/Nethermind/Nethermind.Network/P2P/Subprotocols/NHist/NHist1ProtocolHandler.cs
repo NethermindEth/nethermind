@@ -48,6 +48,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     private static readonly TimeSpan ServedBytesWindow = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan RowsResponseTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RowsRequestCleanupThreshold = RowsResponseTimeout * 1.5;
     private static readonly long TicksPerWindow = (long)(Stopwatch.Frequency * ServedBytesWindow.TotalSeconds);
 
     private readonly long _servedBytesPerWindowCap;
@@ -87,7 +88,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     {
         _getHistoryRangeRequests = new(this);
         _getChangesetsRequests = new(this);
-        _getHistoryRowsRequests = new(this);
+        _getHistoryRowsRequests = new(this, RowsRequestCleanupThreshold);
         HistoryServer = historyServer;
         CanServe = historyServer.CanServe;
         _servedBytesPerWindowCap = Math.Max(1024 * 1024, syncConfig.HistoryServingMaxBytesPerSecond);
