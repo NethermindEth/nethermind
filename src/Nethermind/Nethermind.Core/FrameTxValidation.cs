@@ -219,6 +219,8 @@ public static class FrameTxValidation
             return false;
         }
 
+        // A value check, not a presence check: the decoder always populates both blob fields. Refusing a
+        // blob-carrying frame tx here would be a block-validity rule, since BlockValidator reaches this.
         bool hasBlobs = transaction.BlobVersionedHashes is { Length: > 0 };
         if (!hasBlobs && transaction.MaxFeePerBlobGas is { IsZero: false })
         {
@@ -284,17 +286,17 @@ public static class FrameTxValidation
     private static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
     {
         int next = 0;
-        if (next < frames.Length && IsExpiryVerify(frames[next])) next++;
-        if (next < frames.Length && IsDeploy(frames[next])) next++;
+        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
+        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
 
-        if (next < frames.Length && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecutionAndPayment, sender))
+        if (next < frames.Length && IsSelfVerifyFrame(frames[next], sender))
         {
             return next + 1;
         }
 
         if (next + 1 < frames.Length
-            && IsSelfTargetedVerify(frames[next], TxFrame.ApproveExecution, sender)
-            && IsPay(frames[next + 1]))
+            && IsOnlyVerifyFrame(frames[next], sender)
+            && IsPayFrame(frames[next + 1]))
         {
             return next + 2;
         }
@@ -305,13 +307,34 @@ public static class FrameTxValidation
     private static ulong Saturating(ulong total, ulong addend) =>
         addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
 
-    private static bool IsExpiryVerify(TxFrame frame) =>
+    /// <summary>True if <paramref name="frame"/> is a well-formed EIP-8141 expiry-verifier VERIFY frame.</summary>
+    /// <remarks>
+    /// Position is not checked; the recognized prefix admits one only as the leading frame. The value and
+    /// data-length checks are kept so a caller may read the deadline without re-validating the frame.
+    /// </remarks>
+    public static bool IsExpiryVerifyFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == TxFrame.ApproveScopeNone
-        && frame.Target == Eip8141Constants.ExpiryVerifierAddress;
+        && frame.Target == Eip8141Constants.ExpiryVerifierAddress
+        && frame.Value.IsZero
+        && frame.Data.Length == Eip8141Constants.ExpiryDataLength;
 
-    private static bool IsDeploy(TxFrame frame) =>
+    /// <summary>True if <paramref name="frame"/> is a deploy frame: any default-mode frame carrying no
+    /// approval scope, so it can never approve a payer.</summary>
+    public static bool IsDeployFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeDefault && frame.Flags == TxFrame.ApproveScopeNone;
+
+    /// <summary>True if <paramref name="frame"/> is a self-relay VERIFY frame approving both execution and payment for <paramref name="sender"/>.</summary>
+    public static bool IsSelfVerifyFrame(TxFrame frame, Address? sender) =>
+        IsSelfTargetedVerify(frame, TxFrame.ApproveExecutionAndPayment, sender);
+
+    /// <summary>True if <paramref name="frame"/> is a VERIFY frame approving execution only (not payment) for <paramref name="sender"/>.</summary>
+    public static bool IsOnlyVerifyFrame(TxFrame frame, Address? sender) =>
+        IsSelfTargetedVerify(frame, TxFrame.ApproveExecution, sender);
+
+    /// <summary>True if <paramref name="frame"/> is a VERIFY frame approving payment.</summary>
+    private static bool IsPayFrame(TxFrame frame) =>
+        frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
 
     /// <remarks>
     /// Comparing the whole <see cref="TxFrame.Flags"/> byte rather than the approve scope also enforces
@@ -321,9 +344,6 @@ public static class FrameTxValidation
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == flags
         && (frame.Target is null || frame.Target == sender);
-
-    private static bool IsPay(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
 
     /// <summary>
     /// Calculates the gas an EIP-8141 frame transaction reserves: <c>max_gas</c>, the greater of its intrinsic cost
@@ -454,17 +474,12 @@ public static class FrameTxValidation
     /// </summary>
     /// <remarks>
     /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; a tx whose deadline has passed can
-    /// never be included and is dropped from the mempool (ethereum/EIPs#12007, "Revalidation"). Must be called only
-    /// on well-formed frame txs: <see cref="IsWellFormed"/> already enforces the
-    /// <see cref="Eip8141Constants.ExpiryDataLength"/> length, so it is not re-checked here.
+    /// never be included and is dropped from the mempool (ethereum/EIPs#12007, "Revalidation"). Total on any input:
+    /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
     /// <param name="deadline">The expiry deadline in Unix seconds when an expiry-verifier frame is present.</param>
     /// <returns><c>true</c> if an expiry-verifier frame is present and its deadline was read; otherwise <c>false</c>.</returns>
-    /// <exception cref="System.ArgumentOutOfRangeException">
-    /// The expiry frame carries fewer than <see cref="Eip8141Constants.ExpiryDataLength"/> bytes, i.e. the
-    /// <see cref="IsWellFormed"/> precondition was not met.
-    /// </exception>
     public static bool TryGetExpiryDeadline(Transaction transaction, out ulong deadline)
     {
         deadline = 0;
@@ -477,11 +492,9 @@ public static class FrameTxValidation
 
         for (int i = 0; i < frames.Length; i++)
         {
-            TxFrame frame = frames[i];
-            if (frame.Mode == TxFrame.ModeVerify
-                && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
+            if (IsExpiryVerifyFrame(frames[i]))
             {
-                deadline = BinaryPrimitives.ReadUInt64BigEndian(frame.Data.Span);
+                deadline = BinaryPrimitives.ReadUInt64BigEndian(frames[i].Data.Span);
                 return true;
             }
         }

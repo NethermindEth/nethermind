@@ -90,12 +90,29 @@ public class FrameTxPayerResolverTests
                 return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
-        yield return Case("DefaultFrameFirst_RequiresSimulation",
+        // A leading deploy frame is part of the recognized prefix, so it is skipped like the expiry frame.
+        yield return Case("DeployThenSelfVerify_PayerIsSender",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([Frame(TxFrame.ModeDefault), SelfVerifyFrame()], [Secp(Sender)]);
+                return FrameTx([DeployFrame(), SelfVerifyFrame()], [Secp(Sender)]);
+            }, FrameTxPayerOutcome.Resolved, Sender);
+
+        // At most one deploy frame is skipped, so the second one is the frame that must name the payer and
+        // does not: the same layout RecognizedPrefixLength rejects, keeping resolution and pricing aligned.
+        yield return Case("TwoDeploysThenSelfVerify_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([DeployFrame(), DeployFrame(), SelfVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
+
+        yield return Case("DeployFrameOnly_NoPayer",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([DeployFrame()], [Secp(Sender)]);
+            }, FrameTxPayerOutcome.NoPayer, null);
 
         yield return Case("SelfVerify_DeployedCodeSender_RequiresSimulation",
             state =>
@@ -193,21 +210,52 @@ public class FrameTxPayerResolverTests
         }
     }
 
-    [Test]
-    public void Resolve_ExpiryPrefix_CapturesDeadlineAndVerifierCode()
+    // The deploy variant is the only shape where both skips apply: the expiry dependency is read from
+    // frames[0] independently of the skipped-prefix index, so a deploy frame must not detach it.
+    [TestCase(false, TestName = "Resolve_ExpiryPrefix_CapturesDeadlineAndVerifierCode")]
+    [TestCase(true, TestName = "Resolve_ExpiryThenDeployPrefix_CapturesDeadlineAndVerifierCode")]
+    public void Resolve_ExpiryPrefix_CapturesDeadlineAndVerifierCode(bool withDeploy)
     {
         TestReadOnlyStateProvider state = new();
         DefaultCodeAccount(state, Sender);
         state.InsertCode(Eip8141Constants.ExpiryVerifierCode, Eip8141Constants.ExpiryVerifierAddress);
-        Transaction tx = FrameTx([ExpiryFrame(0xDEAD_BEEF), SelfVerifyFrame()], [Secp(Sender)]);
+        TxFrame[] frames = withDeploy
+            ? [ExpiryFrame(0xDEAD_BEEF), DeployFrame(), SelfVerifyFrame()]
+            : [ExpiryFrame(0xDEAD_BEEF), SelfVerifyFrame()];
+        Transaction tx = FrameTx(frames, [Secp(Sender)]);
 
-        FrameTxDependencySet deps = Resolve(tx, state).Dependencies;
+        FrameTxPayerResolution resolution = Resolve(tx, state);
+        FrameTxDependencySet deps = resolution.Dependencies;
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(resolution.Payer, Is.EqualTo(Sender));
             Assert.That(deps.DependsOnExpiry, Is.True);
             Assert.That(deps.ExpiryDeadline, Is.EqualTo(0xDEAD_BEEFUL));
             Assert.That(deps.ExpiryVerifierCodeHash, Is.EqualTo(Keccak.Compute(Eip8141Constants.ExpiryVerifierCode).ValueHash256));
+        }
+    }
+
+    [Test]
+    public void Resolve_DeployPrefix_AgreesWithValidationPricing()
+    {
+        // Admission pricing and payer resolution must classify this prefix the same way, or they drift.
+        TestReadOnlyStateProvider state = new();
+        DefaultCodeAccount(state, Sender);
+        TxFrame deploy = DeployFrame();
+        TxFrame selfVerify = SelfVerifyFrame();
+        TxFrame trailing = new(TxFrame.ModeDefault, flags: 0, target: null, gasLimit: 5_000_000, UInt256.Zero, default);
+        Transaction tx = FrameTx([deploy, selfVerify, trailing], [Secp(Sender)]);
+
+        FrameTxPayerResolution resolution = Resolve(tx, state);
+        ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolution.Outcome, Is.EqualTo(FrameTxPayerOutcome.Resolved));
+            Assert.That(resolution.Payer, Is.EqualTo(Sender));
+            // Recognized-prefix pricing stops at the self_verify frame, excluding the trailing frame's gas.
+            Assert.That(verifyGas, Is.EqualTo(deploy.GasLimit + selfVerify.GasLimit + Eip8141Constants.Secp256k1VerificationGasCost));
         }
     }
 
@@ -250,4 +298,6 @@ public class FrameTxPayerResolverTests
     }
 
     private static TxFrame Frame(byte mode) => new(mode, flags: 0, target: null, gasLimit: 50_000, UInt256.Zero, default);
+
+    private static TxFrame DeployFrame() => Frame(TxFrame.ModeDefault);
 }
