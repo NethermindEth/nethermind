@@ -266,9 +266,9 @@ public class P2PProtocolHandler(
 
         if (Logger.IsTrace) TraceReceivedHello();
 
-        if (hello.NodeId == _localNodeId)
+        if (hello.NodeId == _localNodeId || Session.RemoteNodeId == _localNodeId)
         {
-            if (Logger.IsInfo) Logger.Info($"Disconnecting {Session}: the remote identity is this node's own identity, so the connection loops back to this node.");
+            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Session}: remote identity is this node's own identity");
             Session.InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, "connection to self");
             return;
         }

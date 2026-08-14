@@ -544,11 +544,6 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (peer.Node.Id == _enode.PublicKey)
-                {
-                    continue;
-                }
-
                 _currentSelection.PreCandidates.Add(peer);
             }
 
@@ -776,6 +771,8 @@ namespace Nethermind.Network
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
+            if (peer.Node.Id == _enode.PublicKey) return;
+
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
 
             await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);

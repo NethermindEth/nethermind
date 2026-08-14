@@ -353,8 +353,8 @@ namespace Nethermind.Network.Test
             session1.RemotePort = 12345;
             session1.RemoteNodeId =
                 (firstDirection == ConnectionDirection.In)
-                    ? (shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC)
-                    : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyA);
+                    ? (shouldLose ? TestItem.PublicKeyB : TestItem.PublicKeyC)
+                    : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyB);
 
             void EnsureSession(ISession? session)
             {
@@ -403,6 +403,19 @@ namespace Nethermind.Network.Test
         }
 
         private void HandshakeOnCreate(object sender, SessionEventArgs e) => e.Session.Handshake(e.Session.RemoteNodeId);
+
+        [Test]
+        public async Task Will_not_dial_a_node_carrying_this_nodes_own_identity()
+        {
+            await using Context ctx = new();
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+
+            Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(0).After(500),
+                "a discovered node carrying the local identity is a hairpinned self-dial and must never be attempted");
+        }
 
         [Test]
         public async Task Will_fill_up_on_disconnects()
