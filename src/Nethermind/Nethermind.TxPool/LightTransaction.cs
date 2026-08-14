@@ -20,7 +20,8 @@ public class LightTransaction : Transaction
 
     public LightTransaction(Transaction fullTx)
     {
-        Type = TxType.Blob;
+        // Preserve the real type, or the delivered tx fails the announced-type check on the peer.
+        Type = fullTx.Type;
         Hash = fullTx.Hash;
         SenderAddress = fullTx.SenderAddress;
         Nonce = fullTx.Nonce;
@@ -39,6 +40,7 @@ public class LightTransaction : Transaction
         _size = fullTx.GetLength();
     }
 
+    /// <summary>Pre-EIP-8141 signature, kept so an out-of-tree <see cref="IBlobTxStorage"/> still binds.</summary>
     public LightTransaction(
         UInt256 timestamp,
         Address sender,
@@ -68,7 +70,8 @@ public class LightTransaction : Transaction
             size,
             proofVersion,
             default,
-            0)
+            0,
+            TxType.Blob)
     {
     }
 
@@ -86,10 +89,11 @@ public class LightTransaction : Transaction
         ulong poolIndex,
         int size,
         ProofVersion proofVersion,
-        BlobCellMask blobCellMask = default,
-        int sparseBlobNetworkSize = 0)
+        BlobCellMask blobCellMask,
+        int sparseBlobNetworkSize,
+        TxType type)
     {
-        Type = TxType.Blob;
+        Type = type;
         Hash = hash;
         SenderAddress = sender;
         Nonce = nonce;

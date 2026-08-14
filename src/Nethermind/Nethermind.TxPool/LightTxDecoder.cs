@@ -29,7 +29,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(sizeof(byte))
                + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
                + Rlp.LengthOf(GetConsensusEncodingSize(tx))
-               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion);
+               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion)
+               + Rlp.LengthOf((byte)tx.Type);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -52,6 +53,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         EncodeAvailableCellMask(tx, ref writer);
         writer.Encode(GetConsensusEncodingSize(tx));
         writer.Encode(ConsensusEncodingSizeFormatVersion);
+        writer.Encode((byte)tx.Type);
 
         return bytes;
     }
@@ -59,6 +61,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
     public static LightTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
+
         UInt256 timestamp = ctx.DecodeUInt256();
         Address sender = ctx.DecodeAddress()!;
         ulong nonce = ctx.DecodeULong();
@@ -72,8 +75,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         ulong poolIndex = ctx.DecodeULong();
         int size = ctx.DecodePositiveInt();
 
-        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 5);
-        if (optionalFieldCount > 4)
+        int optionalFieldCount = ctx.PeekNumberOfItemsRemaining(maxSearch: 6);
+        if (optionalFieldCount > 5)
         {
             throw new RlpException($"Too many optional fields in {nameof(LightTransaction)}.");
         }
@@ -88,6 +91,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion
             ? persistedEncodingSize
             : 0;
+        TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte() : TxType.Blob;
         ctx.Check(data.Length);
 
         return new LightTransaction(
@@ -105,7 +109,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             size,
             proofVersion,
             blobCellMask,
-            consensusEncodingSize);
+            consensusEncodingSize,
+            type);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)

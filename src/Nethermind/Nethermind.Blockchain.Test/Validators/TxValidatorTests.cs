@@ -961,4 +961,92 @@ public class TxValidatorTests
             BlobVersionedHashes = versionedHashes,
         };
     }
+    [Test]
+    public void IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue()
+    {
+        Transaction tx = BuildBlobCarryingFrameTx(Bogota.Instance.BlobProofVersion);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameBlobTxWithCorruptSidecarProofs_ReturnsFalse()
+    {
+        Transaction tx = BuildBlobCarryingFrameTx(Bogota.Instance.BlobProofVersion);
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        wrapper.Proofs[0].AsSpan().Clear(); // break the KZG cell proof while keeping the length valid
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+    }
+
+    [Test]
+    public void IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse()
+    {
+        Transaction tx = BuildBlobCarryingFrameTx(ProofVersion.V0);
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+
+        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+    }
+
+    private static Transaction BuildBlobCarryingFrameTx(ProofVersion version)
+    {
+        if (!KzgPolynomialCommitments.IsInitialized)
+        {
+            KzgPolynomialCommitments.InitializeAsync().Wait();
+        }
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(version);
+        byte[] blob = new byte[Ckzg.BytesPerBlob];
+        blob[0] = 1;
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blob);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+
+        return new Transaction
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            MaxFeePerBlobGas = 1,
+            BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
+            NetworkWrapper = wrapper,
+        };
+    }
+
+    private static IEnumerable<TestCaseData> HeadRevalidationBlobCountCases()
+    {
+        int max = (int)Bogota.Instance.MaxBlobsPerTx;
+
+        yield return new TestCaseData(BuildBlobFrameTx(blobCount: max))
+        { TestName = "Type-6 within head blob-count limit is retained", ExpectedResult = true };
+        yield return new TestCaseData(BuildBlobFrameTx(blobCount: max + 1))
+        { TestName = "Type-6 above head blob-count limit is evicted", ExpectedResult = false };
+        yield return new TestCaseData(BuildShardBlobTx(blobCount: max))
+        { TestName = "Type-3 within head blob-count limit is retained", ExpectedResult = true };
+        yield return new TestCaseData(BuildShardBlobTx(blobCount: max + 1))
+        { TestName = "Type-3 above head blob-count limit is evicted", ExpectedResult = false };
+        yield return new TestCaseData(Build.A.Transaction
+            .WithType(TxType.Blob)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithMaxFeePerGas(1)
+            .WithMaxFeePerBlobGas(1)
+            .TestObject)
+        { TestName = "Type-3 declaring no blobs is evicted", ExpectedResult = false };
+    }
+
+    [TestCaseSource(nameof(HeadRevalidationBlobCountCases))]
+    public bool IsWellFormed_HeadRevalidationBlobCount(Transaction tx) =>
+        MaxBlobCountBlobTxValidator.Instance.IsWellFormed(tx, Bogota.Instance).AsBool();
+
+    private static Transaction BuildShardBlobTx(int blobCount) => Build.A.Transaction
+        .WithChainId(TestBlockchainIds.ChainId)
+        .WithMaxFeePerGas(1)
+        .WithMaxFeePerBlobGas(1)
+        .WithShardBlobTxTypeAndFields(blobCount)
+        .SignedAndResolved().TestObject;
+
+
 }
