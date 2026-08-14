@@ -200,7 +200,18 @@ namespace Nethermind.Core
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        public object? NetworkWrapper { get; set; }
+        private object? _networkWrapper;
+
+        /// <remarks>Replacing the sidecar changes the mempool-form length, so the memoized size is dropped.</remarks>
+        public object? NetworkWrapper
+        {
+            get => _networkWrapper;
+            set
+            {
+                _networkWrapper = value;
+                _size = null;
+            }
+        }
 
         /// <summary>
         /// List of EOA code authorizations.
@@ -241,6 +252,14 @@ namespace Nethermind.Core
         /// <remarks><see langword="null"/> for an envelope that predates EIP-8272, which is a different
         /// signing payload from one carrying an empty reference list.</remarks>
         public RecentRootReference[]? RecentRootReferences { get; set; }
+
+        /// <summary>
+        /// The zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, which EIP-8141
+        /// prices in addition to frame and signature data. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>Set from the canonical encoding by the decoder and the frame processor, so the charge is
+        /// counted off the very bytes the wire form carries rather than recomputed.</remarks>
+        public (int ZeroBytes, int NonZeroBytes) ReferenceCalldataStats { get; set; }
 
         /// <summary>
         /// Zero and non-zero byte counts of the type-specific calldata EIP-8141 prices in addition to the
@@ -323,7 +342,7 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool MayHaveNetworkForm => Type is TxType.Blob;
+        public bool MayHaveNetworkForm => Type is TxType.Blob or TxType.FrameTx;
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
@@ -372,6 +391,7 @@ namespace Nethermind.Core
                 obj.PayerAddress = default;
                 obj.NonceKeys = default;
                 obj.RecentRootReferences = default;
+                obj.ReferenceCalldataStats = default;
                 obj.FrameCalldataStats = default;
 
                 return true;
@@ -410,11 +430,12 @@ namespace Nethermind.Core
             tx.PayerAddress = PayerAddress;
             tx.NonceKeys = NonceKeys;
             tx.RecentRootReferences = RecentRootReferences;
+            tx.ReferenceCalldataStats = ReferenceCalldataStats;
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 
         public virtual ProofVersion? GetProofVersion() =>
-            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version
                 : null;
     }

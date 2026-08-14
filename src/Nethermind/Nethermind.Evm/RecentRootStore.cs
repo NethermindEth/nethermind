@@ -18,12 +18,14 @@ public static class RecentRootStore
     private const int AddressLength = Address.Size;
     private const int SlotLength = sizeof(ulong);
 
-    // Consensus-critical, spec-ambiguous: 32-byte-padded address matches the only existing implementation (spec text says 20 bytes).
+    /// <summary>The <c>source_id</c> keying a root source's ring buffer: <c>keccak256(source_address || salt)</c>.</summary>
+    /// <remarks>Per EIP-8272 the address is hashed unpadded (20 bytes), matching the predeploy's own derivation
+    /// over memory <c>[0x0c, 0x40)</c>; a 32-byte left-padded preimage would fork from the predeploy.</remarks>
     public static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
     {
-        Span<byte> input = stackalloc byte[HashLength + HashLength];
-        sourceAddress.Bytes.CopyTo(input.Slice(HashLength - AddressLength, AddressLength));
-        salt.Bytes.CopyTo(input.Slice(HashLength));
+        Span<byte> input = stackalloc byte[AddressLength + HashLength];
+        sourceAddress.Bytes.CopyTo(input);
+        salt.Bytes.CopyTo(input.Slice(AddressLength));
         return ValueKeccak.Compute(input);
     }
 
@@ -46,7 +48,14 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
-    public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
+    public static bool IsReferenceValid(IWorldState state, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot) =>
+        IsReferenceValid(state, ReferenceCell(sourceId, slot), sourceId, slot, root, currentSlot);
+
+    /// <summary>
+    /// Checks a reference against the commitment held in <paramref name="cell"/>, which the caller has
+    /// already derived — the ring-buffer key costs a Keccak the gas schedule pays for once per reference.
+    /// </summary>
+    public static bool IsReferenceValid(IWorldState state, in StorageCell cell, in ValueHash256 sourceId, ulong slot, in ValueHash256 root, ulong currentSlot)
     {
         ulong age = currentSlot - slot; // unsigned: a future or same slot underflows and is rejected below
         if (age is 0 || age > Eip8272Constants.RecentRootUsableWindow)
@@ -54,7 +63,6 @@ public static class RecentRootStore
             return false;
         }
 
-        StorageCell cell = RingBufferCell(sourceId, slot % Eip8272Constants.RecentRootLength);
         ReadOnlySpan<byte> stored = state.Get(cell);
         if (stored.Length > HashLength)
         {
@@ -74,6 +82,10 @@ public static class RecentRootStore
         ValueHash256 entryHash = EntryHash(sourceId, currentSlot, root);
         state.Set(cell, entryHash.Bytes.WithoutLeadingZeros().ToArray());
     }
+
+    /// <summary>The predeploy storage cell a reference to <paramref name="slot"/> reads.</summary>
+    public static StorageCell ReferenceCell(in ValueHash256 sourceId, ulong slot) =>
+        RingBufferCell(sourceId, slot % Eip8272Constants.RecentRootLength);
 
     private static StorageCell RingBufferCell(in ValueHash256 sourceId, ulong ringIndex) =>
         new(Eip8272Constants.RecentRootAddress, StorageKey(sourceId, ringIndex).ToUInt256());
