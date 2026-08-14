@@ -57,7 +57,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? TipTrc21Fee { get; set; }
     public ulong TIP2019Block { get; set; }
 
-    // This fork block is only required for fork ID calculation, and are not actually supported
+    // These fork blocks are only required for fork ID calculation, and are not actually supported
     public ulong? TipSigningBlock { get; set; }
     public ulong? TipRandomizeBlock { get; set; }
     public ulong? TipIncreaseMasternodesBlock { get; set; }
