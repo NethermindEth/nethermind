@@ -30,6 +30,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.P2P.Messages;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
@@ -46,7 +47,9 @@ public class XdcModule : Module
         builder
             .AddModule(new XdcHeaderModule())
             .AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>() // Register custom RocksDb config factory that handles XdcSnapshots without validation
-            .AddProtocolHandler<P2P.XdcProtocolHandler>() // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
+            .AddProtocolHandler<P2P.XdcProtocolHandler>() // One factory per version; each intercepts the ETH protocol at its own version number
+            .AddProtocolHandler<P2P.Xdc164ProtocolHandler>()
+            .AddProtocolHandler<P2P.Xdc165ProtocolHandler>()
             .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(CreateChainSpecLoader().ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
@@ -119,10 +122,14 @@ public class XdcModule : Module
 
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
+            .AddSingleton<IForkInfo, XdcForkInfo>()
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
             .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
+            .AddMessageSerializer<XdcNewPooledTransactionHashesMessage, XdcNewPooledTransactionHashesMessageSerializer>()
+            .AddMessageSerializer<XdcGetPooledTransactionsMessage, XdcGetPooledTransactionsMessageSerializer>()
+            .AddMessageSerializer<XdcPooledTransactionsMessage, XdcPooledTransactionsMessageSerializer>()
 
             .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
             .AddLast<IP2PCapabilityResolver, XdcP2PCapabilityResolver>()

@@ -9,5 +9,10 @@ namespace Nethermind.Xdc.P2P;
 
 internal class XdcStateSyncDownloader(ILogManager logManager) : StateSyncDownloader(logManager)
 {
-    protected override bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < 101;
+    /// <remarks>
+    /// XDC keeps <c>GetNodeData</c> on every version - it never applied the eth/67 removal - but its versions
+    /// sit above the eth/67 cut-off the base class checks against.
+    /// </remarks>
+    protected override bool ProtocolSupportsNodeData(ISyncPeer peer) =>
+        peer.ProtocolVersion >= XdcProtocolVersions.Legacy || base.ProtocolSupportsNodeData(peer);
 }

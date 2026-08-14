@@ -35,7 +35,7 @@ namespace Nethermind.Network
             Hash256 genesisHash = syncServer.Genesis!.Hash;
 
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
-            ForkActivation[] transitionActivations = specProvider.TransitionActivations;
+            ForkActivation[] transitionActivations = GetForkActivations();
             DictForks = [];
             Forks = new Fork[transitionActivations.Length + 1];
             byte[] blockNumberBytes = new byte[8];
@@ -50,6 +50,13 @@ namespace Nethermind.Network
                 SetFork(index + 1, crc, new(forkActivation, new ForkId(crc, GetNextActivation(index, transitionActivations))));
             }
         }
+
+        /// <summary>The forks, in ascending activation order, that the EIP-2124 checksum is built from.</summary>
+        /// <remarks>
+        /// Chains whose fork schedule is not fully described by the spec transitions - because a fork is gated
+        /// on engine parameters rather than on a release spec - override this to contribute the missing entries.
+        /// </remarks>
+        protected virtual ForkActivation[] GetForkActivations() => specProvider.TransitionActivations;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SetFork(int index, uint crc, Fork fork)
