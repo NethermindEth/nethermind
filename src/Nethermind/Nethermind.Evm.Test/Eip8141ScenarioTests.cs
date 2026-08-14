@@ -149,9 +149,7 @@ public class Eip8141ScenarioTests
     }
 
     // Spec Gas Accounting: charged gas = FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST
-    // + EIP-7623 token cost of frame data and signature fields + per-scheme verification cost
-    // + the gas each frame consumed. Pinned against the spec constants with known payload bytes;
-    // ARBITRARY entries cost 100 verification gas, and their bytes are also calldata-priced.
+    // + per-scheme verification cost + max(standard token cost + frame gas consumed, floor token cost).
     [Test]
     public void ChargedGas_MatchesSpecIntrinsicFormula()
     {
@@ -173,14 +171,124 @@ public class Eip8141ScenarioTests
         }
 
         ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong tokens = CalldataTokens(frameData) + CalldataTokens(witnessBytes);
+        ulong floorTokens = (ulong)(frameData.Length + witnessBytes.Length) * 4;
         ulong expected = 15_000
                          + 2 * 475UL
-                         + (CalldataTokens(frameData) + CalldataTokens(witnessBytes)) * 4
                          + 100 // ARBITRARY signature verification cost
-                         + frameGasUsed;
+                         + Math.Max(tokens * 4 + frameGasUsed, floorTokens * 16); // EIP-7976 floor rate
         Assert.That((ulong)receipt.GasUsed, Is.EqualTo(expected));
         Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
             "the refund must return exactly max cost minus charged gas at the effective price");
+    }
+
+    // Only the data tokens go through the max; the mandatory costs stay outside it.
+    [Test]
+    public void ChargedGas_FloorDominatesExecution_ChargesFloorTokenCost()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        byte[] frameData = new byte[256];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        using (Assert.EnterMultipleScope())
+        {
+            // EIP-7976 prices every byte as a non-zero token: 64 gas per data byte.
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(mandatoryGas + 256 * 64UL));
+            Assert.That((ulong)receipt.GasUsed, Is.GreaterThan(mandatoryGas + 256 * 4UL + frameGasUsed),
+                "the floor token cost must dominate the standard token cost plus execution gas");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
+        }
+    }
+
+    [Test]
+    public void ChargedGas_ExecutionDominatesFloor_ChargesStandardTokenCostPlusExecution()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        byte[] frameData = new byte[64];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong standardTokenCost = 64 * 4UL;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(standardTokenCost + frameGasUsed, Is.GreaterThan(64 * 64UL),
+                "the scenario must stay execution-dominant for this regression to bind");
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(mandatoryGas + standardTokenCost + frameGasUsed));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
+        }
+    }
+
+    // Rejecting a transaction that reserves less than its floor would fork away from any client that
+    // reserves `max(standard_gas_limit, calldata_floor_gas)` instead, as the spec requires.
+    [Test]
+    public void ChargedGas_FloorExceedsTheFramesGasReservation_ReservesTheFloorAndExecutes()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        byte[] frameData = new byte[2_000];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 20_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 20_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong standardGasLimit = mandatoryGas + (ulong)frameData.Length * 16UL + 40_000UL;
+        ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(floorGas, Is.GreaterThan(standardGasLimit),
+                "the frames must reserve less than the floor, or this regression does not bind");
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(floorGas));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
+                "the payer is charged the floor and refunded the rest of the raised reservation");
+        }
+    }
+
+    // The floor bounds the charge after the EIP-3529 refund is netted, not before.
+    [Test]
+    public void ChargedGas_RefundNetsBeforeFloorIsApplied()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        _stateProvider.Set(new StorageCell(Recipient, UInt256.Zero), new byte[] { 1 });
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        // Sized so the floor lands between the gross charge and the gross charge net of the refund.
+        byte[] frameData = new byte[160];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDefault, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
+        ulong grossGas = mandatoryGas + (ulong)frameData.Length * 4UL + frameGasUsed;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(grossGas, Is.GreaterThan(floorGas),
+                "gross gas must exceed the floor, or the ordering under test is not exercised");
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(floorGas),
+                "the refund may not push the charge below the floor");
+        }
     }
 
     // EIP-3529 storage refunds (ethereum/EIPs#11940) accumulate into one transaction-scoped counter,

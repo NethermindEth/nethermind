@@ -18,7 +18,6 @@ public static class Eip8272Constants
     public static readonly ValueHash256 RecentRootEntryDomain = ValueKeccak.Compute("RECENT_ROOT_ENTRY");
     public static readonly ValueHash256 RecentRootStorageDomain = ValueKeccak.Compute("RECENT_ROOT_STORAGE");
 
-    // Provisional: spec address is TBD; mirrors the only existing implementation.
     public static readonly Address RecentRootAddress = new("0x0000000000000000000000000000000000008272");
 
     /// <summary>The runtime code installed at <see cref="RecentRootAddress"/> when EIP-8272 activates.</summary>

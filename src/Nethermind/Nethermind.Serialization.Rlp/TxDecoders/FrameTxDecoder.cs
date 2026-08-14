@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
@@ -13,10 +14,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// <summary>
 /// Decodes the EIP-8141 frame transaction payload
 /// <c>[chain_id, nonce, sender, frames, signatures, max_priority_fee_per_gas, max_fee_per_gas,
-/// max_fee_per_blob_gas, blob_versioned_hashes]</c>, or its EIP-8250 form, which replaces
-/// <c>nonce</c> with <c>nonce_keys, nonce_seq</c>.
-/// max_fee_per_blob_gas, blob_versioned_hashes]</c>, optionally followed by the EIP-8272
-/// <c>recent_root_references</c> list.
+/// max_fee_per_blob_gas, blob_versioned_hashes]</c> — in its EIP-8250 form <c>nonce</c> is replaced
+/// by <c>nonce_keys, nonce_seq</c> — optionally followed by the EIP-8272 <c>recent_root_references</c> list.
 /// The sender is explicit in the payload — there is no envelope ECDSA signature and no recovery.
 /// Encoding with <c>forSigning</c> produces the <c>compute_sig_hash</c> form: the raw signature
 /// bytes of canonical-hash (empty msg) entries are elided.
@@ -39,45 +38,15 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static readonly byte[][] EmptyVersionedHashes = [];
 
-    private readonly Func<T> _newTransaction = transactionFactory ?? (static () => new T());
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// A frame transaction carries no envelope signature — the sender is explicit — so what follows the
-    /// EIP-8141 fields is the optional EIP-8272 reference list rather than a trailing <c>[v, r, s]</c>.
-    /// A non-list element there is padding and is rejected: accepting it would decode a spurious
-    /// signature that strict clients drop, diverging on the transaction hash.
-    /// </remarks>
-    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
-        transaction ??= _newTransaction();
-        transaction.Type = Type;
-
-        int payloadLength = decoderContext.ReadSequenceLength();
-        int lastCheck = decoderContext.Position + payloadLength;
-
-        DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-
-        if (decoderContext.Position < lastCheck)
+        if (!decoderContext.IsSequenceNext())
         {
-            if (!decoderContext.IsSequenceNext())
-            {
-                ThrowTrailingSignature();
-            }
-
-            transaction.RecentRootReferences = decoderContext.DecodeArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
+            ThrowTrailingSignature();
         }
 
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
-        {
-            decoderContext.Check(lastCheck);
-        }
-
-        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-        {
-            CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
-        }
+        transaction.RecentRootReferences = decoderContext.DecodeArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
+        transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
     }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
@@ -86,12 +55,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64 like every other
         // Nethermind transaction type (codebase-wide ChainId width).
         transaction.ChainId = decoderContext.DecodeULong();
-        // EIP-8250 replaces `nonce` with `nonce_keys, nonce_seq`. The two shapes are self-describing —
-        // `nonce` is an integer and `nonce_keys` a list — so the payload is read without fork context and
-        // the fork that admits each shape is enforced where the spec is available, in validation.
-        transaction.NonceKeys = decoderContext.IsSequenceNext()
-            ? decoderContext.DecodeArray(static (ref RlpReader ctx) => ctx.DecodeUInt256(), limit: NonceKeysCountLimit)
-            : null;
+        transaction.NonceKeys = decoderContext.IsSequenceNext() ? DecodeNonceKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
         transaction.Frames = decoderContext.DecodeArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
@@ -100,6 +64,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+        transaction.RecentRootReferences = null;
 
         // A frame transaction has no gas_limit field; expose the sum of frame gas limits as GasLimit
         // so pre-execution consumers (GasLimitTxFilter, block-production selection, pre-warming) that
@@ -110,6 +75,11 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             gasLimit = frame.GasLimit > ulong.MaxValue - gasLimit ? ulong.MaxValue : gasLimit + frame.GasLimit;
         }
         transaction.GasLimit = gasLimit;
+
+        if (transaction.NonceKeys is not null)
+        {
+            transaction.FrameCalldataStats = FrameTxNonceCalldata.Measure(transaction);
+        }
     }
 
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
@@ -144,15 +114,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         writer.Encode(transaction.ChainId ?? 0);
-        if (transaction.NonceKeys is { } nonceKeys)
-        {
-            writer.StartSequence(NonceKeysContentLength(nonceKeys));
-            foreach (UInt256 nonceKey in nonceKeys)
-            {
-                writer.Encode(nonceKey);
-            }
-        }
-        writer.Encode(transaction.Nonce);
+        FrameTxNonceCalldata.Encode(transaction, ref writer);
         writer.Encode(transaction.SenderAddress);
         TxFrameDecoder.Instance.EncodeArray(ref writer, transaction.Frames);
         TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, transaction.FrameSignatures, elideCanonicalSignatureBytes);
@@ -169,8 +131,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
         bool isEip155Enabled = false, ulong chainId = 0) =>
         Rlp.LengthOf(transaction.ChainId ?? 0)
-        + (transaction.NonceKeys is { } nonceKeys ? Rlp.LengthOfSequence(NonceKeysContentLength(nonceKeys)) : 0)
-        + Rlp.LengthOf(transaction.Nonce)
+        + FrameTxNonceCalldata.Length(transaction)
         + Rlp.LengthOf(transaction.SenderAddress)
         + TxFrameDecoder.Instance.GetArrayLength(transaction.Frames)
         + TxFrameSignatureDecoder.Instance.GetArrayLength(transaction.FrameSignatures, elideCanonicalSignatureBytes: forSigning)
@@ -190,7 +151,65 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrailingSignature() => throw new RlpException("frame transaction must not carry a trailing signature");
 
-    private static int NonceKeysContentLength(UInt256[] nonceKeys)
+    /// <summary>Reads <c>nonce_keys</c> as a list of integers.</summary>
+    /// <remarks>
+    /// Not <c>DecodeArray</c>: it substitutes the default for an empty-list element, turning the wire
+    /// bytes <c>c1 c0</c> into the key set <c>[0]</c> instead of rejecting them.
+    /// </remarks>
+    private static UInt256[] DecodeNonceKeys(ref RlpReader decoderContext)
+    {
+        int contentLength = decoderContext.ReadSequenceLength();
+        int end = decoderContext.Position + contentLength;
+        Span<UInt256> buffer = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
+        int count = 0;
+        while (decoderContext.Position < end)
+        {
+            if (count == buffer.Length)
+            {
+                throw new RlpLimitException($"Exceeded {NonceKeysCountLimit.CollectionExpression}");
+            }
+
+            buffer[count++] = decoderContext.DecodeUInt256();
+        }
+
+        return buffer[..count].ToArray();
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static Address ThrowMissingSender() => throw new RlpException("frame transaction sender must be a 20-byte address");
+}
+
+/// <summary>
+/// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see>'s <c>nonce_calldata</c> —
+/// <c>rlp(nonce_keys) || rlp(nonce_seq)</c>, the key sequence being absent on a plain-nonce transaction.
+/// </summary>
+/// <remarks>
+/// Shared by the payload encoder and the intrinsic-gas path, which prices exactly these bytes: pricing an
+/// independently written copy is what let the charge drift from the wire encoding.
+/// </remarks>
+public static class FrameTxNonceCalldata
+{
+    public static void Encode<TWriter>(Transaction transaction, ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        if (transaction.NonceKeys is { } nonceKeys)
+        {
+            writer.StartSequence(KeysContentLength(nonceKeys));
+            foreach (UInt256 nonceKey in nonceKeys)
+            {
+                writer.Encode(nonceKey);
+            }
+        }
+
+        writer.Encode(transaction.Nonce);
+    }
+
+    /// <summary>Length in bytes of what <see cref="Encode{TWriter}"/> writes for <paramref name="transaction"/>.</summary>
+    public static int Length(Transaction transaction) =>
+        (transaction.NonceKeys is { } nonceKeys ? Rlp.LengthOfSequence(KeysContentLength(nonceKeys)) : 0)
+        + Rlp.LengthOf(transaction.Nonce);
+
+    internal static int KeysContentLength(UInt256[] nonceKeys)
     {
         int contentLength = 0;
         foreach (UInt256 nonceKey in nonceKeys)
@@ -201,6 +220,21 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         return contentLength;
     }
 
-    [DoesNotReturn, StackTraceHidden]
-    private static Address ThrowMissingSender() => throw new RlpException("frame transaction sender must be a 20-byte address");
+    /// <summary>The zero and non-zero byte counts of what <see cref="Encode{TWriter}"/> writes, the split EIP-8141
+    /// calldata pricing needs. Measured off the encoded bytes rather than recomputed, so the charge cannot drift
+    /// from the wire encoding.</summary>
+    public static (int ZeroBytes, int NonZeroBytes) Measure(Transaction transaction)
+    {
+        int length = Length(transaction);
+        Span<byte> buffer = stackalloc byte[MaxCalldataLength];
+        Span<byte> calldata = buffer[..length];
+        RlpWriter writer = new(calldata);
+        Encode(transaction, ref writer);
+        int zeros = calldata.CountZeros();
+        return (zeros, length - zeros);
+    }
+
+    /// <summary>Upper bound on <c>nonce_calldata</c>: a full set of 32-byte keys (33 bytes each) behind a three-byte
+    /// long-form sequence header, plus a nine-byte sequence number.</summary>
+    private const int MaxCalldataLength = 3 + Eip8250Constants.MaxNonceKeys * 33 + 9;
 }

@@ -39,7 +39,7 @@ public partial class BlockAccessListManager
         MergeAndReturnBal(0u);
         ValidateBlockAccessList(block, 0u);
 
-        ulong totalRegularGas = 0;
+        ulong totalExecutionGas = 0;
         ulong totalStateGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
@@ -54,7 +54,7 @@ public partial class BlockAccessListManager
                 Transaction tx = block.Transactions[j];
 
                 GasValidationResult gasResult = gasResults[j].GetResult();
-                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas);
+                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalExecutionGas, totalStateGas);
 
                 // Surface the worker's original tx-rejection reason before running any
                 // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
@@ -62,11 +62,11 @@ public partial class BlockAccessListManager
                 if (gasResult.Exception is not null)
                     throw new ParallelExecutionException(gasResult.Exception);
 
-                totalRegularGas += gasResult.BlockGasUsed;
+                totalExecutionGas += gasResult.BlockGasUsed;
                 totalStateGas += gasResult.BlockStateGasUsed;
                 SpendGas(gasResult.BlockGasUsed);
 
-                CheckGasUsed(j, block, totalRegularGas, totalStateGas);
+                CheckGasUsed(j, block, totalExecutionGas, totalStateGas);
 
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
@@ -80,13 +80,13 @@ public partial class BlockAccessListManager
             }
         }
 
-        // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
-        _blockExecutionContext.Value.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalRegularGas, totalStateGas);
+        // EIP-8037: 2D gas accounting — block gasUsed = max(sum_execution, sum_state)
+        _blockExecutionContext.Value.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
 
-        static void CheckGasUsed(int index, Block block, ulong totalRegularGas, ulong totalStateGas)
+        static void CheckGasUsed(int index, Block block, ulong totalExecutionGas, ulong totalStateGas)
         {
-            // EIP-8037: block gasUsed = max(sum_regular, sum_state)
-            ulong effectiveGas = EthereumGasPolicy.CombineBlockGas(totalRegularGas, totalStateGas);
+            // EIP-8037: block gasUsed = max(sum_execution, sum_state)
+            ulong effectiveGas = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
             if (effectiveGas > block.Header.GasLimit)
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
@@ -96,13 +96,13 @@ public partial class BlockAccessListManager
 
     // EIP-8037 worst-case 2D inclusion check. Only fires when EIP-8037 is active; legacy and
     // pre-EIP-8037 blocks rely solely on the post-execution running max(R,S) check.
-    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, ulong cumulativeRegular, ulong cumulativeState)
+    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, ulong cumulativeExecution, ulong cumulativeState)
     {
         if (!spec.IsEip8037Enabled) return;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
             block.Header.GasLimit,
-            cumulativeRegular,
+            cumulativeExecution,
             cumulativeState,
             tx.GasLimit);
 
@@ -110,7 +110,7 @@ public partial class BlockAccessListManager
         {
             throw new InvalidBlockException(block,
                 $"Block gas limit exceeded: tx {index} fails EIP-8037 inclusion check ({outcome}); " +
-                $"regular_available={block.Header.GasLimit - cumulativeRegular}, " +
+                $"execution_available={block.Header.GasLimit - cumulativeExecution}, " +
                 $"state_available={block.Header.GasLimit - cumulativeState}, " +
                 $"tx.gas={tx.GasLimit}.");
         }

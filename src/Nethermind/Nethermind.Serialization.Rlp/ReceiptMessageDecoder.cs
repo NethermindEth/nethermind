@@ -58,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             if (!skipBloom)
-                txReceipt.Bloom = ctx.DecodeBloom();
+                txReceipt.Bloom = ctx.DecodeBloomOrNull();
             // When _skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
@@ -96,9 +96,10 @@ namespace Nethermind.Serialization.Rlp
         // EIP-8141 ReceiptPayload: [cumulative_gas_used, payer, [frame_receipt, ...]],
         // frame_receipt = [status, gas_used, logs]. Spec-literal — no top-level status and no bloom
         // on the wire (receipts-root parity with other clients).
-        // EIP8141-GAP: the spec receipt has no top-level status or bloom; internally StatusCode is
-        // set to success for included transactions and Logs holds the union of frame logs so bloom
-        // calculation and log indexing keep working.
+        // EIP8141-GAP: the spec receipt has no top-level status or bloom; StatusCode is derived from
+        // the frame statuses (see TxFrameReceipt.AggregateStatus) so a receipt taken off the wire
+        // reads the same as one produced by executing the block, and Logs holds the union of frame
+        // logs so bloom calculation and log indexing keep working.
         private void DecodeFrameTxReceipt(TxReceipt txReceipt, ref RlpReader ctx, RlpBehaviors rlpBehaviors)
         {
             int sequenceLength = ctx.ReadSequenceLength();
@@ -110,6 +111,13 @@ namespace Nethermind.Serialization.Rlp
             int framesEnd = ctx.ReadSequenceLength() + ctx.Position;
             int frameCount = ctx.PeekNumberOfItemsRemaining(framesEnd, Eip8141Constants.MaxFrames + 1);
             ctx.GuardLimit(frameCount, FrameReceiptsRlpLimit);
+            if (frameCount == 0)
+            {
+                // A frame transaction has at least one frame, so a receipt without one is malformed.
+                // Accepting it would derive a successful transaction status from nothing.
+                ThrowEmptyFrameReceipts();
+            }
+
             TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frameCount];
             int totalLogs = 0;
             for (int i = 0; i < frameCount; i++)
@@ -133,7 +141,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             txReceipt.FrameReceipts = frameReceipts;
-            txReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
+            txReceipt.StatusCode = TxFrameReceipt.AggregateStatus(frameReceipts);
 
             LogEntry[] allLogs = new LogEntry[totalLogs];
             int offset = 0;
@@ -154,6 +162,10 @@ namespace Nethermind.Serialization.Rlp
             {
                 ctx.Position = receiptEnd;
             }
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowEmptyFrameReceipts()
+                => throw new RlpException("Frame transaction receipt carries no frame receipts");
         }
 
         private static (int Total, int Frames) GetFrameTxContentLength(TxReceipt item)
