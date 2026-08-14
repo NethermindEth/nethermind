@@ -4,7 +4,7 @@
 
   <PropertyGroup>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
+    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile;NU1903</NoWarn><!-- bench branch only: post-freeze advisories; keeps packages identical to the base image -->
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
