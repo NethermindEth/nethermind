@@ -76,8 +76,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool? HistoryServingEnabled { get; set; } = null;
         public long HistoryServingMaxBytesPerSecond { get; set; } = 8 * 1024 * 1024;
         public int HistoryServingPeerSlots { get; set; } = 8;
-
-    public int HistorySourcePeerSlots { get; set; } = 6;
+        public int? HistorySourcePeerSlots { get; set; } = null;
         public ulong SnapServingMaxDepth { get; set; } = 128;
         public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;

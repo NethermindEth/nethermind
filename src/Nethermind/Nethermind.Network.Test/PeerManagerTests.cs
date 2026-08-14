@@ -376,6 +376,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new(maxActivePeers: 3);
             ctx.NetworkConfig.ConnectTimeoutMs = 0;
+            ctx.SyncConfig.HistorySourcePeerSlots = 6;
             ctx.SetupPersistedPeers(10);
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
@@ -387,6 +388,24 @@ namespace Nethermind.Network.Test
 
             Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.True.After(30_000, 100),
                 "the importer can only use a server it is connected to, so a discovered one is dialed under its own budget rather than waiting for a free general slot");
+        }
+
+        [Test]
+        public async Task History_servers_are_not_dialed_when_this_node_does_not_import_history()
+        {
+            await using Context ctx = new(maxActivePeers: 3);
+            ctx.NetworkConfig.ConnectTimeoutMs = 0;
+            ctx.SetupPersistedPeers(10);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(3, TimeSpan.FromSeconds(30));
+            Assert.That(ctx.PeerPool.ActivePeers.Count, Is.AtLeast(3));
+
+            ctx.PeerPool.GetOrAdd(CreateHistoryServerNode(TestItem.PrivateKeyB, "1.2.3.10"));
+
+            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.False.After(2_000, 100),
+                "the reservation is left unset unless this node imports history, so an advertisement anyone can publish cannot steer connections on a node that has no use for them");
         }
 
         [Test]

@@ -487,7 +487,7 @@ namespace Nethermind.Network
         /// once, so the reservation stays small.</summary>
         private async Task EnsureHistorySourcesConnectedAsync(Channel<Peer> taskChannel)
         {
-            int slots = _syncConfig.HistorySourcePeerSlots;
+            int slots = _syncConfig.HistorySourcePeerSlots ?? 0;
             if (slots <= 0) return;
 
             DateTime nowUTC = DateTime.UtcNow;

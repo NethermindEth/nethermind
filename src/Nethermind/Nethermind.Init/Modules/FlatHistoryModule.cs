@@ -24,6 +24,8 @@ namespace Nethermind.Init.Modules;
 /// </summary>
 public class FlatHistoryModule : Module
 {
+    private const int DefaultHistorySourcePeerSlots = 6;
+
     protected override void Load(ContainerBuilder builder)
     {
         builder
@@ -80,6 +82,10 @@ public class FlatHistoryModule : Module
             IFlatDbConfig flatDbConfig = ctx.Resolve<IFlatDbConfig>();
             ISyncConfig syncConfig = ctx.Resolve<ISyncConfig>();
             syncConfig.HistoryServingEnabled ??= flatDbConfig.HistoryEnabled && flatDbConfig.HistoryRetentionBlocks > 0;
+
+            bool importsHistory = flatDbConfig.HistoryArchiveCloneEnabled
+                || (flatDbConfig.HistoryEnabled && flatDbConfig.HistoryRetentionBlocks > 0);
+            syncConfig.HistorySourcePeerSlots ??= importsHistory ? DefaultHistorySourcePeerSlots : 0;
 
             if (flatDbConfig.HistoryArchiveCloneEnabled && syncConfig.FastSync
                 && (!syncConfig.DownloadBodiesInFastSync || !syncConfig.DownloadReceiptsInFastSync
