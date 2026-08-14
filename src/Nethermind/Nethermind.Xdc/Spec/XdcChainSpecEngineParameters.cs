@@ -106,6 +106,9 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             blockNumbers.Add(TipUpgradePenalty.Value);
         if (TipUpgradeReward is not null)
             blockNumbers.Add(TipUpgradeReward.Value);
+        // Without its own release spec boundary the flag would only flip on whichever transition encloses it.
+        if (DynamicGasLimitBlock is not null)
+            blockNumbers.Add(DynamicGasLimitBlock.Value);
     }
 }
 
