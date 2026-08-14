@@ -12,6 +12,12 @@ using Nethermind.Int256;
 namespace Nethermind.Evm.TransactionProcessing;
 
 /// <summary>State helper for <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed nonces: NONCE_MANAGER slot derivation and per-key nonce reads/consumption.</summary>
+/// <remarks>
+/// Every read and write goes through <see cref="IWorldState"/> rather than around it, so the NONCE_MANAGER
+/// accesses enter the EIP-7928 block access list. A keyed nonce is consensus state a validator must be able
+/// to prefetch, unlike a precompile result, and a slot missing from the list makes a parallel validator
+/// reject a block every sequential node accepts.
+/// </remarks>
 public static class KeyedNonceManager
 {
     private const int SlotPreimageLength = 2 * 32;
@@ -40,6 +46,22 @@ public static class KeyedNonceManager
 
     public static bool IsFirstUse(IWorldState state, Address sender, in UInt256 nonceKey) =>
         !nonceKey.IsZero && CurrentNonceSeq(state, sender, nonceKey) == 0;
+
+    /// <summary>The state-growth surcharge <c>APPROVE</c> owes for the keys this set uses for the first time.</summary>
+    /// <remarks>
+    /// Charged against the approving frame's remaining gas, so it can exhaust that frame. Every path that
+    /// grants payment approval must charge it, or the cost depends on whether the approver carries code.
+    /// </remarks>
+    public static ulong FirstUseSurcharge(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys)
+    {
+        ulong firstUseCount = 0;
+        foreach (ref readonly UInt256 nonceKey in nonceKeys)
+        {
+            if (IsFirstUse(state, sender, in nonceKey)) firstUseCount++;
+        }
+
+        return firstUseCount * Eip8250Constants.KeyedNonceFirstUseGas;
+    }
 
     public static void ConsumeNonceSet(IWorldState state, Address sender, ReadOnlySpan<UInt256> nonceKeys, ulong nonceSeq)
     {

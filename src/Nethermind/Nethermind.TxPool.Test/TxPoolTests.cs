@@ -2560,7 +2560,11 @@ namespace Nethermind.TxPool.Test
             // The gate's teeth beyond BalanceTooLowFilter, which sums only nonces below tx.Nonce: here it
             // admits the bump on its own count while the payer's summed pending cost exceeds the balance.
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * TxGasLimit);
+
+            // Sized off the reservation itself, so a repricing of max_cost moves the balance with it:
+            // 3 pending at fee 3 fit within 10, the bump's 3 undiscounted plus its own 7 do not.
+            SelfPayingFrameTx(nonce: 0, feePerGas: 1).IsOverflowInTxCostAndValue(out UInt256 unitCost);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)10 * unitCost);
 
             for (ulong nonce = 0; nonce < 3; nonce++)
             {
