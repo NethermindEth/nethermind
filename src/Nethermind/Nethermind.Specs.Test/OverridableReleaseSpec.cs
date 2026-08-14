@@ -99,6 +99,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip8282Enabled { get; set; } = spec.IsEip8282Enabled;
         public bool IsEip8141Enabled { get; set; } = spec.IsEip8141Enabled;
         public bool IsEip8250Enabled { get; set; } = spec.IsEip8250Enabled;
+        public bool IsEip8272Enabled { get; set; } = spec.IsEip8272Enabled;
 
         public bool IsEip7906Enabled { get; set; } = spec.IsEip7906Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;

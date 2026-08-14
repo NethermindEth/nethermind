@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -19,8 +20,10 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
@@ -486,6 +489,52 @@ public partial class EngineModuleTests
         Assert.That(w2, Is.Not.Null);
         Assert.That(w1, Is.Not.SameAs(w2),
             "each block produces its own Witness instance; shared reference indicates a tracking bug");
+    }
+
+    [Test]
+    public async Task E2E_witness_is_serialized_as_an_rlp_data_string()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+
+        string response = await RpcTest.TestSerializedRequest(
+            chain.EngineRpcModule,
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5),
+            payload, Array.Empty<Hash256>(), TestItem.KeccakE, requests ?? []);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement result = document.RootElement.GetProperty("result");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.TryGetProperty("executionWitness", out _), Is.False,
+                "JSON uses witness DATA only");
+        }
+
+        RlpReader reader = new(Nethermind.Core.Extensions.Bytes.FromHexString(result.GetProperty("witness").GetString()!));
+        reader.ReadSequenceLength();
+        int headersLength = reader.ReadSequenceLength();
+        int headersEnd = reader.Position + headersLength;
+
+        HeaderDecoder headerDecoder = new();
+        BlockHeader? lastHeader = null;
+        while (reader.Position < headersEnd)
+            lastHeader = headerDecoder.Decode(ref reader);
+
+        int headersPosition = reader.Position;
+        byte[][] codes = reader.DecodeByteArrays();
+        byte[][] state = reader.DecodeByteArrays();
+        reader.CheckEnd();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headersPosition, Is.EqualTo(headersEnd));
+            Assert.That(codes.All(static code => code.Length > 0), Is.True);
+            Assert.That(state, Is.Not.Empty);
+            Assert.That(state.All(static node => node.Length > 0), Is.True);
+            Assert.That(lastHeader?.Number, Is.EqualTo(payload.BlockNumber - 1));
+        }
     }
 
     [Test]
