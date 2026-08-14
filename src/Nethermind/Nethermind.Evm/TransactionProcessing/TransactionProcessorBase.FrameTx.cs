@@ -179,6 +179,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             in tx.MaxPriorityFeePerGas,
             tx.DecodedMaxFeePerGas,
             tx.MaxFeePerBlobGas.GetValueOrDefault(),
+            WorldState.GetNonce(sender),
             tx.RecentRootReferences,
             tx.NonceKeys);
 

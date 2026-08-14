@@ -91,11 +91,13 @@ public static unsafe partial class EvmInstructions
     }
 
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
+    /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0C, 0x0D, 0x0E and 0x10.</typeparam>
     /// <typeparam name="TEip8272">Whether the fork defines the recent-root reference count at index 0x0F.</typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8272>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where TEip8250 : struct, IFlag
         where TEip8272 : struct, IFlag
     {
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
@@ -103,7 +105,7 @@ public static unsafe partial class EvmInstructions
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > (TEip8272.IsActive ? 0x0FU : 0x0BU)) return EvmExceptionType.BadInstruction;
+        if (param > 0x10U) return EvmExceptionType.BadInstruction;
 
         byte[][]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
@@ -120,7 +122,13 @@ public static unsafe partial class EvmInstructions
             0x09 => stack.PushUInt256<TTracingInst>((UInt256)ctx.Frames.Length),
             0x0A => stack.PushUInt256<TTracingInst>((UInt256)ctx.CurrentFrameIndex),
             0x0B => stack.PushUInt256<TTracingInst>((UInt256)ctx.Signatures.Length),
-            0x0F => stack.PushUInt256<TTracingInst>((UInt256)ctx.RecentRootReferences.Length),
+            // The two extensions claim disjoint indices, so each is gated on its own fork rather than
+            // on one shared ceiling: 0x0F must stay undefined on a chain with EIP-8250 but not EIP-8272.
+            0x0C when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
+            0x0D when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 1)),
+            0x0E when TEip8250.IsActive => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
+            0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is { } keys ? keys[0] : UInt256.Zero),
+            0x0F when TEip8272.IsActive => stack.PushUInt256<TTracingInst>((UInt256)ctx.RecentRootReferences.Length),
             _ => EvmExceptionType.BadInstruction,
         };
     }
