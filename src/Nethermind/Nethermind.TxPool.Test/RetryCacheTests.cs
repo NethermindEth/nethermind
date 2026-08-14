@@ -1153,8 +1153,6 @@ public class RetryCacheTests
                 }
 
                 Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(resourcesPerBatch));
-                // Drive expiry synchronously: 64 drains each hinging on a timer tick's
-                // thread-pool dispatch flake under parallel-suite load on slow CI.
                 timeProvider.Elapse(TimeSpan.FromMilliseconds(CacheTimeoutMs));
                 cache.ProcessRetryTick();
                 Assert.That(cache.ResourcesInRetryQueue, Is.Zero);
