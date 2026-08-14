@@ -37,7 +37,7 @@ public class FrameTxPayerlessFilterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+            Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxNoPayer));
             Assert.That(Metrics.PendingTransactionsFrameTxNoPayer, Is.EqualTo(before + 1));
         }
     }
@@ -54,7 +54,7 @@ public class FrameTxPayerlessFilterTests
             FrameSignatures = [],
         };
 
-        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Invalid));
+        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.FrameTxNoPayer));
     }
 
     [Test]
