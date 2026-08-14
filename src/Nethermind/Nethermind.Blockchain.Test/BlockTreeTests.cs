@@ -3077,14 +3077,10 @@ public class BlockTreeTests
     public void RecalculateTreeLevels_WhenBestSuggestedHeaderUnresolvableInPoS_StopsAtBeaconJunction()
     {
         // Post-merge repro of the O(n) startup walk (#12273): on a node whose best-suggested
-        // header sits ahead of the processed main-chain head, FindHeader(number, None) returns
-        // null (GetBlockHashOnMainOrBestDifficultyHash bails post-merge), so BestSuggestedHeader
-        // is null and the old stop bound collapsed to 1. The reconciliation must still stop at the
-        // beacon/non-beacon junction rather than walking every already-synced header to genesis.
-        CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance))
-        {
-            TerminalTotalDifficulty = UInt256.Zero
-        };
+        // header sits ahead of the processed main-chain head, the reconciliation must stop at
+        // the beacon/non-beacon junction rather than walking every already-synced header to
+        // genesis (the old stop bound collapsed to 1 when BestSuggestedHeader restored as null).
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         _blocksDb = new TestMemDb();
         _headersDb = new TestMemDb();
@@ -3097,19 +3093,10 @@ public class BlockTreeTests
             .TestObject;
 
         // Already-synced, processed main chain 0..4 (non-beacon, canonical).
-        Block previous = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
-        tree.SuggestBlock(previous);
-        tree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
-        for (int i = 1; i <= 4; i++)
-        {
-            Block block = Build.A.Block.WithNumber((ulong)i).WithDifficulty(0).WithParent(previous).TestObject;
-            tree.SuggestBlock(block);
-            tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
-            previous = block;
-        }
+        Block previous = SuggestProcessedPostMergeChain(tree);
 
-        // A non-beacon header suggested ahead of the processed head: the best-suggested number
-        // resolves to a level with no main-chain block, so BestSuggestedHeader is null post-merge.
+        // A non-beacon header suggested ahead of the processed head, on a level with no
+        // main-chain block.
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
         tree.SuggestBlock(block5);
 
@@ -3130,24 +3117,12 @@ public class BlockTreeTests
         // suggested-but-unprocessed blocks above the processed head. Those levels have no
         // main-chain block, so the canonical-only FindHeader(number) lookup cannot restore
         // BestSuggestedHeader/BestSuggestedBody and sync mode selection sees header/block = 0.
-        CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance))
-        {
-            TerminalTotalDifficulty = UInt256.Zero
-        };
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
         BlockTree tree = builder.TestObject;
 
-        Block previous = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
-        tree.SuggestBlock(previous);
-        tree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
-        for (ulong i = 1; i <= 4; i++)
-        {
-            Block block = Build.A.Block.WithNumber(i).WithDifficulty(0).WithParent(previous).TestObject;
-            tree.SuggestBlock(block);
-            tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
-            previous = block;
-        }
+        Block previous = SuggestProcessedPostMergeChain(tree);
 
         // Received but not yet processed when the node went down.
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
@@ -3166,6 +3141,60 @@ public class BlockTreeTests
             Assert.That(reloaded.BestSuggestedHeader?.Number, Is.EqualTo(6UL), "suggested header");
             Assert.That(reloaded.BestSuggestedBody?.Number, Is.EqualTo(6UL), "suggested body");
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_beacon_post_merge_when_beacon_blocks_sit_ahead_of_head()
+    {
+        // Beacon variant of #12803: beacon inserts are NotOnMainChain, so the canonical-only
+        // lookup cannot restore the beacon pointers after a restart mid beacon sync.
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree);
+
+        // Beacon-downloaded but not yet processed when the node went down.
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
+        tree.Insert(block5, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+        tree.Insert(block6, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedBeaconHeader?.Number, Is.EqualTo(6UL), "beacon header");
+            Assert.That(reloaded.BestSuggestedBeaconBody?.Number, Is.EqualTo(6UL), "beacon body");
+        }
+    }
+
+    private static CustomSpecProvider PostMergeSpecProvider() => new(((ForkActivation)0, London.Instance))
+    {
+        TerminalTotalDifficulty = UInt256.Zero
+    };
+
+    /// <summary>
+    /// Suggests and processes a canonical post-merge chain 0..4, returning the head block.
+    /// </summary>
+    private static Block SuggestProcessedPostMergeChain(BlockTree tree)
+    {
+        Block previous = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        tree.SuggestBlock(previous);
+        tree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
+        for (ulong i = 1; i <= 4; i++)
+        {
+            Block block = Build.A.Block.WithNumber(i).WithDifficulty(0).WithParent(previous).TestObject;
+            tree.SuggestBlock(block);
+            tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
+            previous = block;
+        }
+
+        return previous;
     }
 
     private static void AssertSuggestNotifications(AddBlockResult result, bool hasNotified, bool hasNotifiedNewSuggested)
