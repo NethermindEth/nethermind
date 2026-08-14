@@ -2,46 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Threading;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
-/// <summary>
-/// Tracks the summed pending maximum cost reserved per resolved frame-transaction payer, so that
-/// admission can bound each payer's aggregate exposure to its balance.
-/// </summary>
-/// <remarks>
-/// EIP-8141: "Reservation accounting applies to every payer, not only canonical paymasters".
-/// </remarks>
+/// <summary>Sums the pending maximum cost reserved per frame-transaction payer, bounding each payer's mempool exposure to its balance (EIP-8141).</summary>
 internal sealed class PayerExposureCache
 {
     private readonly ConcurrentDictionary<AddressAsKey, UInt256> _reserved = new();
 
-    /// <summary>Summed pending maximum cost currently reserved for <paramref name="key"/>, or zero.</summary>
     public UInt256 GetReserved(AddressAsKey key) => _reserved.TryGetValue(key, out UInt256 reserved) ? reserved : UInt256.Zero;
 
-    /// <summary>
-    /// Atomically reserves <paramref name="cost"/> for <paramref name="key"/> if and only if the
-    /// resulting summed reservation stays within <paramref name="balance"/>.
-    /// </summary>
-    /// <param name="reserved">
-    /// On failure, the reservation observed for <paramref name="key"/> at the point the decision was
-    /// made (so a trace can report the total the check actually saw); zero on success.
+    /// <summary>Atomically reserves <paramref name="cost"/> if the summed reservation stays within <paramref name="balance"/>.</summary>
+    /// <param name="reserved">On rejection, the total observed at the decision point, for diagnostics; zero otherwise.</param>
+    /// <param name="replaced">
+    /// The reservation of a pending transaction this one displaces, excluded from the bound because the
+    /// pending set does not grow. Still held rather than settled here: its own release runs on removal.
     /// </param>
-    /// <returns>
-    /// <c>true</c> if the cost was reserved; <c>false</c> (reserving nothing) if the bound would be
-    /// exceeded or the addition would overflow.
-    /// </returns>
-    /// <remarks>
-    /// The compare-and-set loop makes the read of the current reservation and the reservation itself
-    /// a single atomic step, closing the check-then-act gap between concurrent admissions.
-    /// </remarks>
-    public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance, out UInt256 reserved)
+    public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance, out UInt256 reserved, in UInt256 replaced = default)
     {
-        // Mirrors Subtract: a zero reservation would leave an entry the matching release never reclaims.
+        // A zero reservation would leave an entry Subtract never reclaims.
         if (cost.IsZero)
         {
             reserved = UInt256.Zero;
@@ -52,7 +35,8 @@ internal sealed class PayerExposureCache
         {
             if (_reserved.TryGetValue(key, out UInt256 existing))
             {
-                if (UInt256.AddOverflow(existing, cost, out UInt256 updated) || updated > balance)
+                UInt256 bound = existing > replaced ? existing - replaced : UInt256.Zero;
+                if (UInt256.AddOverflow(existing, cost, out UInt256 updated) || bound + cost > balance)
                 {
                     reserved = existing;
                     return false;
@@ -72,8 +56,7 @@ internal sealed class PayerExposureCache
                 }
                 if (_reserved.TryAdd(key, cost))
                 {
-                    // Tracked on the add/remove transitions: an idle pool must read zero, so a non-zero
-                    // floor is a leaked reservation rather than the bound doing its job.
+                    // Tracked on add/remove only: an idle pool must read zero, so a floor above it is a leak.
                     Interlocked.Increment(ref Metrics.FrameTxPayersWithReservedExposure);
                     reserved = UInt256.Zero;
                     return true;
@@ -82,14 +65,7 @@ internal sealed class PayerExposureCache
         }
     }
 
-    /// <summary>
-    /// Releases a previously reserved <paramref name="cost"/> for <paramref name="key"/>, clamping at
-    /// zero rather than going negative so a double release can never re-enable the gate for a payer.
-    /// </summary>
-    /// <remarks>
-    /// Compare-and-set like <see cref="TryReserve"/>, so a release for an unreserved payer touches
-    /// nothing: inserting a transient zero would decrement the gauge without a matching increment.
-    /// </remarks>
+    /// <summary>Releases a reserved <paramref name="cost"/>, clamping at zero so a double release cannot re-open the gate.</summary>
     public void Subtract(AddressAsKey key, in UInt256 cost)
     {
         if (cost.IsZero) return;
@@ -103,13 +79,35 @@ internal sealed class PayerExposureCache
                 continue;
             }
 
-            // Removes the entry only while its value is still the one this release priced against.
-            if (((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(
-                    new KeyValuePair<AddressAsKey, UInt256>(key, existing)))
+            if (RemoveTracked(key, existing)) return;
+        }
+    }
+
+    /// <summary>Releases the reservations held when the owning pool is torn down.</summary>
+    /// <remarks>Nothing stops a submission already in flight from reserving after this, so it bounds the leak rather than closing it.</remarks>
+    public void Clear()
+    {
+        // Unconditional, unlike Subtract: nothing releases these again, and TryAdd is the only increment,
+        // so retiring an entry at whatever value it now holds still retires exactly one increment.
+        foreach (KeyValuePair<AddressAsKey, UInt256> entry in _reserved)
+        {
+            if (_reserved.TryRemove(entry.Key, out _))
             {
                 Interlocked.Decrement(ref Metrics.FrameTxPayersWithReservedExposure);
-                return;
             }
         }
+    }
+
+    /// <summary>Removes <paramref name="key"/> only while its reservation is still <paramref name="expected"/>, so a racing reserve is never dropped.</summary>
+    private bool RemoveTracked(AddressAsKey key, in UInt256 expected)
+    {
+        if (!((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_reserved).Remove(
+                new KeyValuePair<AddressAsKey, UInt256>(key, expected)))
+        {
+            return false;
+        }
+
+        Interlocked.Decrement(ref Metrics.FrameTxPayersWithReservedExposure);
+        return true;
     }
 }

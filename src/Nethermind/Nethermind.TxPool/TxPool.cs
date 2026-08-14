@@ -77,8 +77,6 @@ namespace Nethermind.TxPool
         private ulong _txIndex;
 
         private readonly ITimer? _timer;
-        private volatile Transaction[]? _transactionSnapshot;
-        private volatile Transaction[]? _blobTransactionSnapshot;
         private ulong _lastBlockNumber = ulong.MaxValue;
         private Hash256? _lastBlockHash;
 
@@ -202,8 +200,8 @@ namespace Nethermind.TxPool
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
-            // EIP-8141: resolve and record the frame-tx payer, rejecting provably-payerless prefixes.
-            // Runs last so only otherwise-admissible frame txs are resolved.
+            // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved, and gate on the
+            // payer straight after, since the gate reads what the resolver recorded.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
 
             // EIP-8141: simulate the validation prefix of opaque (RequiresSimulation) frame txs to
@@ -214,7 +212,7 @@ namespace Nethermind.TxPool
 
             // EIP-8141: bound each resolved payer's summed pending exposure to its balance; runs
             // after payer resolution/simulation, which records the payer this gate reads.
-            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _payerExposure, _logger));
+            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -230,7 +228,7 @@ namespace Nethermind.TxPool
             _headProcessing = ProcessNewHeads();
         }
 
-        public Transaction[] GetPendingTransactions() => _transactionSnapshot ??= _transactions.GetSnapshot();
+        public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
@@ -365,12 +363,6 @@ namespace Nethermind.TxPool
                     }
                     finally
                     {
-                        // Snapshot must be cleared inside the write lock so readers cannot
-                        // regenerate it from a partially-updated _transactions collection.
-                        // Placed in finally to guarantee clearing even if an exception occurs
-                        // mid-update (otherwise readers could see a stale snapshot).
-                        _transactionSnapshot = null;
-                        _blobTransactionSnapshot = null;
                         _newHeadLock.ExitWriteLock();
                     }
                 }
@@ -405,7 +397,16 @@ namespace Nethermind.TxPool
                     {
                         if (_logger.IsTrace) _logger.Trace($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
                         _hashCache.Delete(blobTx.Hash!);
-                        blobTx.SenderAddress ??= _ecdsa.RecoverAddress(blobTx);
+                        if (blobTx.SenderAddress is null)
+                        {
+                            if (!_ecdsa.TryRecoverAddress(blobTx, out Address? senderAddress))
+                            {
+                                RecordUnrecoverableReorgedBlobTx(blobTx, previousBlock);
+                                continue;
+                            }
+
+                            blobTx.SenderAddress = senderAddress;
+                        }
                         SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
@@ -413,6 +414,13 @@ namespace Nethermind.TxPool
                     _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
                 }
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void RecordUnrecoverableReorgedBlobTx(Transaction blobTx, Block previousBlock)
+        {
+            Metrics.PendingTransactionsUnresolvableSender++;
+            if (_logger.IsDebug) _logger.Debug($"Skipped readding tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool: sender address is not recoverable");
         }
 
         private void RemoveProcessedTransactions(Block block)
@@ -561,8 +569,8 @@ namespace Nethermind.TxPool
                 // Also skip announcing if peer's head number is shown as 0 as then we don't know peer's head block yet
                 if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.HeadNumber + 16)
                 {
-                    Transaction[] txSnapshot = _transactionSnapshot ??= _transactions.GetSnapshot();
-                    Transaction[] blobTxSnapshot = _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot();
+                    Transaction[] txSnapshot = _transactions.GetSnapshot();
+                    Transaction[] blobTxSnapshot = _blobTransactions.GetSnapshot();
                     _broadcaster.AnnounceOnce(peer, txSnapshot);
                     _broadcaster.AnnounceOnce(peer, blobTxSnapshot);
                     if (_logger.IsTrace) _logger.Trace($"Announced {txSnapshot.Length} txs and {blobTxSnapshot.Length} blob txs to peer {peer}");
@@ -615,10 +623,6 @@ namespace Nethermind.TxPool
                 // Update metrics after removal
                 Metrics.TransactionCount = _transactions.Count;
                 Metrics.BlobTransactionCount = _blobTransactions.Count;
-
-                // Reset snapshots
-                _transactionSnapshot = null;
-                _blobTransactionSnapshot = null;
             }
             finally
             {
@@ -678,16 +682,6 @@ namespace Nethermind.TxPool
             }
             finally
             {
-                // Snapshot must be cleared inside the read lock so a concurrent reader
-                // cannot cache a snapshot taken between AddCore completing and the
-                // null-assignment (which would be missing the just-added tx).
-                if (accepted)
-                {
-                    if (tx.CarriesBlobs)
-                        _blobTransactionSnapshot = null;
-                    else
-                        _transactionSnapshot = null;
-                }
                 _newHeadLock.ExitReadLock();
             }
 
@@ -738,11 +732,8 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
-            // The exposure filter reserved this frame tx's max cost. Ownership of the reservation
-            // passes to the pool on a successful insert (released later via the Removed event) or is
-            // released explicitly on the non-insert paths below. Should anything throw before the tx
-            // is inserted, it never enters the pool and no Removed fires, so the finally releases the
-            // reservation to avoid a permanent per-payer leak (EIP-8141).
+            // EIP-8141: a successful insert hands the payer reservation to the pool, released on Removed.
+            // Every other exit, a throw included, must release it here or it leaks for good.
             bool reservationSettled = false;
             try
             {
@@ -756,8 +747,7 @@ namespace Nethermind.TxPool
                     : worstTx.GasBottleneck;
 
                 bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
-                // Past this point the reservation is owned by the pool, or was already released
-                // synchronously by a Removed event on self-eviction, so the finally must not touch it.
+                // The reservation is now the pool's, or was already released by a self-eviction Removed.
                 reservationSettled = true;
 
                 if (!inserted)
@@ -772,11 +762,9 @@ namespace Nethermind.TxPool
 
                 if (tx.Hash == removed?.Hash)
                 {
-                    // it means it was added and immediately evicted - pool was full of better txs. The
-                    // self-eviction already raised Removed and released the reservation; a frame tx
-                    // retained only by the persistent broadcaster below therefore contributes nothing
-                    // to its payer's exposure. That local-only under-count is accepted deliberately:
-                    // the broadcaster has no Removed hook, so a reservation held for it would leak.
+                    // it means it was added and immediately evicted - pool was full of better txs
+                    // Its Removed already released the reservation, so a tx kept only by the broadcaster
+                    // under-counts its payer — accepted, since the broadcaster has no hook to release on.
                     if (!isPersistentBroadcast || tx.CarriesBlobs || !_broadcaster.Broadcast(tx, true))
                     {
                         // we are adding only to persistent broadcast - not good enough for standard pool,
@@ -847,13 +835,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        /// <summary>
-        /// Releases the pending exposure a resolved frame-tx payer reserved at admission
-        /// (<see cref="FrameTxPayerExposureFilter"/>) once the transaction leaves the pool — covering
-        /// eviction, replacement, inclusion, and reorg removal, which all funnel through the pool
-        /// <c>Removed</c> event, plus the replacement-rejected path that never inserts. A no-op for
-        /// non-frame txs and unresolved payers. EIP-8141 (ethereum/EIPs#12007).
-        /// </summary>
+        /// <summary>Releases the exposure a frame-tx payer reserved at admission, once the transaction leaves the pool.</summary>
         private void ReleasePayerExposure(Transaction tx)
         {
             if (tx.SupportsFrames && tx.PayerAddress is not null && !tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
@@ -1136,6 +1118,8 @@ namespace Nethermind.TxPool
             _transactions.Removed -= OnRemovedTx;
             _blobTransactions.Inserted -= OnInsertedTx;
             _blobTransactions.Removed -= OnRemovedTx;
+            // Removed no longer fires, so anything still reserved would be counted by a gauge no pool can decrement.
+            _payerExposure.Clear();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;

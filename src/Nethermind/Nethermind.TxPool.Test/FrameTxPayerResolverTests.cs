@@ -98,6 +98,15 @@ public class FrameTxPayerResolverTests
                 return FrameTx([DeployFrame(), SelfVerifyFrame()], [Secp(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
+        // At most one deploy frame is skipped, so the second one is the frame that must name the payer and
+        // does not: the same layout RecognizedPrefixLength rejects, keeping resolution and pricing aligned.
+        yield return Case("TwoDeploysThenSelfVerify_RequiresSimulation",
+            state =>
+            {
+                DefaultCodeAccount(state, Sender);
+                return FrameTx([DeployFrame(), DeployFrame(), SelfVerifyFrame()], [Secp(Sender)]);
+            }, FrameTxPayerOutcome.RequiresSimulation, null);
+
         yield return Case("DeployFrameOnly_NoPayer",
             state =>
             {
@@ -201,18 +210,26 @@ public class FrameTxPayerResolverTests
         }
     }
 
-    [Test]
-    public void Resolve_ExpiryPrefix_CapturesDeadlineAndVerifierCode()
+    // The deploy variant is the only shape where both skips apply: the expiry dependency is read from
+    // frames[0] independently of the skipped-prefix index, so a deploy frame must not detach it.
+    [TestCase(false, TestName = "Resolve_ExpiryPrefix_CapturesDeadlineAndVerifierCode")]
+    [TestCase(true, TestName = "Resolve_ExpiryThenDeployPrefix_CapturesDeadlineAndVerifierCode")]
+    public void Resolve_ExpiryPrefix_CapturesDeadlineAndVerifierCode(bool withDeploy)
     {
         TestReadOnlyStateProvider state = new();
         DefaultCodeAccount(state, Sender);
         state.InsertCode(Eip8141Constants.ExpiryVerifierCode, Eip8141Constants.ExpiryVerifierAddress);
-        Transaction tx = FrameTx([ExpiryFrame(0xDEAD_BEEF), SelfVerifyFrame()], [Secp(Sender)]);
+        TxFrame[] frames = withDeploy
+            ? [ExpiryFrame(0xDEAD_BEEF), DeployFrame(), SelfVerifyFrame()]
+            : [ExpiryFrame(0xDEAD_BEEF), SelfVerifyFrame()];
+        Transaction tx = FrameTx(frames, [Secp(Sender)]);
 
-        FrameTxDependencySet deps = Resolve(tx, state).Dependencies;
+        FrameTxPayerResolution resolution = Resolve(tx, state);
+        FrameTxDependencySet deps = resolution.Dependencies;
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(resolution.Payer, Is.EqualTo(Sender));
             Assert.That(deps.DependsOnExpiry, Is.True);
             Assert.That(deps.ExpiryDeadline, Is.EqualTo(0xDEAD_BEEFUL));
             Assert.That(deps.ExpiryVerifierCodeHash, Is.EqualTo(Keccak.Compute(Eip8141Constants.ExpiryVerifierCode).ValueHash256));
