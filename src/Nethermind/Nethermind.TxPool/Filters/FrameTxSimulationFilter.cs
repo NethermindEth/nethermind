@@ -39,8 +39,8 @@ internal sealed class FrameTxSimulationFilter(
         {
             Metrics.PendingTransactionsFrameTxSimulationFailed++;
             if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.RejectionReason}.");
-            // Deferred only for a bound this node spent on itself. A timeout is retained by revalidation
-            // (Indeterminate) yet chargeable here, because the prefix's own wall clock is what tripped it.
+            // Deferred only for a bound this node spent on itself: a timeout is chargeable here, because
+            // the prefix's own wall clock is what tripped it.
             return (result.NodeBound ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.FrameSimulationFailed)
                 .WithMessage(result.RejectionReason ?? TxPoolErrorMessages.FrameSimulationFailed);
         }
