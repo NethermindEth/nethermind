@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -77,6 +78,21 @@ public class Eip8038ConstantsTests
         {
             Assert.That(addressCost, Is.GreaterThan(GasCostOf.AccessAccountListEntry));
             Assert.That(storageKeyCost, Is.GreaterThan(GasCostOf.AccessStorageListEntry));
+        });
+    }
+
+    [Test]
+    public void Access_list_entry_costs_resolve_by_the_eip8038_flag()
+    {
+        (ulong preAddress, ulong preStorage) = Eip8038Constants.AccessListEntryCosts(new ReleaseSpec { IsEip8038Enabled = false });
+        (ulong postAddress, ulong postStorage) = Eip8038Constants.AccessListEntryCosts(new ReleaseSpec { IsEip8038Enabled = true });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(preAddress, Is.EqualTo(GasCostOf.AccessAccountListEntry));
+            Assert.That(preStorage, Is.EqualTo(GasCostOf.AccessStorageListEntry));
+            Assert.That(postAddress, Is.EqualTo(Eip8038Constants.AccessListAddressCost));
+            Assert.That(postStorage, Is.EqualTo(Eip8038Constants.AccessListStorageKeyCost));
         });
     }
 

@@ -32,8 +32,7 @@ public class RecentRootReference(in ValueHash256 sourceId, ulong slot, in ValueH
             return 0;
         }
 
-        ulong addressCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry;
-        ulong storageKeyCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry;
+        (ulong addressCost, ulong storageKeyCost) = Eip8038Constants.AccessListEntryCosts(spec);
         ulong perReference = storageKeyCost + 2 * GasCostOf.Sha3 + 7 * GasCostOf.Sha3Word;
         return addressCost + (ulong)references.Length * perReference;
     }
