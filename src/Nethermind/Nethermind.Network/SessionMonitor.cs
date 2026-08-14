@@ -133,7 +133,6 @@ namespace Nethermind.Network
                         if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
                         if (pingTime - session.LastPongUtc > MissedPongIntervalsBeforeDisconnect * _pingInterval)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"Disconnecting {session} after missing every pong since {session.LastPongUtc:T}; the connection is considered dead.");
                             session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "no pong received");
                         }
 
