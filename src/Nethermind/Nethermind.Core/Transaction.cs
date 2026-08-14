@@ -235,6 +235,14 @@ namespace Nethermind.Core
         public UInt256[]? NonceKeys { get; set; }
 
         /// <summary>
+        /// Recent-root references declared by a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8272
+        /// </summary>
+        /// <remarks><see langword="null"/> for an envelope that predates EIP-8272, which is a different
+        /// signing payload from one carrying an empty reference list.</remarks>
+        public RecentRootReference[]? RecentRootReferences { get; set; }
+
+        /// <summary>
         /// Zero and non-zero byte counts of the type-specific calldata EIP-8141 prices in addition to the
         /// frame and signature data — EIP-8250's <c>nonce_calldata</c>. In-memory only (not encoded).
         /// </summary>
@@ -363,6 +371,7 @@ namespace Nethermind.Core
                 obj.FrameSignatures = default;
                 obj.PayerAddress = default;
                 obj.NonceKeys = default;
+                obj.RecentRootReferences = default;
                 obj.FrameCalldataStats = default;
 
                 return true;
@@ -400,6 +409,7 @@ namespace Nethermind.Core
             tx.FrameSignatures = FrameSignatures;
             tx.PayerAddress = PayerAddress;
             tx.NonceKeys = NonceKeys;
+            tx.RecentRootReferences = RecentRootReferences;
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 
