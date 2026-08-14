@@ -88,8 +88,8 @@ on:
           (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
-          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — direct|copy|overlay — so storage counters are comparable).
+          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/extra_args.
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/corpus_warmup_duration (discarded warm-up per corpus per client, default 240s; 0 measures cold — cold p99 runs ~60% high)/resource_sampling (cgroup counters per cell, default true).
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -756,6 +756,10 @@ jobs:
           export ISO_DURATION="$(get '.iso_duration')";    [[ -z "${ISO_DURATION}" ]] && export ISO_DURATION="20s"
           # Force one isolation mode for every client so storage counters are comparable.
           iso_all="$(get '.db_isolation_all')"; [[ -n "${iso_all}" ]] && export DB_ISOLATION_ALL="${iso_all}"
+          # Consent flag for db_isolation_all=direct; without a tool_config route the documented
+          # option was unreachable (the guard names an env var no dispatcher could set).
+          iso_mut="$(getb '.db_isolation_allow_snapshot_mutation')"; [[ -n "${iso_mut}" ]] && export DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${iso_mut}"
+          rsamp="$(getb '.resource_sampling')"; [[ -n "${rsamp}" ]] && export CORPUS_RESOURCE_SAMPLING="${rsamp}"
           # Size corpus cells by request count rather than wall time (rate is still rps_list).
           corpus_requests="$(get '.corpus_requests')"; [[ -n "${corpus_requests}" ]] && export CORPUS_REQUESTS="${corpus_requests}"
           corpus_passes="$(get '.corpus_passes')";     [[ -n "${corpus_passes}" ]] && export CORPUS_PASSES="${corpus_passes}"

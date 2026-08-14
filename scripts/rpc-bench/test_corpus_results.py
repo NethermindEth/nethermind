@@ -122,6 +122,34 @@ class CorpusResultsTests(unittest.TestCase):
         blob = "\n".join(p.read_text(encoding="utf-8") for p in stage_root.rglob("*") if p.is_file())
         self.assertNotIn(SENTINEL, blob)
 
+    def test_stage_excludes_warmup_cells(self):
+        """A staged warmup/summary.json would displace the measured cell in the PR comment:
+        comment() keys cells by directory position, and 'warmup' sorts after '100'."""
+        out_root = self.dir / "out"
+        sanitized = corpus_results.sanitize_data(raw_summary())
+        self.write_json(out_root / "corpus" / "a" / "nm" / "100" / "summary.json", sanitized)
+        self.write_json(out_root / "corpus" / "a" / "nm" / "warmup" / "summary.json", sanitized)
+
+        stage_root = self.dir / "stage-warm"
+        corpus_results.stage(str(out_root), str(stage_root))
+
+        staged = sorted(p.relative_to(stage_root).as_posix() for p in stage_root.rglob("*") if p.is_file())
+        self.assertEqual(staged, ["corpus/a/nm/100/summary.json"])
+
+    def test_timings_meta_schema_requires_warmup_seconds(self):
+        """The matrix must say whether it was measured warm — cold p99 runs ~60% high and a cold
+        matrix is otherwise indistinguishable from a warm one."""
+        meta = {"head": 100, "chain_id": 1, "block_hash": "0x" + "ab" * 32, "records": 3,
+                "passes": 2, "requests": 6, "target_rps": 50.0, "achieved_rps": 49.9,
+                "concurrency": 4, "warmup_seconds": 240, "outcomes": {"ok": 6}}
+        path = self.write_json(self.dir / "timings.meta.json", meta)
+        corpus_results._validate_timings_meta(path)  # complete schema passes
+
+        legacy = {k: v for k, v in meta.items() if k != "warmup_seconds"}
+        path2 = self.write_json(self.dir / "legacy" / "timings.meta.json", legacy)
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results._validate_timings_meta(path2)
+
     def test_stage_rejects_unsanitized_summary_and_bad_parity(self):
         for name, filename, payload in (
             ("raw k6 summary", "summary.json", raw_summary()),

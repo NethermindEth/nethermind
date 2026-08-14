@@ -530,7 +530,8 @@ def _timed_post(url: str, index: int, params: list) -> tuple[float, str]:
     return (time.perf_counter() - started) * 1000.0, category or "ok"
 
 
-def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, concurrency: int) -> None:
+def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, concurrency: int,
+            warmup_seconds: int = 0) -> None:
     """Replay every record `passes` times and write a record x pass matrix of latencies.
 
     Unlike the k6 cells, which sample the corpus uniformly with replacement and tag every request
@@ -591,6 +592,9 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
         "head": head, "chain_id": chain_id, "block_hash": block_hash,
         "records": total_records, "passes": passes, "requests": issued,
         "target_rps": rps, "achieved_rps": round(achieved, 2), "concurrency": concurrency,
+        # Seconds of discarded warm-up load applied before this matrix. 0 = measured cold; a cold
+        # matrix is otherwise indistinguishable from a warm one, and the difference is ~60% on p99.
+        "warmup_seconds": warmup_seconds,
         "outcomes": {k: v for k, v in sorted(outcomes.items())},
     }
     meta_target = target.with_name("timings.meta.json")
@@ -641,6 +645,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     timings_parser.add_argument("--passes", type=int, default=1, help="times to replay the whole corpus")
     timings_parser.add_argument("--rps", type=float, default=0.0, help="target request rate; 0 = unpaced")
     timings_parser.add_argument("--concurrency", type=int, default=16, help="in-flight requests")
+    timings_parser.add_argument("--warmup-seconds", type=int, default=0,
+                                help="discarded warm-up seconds applied before the matrix (recorded in meta)")
 
     arguments = parser.parse_args(argv)
     try:
@@ -649,7 +655,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if arguments.command == "timings":
             timings(arguments.corpus, arguments.rpc_url, arguments.out,
-                    arguments.passes, arguments.rps, arguments.concurrency)
+                    arguments.passes, arguments.rps, arguments.concurrency,
+                    arguments.warmup_seconds)
             return 0
         if arguments.command == "baseline":
             baseline(arguments.corpus, arguments.rpc_url, arguments.state)
