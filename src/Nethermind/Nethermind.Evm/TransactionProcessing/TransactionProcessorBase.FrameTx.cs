@@ -561,6 +561,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, out gasUsed);
         }
 
+        // EIP8141: create_evm_from_frame charges the target's access and any value transfer reviving it
+        // from the frame's own gas. That entry charge is pending branch-wide, so every frame here is short by it.
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
         ReadOnlyMemory<byte> inputData = frame.Data;
 
