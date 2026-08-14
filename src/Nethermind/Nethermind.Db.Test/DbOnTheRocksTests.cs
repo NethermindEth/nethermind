@@ -454,12 +454,9 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        [Repeat(3)]
-        public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created()
+        public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created([Values] bool midFlush, [Values] bool postFlush)
         {
             ISortedKeyValueStore sorted = (ISortedKeyValueStore)_db;
-            Span<byte> key = stackalloc byte[2];
-            Span<byte> value = stackalloc byte[1];
 
             // Shuffled so about half the seeks go backwards
             byte[] suffixes = [.. Enumerable.Range(1, 49).Select(static i => (byte)i)];
@@ -467,9 +464,24 @@ namespace Nethermind.Db.Test
             rng.Shuffle(suffixes);
 
             // Keep updating the DB and checking that iterator sees the latest value
-            foreach (byte i in suffixes)
+            for (int written = 0; written < suffixes.Length; written++)
             {
+                byte i = suffixes[written];
                 _db[[1, i]] = [i];
+                AssertSeesLatest(i);
+
+                if (midFlush && written % 10 == 9) _db.Flush();
+            }
+
+            if (postFlush) _db.Flush();
+
+            foreach (byte i in suffixes)
+                AssertSeesLatest(i);
+
+            void AssertSeesLatest(byte i)
+            {
+                Span<byte> key = stackalloc byte[2];
+                Span<byte> value = stackalloc byte[1];
 
                 bool found = sorted.TryGetCeiling([1, i], [1, (byte)(i + 1)], key, out _, value, out int valueLength);
                 Assert.That(found, Is.True, $"write {i} must be visible to the pooled iterator");
