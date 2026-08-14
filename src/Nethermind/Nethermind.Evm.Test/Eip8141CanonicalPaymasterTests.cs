@@ -348,7 +348,7 @@ public class Eip8141CanonicalPaymasterTests
         SignEntries(tx, [(SenderKey, null, []), (SignerKey, Signer, new byte[32])]);
 
         // (a) A full node rejects the tx as malformed before any frame runs.
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, Spec.IsEip7906Enabled, out string? error);
         Assert.That(wellFormed, Is.False, "static validation rejects a 32-byte zero digest msg");
         Assert.That(error, Is.EqualTo(FrameTxValidation.ZeroDigestMsg));
 
