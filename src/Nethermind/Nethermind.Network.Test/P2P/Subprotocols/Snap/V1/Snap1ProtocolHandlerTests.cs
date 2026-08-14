@@ -31,8 +31,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1;
 
 public class Snap1ProtocolHandlerTests
 {
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private long _timestamp;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _timestamp;
+
+        public void Advance(TimeSpan delta) => _timestamp += delta.Ticks;
+    }
+
     private class Context
     {
+        private readonly ManualTimeProvider _timeProvider = new();
+
         public ISession Session { get; set; } = Substitute.For<ISession>();
 
         private IMessageSerializationService? _messageSerializationService;
@@ -57,7 +70,7 @@ public class Snap1ProtocolHandlerTests
                 if (_nodeStatsManager is null)
                 {
                     _nodeStatsManager = Substitute.For<INodeStatsManager>();
-                    _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
+                    _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0], timeProvider: _timeProvider));
                 }
                 return _nodeStatsManager;
             }
@@ -84,6 +97,8 @@ public class Snap1ProtocolHandlerTests
 
         public TimeSpan SimulatedLatency { get; set; } = TimeSpan.Zero;
 
+        public TimeSpan SimulatedStall { get; set; } = TimeSpan.Zero;
+
         private readonly List<long> _recordedResponseBytesLength = [];
 
         public Context WithResponseBytesRecorder
@@ -97,9 +112,11 @@ public class Snap1ProtocolHandlerTests
                         GetAccountRangeMessage accountRangeMessage = (GetAccountRangeMessage)callInfo[0];
                         _recordedResponseBytesLength.Add(accountRangeMessage.ResponseBytes);
 
-                        if (SimulatedLatency > TimeSpan.Zero)
+                        _timeProvider.Advance(SimulatedLatency);
+
+                        if (SimulatedStall > TimeSpan.Zero)
                         {
-                            Task.Delay(SimulatedLatency).Wait();
+                            Task.Delay(SimulatedStall).Wait();
                         }
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
@@ -227,9 +244,9 @@ public class Snap1ProtocolHandlerTests
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldIncrease();
 
-        ctx.SimulatedLatency = Timeouts.Eth + TimeSpan.FromSeconds(1);
+        ctx.SimulatedStall = Timeouts.Eth + TimeSpan.FromSeconds(1);
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
-        ctx.SimulatedLatency = TimeSpan.Zero; // The read value is the request down, but it is adjusted on above request
+        ctx.SimulatedStall = TimeSpan.Zero; // The read value is the request down, but it is adjusted on above request
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();
     }
