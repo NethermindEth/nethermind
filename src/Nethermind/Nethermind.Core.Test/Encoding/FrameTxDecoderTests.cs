@@ -31,8 +31,8 @@ public class FrameTxDecoderTests
         Assert.That(decoded.Type, Is.EqualTo(TxType.FrameTx));
         Assert.That(decoded.ChainId, Is.EqualTo(tx.ChainId));
         Assert.That(decoded.Nonce, Is.EqualTo(tx.Nonce));
-        Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
         AssertReferencesEqual(decoded.RecentRootReferences, tx.RecentRootReferences);
+        Assert.That(decoded.NonceKeys, Is.EqualTo(tx.NonceKeys));
         // The sender is explicit in the payload — no envelope signature, no ECDSA recovery.
         Assert.That(decoded.SenderAddress, Is.EqualTo(tx.SenderAddress));
         Assert.That(decoded.GasPrice, Is.EqualTo(tx.GasPrice));
@@ -110,47 +110,6 @@ public class FrameTxDecoderTests
         Transaction second = CreateFrameTx(frames: [Frame(gasLimit: 100_001)]);
 
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
-    }
-
-    [Test]
-    public void ComputeSigHash_MaxFeePerBlobGasChanges_HashChanges()
-    {
-        // The blob fields are part of the signing preimage, so the signature must commit to them.
-        Transaction first = CreateFrameTx();
-        first.MaxFeePerBlobGas = 7;
-        Transaction second = CreateFrameTx();
-        second.MaxFeePerBlobGas = 8;
-
-        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
-    }
-
-    [Test]
-    public void ComputeSigHash_BlobVersionedHashesChange_HashChanges()
-    {
-        Transaction first = CreateFrameTx();
-        first.BlobVersionedHashes = [FilledBytes(32, 0x01)];
-        Transaction second = CreateFrameTx();
-        second.BlobVersionedHashes = [FilledBytes(32, 0x02)];
-
-        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
-    }
-
-    // Selecting different keys — or none at all, which is a different envelope rather than the key 0 —
-    // must not reuse another transaction's signing hash.
-    [Test]
-    public void ComputeSigHash_NonceKeysChange_HashChanges()
-    {
-        Transaction legacy = CreateFrameTx();
-        Transaction legacyKey = CreateFrameTx();
-        legacyKey.NonceKeys = [UInt256.Zero];
-        Transaction otherKey = CreateFrameTx();
-        otherKey.NonceKeys = [1];
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(FrameTxSigHash.ComputeValue(legacyKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacy)));
-            Assert.That(FrameTxSigHash.ComputeValue(otherKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacyKey)));
-        }
     }
 
     // An absent list is a different envelope from an empty one, so neither may reuse the other's hash.
@@ -263,6 +222,47 @@ public class FrameTxDecoderTests
         }
     }
 
+    [Test]
+    public void ComputeSigHash_MaxFeePerBlobGasChanges_HashChanges()
+    {
+        // The blob fields are part of the signing preimage, so the signature must commit to them.
+        Transaction first = CreateFrameTx();
+        first.MaxFeePerBlobGas = 7;
+        Transaction second = CreateFrameTx();
+        second.MaxFeePerBlobGas = 8;
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    [Test]
+    public void ComputeSigHash_BlobVersionedHashesChange_HashChanges()
+    {
+        Transaction first = CreateFrameTx();
+        first.BlobVersionedHashes = [FilledBytes(32, 0x01)];
+        Transaction second = CreateFrameTx();
+        second.BlobVersionedHashes = [FilledBytes(32, 0x02)];
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    // Selecting different keys — or none at all, which is a different envelope rather than the key 0 —
+    // must not reuse another transaction's signing hash.
+    [Test]
+    public void ComputeSigHash_NonceKeysChange_HashChanges()
+    {
+        Transaction legacy = CreateFrameTx();
+        Transaction legacyKey = CreateFrameTx();
+        legacyKey.NonceKeys = [UInt256.Zero];
+        Transaction otherKey = CreateFrameTx();
+        otherKey.NonceKeys = [1];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxSigHash.ComputeValue(legacyKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacy)));
+            Assert.That(FrameTxSigHash.ComputeValue(otherKey), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(legacyKey)));
+        }
+    }
+
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateFrameTx()).SetName("Roundtrip_MinimalSingleFrame");
@@ -283,14 +283,6 @@ public class FrameTxDecoderTests
             new TxFrameSignature(TxFrameSignature.SchemeP256, TestItem.AddressD, default, FilledBytes(TxFrameSignature.P256SignatureLength, 0x33)),
         ])).SetName("Roundtrip_AllSignatureSchemes");
 
-        Transaction keyed = CreateFrameTx();
-        keyed.NonceKeys = [UInt256.Zero];
-        yield return new TestCaseData(keyed).SetName("Roundtrip_KeyedNonceEnvelope_LegacyKeyOnly");
-
-        Transaction multiKeyed = CreateFrameTx();
-        multiKeyed.NonceKeys = [1, UInt256.MaxValue];
-        yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
-
         Transaction emptyReferences = CreateFrameTx();
         emptyReferences.RecentRootReferences = [];
         yield return new TestCaseData(emptyReferences).SetName("Roundtrip_EmptyRecentRootReferenceList");
@@ -298,6 +290,14 @@ public class FrameTxDecoderTests
         Transaction referencing = CreateFrameTx();
         referencing.RecentRootReferences = [Reference(slot: 0), Reference(slot: ulong.MaxValue)];
         yield return new TestCaseData(referencing).SetName("Roundtrip_RecentRootReferences");
+
+        Transaction keyed = CreateFrameTx();
+        keyed.NonceKeys = [UInt256.Zero];
+        yield return new TestCaseData(keyed).SetName("Roundtrip_KeyedNonceEnvelope_LegacyKeyOnly");
+
+        Transaction multiKeyed = CreateFrameTx();
+        multiKeyed.NonceKeys = [1, UInt256.MaxValue];
+        yield return new TestCaseData(multiKeyed).SetName("Roundtrip_KeyedNonceEnvelope_MultipleKeys");
 
         Transaction blobCarrying = CreateFrameTx();
         blobCarrying.MaxFeePerBlobGas = 7;

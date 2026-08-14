@@ -46,6 +46,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         }
 
         transaction.RecentRootReferences = decoderContext.DecodeArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
+        transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
     }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,

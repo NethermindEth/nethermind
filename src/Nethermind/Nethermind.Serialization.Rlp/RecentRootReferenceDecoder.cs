@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -51,6 +53,29 @@ public sealed class RecentRootReferenceDecoder : RlpDecoder<RecentRootReference>
     public override int GetLength(RecentRootReference item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item));
 
     public int GetArrayLength(RecentRootReference[] items) => Rlp.LengthOfSequence(GetArrayContentLength(items));
+
+    /// <summary>The zero and non-zero byte counts of the encoded reference array, which the split EIP-8141
+    /// calldata pricing needs. Measured off the encoding rather than recomputed, so the charge cannot drift
+    /// from the wire form.</summary>
+    public (int ZeroBytes, int NonZeroBytes) Measure(RecentRootReference[]? references)
+    {
+        if (references is null)
+        {
+            return (0, 0);
+        }
+
+        int length = GetArrayLength(references);
+        Span<byte> buffer = stackalloc byte[MaxCalldataLength];
+        Span<byte> calldata = buffer[..length];
+        RlpWriter writer = new(calldata);
+        EncodeArray(ref writer, references);
+        int zeros = calldata.CountZeros();
+        return (zeros, length - zeros);
+    }
+
+    /// <summary>Upper bound on <c>recent_root_calldata</c>: a full set of references, each a 32-byte source id
+    /// and root plus a nine-byte slot behind a two-byte long-form tuple header, behind a three-byte array header.</summary>
+    private const int MaxCalldataLength = 3 + Eip8272Constants.MaxRecentRootReferences * (2 + 33 + 9 + 33);
 
     private int GetArrayContentLength(RecentRootReference[] items)
     {

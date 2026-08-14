@@ -72,6 +72,19 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             prevIsAtomicBatch = frame.IsAtomicBatch;
         }
 
+        if (tx.RecentRootReferences is { } references)
+        {
+            if (!spec.IsEip8272Enabled)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
+            }
+
+            if (references.Length > Eip8272Constants.MaxRecentRootReferences)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("too many recent root references");
+            }
+        }
+
         if (tx.NonceKeys is not null)
         {
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
@@ -79,6 +92,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // The frame gas sum is overflow-checked so the processor does not depend on static validation
         // having run.
+        tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
@@ -145,6 +159,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             accessTracker.WarmUp(sender);
+        }
+
+        if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, header.SlotNumber, in accessTracker))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
         }
 
         // Atomic batch state: a maximal contiguous run [i, j] where i..j-1 have ATOMIC_BATCH_FLAG
