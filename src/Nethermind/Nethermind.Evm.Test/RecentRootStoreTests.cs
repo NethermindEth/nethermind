@@ -16,10 +16,12 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class RecentRootStoreTests
 {
-    private static readonly Address Source = TestItem.AddressA;
-    private static readonly ValueHash256 Salt = TestItem.KeccakA.ValueHash256;
+    private static readonly ValueHash256 SourceId = TestItem.KeccakD.ValueHash256;
+    private static readonly ValueHash256 OtherSourceId = TestItem.KeccakE.ValueHash256;
     private static readonly ValueHash256 Root = TestItem.KeccakB.ValueHash256;
     private static readonly ValueHash256 OtherRoot = TestItem.KeccakC.ValueHash256;
+    private static readonly Address Source = TestItem.AddressA;
+    private static readonly ValueHash256 Salt = TestItem.KeccakA.ValueHash256;
 
     // Every concatenation in EIP-8272 is fixed-width, and an address is 20 bytes there, so the
     // preimage is 52 bytes. Left-padding the address to a word changes every source id, which is
@@ -37,37 +39,29 @@ public class RecentRootStoreTests
     [Test]
     public void EntryHash_is_deterministic_and_distinct_per_input()
     {
-        ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-        ValueHash256 otherSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
-        ValueHash256 baseline = RecentRootStore.EntryHash(sourceId, 100, Root);
+        ValueHash256 baseline = RecentRootStore.EntryHash(SourceId, 100, Root);
 
-        Assert.That(RecentRootStore.EntryHash(sourceId, 100, Root), Is.EqualTo(baseline));
-        Assert.That(RecentRootStore.EntryHash(sourceId, 101, Root), Is.Not.EqualTo(baseline));
-        Assert.That(RecentRootStore.EntryHash(sourceId, 100, OtherRoot), Is.Not.EqualTo(baseline));
-        Assert.That(RecentRootStore.EntryHash(otherSource, 100, Root), Is.Not.EqualTo(baseline));
+        Assert.That(RecentRootStore.EntryHash(SourceId, 100, Root), Is.EqualTo(baseline));
+        Assert.That(RecentRootStore.EntryHash(SourceId, 101, Root), Is.Not.EqualTo(baseline));
+        Assert.That(RecentRootStore.EntryHash(SourceId, 100, OtherRoot), Is.Not.EqualTo(baseline));
+        Assert.That(RecentRootStore.EntryHash(OtherSourceId, 100, Root), Is.Not.EqualTo(baseline));
     }
 
     [Test]
     public void StorageKey_is_deterministic_and_distinct_per_input()
     {
-        ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-        ValueHash256 otherSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
-        ValueHash256 baseline = RecentRootStore.StorageKey(sourceId, 5);
+        ValueHash256 baseline = RecentRootStore.StorageKey(SourceId, 5);
 
-        Assert.That(RecentRootStore.StorageKey(sourceId, 5), Is.EqualTo(baseline));
-        Assert.That(RecentRootStore.StorageKey(sourceId, 6), Is.Not.EqualTo(baseline));
-        Assert.That(RecentRootStore.StorageKey(otherSource, 5), Is.Not.EqualTo(baseline));
+        Assert.That(RecentRootStore.StorageKey(SourceId, 5), Is.EqualTo(baseline));
+        Assert.That(RecentRootStore.StorageKey(SourceId, 6), Is.Not.EqualTo(baseline));
+        Assert.That(RecentRootStore.StorageKey(OtherSourceId, 5), Is.Not.EqualTo(baseline));
     }
 
     [Test]
-    public void EntryHash_and_StorageKey_use_distinct_domains()
-    {
-        ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-
+    public void EntryHash_and_StorageKey_use_distinct_domains() =>
         Assert.That(
-            RecentRootStore.EntryHash(sourceId, 5, Root),
-            Is.Not.EqualTo(RecentRootStore.StorageKey(sourceId, 5)));
-    }
+            RecentRootStore.EntryHash(SourceId, 5, Root),
+            Is.Not.EqualTo(RecentRootStore.StorageKey(SourceId, 5)));
 
     [Test]
     public void Reference_validity_window_boundaries()
@@ -76,16 +70,15 @@ public class RecentRootStoreTests
         using (scope)
         {
             const ulong writeSlot = 100_000;
-            Write(state, Source, Salt, Root, writeSlot);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, SourceId, Root, writeSlot);
 
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + 1), Is.True);
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot), Is.False);
+            Assert.That(RecentRootStore.IsReferenceValid(state, SourceId, writeSlot, Root, writeSlot + 1), Is.True);
+            Assert.That(RecentRootStore.IsReferenceValid(state, SourceId, writeSlot, Root, writeSlot), Is.False);
             Assert.That(
-                RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + Eip8272Constants.RecentRootUsableWindow),
+                RecentRootStore.IsReferenceValid(state, SourceId, writeSlot, Root, writeSlot + Eip8272Constants.RecentRootUsableWindow),
                 Is.True);
             Assert.That(
-                RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, writeSlot + Eip8272Constants.RecentRootUsableWindow + 1),
+                RecentRootStore.IsReferenceValid(state, SourceId, writeSlot, Root, writeSlot + Eip8272Constants.RecentRootUsableWindow + 1),
                 Is.False);
         }
     }
@@ -98,10 +91,9 @@ public class RecentRootStoreTests
         {
             const ulong writeSlot = 1000;
             const ulong currentSlot = 1001;
-            Write(state, Source, Salt, Root, writeSlot);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, SourceId, Root, writeSlot);
 
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, Root, currentSlot), Is.True);
+            Assert.That(RecentRootStore.IsReferenceValid(state, SourceId, writeSlot, Root, currentSlot), Is.True);
         }
     }
 
@@ -113,13 +105,11 @@ public class RecentRootStoreTests
         {
             const ulong writeSlot = 1000;
             const ulong currentSlot = 1001;
-            Write(state, Source, Salt, Root, writeSlot);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-            ValueHash256 wrongSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
+            Write(state, SourceId, Root, writeSlot);
 
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot, OtherRoot, currentSlot), Is.False);
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, writeSlot - 1, Root, currentSlot), Is.False);
-            Assert.That(RecentRootStore.IsReferenceValid(state, wrongSource, writeSlot, Root, currentSlot), Is.False);
+            Assert.That(RecentRootStore.IsReferenceValid(state, SourceId, writeSlot, OtherRoot, currentSlot), Is.False);
+            Assert.That(RecentRootStore.IsReferenceValid(state, SourceId, writeSlot - 1, Root, currentSlot), Is.False);
+            Assert.That(RecentRootStore.IsReferenceValid(state, OtherSourceId, writeSlot, Root, currentSlot), Is.False);
         }
     }
 
@@ -131,15 +121,13 @@ public class RecentRootStoreTests
         {
             const ulong writtenSlot = 5;
             ulong aliasedSlot = writtenSlot + Eip8272Constants.RecentRootLength;
-            Write(state, Source, Salt, Root, writtenSlot);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, SourceId, Root, writtenSlot);
 
             Assert.That(
-                RecentRootStore.StorageKey(sourceId, aliasedSlot % Eip8272Constants.RecentRootLength),
-                Is.EqualTo(RecentRootStore.StorageKey(sourceId, writtenSlot % Eip8272Constants.RecentRootLength)));
+                RecentRootStore.StorageKey(SourceId, aliasedSlot % Eip8272Constants.RecentRootLength),
+                Is.EqualTo(RecentRootStore.StorageKey(SourceId, writtenSlot % Eip8272Constants.RecentRootLength)));
 
-            // The stored entry commits to writtenSlot, so a reference to the aliased slot cannot match.
-            Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, aliasedSlot, Root, aliasedSlot + 1), Is.False);
+            Assert.That(RecentRootStore.IsReferenceValid(state, SourceId, aliasedSlot, Root, aliasedSlot + 1), Is.False);
         }
     }
 
@@ -160,14 +148,13 @@ public class RecentRootStoreTests
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            Write(state, Source, Salt, Root, 100);
-            Write(state, Source, Salt, OtherRoot, 150);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, SourceId, Root, 100);
+            Write(state, SourceId, OtherRoot, 150);
 
             (ValueHash256, ulong, ValueHash256)[] references =
             [
-                (sourceId, 100UL, Root),
-                (sourceId, 150UL, OtherRoot)
+                (SourceId, 100UL, Root),
+                (SourceId, 150UL, OtherRoot)
             ];
             Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.True);
         }
@@ -179,13 +166,12 @@ public class RecentRootStoreTests
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            Write(state, Source, Salt, Root, 100);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, SourceId, Root, 100);
 
             (ValueHash256, ulong, ValueHash256)[] references =
             [
-                (sourceId, 100UL, Root),
-                (sourceId, 100UL, OtherRoot)
+                (SourceId, 100UL, Root),
+                (SourceId, 100UL, OtherRoot)
             ];
             Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.False);
         }
@@ -197,13 +183,12 @@ public class RecentRootStoreTests
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            Write(state, Source, Salt, Root, 100);
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
+            Write(state, SourceId, Root, 100);
 
             (ValueHash256, ulong, ValueHash256)[] references =
             [
-                (sourceId, 100UL, Root),
-                (sourceId, 100UL, Root)
+                (SourceId, 100UL, Root),
+                (SourceId, 100UL, Root)
             ];
             Assert.That(RecentRootStore.AreReferencesValid(state, references, currentSlot: 200), Is.True);
         }
@@ -216,22 +201,19 @@ public class RecentRootStoreTests
         IWorldState state = CreateState(out IDisposable scope);
         using (scope)
         {
-            ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
-            // every reference is individually valid, so only the count decides the result
             (ValueHash256, ulong, ValueHash256)[] references = new (ValueHash256, ulong, ValueHash256)[Eip8272Constants.MaxRecentRootReferences + overCap];
             for (int i = 0; i < references.Length; i++)
             {
                 ulong slot = (ulong)(100 + i);
-                Write(state, Source, Salt, Root, slot);
-                references[i] = (sourceId, slot, Root);
+                Write(state, SourceId, Root, slot);
+                references[i] = (SourceId, slot, Root);
             }
             return RecentRootStore.AreReferencesValid(state, references, currentSlot: 500);
         }
     }
 
-    private static void Write(IWorldState state, Address source, in ValueHash256 salt, in ValueHash256 root, ulong slot)
+    private static void Write(IWorldState state, in ValueHash256 sourceId, in ValueHash256 root, ulong slot)
     {
-        ValueHash256 sourceId = RecentRootStore.SourceId(source, salt);
         StorageCell cell = new(
             Eip8272Constants.RecentRootAddress,
             RecentRootStore.StorageKey(sourceId, slot % Eip8272Constants.RecentRootLength).ToUInt256());
