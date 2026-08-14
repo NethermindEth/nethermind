@@ -25,10 +25,15 @@ public sealed class FrameTxContext(
     in UInt256 maxPriorityFeePerGas,
     in UInt256 maxFeePerGas,
     in UInt256 maxFeePerBlobGas,
-    RecentRootReference[]? recentRootReferences)
+    RecentRootReference[]? recentRootReferences = null,
+    UInt256[]? nonceKeys = null)
 {
     public Address Sender { get; } = sender;
     public ulong Nonce { get; } = nonce;
+
+    /// <summary>The EIP-8250 nonce keys this transaction consumes, or <see langword="null"/> for a plain account nonce.</summary>
+    /// <remarks>When set, <see cref="Nonce"/> is the shared <c>nonce_seq</c> every key currently sits at.</remarks>
+    public UInt256[]? NonceKeys { get; } = nonceKeys;
     public TxFrame[] Frames { get; } = frames;
     public TxFrameSignature[] Signatures { get; } = signatures;
     public ValueHash256 SigHash { get; } = sigHash;
