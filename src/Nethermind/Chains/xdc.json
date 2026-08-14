@@ -149,7 +149,7 @@
   "params": {
     "chainId": 50,
     "homesteadBlock": 1,
-    "eip150Block": 2,
+    "eip150Transition": 2,
     "eip150Hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "eip155Transition": 3,
     "eip158Transition": 3,
@@ -170,7 +170,6 @@
     "eip1108Transition": 38383838,
     "eip1344Transition": 38383838,
     "eip1884Transition": 38383838,
-    "eip2028Transition": 999999999999,
     "eip2200Transition": 38383838,
 
     "eip2565Transition": 98802000,

@@ -56,6 +56,17 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? TipTrc21Fee { get; set; }
     public ulong TIP2019Block { get; set; }
+
+    // Fork blocks the client does not act on itself but that the reference client gathers into the fork ID,
+    // so a peer's EIP-2124 checksum cannot be reproduced without them. See XdcForkInfo.
+    public ulong? TipSigningBlock { get; set; }
+    public ulong? TipRandomizeBlock { get; set; }
+    public ulong? TipIncreaseMasternodesBlock { get; set; }
+    public ulong? TipNoHalvingMNRewardBlock { get; set; }
+    public ulong? TipXDCXLendingBlock { get; set; }
+    public ulong? TipXDCXCancellationFeeBlock { get; set; }
+    public ulong? Gas50xBlock { get; set; }
+
     public ulong? TipUpgradePenalty { get; set; }
     public ulong? TipUpgradeReward { get; set; }
     public UInt256 MasternodeReward { get; set; }

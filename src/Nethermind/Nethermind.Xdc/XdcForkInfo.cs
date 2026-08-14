@@ -33,11 +33,18 @@ public class XdcForkInfo(
 
         Add(engineParameters.SwitchBlock);
         Add(engineParameters.TIP2019Block);
-        Add(engineParameters.TipTrc21Fee);
+        Add(engineParameters.TipSigningBlock);
+        Add(engineParameters.TipRandomizeBlock);
+        Add(engineParameters.TipIncreaseMasternodesBlock);
+        Add(engineParameters.BlackListHFNumber);
+        Add(engineParameters.TipNoHalvingMNRewardBlock);
         Add(engineParameters.TipXDCX);
+        Add(engineParameters.TipXDCXLendingBlock);
+        Add(engineParameters.TipXDCXCancellationFeeBlock);
+        Add(engineParameters.TipTrc21Fee);
+        Add(engineParameters.Gas50xBlock);
         Add(engineParameters.TIPXDCXMinerDisable);
         Add(engineParameters.TIPXDCXReceiverDisable);
-        Add(engineParameters.BlackListHFNumber);
         Add(engineParameters.DynamicGasLimitBlock);
         Add(engineParameters.TipUpgradeReward);
         Add(engineParameters.TipUpgradePenalty);
