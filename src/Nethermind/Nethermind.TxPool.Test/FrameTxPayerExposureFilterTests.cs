@@ -91,7 +91,8 @@ public class FrameTxPayerExposureFilterTests
         bump.Nonce = bumpNonce;
         bump.Hash = TestItem.KeccakB;
 
-        // The two summed exceed the balance, so only discounting the displaced incumbent can admit the bump.
+        // The two summed exceed the balance, so only discounting the displaced incumbent admits the bump.
+        // Case three's reservation is synthetic: admission cannot leave Payer reserved with nothing pending.
         PayerExposureCache cache = new();
         cache.TryReserve(Payer, incumbentCost, balance: balance, out _);
 
