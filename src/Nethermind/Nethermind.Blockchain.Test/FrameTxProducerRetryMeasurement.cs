@@ -23,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -142,7 +143,7 @@ public class FrameTxProducerRetryMeasurement
         IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
         balManager.Enabled.Returns(false);
         BlockProcessor.BlockProductionTransactionsExecutor executor =
-            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager);
+            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager, NullTxPool.Instance);
 
         Transaction tx = FrameTx(verifyGas);
         UInt256 beneficiaryBefore = _stateProvider.GetBalance(Beneficiary);

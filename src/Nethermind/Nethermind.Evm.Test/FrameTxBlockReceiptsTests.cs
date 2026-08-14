@@ -44,6 +44,8 @@ public class FrameTxBlockReceiptsTests
         Assert.That(receipt.Payer, Is.EqualTo(Sender));
         // No top-level `to` and no top-level creation: naming either would invent an address, and the
         // receipt-recovery path derives these independently, so both must answer the same.
+        Assert.That(receipt.ContractAddress, Is.Null);
+        Assert.That(receipt.Recipient, Is.Null);
         Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(2));
         Assert.That(receipt.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
         Assert.That(receipt.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
