@@ -3123,6 +3123,51 @@ public class BlockTreeTests
         Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(6UL));
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_post_merge_when_suggested_blocks_sit_ahead_of_head()
+    {
+        // Repro of #12803: after an unclean shutdown a post-merge node restarts with
+        // suggested-but-unprocessed blocks above the processed head. Those levels have no
+        // main-chain block, so the canonical-only FindHeader(number) lookup cannot restore
+        // BestSuggestedHeader/BestSuggestedBody and sync mode selection sees header/block = 0.
+        CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance))
+        {
+            TerminalTotalDifficulty = UInt256.Zero
+        };
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        tree.SuggestBlock(previous);
+        tree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
+        for (ulong i = 1; i <= 4; i++)
+        {
+            Block block = Build.A.Block.WithNumber(i).WithDifficulty(0).WithParent(previous).TestObject;
+            tree.SuggestBlock(block);
+            tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
+            previous = block;
+        }
+
+        // Received but not yet processed when the node went down.
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
+        tree.SuggestBlock(block5);
+        tree.SuggestBlock(block6);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.Head?.Number, Is.EqualTo(4UL), "head");
+            Assert.That(reloaded.BestSuggestedHeader?.Number, Is.EqualTo(6UL), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Number, Is.EqualTo(6UL), "suggested body");
+        }
+    }
+
     private static void AssertSuggestNotifications(AddBlockResult result, bool hasNotified, bool hasNotifiedNewSuggested)
     {
         using (Assert.EnterMultipleScope())

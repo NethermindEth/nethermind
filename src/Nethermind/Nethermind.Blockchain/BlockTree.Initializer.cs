@@ -259,11 +259,74 @@ public partial class BlockTree
         }
 
         BestKnownNumber = bestKnownNumberFound;
-        BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
+        // FindHeader(number) is canonical-only and post-merge returns null for levels with no
+        // main-chain block — where suggested-but-unprocessed blocks live after a restart. Fall
+        // back to any header/body at the resolved level, mirroring HeaderExists/BodyExists.
+        BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None)
+            ?? FindHeaderAtLevel(bestSuggestedHeaderNumber, findBeacon: false);
         BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
-        BestSuggestedBody = bestSuggestedBodyHeader is null
+        BestSuggestedBody = (bestSuggestedBodyHeader is null
             ? null
-            : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
+            : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None))
+            ?? FindBlockAtLevel(bestSuggestedBodyNumber, findBeacon: false);
+    }
+
+    /// <summary>
+    /// Finds a stored header at the given level matching the <see cref="HeaderExists"/> predicate,
+    /// regardless of whether the level has a main-chain block.
+    /// </summary>
+    private BlockHeader? FindHeaderAtLevel(ulong blockNumber, bool findBeacon)
+    {
+        ChainLevelInfo? level = LoadLevel(blockNumber);
+        if (level is null)
+        {
+            return null;
+        }
+
+        foreach (BlockInfo blockInfo in level.BlockInfos)
+        {
+            if (blockInfo.IsBeaconHeader != findBeacon)
+            {
+                continue;
+            }
+
+            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
+            if (header is not null)
+            {
+                return header;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Finds a stored block at the given level matching the <see cref="BodyExists"/> predicate,
+    /// regardless of whether the level has a main-chain block.
+    /// </summary>
+    private Block? FindBlockAtLevel(ulong blockNumber, bool findBeacon)
+    {
+        ChainLevelInfo? level = LoadLevel(blockNumber);
+        if (level is null)
+        {
+            return null;
+        }
+
+        foreach (BlockInfo blockInfo in level.BlockInfos)
+        {
+            if (blockInfo.IsBeaconBody != findBeacon)
+            {
+                continue;
+            }
+
+            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
+            if (block is not null)
+            {
+                return block;
+            }
+        }
+
+        return null;
     }
 
 
