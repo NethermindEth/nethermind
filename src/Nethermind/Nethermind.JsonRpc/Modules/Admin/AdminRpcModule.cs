@@ -198,7 +198,10 @@ public class AdminRpcModule : IAdminRpcModule
     public ResultWrapper<bool> admin_unsubscribe(string subscriptionId)
     {
         bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
-        return ResultWrapper<bool>.Success(unsubscribed);
+        return unsubscribed
+            ? ResultWrapper<bool>.Success(true)
+            // Geth-compatible: unknown ids get a -32000 "subscription not found" error
+            : ResultWrapper<bool>.Fail("subscription not found", ErrorCodes.ResourceNotFound);
     }
 
     public JsonRpcContext Context { get; set; }

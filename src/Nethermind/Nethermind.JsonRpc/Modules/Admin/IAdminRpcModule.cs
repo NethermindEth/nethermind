@@ -111,6 +111,6 @@ public interface IAdminRpcModule : IContextAwareRpcModule
 
     [JsonRpcMethod(Description = "Subscribes to a particular event over WebSocket. For every event that matches the subscription, a notification with event details and subscription id is sent to a client.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
     ResultWrapper<string> admin_subscribe(string subscriptionName, string? args = null);
-    [JsonRpcMethod(Description = "Unsubscribes from a subscription. Returns true if the subscription was cancelled; false if it did not exist.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
+    [JsonRpcMethod(Description = "Unsubscribes from a subscription. Returns true on success; if the subscription does not exist, a 'subscription not found' error is returned.", IsImplemented = true, IsSharable = false, Availability = RpcEndpoint.All & ~RpcEndpoint.Http)]
     ResultWrapper<bool> admin_unsubscribe(string subscriptionId);
 }
