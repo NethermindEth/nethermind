@@ -71,9 +71,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             prevIsAtomicBatch = frame.IsAtomicBatch;
         }
 
-        if (tx.RecentRootReferences is not null && !spec.IsEip8272Enabled)
+        if (tx.RecentRootReferences is { } references)
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
+            if (!spec.IsEip8272Enabled)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
+            }
+
+            if (references.Length > Eip8272Constants.MaxRecentRootReferences)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("too many recent root references");
+            }
         }
 
         // The frame gas sum is overflow-checked so the processor does not depend on static validation

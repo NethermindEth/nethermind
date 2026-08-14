@@ -1372,6 +1372,28 @@ public class FrameTxProcessorTests
     }
 
     /// <remarks>
+    /// The wire and pool paths cap the reference count in the decoder and the validator, but a set built from
+    /// RPC input reaches the processor uncapped. Rejecting it before <c>Measure</c> keeps its bounded
+    /// <c>stackalloc</c> from an out-of-range slice on an over-capped call.
+    /// </remarks>
+    [Test]
+    public void Execute_MoreRecentRootReferencesThanTheCap_AreRejected()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1];
+        Array.Fill(references, new RecentRootReference(default, 0, default));
+        tx.RecentRootReferences = references;
+
+        TransactionResult result = Process(tx, slotNumber: 1_001);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        Assert.That(result.ErrorDescription, Does.Contain("too many"));
+    }
+
+    /// <remarks>
     /// An empty reference list is a different envelope from an absent one and still occupies the single
     /// byte <c>0xc0</c> on the wire, so it is priced: EIP-8272 short-circuits the per-reference term at
     /// zero references, not the calldata term over <c>rlp(recent_root_references)</c>, which enters the
