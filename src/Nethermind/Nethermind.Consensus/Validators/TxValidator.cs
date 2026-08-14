@@ -11,6 +11,7 @@ using Nethermind.Core.Validation;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Validators;
@@ -97,6 +98,7 @@ public sealed class TxValidator : ITxValidator
             // The frame-tx decoder always populates both blob fields, so the presence-based
             // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
             FrameTxFieldsTxValidator.Instance,
+            FrameTxNonceKeysTxValidator.Instance,
             FrameTxEnvelopeTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
             MempoolBlobTxValidator.Instance
@@ -219,6 +221,36 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
         }
 
         return ValidationResult.Success;
+    }
+}
+
+/// <summary>Admits the EIP-8250 keyed-nonce envelope only on forks that define it, and only well-formed.</summary>
+/// <remarks>
+/// Pre-fork the keys carry no replay protection at all — the account nonce is left untouched — so admitting
+/// one would make the transaction replayable. Well-formedness is re-checked because <c>eth_call</c>,
+/// <c>eth_estimateGas</c> and block building construct a transaction without going through the decoder.
+/// </remarks>
+public sealed class FrameTxNonceKeysTxValidator : ITxValidator
+{
+    public static readonly FrameTxNonceKeysTxValidator Instance = new();
+    private FrameTxNonceKeysTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        UInt256[]? nonceKeys = transaction.NonceKeys;
+        if (nonceKeys is null)
+        {
+            return ValidationResult.Success;
+        }
+
+        if (!releaseSpec.IsEip8250Enabled)
+        {
+            return FrameTxValidation.KeyedNoncesNotEnabled;
+        }
+
+        return KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) && transaction.Nonce < Eip8250Constants.MaxNonceSeq
+            ? ValidationResult.Success
+            : FrameTxValidation.MalformedNonceKeySet;
     }
 }
 
