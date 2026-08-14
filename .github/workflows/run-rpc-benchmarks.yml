@@ -755,6 +755,8 @@ jobs:
           # Size corpus cells by request count rather than wall time (rate is still rps_list).
           corpus_requests="$(get '.corpus_requests')"; [[ -n "${corpus_requests}" ]] && export CORPUS_REQUESTS="${corpus_requests}"
           corpus_passes="$(get '.corpus_passes')";     [[ -n "${corpus_passes}" ]] && export CORPUS_PASSES="${corpus_passes}"
+          # 0 measures a cold node deliberately — the cold/warm gap is itself a result worth having.
+          corpus_warmup="$(get '.corpus_warmup_duration')"; [[ -n "${corpus_warmup}" ]] && export CORPUS_WARMUP_DURATION="${corpus_warmup}"
           # Parity holds every record in memory; raising this is a deliberate act, not a default.
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
           # Per-record latency matrix; bypasses k6, so it is how a large corpus runs at a high rate.
