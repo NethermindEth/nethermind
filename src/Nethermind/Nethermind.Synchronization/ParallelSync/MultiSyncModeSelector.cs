@@ -127,9 +127,16 @@ namespace Nethermind.Synchronization.ParallelSync
                     reason = "No Useful Peers";
                 }
                 // to avoid expensive checks we make this simple check at the beginning
+                else if (!TryEnsureSnapshot(peerDifficulty, peerBlock.Value, inBeaconControl, out Snapshot best, out newModes, out reason))
+                {
+                    // Progress pointers could not be reconciled even after a recalculation attempt.
+                    // Falling through to UpdateSyncModes below (rather than letting the exception
+                    // propagate out of Update, as before) means Current still gets set instead of
+                    // staying frozen - otherwise this exact failure would repeat every tick forever
+                    // with no chance for the pointers to recover.
+                }
                 else
                 {
-                    Snapshot best = EnsureSnapshot(peerDifficulty, peerBlock.Value, inBeaconControl);
                     best.IsInBeaconHeaders = ShouldBeInBeaconHeaders();
 
                     if (!FastSyncEnabled)
@@ -587,6 +594,28 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellation);
+
+        /// <summary>
+        /// Same reconciliation as <see cref="EnsureSnapshot"/> but reports an unrecoverable snapshot
+        /// via the return value instead of throwing, so a caller can still set a sync mode (rather than
+        /// leave <see cref="Current"/> frozen) and give the next tick a chance for the pointers to recover.
+        /// </summary>
+        private bool TryEnsureSnapshot(in UInt256? peerDifficulty, ulong peerBlock, bool inBeaconControl, out Snapshot best, out SyncMode newModes, out string reason)
+        {
+            newModes = SyncMode.Disconnected;
+            reason = string.Empty;
+            try
+            {
+                best = EnsureSnapshot(peerDifficulty, peerBlock, inBeaconControl);
+                return true;
+            }
+            catch (InvalidAsynchronousStateException)
+            {
+                best = default;
+                reason = "Snapshot Misalignment";
+                return false;
+            }
+        }
 
         private Snapshot EnsureSnapshot(in UInt256? peerDifficulty, ulong peerBlock, bool inBeaconControl)
         {
