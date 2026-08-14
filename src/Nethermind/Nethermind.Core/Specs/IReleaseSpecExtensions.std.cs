@@ -8,13 +8,9 @@ namespace Nethermind.Core.Specs;
 public static partial class IReleaseSpecExtensions
 {
     private static readonly ConditionalWeakTable<IReleaseSpec, IReleaseSpec> _noEip158Specs = [];
-    private static readonly ConditionalWeakTable<IReleaseSpec, IReleaseSpec> _noEip3607Specs = [];
 
     private static IReleaseSpec GetNoEip158Spec(IReleaseSpec spec) =>
         _noEip158Specs.GetValue(spec, static s => new NoEip158Spec(s));
-
-    private static IReleaseSpec GetNoEip3607Spec(IReleaseSpec spec) =>
-        _noEip3607Specs.GetValue(spec, static s => new NoEip3607Spec(s));
 
     extension(IReleaseSpec spec)
     {

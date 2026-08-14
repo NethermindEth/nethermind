@@ -55,9 +55,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
         // Argument evaluation is left-to-right, so this read order must match Encode's write order.
         return new LightTransaction(
             timestamp: ctx.DecodeUInt256(),
-            sender: ctx.DecodeAddress()!,
+            sender: ctx.DecodeAddress(),
             nonce: ctx.DecodeULong(),
-            hash: ctx.DecodeKeccak()!,
+            hash: ctx.DecodeKeccak(),
             value: ctx.DecodeUInt256(),
             gasLimit: ctx.DecodeULong(),
             gasPrice: ctx.DecodeUInt256(),
