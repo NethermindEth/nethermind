@@ -25,6 +25,7 @@ public sealed class FrameTxContext(
     in UInt256 maxPriorityFeePerGas,
     in UInt256 maxFeePerGas,
     in UInt256 maxFeePerBlobGas,
+    RecentRootReference[]? recentRootReferences = null,
     UInt256[]? nonceKeys = null)
 {
     public Address Sender { get; } = sender;
@@ -40,6 +41,10 @@ public sealed class FrameTxContext(
     public UInt256 MaxPriorityFeePerGas { get; } = maxPriorityFeePerGas;
     public UInt256 MaxFeePerGas { get; } = maxFeePerGas;
     public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
+
+    /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
+    /// <remarks>The absent and the empty list are different envelopes but indistinguishable to executing code.</remarks>
+    public RecentRootReference[] RecentRootReferences { get; } = recentRootReferences ?? [];
 
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }
