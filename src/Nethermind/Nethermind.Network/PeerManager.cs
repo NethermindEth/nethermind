@@ -771,7 +771,12 @@ namespace Nethermind.Network
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
-            if (peer.Node.Id == _enode.PublicKey) return;
+            // A hairpinned NAT or a discovery record echoing our own ENR would otherwise dial ourselves
+            if (peer.Node.Id == _enode.PublicKey)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Skipping outgoing connection to self: {peer.Node.Id}");
+                return;
+            }
 
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
 

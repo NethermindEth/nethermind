@@ -413,7 +413,7 @@ namespace Nethermind.Network.Test
 
             ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
 
-            Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(0).After(500),
+            Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(0).After(_delay),
                 "a discovered node carrying the local identity is a hairpinned self-dial and must never be attempted");
         }
 
