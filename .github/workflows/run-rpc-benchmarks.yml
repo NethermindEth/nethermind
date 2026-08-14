@@ -666,6 +666,10 @@ jobs:
           export JB_VALIDATE_SCHEMA="$(getb '.validate_schema')"
           export JB_DEEP_CHECK="$(getb '.deep_check')"
           export JB_ETH_CALL_CORPUS="${RESOLVED_ETH_CALL_CORPUS}"   # resolved once in `resolve`
+          # Which corpus to replay. The sweep picks one with corpus_glob; this path had no
+          # equivalent and always replayed the default file, so a profile taken here could not be
+          # compared against a sweep measured on a different corpus.
+          jb_corpus="$(get '.corpus_file')";             [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
           jb_html="$(getb '.html_report')";              [[ -n "${jb_html}" ]] && export JB_HTML_REPORT="${jb_html}"
           export JB_FAIL_ON_DIFF="$(getb '.fail_on_diff')"
           # getb: '// empty' would swallow an explicit 0 (jq treats it as truthy-false).
