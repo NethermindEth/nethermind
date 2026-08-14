@@ -218,10 +218,7 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return !blobGasLimitResult ? blobGasLimitResult : BlobFieldsTxValidator.ValidateBlobVersionedHashes(blobVersionedHashes);
         }
 
-        // EIP-8141 Constraints: "if len(tx.blob_versioned_hashes) == 0: assert tx.max_fee_per_blob_gas == 0".
-        return transaction.MaxFeePerBlobGas.GetValueOrDefault().IsZero
-            ? ValidationResult.Success
-            : TxErrorMessages.BloblessFrameTxMaxFeePerBlobGasNotZero;
+        return ValidationResult.Success;
     }
 }
 

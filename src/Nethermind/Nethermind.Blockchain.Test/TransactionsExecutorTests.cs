@@ -494,7 +494,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void CanAddTransaction_admits_blob_carrying_frame_transaction()
         {
-            // The blob-selection path resolves the sidecar before the picker sees the transaction.
+            // The picker no longer skips blob carriers; the sidecar guard is ResolveBlob, upstream of it.
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
