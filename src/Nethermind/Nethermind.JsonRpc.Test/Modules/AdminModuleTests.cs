@@ -354,7 +354,7 @@ public class AdminModuleTests
     }
 
     [Test]
-    public async Task AdminUnsubscribe_AfterClientCloses_ReturnsFailure()
+    public async Task AdminUnsubscribe_AfterClientCloses_ReturnsFalse()
     {
         string serializedPeerEvents = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_subscribe", "peerEvents");
         string peerEventsId = serializedPeerEvents.Substring(serializedPeerEvents.Length - 44, 34);
@@ -364,10 +364,8 @@ public class AdminModuleTests
         _jsonRpcDuplexClient.Closed += Raise.Event();
 
         string serializedPeerEventsUnsub = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_unsubscribe", peerEventsId);
-        string expectedPeerEventsUnsub = string.Concat(
-            "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-            peerEventsId, ".\"},\"id\":67}");
-        Assert.That(expectedPeerEventsUnsub, Is.EqualTo(serializedPeerEventsUnsub), "after the client closes, the subscription is removed and unsubscribe fails");
+        string expectedPeerEventsUnsub = "{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}";
+        Assert.That(expectedPeerEventsUnsub, Is.EqualTo(serializedPeerEventsUnsub), "after the client closes, the subscription is removed and unsubscribe returns false");
     }
 
     [Test]

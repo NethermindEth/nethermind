@@ -35,9 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public ResultWrapper<bool> eth_unsubscribe(string subscriptionId)
         {
             bool unsubscribed = subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
-            return unsubscribed
-                ? ResultWrapper<bool>.Success(true)
-                : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
+            return ResultWrapper<bool>.Success(unsubscribed);
         }
 
         public JsonRpcContext Context { get; set; }

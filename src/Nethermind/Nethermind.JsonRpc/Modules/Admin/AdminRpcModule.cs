@@ -198,9 +198,7 @@ public class AdminRpcModule : IAdminRpcModule
     public ResultWrapper<bool> admin_unsubscribe(string subscriptionId)
     {
         bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
-        return unsubscribed
-            ? ResultWrapper<bool>.Success(true)
-            : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
+        return ResultWrapper<bool>.Success(unsubscribed);
     }
 
     public JsonRpcContext Context { get; set; }
