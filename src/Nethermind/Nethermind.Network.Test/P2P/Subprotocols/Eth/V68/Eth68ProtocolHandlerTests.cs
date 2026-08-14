@@ -474,7 +474,9 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public async Task Should_serve_multiple_oversized_pooled_transactions_within_soft_limit()
     {
+        const int transactionCount = 12;
         Transaction tx = Build.A.Transaction.WithData(new byte[200_000]).SignedAndResolved().TestObject;
+        int transactionsInResponse = 2 * MemorySizes.MiB / tx.GetLength();
         _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
             .Returns(x =>
             {
@@ -482,10 +484,34 @@ public class Eth68ProtocolHandlerTests
                 return true;
             });
 
-        using Eth65GetPooledTransactionsMessage request = new(new Hash256[12].ToPooledList());
+        ArrayPoolList<Hash256> hashes = new(transactionCount);
+        for (int i = 0; i < transactionCount; i++)
+        {
+            hashes.Add(new Hash256(i.ToString("X64")));
+        }
+
+        using Eth65GetPooledTransactionsMessage request = new(hashes);
         using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
 
-        Assert.That(response.Transactions.Count, Is.EqualTo(10));
+        Assert.That(response.Transactions.Count, Is.EqualTo(transactionsInResponse));
+    }
+
+    [Test]
+    public async Task Should_serve_a_single_transaction_larger_than_the_soft_limit()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[2 * MemorySizes.MiB]).SignedAndResolved().TestObject;
+        _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
+        using Eth65GetPooledTransactionsMessage request = new(hashes);
+        using Eth65PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        Assert.That(response.Transactions.Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -502,11 +528,10 @@ public class Eth68ProtocolHandlerTests
         _transactionPool.Received(1).NotifyAboutTx(TestItem.KeccakA, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
     }
 
-    [TestCase(0, (byte)TxType.Legacy, false)]
-    [TestCase(100, (byte)TxType.Blob, true)]
-    [TestCase(100, (byte)TxType.DepositTx, false)]
-    [TestCase(100, byte.MaxValue, false)]
-    public void Should_not_request_or_register_invalid_transaction_shape(int size, byte type, bool shouldRetainShape)
+    [TestCase(0, (byte)TxType.Legacy)]
+    [TestCase(100, (byte)TxType.DepositTx)]
+    [TestCase(100, byte.MaxValue)]
+    public void Should_request_when_announcement_shape_is_invalid(int size, byte type)
     {
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { type },
@@ -524,13 +549,33 @@ public class Eth68ProtocolHandlerTests
         _session.ClearReceivedCalls();
         _handler.HandleMessages([TestItem.KeccakA]);
 
-        _session.Received(shouldRetainShape ? 0 : 1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+        _session.Received(1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
     [Test]
-    public void Should_preserve_first_valid_shape_for_batched_retry()
+    public void Should_retain_decodable_but_unrequestable_shape_for_delivery_validation()
     {
-        int largeSize = TransactionsMessage.MaxPacketSize / 2 + 1;
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).SignedAndResolved().WithHash(TestItem.KeccakA).TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)TxType.Blob },
+            new ArrayPoolList<int>(1) { tx.GetLength() },
+            new ArrayPoolList<Hash256>(1) { tx.Hash });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
+    public void Should_preserve_first_valid_shape_for_conservative_batched_retry()
+    {
+        int largeSize = TransactionsMessage.MaxPacketSize + 1;
         _transactionPool.NotifyAboutTx(
                 Arg.Any<Hash256>(),
                 Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
@@ -588,7 +633,7 @@ public class Eth68ProtocolHandlerTests
 
     private void ReplaceHandler(ITxPoolConfig txPoolConfig)
     {
-        // Complete the discarded handler's handshake so its pending init timeout cannot disconnect the shared session substitute.
+        // Complete the outgoing handler's handshake so its pending protocol-init timeout cannot disconnect the shared session substitute.
         HandleIncomingStatusMessage();
         _handler.Dispose();
         _handler = CreateHandler(txPoolConfig);

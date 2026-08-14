@@ -47,8 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override byte ProtocolVersion => EthVersions.Eth65;
 
         private const int MaxNumberOfTxsInOneMsg = 256;
-
-        protected virtual int PooledTransactionsResponseSizeLimit => TransactionsMessage.MaxPacketSize;
+        private const int PooledTransactionsResponseSoftLimit = 2 * MemorySizes.MiB;
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
@@ -128,7 +127,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         {
             ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
 
-            int packetSizeLeft = PooledTransactionsResponseSizeLimit;
+            // Eth/68 and later use the 2 MiB pooled-transactions soft response limit from the devp2p eth capability.
+            int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
+                ? PooledTransactionsResponseSoftLimit
+                : TransactionsMessage.MaxPacketSize;
             foreach (Hash256 hash in msg.Hashes.AsSpan())
             {
                 if (cancellationToken.IsCancellationRequested) break;

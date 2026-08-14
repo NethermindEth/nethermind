@@ -45,8 +45,6 @@ public class Eth68ProtocolHandler(ISession session,
     private const int MaxPooledTransactionHashesPerRequest = 256;
     private const int PooledTransactionsResponseSoftLimit = 2 * MemorySizes.MiB;
 
-    protected override int PooledTransactionsResponseSizeLimit => PooledTransactionsResponseSoftLimit;
-
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
@@ -154,7 +152,9 @@ public class Eth68ProtocolHandler(ISession session,
         }
 
         int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-        int responseSizeLeft = PooledTransactionsResponseSoftLimit;
+        // Retry batches must remain compatible with peers that still use the 100 KiB response target.
+        int responseSizeLimit = registerForRetry ? PooledTransactionsResponseSoftLimit : TransactionsMessage.MaxPacketSize;
+        int responseSizeLeft = responseSizeLimit;
         int requestCapacity = Math.Min(newTxHashesIndexes.Count, MaxPooledTransactionHashesPerRequest);
         ArrayPoolList<Hash256>? hashesToRequest = null;
         int toRequestCount = 0;
@@ -169,7 +169,7 @@ public class Eth68ProtocolHandler(ISession session,
             int txSize = txShape.Size;
 
             bool isOversized = txSize > TransactionsMessage.MaxPacketSize;
-            if (ShouldSendCurrentRequest(isOversized, txSize, packetSizeLeft, responseSizeLeft, toRequestCount, hasOversizedTransaction))
+            if (ShouldSendCurrentRequest(txSize, packetSizeLeft, responseSizeLeft, toRequestCount, hasOversizedTransaction))
             {
                 SendHashesToRequest();
             }
@@ -200,7 +200,7 @@ public class Eth68ProtocolHandler(ISession session,
             hashesToRequest = null;
             SendPooledTransactionRequest<V66.Messages.GetPooledTransactionsMessage>(request);
             packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            responseSizeLeft = PooledTransactionsResponseSoftLimit;
+            responseSizeLeft = responseSizeLimit;
             toRequestCount = 0;
             hasOversizedTransaction = false;
         }
@@ -263,12 +263,8 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private bool CanRequestPooledTransaction(TxType txType) => txType switch
-    {
-        TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.SetCode => true,
-        TxType.Blob => _blobSupportEnabled,
-        _ => false,
-    };
+    private bool CanRequestPooledTransaction(TxType txType) =>
+        CanDecodeTransactionType(txType) && (txType is not TxType.Blob || _blobSupportEnabled);
 
     private static bool CanDecodeTransactionType(TxType txType) => txType switch
     {
@@ -277,16 +273,21 @@ public class Eth68ProtocolHandler(ISession session,
     };
 
     private static bool ShouldSendCurrentRequest(
-        bool isOversized,
         int txSize,
         int packetSizeLeft,
         int responseSizeLeft,
         int toRequestCount,
-        bool hasOversizedTransaction) =>
-        toRequestCount >= MaxPooledTransactionHashesPerRequest
-        || (toRequestCount > 0 && isOversized != hasOversizedTransaction)
-        || (!isOversized && txSize > packetSizeLeft && toRequestCount > 0)
-        || (isOversized && txSize > responseSizeLeft && toRequestCount > 0);
+        bool hasOversizedTransaction)
+    {
+        if (toRequestCount == 0)
+        {
+            return false;
+        }
+
+        bool isOversized = txSize > TransactionsMessage.MaxPacketSize;
+        return isOversized != hasOversizedTransaction
+            || (isOversized ? txSize > responseSizeLeft : txSize > packetSizeLeft);
+    }
 
     private ArrayPoolListRef<int> AddMarkUnknownHashes(
         ReadOnlySpan<Hash256> hashes,
@@ -315,6 +316,7 @@ public class Eth68ProtocolHandler(ISession session,
                 if (!CanRequestPooledTransaction(txShape.Type)
                     || txShape.Size > (txShape.Type.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
                 {
+                    // Keep the valid shape for delivery validation, but make shaped retries a no-op for transactions this node cannot process.
                     continue;
                 }
 
