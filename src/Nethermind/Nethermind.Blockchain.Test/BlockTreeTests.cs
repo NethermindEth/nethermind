@@ -3076,10 +3076,8 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void RecalculateTreeLevels_WhenBestSuggestedHeaderUnresolvableInPoS_StopsAtBeaconJunction()
     {
-        // Post-merge repro of the O(n) startup walk (#12273): on a node whose best-suggested
-        // header sits ahead of the processed main-chain head, the reconciliation must stop at
-        // the beacon/non-beacon junction rather than walking every already-synced header to
-        // genesis (the old stop bound collapsed to 1 when BestSuggestedHeader restored as null).
+        // Post-merge repro of the O(n) startup walk (#12273): reconciliation must stop at the
+        // beacon/non-beacon junction rather than walking every already-synced header to genesis.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         _blocksDb = new TestMemDb();
@@ -3092,7 +3090,6 @@ public class BlockTreeTests
             .WithoutSettingHead
             .TestObject;
 
-        // Already-synced, processed main chain 0..4 (non-beacon, canonical).
         Block previous = SuggestProcessedPostMergeChain(tree);
 
         // A non-beacon header suggested ahead of the processed head, on a level with no
@@ -3113,10 +3110,8 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_suggested_post_merge_when_suggested_blocks_sit_ahead_of_head()
     {
-        // Repro of #12803: after an unclean shutdown a post-merge node restarts with
-        // suggested-but-unprocessed blocks above the processed head. Those levels have no
-        // main-chain block, so the canonical-only FindHeader(number) lookup cannot restore
-        // BestSuggestedHeader/BestSuggestedBody and sync mode selection sees header/block = 0.
+        // Repro of #12803: a post-merge restart with suggested-but-unprocessed blocks above the
+        // head must restore the best-suggested pointers from levels with no main-chain block.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
@@ -3146,8 +3141,8 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_suggested_beacon_post_merge_when_beacon_blocks_sit_ahead_of_head()
     {
-        // Beacon variant of #12803: beacon inserts are NotOnMainChain, so the canonical-only
-        // lookup cannot restore the beacon pointers after a restart mid beacon sync.
+        // Beacon variant of #12803: beacon inserts are NotOnMainChain, invisible to the
+        // canonical-only lookup on restart.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
@@ -3178,9 +3173,7 @@ public class BlockTreeTests
         TerminalTotalDifficulty = UInt256.Zero
     };
 
-    /// <summary>
-    /// Suggests and processes a canonical post-merge chain 0..4, returning the head block.
-    /// </summary>
+    /// <summary>Suggests and processes a canonical post-merge chain 0..4, returning the head block.</summary>
     private static Block SuggestProcessedPostMergeChain(BlockTree tree)
     {
         Block previous = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;

@@ -36,10 +36,8 @@ public partial class BlockTree
         // An unclean shutdown between a beacon header write and its pointer update can leave
         // LowestInsertedBeaconHeader parked above headers the backfill had already inserted.
         // Walk down through the contiguous beacon segment and stop at the merge junction — the
-        // first already-synced non-beacon block. Anchoring on IsKnownBlock (rather than the
-        // BestSuggestedHeader number) keeps the walk bounded to the beacon segment even when
-        // the suggested pointers are missing or stale; a collapsed stop bound used to drag the
-        // walk down the whole canonical chain (#12273).
+        // first already-synced non-beacon block. Anchoring on IsKnownBlock keeps the walk bounded
+        // to the beacon segment even when the suggested pointers are missing or stale (#12273).
         BlockHeader current = lowest;
         while (current.ParentHash is not null)
         {
@@ -259,19 +257,15 @@ public partial class BlockTree
         }
 
         BestKnownNumber = bestKnownNumberFound;
-        // FindHeader(number) is canonical-only and post-merge returns null for levels with no
-        // main-chain block — where suggested-but-unprocessed blocks live after a restart. Fall
-        // back to any header/body at the resolved level, mirroring HeaderExists/BodyExists.
+        // The canonical FindHeader(number)/FindBlock(number) miss post-merge levels with no
+        // main-chain block — where suggested-but-unprocessed blocks live after a restart (#12803).
         BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None)
             ?? FindHeaderAtLevel(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None, findBeacon: false);
         BestSuggestedBody = FindBlock(bestSuggestedBodyNumber, BlockTreeLookupOptions.None)
             ?? FindBlockAtLevel(bestSuggestedBodyNumber, BlockTreeLookupOptions.None, findBeacon: false);
     }
 
-    /// <summary>
-    /// Finds a stored header at the given level matching the <see cref="HeaderExists"/> predicate,
-    /// regardless of whether the level has a main-chain block.
-    /// </summary>
+    /// <summary>Finds a stored header at the given level, canonical or not; mirrors <see cref="HeaderExists"/>.</summary>
     private BlockHeader? FindHeaderAtLevel(ulong blockNumber, BlockTreeLookupOptions options, bool findBeacon)
     {
         ChainLevelInfo? level = LoadLevel(blockNumber);
@@ -297,10 +291,7 @@ public partial class BlockTree
         return null;
     }
 
-    /// <summary>
-    /// Finds a stored block at the given level matching the <see cref="BodyExists"/> predicate,
-    /// regardless of whether the level has a main-chain block.
-    /// </summary>
+    /// <summary>Finds a stored block at the given level, canonical or not; mirrors <see cref="BodyExists"/>.</summary>
     private Block? FindBlockAtLevel(ulong blockNumber, BlockTreeLookupOptions options, bool findBeacon)
     {
         ChainLevelInfo? level = LoadLevel(blockNumber);
