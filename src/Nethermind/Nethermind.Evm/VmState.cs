@@ -70,7 +70,8 @@ public class VmState<TGasPolicy> : IDisposable
         ExecutionType executionType,
         ExecutionEnvironment env,
         in StackAccessTracker accessedItems,
-        in Snapshot snapshot)
+        in Snapshot snapshot,
+        bool isStatic = false)
     {
         VmState<TGasPolicy> state = Rent();
         state.Initialize(
@@ -79,7 +80,7 @@ public class VmState<TGasPolicy> : IDisposable
             outputLength: 0L,
             executionType: executionType,
             isTopLevel: true,
-            isStatic: false,
+            isStatic: isStatic,
             isCreateOnPreExistingAccount: false,
             isCreateStateGasCharged: false,
             newAccountCharged: false,

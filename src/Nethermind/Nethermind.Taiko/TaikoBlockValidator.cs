@@ -113,12 +113,14 @@ public class TaikoBlockValidator(
 
         // We don't set the tx.SenderAddress here, as it will stop the rest of the transactions in the block
         // from getting their sender address recovered
-        Address? senderAddress = tx.SenderAddress ?? ecdsa.RecoverAddress(tx);
-
+        Address? senderAddress = tx.SenderAddress;
         if (senderAddress is null)
         {
-            errorMessage = "Anchor transaction sender address is not recoverable";
-            return false;
+            if (!ecdsa.TryRecoverAddress(tx, out senderAddress))
+            {
+                errorMessage = "Anchor transaction sender address is not recoverable";
+                return false;
+            }
         }
 
         if (!senderAddress.Equals(GoldenTouchAccount))

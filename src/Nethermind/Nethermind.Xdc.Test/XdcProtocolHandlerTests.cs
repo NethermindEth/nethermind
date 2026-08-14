@@ -138,7 +138,7 @@ public class XdcProtocolHandlerTests
             HandleIncomingStatus(handler, serializer);
             handler.HandleMessage(packet);
 
-            timeoutManager.Received(1).OnReceiveTimeout(Arg.Any<Timeout>());
+            timeoutManager.Received(1).OnReceiveTimeout(timeout);
         }
     }
 

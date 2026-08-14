@@ -13,8 +13,8 @@ public static class PeerInfoExtensions
 
     public static bool CanGetNodeData(this ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
 
-    public static bool CanGetSnapData(this PeerInfo peerInfo) => peerInfo.SyncPeer.CanGetSnapData();
+    public static bool CanGetTrieNodes(this PeerInfo peerInfo) => peerInfo.SyncPeer.CanGetTrieNodes();
 
-    public static bool CanGetSnapData(this ISyncPeer peer) =>
+    public static bool CanGetTrieNodes(this ISyncPeer peer) =>
         peer.TryGetSatelliteProtocol<object>(Protocol.Snap, out _);
 }

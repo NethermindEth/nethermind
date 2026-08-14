@@ -1,8 +1,8 @@
 name: Stateless glamsterdam-devnet tests
 
 on:
-  schedule:
-    - cron: '12 */12 * * *'
+  # schedule:
+  #   - cron: '12 */12 * * *'
   workflow_dispatch:
 
 permissions:

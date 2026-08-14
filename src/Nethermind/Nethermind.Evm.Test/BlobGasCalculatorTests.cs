@@ -53,6 +53,19 @@ public class BlobGasCalculatorTests
         Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
     }
 
+    [Test]
+    public void CalculateBlobGas_counts_blob_carrying_frame_txs_alongside_type3()
+    {
+        Transaction type3 = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(2).TestObject;
+        Transaction frameWithBlobs = Build.A.Transaction.WithType(TxType.FrameTx).WithBlobVersionedHashes(3).TestObject;
+        Transaction frameNoBlobs = Build.A.Transaction.WithType(TxType.FrameTx).TestObject;
+        Transaction legacy = Build.A.Transaction.TestObject;
+
+        ulong blobGas = BlobGasCalculator.CalculateBlobGas([type3, frameWithBlobs, frameNoBlobs, legacy]);
+
+        Assert.That(blobGas, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(2 + 3)));
+    }
+
     private static IEnumerable<TestCaseData> GenerateTestCases()
     {
         (IReleaseSpec Instance, bool)[] specs =
