@@ -38,6 +38,7 @@ public static class FrameTxValidation
     public const string InvalidMsgLength = "signature msg must be empty or a 32-byte digest";
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
+    public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
 
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {
@@ -208,6 +209,12 @@ public static class FrameTxValidation
                     return false;
                 }
             }
+        }
+
+        if (transaction.RecentRootReferences is { Length: > Eip8272Constants.MaxRecentRootReferences })
+        {
+            error = TooManyRecentRootReferences;
+            return false;
         }
 
         bool hasBlobs = transaction.BlobVersionedHashes is { Length: > 0 };
@@ -400,6 +407,13 @@ public static class FrameTxValidation
                     _ => 0,
                 };
             }
+        }
+
+        if (transaction.NonceKeys is not null && spec.IsEip8250Enabled)
+        {
+            (int zeroBytes, int nonZeroBytes) = transaction.FrameCalldataStats;
+            tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
+            dataLength += (ulong)(zeroBytes + nonZeroBytes);
         }
 
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost

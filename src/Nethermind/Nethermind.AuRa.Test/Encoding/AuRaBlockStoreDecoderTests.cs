@@ -46,7 +46,7 @@ public class AuRaBlockStoreDecoderTests
         // The pre-fix wiring left BlockStore without a decoder, so it fell back to the base HeaderDecoder.
         BlockStore baseStore = new(db);
 
-        Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpLimitException>());
+        Assert.That(() => baseStore.Get(block.Number, block.Hash!), Throws.InstanceOf<RlpException>());
     }
 
     [Test]

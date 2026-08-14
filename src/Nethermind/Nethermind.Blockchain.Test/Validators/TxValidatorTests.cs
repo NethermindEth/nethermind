@@ -660,7 +660,7 @@ public class TxValidatorTests
     }
 
     [Test]
-    public void IsWellFormed_Eip8037FloorGasExceedingRegularCap_ReturnsFalse()
+    public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse()
     {
         byte[] data = new byte[262_000];
         Array.Fill(data, (byte)0xff);

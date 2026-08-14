@@ -32,6 +32,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[][]? BlobVersionedHashes { get; set; }
 
+    public RecentRootReferenceForRpc[]? RecentRootReferences { get; set; }
+
     [JsonConstructor]
     public FrameTransactionForRpc() { }
 
@@ -40,6 +42,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     {
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
+        RecentRootReferences = RecentRootReferenceForRpc.FromReferences(transaction.RecentRootReferences);
 
         // Covered by the sig hash, so always reported: a consumer must be able to rebuild the payload.
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
@@ -56,6 +59,7 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         tx.FrameSignatures = FrameSignatureForRpc.ToSignatures(Signatures);
         tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
         tx.BlobVersionedHashes = BlobVersionedHashes;
+        tx.RecentRootReferences = RecentRootReferenceForRpc.ToReferences(RecentRootReferences);
         return tx;
     }
 
