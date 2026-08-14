@@ -7,7 +7,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -113,21 +115,92 @@ public class BlobTxStorageTests
     }
 
     [Test]
-    public void TryGetMany_should_handle_all_missing_keys()
+    public void TryGetWithoutBlobs_should_return_tx_with_elided_blob_payloads()
+    {
+        BlobTxStorage blobTxStorage = new();
+        EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
+
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        blobTxStorage.Add(tx);
+
+        Assert.That(blobTxStorage.TryGetWithoutBlobs(tx.Hash, tx.SenderAddress!, tx.Timestamp, out Transaction elidedTx), Is.True);
+
+        ShardBlobNetworkWrapper originalWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        ShardBlobNetworkWrapper elidedWrapper = (ShardBlobNetworkWrapper)elidedTx.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(elidedTx.Hash, Is.EqualTo(tx.Hash));
+            Assert.That(elidedTx.Nonce, Is.EqualTo(tx.Nonce));
+            Assert.That(elidedTx.SenderAddress, Is.EqualTo(tx.SenderAddress));
+            Assert.That(elidedWrapper.Blobs, Is.Empty);
+            Assert.That(elidedWrapper.Commitments, Is.EqualTo(originalWrapper.Commitments));
+            Assert.That(elidedWrapper.Proofs, Is.EqualTo(originalWrapper.Proofs));
+            Assert.That(elidedWrapper.Version, Is.EqualTo(originalWrapper.Version));
+        }
+    }
+
+    [Test]
+    public void TryGetWithoutBlobs_should_return_false_for_missing_tx()
     {
         BlobTxStorage blobTxStorage = new();
 
-        TxLookupKey[] keys =
-        [
-            new TxLookupKey(TestItem.KeccakA, TestItem.AddressA, UInt256.One),
-            new TxLookupKey(TestItem.KeccakB, TestItem.AddressB, UInt256.One),
-        ];
+        Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, UInt256.One, out Transaction tx), Is.False);
+        Assert.That(tx, Is.Null);
+    }
 
-        Transaction[] results = new Transaction[2];
-        int found = blobTxStorage.TryGetMany(keys, 2, results);
+    [Test]
+    public void TryGetWithoutBlobs_should_upgrade_legacy_record_without_elided_payload()
+    {
+        MemColumnsDb<BlobTxsColumns> columnsDb = new();
+        IDb fullBlobTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
+        IDb lightBlobTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        BlobTxStorage blobTxStorage = new(columnsDb);
+        EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
 
-        Assert.That(found, Is.EqualTo(0));
-        Assert.That(results[0], Is.Null);
-        Assert.That(results[1], Is.Null);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        // simulate a record persisted before the sidecar-free record existed
+        byte[] fullKey = new byte[64];
+        tx.Timestamp.ToBigEndian(fullKey);
+        tx.Hash.BytesToArray().CopyTo(fullKey, 32);
+        fullBlobTxsDb.Set(fullKey, Rlp.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage).Bytes);
+        lightBlobTxsDb.Set(tx.Hash, LightTxDecoder.Encode(tx));
+
+        Assert.That(blobTxStorage.TryGetWithoutBlobs(tx.Hash, tx.SenderAddress!, tx.Timestamp, out Transaction elidedTx), Is.True);
+        Assert.That(elidedTx.Hash, Is.EqualTo(tx.Hash));
+        Assert.That(((ShardBlobNetworkWrapper)elidedTx.NetworkWrapper!).Blobs, Is.Empty);
+
+        // the fallback read upgrades the record with the sidecar-free payload
+        byte[] elidedKey = new byte[33];
+        elidedKey[0] = 0x01;
+        tx.Hash.BytesToArray().CopyTo(elidedKey, 1);
+        Assert.That(fullBlobTxsDb.Get(elidedKey), Is.Not.Null);
+    }
+
+    [Test]
+    public void Delete_should_remove_elided_payload_as_well()
+    {
+        BlobTxStorage blobTxStorage = new();
+        EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
+
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        blobTxStorage.Add(tx);
+        blobTxStorage.Delete(tx.Hash, tx.Timestamp);
+
+        Assert.That(blobTxStorage.TryGetWithoutBlobs(tx.Hash, tx.SenderAddress!, tx.Timestamp, out _), Is.False);
     }
 }

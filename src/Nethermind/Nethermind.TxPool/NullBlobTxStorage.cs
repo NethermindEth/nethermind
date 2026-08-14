@@ -23,6 +23,12 @@ public class NullBlobTxStorage : IBlobTxStorage
 
     public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results) => 0;
 
+    public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
+    {
+        transaction = default;
+        return false;
+    }
+
     public IEnumerable<LightTransaction> GetAll() => Array.Empty<LightTransaction>();
 
     public void Add(Transaction transaction) { }

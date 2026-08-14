@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -168,16 +169,39 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
             int sizeOfOneTx = tx.GetLength();
-            int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
+            int numberOfTxsInOneMsg = Math.Min(Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1), 256);
             _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
                 .Returns(x =>
                 {
                     x[1] = tx;
                     return true;
                 });
-            using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
+            Hash256[] hashes = GenerateValueHashes(2048).Select(h => new Hash256(h)).ToArray();
+            using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
             using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             Assert.That(response.Transactions.Count, Is.EqualTo(numberOfTxsInOneMsg));
+        }
+
+        [Test]
+        public async Task should_serve_at_most_256_unique_pooled_transaction_hashes_per_request()
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+                .Returns(x =>
+                {
+                    x[1] = tx;
+                    return true;
+                });
+
+            // 300 unique hashes, each also repeated once
+            Hash256[] uniqueHashes = GenerateValueHashes(300).Select(h => new Hash256(h)).ToArray();
+            Hash256[] hashes = [.. uniqueHashes, .. uniqueHashes];
+            using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
+
+            using PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+            Assert.That(response.Transactions.Count, Is.EqualTo(256));
+            _transactionPool.Received(256).TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
         }
 
         [Test]

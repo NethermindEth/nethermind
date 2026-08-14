@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -517,6 +518,11 @@ public class Eth72ProtocolHandler(
     }
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
+
+    // eth/72 strips blob payloads from pooled transaction responses, so they are served from
+    // the sidecar-free record instead of materializing blobs from persistent storage.
+    protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+        => _txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx);
 
     protected override Transaction PreparePooledTransactionForResponse(Transaction tx) => ElideBlobPayload(tx);
 

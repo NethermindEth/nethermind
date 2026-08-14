@@ -20,6 +20,11 @@ namespace Nethermind.TxPool;
 public class BlobTxStorage : IBlobTxStorage
 {
     private const int MaxPooledKeys = 128;
+
+    // Sidecar-free records live in the full-txs column under a key shape (prefix + hash) that
+    // cannot collide with the 64-byte timestamp-prefixed full-tx keys.
+    private const int ElidedTxKeyLength = 33;
+    private const byte ElidedTxKeyPrefix = 0x01;
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly ConcurrentQueue<byte[]> _keyPool = new();
     private int _pooledKeyCount;
@@ -48,6 +53,34 @@ public class BlobTxStorage : IBlobTxStorage
 
         byte[]? txBytes = _fullBlobTxsDb.Get(txHashPrefixed);
         return TryDecodeFullTx(txBytes, sender, out transaction);
+    }
+
+    public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
+    {
+        Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+        GetElidedTxKey(hash, elidedKey);
+
+        byte[]? elidedBytes = _fullBlobTxsDb.Get(elidedKey);
+        if (elidedBytes is not null)
+        {
+            transaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
+            transaction.SenderAddress = sender;
+            return true;
+        }
+
+        // Records persisted before the sidecar-free record existed: fall back to a full read once
+        // and save the sidecar-free record for subsequent lookups.
+        if (!TryGet(hash, sender, timestamp, out Transaction? fullTransaction))
+        {
+            transaction = default;
+            return false;
+        }
+
+        SaveElidedTx(fullTransaction);
+        transaction = fullTransaction.NetworkWrapper is ShardBlobNetworkWrapper
+            ? ElideBlobPayload(fullTransaction)
+            : fullTransaction;
+        return true;
     }
 
     public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results)
@@ -108,6 +141,7 @@ public class BlobTxStorage : IBlobTxStorage
         GetHashPrefixedByTimestamp(transaction.Timestamp, transaction.Hash, txHashPrefixed);
 
         EncodeAndSaveTx(transaction, _fullBlobTxsDb, txHashPrefixed);
+        SaveElidedTx(transaction);
         _lightBlobTxsDb.Set(transaction.Hash, LightTxDecoder.Encode(transaction));
     }
 
@@ -116,7 +150,11 @@ public class BlobTxStorage : IBlobTxStorage
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
+        Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+        GetElidedTxKey(hash, elidedKey);
+
         _fullBlobTxsDb.Remove(txHashPrefixed);
+        _fullBlobTxsDb.Remove(elidedKey);
         _lightBlobTxsDb.Remove(hash.BytesAsSpan);
     }
 
@@ -194,6 +232,34 @@ public class BlobTxStorage : IBlobTxStorage
         {
             Interlocked.Decrement(ref _pooledKeyCount);
         }
+    }
+
+    private void SaveElidedTx(Transaction transaction)
+    {
+        if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper)
+        {
+            return;
+        }
+
+        Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
+        GetElidedTxKey(transaction.Hash, elidedKey);
+        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(ElideBlobPayload(transaction), RlpBehaviors.InMempoolForm);
+        _fullBlobTxsDb.PutSpan(elidedKey, rlp);
+    }
+
+    private static Transaction ElideBlobPayload(Transaction transaction)
+    {
+        Transaction elided = new();
+        transaction.CopyTo(elided, copyHash: true);
+        elided.NetworkWrapper = ((ShardBlobNetworkWrapper)transaction.NetworkWrapper!) with { Blobs = [] };
+        elided.ClearLengthCache();
+        return elided;
+    }
+
+    private static void GetElidedTxKey(in ValueHash256 hash, scoped Span<byte> elidedKey)
+    {
+        elidedKey[0] = ElidedTxKeyPrefix;
+        hash.Bytes.CopyTo(elidedKey[1..]);
     }
 
     private static void GetHashPrefixedByTimestamp(in UInt256 timestamp, in ValueHash256 hash, scoped Span<byte> txHashPrefixed)

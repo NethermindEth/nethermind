@@ -695,6 +695,38 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_request_pooled_transaction_without_blobs_from_tx_pool()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+
+        Transaction elidedTx = new();
+        tx.CopyTo(elidedTx, copyHash: true);
+        elidedTx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { Blobs = [] };
+        elidedTx.ClearLengthCache();
+
+        _transactionPool.TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = elidedTx;
+                return true;
+            });
+
+        using GetPooledTransactionsMessage request = new(new[] { tx.Hash! }.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth66MessageCode.GetPooledTransactions);
+
+        _transactionPool.Received(1).TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>());
+        _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
+        _session.Received(1).DeliverMessage(Arg.Is<PooledTransactionsMessage>(m =>
+            m.EthMessage.Transactions.Count == 1 && m.EthMessage.Transactions[0].Hash == tx.Hash));
+    }
+
+    [Test]
     public void should_elide_blob_payload_in_pooled_transactions_response()
     {
         Transaction tx = Build.A.Transaction
@@ -704,7 +736,7 @@ public class Eth72ProtocolHandlerTests
             .TestObject;
         int fullTxLength = tx.GetLength();
 
-        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+        _transactionPool.TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>())
             .Returns(x =>
             {
                 x[1] = tx;
@@ -730,7 +762,7 @@ public class Eth72ProtocolHandlerTests
             .TestObject;
         int fullTxLength = tx.GetLength();
 
-        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+        _transactionPool.TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>())
             .Returns(x =>
             {
                 x[1] = tx;
@@ -767,7 +799,7 @@ public class Eth72ProtocolHandlerTests
             hashes[i] = tx.Hash;
         }
 
-        _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+        _transactionPool.TryGetPendingTransactionWithoutBlobs(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
             .Returns(call =>
             {
                 bool found = transactions.TryGetValue(call.ArgAt<Hash256>(0).ValueHash256, out Transaction? tx);

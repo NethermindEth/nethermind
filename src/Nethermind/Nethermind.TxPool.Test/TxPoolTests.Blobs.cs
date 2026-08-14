@@ -231,6 +231,83 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_load_full_sidecar_from_db_when_getting_blob_tx_after_cache_eviction()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 10,
+                BlobCacheSize = 1
+            };
+
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            CountingBlobTxStorage blobTxStorage = new();
+            PersistentBlobTxDistinctSortedPool blobPool = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
+
+            Transaction[] blobTxs = new Transaction[2];
+            for (int i = 0; i < blobTxs.Length; i++)
+            {
+                blobTxs[i] = Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                    .WithMaxFeePerGas(1.GWei + (UInt256)i)
+                    .WithMaxPriorityFeePerGas(1.GWei + (UInt256)i)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                Assert.That(blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _), Is.True);
+            }
+
+            // the blob cache holds only the most recent tx, so the first tx is loaded from the db
+            Assert.That(blobPool.TryGetValue(blobTxs[0].Hash, out Transaction fullTx), Is.True);
+            Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(1));
+            Assert.That(fullTx.NetworkWrapper, Is.Not.Null);
+        }
+
+        [Test]
+        public void should_not_load_full_sidecar_from_db_when_getting_blob_tx_without_blobs_after_cache_eviction()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 10,
+                BlobCacheSize = 1
+            };
+
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            CountingBlobTxStorage blobTxStorage = new();
+            PersistentBlobTxDistinctSortedPool blobPool = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
+
+            Transaction[] blobTxs = new Transaction[2];
+            for (int i = 0; i < blobTxs.Length; i++)
+            {
+                blobTxs[i] = Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                    .WithMaxFeePerGas(1.GWei + (UInt256)i)
+                    .WithMaxPriorityFeePerGas(1.GWei + (UInt256)i)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+
+                Assert.That(blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _), Is.True);
+            }
+
+            // the blob cache holds only the most recent tx, so the first tx is served from the sidecar-free record
+            Assert.That(blobPool.TryGetValueWithoutBlobs(blobTxs[0].Hash, out Transaction metadataTx), Is.True);
+            Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(0));
+
+            ShardBlobNetworkWrapper originalWrapper = (ShardBlobNetworkWrapper)blobTxs[0].NetworkWrapper!;
+            ShardBlobNetworkWrapper metadataWrapper = (ShardBlobNetworkWrapper)metadataTx.NetworkWrapper!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metadataTx.Hash, Is.EqualTo(blobTxs[0].Hash));
+                Assert.That(metadataTx.Nonce, Is.EqualTo(blobTxs[0].Nonce));
+                Assert.That(metadataTx.SenderAddress, Is.EqualTo(blobTxs[0].SenderAddress));
+                Assert.That(metadataTx.Signature, Is.Not.Null);
+                Assert.That(metadataWrapper.Blobs, Is.Empty);
+                Assert.That(metadataWrapper.Commitments, Is.EqualTo(originalWrapper.Commitments));
+                Assert.That(metadataWrapper.Proofs, Is.EqualTo(originalWrapper.Proofs));
+                Assert.That(metadataWrapper.Version, Is.EqualTo(originalWrapper.Version));
+            }
+        }
+
+        [Test]
         public void should_not_throw_when_asking_for_non_existing_tx()
         {
             TxPoolConfig txPoolConfig = new() { Size = 10 };
@@ -3027,9 +3104,16 @@ namespace Nethermind.TxPool.Test
             private readonly BlobTxStorage _inner = new();
 
             public int LastTryGetManyCount { get; private set; }
+            public int TryGetCount { get; private set; }
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
-                => _inner.TryGet(hash, sender, timestamp, out transaction);
+            {
+                TryGetCount++;
+                return _inner.TryGet(hash, sender, timestamp, out transaction);
+            }
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, timestamp, out transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
             {
@@ -3100,6 +3184,9 @@ namespace Nethermind.TxPool.Test
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
                 => _inner.TryGet(hash, sender, timestamp, out transaction);
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, timestamp, out transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
                 => _inner.TryGetMany(keys, count, results);
@@ -3211,6 +3298,9 @@ namespace Nethermind.TxPool.Test
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
                 => _inner.TryGet(hash, sender, timestamp, out transaction);
 
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, timestamp, out transaction);
+
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
                 => _inner.TryGetMany(keys, count, results);
 
@@ -3300,6 +3390,9 @@ namespace Nethermind.TxPool.Test
                 transaction = snapshot;
                 return found;
             }
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, timestamp, out transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
             {

@@ -971,6 +971,11 @@ namespace Nethermind.TxPool
             || _blobTransactions.TryGetValue(hash, out transaction)
             || _broadcaster.TryGetPersistentTx(hash, out transaction);
 
+        public bool TryGetPendingTransactionWithoutBlobs(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
+            _transactions.TryGetValue(hash, out transaction)
+            || _blobTransactions.TryGetValueWithoutBlobs(hash.ValueHash256, out transaction)
+            || _broadcaster.TryGetPersistentTx(hash, out transaction);
+
         public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
             _blobTransactions.TryGetValue(hash, out blobTransaction);
 

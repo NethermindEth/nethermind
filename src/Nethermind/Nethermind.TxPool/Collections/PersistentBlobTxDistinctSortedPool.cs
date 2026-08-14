@@ -154,6 +154,41 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     protected override bool TryGetValueForCellMerge(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
         => TryGetFullBlobTransactionOutsideLock(hash, out blobTx);
 
+    public override bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    {
+        Transaction? lightTx;
+        using (McsLock.Disposable lockRelease = Lock.Acquire())
+        {
+            if (!base.TryGetValueNonLocked(hash, out lightTx))
+            {
+                blobTx = default;
+                return false;
+            }
+
+            if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate)
+                && pendingUpdate.Transaction is not null)
+            {
+                blobTx = pendingUpdate.Transaction;
+                return true;
+            }
+
+            if (_blobTxCache.TryGet(hash, out blobTx))
+            {
+                return true;
+            }
+        }
+
+        // Cache miss: serve from the small sidecar-free record instead of loading the full row.
+        // The result is deliberately not stored in the blob cache, whose readers require blobs.
+        if (lightTx.SenderAddress is null)
+        {
+            blobTx = default;
+            return false;
+        }
+
+        return _blobTxStorage.TryGetWithoutBlobs(hash, lightTx.SenderAddress, lightTx.Timestamp, out blobTx);
+    }
+
     protected override bool TryGetValueForCellMergeNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
     {
         if (!base.TryGetValueNonLocked(hash, out _))
