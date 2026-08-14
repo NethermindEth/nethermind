@@ -131,6 +131,24 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
+    public void Accept_UnpriceableMaxCost_DoesNotDisconnectTheRelayingPeer()
+    {
+        // AcceptTxResult.Invalid is the one result TxFloodController maps to an immediate disconnect, and
+        // an unpriceable max_cost is unincludable rather than malformed.
+        Transaction tx = FrameTx(0);
+        tx.DecodedMaxFeePerGas = UInt256.MaxValue;
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(TestCost), new PayerExposureCache(), tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out _), Is.False, "the fixture must overflow, or this pins nothing");
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Int256Overflow));
+            Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Invalid));
+        }
+    }
+
+    [Test]
     public void Accept_NonFrameTx_PassesThrough()
     {
         Transaction tx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
