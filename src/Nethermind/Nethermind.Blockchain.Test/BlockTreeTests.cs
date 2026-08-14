@@ -3092,8 +3092,6 @@ public class BlockTreeTests
 
         Block previous = SuggestProcessedPostMergeChain(tree);
 
-        // A non-beacon header suggested ahead of the processed head, on a level with no
-        // main-chain block.
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
         tree.SuggestBlock(block5);
 
@@ -3110,8 +3108,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_suggested_post_merge_when_suggested_blocks_sit_ahead_of_head()
     {
-        // Repro of #12803: a post-merge restart with suggested-but-unprocessed blocks above the
-        // head must restore the best-suggested pointers from levels with no main-chain block.
+        // Repro of #12803.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
@@ -3119,7 +3116,6 @@ public class BlockTreeTests
 
         Block previous = SuggestProcessedPostMergeChain(tree);
 
-        // Received but not yet processed when the node went down.
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
         Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
         tree.SuggestBlock(block5);
@@ -3141,8 +3137,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_suggested_beacon_post_merge_when_beacon_blocks_sit_ahead_of_head()
     {
-        // Beacon variant of #12803: beacon inserts are NotOnMainChain, invisible to the
-        // canonical-only lookup on restart.
+        // Beacon variant of #12803.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
@@ -3150,7 +3145,6 @@ public class BlockTreeTests
 
         Block previous = SuggestProcessedPostMergeChain(tree);
 
-        // Beacon-downloaded but not yet processed when the node went down.
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
         Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
         tree.Insert(block5, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
@@ -3173,7 +3167,6 @@ public class BlockTreeTests
         TerminalTotalDifficulty = UInt256.Zero
     };
 
-    /// <summary>Suggests and processes a canonical post-merge chain 0..4, returning the head block.</summary>
     private static Block SuggestProcessedPostMergeChain(BlockTree tree)
     {
         Block previous = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;

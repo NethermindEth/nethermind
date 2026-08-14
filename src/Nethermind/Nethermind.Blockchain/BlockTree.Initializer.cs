@@ -265,7 +265,6 @@ public partial class BlockTree
             ?? FindBlockAtLevel(bestSuggestedBodyNumber, BlockTreeLookupOptions.None, findBeacon: false);
     }
 
-    /// <summary>Finds a stored header at the given level, canonical or not; mirrors <see cref="HeaderExists"/>.</summary>
     private BlockHeader? FindHeaderAtLevel(ulong blockNumber, BlockTreeLookupOptions options, bool findBeacon)
     {
         ChainLevelInfo? level = LoadLevel(blockNumber);
@@ -291,7 +290,6 @@ public partial class BlockTree
         return null;
     }
 
-    /// <summary>Finds a stored block at the given level, canonical or not; mirrors <see cref="BodyExists"/>.</summary>
     private Block? FindBlockAtLevel(ulong blockNumber, BlockTreeLookupOptions options, bool findBeacon)
     {
         ChainLevelInfo? level = LoadLevel(blockNumber);
