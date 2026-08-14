@@ -20,7 +20,10 @@ public struct EvmPooledMemory
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
     internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
-    private ulong _lastZeroedSize;
+    // Buffers are pooled dirty. _validUpTo is the prefix [0, _validUpTo) of the current buffer that
+    // already reads as zero where unwritten; beyond it lies a previous frame's garbage. Growth zeroes
+    // only the gap a write does not cover itself; a read zeroes its whole newly exposed region.
+    private ulong _validUpTo;
 
     private byte[]? _memory;
     public ulong Size { get; private set; }
@@ -35,6 +38,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         EvmWord word1 = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
+        PrepareWrite(offset, WordSize);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
         return true;
@@ -47,6 +51,7 @@ public struct EvmPooledMemory
 
         int offset = TruncateToInt32(location.u0);
         UpdateSize(newLength);
+        PrepareWrite(offset, 1);
         _memory![offset] = value;
         return true;
     }
@@ -62,7 +67,9 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
-        value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
+        int intLocation = TruncateToInt32(location.u0);
+        PrepareWrite(intLocation, value.Length);
+        value.CopyTo(_memory.AsSpan(intLocation, value.Length));
         return true;
     }
 
@@ -121,7 +128,9 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
+        int intLocation = TruncateToInt32(location.u0);
+        PrepareWrite(intLocation, value.Length);
+        Array.Copy(value, 0, _memory!, intLocation, value.Length);
         return true;
     }
 
@@ -142,9 +151,9 @@ public struct EvmPooledMemory
 
         Debug.Assert(location.IsUint64);
         Debug.Assert(location.u0 + (ulong)length <= Size);
-        PrepareAccessAfterGas(location.u0 + (ulong)length);
 
         int intLocation = TruncateToInt32(location.u0);
+        PrepareWrite(intLocation, length);
         value.CopyTo(_memory.AsSpan(intLocation, length));
     }
 
@@ -166,9 +175,10 @@ public struct EvmPooledMemory
 
         Debug.Assert(destination.IsUint64);
         Debug.Assert(destination.u0 + (ulong)length <= Size);
-        PrepareAccessAfterGas(destination.u0 + (ulong)length);
 
-        Span<byte> target = _memory.AsSpan(TruncateToInt32(destination.u0), length);
+        int intDestination = TruncateToInt32(destination.u0);
+        PrepareWrite(intDestination, length);
+        Span<byte> target = _memory.AsSpan(intDestination, length);
         int copiedLength = 0;
         if (sourceOffset < source.Length)
         {
@@ -231,6 +241,7 @@ public struct EvmPooledMemory
         }
 
         UpdateSize(newLength);
+        PrepareRead(TruncateToInt32(newLength));
 
         data = _memory.AsMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
         return true;
@@ -267,13 +278,16 @@ public struct EvmPooledMemory
         return _memory.AsMemory((int)location, (int)length);
     }
 
+    // Tracing exposes [0, size) without growing Size; zero any exposed-but-unwritten bytes it shows.
     private void ClearForTracing(ulong size)
     {
-        if (_memory is not null && size > _lastZeroedSize)
+        if (_memory is null) return;
+        int end = (int)Math.Min(size, (ulong)_memory.Length);
+        int valid = (int)_validUpTo;
+        if (end > valid)
         {
-            int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
-            Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
-            _lastZeroedSize += (uint)lengthToClear;
+            ClearRange(valid, end - valid);
+            _validUpTo = (ulong)end;
         }
     }
 
@@ -311,7 +325,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
-        PrepareAccessAfterGas(location.u0 + WordSize);
+        PrepareWrite(offset, WordSize);
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
     }
@@ -321,7 +335,7 @@ public struct EvmPooledMemory
     {
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
-        PrepareAccessAfterGas(location.u0 + 1);
+        PrepareWrite(offset, 1);
         _memory![offset] = value;
     }
 
@@ -339,7 +353,7 @@ public struct EvmPooledMemory
     {
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
-        PrepareAccessAfterGas(location.u0 + WordSize);
+        PrepareRead(offset + WordSize);
         return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), offset);
     }
 
@@ -349,7 +363,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         int intLength = TruncateToInt32(length);
-        PrepareAccessAfterGas(location.u0 + length);
+        PrepareRead(offset + intLength);
         return _memory!.AsSpan(offset, intLength);
     }
 
@@ -365,7 +379,9 @@ public struct EvmPooledMemory
         int sourceOffset = TruncateToInt32(source.u0);
         int intLength = TruncateToInt32(length);
 
-        PrepareAccessAfterGas(destination.u0 + length);
+        // The source range must read as zero where unwritten and the destination is fully written;
+        // one conservative read-prepare over the higher end covers both without a second scan.
+        PrepareRead(Math.Max(destinationOffset, sourceOffset) + intLength);
         _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
     }
 
@@ -388,7 +404,7 @@ public struct EvmPooledMemory
             ((newActiveWords * newActiveWords) >> 9) -
             ((activeWords * activeWords) >> 9);
 
-        UpdateSize(newSize, rentIfNeeded: false);
+        UpdateSize(newSize);
 
         return cost;
     }
@@ -417,11 +433,16 @@ public struct EvmPooledMemory
         if (memory is not null)
         {
             _memory = null;
+            // Reset so a reused struct starts with an empty valid prefix even if the holder does not
+            // reset it; the buffer returns dirty and the next renter zeroes the gaps it exposes.
+            _validUpTo = 0;
+            Size = 0;
             Return(memory);
         }
     }
 
-    private void UpdateSize(ulong length, bool rentIfNeeded = true)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void UpdateSize(ulong length)
     {
         // CheckMemoryAccessViolation has already proven length <= MaxMemorySize, so
         // (length + 31) cannot overflow. Branchless align-up replaces the original
@@ -430,34 +451,83 @@ public struct EvmPooledMemory
         {
             Size = (length + (WordSize - 1UL)) & ~(WordSize - 1UL);
         }
-
-        if (rentIfNeeded)
-        {
-            EnsureRented();
-        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Span<byte> LoadSpan(ulong newLength, int offset, int length)
     {
         UpdateSize(newLength);
+        PrepareRead(offset + length);
         return _memory!.AsSpan(offset, length);
     }
 
+    // Zero the exposed region below a write; a contiguous write (offset == valid extent) clears nothing.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void PrepareAccessAfterGas(ulong newLength)
+    private void PrepareWrite(int offset, int length)
     {
-        Debug.Assert(newLength <= Size);
-        EnsureRented();
+        EnsureCapacity();
+        int valid = (int)_validUpTo;
+        if (offset > valid)
+        {
+            ClearRange(valid, offset - valid);
+        }
+        int end = offset + length;
+        if (end > valid)
+        {
+            _validUpTo = (ulong)end;
+        }
+    }
+
+    // A read fills nothing, so zero the whole newly-exposed region.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PrepareRead(int end)
+    {
+        EnsureCapacity();
+        int valid = (int)_validUpTo;
+        if (end > valid)
+        {
+            ClearRange(valid, end - valid);
+            _validUpTo = (ulong)end;
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void EnsureRented()
+    private void EnsureCapacity()
     {
         byte[]? memory = _memory;
-        if (memory is null || Size > (ulong)memory.Length || Size > _lastZeroedSize)
+        if (memory is null || Size > (ulong)memory.Length)
         {
             RentSlow();
+        }
+    }
+
+    // Small gaps (word padding, head gaps below jump/sparse writes) beyond which Span.Clear's memset
+    // (rep-stosb, cache-friendly at size) wins over inline vector stores.
+    private const int InlineClearThreshold = 512;
+
+    // Zeroes [start, start + length). Clears up to InlineClearThreshold with inline vector stores to
+    // dodge Span.Clear's call/dispatch overhead on the many small gaps; larger clears defer to
+    // Span.Clear. Vector<byte> lowers to the widest SIMD available, so no per-width paths are needed.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private readonly void ClearRange(int start, int length)
+    {
+        int width = Vector<byte>.Count;
+        // Branchless range check: width <= length <= InlineClearThreshold.
+        if (Vector.IsHardwareAccelerated && (uint)(length - width) <= (uint)(InlineClearThreshold - width))
+        {
+            ref byte d = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), (nint)(uint)start);
+            Vector<byte> zero = default;
+            int last = length - width;
+            for (int i = 0; i < last; i += width)
+            {
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref d, (nint)i), zero);
+            }
+            // Final (possibly overlapping) store covers the tail shorter than one vector.
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref d, (nint)last), zero);
+        }
+        else
+        {
+            _memory.AsSpan(start, length).Clear();
         }
     }
 
@@ -468,7 +538,7 @@ public struct EvmPooledMemory
     [ThreadStatic] private static byte[]?[]? _cachedArrays;
     [ThreadStatic] private static int _cachedArrayCount;
 
-    // Cached dirty; RentSlow zero-extends past Size in chunks on growth.
+    // Cached dirty; renters zero the gaps they expose (PrepareWrite/PrepareRead).
     private static byte[] Rent(int minLength)
     {
         byte[]?[]? cache = _cachedArrays;
@@ -539,25 +609,15 @@ public struct EvmPooledMemory
         byte[]? memory = _memory;
         if (memory is null)
         {
-            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize));
-            _lastZeroedSize = 0;
+            _memory = Rent((int)Math.Max((uint)Size, MinRentSize));
         }
         else if (Size > (ulong)memory.LongLength)
         {
             byte[] grown = Rent(TruncateToInt32(Size));
-            Array.Copy(memory, 0, grown, 0, (int)_lastZeroedSize);
+            // Preserve only the valid prefix; the rest is re-zeroed lazily as it is exposed.
+            Array.Copy(memory, 0, grown, 0, (int)_validUpTo);
             Return(memory);
-            _memory = memory = grown;
-        }
-
-        ulong size = Size;
-        if (size > _lastZeroedSize)
-        {
-            // Over-zero to a chunk boundary so sequential MSTORE growth does not take RentSlow per word.
-            const ulong zeroChunk = 4 * 1024;
-            ulong target = Math.Min((ulong)memory.Length, (size + (zeroChunk - 1)) & ~(zeroChunk - 1));
-            Array.Clear(memory, (int)_lastZeroedSize, (int)(target - _lastZeroedSize));
-            _lastZeroedSize = target;
+            _memory = grown;
         }
     }
 
