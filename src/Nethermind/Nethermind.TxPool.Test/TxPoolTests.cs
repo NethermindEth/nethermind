@@ -2285,6 +2285,39 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Shedding_reads_the_pressure_left_after_the_head_s_own_bucket_cleanup()
+        {
+            // The slot UpdateBuckets is about to free is not pressure, so nothing should be shed for it.
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            Transaction nearlyExpired = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_005);
+            // No deadline, so it is never itself a shed candidate: it is only here to fill the pool.
+            Transaction staleNonce = BuildFrameTx(nonce: 0, TestItem.PrivateKeyB.Address, deadline: null);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(nearlyExpired, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(staleNonce, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2), "the pool must be full, or nothing would be shed either way");
+            }
+
+            // The new head consumes B's nonce, so UpdateBuckets drops that transaction and the pool is
+            // no longer full by the time shedding runs.
+            _stateProvider.IncrementNonce(TestItem.PrivateKeyB.Address);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(nearlyExpired.Hash!, out _), Is.True,
+                    "nothing needed the slot, so the near-expiry frame transaction keeps it");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the stale-nonce transaction still leaves");
+            }
+        }
+
+        [Test]
         public async Task Shedding_breaks_an_equal_deadline_on_the_lower_priority_fee()
         {
             // The spec's second key: among equal deadlines the lowest effective priority fee yields first.
