@@ -661,8 +661,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
             if (surcharge > frame.GasLimit)
             {
-                // An error frame reports its whole gas limit on the EVM path; halting for free
-                // here would price the same failure differently.
+                // Match the EVM path, which charges an error frame its whole limit.
                 gasUsed = frame.GasLimit;
                 return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
             }
