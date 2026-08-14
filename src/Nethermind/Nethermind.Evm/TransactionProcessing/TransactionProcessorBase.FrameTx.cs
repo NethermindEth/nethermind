@@ -511,11 +511,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // A precompile is codeless but dispatched by address; execute_frame gates default code on VERIFY.
-        if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString
-            && (frame.Mode == TxFrame.ModeVerify || _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null))
+        // Only a VERIFY frame's codeless target runs default code (execute_frame, execution-specs);
+        // every other frame runs a top-level call, which dispatches a precompile by address.
+        if (frame.Mode == TxFrame.ModeVerify && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            return ExecuteDefaultCode(frame, resolvedTarget, caller, frameContext, in accessTracker, spec, tracer, out gasUsed);
+            return ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, out gasUsed);
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
@@ -577,66 +577,39 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>
-    /// EIP-8141 default code for a codeless target. VERIFY: require a canonical-hash SECP256K1
-    /// signature at index 0 whose resolved signer is the target, then signal APPROVE with the
-    /// frame's allowed scope. SENDER/DEFAULT: succeed as empty code, performing the value transfer
-    /// and emitting its EIP-7708 transfer log into the frame receipt.
+    /// EIP-8141 default code of a <c>VERIFY</c> frame whose resolved target has no code: require a
+    /// canonical-hash SECP256K1 signature whose resolved signer is the target, then signal APPROVE
+    /// with the frame's allowed scope. It consumes no gas.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
     /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
     /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
-    /// EIP8141: frame gas metering is pending on this branch, so a transfer to a dead recipient
-    /// always logs and needs no frame-journal snapshot.
     /// </summary>
-    /// <param name="accessTracker">Cross-frame log/warm journal; the transfer log is appended to
-    /// its log list so it reaches the frame receipt and the transaction log union.</param>
-    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    private static TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, ITxTracer tracer, out ulong gasUsed)
     {
         gasUsed = 0;
 
-        // Keyed on VERIFY rather than on staticness: EIP-7906 POST_TX frames are static too, but the
-        // spec routes them through the SENDER / DEFAULT branch below.
-        if (frame.Mode == TxFrame.ModeVerify)
+        byte allowedScope = frame.AllowedApproveScope;
+        if (allowedScope == 0)
         {
-            byte allowedScope = frame.AllowedApproveScope;
-            if (allowedScope == 0)
-            {
-                return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
-            }
-
-            // The expected signature index depends on the frame's scope: execution (or both) reads
-            // index 0; a payment-only verifier (a codeless EOA sponsor) reads index 1
-            // (ethereum/EIPs#11954).
-            int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
-            TxFrameSignature[] signatures = frameContext.Signatures;
-            if (signatures.Length <= sigIndex
-                || signatures[sigIndex].Scheme != TxFrameSignature.SchemeSecp256k1
-                || !signatures[sigIndex].Msg.IsEmpty
-                || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
-            {
-                return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
-            }
-
-            frameContext.ApprovalScopeSignal = allowedScope;
-            return DefaultCodeSuccess();
+            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // SENDER / DEFAULT: as if calling empty code — perform only the value transfer.
-        UInt256 value = frame.Value;
-        if (!value.IsZero)
+        // The expected signature index depends on the frame's scope: execution (or both) reads
+        // index 0; a payment-only verifier (a codeless EOA sponsor) reads index 1
+        // (ethereum/EIPs#11954).
+        int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
+        TxFrameSignature[] signatures = frameContext.Signatures;
+        if (signatures.Length <= sigIndex
+            || signatures[sigIndex].Scheme != TxFrameSignature.SchemeSecp256k1
+            || !signatures[sigIndex].Msg.IsEmpty
+            || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
         {
-            WorldState.SubtractFromBalance(caller, in value, spec);
-            WorldState.AddToBalanceAndCreateIfNotExists(resolvedTarget, in value, spec);
-            // EIP-7708: self-transfers emit no log; zero value is excluded by the outer guard.
-            if (spec.IsEip7708Enabled && caller != resolvedTarget)
-            {
-                LogEntry transferLog = TransferLog.CreateTransfer(caller, resolvedTarget, in value);
-                accessTracker.Logs.Add(transferLog);
-                if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
-            }
+            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
+        frameContext.ApprovalScopeSignal = allowedScope;
         return DefaultCodeSuccess();
     }
 

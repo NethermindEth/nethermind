@@ -410,10 +410,19 @@ public class FrameTxProcessorTests
         TxFrame transfer = Frame(TxFrame.ModeSender, target: Recipient, value: 12345);
         Transaction tx = FrameTx(nonce: 0, verify, transfer);
 
-        TransactionResult result = Process(tx);
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)12345));
+        // The codeless target runs empty code in the VM, which both creates it and emits the transfer log.
+        Assert.That(tracer.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
+        LogEntry expectedLog = TransferLog.CreateTransfer(Sender, Recipient, 12345);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts[1].Logs[0].Topics, Is.EqualTo(expectedLog.Topics));
+            Assert.That(tracer.FrameReceipts[1].Logs[0].Data, Is.EqualTo(expectedLog.Data));
+        }
         // Sender pays the transferred value plus the spent gas (unused gas refunded), so the
         // charge is more than the value alone but less than value + both frame gas limits.
         UInt256 balance = _stateProvider.GetBalance(Sender);
@@ -1335,10 +1344,12 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <summary>A codeless non-precompile target stays on the default-code route.</summary>
-    /// <remarks>Default code leaves its target cold where the VM path warms it.</remarks>
+    /// <summary>A codeless target of a non-<c>VERIFY</c> frame runs empty code in the VM, so the frame
+    /// warms it for the frames that follow.</summary>
+    /// <remarks>Only a VERIFY frame's codeless target runs the default code (execute_frame): routing
+    /// this one there too would skip the EVM and leave the target cold for the observer's BALANCE.</remarks>
     [Test]
-    public void Execute_DefaultFrameTargetsCodelessAccount_LeavesItCold()
+    public void Execute_DefaultFrameTargetsCodelessAccount_WarmsIt()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Address observed = TestItem.AddressD;
@@ -1358,9 +1369,17 @@ public class FrameTxProcessorTests
 
         ulong observerGas = targeted.FrameReceipts![2].GasUsed;
         ulong baselineGas = untouched.FrameReceipts![2].GasUsed;
-        Assert.That(observerGas, Is.EqualTo(baselineGas),
-            $"a default-code frame must not warm its target, so the later BALANCE pays the cold access either way; "
-            + $"a difference of {(long)baselineGas - (long)observerGas} is the warm/cold spread");
+        using (Assert.EnterMultipleScope())
+        {
+            // Both observers must actually run the BALANCE: a halted frame reports its whole gas limit
+            // and a skipped one reports 0, either of which cancels out of the spread below.
+            Assert.That(targeted.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(untouched.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That((long)baselineGas - (long)observerGas,
+                Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+                "the earlier frame warmed its codeless target, so the observer's BALANCE pays the warm "
+                + "access where the baseline pays the cold one");
+        }
     }
 
     /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
