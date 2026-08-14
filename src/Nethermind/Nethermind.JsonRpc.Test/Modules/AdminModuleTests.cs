@@ -365,7 +365,7 @@ public class AdminModuleTests
 
         string serializedPeerEventsUnsub = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_unsubscribe", peerEventsId);
         string expectedPeerEventsUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
-        Assert.That(expectedPeerEventsUnsub, Is.EqualTo(serializedPeerEventsUnsub), "after the client closes, the subscription is removed and unsubscribe reports subscription not found");
+        Assert.That(serializedPeerEventsUnsub, Is.EqualTo(expectedPeerEventsUnsub), "after the client closes, the subscription is removed and unsubscribe reports subscription not found");
     }
 
     [Test]

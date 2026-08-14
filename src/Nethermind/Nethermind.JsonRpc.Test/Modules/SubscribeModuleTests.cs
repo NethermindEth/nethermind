@@ -1174,7 +1174,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serializedUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", "0xdeadbeef");
             string expectedUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
 
-            Assert.That(expectedUnsub, Is.EqualTo(serializedUnsub));
+            Assert.That(serializedUnsub, Is.EqualTo(expectedUnsub));
         }
 
         [Test]
@@ -1209,11 +1209,11 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serializedLogsUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", logsId);
             string expectedLogsUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
-            Assert.That(expectedLogsUnsub, Is.EqualTo(serializedLogsUnsub));
+            Assert.That(serializedLogsUnsub, Is.EqualTo(expectedLogsUnsub));
 
             string serializedNewPendingTxUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", newPendingTxId);
             string expectedNewPendingTxUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
-            Assert.That(expectedNewPendingTxUnsub, Is.EqualTo(serializedNewPendingTxUnsub));
+            Assert.That(serializedNewPendingTxUnsub, Is.EqualTo(expectedNewPendingTxUnsub));
         }
 
         [Test]

@@ -37,8 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             bool unsubscribed = subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
             return unsubscribed
                 ? ResultWrapper<bool>.Success(true)
-                // Geth-compatible: unknown ids get a -32000 "subscription not found" error
-                : ResultWrapper<bool>.Fail("subscription not found", ErrorCodes.ResourceNotFound);
+                : ResultWrapper<bool>.Fail(ErrorMessages.SubscriptionNotFound, ErrorCodes.ResourceNotFound, isTemporary: true);
         }
 
         public JsonRpcContext Context { get; set; }
