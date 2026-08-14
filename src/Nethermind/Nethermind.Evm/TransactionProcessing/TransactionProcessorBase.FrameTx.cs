@@ -622,9 +622,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>
-    /// EIP-8141 default code of a <c>VERIFY</c> frame whose resolved target has no code: require a
-    /// canonical-hash SECP256K1 signature whose resolved signer is the target, then signal APPROVE
-    /// with the frame's allowed scope. It consumes no gas beyond the EIP-8250 keyed-nonce surcharge.
+    /// EIP-8141 default code of a <c>VERIFY</c> frame whose target has no code: require a canonical-hash
+    /// SECP256K1 signature signed by the target, then APPROVE. No gas beyond the EIP-8250 surcharge.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
@@ -641,8 +640,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // The expected signature index depends on the frame's scope: execution (or both) reads
-        // index 0; a payment-only verifier (a codeless EOA sponsor) reads index 1
+        // Execution scope (or both) reads signature index 0; a payment-only verifier reads index 1
         // (ethereum/EIPs#11954).
         int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
         TxFrameSignature[] signatures = frameContext.Signatures;
@@ -654,11 +652,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // The default code approves without running EVM code, so it owes the surcharge APPROVE
-        // charges — but only where APPROVE would charge it. The opcode reaches the surcharge
-        // only past a null payer, a prior execution approval and a solvent payer, and
-        // ApplyApproval discards the approval for those same reasons, so charging ahead of them
-        // would bill the frame for a consumption that never happens.
+        // Owes the surcharge APPROVE charges, but only where APPROVE would charge it: the guards below
+        // are the ones ApplyApproval discards on, so charging ahead of them bills a consumption that never happens.
         if ((allowedScope & TxFrame.ApprovePayment) != 0
             && frameContext.Payer is null
             && ((allowedScope & TxFrame.ApproveExecution) != 0 || frameContext.SenderApproved)

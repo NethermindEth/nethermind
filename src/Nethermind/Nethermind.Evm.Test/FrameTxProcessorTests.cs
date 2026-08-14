@@ -1340,16 +1340,13 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <summary>A codeless target of a non-<c>VERIFY</c> frame runs empty code in the VM, so the frame
-    /// warms it for the frames that follow.</summary>
-    /// <remarks>Only a VERIFY frame's codeless target runs the default code (execute_frame): routing
-    /// this one there too would skip the EVM and leave the target cold for the observer's BALANCE.</remarks>
+    /// <summary>A codeless target of a non-<c>VERIFY</c> frame runs empty code in the VM, warming it.</summary>
+    /// <remarks>Routing it to default code instead would skip the EVM and leave it cold.</remarks>
     [Test]
     public void Execute_DefaultFrameTargetsCodelessAccount_WarmsIt()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Address observed = TestItem.AddressD;
-        // The address the observer does not read.
         Address unobserved = TestItem.AddressF;
         DeployContract(Observer, Prepare.EvmCode.PushData(observed).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done);
 
