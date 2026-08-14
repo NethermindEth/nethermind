@@ -198,7 +198,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                     foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
                     {
                         if (columnFamily.Name == "default") continue;
-                        if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
+                        if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle? handle))
                         {
                             DbMetricsUpdater<ColumnFamilyOptions> columnMetricUpdater = new(
                                 Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _isUsingSharedBlockCache, _logger);
@@ -236,9 +236,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         long availableMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
         _logger.Info($"Warming up database {Name} assuming {availableMemory} bytes of available memory");
+        List<LiveFileMetadata>? liveFiles = db.GetLiveFilesMetadata();
+        if (liveFiles is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Unable to read live files metadata of database {Name}. Skipping warmup.");
+            return;
+        }
+
         List<(FileMetadata metadata, DateTime creationTime)> fileMetadataEntries = [];
 
-        foreach (LiveFileMetadata liveFileMetadata in db.GetLiveFilesMetadata())
+        foreach (LiveFileMetadata liveFileMetadata in liveFiles)
         {
             string fullPath = Path.Join(basePath, liveFileMetadata.FileMetadata.FileName);
             try
@@ -1212,13 +1219,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
     internal IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(bool ordered, ColumnFamilyHandle? ch = null) =>
-        GetAllCore(ordered, ch, static iterator => new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value()));
+        GetAllCore(ordered, ch, static iterator => new KeyValuePair<byte[], byte[]?>(iterator.GetKeySpan().ToArray(), iterator.Value()));
 
     internal IEnumerable<byte[]> GetAllKeysCore(bool ordered, ColumnFamilyHandle? ch = null) =>
-        GetAllCore(ordered, ch, static iterator => iterator.Key());
+        GetAllCore(ordered, ch, static iterator => iterator.GetKeySpan().ToArray());
 
     internal IEnumerable<byte[]> GetAllValuesCore(bool ordered, ColumnFamilyHandle? ch = null) =>
-        GetAllCore(ordered, ch, static iterator => iterator.Value());
+        GetAllCore(ordered, ch, static iterator => iterator.GetValueSpan().ToArray());
 
     private IEnumerable<T> GetAllCore<T>(bool ordered, ColumnFamilyHandle? ch, Func<Iterator, T> projection)
     {
@@ -1274,7 +1281,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 batch.Add(projection(iterator));
                 if (batch.Count == FullEnumerationBatchSize)
                 {
-                    byte[] boundaryKey = iterator.Key();
+                    byte[] boundaryKey = iterator.GetKeySpan().ToArray();
                     IteratorNextWithErrorHandling(iterator);
                     if (iterator.Valid())
                     {

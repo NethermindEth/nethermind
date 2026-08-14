@@ -30,15 +30,17 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         try
         {
             // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
-            string compactionStatsString = "";
-            compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
+            string? compactionStatsString = cf is not null ? db.GetProperty("rocksdb.stats", cf) : db.GetProperty("rocksdb.stats");
             ProcessCompactionStats(compactionStatsString);
             LogMemoryProfile();
 
             if (dbConfig.EnableDbStatistics)
             {
-                string dbStatsString = dbOptions.GetStatisticsString();
-                ProcessStatisticsString(dbStatsString);
+                string? dbStatsString = dbOptions.GetStatisticsString();
+                if (dbStatsString is not null)
+                {
+                    ProcessStatisticsString(dbStatsString);
+                }
             }
         }
         catch (Exception exc)
@@ -84,7 +86,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         }
     }
 
-    public void ProcessCompactionStats(string compactionStatsString)
+    public void ProcessCompactionStats(string? compactionStatsString)
     {
         if (!string.IsNullOrEmpty(compactionStatsString))
         {
