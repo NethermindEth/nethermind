@@ -20,7 +20,9 @@ public interface IFrameTxPrefixSimulator
     /// <param name="token">Cancels the simulation cooperatively and bounds the wait for the serialized
     /// processing env; the implementation's own wall-clock bound surfaces as a rejection instead.</param>
     /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers;
-    /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply.</param>
+    /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply. The exemption assumes a trusted
+    /// RPC: on a publicly reachable endpoint it is the one admission path with no cumulative bound, so a
+    /// caller submitting expensive prefixes can hold the serialized env against gossiped transactions.</param>
     FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false);
 }
 
@@ -38,8 +40,10 @@ public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, st
 
     /// <summary>
     /// True when the rejection reflects an admission bound rather than the prefix, so it says nothing
-    /// about validity and a pending transaction must be retained.
+    /// about validity.
     /// </summary>
+    /// <remarks>No production code reads this yet: admission is driven by <see cref="NodeBound"/>, and the
+    /// retention it is meant to govern arrives with a revalidation pass that consults the simulator.</remarks>
     public bool Indeterminate { get; } = indeterminate;
 
     /// <summary>

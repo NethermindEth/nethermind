@@ -358,10 +358,20 @@ public class FrameTxValidationPrefixSimulationTests
         FrameTxValidationTracer tracer = Tracer(tx);
 
         Assert.Throws<OperationCanceledException>(() => Run(tx, tracer));
+
+        // Re-run on the same machine: a leaked frame is only observable as state left over from the
+        // previous execution, which is what the interpreter's own Debug.Assert cannot catch in release.
+        DeployContract(TestItem.AddressB, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        Transaction second = FrameTx(nonce: 0, SelfVerifyFrame());
+        second.SenderAddress = TestItem.AddressB;
+        FrameTxValidationTracer secondTracer = Tracer(second);
+        Run(second, secondTracer);
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.Violated, Is.True);
             Assert.That(_virtualMachine.StateStack, Is.Empty);
+            Assert.That(secondTracer.Payer, Is.EqualTo(TestItem.AddressB), "the reused machine must start clean");
         }
     }
 
