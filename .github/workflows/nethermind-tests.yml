@@ -84,11 +84,13 @@ jobs:
           - Nethermind.Network.Enr.Test
           - Nethermind.Network.Test
           - Nethermind.Optimism.Test
+          - Nethermind.PortfolioViewer.Plugin.Test
           - Nethermind.Runner.Test
           - Nethermind.Serialization.Ssz.Test
           - Nethermind.Shutter.Test
           - Nethermind.Sockets.Test
           - Nethermind.Specs.Test
+          - Nethermind.State.Flat.Test
           - Nethermind.State.Test
           - Nethermind.State.Test.Runner.Test
           - Nethermind.Synchronization.Test

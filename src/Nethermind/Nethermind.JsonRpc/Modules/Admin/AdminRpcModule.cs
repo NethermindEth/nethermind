@@ -39,6 +39,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly ISubscriptionManager _subscriptionManager;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockProcessingPauseControl _blockProcessingPauseControl;
+    private readonly INodeRecordProvider? _nodeRecordProvider;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -52,7 +53,8 @@ public class AdminRpcModule : IAdminRpcModule
         ITrustedNodesManager trustedNodesManager,
         ISubscriptionManager subscriptionManager,
         IJsonRpcConfig jsonRpcConfig,
-        IBlockProcessingPauseControl blockProcessingPauseControl)
+        IBlockProcessingPauseControl blockProcessingPauseControl,
+        INodeRecordProvider? nodeRecordProvider = null)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -66,6 +68,7 @@ public class AdminRpcModule : IAdminRpcModule
         _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         _blockProcessingPauseControl = blockProcessingPauseControl ?? throw new ArgumentNullException(nameof(blockProcessingPauseControl));
+        _nodeRecordProvider = nodeRecordProvider;
 
         BuildNodeInfo();
     }
@@ -151,9 +154,10 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<PeerInfo[]>.Success(validatedPeers);
     }
 
-    public ResultWrapper<NodeInfo> admin_nodeInfo()
+    public async Task<ResultWrapper<NodeInfo>> admin_nodeInfo()
     {
         UpdateEthProtocolInfo();
+        await UpdateEnr();
         return ResultWrapper<NodeInfo>.Success(_nodeInfo);
     }
 
@@ -255,6 +259,23 @@ public class AdminRpcModule : IAdminRpcModule
         };
 
         UpdateEthProtocolInfo();
+    }
+
+    private async Task UpdateEnr()
+    {
+        if (_nodeRecordProvider is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _nodeInfo.Enr = (await _nodeRecordProvider.GetCurrentAsync()).ToString();
+        }
+        catch (Exception)
+        {
+            _nodeInfo.Enr = null;
+        }
     }
 
     private void UpdateEthProtocolInfo()

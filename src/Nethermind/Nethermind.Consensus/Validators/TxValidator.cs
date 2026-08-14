@@ -87,6 +87,8 @@ public sealed class TxValidator : ITxValidator
         // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
         // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
         // signature validation happen during processing.
+        // EIP-8141: no type-6 network wrapper is decoded yet, so no sidecar/proof validator is registered.
+        // Add a blob-sidecar and proof-version validator here once the sidecar wire format lands.
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
@@ -147,9 +149,9 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
-        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong regular, out ulong floor))
+        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
-            return IntrinsicGasError(TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap));
+            return IntrinsicGasError(TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
         }
 
         return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
