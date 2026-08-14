@@ -184,6 +184,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             in tx.MaxPriorityFeePerGas,
             tx.DecodedMaxFeePerGas,
             tx.MaxFeePerBlobGas.GetValueOrDefault(),
+            WorldState.GetNonce(sender),
             tx.RecentRootReferences,
             tx.NonceKeys);
 
@@ -610,7 +611,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             FrameTxContext frameContext = new(
                 sender, tx.Nonce, frames, tx.FrameSignatures ?? [], sigHash,
                 in maxCost, in tx.MaxPriorityFeePerGas, tx.DecodedMaxFeePerGas, tx.MaxFeePerBlobGas.GetValueOrDefault(),
-                tx.RecentRootReferences);
+                WorldState.GetNonce(sender),
+                tx.RecentRootReferences,
+                tx.NonceKeys);
 
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
             if (spec.UseHotAndColdStorage)
