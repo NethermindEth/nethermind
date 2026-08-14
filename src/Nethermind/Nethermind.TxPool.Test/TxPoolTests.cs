@@ -2285,6 +2285,30 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Shedding_breaks_an_equal_deadline_on_the_lower_priority_fee()
+        {
+            // The spec's second key: among equal deadlines the lowest effective priority fee yields first.
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            _txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_005,
+                maxPriorityFeePerGas: 1.GWei, maxFeePerGas: 1.GWei), TxHandlingOptions.None);
+            Transaction richer = BuildFrameTx(nonce: 0, TestItem.PrivateKeyB.Address, deadline: 1_005,
+                maxPriorityFeePerGas: 5.GWei, maxFeePerGas: 5.GWei);
+            _txPool.SubmitTx(richer, TxHandlingOptions.None);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.TryGetPendingTransaction(richer.Hash!, out _), Is.True, "the higher priority fee keeps its slot");
+            }
+        }
+
+        [Test]
         public async Task Shedding_takes_the_nearest_deadline_first_and_stops_at_the_freed_slot()
         {
             // Only as many as the pressure needs, in the spec's order: the later deadline keeps its place.

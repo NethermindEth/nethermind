@@ -303,8 +303,11 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <remarks>
         /// EIP-8141 "Direct Evaluation of Protocol-Defined Frames" names the sender, the payer and the
-        /// expiry verifier as that set. Helper contracts an opaque prefix reaches through <c>CALL*</c> are
-        /// not indexed yet, so a code change at one does not trigger revalidation (EIP8141-GAP).
+        /// expiry verifier as that set. Two kinds of dependency sit outside it (EIP8141-GAP): helper
+        /// contracts an opaque prefix reaches through <c>CALL*</c>, so a code change at one does not trigger
+        /// revalidation; and block context it reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list
+        /// can describe - only the protocol expiry frame is swept, by
+        /// <see cref="RemoveExpiredFrameTransactions"/>.
         /// </remarks>
         private void IndexFrameTxDependencies(Transaction tx)
         {
@@ -409,7 +412,6 @@ namespace Nethermind.TxPool
                         RemoveProcessedTransactions(args.Block);
                         RemoveExpiredFrameTransactions(args.Block);
                         RevalidateFrameTransactions(args.Block);
-                        ShedNearlyExpiredFrameTransactions(args.Block);
 
                         if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
                         {
@@ -417,6 +419,9 @@ namespace Nethermind.TxPool
                         }
 
                         UpdateBuckets();
+                        // After UpdateBuckets, which drops what the new head invalidated: shedding answers
+                        // capacity pressure, so it must read the pressure that actually remains.
+                        ShedNearlyExpiredFrameTransactions(args.Block);
                         TxPoolHeadChanged?.Invoke(this, args.Block);
                         Metrics.TransactionCount = _transactions.Count;
                         Metrics.BlobTransactionCount = _blobTransactions.Count;
@@ -625,14 +630,14 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>
-        /// Sheds the pending frame transactions closest to expiry while a pool is at capacity, nearest
-        /// deadline first and lowest effective priority fee first among equals.
+        /// Frees one slot in each pool at capacity by shedding the frame transaction nearest its deadline,
+        /// lowest effective priority fee first among equals.
         /// </summary>
         /// <remarks>
         /// EIP-8141 "Replacement and Eviction" orders eviction as invalid-against-head, then nearest expiry,
         /// then lowest effective priority fee; the first tier is <see cref="RevalidateFrameTransactions"/>.
         /// Applying the deadline order across the whole pool needs a deadline-ordered index inside the pool
-        /// (EIP8141-GAP), so this sheds only as far as the pressure goes and only within
+        /// (EIP8141-GAP), so this sheds at most one transaction per pool per head, and only within
         /// <see cref="ExpiryShedHorizonSeconds"/> of the deadline.
         /// </remarks>
         private void ShedNearlyExpiredFrameTransactions(Block block)
@@ -658,40 +663,36 @@ namespace Nethermind.TxPool
             UInt256 baseFee = _headInfo.CurrentBaseFee;
             bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
             Transaction[] snapshot = pool.GetSnapshot();
-            using ArrayPoolList<(ulong Deadline, UInt256 Fee, Transaction Tx)> shedding = new(snapshot.Length);
+
+            // One removal clears IsFull, so only the minimum is ever needed: a linear scan, not a sort.
+            Transaction? candidate = null;
+            ulong bestDeadline = 0;
+            UInt256 bestFee = default;
             for (int i = 0; i < snapshot.Length; i++)
             {
                 Transaction tx = snapshot[i];
-                if (tx.SupportsFrames
-                    && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
-                    && deadline <= horizon)
+                if (!tx.SupportsFrames
+                    || !FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
+                    || deadline > horizon)
                 {
-                    shedding.Add((deadline, tx.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee), tx));
+                    continue;
+                }
+
+                UInt256 fee = tx.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee);
+                if (candidate is null || deadline < bestDeadline || (deadline == bestDeadline && fee < bestFee))
+                {
+                    (candidate, bestDeadline, bestFee) = (tx, deadline, fee);
                 }
             }
 
-            shedding.AsSpan().Sort(static (a, b) =>
-            {
-                int byDeadline = a.Deadline.CompareTo(b.Deadline);
-                return byDeadline != 0 ? byDeadline : a.Fee.CompareTo(b.Fee);
-            });
+            if (candidate is null || !RemoveTransaction(candidate.Hash)) return;
 
-            foreach ((_, _, Transaction tx) in shedding.AsSpan())
-            {
-                // Stops as soon as a slot is free, so the order above decides who yields first and a
-                // transaction with life to spare keeps its place until it actually expires.
-                if (!pool.IsFull()) break;
-
-                if (RemoveTransaction(tx.Hash))
-                {
-                    EvictedPending?.Invoke(this, new TxEventArgs(tx));
-                    // A deadline only ever gets closer, so unlike a revalidation eviction this cannot
-                    // reverse and the hash stays cached, as on the expiry path.
-                    Metrics.PendingTransactionsEvicted++;
-                    Metrics.FrameTxExpiryShedEvictions++;
-                    if (_logger.IsTrace) _logger.Trace($"Shed nearly-expired frame transaction {tx.Hash} to relieve pool pressure.");
-                }
-            }
+            EvictedPending?.Invoke(this, new TxEventArgs(candidate));
+            // A deadline only ever gets closer, so unlike a revalidation eviction this cannot
+            // reverse and the hash stays cached, as on the expiry path.
+            Metrics.PendingTransactionsEvicted++;
+            Metrics.FrameTxExpiryShedEvictions++;
+            if (_logger.IsTrace) _logger.Trace($"Shed nearly-expired frame transaction {candidate.Hash} to relieve pool pressure.");
         }
 
         /// <param name="completeAccountChanges">The head's changed accounts, or <c>null</c> when they do not describe everything that moved.</param>
