@@ -45,6 +45,24 @@ public partial class DebugRpcModuleTests
         public void Dispose() => Blockchain.Dispose();
     }
 
+    [Test]
+    public async Task Debug_config_returns_fork_schedule_and_app_version()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_config");
+        JToken result = JToken.Parse(serialized)["result"]!;
+        JArray allForks = (JArray)result["all"]!;
+        JToken appVersion = result["appVersion"]!;
+
+        Assert.That(result["current"], Is.Not.Null);
+        Assert.That(allForks.Count, Is.GreaterThan(0));
+        Assert.That(allForks[0]!["forkId"], Is.Not.Null);
+        Assert.That(appVersion["code"]!.Value<string>(), Is.EqualTo(ProductInfo.ClientCode));
+        Assert.That(appVersion["name"]!.Value<string>(), Is.EqualTo(ProductInfo.Name));
+        Assert.That(appVersion["version"]!.Value<string>(), Is.EqualTo(ProductInfo.Version));
+        Assert.That(appVersion["commit"]!.Value<string>(), Is.EqualTo(ProductInfo.Commit));
+    }
+
     [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
     public async Task Debug_traceCall_failure_returns_geth_compatible_error(object txArgs, string expectedErrorPrefix, int expectedErrorCode)
     {

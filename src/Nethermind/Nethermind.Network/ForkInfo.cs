@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Force.Crc32;
@@ -190,6 +190,12 @@ namespace Nethermind.Network
                 Next = isNextPresent ? new Fork(Forks[indexOfActive + 1].Activation, Forks[indexOfActive + 1].Id) : null,
                 Last = isNextPresent ? new Fork(Forks[^1].Activation, Forks[^1].Id) : null,
             };
+        }
+
+        public ReadOnlySpan<Fork> GetAllForks()
+        {
+            EnsureInitialized();
+            return Forks;
         }
     }
 }

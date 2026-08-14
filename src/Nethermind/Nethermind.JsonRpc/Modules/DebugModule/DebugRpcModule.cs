@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,6 +7,7 @@ using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -19,6 +20,8 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
@@ -41,6 +44,7 @@ public class DebugRpcModule(
     IDebugBridge debugBridge,
     IJsonRpcConfig jsonRpcConfig,
     ISpecProvider specProvider,
+    IForkInfo forkInfo,
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
@@ -49,6 +53,8 @@ public class DebugRpcModule(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
+    private readonly IForkInfo _forkInfo = forkInfo;
+    private static readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
     // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
     private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -507,6 +513,34 @@ public class DebugRpcModule(
     {
         object configValue = debugBridge.GetConfigValue(category, name);
         return ResultWrapper<object>.Success(configValue);
+    }
+
+    public ResultWrapper<JsonNode> debug_config()
+    {
+        ReadOnlySpan<Fork> forkSchedule = _forkInfo.GetAllForks();
+        ForkConfig[] allForks = new ForkConfig[forkSchedule.Length];
+        for (int index = 0; index < forkSchedule.Length; index++)
+        {
+            allForks[index] = ForkConfigFactory.Create(forkSchedule[index], specProvider);
+        }
+
+        ForkActivationsSummary forks = _forkInfo.GetForkActivationsSummary(blockFinder.Head?.Header);
+        ForkConfigSummary config = new()
+        {
+            Current = ForkConfigFactory.Create(forks.Current, specProvider),
+            Next = ForkConfigFactory.Create(forks.Next, specProvider),
+            Last = ForkConfigFactory.Create(forks.Last, specProvider),
+            All = allForks,
+            AppVersion = new AppVersion
+            {
+                Code = ProductInfo.ClientCode,
+                Name = ProductInfo.Name,
+                Version = ProductInfo.Version,
+                Commit = ProductInfo.Commit,
+            },
+        };
+
+        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize(config, UnchangedDictionaryKeyOptions))!);
     }
 
     public ResultWrapper<bool> debug_resetHead(Hash256 blockHash)

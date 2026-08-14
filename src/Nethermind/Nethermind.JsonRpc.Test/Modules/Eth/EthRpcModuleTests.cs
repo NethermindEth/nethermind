@@ -131,6 +131,18 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_config_does_not_include_debug_fields()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_config");
+        JToken result = JToken.Parse(serialized)["result"]!;
+
+        Assert.That(result["current"], Is.Not.Null);
+        Assert.That(result["all"], Is.Null);
+        Assert.That(result["appVersion"], Is.Null);
+    }
+
+    [Test]
     public async Task Eth_get_eth_feeHistory()
     {
         using Context ctx = await Context.Create();

@@ -1182,36 +1182,10 @@ public partial class EthRpcModule(
 
         return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new ForkConfigSummary
         {
-            Current = GetForkConfig(forks.Current, _specProvider)!,
-            Next = GetForkConfig(forks.Next, _specProvider),
-            Last = GetForkConfig(forks.Last, _specProvider)
+            Current = ForkConfigFactory.Create(forks.Current, _specProvider),
+            Next = ForkConfigFactory.Create(forks.Next, _specProvider),
+            Last = ForkConfigFactory.Create(forks.Last, _specProvider)
         }), UnchangedDictionaryKeyOptions)));
-
-        static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
-        {
-            if (fork is null)
-            {
-                return null;
-            }
-
-            IReleaseSpec? spec = specProvider.GetSpec(fork.Value.Activation.BlockNumber, fork.Value.Activation.Timestamp);
-
-            return new ForkConfig
-            {
-                ActivationTime = fork.Value.Activation.Timestamp is not null ? (int)fork.Value.Activation.Timestamp : null,
-                ActivationBlock = fork.Value.Activation.Timestamp is null ? (int)fork.Value.Activation.BlockNumber : null,
-                BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
-                {
-                    BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,
-                    Max = (int)spec.MaxBlobCount,
-                    Target = (int)spec.TargetBlobCount,
-                } : null,
-                ChainId = specProvider.ChainId,
-                ForkId = fork.Value.Id.HashBytes,
-                Precompiles = spec.ListPrecompiles(),
-                SystemContracts = spec.ListSystemContracts(),
-            };
-        }
     }
 
     public ResultWrapper<AccountAccessForRpc[]?> eth_getBlockAccessList(BlockParameter blockParameter)
