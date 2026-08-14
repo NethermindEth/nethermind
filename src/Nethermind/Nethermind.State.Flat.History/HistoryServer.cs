@@ -184,18 +184,20 @@ public sealed class HistoryServer : IHistoryServer
         byte[] historySearchFrom = cursor is { Length: > 0 } ? GroupUpperBound(cursor, keyLength) : startKey.Bytes[..keyLength].ToArray();
         byte[] historyUpperBound = GroupUpperBound(endKeyPrefix, keyLength);
 
-        ISortedView? flatView = null;
-        if (mergeFlatFallback)
-        {
-            ISortedKeyValueStore accountFlat = (ISortedKeyValueStore)_persistedAccounts;
-            byte[] flatSearchFrom = cursor is { Length: > 0 } ? PastFlatKeyBound(cursor, keyLength) : startKey.Bytes[..keyLength].ToArray();
-            byte[] flatUpperBound = GroupUpperBound(endKeyPrefix, keyLength);
-            flatView = accountFlat.GetViewBetween(flatSearchFrom, flatUpperBound);
-        }
+        const ReadFlags servingReadFlags = ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead;
 
-        using ISortedView historyView = accountHistory.GetViewBetween(historySearchFrom, historyUpperBound);
+        using ISortedView historyView = accountHistory.GetViewBetween(historySearchFrom, historyUpperBound, servingReadFlags);
+        ISortedView? flatView = null;
         try
         {
+            if (mergeFlatFallback)
+            {
+                ISortedKeyValueStore accountFlat = (ISortedKeyValueStore)_persistedAccounts;
+                byte[] flatSearchFrom = cursor is { Length: > 0 } ? PastFlatKeyBound(cursor, keyLength) : startKey.Bytes[..keyLength].ToArray();
+                byte[] flatUpperBound = GroupUpperBound(endKeyPrefix, keyLength);
+                flatView = accountFlat.GetViewBetween(flatSearchFrom, flatUpperBound, servingReadFlags);
+            }
+
             return MergeWalk(historyView, flatView, keyLength, height, cursor, byteLimit, maxEntries, cancellationToken);
         }
         finally
