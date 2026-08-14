@@ -45,9 +45,6 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         }
     }
 
-    /// <summary>Decodes the element that follows the payload, entered only when bytes remain.</summary>
-    /// <remarks>The default reads the envelope ECDSA signature; a transaction type whose trailing element is
-    /// not a signature overrides this so the shared pre/post-payload framing stays in one place.</remarks>
     protected virtual void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
         transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
 

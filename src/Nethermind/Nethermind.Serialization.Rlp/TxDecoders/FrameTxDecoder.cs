@@ -37,12 +37,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static readonly byte[][] EmptyVersionedHashes = [];
 
-    /// <inheritdoc/>
-    /// <remarks>
-    /// The trailing element of a frame transaction is the optional EIP-8272 reference list, never a
-    /// signature (the sender is explicit). A non-list element there is padding whose acceptance would
-    /// decode a spurious signature that strict clients drop, diverging on the transaction hash.
-    /// </remarks>
     protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
         if (!decoderContext.IsSequenceNext())
