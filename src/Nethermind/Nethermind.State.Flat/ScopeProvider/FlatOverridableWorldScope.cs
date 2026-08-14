@@ -75,7 +75,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             snapshot.Dispose();
         }
 
-        _resourcePool.ReturnCachedResource(ResourcePool.Usage.ReadOnlyProcessingEnv, transientResource);
+        transientResource.ReleaseLease();
     }
 
     private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)
@@ -161,7 +161,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             return false;
         }
 
-        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, scoped in UInt256 index)
         {
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);

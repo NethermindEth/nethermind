@@ -491,7 +491,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -532,7 +532,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
@@ -574,7 +574,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithData(new byte[txSize])
@@ -629,7 +629,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -722,6 +722,47 @@ public class TxBroadcasterTests
 
         // Assert
         Assert.That(result, Is.EqualTo(versionMatches), "LightTransaction from blob transaction should be gossiped when proof version matches.");
+    }
+
+    [Test]
+    public void Gossips_frame_blob_tx_only_with_current_proof_version_sidecar([Values] ProofVersion proofVersion, [Values] bool versionMatches)
+    {
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        ProofVersion wrapperVersion = versionMatches
+            ? proofVersion
+            : proofVersion == ProofVersion.V1 ? ProofVersion.V0 : ProofVersion.V1;
+
+        Transaction frameBlobTx = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+            NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], wrapperVersion),
+        };
+
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTx), Is.EqualTo(versionMatches));
+    }
+
+    [Test]
+    public void Withholds_frame_blob_tx_lacking_a_sidecar()
+    {
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(ProofVersion.V1);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        Transaction frameBlobTxNoWrapper = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+        };
+        Transaction bloblessFrameTx = new() { Type = TxType.FrameTx };
+
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTxNoWrapper), Is.False);
+        Assert.That(gossipPolicy.ShouldGossipTransaction(bloblessFrameTx), Is.True);
     }
 
     [Test]

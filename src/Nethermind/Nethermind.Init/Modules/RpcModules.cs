@@ -125,5 +125,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<ITrustedNodesManager>(),
             ctx.Resolve<ISubscriptionManager>(),
             ctx.Resolve<IJsonRpcConfig>(),
-            ctx.Resolve<IBlockProcessingPauseControl>());
+            ctx.Resolve<IBlockProcessingPauseControl>(),
+            ctx.ResolveOptional<INodeRecordProvider>());
 }
