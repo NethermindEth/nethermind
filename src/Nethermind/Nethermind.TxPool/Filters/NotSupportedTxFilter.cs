@@ -25,10 +25,8 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP-8141: a persistent blob pool stores a blob-carrying frame tx via the frame RLP decoder, which
-        // has no network-wrapper handling and drops the sidecar, reloading a wrapper-less LightTransaction that
-        // is unproducible and unservable. Only BlobsSupportMode.InMemory keeps the full tx intact, so admit it there only.
-        if (tx.SupportsFrames && tx.CarriesBlobs && _txPoolConfig.BlobsSupport.IsPersistentStorage())
+        // EIP8141-GAP: frame expiry cannot see a persisted blob-carrying frame tx, so admit in memory only.
+        if (tx.SupportsFrames && tx.CarriesBlobs && !_txPoolConfig.BlobsSupport.SupportsBlobFrameTxs())
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions require in-memory blob support.");
@@ -36,10 +34,10 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         }
 
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
-        // The public-mempool DoS rules (validation-prefix simulation, MAX_VERIFY_GAS, paymaster reservation,
-        // failed-APPROVE replay bound, payer-exposure accounting, dependency-set revalidation/eviction ordering)
-        // are NOT implemented and must gate this branch before any public activation. MalformedTxFilter still
-        // enforces static well-formedness downstream.
+        // Still missing before any public activation: validation-prefix simulation, paymaster reservation, the
+        // failed-APPROVE replay bound, dependency-set revalidation/eviction ordering, and payer-exposure
+        // accounting beyond natively-resolved payers (under-reserved until the shared max_cost helper).
+        // MalformedTxFilter still enforces static well-formedness downstream.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

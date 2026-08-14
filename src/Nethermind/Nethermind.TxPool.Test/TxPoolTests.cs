@@ -2490,6 +2490,55 @@ namespace Nethermind.TxPool.Test
         /// <summary>The sender's account nonce, deliberately unequal to the sequence the keyed transactions declare.</summary>
         private const ulong AccountNonceUnrelatedToKeyedSequences = 7;
 
+        [Test]
+        public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
+        {
+            // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
+            // shape reaching the exposure gate here.
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * TxGasLimit);
+
+            Transaction first = SelfPayingFrameTx(nonce: 0, feePerGas: 6);
+            Transaction bumped = SelfPayingFrameTx(nonce: 0, feePerGas: 7);
+            Transaction afterRelease = SelfPayingFrameTx(nonce: 0, feePerGas: 8);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            // 6 + 7 exceeds the balance, but the bump displaces the incumbent rather than joining it, so
+            // the pending set never holds both and the payer's exposure ends at 7.
+            AcceptTxResult bumpedResult = _txPool.SubmitTx(bumped, TxHandlingOptions.None);
+            // Within the bound but too small a bump to replace: no Removed fires, so only AddCore's
+            // explicit release keeps the payer from leaking.
+            AcceptTxResult unreplaceableResult = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 6, distinctHash: true), TxHandlingOptions.None);
+            _txPool.RemoveTransaction(bumped.Hash);
+            AcceptTxResult afterReleaseResult = _txPool.SubmitTx(afterRelease, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(bumpedResult, Is.EqualTo(AcceptTxResult.Accepted), "a fee bump must not be gated on the reservation it displaces");
+                Assert.That(unreplaceableResult, Is.EqualTo(AcceptTxResult.ReplacementNotAllowed));
+                Assert.That(afterReleaseResult, Is.EqualTo(AcceptTxResult.Accepted), "both the refused replacement and the removed tx must have released");
+            }
+        }
+
+        /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
+        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, bool distinctHash = false)
+        {
+            Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
+                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas);
+            // Naming the sender explicitly is still a self_verify frame and prices identically, so this
+            // varies the hash without touching any input the reservation is computed from.
+            if (distinctHash)
+            {
+                int i = Array.FindIndex(tx.Frames!, f => f.Flags == TxFrame.ApproveExecutionAndPayment);
+                Assert.That(i, Is.GreaterThanOrEqualTo(0), "the helper must still build a self_verify frame to retarget");
+                TxFrame frame = tx.Frames![i];
+                tx.Frames[i] = new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data);
+            }
+            tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
         private Transaction BuildFrameTx(ulong nonce, Address sender, ulong? deadline, UInt256? maxPriorityFeePerGas = null, UInt256? maxFeePerGas = null, ulong verifyGasLimit = 50_000, UInt256[] nonceKeys = null)
         {
             List<TxFrame> frames =
@@ -2514,7 +2563,7 @@ namespace Nethermind.TxPool.Test
                 Frames = [.. frames],
                 NonceKeys = nonceKeys,
                 FrameSignatures = [],
-                GasLimit = 1_000_000,
+                GasLimit = TxGasLimit,
                 GasPrice = maxPriorityFeePerGas ?? 1.GWei,
                 DecodedMaxFeePerGas = maxFeePerGas ?? 1.GWei,
             };

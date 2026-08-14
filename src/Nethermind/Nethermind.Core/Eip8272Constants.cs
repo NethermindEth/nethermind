@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
@@ -18,4 +19,12 @@ public static class Eip8272Constants
     public static readonly ValueHash256 RecentRootStorageDomain = ValueKeccak.Compute("RECENT_ROOT_STORAGE");
 
     public static readonly Address RecentRootAddress = new("0x0000000000000000000000000000000000008272");
+
+    /// <summary>The runtime code installed at <see cref="RecentRootAddress"/> when EIP-8272 activates.</summary>
+    /// <remarks>
+    /// Empty: <c>RECENT_ROOT_CODE</c> is TBD in the spec, and the predeploy is only a protocol-managed
+    /// storage namespace — recent-root entries are written natively and no call enters the account — so
+    /// empty code keeps the activation state minimal.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> RecentRootCode { get; } = ReadOnlyMemory<byte>.Empty;
 }
