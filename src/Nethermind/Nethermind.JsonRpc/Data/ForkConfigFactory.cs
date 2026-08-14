@@ -13,7 +13,7 @@ internal static class ForkConfigFactory
     internal static ForkConfig? Create(Fork? fork, ISpecProvider specProvider) =>
         fork is { } scheduledFork ? Create(scheduledFork, specProvider) : null;
 
-    internal static ForkConfig Create(Fork fork, ISpecProvider specProvider)
+    internal static ForkConfig Create(Fork fork, ISpecProvider specProvider, bool? active = null)
     {
         IReleaseSpec spec = specProvider.GetSpec(fork.Activation.BlockNumber, fork.Activation.Timestamp);
 
@@ -21,6 +21,7 @@ internal static class ForkConfigFactory
         {
             ActivationTime = fork.Activation.Timestamp is not null ? (int)fork.Activation.Timestamp : null,
             ActivationBlock = fork.Activation.Timestamp is null ? (int)fork.Activation.BlockNumber : null,
+            Active = active,
             BlobSchedule = spec.IsEip4844Enabled ? new BlobScheduleSettingsForRpc
             {
                 BaseFeeUpdateFraction = (int)spec.BlobBaseFeeUpdateFraction,

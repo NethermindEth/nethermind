@@ -517,20 +517,17 @@ public class DebugRpcModule(
 
     public ResultWrapper<JsonNode> debug_config()
     {
+        ForkActivationsSummary activations = _forkInfo.GetForkActivationsSummary(blockFinder.Head?.Header);
         ReadOnlySpan<Fork> forkSchedule = _forkInfo.GetAllForks();
-        ForkConfig[] allForks = new ForkConfig[forkSchedule.Length];
+        ForkConfig[] forks = new ForkConfig[forkSchedule.Length];
         for (int index = 0; index < forkSchedule.Length; index++)
         {
-            allForks[index] = ForkConfigFactory.Create(forkSchedule[index], specProvider);
+            forks[index] = ForkConfigFactory.Create(forkSchedule[index], specProvider, forkSchedule[index].Id.Equals(activations.Current.Id));
         }
 
-        ForkActivationsSummary forks = _forkInfo.GetForkActivationsSummary(blockFinder.Head?.Header);
-        ForkConfigSummary config = new()
+        DebugConfigSummary config = new()
         {
-            Current = ForkConfigFactory.Create(forks.Current, specProvider),
-            Next = ForkConfigFactory.Create(forks.Next, specProvider),
-            Last = ForkConfigFactory.Create(forks.Last, specProvider),
-            All = allForks,
+            Forks = forks,
             AppVersion = new AppVersion
             {
                 Code = ProductInfo.ClientCode,

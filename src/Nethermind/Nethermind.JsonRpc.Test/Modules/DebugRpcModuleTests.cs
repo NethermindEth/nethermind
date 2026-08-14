@@ -14,6 +14,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Network;
+using Nethermind.Specs;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -46,21 +48,36 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_config_returns_fork_schedule_and_app_version()
+    public async Task Debug_config_returns_all_forks_and_app_version()
     {
-        using Context ctx = await Context.Create();
+        using Context ctx = await Context.Create(MainnetSpecProvider.Instance);
         string serialized = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_config");
         JToken result = JToken.Parse(serialized)["result"]!;
-        JArray allForks = (JArray)result["all"]!;
+        JArray forks = (JArray)result["forks"]!;
         JToken appVersion = result["appVersion"]!;
+        int activeForkCount = 0;
 
-        Assert.That(result["current"], Is.Not.Null);
-        Assert.That(allForks.Count, Is.GreaterThan(0));
-        Assert.That(allForks[0]!["forkId"], Is.Not.Null);
-        Assert.That(appVersion["code"]!.Value<string>(), Is.EqualTo(ProductInfo.ClientCode));
-        Assert.That(appVersion["name"]!.Value<string>(), Is.EqualTo(ProductInfo.Name));
-        Assert.That(appVersion["version"]!.Value<string>(), Is.EqualTo(ProductInfo.Version));
-        Assert.That(appVersion["commit"]!.Value<string>(), Is.EqualTo(ProductInfo.Commit));
+        foreach (JToken fork in forks)
+        {
+            Assert.That(fork["active"], Is.Not.Null);
+            if (fork["active"]!.Value<bool>()) activeForkCount++;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["current"], Is.Null);
+            Assert.That(result["next"], Is.Null);
+            Assert.That(result["last"], Is.Null);
+            Assert.That(result["all"], Is.Null);
+            Assert.That(forks.Count, Is.EqualTo(ctx.Blockchain.Container.Resolve<IForkInfo>().GetAllForks().Length));
+            Assert.That(forks.Count, Is.GreaterThan(1));
+            Assert.That(activeForkCount, Is.EqualTo(1));
+            Assert.That(forks[0]!["forkId"], Is.Not.Null);
+            Assert.That(appVersion["code"]!.Value<string>(), Is.EqualTo(ProductInfo.ClientCode));
+            Assert.That(appVersion["name"]!.Value<string>(), Is.EqualTo(ProductInfo.Name));
+            Assert.That(appVersion["version"]!.Value<string>(), Is.EqualTo(ProductInfo.Version));
+            Assert.That(appVersion["commit"]!.Value<string>(), Is.EqualTo(ProductInfo.Commit));
+        }
     }
 
     [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
