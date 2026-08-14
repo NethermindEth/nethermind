@@ -42,6 +42,35 @@ public class TrustedNodesManagerTests
     }
 
     [Test]
+    public async Task AddAsync_WithUpdateFile_PersistsNodePreviouslyAddedInMemoryOnly()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-trusted-nodes-{System.Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(path, "[]");
+        TrustedNodesManager manager = new(path, LimboLogs.Instance);
+        Enode enode = new(EnodeString);
+
+        await manager.AddAsync(enode, updateFile: false);
+        await manager.AddAsync(enode, updateFile: true);
+
+        Assert.That(await File.ReadAllTextAsync(path), Does.Contain(enode.PublicKey.ToString(false)), "upgrading an in-memory node to persistent must write the file");
+    }
+
+    [Test]
+    public async Task RemoveAsync_WithUpdateFile_UnpersistsNodePreviouslyRemovedInMemoryOnly()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-trusted-nodes-{System.Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(path, "[]");
+        TrustedNodesManager manager = new(path, LimboLogs.Instance);
+        Enode enode = new(EnodeString);
+        await manager.AddAsync(enode, updateFile: true);
+
+        await manager.RemoveAsync(enode, updateFile: false);
+        await manager.RemoveAsync(enode, updateFile: true);
+
+        Assert.That(await File.ReadAllTextAsync(path), Does.Not.Contain(enode.PublicKey.ToString(false)), "a persistent remove of an already-forgotten node must still scrub the file");
+    }
+
+    [Test]
     public async Task IsTrusted_AfterAdd_ReturnsTrueRegardlessOfHostOrPort()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"test-trusted-nodes-{System.Guid.NewGuid():N}.json");

@@ -61,6 +61,8 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
             {
                 _logger.Info($"Trusted node was already added: {enode}");
             }
+            // The node may have been added earlier with updateFile=false; honor the upgrade to a persistent entry.
+            if (updateFile) await SaveFileAsync(cancellationToken);
             return false;
         }
 
@@ -88,6 +90,8 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
         if (!TryRemoveNode(networkNode.NodeId))
         {
             if (_logger.IsInfo) _logger.Info($"Trusted node was not found: {enode}");
+            // The node may have been removed earlier with updateFile=false; still scrub any stale file entry.
+            if (updateFile) await SaveFileAsync(cancellationToken);
             return false;
         }
 

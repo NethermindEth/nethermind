@@ -34,6 +34,8 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
         if (!TryAddNode(networkNode))
         {
             if (_logger.IsInfo) _logger.Info($"Static node was already added: {networkNode}");
+            // The node may have been added earlier with updateFile=false; honor the upgrade to a persistent entry.
+            if (updateFile) await SaveFileAsync(cancellationToken);
             return false;
         }
 
@@ -55,6 +57,8 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
         if (!TryRemoveNode(networkNode.NodeId))
         {
             if (_logger.IsInfo) _logger.Info($"Static node was not found: {networkNode}");
+            // The node may have been removed earlier with updateFile=false; still scrub any stale file entry.
+            if (updateFile) await SaveFileAsync(cancellationToken);
             return false;
         }
 

@@ -203,20 +203,19 @@ public class AdminModuleTests
     }
 
     [Test]
-    public async Task AdminAddTrustedPeer_WhenAlreadyTrusted_SkipsAddAsyncAndPoolInsert()
+    public async Task AdminAddTrustedPeer_WhenAlreadyTrustedAndPersistent_StillRequestsFileUpdate()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
-        IPeerPool peerPool = Substitute.For<IPeerPool>();
-        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(trustedNodesManager: trustedNodesManager, peerPool: peerPool);
+        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(trustedNodesManager: trustedNodesManager);
 
-        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString);
+        string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString, true);
 
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         Assert.That(result, Is.True, "addTrustedPeer is idempotent: trusting an already-trusted peer is success, matching geth's Server.AddTrustedPeer semantics");
-        await trustedNodesManager.DidNotReceive().AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-        peerPool.DidNotReceive().GetOrAdd(Arg.Any<NetworkNode>());
+        await trustedNodesManager.Received(1).AddAsync(Arg.Any<Enode>(), true, Arg.Any<CancellationToken>());
     }
 
     [TestCase("admin_addPeer", "not-an-enode", TestName = "AdminAddPeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
