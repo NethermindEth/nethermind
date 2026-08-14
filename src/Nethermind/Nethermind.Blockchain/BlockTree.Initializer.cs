@@ -37,7 +37,7 @@ public partial class BlockTree
         // LowestInsertedBeaconHeader parked above headers the backfill had already inserted.
         // Walk down through the contiguous beacon segment and stop at the merge junction — the
         // first already-synced non-beacon block. Anchoring on IsKnownBlock keeps the walk bounded
-        // to the beacon segment even when the suggested pointers are missing or stale (#12273).
+        // to the beacon segment even when the suggested pointers are missing or stale.
         BlockHeader current = lowest;
         while (current.ParentHash is not null)
         {
@@ -258,7 +258,7 @@ public partial class BlockTree
 
         BestKnownNumber = bestKnownNumberFound;
         // The canonical FindHeader(number)/FindBlock(number) miss post-merge levels with no
-        // main-chain block — where suggested-but-unprocessed blocks live after a restart (#12803).
+        // main-chain block — where suggested-but-unprocessed blocks live after a restart.
         BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None)
             ?? FindHeaderAtLevel(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None, findBeacon: false);
         BestSuggestedBody = FindBlock(bestSuggestedBodyNumber, BlockTreeLookupOptions.None)

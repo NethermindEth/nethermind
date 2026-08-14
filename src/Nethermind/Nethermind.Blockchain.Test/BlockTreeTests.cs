@@ -3076,7 +3076,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void RecalculateTreeLevels_WhenBestSuggestedHeaderUnresolvableInPoS_StopsAtBeaconJunction()
     {
-        // Post-merge repro of the O(n) startup walk (#12273): reconciliation must stop at the
+        // Post-merge repro of the O(n) startup walk: reconciliation must stop at the
         // beacon/non-beacon junction rather than walking every already-synced header to genesis.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
@@ -3108,7 +3108,6 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_suggested_post_merge_when_suggested_blocks_sit_ahead_of_head()
     {
-        // Repro of #12803.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
@@ -3137,7 +3136,6 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_best_suggested_beacon_post_merge_when_beacon_blocks_sit_ahead_of_head()
     {
-        // Beacon variant of #12803.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
