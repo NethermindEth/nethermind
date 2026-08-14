@@ -81,7 +81,7 @@ public class Eth68ProtocolHandlerTests
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>(),
+            Substitute.For<IChainHeadSpecProvider>(),
             _txGossipPolicy);
         _handler.Init();
     }
@@ -291,12 +291,52 @@ public class Eth68ProtocolHandlerTests
         _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
+    // The gate must read the header the ingress filter reads. Best-suggested leads the processed head, so
+    // a gate keyed on the latter would still decline while the pool had already started accepting.
+    [Test]
+    public void Frame_tx_announcement_is_requested_as_soon_as_the_ingress_filter_would_accept()
+    {
+        IReleaseSpec preFork = Substitute.For<IReleaseSpec>();
+        preFork.IsEip8141Enabled.Returns(false);
+        IReleaseSpec atFork = Substitute.For<IReleaseSpec>();
+        atFork.IsEip8141Enabled.Returns(true);
+
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        // Best-suggested has crossed activation; the processed head has not.
+        specProvider.GetCurrentHeadSpec().Returns(atFork);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(preFork);
+
+        _handler = new Eth68ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            RunImmediatelyScheduler.Instance,
+            _transactionPool,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager),
+            LimboLogs.Instance,
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory },
+            specProvider,
+            _txGossipPolicy);
+
+        using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
+        using ArrayPoolList<int> sizes = new(1) { 100 };
+        using ArrayPoolList<Hash256> hashes = new(1) { TestItem.KeccakA };
+
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
+    }
+
     private Eth68ProtocolHandler BuildHandler(ITxPoolConfig txPoolConfig, bool frameTxsEnabled)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8141Enabled.Returns(frameTxsEnabled);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(spec);
 
         return new Eth68ProtocolHandler(
             _session,
@@ -327,7 +367,7 @@ public class Eth68ProtocolHandlerTests
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>(),
+            Substitute.For<IChainHeadSpecProvider>(),
             _txGossipPolicy);
 
         int maxNumberOfTxsInOneMsg = int.Min(sizeOfOneTx <= TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 256, 256);

@@ -491,7 +491,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -532,7 +532,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
@@ -574,7 +574,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithData(new byte[txSize])
@@ -629,7 +629,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction

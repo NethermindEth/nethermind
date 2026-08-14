@@ -37,7 +37,7 @@ public class Eth68ProtocolHandler(ISession session,
     IForkInfo forkInfo,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
-    ISpecProvider specProvider,
+    IChainHeadSpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null
     )
     : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
@@ -264,15 +264,9 @@ public class Eth68ProtocolHandler(ISession session,
         _ => false,
     };
 
-    /// <remarks>
-    /// Tracks the ingress filter's fork gate, but off <see cref="SyncServer"/>'s head rather than the best
-    /// suggested header, so it turns on one block later: at activation an announcement can be dropped.
-    /// </remarks>
-    private bool FrameTxsEnabled()
-    {
-        BlockHeader? head = SyncServer.Head;
-        return head is not null && specProvider.GetSpec(head).IsEip8141Enabled;
-    }
+    /// <remarks>Reads the same header as the ingress filter, so the gate opens exactly when the pool
+    /// starts accepting frame transactions.</remarks>
+    private bool FrameTxsEnabled() => specProvider.GetCurrentHeadSpec().IsEip8141Enabled;
 
     private static bool ShouldSendCurrentRequest(int txSize, int packetSizeLeft, int toRequestCount) =>
         toRequestCount >= MaxPooledTransactionHashesPerRequest
