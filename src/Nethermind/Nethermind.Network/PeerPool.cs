@@ -151,7 +151,7 @@ namespace Nethermind.Network
         {
             if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing))
             {
-                if (!existing.Node.IsTrusted && _trustedNodesManager.IsTrusted(networkNode.Enode))
+                if (!existing.Node.IsTrusted && networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode))
                 {
                     existing.Node.IsTrusted = true;
                     if (_logger.IsDebug) DebugPromoted(existing.Node, "trusted");

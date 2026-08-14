@@ -269,12 +269,15 @@ public class PeerPoolTests
         };
         Peer resolved = pool.GetOrAdd(configuredNode);
 
-        Assert.That(resolved, Is.SameAs(pooled));
-        Assert.That(pooled.Node.IsStatic, Is.EqualTo(isStatic),
-            "a peer that was already pooled from the persisted peers db must gain the elevated status of a later arrival, or it is never treated as such for the whole session");
-        Assert.That(pooled.Node.IsTrusted, Is.EqualTo(isTrusted));
-        Assert.That(pooled.Node.IsBootnode, Is.EqualTo(isBootnode));
-        Assert.That(pool.StaticPeers, isStatic ? Has.Exactly(1).Items : Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.SameAs(pooled));
+            Assert.That(pooled.Node.IsStatic, Is.EqualTo(isStatic),
+                "a peer that was already pooled from the persisted peers db must gain the elevated status of a later arrival, or it is never treated as such for the whole session");
+            Assert.That(pooled.Node.IsTrusted, Is.EqualTo(isTrusted));
+            Assert.That(pooled.Node.IsBootnode, Is.EqualTo(isBootnode));
+            Assert.That(pool.StaticPeers, isStatic ? Has.Exactly(1).Items : Is.Empty);
+        }
     }
 
     [Test]
@@ -328,6 +331,27 @@ public class PeerPoolTests
         Assert.That(pooled.Node.IsTrusted, Is.True,
             "a peer trusted after it was pooled must gain the flag, or admin_addTrustedPeer never takes effect for an already known peer");
     }
+
+    [Test]
+    public void GetOrAdd_NetworkNode_refreshes_the_trusted_flag_of_an_enr_backed_pooled_peer()
+    {
+        ITrustedNodesManager trustedNodesManager = new TrustedNodesManager("trusted-nodes.json", LimboLogs.Instance);
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        NetworkNode enrNode = new(TestEnrString);
+        Peer pooled = pool.GetOrAdd(new Node(enrNode.NodeId, "1.2.3.4", 1234));
+
+        Peer resolved = pool.GetOrAdd(enrNode);
+
+        Assert.That(resolved, Is.SameAs(pooled),
+            "an ENR has no enode representation, so the trusted refresh must not dereference it - a throw here aborts the whole persistence tick and skips the pending commit");
+    }
+
+    private const string TestEnrString =
+        "enr:-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOo" +
+        "nrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPK" +
+        "Y0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
 
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
             nodeSource,
