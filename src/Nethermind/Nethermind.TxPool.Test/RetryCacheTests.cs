@@ -1107,8 +1107,9 @@ public class RetryCacheTests
                 }
 
                 Assert.That(cache.ResourcesInRetryQueue, Is.EqualTo(resourcesPerBatch));
-                timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
-                Assert.That(() => cache.ResourcesInRetryQueue, Is.Zero.After(AssertTimeoutMs, 10));
+                timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+                cache.ProcessRetryTick();
+                Assert.That(cache.ResourcesInRetryQueue, Is.Zero);
             }
 
             Assert.That(cache.ExpiringQueueReservationsSinceReset, Is.Zero);
