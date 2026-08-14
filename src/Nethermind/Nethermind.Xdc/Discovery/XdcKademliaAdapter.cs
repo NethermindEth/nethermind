@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Stats;

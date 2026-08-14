@@ -48,24 +48,31 @@ jobs:
         include:
           - input: 25526356.ssz
             hash: 5822695902784ea16c68f3becbf1fc53650cd2289a28d6da0e60a8ebddeba05e
+            output: 0c19e14cfaca03f19c7f7ffe3b12063ce1b18d933446038ebf244e26934221e5
           - input: 25532382.ssz
             hash: b16c95ce92f518bbdbc62f331457d936f46442befd6aececc8cbe726e52b5935
-          - input: 25532386.ssz
-            hash: f3f98230b82da1fdf57f4ccdac8dbaf9e672bcc20ab4925efc228426b727bbd0
+            output: d07954628423c7185ea21c81b41ec4678c4dd51c86347397ddb3f8beb7be3905
           - input: 25532442.ssz
             hash: 26896435247a3e69c5917ea623aa8908951922e7acfb54b1e13f6628adcadc8b
+            output: 491ccd71fe841cc88a08d8ae99b6d088c3358b95abca37cfca6faeea3947b846
           - input: 25532454.ssz
             hash: f5012e7e8324709b4c415f78bcc2542cca6db045f1b9a7856c59a8cd4c422c43
+            output: 43a91651e029b7f09f8f10a014db4afc497ebf09ad6b32756b66ff29cac46ef3
           - input: 25532471.ssz
             hash: a0225bbbdb2a7b12e68ac1d1e8bcaabce297c13ac0237fd8d67b69678bc3bff3
+            output: 1b1e03db92e8ba35fdb356206548ceb124bf8e8b9d8d0bbd769c8eedd725ce64
           - input: 25532480.ssz
             hash: ec1c24bdb687c95b5e4c53ca064995ee8be22467f59fe36d2dea052dd6412d57
+            output: ab8b8c21e69e87f9dc7d766b6d04829e99e64f1e3f9b838208b1a7480b1b55c3
           - input: 25532553.ssz
             hash: 4fc6a2e66562523bb3b757d5d0691cafabd1b24d237a51b78988bb63c507f223
+            output: 2fc28f0d034d94aeebaa168f3bb080726f64b4d9edf6864f379527145c5b1c21
           - input: 25532642.ssz
             hash: c4255a01122dd7ff5d4bcb3d466d4bf3b714088483505ed8e2390797e17ee62e
+            output: 495a565c9aef290d3fe1f4f9605105eeb67cd8b42941de82a40e4f02644380a0
           - input: 25532711.ssz
             hash: 1bb5815b03b8d2b47dc4081a8c11fdf763c4ae6414f91c19f7a52d7eb0bf0f8f
+            output: 49f1cd340014da0d021f3a2d00853ff7591dc0cacd5ecab174e863d6fc60ef0c
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -79,15 +86,20 @@ jobs:
       - name: Download input
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
         run: |
-          curl -sSL "https://us-southeast-1.linodeobjects.com/zktests/20260714/${{ matrix.input }}" \
+          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260714/${{ matrix.input }}" \
             -o "${{ matrix.input }}"
           echo "${{ matrix.hash }}  ${{ matrix.input }}" | sha256sum --status -c - || \
-            { echo "Checksum failed"; exit 1; }
+            { echo "::error::Checksum failed"; exit 1; }
 
       - name: Run Nethermind guest
         timeout-minutes: 5
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-        run: make run INPUT="${{ matrix.input }}"
+        run: |
+          set -euo pipefail
+          suffix=012500000001000000000000000c00000004000000080000000800000057b05d6900000000
+          make run INPUT="${{ matrix.input }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          grep -q "${{ matrix.output }}$suffix" "$RUNNER_TEMP/run.log" || \
+            { echo "::error::Output mismatch"; exit 1; }
 
   status:
     name: Status

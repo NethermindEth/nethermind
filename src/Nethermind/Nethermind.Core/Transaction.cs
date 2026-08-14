@@ -227,6 +227,22 @@ namespace Nethermind.Core
         public Address? PayerAddress { get; set; }
 
         /// <summary>
+        /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
+        /// https://eips.ethereum.org/EIPS/eip-8250
+        /// </summary>
+        /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
+        /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
+        public UInt256[]? NonceKeys { get; set; }
+
+        /// <summary>
+        /// Zero and non-zero byte counts of the type-specific calldata EIP-8141 prices in addition to the
+        /// frame and signature data — EIP-8250's <c>nonce_calldata</c>. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>Set from the canonical encoding by the decoder and the frame processor, so the charge is
+        /// counted off the very bytes the wire form carries rather than recomputed.</remarks>
+        public (int ZeroBytes, int NonZeroBytes) FrameCalldataStats { get; set; }
+
+        /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
         /// </summary>
         /// <remarks>Used for AuRa consensus.</remarks>
@@ -346,6 +362,8 @@ namespace Nethermind.Core
                 obj.Frames = default;
                 obj.FrameSignatures = default;
                 obj.PayerAddress = default;
+                obj.NonceKeys = default;
+                obj.FrameCalldataStats = default;
 
                 return true;
             }
@@ -381,6 +399,8 @@ namespace Nethermind.Core
             tx.Frames = Frames;
             tx.FrameSignatures = FrameSignatures;
             tx.PayerAddress = PayerAddress;
+            tx.NonceKeys = NonceKeys;
+            tx.FrameCalldataStats = FrameCalldataStats;
         }
 
         public virtual ProofVersion? GetProofVersion() =>

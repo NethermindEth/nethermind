@@ -6,20 +6,16 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.TxPool.Collections;
 
 namespace Nethermind.TxPool.Filters;
 
-/// <summary>
-/// Enforces EIP-8141 per-payer mempool exposure: rejects a frame transaction when its resolved
-/// payer's summed pending maximum cost would exceed the payer's balance.
-/// </summary>
-/// <remarks>
-/// The reservation is taken atomically at admission and released when the transaction leaves the pool,
-/// so concurrent submissions for one payer cannot each pass a stale check.
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </remarks>
+/// <summary>Rejects a frame transaction whose payer's summed pending maximum cost would exceed its balance (EIP-8141).</summary>
+/// <remarks>The reservation is taken at admission and released when the transaction leaves the pool.</remarks>
 internal sealed class FrameTxPayerExposureFilter(
     IReadOnlyStateProvider stateProvider,
+    TxDistinctSortedPool standardPool,
+    TxDistinctSortedPool blobPool,
     PayerExposureCache exposure,
     ILogger logger) : IIncomingTxFilter
 {
@@ -31,24 +27,24 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // EIP8141-DEVIATION: TXPARAM(0x06) is defined precisely, but Transaction.GasLimit is the frame-gas
-        // sum only, so the intrinsic and EIP-7623 floor terms go unreserved; for a calldata-heavy prefix
-        // with small frame gas limits the reserved amount can be a small fraction of the true max cost.
+        // EIP8141-DEVIATION: GasLimit is the frame-gas sum, so the intrinsic and EIP-7623 floor terms go
+        // unreserved — nothing at all, and so no bound, when every frame gas limit is zero.
         if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
         {
             return AcceptTxResult.Int256Overflow;
         }
 
-        // Keyed on the payer actually being the sender, never assumed: a simulated third-party payer must
-        // still be read from state, or the bound would be enforced against the wrong account.
+        // A simulated third-party payer must be read from state, or the bound gates the wrong account.
         UInt256 balance = payer == tx.SenderAddress
             ? state.SenderAccount.Balance
             : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
-        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved))
+        // This runs before AddCore resolves the replacement, so the displaced tx is still reserved. The
+        // bound is on the pending set the pool would hold, which a replacement does not grow (EIP-8141
+        // decrements on "eviction, replacement, inclusion, or reorg removal").
+        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, ReplacedPendingReservation(tx, payer)))
         {
-            // Atomic like the gauge: the two are only diagnosable together, and this filter runs under
-            // the pool's head read lock, so rejections for different payers are concurrent.
+            // Atomic: this filter runs under the pool's head read lock, so payers reject concurrently.
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPayerExposureExceeded);
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, payer {payer} reserved exposure {reserved} + {maxCost} exceeds balance {balance}.");
@@ -56,5 +52,38 @@ internal sealed class FrameTxPayerExposureFilter(
         }
 
         return AcceptTxResult.Accepted;
+    }
+
+    /// <summary>
+    /// The reservation held by a pending transaction of the same sender and nonce that <paramref name="tx"/>
+    /// would displace, or zero when it would join the pending set rather than replace one.
+    /// </summary>
+    /// <remarks>Matches on the payer too: displacing a tx paid by someone else frees that payer, not this one.</remarks>
+    private UInt256 ReplacedPendingReservation(Transaction tx, Address payer)
+    {
+        ReplacementSearch search = new(tx.Nonce, payer);
+        TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
+        pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
+        {
+            // Buckets are visited in ascending nonce order, so stop once past the replaced nonce.
+            if (pending.Nonce < state.Nonce) return true;
+            if (pending.Nonce == state.Nonce
+                && pending.PayerAddress == state.Payer
+                && !pending.IsOverflowInTxCostAndValue(out UInt256 cost))
+            {
+                state.Reserved = cost;
+            }
+
+            return false;
+        });
+
+        return search.Reserved;
+    }
+
+    private struct ReplacementSearch(ulong nonce, Address payer)
+    {
+        public readonly ulong Nonce = nonce;
+        public readonly Address Payer = payer;
+        public UInt256 Reserved;
     }
 }

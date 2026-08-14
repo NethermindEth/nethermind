@@ -26,7 +26,7 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
 
         byte mode = decoderContext.DecodeByte();
         byte flags = decoderContext.DecodeByte();
-        Address? target = decoderContext.DecodeAddress();
+        Address? target = decoderContext.DecodeAddressOrNull();
         ulong gasLimit = decoderContext.DecodeULong();
         UInt256 value = decoderContext.DecodeUInt256();
         ReadOnlyMemory<byte> data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);

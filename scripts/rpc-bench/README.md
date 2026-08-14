@@ -32,11 +32,11 @@ which uses the same snapshots on this runner:
 - The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
   including `redirect_dir=on,metacopy=on,volatile` mount options (plain-options
   fallback).
-- The node gets expb's stability flags (`--Init.DiscoveryEnabled=false`,
-  `--Network.MaxActivePeers=0`, `--Merge.SweepMemory=NoGC`,
-  `--Merge.CompactMemory=No`, `--Merge.CollectionsPerDecommit=-1`,
-  `--Pruning.Mode=None`) and env (`DOTNET_TieredCompilation=0`,
-  `DOTNET_GCLatencyLevel=0`).
+- The node is isolated from network and pruning noise (`--Init.DiscoveryEnabled=false`,
+  `--Network.MaxActivePeers=0`, `--Pruning.Mode=None`) but otherwise runs
+  production defaults — no GC or `DOTNET_*` overrides — so JIT warm-up lands
+  inside the measured window; treat a run's first test/rate as warm-up. One-off
+  code-gen experiments: set `NODE_ENV_VARS`.
 
 ## Multi-client snapshot sets
 
@@ -57,7 +57,7 @@ Per-client node profiles in `start-node.sh`:
 
 | Client | Image default | Datadir handling | Parked-at-head flags |
 |---|---|---|---|
-| `nethermind` | branch resolution (build/reuse), like before | snapshot = datadir, mounted at `/execution-data` | discovery off, 0 peers, expb stability flags |
+| `nethermind` | branch resolution (build/reuse), like before | snapshot = datadir, mounted at `/execution-data` | discovery off, 0 peers, pruning off |
 | `geth` | `ethereum/client-go:stable` | snapshot holds the contents of `<datadir>/geth` → mounted at `/execution-data/geth` | `--nodiscover --maxpeers=0` |
 | `reth` | `ghcr.io/paradigmxyz/reth:latest` | snapshot = datadir (`db/`, `static_files/`), mounted at `/execution-data` | `--disable-discovery --max-*-peers=0` |
 
@@ -148,7 +148,7 @@ the workflow's defensive-cleanup step).
 | `reference_client` | `none` (default) or a client to compare against (see comparison mode). |
 | `snapshot_block` | Same-block snapshot set tag (`/mnt/sda/<client>-<tag>`); empty = expb snapshot (nethermind) / `25490000` (geth/reth, comparisons). |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
-| `dottrace` | Profile the node and post-process to XML. Nethermind only; works with **any** Nethermind image. |
+| `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Nethermind only; works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` (default) or `halfpath` — picks the Nethermind snapshot + layout flags; ignored for geth/reth. |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |
 | `tool_config` | Tool-specific JSON (see below). |
@@ -280,22 +280,36 @@ in the tool repo → fresh evolution from scratch.
 
 ## dotTrace flow (goal #3)
 
-`dottrace=true` (requires `client=nethermind`) uses the same mechanism as expb's
-`--dottrace`, so it works with **any** Nethermind image (no special diag build):
+Setting `dottrace` to a mode (requires `client=nethermind`) uses the same mechanism as
+expb's `--dottrace`, so it works with **any** Nethermind image (no special diag build).
+Reports captured before the `DOTNET_TieredCompilation=0` pin removal are not
+comparable with newer ones (tiering shifts OwnTime/TotalTime attribution).
+
+| mode | what it measures | XML report | cost |
+| --- | --- | --- | --- |
+| `sampling` | periodic stack samples; wall-clock attribution | yes | low — the default for hot-spot work |
+| `tracing` | every method enter/exit; exact call counts | yes | high (~4x) — read counts, not times |
+| `timeline` | samples plus thread states over time (waits, locks, GC) | **no** | moderate — open the snapshot in the dotTrace UI |
+
+Line-by-line is not offered: it needs PDBs the Docker images do not ship.
 
 1. The host-installed dotTrace CLI (`/opt/dottrace`, installed on demand via
    `dotnet tool install JetBrains.dotTrace.GlobalTools`) is mounted read-only
    into the container, and the entrypoint is wrapped:
-   `dottrace start --framework=NetCore --save-to=... --propagate-exit-code -- /nethermind/nethermind …`.
+   `dottrace start --framework=NetCore --profiling-type=<Mode> --save-to=... --propagate-exit-code -- /nethermind/nethermind …`.
 2. `stop-node.sh` stops the container with **SIGINT**, letting dotTrace finalize
-   the `.dtp` snapshot into the mounted diag dir.
+   the snapshot into the mounted diag dir (`.dtp`, or `.dtt` for `timeline`).
 3. The `generate-dottrace-reports` job (Windows) runs `Reporter.exe` to convert
-   each `.dtp` to XML — identical to the EXPB workflow.
+   each `.dtp` to XML — identical to the EXPB workflow. It is skipped for
+   `timeline`, whose snapshots Reporter.exe cannot post-process.
 4. The `dottrace-summary` job runs [`scripts/dottrace-report.sh`](../dottrace-report.sh)
    `top` over each XML and writes the hot functions into the job summary.
 
-> Capture runs in dotTrace's default **sampling** mode (no `--profiling-type`) —
-> deliberately, since Reporter.exe cannot post-process Timeline snapshots to XML.
+The EXPB workflow additionally collects a **dotnet-trace EventPipe sidecar** alongside
+its dotTrace snapshot (GC pauses, lock contention, exception throws — runtime events a
+CPU profile cannot show). rpc-bench does not: a `timeline` run here yields the `.dtt`
+snapshot only, for the dotTrace UI.
+
 > The snapshot spans the node's whole lifetime (including DB load and warmup), so
 > keep the benchmark `duration` the dominant phase, or analyze by time window, so
 > RPC-call frames dominate the captured `OwnTime`.
