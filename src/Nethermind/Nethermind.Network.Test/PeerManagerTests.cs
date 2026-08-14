@@ -418,6 +418,24 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Will_not_select_a_static_node_carrying_this_nodes_own_identity()
+        {
+            await using Context ctx = new();
+            ctx.RlpxPeer.MakeItFail();
+            const long neverRanked = -424242;
+            Node self = new(TestItem.PublicKeyA, "1.2.3.4", 30303) { IsStatic = true, CurrentReputation = neverRanked };
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            ctx.TestNodeSource.AddNode(new Node(new PrivateKeyGenerator().Generate().PublicKey, "5.6.7.8", 30303));
+            ctx.TestNodeSource.AddNode(self);
+            await Task.Delay(_delayLonger);
+
+            Assert.That(self.CurrentReputation, Is.EqualTo(neverRanked),
+                "a static peer bypasses the pre-candidate filters, so the local identity has to be dropped from the static projection too - otherwise it is selected every round, discarded again at dial time without taking a slot, and the update loop never reaches its idle delay");
+        }
+
+        [Test]
         public async Task Will_fill_up_on_disconnects()
         {
             await using Context ctx = new();

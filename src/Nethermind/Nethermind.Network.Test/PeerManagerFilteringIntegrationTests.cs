@@ -108,7 +108,7 @@ public class PeerManagerFilteringIntegrationTests
         await ctx.RlpxMock.FirstConnect.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Contain(other.Address.Address),
-            "the dial of the other peer has to reach the filter, otherwise the assertion below passes for the wrong reason");
+            "the dial of the other peer has to reach the filter, otherwise the assertion below passes for the wrong reason - the peer is static because this mock filter only accepts privileged dials");
         Assert.That(ctx.RlpxMock.CallsToShouldContact, Does.Not.Contain(self.Address.Address),
             "the IP filter records every address it accepts, so our own record must be rejected before it reaches the filter - otherwise it keeps re-arming it for our own subnet and locks out real peers there");
         Assert.That(ctx.RlpxMock.ConnectedNodeIds, Does.Not.Contain(self.Id));

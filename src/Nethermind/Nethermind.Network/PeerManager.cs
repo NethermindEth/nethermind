@@ -547,7 +547,7 @@ namespace Nethermind.Network
                 // Also dropped at dial time, but a candidate that can never be dialed and never records a stat
                 // stays eligible for every future round, and the loop re-runs immediately whenever a slot is
                 // still free - so leaving it in the selection spins this loop with no delay between rounds.
-                if (peer.Node.Id == _enode.PublicKey)
+                if (IsSelf(peer))
                 {
                     continue;
                 }
@@ -558,7 +558,7 @@ namespace Nethermind.Network
             bool hasOnlyStaticNodes = false;
             if (_currentSelection.PreCandidates.Count == 0)
             {
-                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
+                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
                 hasOnlyStaticNodes = _currentSelection.PreCandidates.Count > 0;
             }
 
@@ -602,7 +602,7 @@ namespace Nethermind.Network
 
             if (!hasOnlyStaticNodes)
             {
-                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
+                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
             }
 
             foreach (Peer peer in _currentSelection.Candidates)
@@ -954,8 +954,10 @@ namespace Nethermind.Network
         /// peer-added - pass through here.
         /// </remarks>
         private bool ShouldContactPeer(Peer peer)
-            => peer.Node.Id != _enode.PublicKey
+            => !IsSelf(peer)
                && _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
+
+        private bool IsSelf(Peer peer) => peer.Node.Id == _enode.PublicKey;
 
         /// <summary>
         /// Fast-path guard for the peer-added event: checks throttle before the IP filter
