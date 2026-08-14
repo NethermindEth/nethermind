@@ -4,7 +4,7 @@
 
   <PropertyGroup>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
+    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile;NU1903</NoWarn><!-- bench branch only: advisories published after this branch froze its July lockfile; suppressing keeps the A/B arms on identical package versions -->
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
