@@ -638,6 +638,39 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Prague.Instance).Error, Is.EqualTo(TxErrorMessages.NotAllowedAuthorizationList));
     }
 
+    // Regression (EIP-8141): the decoder always populates max_fee_per_blob_gas and blob_versioned_hashes,
+    // so a presence-based blob gate would reject every frame tx off the wire. Both shapes are well-formed.
+    [TestCase(false, TestName = "IsWellFormed_DecodedNonBlobFrameTx_Accepted")]
+    [TestCase(true, TestName = "IsWellFormed_DecodedBlobCarryingFrameTx_Accepted")]
+    public void IsWellFormed_DecodedFrameTx_GatesOnBlobFieldsByValue(bool carriesBlobs)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            GasPrice = 1,               // max_priority_fee_per_gas
+            DecodedMaxFeePerGas = 100,  // max_fee_per_gas
+            MaxFeePerBlobGas = carriesBlobs ? (UInt256)1 : UInt256.Zero,
+            BlobVersionedHashes = carriesBlobs ? [[KzgPolynomialCommitments.KzgBlobHashVersionV1, .. new byte[31]]] : null,
+        };
+
+        TxDecoder decoder = TxDecoder.Instance;
+        byte[] bytes = new byte[decoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, tx);
+        RlpReader reader = new(bytes);
+        Transaction decoded = decoder.Decode(ref reader)!;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(decoded, Eip8141Prototype.Instance);
+
+        Assert.That(result.AsBool, Is.True, result.Error);
+    }
+
     [Test]
     public void IsWellFormed_TransactionWithGasLimitExceedingEip7825Cap_ReturnsFalse()
     {
@@ -1010,6 +1043,25 @@ public class TxValidatorTests
         .WithMaxFeePerBlobGas(1)
         .WithShardBlobTxTypeAndFields(blobCount)
         .SignedAndResolved().TestObject;
+
+    private static IEnumerable<TestCaseData> RecentRootReferenceEnvelopeCases()
+    {
+        yield return new TestCaseData(null, false, true).SetName("IsWellFormed_FrameTxAbsentReferences_BeforeEip8272_ReturnTrue");
+        yield return new TestCaseData(null, true, true).SetName("IsWellFormed_FrameTxAbsentReferences_AfterEip8272_ReturnTrue");
+        yield return new TestCaseData(Array.Empty<RecentRootReference>(), false, false).SetName("IsWellFormed_FrameTxEmptyReferences_BeforeEip8272_ReturnFalse");
+        yield return new TestCaseData(Array.Empty<RecentRootReference>(), true, true).SetName("IsWellFormed_FrameTxEmptyReferences_AfterEip8272_ReturnTrue");
+        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences], true, true).SetName("IsWellFormed_FrameTxFullReferences_AfterEip8272_ReturnTrue");
+        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1], true, false).SetName("IsWellFormed_FrameTxOverCapReferences_AfterEip8272_ReturnFalse");
+    }
+
+    [TestCaseSource(nameof(RecentRootReferenceEnvelopeCases))]
+    public void IsWellFormed_FrameTxRecentRootReferences_GatedOnEip8272(RecentRootReference[]? references, bool eip8272Enabled, bool expectedWellFormed)
+    {
+        Transaction tx = new() { Type = TxType.FrameTx, RecentRootReferences = references };
+        IReleaseSpec releaseSpec = new ReleaseSpec { IsEip8272Enabled = eip8272Enabled };
+
+        Assert.That(FrameTxEnvelopeTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
+    }
 
     private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
     {

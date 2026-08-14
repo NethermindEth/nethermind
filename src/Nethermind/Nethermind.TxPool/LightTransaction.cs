@@ -33,6 +33,26 @@ public class LightTransaction : Transaction
         _size = fullTx.GetLength();
     }
 
+    /// <summary>Pre-EIP-8141 signature, kept so an out-of-tree <see cref="IBlobTxStorage"/> still binds.</summary>
+    public LightTransaction(
+        UInt256 timestamp,
+        Address sender,
+        ulong nonce,
+        Hash256 hash,
+        UInt256 value,
+        ulong gasLimit,
+        UInt256 gasPrice,
+        UInt256 maxFeePerGas,
+        UInt256 maxFeePerBlobGas,
+        byte[][] blobVersionHashes,
+        ulong poolIndex,
+        int size,
+        ProofVersion proofVersion)
+        : this(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas, maxFeePerBlobGas,
+            blobVersionHashes, poolIndex, size, proofVersion, TxType.Blob)
+    {
+    }
+
     // Declared in the order LightTxDecoder reads them: the two optional trailing fields come last.
     public LightTransaction(
         UInt256 timestamp,
