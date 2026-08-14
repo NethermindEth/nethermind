@@ -200,7 +200,18 @@ namespace Nethermind.Core
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        public object? NetworkWrapper { get; set; }
+        private object? _networkWrapper;
+
+        /// <remarks>Replacing the sidecar changes the mempool-form length, so the memoized size is dropped.</remarks>
+        public object? NetworkWrapper
+        {
+            get => _networkWrapper;
+            set
+            {
+                _networkWrapper = value;
+                _size = null;
+            }
+        }
 
         /// <summary>
         /// List of EOA code authorizations.
@@ -331,7 +342,7 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool MayHaveNetworkForm => Type is TxType.Blob;
+        public bool MayHaveNetworkForm => Type is TxType.Blob or TxType.FrameTx;
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
@@ -424,7 +435,7 @@ namespace Nethermind.Core
         }
 
         public virtual ProofVersion? GetProofVersion() =>
-            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version
                 : null;
     }
