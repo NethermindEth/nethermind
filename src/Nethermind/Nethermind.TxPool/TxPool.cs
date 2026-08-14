@@ -57,6 +57,7 @@ namespace Nethermind.TxPool
         private readonly ITxValidator? _headTxValidator;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
+        private readonly PayerExposureCache _payerExposure = new();
 
         private readonly ILogger _logger;
 
@@ -196,9 +197,10 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
             postHashFilters.Add(new BlobProofsTxFilter());
 
-            // EIP-8141: resolve and record the frame-tx payer, rejecting provably-payerless prefixes.
-            // Runs last so only otherwise-admissible frame txs are resolved.
+            // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved, and gate on the
+            // payer straight after, since the gate reads what the resolver recorded.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
+            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -307,9 +309,11 @@ namespace Nethermind.TxPool
         {
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
+            ReleasePayerExposure(args.Value);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)
@@ -785,64 +789,83 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
-            bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
-            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
-            TxDistinctSortedPool relevantPool = (tx.CarriesBlobs ? _blobTransactions : _transactions);
-
-            relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
-            tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
-                ? effectiveGasPrice
-                : worstTx.GasBottleneck;
-
-            bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
-
-            if (!inserted)
+            // EIP-8141: a successful insert hands the payer reservation to the pool, released on Removed.
+            // Every other exit, a throw included, must release it here or it leaks for good.
+            bool reservationSettled = false;
+            try
             {
-                // it means it failed on adding to the pool - it is possible when new tx has the same sender
-                // and nonce as already existent tx and is not good enough to replace it
-                Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
-                return AcceptTxResult.ReplacementNotAllowed;
-            }
+                bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
+                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
+                TxDistinctSortedPool relevantPool = (tx.CarriesBlobs ? _blobTransactions : _transactions);
 
-            if (tx.Hash == removed?.Hash)
-            {
-                // it means it was added and immediately evicted - pool was full of better txs
-                if (!isPersistentBroadcast || tx.CarriesBlobs || !_broadcaster.Broadcast(tx, true))
+                relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
+                tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
+                    ? effectiveGasPrice
+                    : worstTx.GasBottleneck;
+
+                bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
+                // The reservation is now the pool's, or was already released by a self-eviction Removed.
+                reservationSettled = true;
+
+                if (!inserted)
                 {
-                    // we are adding only to persistent broadcast - not good enough for standard pool,
-                    // but can be good enough for TxBroadcaster pool - for local txs only
-                    Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
-                    return AcceptTxResult.FeeTooLowToCompete;
+                    // it means it failed on adding to the pool - it is possible when new tx has the same sender
+                    // and nonce as already existent tx and is not good enough to replace it
+                    // No Removed event fires for this tx, so release the reservation it took.
+                    ReleasePayerExposure(tx);
+                    Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
+                    return AcceptTxResult.ReplacementNotAllowed;
                 }
-                else
+
+                if (tx.Hash == removed?.Hash)
                 {
-                    return AcceptTxResult.Accepted;
+                    // it means it was added and immediately evicted - pool was full of better txs
+                    // Its Removed already released the reservation, so a tx kept only by the broadcaster
+                    // under-counts its payer — accepted, since the broadcaster has no hook to release on.
+                    if (!isPersistentBroadcast || tx.CarriesBlobs || !_broadcaster.Broadcast(tx, true))
+                    {
+                        // we are adding only to persistent broadcast - not good enough for standard pool,
+                        // but can be good enough for TxBroadcaster pool - for local txs only
+                        Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
+                        return AcceptTxResult.FeeTooLowToCompete;
+                    }
+                    else
+                    {
+                        return AcceptTxResult.Accepted;
+                    }
+                }
+
+                relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
+                Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
+                Interlocked.Increment(ref _pendingTransactionsAdded);
+                if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
+                if (tx.CarriesBlobs) { Metrics.PendingBlobTransactionsAdded++; }
+
+                if (removed is not null)
+                {
+                    EvictedPending?.Invoke(this, new TxEventArgs(removed));
+                    // transaction which was on last position in sorted TxPool and was deleted to give
+                    // a place for a newly added tx (with higher priority) is now removed from hashCache
+                    // to give it opportunity to come back to TxPool in the future, when fees drops
+                    _hashCache.DeleteFromLongTerm(removed.Hash!);
+                    Metrics.PendingTransactionsEvicted++;
+                }
+
+                _broadcaster.Broadcast(tx, isPersistentBroadcast);
+
+                _hashCache.SetLongTerm(tx.Hash!);
+                NewPending?.Invoke(this, new TxEventArgs(tx));
+                Metrics.TransactionCount = _transactions.Count;
+                Metrics.BlobTransactionCount = _blobTransactions.Count;
+                return AcceptTxResult.Accepted;
+            }
+            finally
+            {
+                if (!reservationSettled)
+                {
+                    ReleasePayerExposure(tx);
                 }
             }
-
-            relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
-            Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
-            Interlocked.Increment(ref _pendingTransactionsAdded);
-            if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
-            if (tx.CarriesBlobs) { Metrics.PendingBlobTransactionsAdded++; }
-
-            if (removed is not null)
-            {
-                EvictedPending?.Invoke(this, new TxEventArgs(removed));
-                // transaction which was on last position in sorted TxPool and was deleted to give
-                // a place for a newly added tx (with higher priority) is now removed from hashCache
-                // to give it opportunity to come back to TxPool in the future, when fees drops
-                _hashCache.DeleteFromLongTerm(removed.Hash!);
-                Metrics.PendingTransactionsEvicted++;
-            }
-
-            _broadcaster.Broadcast(tx, isPersistentBroadcast);
-
-            _hashCache.SetLongTerm(tx.Hash!);
-            NewPending?.Invoke(this, new TxEventArgs(tx));
-            Metrics.TransactionCount = _transactions.Count;
-            Metrics.BlobTransactionCount = _blobTransactions.Count;
-            return AcceptTxResult.Accepted;
         }
 
         private void AddPendingDelegations(Transaction tx)
@@ -866,6 +889,15 @@ namespace Nethermind.TxPool
                     if (auth.Authority is not null)
                         _pendingDelegations.DecrementDelegationCount(auth.Authority!);
                 }
+            }
+        }
+
+        /// <summary>Releases the exposure a frame-tx payer reserved at admission, once the transaction leaves the pool.</summary>
+        private void ReleasePayerExposure(Transaction tx)
+        {
+            if (tx.SupportsFrames && tx.PayerAddress is not null && !tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
+            {
+                _payerExposure.Subtract(tx.PayerAddress, maxCost);
             }
         }
 
@@ -1145,6 +1177,7 @@ namespace Nethermind.TxPool
             _blobTransactions.Inserted -= OnInsertedTx;
             _blobTransactions.Removed -= OnRemovedTx;
             (_blobTransactions as IDisposable)?.Dispose();
+            _payerExposure.Clear();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;
