@@ -10,6 +10,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
@@ -184,6 +185,7 @@ namespace Nethermind.TxPool
                 new LowNonceFilter(_logger), // has to be after MalformedTxFilter as it uses the recovered sender
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
+                new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider), // the three above skip keyed sets, this one owns them
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve work over an uncapped signature list, so let the cheap filters reject first
@@ -842,6 +844,25 @@ namespace Nethermind.TxPool
             }
         }
 
+        /// <summary>Whether every nonce key <paramref name="tx"/> selects still sits at its declared sequence in the head state.</summary>
+        private bool IsKeyedNonceCurrent(Transaction tx) =>
+            KeyedNonceManager.IsNonceSetValid(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, tx.NonceKeys!, tx.Nonce);
+
+        /// <summary>Whether any nonce key <paramref name="tx"/> selects has advanced past its declared sequence in the head state.</summary>
+        /// <remarks>A keyed sequence only ever advances, so a key already beyond the declared sequence has spent it for good on this fork.</remarks>
+        private bool IsKeyedNonceBehind(Transaction tx)
+        {
+            foreach (UInt256 nonceKey in tx.NonceKeys!)
+            {
+                if (KeyedNonceManager.CurrentNonceSeq(_headInfo.ReadOnlyStateProvider, tx.SenderAddress!, in nonceKey) > tx.Nonce)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private void UpdateGasBottleneckAndMarkForEviction(
             EnhancedSortedSet<Transaction> transactions,
             ulong currentNonce,
@@ -858,6 +879,36 @@ namespace Nethermind.TxPool
 
             foreach (Transaction tx in transactions)
             {
+                if (KeyedNonceManager.UsesKeyedNonce(tx))
+                {
+                    if (!IsKeyedNonceCurrent(tx))
+                    {
+                        MarkForEviction(tx, allowLaterPoolReentrance: !IsKeyedNonceBehind(tx));
+                    }
+                    else
+                    {
+                        ValidationResult keyedValid = _headTxValidator?.IsWellFormed(tx, headSpec) ?? ValidationResult.Success;
+                        if (!keyedValid)
+                        {
+                            MarkForEviction(tx, keyedValid.Error == TxErrorMessages.InvalidProofVersion);
+                        }
+                        else if (tx.CheckForNotEnoughBalance(UInt256.Zero, balance, out _))
+                        {
+                            MarkForEviction(tx, allowLaterPoolReentrance: true);
+                        }
+                        else
+                        {
+                            UInt256 keyedBottleneck = tx.CalculateEffectiveGasPrice(isEip1559, _headInfo.CurrentBaseFee);
+                            if (tx.GasBottleneck != keyedBottleneck)
+                            {
+                                updateTx(transactions, tx, keyedBottleneck, lastElement);
+                            }
+                        }
+                    }
+
+                    continue;
+                }
+
                 if (tx.Nonce < currentNonce)
                 {
                     MarkForEviction(tx, false);
@@ -943,7 +994,7 @@ namespace Nethermind.TxPool
                 Transaction? tx = null;
                 foreach (Transaction txn in transactions)
                 {
-                    if (txn.Nonce == currentNonce)
+                    if (KeyedNonceManager.UsesKeyedNonce(txn) ? IsKeyedNonceCurrent(txn) : txn.Nonce == currentNonce)
                     {
                         tx = txn;
                         break;
