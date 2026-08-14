@@ -35,7 +35,8 @@ internal sealed class FrameTxPayerExposureFilter(
         IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
         if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
         {
-            return AcceptTxResult.Invalid.WithMessage("Frame transaction maximum cost cannot be priced");
+            // Unincludable rather than malformed: Invalid is the one result that disconnects the relaying peer.
+            return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction maximum cost cannot be priced");
         }
 
         // A simulated third-party payer must be read from state, or the bound gates the wrong account.
