@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -83,6 +84,37 @@ public class Eip8141ScenarioTests
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
     }
 
+    // EIP-7708: a codeless SENDER frame transfers through default code, not the VM, so the log must
+    // still reach the frame receipt and the transaction log union. Recipient is fresh, exercising
+    // the dead-recipient path where default code always logs (the VM path suppresses it when the
+    // EIP-8037 NEW_ACCOUNT gas is unaffordable).
+    [Test]
+    public void CodelessSenderFrameTransfer_EmitsEip7708TransferLog()
+    {
+        UInt256 transferred = 1_000_000;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            SenderFrame(Recipient, value: transferred));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+        LogEntry expected = new(
+            Address.SystemUser,
+            transferred.ToBigEndian(),
+            [new Hash256("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"), Sender.ToHash().ToHash256(), Recipient.ToHash().ToHash256()]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(transferred));
+            Assert.That(receipt.FrameReceipts![0].Logs, Is.Empty);
+            receipt.FrameReceipts[1].Logs.AssertEquivalentTo([expected]);
+            receipt.Logs.AssertEquivalentTo([expected]);
+            Assert.That(receipt.Bloom, Is.EqualTo(new Bloom([expected])));
+        }
+    }
+
     // Spec Example 1b: a DEFAULT deploy frame installs the smart-account code at the sender address
     // (CREATE2 through a factory) before the VERIFY frame runs against that freshly deployed code.
     [Test]
@@ -117,9 +149,7 @@ public class Eip8141ScenarioTests
     }
 
     // Spec Gas Accounting: charged gas = FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST
-    // + EIP-7623 token cost of frame data and signature fields + per-scheme verification cost
-    // + the gas each frame consumed. Pinned against the spec constants with known payload bytes;
-    // ARBITRARY entries cost 100 verification gas, and their bytes are also calldata-priced.
+    // + per-scheme verification cost + max(standard token cost + frame gas consumed, floor token cost).
     [Test]
     public void ChargedGas_MatchesSpecIntrinsicFormula()
     {
@@ -141,14 +171,124 @@ public class Eip8141ScenarioTests
         }
 
         ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong tokens = CalldataTokens(frameData) + CalldataTokens(witnessBytes);
+        ulong floorTokens = (ulong)(frameData.Length + witnessBytes.Length) * 4;
         ulong expected = 15_000
                          + 2 * 475UL
-                         + (CalldataTokens(frameData) + CalldataTokens(witnessBytes)) * 4
                          + 100 // ARBITRARY signature verification cost
-                         + frameGasUsed;
+                         + Math.Max(tokens * 4 + frameGasUsed, floorTokens * 16); // EIP-7976 floor rate
         Assert.That((ulong)receipt.GasUsed, Is.EqualTo(expected));
         Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
             "the refund must return exactly max cost minus charged gas at the effective price");
+    }
+
+    // Only the data tokens go through the max; the mandatory costs stay outside it.
+    [Test]
+    public void ChargedGas_FloorDominatesExecution_ChargesFloorTokenCost()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        byte[] frameData = new byte[256];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        using (Assert.EnterMultipleScope())
+        {
+            // EIP-7976 prices every byte as a non-zero token: 64 gas per data byte.
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(mandatoryGas + 256 * 64UL));
+            Assert.That((ulong)receipt.GasUsed, Is.GreaterThan(mandatoryGas + 256 * 4UL + frameGasUsed),
+                "the floor token cost must dominate the standard token cost plus execution gas");
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
+        }
+    }
+
+    [Test]
+    public void ChargedGas_ExecutionDominatesFloor_ChargesStandardTokenCostPlusExecution()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        byte[] frameData = new byte[64];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong standardTokenCost = 64 * 4UL;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(standardTokenCost + frameGasUsed, Is.GreaterThan(64 * 64UL),
+                "the scenario must stay execution-dominant for this regression to bind");
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(mandatoryGas + standardTokenCost + frameGasUsed));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed));
+        }
+    }
+
+    // Rejecting a transaction that reserves less than its floor would fork away from any client that
+    // reserves `max(standard_gas_limit, calldata_floor_gas)` instead, as the spec requires.
+    [Test]
+    public void ChargedGas_FloorExceedsTheFramesGasReservation_ReservesTheFloorAndExecutes()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        byte[] frameData = new byte[2_000];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 20_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Recipient, gasLimit: 20_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong standardGasLimit = mandatoryGas + (ulong)frameData.Length * 16UL + 40_000UL;
+        ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(floorGas, Is.GreaterThan(standardGasLimit),
+                "the frames must reserve less than the floor, or this regression does not bind");
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(floorGas));
+            Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo(1.Ether - (UInt256)receipt.GasUsed),
+                "the payer is charged the floor and refunded the rest of the raised reservation");
+        }
+    }
+
+    // The floor bounds the charge after the EIP-3529 refund is netted, not before.
+    [Test]
+    public void ChargedGas_RefundNetsBeforeFloorIsApplied()
+    {
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        _stateProvider.Set(new StorageCell(Recipient, UInt256.Zero), new byte[] { 1 });
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        // Sized so the floor lands between the gross charge and the gross charge net of the refund.
+        byte[] frameData = new byte[160];
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDefault, 0, Recipient, gasLimit: 200_000, UInt256.Zero, frameData));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
+        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
+        ulong grossGas = mandatoryGas + (ulong)frameData.Length * 4UL + frameGasUsed;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(grossGas, Is.GreaterThan(floorGas),
+                "gross gas must exceed the floor, or the ordering under test is not exercised");
+            Assert.That((ulong)receipt.GasUsed, Is.EqualTo(floorGas),
+                "the refund may not push the charge below the floor");
+        }
     }
 
     // EIP-3529 storage refunds (ethereum/EIPs#11940) accumulate into one transaction-scoped counter,
@@ -243,17 +383,161 @@ public class Eip8141ScenarioTests
 
         if (swapReverts)
         {
-            // EIP8141-ISSUE: on batch rollback the approval log is dropped from the receipt's log
-            // union (and so from the bloom), but the per-frame receipt keeps it — the spec does not
-            // say which representation a rolled-back frame's logs should have, and the two diverge.
-            Assert.That(receipt.Logs, Is.Empty, "rolled-back batch logs must not reach the receipt log union");
-            Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1),
-                "the per-frame receipt currently keeps the rolled-back frame's log");
+            // ethereum/EIPs#12008: an unrolled batch discards the logs of frames that ran before the
+            // failure along with their state, but keeps their status and gas_used.
+            Assert.That(receipt.FrameReceipts![1].Logs, Is.Empty,
+                "the unrolled frame's per-frame receipt logs must be discarded");
+            Assert.That(receipt.FrameReceipts[1].GasUsed, Is.GreaterThan(0UL),
+                "the unrolled frame retains its recorded gas_used");
+            Assert.That(receipt.Logs, Is.Empty, "no logs survive the unrolled batch");
         }
         else
         {
             Assert.That(receipt.Logs, Has.Length.EqualTo(1), "the committed approval log lands in the receipt");
         }
+
+        AssertBloomAndReceiptLogsAgree(receipt);
+    }
+
+    // Pins the bounds of the unrolled-batch log-clear window and that the batch can unroll in the
+    // middle of the frame list. AtomicApproveAndSwap can't catch a batchStartIndex that is too low
+    // (its only log-emitting frame is inside the batch, so an over-wide clear still passes) nor a
+    // clear that runs past the batch, because nothing runs after its terminal frame. Here a pre-batch
+    // frame and a post-batch frame each emit a surviving log, so the derived tx log union must be
+    // exactly [pre-batch log] ++ [] ++ [post-batch log] in frame order: clearing at or below the batch
+    // start wipes the pre-batch log, and resuming at i = terminal must leave the post-batch log intact.
+    [Test]
+    public void UnrolledBatch_DiscardsBatchLogsKeepsPreAndPostBatchLogs()
+    {
+        Address logger = TestItem.AddressD;
+        Address token = TestItem.AddressE;
+        Address dex = TestItem.AddressF;
+        Address postLogger = Recipient;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        // Pre-batch frame: emits a log and commits normally, outside the batch.
+        DeployContract(logger, Prepare.EvmCode.Log(0, 0).Op(Instruction.STOP).Done);
+        // Batch frame: records an allowance and emits a log that the unroll must discard.
+        DeployContract(token, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .Log(0, 0)
+            .Op(Instruction.STOP).Done);
+        // Terminal batch frame reverts, unrolling the batch.
+        DeployContract(dex, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        // Post-batch frame: runs after the unroll resumes at i = terminal, emits a surviving log.
+        DeployContract(postLogger, Prepare.EvmCode.Log(0, 0).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            SenderFrame(logger),
+            SenderFrame(token, flags: TxFrame.AtomicBatchFlag),
+            SenderFrame(dex),
+            SenderFrame(postLogger));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        {
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+            TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess,
+        }));
+        Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1),
+            "the pre-batch frame's log survives — the clear window must not reach below the batch start");
+        Assert.That(receipt.FrameReceipts[2].Logs, Is.Empty, "the unrolled batch frame's log is discarded");
+        Assert.That(receipt.FrameReceipts[4].Logs, Has.Length.EqualTo(1),
+            "the post-batch frame's log survives — the clear window must not run past the batch");
+        Assert.That(receipt.Logs, Has.Length.EqualTo(2), "exactly the pre- and post-batch logs survive the unroll");
+        Assert.That(receipt.Logs![0], Is.SameAs(receipt.FrameReceipts[1].Logs[0]),
+            "the first surviving tx log is the pre-batch frame's log");
+        Assert.That(receipt.Logs[1], Is.SameAs(receipt.FrameReceipts[4].Logs[0]),
+            "the second surviving tx log is the post-batch frame's log — frame order is preserved");
+        AssertBloomAndReceiptLogsAgree(receipt);
+    }
+
+    // Two batches in one transaction, the load-bearing multi-batch case the single-batch fixtures
+    // can't reach: per-batch bounds depend on batchStartIndex being re-seeded when batch B opens,
+    // which rests on inBatch being reset once batch A closes (unroll path here). A lost reset would
+    // leave batch B reusing batch A's start index, so batch B's unroll would clear back through the
+    // committed "between" frame and under-fill the bloom.
+    // Batch A always unrolls (its log discarded); a committed "between" frame follows; batch B then
+    // either commits (secondBatchReverts=false: its log survives) or unrolls (its log discarded).
+    // Either way the pre-, between-, and post-batch committed logs must survive in frame order — the
+    // guard bites in the revert case, where a stale batch start would wipe the between frame's log.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TwoBatches_EachClearsOnlyItsOwnFrames_CommittedLogsBetweenSurvive(bool secondBatchReverts)
+    {
+        Address logger = TestItem.AddressD;
+        Address tokenA = TestItem.AddressE;
+        Address dexRevert = TestItem.AddressF;
+        Address tokenB = Sponsor;
+        Address dexB = Recipient;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        // Emits a log and commits — used for the pre-, between-, and post-batch frames.
+        DeployContract(logger, Prepare.EvmCode.Log(0, 0).Op(Instruction.STOP).Done);
+        byte[] recordAllowanceAndLog = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .Log(0, 0)
+            .Op(Instruction.STOP).Done;
+        DeployContract(tokenA, recordAllowanceAndLog);
+        DeployContract(tokenB, recordAllowanceAndLog);
+        DeployContract(dexRevert, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(dexB, secondBatchReverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),                                    // 0
+            SenderFrame(logger),                                 // 1: pre-batch log survives
+            SenderFrame(tokenA, flags: TxFrame.AtomicBatchFlag), // 2: batch A, log discarded
+            SenderFrame(dexRevert),                              // 3: batch A unrolls
+            SenderFrame(logger),                                 // 4: between batches, log survives
+            SenderFrame(tokenB, flags: TxFrame.AtomicBatchFlag), // 5: batch B
+            SenderFrame(dexB),                                   // 6: batch B commits or unrolls
+            SenderFrame(logger));                                // 7: post-batch log survives
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        {
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+            TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
+            secondBatchReverts ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess,
+            TxFrameReceipt.StatusSuccess,
+        }));
+        Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the pre-batch log survives both batches");
+        Assert.That(receipt.FrameReceipts[2].Logs, Is.Empty, "batch A unrolled — its log is discarded");
+        Assert.That(receipt.FrameReceipts[4].Logs, Has.Length.EqualTo(1),
+            "the committed between-batch log survives — batch B must clear only its own frames, not back through batch A");
+        Assert.That(receipt.FrameReceipts[5].Logs, Has.Length.EqualTo(secondBatchReverts ? 0 : 1),
+            secondBatchReverts ? "batch B unrolled — its log is discarded" : "batch B committed — its log survives");
+        Assert.That(receipt.FrameReceipts[7].Logs, Has.Length.EqualTo(1), "the post-batch log survives both batches");
+        Assert.That(receipt.Logs, Has.Length.EqualTo(secondBatchReverts ? 3 : 4),
+            "exactly the surviving committed frame logs land in the tx log set");
+        AssertBloomAndReceiptLogsAgree(receipt);
+    }
+
+    // Asserts the tx log set equals the frame-order concatenation of the surviving frame logs, and
+    // that a wire round-trip yields the same bloom — i.e. the header logsBloom and the receipts-root
+    // logs agree.
+    private static void AssertBloomAndReceiptLogsAgree(TxReceipt receipt)
+    {
+        LogEntry[] frameOrderConcatenation = receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray();
+        // Same LogEntry references, so reference equality is enough to pin contents and order.
+        Assert.That(receipt.Logs, Is.EqualTo(frameOrderConcatenation),
+            "the tx log set must be the frame-order concatenation of the surviving frame logs");
+        Assert.That(receipt.Bloom, Is.EqualTo(new Bloom(frameOrderConcatenation)),
+            "the producer header bloom must reflect exactly the surviving frame logs");
+
+        ReceiptMessageDecoder decoder = new();
+        byte[] encoded = decoder.EncodeNew(receipt, RlpBehaviors.None);
+        RlpReader reader = new(encoded);
+        TxReceipt decoded = decoder.Decode(ref reader)!;
+
+        Assert.That(decoded.Logs!.Length, Is.EqualTo(frameOrderConcatenation.Length),
+            "the wire receipt (hashed into the receipts root) must carry the same logs as the bloom reflects");
+        // LogEntry has no value equality, so compare the derived bloom rather than the entries.
+        Assert.That(decoded.Bloom, Is.EqualTo(new Bloom(frameOrderConcatenation)),
+            "the receipts-root logs and the header bloom must agree");
     }
 
     // Spec Expiry Verifier Frame: a VERIFY frame targeting EXPIRY_VERIFIER whose 8-byte big-endian

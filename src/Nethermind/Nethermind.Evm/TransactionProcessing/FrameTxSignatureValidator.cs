@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -29,9 +32,19 @@ public static class FrameTxSignatureValidator
     public const string P256NotSupported = "frame transaction P256 signatures require the secp256r1 precompile";
 
     /// <summary>Address of the secp256r1 (P256VERIFY) precompile — EIP-7951 / RIP-7212.</summary>
-    public static readonly Address P256VerifyPrecompileAddress = Address.FromNumber(0x100);
+    public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 
     public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error);
+
+    /// <summary>
+    /// Same validation, for callers that have no sig hash at hand: it is computed on the first entry
+    /// that needs it, so a transaction whose entries all carry an explicit digest never pays for it.
+    /// </summary>
+    public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
+        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error);
+
+    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
     {
         error = null;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
@@ -52,6 +65,12 @@ public static class FrameTxSignatureValidator
             if (!signature.Msg.IsEmpty && signature.Msg.Length != Hash256.Size)
             {
                 return Fail(InvalidMsgLength, out error);
+            }
+
+            if (signature.Msg.IsEmpty && !sigHashComputed)
+            {
+                sigHash = FrameTxSigHash.ComputeValue(tx);
+                sigHashComputed = true;
             }
 
             ValueHash256 message = signature.Msg.IsEmpty ? sigHash : new ValueHash256(signature.Msg.Span);
@@ -112,7 +131,7 @@ public static class FrameTxSignatureValidator
         }
 
         ReadOnlySpan<byte> publicKey = raw.Slice(64, 64); // qx || qy
-        Address derived = new(Keccak.Compute(publicKey).Bytes[12..]);
+        Address derived = new(ValueKeccak.Compute(publicKey).Bytes[12..]);
         if (derived != resolvedSigner) return Fail(InvalidP256Signer, out error);
 
         // The secp256r1 primitive is packaged above Nethermind.Evm and reached through the same
@@ -120,12 +139,20 @@ public static class FrameTxSignatureValidator
         // secp256r1 semantics. Input layout: message || r || s || qx || qy (32 + P256 signature).
         if (p256Precompile is null) return Fail(P256NotSupported, out error);
 
-        byte[] input = new byte[Hash256.Size + TxFrameSignature.P256SignatureLength];
-        message.Bytes.CopyTo(input);
-        raw.CopyTo(input.AsSpan(Hash256.Size));
+        const int InputLength = Hash256.Size + TxFrameSignature.P256SignatureLength;
+        byte[] input = ArrayPool<byte>.Shared.Rent(InputLength);
+        try
+        {
+            message.Bytes.CopyTo(input);
+            raw.CopyTo(input.AsSpan(Hash256.Size));
 
-        Result<byte[]> result = p256Precompile.Run(input, spec);
-        return result && result.Data.Length > 0 || Fail(InvalidSignature, out error);
+            Result<byte[]> result = p256Precompile.Run(input.AsMemory(0, InputLength), spec);
+            return result && result.Data.Length > 0 || Fail(InvalidSignature, out error);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(input);
+        }
     }
 
     private static bool Fail(string message, out string? error)

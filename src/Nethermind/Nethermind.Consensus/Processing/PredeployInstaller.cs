@@ -29,7 +29,25 @@ public static class PredeployInstaller
     private static readonly Predeploy[] Predeploys =
     [
         new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 1, static spec => spec.IsEip8141Enabled),
+        new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
     ];
+
+    /// <summary>
+    /// Returns whether <paramref name="spec"/> activates any declared predeploy, i.e. whether
+    /// <see cref="Install"/> can write anything for a block using this spec.
+    /// </summary>
+    internal static bool HasActivePredeploys(IReleaseSpec spec)
+    {
+        foreach (Predeploy predeploy in Predeploys)
+        {
+            if (predeploy.IsActive(spec))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Ensures every predeploy activated by <paramref name="spec"/> has its canonical code + nonce present.

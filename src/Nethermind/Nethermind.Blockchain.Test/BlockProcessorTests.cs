@@ -27,6 +27,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -124,12 +125,10 @@ public class BlockProcessorTests
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -195,12 +194,10 @@ public class BlockProcessorTests
         TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
         using BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: parentReaderFactory);
 
         Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
@@ -261,7 +258,7 @@ public class BlockProcessorTests
         specProvider ??= HoodiSpecProvider.Instance;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, specProvider, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), static worldState => new EthereumCodeInfoRepository(worldState));
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -290,18 +287,12 @@ public class BlockProcessorTests
         return (processor, branchProcessor, stateProvider);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal()
+    /// <summary>
+    /// Installs the execution-request predeploys (EIP-7002/7251/8282) that Amsterdam-based specs read
+    /// while processing a post-genesis block; without them ProcessExecutionRequests rejects the block.
+    /// </summary>
+    private static void InstallExecutionRequestPredeploys(IWorldState stateProvider, IReleaseSpec spec)
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
-        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch(specProvider: specProvider);
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
-        Address verifier = Eip8141Constants.ExpiryVerifierAddress;
-
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        // Eip8141Prototype builds on Amsterdam, which enables execution requests (EIP-7002/7251/8282);
-        // processing a post-genesis block reads them from their system-contract predeploys, so install
-        // those in genesis as a real chain does — otherwise ProcessExecutionRequests rejects the block.
         stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
         stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, spec);
         stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
@@ -310,6 +301,25 @@ public class BlockProcessorTests
         stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, spec);
         stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
         stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, spec);
+    }
+
+    private static IEnumerable<TestCaseData> PredeployInstallCases()
+    {
+        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode)
+            .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray())
+            .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
+    }
+
+    [TestCaseSource(nameof(PredeployInstallCases)), MaxTime(Timeout.MaxTestTime)]
+    public void Installs_predeploy_once_and_captures_it_in_bal(IReleaseSpec releaseSpec, Address predeploy, byte[] code)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
+        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch(specProvider: specProvider);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        InstallExecutionRequestPredeploys(stateProvider, spec);
         stateProvider.Commit(spec);
         stateProvider.CommitTree(0);
 
@@ -317,27 +327,32 @@ public class BlockProcessorTests
         Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        Assert.That(stateProvider.GetCode(verifier), Is.EqualTo(Eip8141Constants.ExpiryVerifierCode));
-        Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(1ul));
+        Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(1ul));
+        if (!spec.IsEip8250Enabled)
+        {
+            // In the EIP-8141 case, the independent NONCE_MANAGER must stay absent, proving unrelated predeploys are not installed.
+            Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress), Is.Empty);
+        }
 
         // The install must appear in the generated block-level access list (code + nonce change).
-        GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(verifier);
-        Assert.That(installChanges, Is.Not.Null, "expiry verifier install must be captured in the BAL");
+        GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(predeploy);
+        Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(1));
-            Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(Eip8141Constants.ExpiryVerifierCode));
+            Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
             Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(1));
             Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(1ul));
         }
 
-        // Second block is a no-op: state unchanged and no BAL entry for the verifier.
+        // Second block is a no-op: state unchanged and no BAL entry for the predeploy.
         Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        Assert.That(stateProvider.GetCode(verifier), Is.EqualTo(Eip8141Constants.ExpiryVerifierCode));
-        Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(1ul));
-        Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(verifier), Is.Null,
+        Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(1ul));
+        Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");
     }
 
@@ -730,20 +745,19 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 
-    [TestCase(2000ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
-    [TestCase(1999ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
-    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, bool shouldThrow)
+    [TestCase(2000ul, 0ul, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999ul, 0ul, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    [TestCase(2000ul, 2001ul, true, TestName = "BAL_read_budget_exhaustion_does_not_underflow")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(ulong gasRemaining, ulong gasSpent, bool shouldThrow)
     {
         // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
 
         // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
@@ -760,6 +774,7 @@ public class BlockProcessorTests
             .TestObject;
 
         PrepareSetup(balManager, block, Amsterdam.Instance);
+        balManager.SpendGas(gasSpent);
         // Generated BAL has the account but no storage reads
         BlockAccessListAtIndex generatedAtIndex = new();
         generatedAtIndex.AddAccountRead(TestItem.AddressA);
@@ -782,12 +797,10 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         BlockAccessListManager balManager = new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance));
 
         Address lowAddress = TestItem.AddressA;
         Address highAddress = TestItem.AddressB;
@@ -913,7 +926,7 @@ public class BlockProcessorTests
         // execution-specs PR 2703: the per-tx 2D inclusion check rejects a tx whose
         // worst-case dimension contribution exceeds the remaining budget, even if its
         // actual post-execution gas would have fit. tx1.GasLimit (50_000) exceeds the
-        // remaining regular budget of 35_000 left after tx0's 65_000 actual usage, so
+        // remaining execution budget of 35_000 left after tx0's 65_000 actual usage, so
         // the spec rejects tx1 at inclusion regardless of its actual usage.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction firstTx = Build.A.Transaction
@@ -942,7 +955,7 @@ public class BlockProcessorTests
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
 
         Assert.That(exception!.Message, Does.Contain("EIP-8037 inclusion check"));
-        Assert.That(exception.Message, Does.Contain("RegularDimensionExceeded"));
+        Assert.That(exception.Message, Does.Contain("ExecutionDimensionExceeded"));
     }
 
     [Test]
@@ -981,7 +994,7 @@ public class BlockProcessorTests
     public void IncrementalValidation_eip8037_block_gas_check_uses_actual_state_dimension()
     {
         // CREATE tx GasLimit sized to pass the EIP-8037 worst-case inclusion check
-        // (worst-case state = GasLimit - intrinsic.regular must <= state_available
+        // (worst-case state = GasLimit - intrinsic.execution must <= state_available
         // = 250_000 - 60_000 = 190_000). A 165_000 limit gives worst-case state of
         // ~135_000, which fits. Actual post-execution state is GasCostOf.CreateState
         // (the AccountCreationCost) so the post-exec max(R,S) check still ends up
@@ -1263,6 +1276,52 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void Parallel_validation_stops_executing_tail_once_inclusion_check_rejects()
+    {
+        const int txCount = 2048;
+        // 3 * cap is spent and under one cap remains, so tx 3 provably cannot fit.
+        const int rejectIndex = 3;
+        ulong txGasLimit = Eip7825Constants.DefaultTxGasLimitCap;
+        ulong blockGasLimit = (ulong)(rejectIndex + 1) * txGasLimit - 1;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(blockGasLimit)
+            .WithTransactions(CreateParallelValidationTransactions(txCount, txGasLimit))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        using ManualResetEventSlim validationFinished = new(false);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(rejectIndex, txGasLimit, validationFinished);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(transactionProcessor)
+            {
+                IncrementalValidationAction = (b, gasResults) => ReplayInclusionChecks(b, gasResults, validationFinished)
+            },
+            LimboLogs.Instance);
+
+        InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() => executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            new BlockReceiptsTracer(),
+            CancellationToken.None));
+
+        // The decisive prefix has to run. The upper bound stays well clear of the in-flight window
+        // so it asserts that the tail stopped without depending on how fast cancellation propagates.
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
+            Assert.That(transactionProcessor.ExecutedCount, Is.InRange(rejectIndex + 1, txCount / 8));
+        });
+    }
+
+    [Test]
     public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
     {
         GasValidationResultSlot[] gasResults = ResultsForCount(2);
@@ -1283,12 +1342,10 @@ public class BlockProcessorTests
     private static BlockAccessListManager CreateAmsterdamBalManager(IWorldState stateProvider) =>
         new(
             stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
             readOnlyTxProcessingEnvFactory: Substitute.For<IReadOnlyTxProcessingEnvFactory>());
 
     private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)
@@ -1310,6 +1367,26 @@ public class BlockProcessorTests
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
 
         Assert.That(balManager.ParallelExecutionEnabled, Is.True);
+    }
+
+    /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s ordering: wait for
+    /// each worker's gas result, then run the production EIP-8037 inclusion check.</summary>
+    private static void ReplayInclusionChecks(Block block, GasValidationResultSlot[] gasResults, ManualResetEventSlim validationFinished)
+    {
+        try
+        {
+            ulong totalExecutionGas = 0;
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                GasValidationResult gasResult = gasResults[i].GetResult();
+                BlockAccessListManager.CheckPerTxInclusion(block, i, block.Transactions[i], Amsterdam.Instance, totalExecutionGas, 0);
+                totalExecutionGas += gasResult.BlockGasUsed;
+            }
+        }
+        finally
+        {
+            validationFinished.Set();
+        }
     }
 
     private static GasValidationResultSlot[] ResultsForCount(int count)
@@ -1344,14 +1421,14 @@ public class BlockProcessorTests
         return slots;
     }
 
-    private static Transaction[] CreateParallelValidationTransactions(int txCount)
+    private static Transaction[] CreateParallelValidationTransactions(int txCount, ulong gasLimit = 21_000ul)
     {
         Transaction[] transactions = new Transaction[txCount];
         for (uint i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
                  .WithNonce(i)
-                 .WithGasLimit(21_000ul)
+                 .WithGasLimit(gasLimit)
                 .TestObject;
         }
 
@@ -1491,6 +1568,8 @@ public class BlockProcessorTests
         {
         }
 
+        public Action<Block, GasValidationResultSlot[]>? IncrementalValidationAction { get; init; }
+
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
         public bool ParallelExecutionEnabled => true;
@@ -1532,8 +1611,7 @@ public class BlockProcessorTests
         }
 
         public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
-        {
-        }
+            => IncrementalValidationAction?.Invoke(block, gasResults);
 
         public void SetBlockAccessList(Block block)
         {
@@ -1575,6 +1653,39 @@ public class BlockProcessorTests
             balIndexes.Add((txIndex, balIndex));
 
             ulong gasUsed = 21_000ul + (ulong)txIndex;
+            transaction.BlockGasUsed = gasUsed;
+            txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
+
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
+    }
+
+    /// <summary>Counts executed transactions, holding everything after <c>decisiveIndex</c> until
+    /// validation finishes so the count reflects cancellation, not scheduling.</summary>
+    private sealed class GatedTailTransactionProcessorAdapter(
+        int decisiveIndex,
+        ulong gasUsed,
+        ManualResetEventSlim validationFinished) : ITransactionProcessorAdapter
+    {
+        private int _executedCount;
+
+        public int ExecutedCount => Volatile.Read(ref _executedCount);
+
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            if ((int)transaction.Nonce > decisiveIndex)
+            {
+                // Bounded so a regression fails the assertion instead of wedging the run; the spin
+                // then outlasts the gap between validation failing and the workers observing it.
+                validationFinished.Wait(TimeSpan.FromSeconds(10));
+                Thread.SpinWait(50_000);
+            }
+
+            Interlocked.Increment(ref _executedCount);
             transaction.BlockGasUsed = gasUsed;
             txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
 

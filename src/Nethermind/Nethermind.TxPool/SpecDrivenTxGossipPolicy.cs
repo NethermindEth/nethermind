@@ -10,5 +10,9 @@ public class SpecDrivenTxGossipPolicy(IChainHeadInfoProvider chainHeadInfoProvid
     private IChainHeadInfoProvider ChainHeadInfoProvider { get; } = chainHeadInfoProvider;
 
     public bool ShouldGossipTransaction(Transaction tx) =>
-        !tx.SupportsBlobs || tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion;
+        // EIP-8141: a blob-carrying frame tx has no EIP-7594 sidecar wrapper yet, so withhold it from
+        // gossip rather than leak it in bare consensus form.
+        tx.SupportsBlobs
+            ? tx.GetProofVersion() == ChainHeadInfoProvider.CurrentProofVersion
+            : !tx.CarriesBlobs;
 }

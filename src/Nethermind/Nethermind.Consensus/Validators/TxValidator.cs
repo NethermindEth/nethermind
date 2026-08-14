@@ -87,12 +87,15 @@ public sealed class TxValidator : ITxValidator
         // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
         // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
         // signature validation happen during processing.
+        // EIP-8141: no type-6 network wrapper is decoded yet, so no sidecar/proof validator is registered.
+        // Add a blob-sidecar and proof-version validator here once the sidecar wire format lands.
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
             GasFieldsTxValidator.Instance,
-            FrameTxFieldsTxValidator.Instance
+            FrameTxFieldsTxValidator.Instance,
+            FrameTxEnvelopeTxValidator.Instance
         ]));
     }
 
@@ -147,9 +150,9 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
-        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong regular, out ulong floor))
+        if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
-            return IntrinsicGasError(TxErrorMessages.TxIntrinsicGasExceedsCap(regular, floor, Eip7825Constants.DefaultTxGasLimitCap));
+            return IntrinsicGasError(TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
         }
 
         return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
@@ -182,15 +185,65 @@ public sealed class GasFieldsTxValidator : ITxValidator
 }
 
 /// <summary>
-/// EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes).
+/// EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes) plus the
+/// EIP-7594 blob constraints for a blob-carrying frame transaction.
 /// </summary>
 public sealed class FrameTxFieldsTxValidator : ITxValidator
 {
     public static readonly FrameTxFieldsTxValidator Instance = new();
     private FrameTxFieldsTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        FrameTxValidation.IsWellFormed(transaction, out string? error) ? ValidationResult.Success : error!;
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (!FrameTxValidation.IsWellFormed(transaction, releaseSpec.IsEip7906Enabled, out string? error))
+        {
+            return error!;
+        }
+
+        // EIP-7594: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
+        // versioned-hash version byte as a type-3 blob tx.
+        byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
+        if (blobVersionedHashes is { Length: > 0 })
+        {
+            if (transaction.MaxFeePerBlobGas is null)
+            {
+                return TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
+            }
+
+            ValidationResult blobGasLimitResult = BlobFieldsTxValidator.ValidateBlobGasLimits(blobVersionedHashes.Length, releaseSpec);
+            return !blobGasLimitResult ? blobGasLimitResult : BlobFieldsTxValidator.ValidateBlobVersionedHashes(blobVersionedHashes);
+        }
+
+        return ValidationResult.Success;
+    }
+}
+
+/// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
+/// <remarks>
+/// The RLP decoder tells the envelope shapes apart without fork context, so the fork that admits each
+/// one is decided here. The reference cap is re-checked because a transaction can reach validation
+/// without passing through the decoder at all — <c>eth_call</c>, <c>eth_estimateGas</c> and block
+/// building all construct one directly.
+/// </remarks>
+public sealed class FrameTxEnvelopeTxValidator : ITxValidator
+{
+    public static readonly FrameTxEnvelopeTxValidator Instance = new();
+    private FrameTxEnvelopeTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        RecentRootReference[]? references = transaction.RecentRootReferences;
+        if (references is null)
+        {
+            return ValidationResult.Success;
+        }
+
+        return releaseSpec.IsEip8272Enabled
+            ? references.Length <= Eip8272Constants.MaxRecentRootReferences
+                ? ValidationResult.Success
+                : "too many recent root references"
+            : "recent root references are not enabled";
+    }
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator
@@ -258,13 +311,22 @@ public sealed class BlobFieldsTxValidator : ITxValidator
             return blobPerTxLimitValidationResult;
         }
 
-        for (int i = 0; i < blobCount; i++)
+        return ValidateBlobVersionedHashes(transaction.BlobVersionedHashes!);
+    }
+
+    /// <summary>
+    /// Validates that every blob versioned hash is present, 32 bytes, and carries the KZG version byte
+    /// (EIP-4844 <c>VERSIONED_HASH_VERSION_KZG = 0x01</c>).
+    /// </summary>
+    internal static ValidationResult ValidateBlobVersionedHashes(byte[]?[] blobVersionedHashes)
+    {
+        foreach (byte[]? versionedHash in blobVersionedHashes)
         {
-            switch (transaction.BlobVersionedHashes[i])
+            switch (versionedHash)
             {
                 case null: return TxErrorMessages.MissingBlobVersionedHash;
                 case { Length: not Eip4844Constants.BytesPerBlobVersionedHash }: return TxErrorMessages.InvalidBlobVersionedHashSize;
-                case { Length: Eip4844Constants.BytesPerBlobVersionedHash } when transaction.BlobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
+                case { Length: Eip4844Constants.BytesPerBlobVersionedHash } when versionedHash[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1: return TxErrorMessages.InvalidBlobVersionedHashVersion;
             }
         }
 

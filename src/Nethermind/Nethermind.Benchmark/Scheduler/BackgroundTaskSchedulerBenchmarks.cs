@@ -167,6 +167,7 @@ public class BackgroundTaskSchedulerBenchmarks
         public IChainHeadSpecProvider SpecProvider => null!;
         public IReadOnlyStateProvider ReadOnlyStateProvider => null!;
         public ulong HeadNumber => 0;
+        public ulong HeadTimestamp => 0;
         public ulong? BlockGasLimit => null;
         public UInt256 CurrentBaseFee => UInt256.Zero;
         public UInt256 CurrentFeePerBlobGas => UInt256.Zero;

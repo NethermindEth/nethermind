@@ -22,6 +22,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -32,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IOverridableEnv<ITracer> tracerEnv,
         IBlockchainBridge blockchainBridge,
         IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         ISpecProvider specProvider,
         IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule

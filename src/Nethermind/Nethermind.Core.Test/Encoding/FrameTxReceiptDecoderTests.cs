@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
@@ -11,16 +12,14 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Encoding;
 
 /// <summary>
-/// Round-trips of the EIP-8141 receipt payload <c>[cumulative_gas_used, payer,
-/// [[status, gas_used, logs], ...]]</c>. The wire form is spec-literal: no top-level status and no
-/// bloom. EIP8141-GAP: internally the decoder sets StatusCode to success and unions frame logs into
-/// Logs so bloom calculation and log indexing keep working — asserted here as the pinned behavior.
+/// Round-trips of the EIP-8141 receipt payload (no top-level status or bloom on the wire): the
+/// decoder derives StatusCode from the frame statuses and unions the frame logs into Logs.
 /// </summary>
 [TestFixture]
 public class FrameTxReceiptDecoderTests
 {
     [TestCaseSource(nameof(RoundtripCases))]
-    public void Roundtrip_FrameTxReceipt_PreservesPayloadFields(TxReceipt receipt)
+    public void Roundtrip_FrameTxReceipt_PreservesPayloadFields(TxReceipt receipt, byte expectedStatus)
     {
         ReceiptMessageDecoder decoder = new();
 
@@ -31,29 +30,24 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
         Assert.That(decoded.Payer, Is.EqualTo(receipt.Payer));
         AssertFrameReceiptsEqual(decoded.FrameReceipts!, receipt.FrameReceipts!);
-        Assert.That(decoded.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-        // Decoded Logs must be the in-order union of frame logs.
+        Assert.That(decoded.StatusCode, Is.EqualTo(expectedStatus),
+            "the transaction status is absent from the wire and must be derived from the frame statuses");
         AssertLogsEqual(decoded.Logs!, receipt.FrameReceipts!.SelectMany(static f => f.Logs).ToArray());
     }
 
-    // The storage form appends [payer, [frame_receipt, ...]] after the standard fields, so a
-    // restart round-trips the execution results the block cannot reproduce. The union Logs and the
-    // per-frame logs are stored independently — a rolled-back batch frame keeps its log in the
-    // frame receipt while the union omits it, and storage must preserve exactly that divergence.
+    // Storage keeps the union Logs and the per-frame logs as independent fields; the union here is
+    // deliberately not the frame-order concatenation, pinning that Logs is read back verbatim.
     [Test]
     public void StorageRoundtrip_PreservesPayerFrameReceiptsAndUnionLogs(
         [Values(true, false)] bool compactEncoding)
     {
         LogEntry unionLog = Log(0x01);
-        LogEntry rolledBackLog = Log(0x02);
-        TxReceipt frameReceipt = CreateReceipt(
+        LogEntry frameOnlyLog = Log(0x02);
+        TxReceipt frameReceipt = CreateStorageFrameReceipt(
+            [unionLog],
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [unionLog]),
-            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [rolledBackLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [frameOnlyLog]),
             new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []));
-        frameReceipt.StatusCode = TxFrameReceipt.StatusSuccess;
-        frameReceipt.Sender = TestItem.AddressC;
-        frameReceipt.Logs = [unionLog];
-        frameReceipt.Bloom = new Bloom(frameReceipt.Logs);
         TxReceipt legacyReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
 
         ReceiptArrayStorageDecoder encoder = new(compactEncoding);
@@ -71,24 +65,111 @@ public class FrameTxReceiptDecoderTests
         Assert.That(decodedFrame.TxType, Is.EqualTo(TxType.FrameTx));
         Assert.That(decodedFrame.Payer, Is.EqualTo(frameReceipt.Payer));
         AssertFrameReceiptsEqual(decodedFrame.FrameReceipts!, frameReceipt.FrameReceipts!);
-        AssertLogsEqual(decodedFrame.Logs!, frameReceipt.Logs,
+        AssertLogsEqual(decodedFrame.Logs!, frameReceipt.Logs!,
             "the stored union must stay the union, not get rebuilt from frame logs");
+    }
+
+    // ReceiptsIterator (eth_getLogs) loops DecodeStructRef over stored receipts; a frame-tx receipt
+    // used to leave the reader mid-sequence and corrupt the next one, so it sits between two regulars.
+    [Test]
+    public void StructRefIteration_OverArrayWithFrameTxReceipt_DoesNotThrowOrCorruptNeighbours(
+        [Values(true, false)] bool compactEncoding,
+        [Values(RlpBehaviors.Storage, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes)] RlpBehaviors decodeBehaviors)
+    {
+        LogEntry frameLog = Log(0x01);
+        TxReceipt frameReceipt = CreateStorageFrameReceipt(
+            [frameLog],
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [frameLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [Log(0x02)]));
+
+        // Distinct sender/gas on the neighbours so realigning onto `after` is provably not `before`.
+        TxReceipt before = Build.A.Receipt.WithAllFieldsFilled
+            .WithSender(TestItem.AddressD).WithGasUsedTotal(1000).WithCalculatedBloom().TestObject;
+        TxReceipt after = Build.A.Receipt.WithAllFieldsFilled
+            .WithSender(TestItem.AddressE).WithGasUsedTotal(2000).WithCalculatedBloom().TestObject;
+
+        RlpDecoder<TxReceipt> decoder = compactEncoding
+            ? new CompactReceiptStorageDecoder()
+            : new ReceiptStorageDecoder();
+        IReceiptRefDecoder refDecoder = (IReceiptRefDecoder)decoder;
+        byte[] encoded = decoder.Encode([before, frameReceipt, after], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+
+        // Iterate while Position is below the sequence content length. TxReceiptStructRef is a ref
+        // struct, so capture the asserted fields into a tuple.
+        RlpReader reader = new(encoded);
+        int length = reader.ReadSequenceLength();
+        int count = 0;
+        (byte Status, ulong Gas, string Sender, TxType Type, LogEntry[] Logs)[] decoded = new (byte, ulong, string, TxType, LogEntry[])[3];
+        while (reader.Position < length)
+        {
+            refDecoder.DecodeStructRef(ref reader, decodeBehaviors, out TxReceiptStructRef current);
+            if (count < decoded.Length)
+            {
+                decoded[count] = (current.StatusCode, current.GasUsedTotal, current.Sender.ToString(), current.TxType, DecodeLogs(current.LogsRlp, compactEncoding));
+            }
+            count++;
+        }
+
+        Assert.That(count, Is.EqualTo(3), "every receipt must decode, including the neighbours");
+
+        Assert.That(decoded[0].Sender, Is.EqualTo(before.Sender!.ToString()), "leading receipt sender");
+        Assert.That(decoded[0].Gas, Is.EqualTo(before.GasUsedTotal), "leading receipt gas used total");
+        Assert.That(decoded[0].Type, Is.EqualTo(TxType.Legacy), "a receipt without the extension must not be labelled FrameTx");
+
+        Assert.That(decoded[1].Status, Is.EqualTo(frameReceipt.StatusCode), "frame status");
+        Assert.That(decoded[1].Gas, Is.EqualTo(frameReceipt.GasUsedTotal), "frame gas used total");
+        Assert.That(decoded[1].Sender, Is.EqualTo(frameReceipt.Sender!.ToString()), "frame sender");
+        // TxType here is decoder-assigned and only observed by callers that skip recovery; on
+        // eth_getLogs recovery overwrites it from the matching transaction.
+        Assert.That(decoded[1].Type, Is.EqualTo(TxType.FrameTx), "the frame-tx receipt must be typed FrameTx");
+        AssertLogsEqual(decoded[1].Logs, frameReceipt.Logs!);
+
+        // The trailing receipt decodes intact only if the reader advanced past the frame extension.
+        Assert.That(decoded[2].Sender, Is.EqualTo(after.Sender!.ToString()), "trailing receipt sender");
+        Assert.That(decoded[2].Gas, Is.EqualTo(after.GasUsedTotal), "trailing receipt gas used total");
+        Assert.That(decoded[2].Type, Is.EqualTo(TxType.Legacy));
+    }
+
+    private static LogEntry[] DecodeLogs(scoped ReadOnlySpan<byte> logsRlp, bool compact)
+    {
+        RlpReader reader = new(logsRlp);
+        int end = reader.ReadSequenceLength() + reader.Position;
+        List<LogEntry> logs = [];
+        while (reader.Position < end)
+        {
+            LogEntry log = compact
+                ? CompactLogEntryDecoder.Instance.Decode(ref reader, RlpBehaviors.AllowExtraBytes)!
+                : LogEntryDecoder.Instance.Decode(ref reader, RlpBehaviors.AllowExtraBytes)!;
+            logs.Add(log);
+        }
+
+        return logs.ToArray();
     }
 
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [Log(0x01)])))
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [Log(0x01)])),
+            TxFrameReceipt.StatusSuccess)
             .SetName("Roundtrip_SingleSuccessfulFrameWithLog");
 
         yield return new TestCaseData(CreateReceipt(
             new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 50_000, [Log(0x01), Log(0x02)]),
             new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, []),
-            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, [])))
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, [])),
+            TxFrameReceipt.StatusFailure)
             .SetName("Roundtrip_SuccessFailureAndSkippedStatuses");
 
+        // A frame skipped by a failed atomic batch is not a success either.
         yield return new TestCaseData(CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, [])))
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, []),
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, [])),
+            TxFrameReceipt.StatusFailure)
+            .SetName("Roundtrip_SkippedFrameIsNotASuccess");
+
+        yield return new TestCaseData(CreateReceipt(
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, [])),
+            TxFrameReceipt.StatusSuccess)
             .SetName("Roundtrip_EmptyLogsAndZeroGas");
     }
 
@@ -123,6 +204,17 @@ public class FrameTxReceiptDecoderTests
             Payer = TestItem.AddressA,
             FrameReceipts = frameReceipts,
         };
+
+    // Storage-only fixups a frame receipt gets before persistence: status, sender, union Logs, bloom.
+    private static TxReceipt CreateStorageFrameReceipt(LogEntry[] unionLogs, params TxFrameReceipt[] frameReceipts)
+    {
+        TxReceipt receipt = CreateReceipt(frameReceipts);
+        receipt.StatusCode = TxFrameReceipt.StatusSuccess;
+        receipt.Sender = TestItem.AddressC;
+        receipt.Logs = unionLogs;
+        receipt.Bloom = new Bloom(unionLogs);
+        return receipt;
+    }
 
     private static LogEntry Log(byte marker) =>
         new(TestItem.AddressB, [marker], [Keccak.Compute([marker])]);

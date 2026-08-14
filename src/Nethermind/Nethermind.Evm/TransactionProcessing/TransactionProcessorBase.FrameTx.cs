@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -40,46 +41,93 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-        IPrecompile? p256Precompile = _codeInfoRepository.GetCachedCodeInfo(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec, out _).Precompile;
+        // EIP-7928: resolved without recording an account access - a tx that never takes the P256
+        // signature branch never accesses the precompile, so it must not enter the BAL.
+        IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
         if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
         }
 
         TxFrame[] frames = tx.Frames!;
-        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 premiumPerGas);
-
-        // Spec gas: tx_gas_limit = intrinsic + per-frame + calldata + signature verification
-        // + sum(frame.gas_limit); the sum is overflow-checked so the processor does not depend
-        // on static validation having run.
-        ulong intrinsicGas = CalculateFrameTxIntrinsicGas(tx, frames, spec);
-        ulong totalFrameGas = 0;
-        foreach (TxFrame frame in frames)
+        UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
+        UInt256 premiumPerGas = UInt256.Zero;
+        if (ShouldValidateGas(tx, opts) && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
         {
-            ulong accumulated = totalFrameGas + frame.GasLimit;
-            if (accumulated < totalFrameGas)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("total frame gas overflows");
-            }
-
-            totalFrameGas = accumulated;
+            TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+            return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(
+                $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}");
         }
 
-        ulong txGasLimit = intrinsicGas + totalFrameGas;
-        if (txGasLimit < intrinsicGas)
+        // Enforced here, not only in static validation, so unvalidated entry points (e.g. eth_call)
+        // cannot mint ETH: EIP-8141 forbids approval scope on a frame belonging to an atomic batch.
+        bool prevIsAtomicBatch = false;
+        foreach (TxFrame frame in frames)
+        {
+            if ((frame.IsAtomicBatch || prevIsAtomicBatch) && frame.AllowedApproveScope != 0)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("approval scope on atomic batch frame");
+            }
+
+            prevIsAtomicBatch = frame.IsAtomicBatch;
+        }
+
+        if (tx.RecentRootReferences is { } references)
+        {
+            if (!spec.IsEip8272Enabled)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
+            }
+
+            if (references.Length > Eip8272Constants.MaxRecentRootReferences)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("too many recent root references");
+            }
+        }
+
+        if (tx.NonceKeys is not null)
+        {
+            tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
+        }
+
+        // The frame gas sum is overflow-checked so the processor does not depend on static validation
+        // having run.
+        tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
         }
 
-        // max_cost is defined at basefee=max (TXPARAM 0x06): the payer solvency gate reserves at
-        // max_fee_per_gas plus blob cost, not the effective price, so it is not under-reserved.
-        // Settlement below still charges the effective price, so the payer's net cost is unchanged.
-        // EIP8141-DEVIATION: blob gas is reserved here but never settled — a blob-carrying frame tx
-        // would have its blob reservation fully refunded (blobs go uncharged) and BlobGasUsed is not
-        // set. Blob support is deferred pending the upstream blob-semantics spec; devnets do not send
-        // blob frame txs. Charge blob gas (and reject or account it) once that lands.
-        ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
-        UInt256 maxCost = (UInt256)txGasLimit * tx.DecodedMaxFeePerGas + (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault();
+        // max_cost (TXPARAM 0x06) reserves at max_fee_per_gas plus the blob fee, not the effective
+        // price, so it is not under-reserved; settlement below charges the effective price. Bounded
+        // like BuyGas: premium <= max fee and spentGas <= txGasLimit, so this product also bounds the
+        // settlement products (spentCost, fees) below.
+        // EIP-8141/EIP-4844: the blob leg is priced at the actual blob_base_fee (not max_fee_per_blob_gas)
+        // so the mid-tx escrow the payer sees is correct; the burned blob fee cancels in the refund below.
+        UInt256 blobFee = UInt256.Zero;
+        if (tx.BlobVersionedHashes is { Length: > 0 })
+        {
+            if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobFee))
+            {
+                TraceLogInvalidTx(tx, "BLOB_BASE_FEE_OVERFLOW");
+                return RequiredBalanceExceeds256Bits(tx);
+            }
+
+            // EIP-4844: max_fee_per_blob_gas must cover the current blob base fee, else the tx is invalid.
+            if (tx.MaxFeePerBlobGas.GetValueOrDefault() < feePerBlobGas)
+            {
+                TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_BLOB_GAS");
+                return TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
+                    BlockErrorMessages.InsufficientMaxFeePerBlobGas(tx.SenderAddress, tx.MaxFeePerBlobGas, feePerBlobGas));
+            }
+        }
+
+        if (UInt256.MultiplyOverflow((UInt256)txGasLimit, tx.DecodedMaxFeePerGas, out UInt256 maxCost)
+            || UInt256.AddOverflow(maxCost, blobFee, out maxCost))
+        {
+            TraceLogInvalidTx(tx, "INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE");
+            return RequiredBalanceExceeds256Bits(tx);
+        }
 
         FrameTxContext frameContext = new(
             sender,
@@ -93,8 +141,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.MaxFeePerBlobGas.GetValueOrDefault());
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
-        List<LogEntry> allLogs = [];
         ulong totalFrameGasUsed = 0;
+        long totalFrameStateGasUsed = 0;
         // EIP-3529 storage refunds accumulate into a single transaction-scoped counter (ethereum/EIPs#11940).
         long refundCounter = 0;
 
@@ -113,16 +161,25 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             accessTracker.WarmUp(sender);
         }
 
+        if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, header.SlotNumber, in accessTracker))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
+        }
+
         // Atomic batch state: a maximal contiguous run [i, j] where i..j-1 have ATOMIC_BATCH_FLAG
         // and j does not. On any failure inside the run, state rolls back to before the run began
         // and the remaining frames are skipped (spec: Behavior, atomic batch).
         bool inBatch = false;
         Snapshot batchStartSnapshot = default;
         StackAccessTracker batchTracker = default;
-        int batchStartLogCount = 0;
-        Address? batchStartPayer = null;
-        bool batchStartSenderApproved = false;
+        int batchStartIndex = 0;
         long batchStartRefund = 0;
+        long batchStartStateGas = 0;
+
+        Snapshot prefixEndSnapshot = txSnapshot;
+        int prefixEndIndex = -1;
+        long prefixEndRefund = 0;
+        bool postTxReverted = false;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -136,10 +193,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchStartSnapshot = WorldState.TakeSnapshot();
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
-                batchStartLogCount = allLogs.Count;
-                batchStartPayer = frameContext.Payer;
-                batchStartSenderApproved = frameContext.SenderApproved;
+                batchStartIndex = i;
                 batchStartRefund = refundCounter;
+                batchStartStateGas = totalFrameStateGasUsed;
             }
 
             // Transient storage (TSTORE/TLOAD) is discarded between frames (spec: Cross-frame
@@ -155,7 +211,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             Address resolvedTarget = frame.Target ?? sender;
             Address caller = isSender ? sender : Eip8141Constants.EntryPointAddress;
-            bool isStatic = frame.Mode == TxFrame.ModeVerify;
+            bool isStatic = frame.Mode is TxFrame.ModeVerify or TxFrame.ModePostTx;
 
             // ORIGIN returns the frame's caller throughout all call depths.
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
@@ -163,12 +219,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
             int frameLogStart = accessTracker.Logs.Count;
-            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed);
+            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
             totalFrameGasUsed += frameGasUsed;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
             if (frameSucceeded)
             {
+                totalFrameStateGasUsed += frameStateGas;
                 frameContext.MarkFrameSucceeded(i);
                 // A reverted frame's refunds are discarded with its state; only successful frames
                 // contribute (ethereum/EIPs#11940). An in-batch contribution is unwound below.
@@ -201,7 +258,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameSucceeded ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure,
                 frameGasUsed,
                 frameLogs);
-            allLogs.AddRange(frameLogs);
 
             if (frame.Mode == TxFrame.ModeVerify && !frameSucceeded)
             {
@@ -210,9 +266,47 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted");
             }
 
+            if (frame.Mode == TxFrame.ModePostTx && !frameSucceeded)
+            {
+                // A failed assertion discards the body down to the validation prefix and overrides any
+                // atomic-batch unrolling, but unlike a VERIFY revert it leaves the transaction valid.
+                WorldState.Restore(prefixEndSnapshot);
+                refundCounter = prefixEndRefund;
+
+                // Body logs go with the state that produced them; the tx log set is derived from these
+                // receipts, so clearing them here also keeps them out of the bloom.
+                for (int s = prefixEndIndex + 1; s < i; s++)
+                {
+                    TxFrameReceipt reverted = frameReceipts[s];
+                    if (reverted.Logs.Length > 0)
+                    {
+                        frameReceipts[s] = new TxFrameReceipt(reverted.Status, reverted.GasUsed, []);
+                    }
+                }
+
+                for (int s = i + 1; s < frames.Length; s++)
+                {
+                    frameReceipts[s] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []);
+                    frameContext.MarkFrameSkipped(s);
+                }
+
+                postTxReverted = true;
+                break;
+            }
+
             if (frameSucceeded)
             {
+                bool payerWasSet = frameContext.Payer is not null;
                 ApplyApproval(frameContext, resolvedTarget, spec);
+                if (!payerWasSet && frameContext.Payer is not null)
+                {
+                    // End of the validation prefix (the shortest prefix whose success sets the payer):
+                    // EIP-7906 keeps everything up to here and discards the execution body when a
+                    // POST_TX frame reverts.
+                    prefixEndSnapshot = WorldState.TakeSnapshot();
+                    prefixEndIndex = i;
+                    prefixEndRefund = refundCounter;
+                }
             }
             else
             {
@@ -225,25 +319,39 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 if (!frameSucceeded)
                 {
-                    // Unroll the batch: restore state to before it began, drop its logs, and mark
-                    // every remaining frame in the batch as skipped (status 0x2, gas refunded by
-                    // not being consumed). The failed frame keeps its failure receipt.
-                    // EIP8141-ISSUE: the spec does not state the receipt status of frames that ran
-                    // successfully earlier in the batch before the rollback; earlier frames keep
-                    // their recorded receipts while their state and logs are rolled back.
+                    // Unroll the batch: restore pre-batch state and mark remaining frames skipped
+                    // (status 0x2, gas refunded by not being consumed). The failed frame keeps its
+                    // failure receipt.
                     WorldState.Restore(batchStartSnapshot);
                     batchTracker.Restore();
-                    allLogs.RemoveRange(batchStartLogCount, allLogs.Count - batchStartLogCount);
-                    // EIP-8141 (ethereum/EIPs#11955): a failed batch unrolls ALL effects of any APPROVE
-                    // it contained. Restore reverts the payer debit and sender nonce (world state); the
-                    // approval context (payer, sender_approved) and refund counter are not world state,
-                    // so roll them back to their pre-batch values too. Without this, the payer field
-                    // would survive a reverted charge and the terminal gate would refund uncollected
-                    // funds. If the payer was only set inside the batch, it is now unset again and the
-                    // gate below rejects the transaction.
-                    frameContext.Payer = batchStartPayer;
-                    frameContext.SenderApproved = batchStartSenderApproved;
+
+                    // Discard the logs of frames that ran before the failure, along with their state
+                    // (ethereum/EIPs#12008), keeping status and gas_used. The tx log set is derived
+                    // from these receipts after the loop, so cleared frames drop out of the bloom too.
+                    for (int s = batchStartIndex; s < i; s++)
+                    {
+                        TxFrameReceipt earlier = frameReceipts[s];
+                        if (earlier.Logs.Length > 0)
+                        {
+                            frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.GasUsed, []);
+                        }
+                    }
+
+                    // The unrolled frames' writes are gone with the snapshot, so their state charges
+                    // are not owed either; the counter only grows, so the batch-start value undoes them.
+                    totalFrameStateGasUsed = batchStartStateGas;
+                    // Refunds from the reverted batch are discarded with its state, so roll the counter back.
+                    // No payer/sender_approved rollback is needed: EIP-8141 forbids approval scope on batch frames.
                     refundCounter = batchStartRefund;
+
+                    if (prefixEndIndex >= batchStartIndex)
+                    {
+                        // The prefix ended inside the batch, so its snapshot now points past the
+                        // truncated journal and unwinding a failed assertion to it would throw.
+                        prefixEndSnapshot = batchStartSnapshot;
+                        prefixEndIndex = batchStartIndex - 1;
+                        prefixEndRefund = batchStartRefund;
+                    }
 
                     int terminal = i;
                     while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
@@ -272,39 +380,74 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-3529 storage refunds are netted once at the transaction level (ethereum/EIPs#11940):
         // the accumulated counter is capped at a fifth of the gross gas and subtracted here. Per-frame
-        // receipts stay gross; only this transaction total is netted.
+        // receipts stay gross; only this transaction total is netted. The EIP-7623 floor then bounds
+        // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
-        ulong spentGas = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec);
+        ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
+        ulong blockStateGas = (ulong)totalFrameStateGasUsed;
+        // blockStateGas <= grossGas by the reservoir-0 invariant: each frame rents an empty state-gas
+        // reservoir, so every state charge is already counted inside totalFrameGasUsed (hence grossGas),
+        // which is what makes the SaturatingSub in CalculateBlockExecutionGas sound.
+        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
         // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
         // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
         // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
-        // tx's real spent gas into the header.
-        tx.BlockGasUsed = spentGas;
+        // tx's real regular gas into the header.
+        tx.BlockGasUsed = blockRegularGas;
         Address payer = frameContext.Payer;
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
         // pay the beneficiary premium. The base-fee share stays deducted (burned).
+        // EIP-8141/EIP-4844: the blob fee is also charged and burned, excluded from the refund. Both
+        // legs are bounded by max_cost (spentCost <= gas leg, blobFee is the blob leg), so no underflow.
         UInt256 spentCost = (UInt256)spentGas * effectiveGasPrice;
-        if (maxCost > spentCost)
+        UInt256 chargedCost = spentCost + blobFee;
+        if (maxCost > chargedCost)
         {
-            WorldState.AddToBalance(payer, maxCost - spentCost, spec);
+            WorldState.AddToBalance(payer, maxCost - chargedCost, spec);
         }
 
+        // Fee-collector chains (e.g. Gnosis) collect the otherwise-burned legs, exactly as PayFees does:
+        // the EIP-1559 base-fee share and, when EIP-4844 fee collection is enabled, the blob fee.
+        UInt256 effectiveBaseFee = UInt256.Min(header.BaseFeePerGas, effectiveGasPrice);
+        UInt256 collectedFees = spec.IsEip1559Enabled ? effectiveBaseFee * (UInt256)spentGas : UInt256.Zero;
+        if (spec.IsEip4844FeeCollectorEnabled)
+        {
+            collectedFees += blobFee;
+        }
+        if (spec.FeeCollector is not null && !collectedFees.IsZero)
+        {
+            WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+        }
+
+        // EIP-1559/EIP-7928: fee accounting touches the beneficiary regardless of premium, so the
+        // credit is applied unconditionally like PayFees on the regular path; the BAL recorder drops
+        // the zero balance change and the EIP-158 commit clears a touched-empty beneficiary.
+        // PayFees also skips the credit for a beneficiary self-destructed within the tx (EIP-6780),
+        // but the frame path never finalizes its destroy list, so there is nothing to resurrect here;
+        // mirroring the guard would burn the premium while leaving the account live, matching neither
+        // path. Destroy-list finalization on the frame path (and the guard it would justify) is tracked
+        // separately.
         UInt256 fees = premiumPerGas * (UInt256)spentGas;
-        if (!fees.IsZero)
-        {
-            WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
-        }
+        WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
-        bool commit = opts.HasFlag(ExecutionOptions.Commit);
-        if (commit)
+        // CommitAndRestore asks for both, and a commit clears the journals the snapshot indexes into, so restoring
+        // after it would revert nothing. The frame path keeps the whole transaction in the journal until here, so the
+        // restore alone returns the state the caller started with.
+        if (opts.HasFlag(ExecutionOptions.Restore))
+        {
+            WorldState.Restore(txSnapshot);
+        }
+        else if (opts.HasFlag(ExecutionOptions.Commit))
         {
             WorldState.Commit(spec, commitRoots: false);
         }
 
-        if (opts.HasFlag(ExecutionOptions.Restore))
+        if (tracer.IsTracingFees)
         {
-            WorldState.Restore(txSnapshot);
+            // As in PayFees, the burnt/collected half is capped at the effective price paid so
+            // validation-off runs with max fee below base fee do not over-report; blob fee added in.
+            tracer.ReportFees(fees, effectiveBaseFee * spentGas + blobFee);
         }
 
         if (tracer.IsTracingReceipt)
@@ -314,60 +457,52 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameReceiptTracer.ReportFrameTxReceipt(payer, frameReceipts);
             }
 
-            GasConsumed gasConsumed = new(spentGas, spentGas, spentGas);
-            tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], allLogs.ToArray());
+            // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
+            // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
+            LogEntry[] txLogs = TxFrameReceipt.ConcatLogs(frameReceipts);
+            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
+            if (postTxReverted)
+            {
+                tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");
+            }
+            else
+            {
+                tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], txLogs);
+            }
         }
 
         return TransactionResult.Ok;
     }
 
     /// <summary>
-    /// FRAME_TX_INTRINSIC_COST + frames × FRAME_TX_PER_FRAME_COST + calldata cost of frame data
-    /// and signature fields (EIP-7623 token pricing) + per-scheme signature verification cost.
-    /// EIP8141: whether the EIP-7623 floor applies to frame transactions is unspecified; the
-    /// standard token cost is used here.
+    /// The transaction log set: the frame-order concatenation of the per-frame receipt logs.
     /// </summary>
-    private static ulong CalculateFrameTxIntrinsicGas(Transaction tx, TxFrame[] frames, IReleaseSpec spec)
+    private static LogEntry[] ConcatFrameLogs(TxFrameReceipt[] frameReceipts)
     {
-        ulong tokens = 0;
-        foreach (TxFrame frame in frames)
+        int total = 0;
+        foreach (TxFrameReceipt frameReceipt in frameReceipts)
         {
-            tokens += CountCalldataTokens(frame.Data.Span, spec);
+            total += frameReceipt.Logs.Length;
         }
 
-        ulong signatureVerificationCost = 0;
-        TxFrameSignature[]? signatures = tx.FrameSignatures;
-        if (signatures is not null)
+        if (total == 0) return [];
+
+        LogEntry[] logs = new LogEntry[total];
+        int offset = 0;
+        foreach (TxFrameReceipt frameReceipt in frameReceipts)
         {
-            foreach (TxFrameSignature signature in signatures)
-            {
-                tokens += signature.Signer is null ? 0 : CountCalldataTokens(signature.Signer.Bytes, spec);
-                tokens += CountCalldataTokens(signature.Msg.Span, spec);
-                tokens += CountCalldataTokens(signature.Signature.Span, spec);
-                signatureVerificationCost += signature.Scheme switch
-                {
-                    TxFrameSignature.SchemeArbitrary => Eip8141Constants.ArbitraryVerificationGasCost,
-                    TxFrameSignature.SchemeSecp256k1 => Eip8141Constants.Secp256k1VerificationGasCost,
-                    TxFrameSignature.SchemeP256 => Eip8141Constants.P256VerificationGasCost,
-                    _ => 0,
-                };
-            }
+            LogEntry[] frameLogs = frameReceipt.Logs;
+            frameLogs.CopyTo(logs, offset);
+            offset += frameLogs.Length;
         }
 
-        return (ulong)Eip8141Constants.IntrinsicGasCost
-               + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
-               + tokens * GasCostOf.TxDataZero
-               + signatureVerificationCost;
+        return logs;
     }
 
-    private static ulong CountCalldataTokens(ReadOnlySpan<byte> data, IReleaseSpec spec)
+    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
-        int zeros = data.CountZeros();
-        return (ulong)zeros + (ulong)(data.Length - zeros) * spec.GasCosts.TxDataNonZeroMultiplier;
-    }
+        stateGasUsed = 0;
 
-    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
-    {
         // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
         UInt256 value = frame.Value;
         if (!value.IsZero && WorldState.GetBalance(caller) < value)
@@ -380,7 +515,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the protocol-defined behavior instead of the EVM.
         if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            return ExecuteDefaultCode(frame, resolvedTarget, caller, isStatic, frameContext, spec, tracer, out gasUsed);
+            return ExecuteDefaultCode(frame, resolvedTarget, caller, frameContext, in accessTracker, spec, tracer, out gasUsed);
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
@@ -417,12 +552,20 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             isStatic ? ExecutionType.STATICCALL : ExecutionType.TRANSACTION,
             env,
             in frameTracker,
-            in snapshot);
+            in snapshot,
+            isStatic: isStatic);
 
-        TransactionSubstate substate = VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
+        // Select the instruction-tracing specialisation explicitly: the parameterless ExecuteTransaction
+        // overload hard-codes OffFlag and would drop per-instruction tracing for a frame.
+        TransactionSubstate substate = tracer.IsTracingInstructions
+            ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
+            : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
         ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
         gasUsed = frame.GasLimit - remainingGas;
+        // Clamp rather than assert: unlike the standard path, this also runs for reverted or errored
+        // frames, where the state-gas value carries no non-negativity guarantee.
+        stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas));
 
         if (substate.ShouldRevert || substate.IsError)
         {
@@ -436,20 +579,26 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>
     /// EIP-8141 default code for a codeless target. VERIFY: require a canonical-hash SECP256K1
     /// signature at index 0 whose resolved signer is the target, then signal APPROVE with the
-    /// frame's allowed scope. SENDER/DEFAULT: succeed as empty code (value transfer only).
+    /// frame's allowed scope. SENDER/DEFAULT: succeed as empty code, performing the value transfer
+    /// and emitting its EIP-7708 transfer log into the frame receipt.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
     /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
     /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
-    /// EIP8141: default-code gas metering is pending; the sig verification cost is already charged
-    /// in the intrinsic, so no gas is charged here yet.
+    /// EIP8141: default-code gas metering is pending, so the transfer to a dead recipient always
+    /// logs (the EIP-8037 NEW_ACCOUNT charge that suppresses it on the VM path never applies) and
+    /// needs no frame-journal snapshot. A gas charge here would revisit both.
     /// </summary>
-    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    /// <param name="accessTracker">Cross-frame log/warm journal; the transfer log is appended to
+    /// its log list so it reaches the frame receipt and the transaction log union.</param>
+    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
     {
         gasUsed = 0;
 
-        if (isStatic)
+        // Keyed on VERIFY rather than on staticness: EIP-7906 POST_TX frames are static too, but the
+        // spec routes them through the SENDER / DEFAULT branch below.
+        if (frame.Mode == TxFrame.ModeVerify)
         {
             byte allowedScope = frame.AllowedApproveScope;
             if (allowedScope == 0)
@@ -480,6 +629,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             WorldState.SubtractFromBalance(caller, in value, spec);
             WorldState.AddToBalanceAndCreateIfNotExists(resolvedTarget, in value, spec);
+            // EIP-7708: self-transfers emit no log; zero value is excluded by the outer guard.
+            if (spec.IsEip7708Enabled && caller != resolvedTarget)
+            {
+                LogEntry transferLog = TransferLog.CreateTransfer(caller, resolvedTarget, in value);
+                accessTracker.Logs.Add(transferLog);
+                if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
+            }
         }
 
         return DefaultCodeSuccess();

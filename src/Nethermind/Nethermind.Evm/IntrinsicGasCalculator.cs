@@ -67,8 +67,7 @@ public static class IntrinsicGasCalculator
 
         (int addressesCount, int storageKeysCount) = accessList.Count;
         // EIP-8038 realigns access-list entry costs with the cold-access costs they pre-warm.
-        ulong addressCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry;
-        ulong storageKeyCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry;
+        (ulong addressCost, ulong storageKeyCost) = Eip8038Constants.AccessListEntryCosts(spec);
         return (ulong)addressesCount * addressCost
             + (ulong)storageKeysCount * storageKeyCost
             + spec.GasCosts.TotalCostFloorPerToken * floorTokensInAccessList;
@@ -78,7 +77,7 @@ public static class IntrinsicGasCalculator
             throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
-    internal static (ulong RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
+    internal static (ulong ExecutionCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
     {
         AuthorizationTuple[]? authList = transaction.AuthorizationList;
         if (authList is null)
@@ -92,9 +91,9 @@ public static class IntrinsicGasCalculator
         }
 
         ulong authCount = (ulong)authList.Length;
-        ulong perAuthRegular = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseRegular : GasCostOf.PerAuthBaseRegular;
+        ulong perAuthExecution = spec.IsEip8038Enabled ? Eip8038Constants.PerAuthBaseExecution : GasCostOf.PerAuthBaseExecution;
         return spec.IsEip8037Enabled
-            ? (authCount * perAuthRegular, 0)
+            ? (authCount * perAuthExecution, 0)
             : (authCount * GasCostOf.NewAccount, 0);
 
         [DoesNotReturn, StackTraceHidden]

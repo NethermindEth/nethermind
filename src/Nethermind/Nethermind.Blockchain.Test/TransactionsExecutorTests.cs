@@ -7,6 +7,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -410,6 +411,119 @@ namespace Nethermind.Blockchain.Test
             Assert.That(selectedTransactions, Has.Length.EqualTo(2));
             Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
             Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+        }
+
+        // EIP-8141: the pool exempts frame transactions from EIP-3607, so without the same exemption
+        // here a smart account's own transaction is admitted and gossiped but never built into a block.
+        [TestCase(TxType.EIP1559, "Sender is contract", TestName = "CanAddTransaction_ContractSender_OrdinaryTx_Skipped")]
+        [TestCase(TxType.FrameTx, null, TestName = "CanAddTransaction_ContractSender_FrameTx_Added")]
+        public void CanAddTransaction_ContractSender_ExemptsOnlyFrameTransactions(TxType txType, string? expectedSkipReason)
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            IReleaseSpec spec = Prague.Instance;
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+            byte[] code = [0x00];
+            stateProvider.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code), code, spec);
+
+            Transaction tx = new()
+            {
+                Type = txType,
+                SenderAddress = TestItem.AddressA,
+                Nonce = 0,
+                GasLimit = GasCostOf.Transaction,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+                Frames = txType == TxType.FrameTx ? [] : null,
+                FrameSignatures = txType == TxType.FrameTx ? [] : null,
+            };
+
+            Block block = Build.A.Block.WithGasLimit(GasCostOf.Transaction * 2).TestObject;
+            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(spec));
+
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), stateProvider);
+
+            Assert.That(args.Action, Is.EqualTo(expectedSkipReason is null ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
+            if (expectedSkipReason is not null) Assert.That(args.Reason, Is.EqualTo(expectedSkipReason));
+        }
+
+        // EIP-8141: a frame transaction's GasLimit is only the sum of its frame gas limits, so the picker must gate on
+        // max_gas or the produced block exceeds its own gas limit. The mandatory cost of the single frame below is
+        // FRAME_TX_INTRINSIC_COST + FRAME_TX_PER_FRAME_COST = 15,475, and each non-zero calldata byte adds 16 to the
+        // standard cost against 40 to the EIP-7623 floor, so the last case fits the block on its standard cost alone.
+        [TestCase(100_000UL, 0, false)]
+        [TestCase(115_000UL, 0, true)]
+        [TestCase(10_000UL, 4000, true)]
+        public void Frame_transaction_is_gated_on_its_max_gas(ulong frameGasLimit, int frameDataLength, bool expectedSkipped)
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+
+            byte[] frameData = Enumerable.Repeat((byte)1, frameDataLength).ToArray();
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                Nonce = 0,
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
+                FrameSignatures = [],
+                GasLimit = frameGasLimit,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+            };
+            frameTx.Hash = frameTx.CalculateHash();
+
+            Block block = Build.A.Block.WithGasLimit(130_000).WithTransactions([frameTx]).TestObject;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Bogota.Instance);
+            BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
+
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider);
+
+            if (expectedSkipped)
+            {
+                Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+                Assert.That(args.Reason, Does.StartWith("Not enough gas in block"));
+            }
+            else
+            {
+                Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add), args.Reason);
+            }
+        }
+
+        [Test]
+        public void CanAddTransaction_skips_blob_carrying_frame_transaction()
+        {
+            // EIP8141: blob-carrying frame txs are routed to the blob pool and metered against the block
+            // blob budget by the blob-selection path, so they do not reach this normal-pool picker in the
+            // standard flow. The picker still excludes any that arrive here (defense in depth): without a
+            // resolvable EIP-7594 sidecar they cannot be produced with a complete blobs bundle.
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
+
+            Transaction frameBlobTx = Build.A.Transaction
+                .WithType(TxType.FrameTx)
+                .WithBlobVersionedHashes(1)
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(0)
+                .WithGasLimit(GasCostOf.Transaction)
+                .TestObject;
+
+            Block block = Build.A.Block
+                .WithNumber(1)
+                .WithExcessBlobGas(0)
+                .WithGasLimit(30_000_000)
+                .TestObject;
+
+            BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
+            BlockProcessor.AddingTxEventArgs args =
+                picker.CanAddTransaction(block, frameBlobTx, new HashSet<Transaction>(), stateProvider);
+
+            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
+            Assert.That(args.Reason, Does.Contain("frame"));
         }
 
         private static Transaction[] RunBlockProduction(
