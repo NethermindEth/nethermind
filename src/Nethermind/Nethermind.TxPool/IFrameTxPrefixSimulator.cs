@@ -20,9 +20,8 @@ public interface IFrameTxPrefixSimulator
     /// <param name="token">Cancels the simulation cooperatively and bounds the wait for the serialized
     /// processing env; the implementation's own wall-clock bound surfaces as a rejection instead.</param>
     /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers;
-    /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply. The exemption assumes a trusted
-    /// RPC: on a publicly reachable endpoint it is the one admission path with no cumulative bound, so a
-    /// caller submitting expensive prefixes can hold the serialized env against gossiped transactions.</param>
+    /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply. Assumes a trusted RPC: publicly
+    /// exposed, it is the one admission path with no cumulative bound.</param>
     FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false);
 }
 
