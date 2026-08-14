@@ -111,6 +111,29 @@ public class FrameTxDecoderTests
         Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
     }
 
+    [Test]
+    public void ComputeSigHash_MaxFeePerBlobGasChanges_HashChanges()
+    {
+        // The blob fields are part of the signing preimage, so the signature must commit to them.
+        Transaction first = CreateFrameTx();
+        first.MaxFeePerBlobGas = 7;
+        Transaction second = CreateFrameTx();
+        second.MaxFeePerBlobGas = 8;
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    [Test]
+    public void ComputeSigHash_BlobVersionedHashesChange_HashChanges()
+    {
+        Transaction first = CreateFrameTx();
+        first.BlobVersionedHashes = [FilledBytes(32, 0x01)];
+        Transaction second = CreateFrameTx();
+        second.BlobVersionedHashes = [FilledBytes(32, 0x02)];
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
     // Selecting different keys — or none at all, which is a different envelope rather than the key 0 —
     // must not reuse another transaction's signing hash.
     [Test]

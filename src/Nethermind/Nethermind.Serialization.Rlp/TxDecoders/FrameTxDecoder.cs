@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
@@ -41,8 +42,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64 like every other
         // Nethermind transaction type (codebase-wide ChainId width).
         transaction.ChainId = decoderContext.DecodeULong();
-        // The two shapes are self-describing — `nonce` is an integer and `nonce_keys` a list — so the
-        // fork that admits each is enforced in validation, where the spec is available.
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? DecodeNonceKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
@@ -62,6 +61,11 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             gasLimit = frame.GasLimit > ulong.MaxValue - gasLimit ? ulong.MaxValue : gasLimit + frame.GasLimit;
         }
         transaction.GasLimit = gasLimit;
+
+        if (transaction.NonceKeys is not null)
+        {
+            transaction.FrameCalldataStats = FrameTxNonceCalldata.Measure(transaction);
+        }
     }
 
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
@@ -200,4 +204,22 @@ public static class FrameTxNonceCalldata
 
         return contentLength;
     }
+
+    /// <summary>The zero and non-zero byte counts of what <see cref="Encode{TWriter}"/> writes, the split EIP-8141
+    /// calldata pricing needs. Measured off the encoded bytes rather than recomputed, so the charge cannot drift
+    /// from the wire encoding.</summary>
+    public static (int ZeroBytes, int NonZeroBytes) Measure(Transaction transaction)
+    {
+        int length = Length(transaction);
+        Span<byte> buffer = stackalloc byte[MaxCalldataLength];
+        Span<byte> calldata = buffer[..length];
+        RlpWriter writer = new(calldata);
+        Encode(transaction, ref writer);
+        int zeros = calldata.CountZeros();
+        return (zeros, length - zeros);
+    }
+
+    /// <summary>Upper bound on <c>nonce_calldata</c>: a full set of 32-byte keys (33 bytes each) behind a three-byte
+    /// long-form sequence header, plus a nine-byte sequence number.</summary>
+    private const int MaxCalldataLength = 3 + Eip8250Constants.MaxNonceKeys * 33 + 9;
 }

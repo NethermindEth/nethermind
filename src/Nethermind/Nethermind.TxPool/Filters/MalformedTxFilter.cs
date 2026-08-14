@@ -37,13 +37,13 @@ namespace Nethermind.TxPool.Filters
             Metrics.PendingTransactionsWithExpensiveFiltering++;
             if (tx.SenderAddress is null)
             {
-                tx.SenderAddress = ecdsa.RecoverAddress(tx);
-                if (tx.SenderAddress is null)
+                if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
                 {
                     Metrics.PendingTransactionsUnresolvableSender++;
                     if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
                     return AcceptTxResult.FailedToResolveSender;
                 }
+                tx.SenderAddress = senderAddress;
             }
 
             // An unresolved sender is conservatively priced as non-self, so only a rejected

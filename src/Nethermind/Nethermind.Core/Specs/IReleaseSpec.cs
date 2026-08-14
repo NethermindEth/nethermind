@@ -331,6 +331,11 @@ namespace Nethermind.Core.Specs
         bool IsEip8250Enabled { get; }
 
         /// <summary>
+        /// EIP-7906: transaction outcome assertions.
+        /// </summary>
+        bool IsEip7906Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }

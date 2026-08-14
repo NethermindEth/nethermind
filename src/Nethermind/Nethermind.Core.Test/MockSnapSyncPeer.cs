@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 
@@ -15,6 +16,8 @@ namespace Nethermind.Synchronization.Test;
 public class MockSnapSyncPeer(ISnapServer snapServer) : ISnapSyncPeer
 {
     private static readonly byte[] _emptyBytes = [0];
+
+    public byte SnapProtocolVersion => SnapVersions.Snap1;
     public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
     {
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = snapServer.GetAccountRanges(
