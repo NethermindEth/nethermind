@@ -127,27 +127,36 @@ namespace Nethermind.Network
             if (incoming.IsStatic && !pooled.IsStatic)
             {
                 pooled.IsStatic = true;
-                if (_logger.IsDebug) _logger.Debug($"Promoting already pooled peer {pooled:s} to static");
+                if (_logger.IsDebug) DebugPromoted(pooled, "static");
             }
 
             if (incoming.IsTrusted && !pooled.IsTrusted)
             {
                 pooled.IsTrusted = true;
-                if (_logger.IsDebug) _logger.Debug($"Promoting already pooled peer {pooled:s} to trusted");
+                if (_logger.IsDebug) DebugPromoted(pooled, "trusted");
             }
 
             if (incoming.IsBootnode && !pooled.IsBootnode)
             {
                 pooled.IsBootnode = true;
-                if (_logger.IsDebug) _logger.Debug($"Promoting already pooled peer {pooled:s} to bootnode");
+                if (_logger.IsDebug) DebugPromoted(pooled, "bootnode");
             }
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void DebugPromoted(Node node, string role)
+            => _logger.Debug($"Promoting already pooled peer {node:s} to {role}");
 
         public Peer GetOrAdd(NetworkNode networkNode)
         {
             if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing))
             {
-                if (!existing.Node.IsTrusted && _trustedNodesManager.IsTrusted(networkNode.Enode)) existing.Node.IsTrusted = true;
+                if (!existing.Node.IsTrusted && _trustedNodesManager.IsTrusted(networkNode.Enode))
+                {
+                    existing.Node.IsTrusted = true;
+                    if (_logger.IsDebug) DebugPromoted(existing.Node, "trusted");
+                }
+
                 return existing;
             }
 

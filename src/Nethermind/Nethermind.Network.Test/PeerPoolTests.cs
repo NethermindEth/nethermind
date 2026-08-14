@@ -309,6 +309,26 @@ public class PeerPoolTests
         Assert.That(peer.Node.IsTrusted, Is.True, "GetOrAdd(NetworkNode) marks trusted via the manager");
     }
 
+    [Test]
+    public void GetOrAdd_NetworkNode_refreshes_the_trusted_flag_of_an_already_pooled_peer()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(false);
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        string enode = new Enode(TestItem.PublicKeyA, IPAddress.Parse("1.2.3.4"), 30303).ToString();
+        Peer pooled = pool.GetOrAdd(new NetworkNode(enode));
+        Assert.That(pooled.Node.IsTrusted, Is.False);
+
+        trustedNodesManager.IsTrusted(Arg.Any<Enode>()).Returns(true);
+        Peer resolved = pool.GetOrAdd(new NetworkNode(enode));
+
+        Assert.That(resolved, Is.SameAs(pooled));
+        Assert.That(pooled.Node.IsTrusted, Is.True,
+            "a peer trusted after it was pooled must gain the flag, or admin_addTrustedPeer never takes effect for an already known peer");
+    }
+
     private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
