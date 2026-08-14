@@ -1825,4 +1825,96 @@ public class FrameTxProcessorTests
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
         return (result, tracer);
     }
+
+    private RecentRootReference CommitReference(ulong slot)
+    {
+        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot),
+            RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
+        _stateProvider.Commit(Spec);
+        return new RecentRootReference(sourceId, slot, root);
+    }
+
+    private const ulong HeadSlot = 1_001;
+    private const ulong ReferencedSlot = 1_000;
+    // Application validation logic binds a proof's public inputs to this tuple.
+    [TestCase((byte)0, TestName = "Execute_RecentRootRefLoad_SourceId")]
+    [TestCase((byte)1, TestName = "Execute_RecentRootRefLoad_Slot")]
+    [TestCase((byte)2, TestName = "Execute_RecentRootRefLoad_Root")]
+    public void Execute_RecentRootRefLoad_ReadsTheDeclaredReferenceField(byte field)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Spec stack order: field on top, index second.
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0).PushData(field).Op(Instruction.RECENTROOTREFLOAD).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        RecentRootReference reference = CommitReference(ReferencedSlot);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.RecentRootReferences = [reference];
+
+        TransactionResult r = Process(tx, slotNumber: HeadSlot);
+        Assert.That(r.TransactionExecuted, Is.True, r.ErrorDescription ?? r.Error.ToString());
+        AssertStorage(Observer, 0, field switch
+        {
+            0 => new UInt256(reference.SourceId.Bytes, isBigEndian: true),
+            1 => (UInt256)reference.Slot,
+            _ => new UInt256(reference.Root.Bytes, isBigEndian: true),
+        });
+    }
+
+    // Asserted through a sentinel stored after the opcode: a silent zero push would also leave slot 0
+    // at zero, and it would read as a real reference committing to the zero root.
+    [TestCase(0, 0, 1, TestName = "Execute_RecentRootRefLoad_InRange_Continues")]
+    [TestCase(1, 0, 0, TestName = "Execute_RecentRootRefLoad_IndexPastTheDeclaredList_Halts")]
+    [TestCase(0, 3, 0, TestName = "Execute_RecentRootRefLoad_UndefinedField_Halts")]
+    public void Execute_RecentRootRefLoad_OutOfRange_ExceptionallyHalts(int index, int field, int expectedSentinel)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData((UInt256)index).PushData((UInt256)field).Op(Instruction.RECENTROOTREFLOAD).Op(Instruction.POP)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.RecentRootReferences = [CommitReference(ReferencedSlot)];
+
+        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, (UInt256)expectedSentinel);
+    }
+
+    [TestCase(0, TestName = "Execute_TxParamReferenceCount_WithoutReferences")]
+    [TestCase(2, TestName = "Execute_TxParamReferenceCount_WithReferences")]
+    public void Execute_TxParam_ReportsTheReferenceCount(int referenceCount)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x0F).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        RecentRootReference[] references = new RecentRootReference[referenceCount];
+        for (int i = 0; i < referenceCount; i++) references[i] = CommitReference(ReferencedSlot - (ulong)i);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        tx.RecentRootReferences = references;
+
+        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, (UInt256)referenceCount);
+    }
+
+    // Asserted through a sentinel: an ungated read returns 0, which is also what a halted frame leaves.
+    [TestCase(true, ExpectedResult = 0UL, TestName = "Execute_ReferenceCountTxParamBeforeTheFork_Halts")]
+    [TestCase(false, ExpectedResult = 1UL, TestName = "Execute_ReferenceCountTxParamAfterTheFork_Reads")]
+    public ulong Execute_ReferenceCountTxParam_IsGatedOnTheFork(bool beforeTheFork)
+    {
+        _spec.IsEip8272Enabled = !beforeTheFork;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x0F).Op(Instruction.TXPARAM).Op(Instruction.POP)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+
+        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
+        return (ulong)_stateProvider.Get(new StorageCell(Observer, 0)).ToUnsignedBigInteger();
+    }
 }

@@ -167,10 +167,14 @@ public enum Instruction : byte
     FRAMEPARAM = 0xb3,
     SIGPARAM = 0xb4,
 
-    // EIP-7906 transaction assertions
-    TXTRACE = 0xb5,
-    TXDIFF = 0xb6,
-    EVENTDATACOPY = 0xb7,
+    // EIP-8272 recent roots
+    RECENTROOTREFLOAD = 0xb5,
+
+    // EIP-7906 transaction assertions. Both EIPs are draft with TBD opcode numbers; these moved up
+    // from 0xb5-0xb7 when EIP-8272 took 0xb5 on the shared base.
+    TXTRACE = 0xb6,
+    TXDIFF = 0xb7,
+    EVENTDATACOPY = 0xb8,
 
     DUPN = 0xe6,
     SWAPN = 0xe7,
