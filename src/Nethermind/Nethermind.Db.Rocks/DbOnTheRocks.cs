@@ -97,7 +97,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private CacheLinePaddedLong _totalReads;
     private CacheLinePaddedLong _totalWrites;
 
-    private readonly Lazy<IteratorManager> _iteratorManager;
+    private readonly Lazy<IteratorManager>? _iteratorManager;
     private readonly Lazy<IteratorManager> _seekIteratorManager;
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
@@ -803,15 +803,18 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return true;
     }
 
-    /// <summary> Pool for calls with <see cref="ReadFlags.HintReadAhead"/> - tailing iterators with large read steps.</summary>
-    internal Lazy<IteratorManager> CreateLazyReadAheadIteratorManager(ColumnFamilyHandle? cf) =>
-        CreateLazyIteratorManager(cf, _readAheadReadOptions);
+    /// <summary>
+    /// Pool for calls with <see cref="ReadFlags.HintReadAhead"/> - tailing iterators with large read steps.
+    /// Null when read-ahead is turned off.
+    /// </summary>
+    internal Lazy<IteratorManager>? CreateLazyReadAheadIteratorManager(ColumnFamilyHandle? cf) =>
+        _readAheadReadOptions is null ? null : CreateLazyIteratorManager(cf, _readAheadReadOptions);
 
     /// <summary> Pool for ceiling seeks - tailing iterators. </summary>
     internal Lazy<IteratorManager> CreateLazySeekIteratorManager(ColumnFamilyHandle? cf) =>
         CreateLazyIteratorManager(cf, _seekReadOptions);
 
-    private Lazy<IteratorManager> CreateLazyIteratorManager(ColumnFamilyHandle? cf, ReadOptions? readOptions) =>
+    private Lazy<IteratorManager> CreateLazyIteratorManager(ColumnFamilyHandle? cf, ReadOptions readOptions) =>
         new(() => new IteratorManager(_db, cf, readOptions), LazyThreadSafetyMode.ExecutionAndPublication);
 
     internal unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
@@ -1626,7 +1629,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             batch.Dispose();
         }
 
-        _iteratorManager.DisposeIfCreated();
+        _iteratorManager?.DisposeIfCreated();
         _seekIteratorManager.DisposeIfCreated();
         _db.Dispose();
 
@@ -1903,14 +1906,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         private readonly ManagedIterators _readaheadIterators3 = new();
         private readonly RocksDb _rocksDb;
         private readonly ColumnFamilyHandle? _cf;
-        private readonly ReadOptions? _readOptions;
+        private readonly ReadOptions _readOptions;
         private readonly Timer _timer;
         private bool _isDisposed;
 
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
 
-        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions? readOptions)
+        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions readOptions)
         {
             _rocksDb = rocksDb;
             _cf = cf;
@@ -2065,10 +2068,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
     public bool TryGetCeiling(
-        scoped ReadOnlySpan<byte> seekKey, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
         Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
     ) => TryGetCeilingWithIterator(
-        seekKey, upperBoundExclusive, _seekIteratorManager.Value,
+        lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
         keyBuffer, out keyLength, valueBuffer, out valueLength
     );
 

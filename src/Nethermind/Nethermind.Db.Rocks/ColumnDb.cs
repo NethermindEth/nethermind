@@ -19,7 +19,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
-    private readonly Lazy<DbOnTheRocks.IteratorManager> _iteratorManager;
+    private readonly Lazy<DbOnTheRocks.IteratorManager>? _iteratorManager;
     private readonly Lazy<DbOnTheRocks.IteratorManager> _seekIteratorManager;
     private readonly RocksDbReader _reader;
 
@@ -38,7 +38,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Dispose()
     {
-        _iteratorManager.DisposeIfCreated();
+        _iteratorManager?.DisposeIfCreated();
         _seekIteratorManager.DisposeIfCreated();
     }
     public string Name { get; }
