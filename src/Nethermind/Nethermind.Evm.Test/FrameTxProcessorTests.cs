@@ -1350,6 +1350,28 @@ public class FrameTxProcessorTests
     }
 
     /// <remarks>
+    /// The tx validator gates references on EIP-8272, but the call entry points (eth_call, eth_estimateGas,
+    /// eth_simulateV1) reach the processor without it, so the processor rejects a reference-carrying envelope
+    /// on a pre-activation spec rather than pricing and executing a field the fork does not recognise.
+    /// </remarks>
+    [Test]
+    public void Execute_RecentRootReferencesBeforeTheReferenceFork_AreRejected()
+    {
+        ((TestSpecProvider)_specProvider).GenesisSpec =
+            new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true, IsEip8272Enabled = false, IsEip7906Enabled = true };
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.RecentRootReferences = [];
+
+        TransactionResult result = Process(tx, slotNumber: 1_001);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        Assert.That(result.ErrorDescription, Does.Contain("not enabled"));
+    }
+
+    /// <remarks>
     /// An empty reference list is a different envelope from an absent one and still occupies the single
     /// byte <c>0xc0</c> on the wire, so it is priced: EIP-8272 short-circuits the per-reference term at
     /// zero references, not the calldata term over <c>rlp(recent_root_references)</c>, which enters the
