@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Runtime;
-using System.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 
