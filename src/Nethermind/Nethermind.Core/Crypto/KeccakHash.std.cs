@@ -21,6 +21,7 @@ public sealed partial class KeccakHash
     private const int TEMP_BUFF_SIZE = 144;
     private const ulong AT_HWCAP2 = 26;
     private const ulong HWCAP2_SVESHA3 = 1UL << 5;
+    // Resolution verifies the SVE2 permutation, so RoundConstants must initialize first.
     private static readonly ulong[] RoundConstants =
     [
         0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL,
@@ -33,7 +34,7 @@ public sealed partial class KeccakHash
         0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
     ];
 
-    private enum ExperimentalSve2KeccakStatus
+    internal enum ExperimentalSve2KeccakStatus
     {
         Disabled,
         Unsupported,
@@ -41,36 +42,37 @@ public sealed partial class KeccakHash
         Enabled,
     }
 
-    // .NET 10 lacks a FEAT_SVE_SHA3-specific probe, so explicit opt-in is required.
-    private static readonly ExperimentalSve2KeccakStatus ExperimentalSve2Keccak = GetExperimentalSve2KeccakStatus();
+    private static readonly (ExperimentalSve2KeccakStatus Status, Exception? Failure) s_experimentalSve2Keccak = ResolveExperimentalSve2Keccak();
 
-    private static ExperimentalSve2KeccakStatus GetExperimentalSve2KeccakStatus()
+    internal static ExperimentalSve2KeccakStatus ExperimentalSve2KeccakState => s_experimentalSve2Keccak.Status;
+
+    internal static Exception? ExperimentalSve2KeccakFailure => s_experimentalSve2Keccak.Failure;
+
+    private static (ExperimentalSve2KeccakStatus Status, Exception? Failure) ResolveExperimentalSve2Keccak()
     {
         try
         {
             if (Environment.GetEnvironmentVariable("NETHERMIND_EXPERIMENTAL_SVE2_KECCAK") != "1")
-                return ExperimentalSve2KeccakStatus.Disabled;
+                return (ExperimentalSve2KeccakStatus.Disabled, null);
 
-            if (!IsSve2KeccakSupported())
-                return ExperimentalSve2KeccakStatus.Unsupported;
+            if (!IsSve2KeccakSupportedCore())
+                return (ExperimentalSve2KeccakStatus.Unsupported, null);
 
-            return VerifySve2Keccak() ? ExperimentalSve2KeccakStatus.Enabled : ExperimentalSve2KeccakStatus.VerificationFailed;
+            return VerifySve2Keccak()
+                ? (ExperimentalSve2KeccakStatus.Enabled, null)
+                : (ExperimentalSve2KeccakStatus.VerificationFailed, null);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            return ExperimentalSve2KeccakStatus.VerificationFailed;
+            return (ExperimentalSve2KeccakStatus.VerificationFailed, exception);
         }
     }
 
-#pragma warning disable SYSLIB5003
     internal static bool IsSve2KeccakSupported()
     {
         try
         {
-            return OperatingSystem.IsLinux()
-                && RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-                && Sve2.IsSupported
-                && (GetAuxiliaryValue(AT_HWCAP2) & HWCAP2_SVESHA3) != 0;
+            return IsSve2KeccakSupportedCore();
         }
         catch (Exception)
         {
@@ -78,14 +80,24 @@ public sealed partial class KeccakHash
         }
     }
 
+    private static bool IsSve2KeccakSupportedCore()
+    {
+        if (!OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
+            return false;
+
+#pragma warning disable SYSLIB5003
+        bool sve2Supported = Sve2.IsSupported;
+#pragma warning restore SYSLIB5003
+        return sve2Supported && (GetAuxiliaryValue(AT_HWCAP2) & HWCAP2_SVESHA3) != 0;
+    }
+
     [DllImport("libc", EntryPoint = "getauxval")]
     private static extern ulong GetAuxiliaryValue(ulong type);
-#pragma warning restore SYSLIB5003
 
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {
-        if (ExperimentalSve2Keccak == ExperimentalSve2KeccakStatus.Enabled)
+        if (s_experimentalSve2Keccak.Status == ExperimentalSve2KeccakStatus.Enabled)
         {
             KeccakF1600Sve2(st);
             return;

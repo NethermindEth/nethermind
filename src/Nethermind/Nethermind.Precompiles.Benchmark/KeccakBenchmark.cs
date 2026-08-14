@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Filters;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Core.Crypto;
@@ -56,6 +57,8 @@ namespace Nethermind.Precompiles.Benchmark
             {
                 WithUnionRule(ConfigUnionRule.AlwaysUseLocal);
                 AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Instance));
+                AddFilter(new SimpleFilter(static benchmarkCase =>
+                    benchmarkCase.Descriptor.Type != typeof(KeccakPermutationBenchmark) || KeccakHash.IsSve2KeccakSupported()));
             }
         }
 
@@ -63,15 +66,13 @@ namespace Nethermind.Precompiles.Benchmark
         private const ulong InitialLaneMultiplier = 0x9E3779B97F4A7C15UL;
         private const ulong InitialLaneXor = 0xD1B54A32D192ED03UL;
 
+        // Keccak's data-independent permutation keeps evolving benchmark states representative.
         private readonly ulong[] _scalarState = new ulong[LaneCount];
         private readonly ulong[] _sveState = new ulong[LaneCount];
 
         [GlobalSetup]
         public void Setup()
         {
-            if (!KeccakHash.IsSve2KeccakSupported())
-                throw new PlatformNotSupportedException("KeccakPermutationBenchmark requires SVE2 SHA3 support.");
-
             for (int lane = 0; lane < LaneCount; lane++)
             {
                 _scalarState[lane] = (ulong)(lane + 1) * InitialLaneMultiplier ^ InitialLaneXor;
