@@ -36,13 +36,12 @@ public class FlatWorldStateManager(
 
     private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
 
-    private FlatSnapServer? _snapServer;
+    private SnapFlatStateServer? _snapServer;
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapServer SnapServer => _snapServer ??= new FlatSnapServer(
+    public ISnapStateServer SnapStateServer => _snapServer ??= new SnapFlatStateServer(
         flatDbManager,
-        codeDb,
         flatStateRootIndex,
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
