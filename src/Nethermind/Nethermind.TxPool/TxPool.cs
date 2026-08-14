@@ -1078,6 +1078,27 @@ namespace Nethermind.TxPool
             return true;
         }
 
+        /// <summary>
+        /// Removes a frame transaction that block production dropped because its frames did not approve payment,
+        /// reporting it as a genuine drop and clearing the long-term cache so it can re-enter once the state its
+        /// frames read changes.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="RemoveExpiredFrameTransactions"/>, which keeps the hash so a transaction that can never
+        /// be included does not come back, this clears it: the reason a frame transaction fails to pay in the
+        /// producer (an unfunded payer, a VERIFY frame reading storage) is chain state that can change. Mirrors the
+        /// capacity-eviction path, which likewise raises <see cref="EvictedPending"/> and clears the cache.
+        /// </remarks>
+        public bool EvictTransaction(Transaction tx)
+        {
+            if (!RemoveTransaction(tx.Hash)) return false;
+
+            EvictedPending?.Invoke(this, new TxEventArgs(tx));
+            _hashCache.DeleteFromLongTerm(tx.Hash!);
+            Metrics.PendingTransactionsEvicted++;
+            return true;
+        }
+
         public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob
             ? _blobTransactions.ContainsKey(hash)
             // EIP-8141: a type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.

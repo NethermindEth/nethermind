@@ -71,6 +71,7 @@ namespace Nethermind.TxPool
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
         bool RemoveTransaction(Hash256? hash);
+        bool EvictTransaction(Transaction tx);
         Transaction? GetBestTx();
         IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
