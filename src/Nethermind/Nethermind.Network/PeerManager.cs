@@ -771,13 +771,6 @@ namespace Nethermind.Network
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
-            // A hairpinned NAT or a discovery record echoing our own ENR would otherwise dial ourselves
-            if (peer.Node.Id == _enode.PublicKey)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Skipping outgoing connection to self: {peer.Node.Id}");
-                return;
-            }
-
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
 
             await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
@@ -943,8 +936,12 @@ namespace Nethermind.Network
                 => _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
         }
 
+        // Sits ahead of the recent-IP filter on purpose: that filter records every address it accepts, so letting
+        // our own record through would keep re-arming it for our own subnet and lock out real peers sharing it.
+        // Both dial paths - the update loop's workers and the quick-connect on peer-added - pass through here.
         private bool ShouldContactPeer(Peer peer)
-            => _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
+            => peer.Node.Id != _enode.PublicKey
+               && _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
 
         /// <summary>
         /// Fast-path guard for the peer-added event: checks throttle before the IP filter
