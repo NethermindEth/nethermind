@@ -69,6 +69,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+        transaction.RecentRootReferences = null;
 
         // A frame transaction has no gas_limit field; expose the sum of frame gas limits as GasLimit
         // so pre-execution consumers (GasLimitTxFilter, block-production selection, pre-warming) that
