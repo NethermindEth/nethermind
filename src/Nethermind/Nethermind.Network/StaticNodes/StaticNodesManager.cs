@@ -32,16 +32,23 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     public async Task<bool> AddAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         bool added = TryAddNode(networkNode);
+        if (_logger.IsInfo) _logger.Info(added ? $"Static node added: {networkNode}" : $"Static node was already added: {networkNode}");
+
         if (added)
         {
             NodeAdded?.Invoke(this, new NodeEventArgs(new Node(networkNode, isStatic: true)));
         }
 
-        return await LogAndSaveAsync(added, $"Static node added: {networkNode}", $"Static node was already added: {networkNode}", updateFile, cancellationToken);
+        return await SaveAsync(added, updateFile, cancellationToken);
     }
 
-    public Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default) =>
-        LogAndSaveAsync(TryRemoveNode(networkNode.NodeId), $"Static node was removed: {networkNode}", $"Static node was not found: {networkNode}", updateFile, cancellationToken);
+    public async Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
+    {
+        bool removed = TryRemoveNode(networkNode.NodeId);
+        if (_logger.IsInfo) _logger.Info(removed ? $"Static node was removed: {networkNode}" : $"Static node was not found: {networkNode}");
+
+        return await SaveAsync(removed, updateFile, cancellationToken);
+    }
 
     public bool IsStatic(NetworkNode node) =>
         _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) &&

@@ -217,11 +217,10 @@ public abstract class NodesManager(string path, ILogger logger)
         return true;
     }
 
-    /// <summary>Logs the outcome of an add/remove and rewrites the nodes file when <paramref name="updateFile"/> is set.</summary>
+    /// <summary>Rewrites the nodes file when <paramref name="updateFile"/> is set and returns <paramref name="changed"/>.</summary>
     /// <remarks>A no-op change still triggers the rewrite to reconcile an earlier <c>updateFile: false</c> call, but only once the file has been successfully loaded, so a failed init cannot truncate it.</remarks>
-    protected async Task<bool> LogAndSaveAsync(bool changed, string changedMessage, string noOpMessage, bool updateFile, CancellationToken cancellationToken)
+    protected async Task<bool> SaveAsync(bool changed, bool updateFile, CancellationToken cancellationToken)
     {
-        if (_logger.IsInfo) _logger.Info(changed ? changedMessage : noOpMessage);
         if (updateFile && (changed || Loaded)) await SaveFileAsync(cancellationToken);
         return changed;
     }
