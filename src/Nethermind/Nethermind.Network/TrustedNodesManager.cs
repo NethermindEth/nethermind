@@ -64,17 +64,18 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
             await _nodeChannel.Writer.WriteAsync(new Node(networkNode) { IsTrusted = true }, cancellationToken);
         }
 
-        return await SaveAsync(added, updateFile, cancellationToken);
+        return await PersistAsync(added, networkNode, updateFile, cancellationToken);
     }
 
     public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
+        NetworkNode networkNode = new(enode);
         // TryRemoveNode fires NodeRemoved BEFORE the file write: a cancelled SaveFileAsync must not leave
         // the peer disconnected in-memory but still persisted as trusted.
-        bool removed = TryRemoveNode(new NetworkNode(enode).NodeId);
+        bool removed = TryRemoveNode(networkNode.NodeId);
         if (_logger.IsInfo) _logger.Info(removed ? $"Trusted node was removed: {enode}" : $"Trusted node was not found: {enode}");
 
-        return await SaveAsync(removed, updateFile, cancellationToken);
+        return await UnpersistAsync(removed, networkNode, updateFile, cancellationToken);
     }
 
     public bool IsTrusted(Enode enode) => _nodes.ContainsKey(enode.PublicKey);

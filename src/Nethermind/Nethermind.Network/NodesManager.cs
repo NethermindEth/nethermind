@@ -36,8 +36,9 @@ public abstract class NodesManager(string path, ILogger logger)
     /// <summary>Returns <see langword="true"/> when any managed node is reachable at <paramref name="ip"/>.</summary>
     public bool ContainsIp(IPAddress ip) => _ipCounts.ContainsKey(ip);
 
-    /// <summary>Set once the nodes file has been successfully loaded, so no-op calls never rewrite the file from a never-loaded state.</summary>
-    protected bool Loaded { get; private set; }
+    // Nodes explicitly persisted (loaded from the file or added with updateFile=true). The file mirrors this set,
+    // so transient (updateFile=false) changes to _nodes never leak into it and a failed load cannot be amplified.
+    private ConcurrentDictionary<PublicKey, NetworkNode> _persistedNodes = [];
 
     /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
     protected bool TryAddNode(NetworkNode node)
@@ -62,7 +63,7 @@ public abstract class NodesManager(string path, ILogger logger)
                 _ipCounts.AddOrUpdate(kvp.Value.HostIp, 1, static (_, count) => count + 1);
             }
 
-            Loaded = true;
+            _persistedNodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes);
         }
     }
 
@@ -217,11 +218,17 @@ public abstract class NodesManager(string path, ILogger logger)
         return true;
     }
 
-    /// <summary>Rewrites the nodes file when <paramref name="updateFile"/> is set and returns <paramref name="changed"/>.</summary>
-    /// <remarks>A no-op change still triggers the rewrite to reconcile an earlier <c>updateFile: false</c> call, but only once the file has been successfully loaded, so a failed init cannot truncate it.</remarks>
-    protected async Task<bool> SaveAsync(bool changed, bool updateFile, CancellationToken cancellationToken)
+    /// <summary>Marks <paramref name="node"/> persistent when <paramref name="updateFile"/> is set, rewriting the nodes file if it was not persisted yet, and returns <paramref name="changed"/>.</summary>
+    protected async Task<bool> PersistAsync(bool changed, NetworkNode node, bool updateFile, CancellationToken cancellationToken)
     {
-        if (updateFile && (changed || Loaded)) await SaveFileAsync(cancellationToken);
+        if (updateFile && _persistedNodes.TryAdd(node.NodeId, node)) await SaveFileAsync(cancellationToken);
+        return changed;
+    }
+
+    /// <summary>Unmarks <paramref name="node"/> as persistent when <paramref name="updateFile"/> is set, rewriting the nodes file if it was persisted, and returns <paramref name="changed"/>.</summary>
+    protected async Task<bool> UnpersistAsync(bool changed, NetworkNode node, bool updateFile, CancellationToken cancellationToken)
+    {
+        if (updateFile && _persistedNodes.TryRemove(node.NodeId, out _)) await SaveFileAsync(cancellationToken);
         return changed;
     }
 
@@ -230,7 +237,7 @@ public abstract class NodesManager(string path, ILogger logger)
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         string contents = JsonSerializer.Serialize(
-            _nodes.Select(static n => n.Value.ToString()),
+            _persistedNodes.Select(static n => n.Value.ToString()),
             EthereumJsonSerializer.JsonOptionsIndented
             );
 

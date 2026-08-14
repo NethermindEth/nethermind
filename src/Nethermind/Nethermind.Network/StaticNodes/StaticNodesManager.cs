@@ -39,7 +39,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
             NodeAdded?.Invoke(this, new NodeEventArgs(new Node(networkNode, isStatic: true)));
         }
 
-        return await SaveAsync(added, updateFile, cancellationToken);
+        return await PersistAsync(added, networkNode, updateFile, cancellationToken);
     }
 
     public async Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
@@ -47,7 +47,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
         bool removed = TryRemoveNode(networkNode.NodeId);
         if (_logger.IsInfo) _logger.Info(removed ? $"Static node was removed: {networkNode}" : $"Static node was not found: {networkNode}");
 
-        return await SaveAsync(removed, updateFile, cancellationToken);
+        return await UnpersistAsync(removed, networkNode, updateFile, cancellationToken);
     }
 
     public bool IsStatic(NetworkNode node) =>
