@@ -12,7 +12,7 @@ namespace Nethermind.State
     public interface IStateReader
     {
         bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account);
-        ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index);
+        ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, scoped in UInt256 index);
         byte[]? GetCode(Hash256 codeHash);
         byte[]? GetCode(in ValueHash256 codeHash);
         /// <summary>

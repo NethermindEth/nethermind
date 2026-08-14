@@ -8,6 +8,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -58,38 +59,43 @@ internal sealed class FrameTxPayerExposureFilter(
     }
 
     /// <summary>
-    /// The reservation held by a pending transaction of the same sender and nonce that <paramref name="tx"/>
-    /// would displace, or zero when it would join the pending set rather than replace one.
+    /// The reservation held by the pending transaction <paramref name="tx"/> would displace, or zero when it
+    /// would join the pending set rather than replace one.
     /// </summary>
     /// <remarks>
-    /// Matches on the payer too: displacing a tx paid by someone else frees that payer, not this one.
-    /// Prices the displaced tx with the same helper the reservation used, or the discount under-refunds
-    /// and the freed exposure leaks.
+    /// Tested with the pool's own competing key, so the EIP-8250 nonce-key domain is part of the match: a
+    /// same-nonce transaction in another domain joins the pending set and must not be discounted. Matches on
+    /// the payer too, and prices with the helper the reservation used, or the discount under-refunds.
     /// </remarks>
     private UInt256 ReplacedPendingReservation(Transaction tx, Address payer, IReleaseSpec spec)
     {
-        ReplacementSearch search = new(tx.Nonce, payer, spec);
+        ReplacementSearch search = new(tx, payer, spec);
         TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
         pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
         {
-            // Buckets are visited in ascending nonce order, so stop once past the replaced nonce.
+            // Buckets are visited in ascending nonce order, so skip below and stop past the replaced nonce.
             if (pending.Nonce < state.Nonce) return true;
-            if (pending.Nonce == state.Nonce
+            if (pending.Nonce > state.Nonce) return false;
+
+            if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)
                 && pending.PayerAddress == state.Payer
                 && FrameTxValidation.TryCalculateMaxCost(pending, state.Spec, out UInt256 cost))
             {
                 state.Reserved = cost;
+                return false;
             }
 
-            return false;
+            // Same nonce, another domain: only one entry can compete, so keep looking for it.
+            return true;
         });
 
         return search.Reserved;
     }
 
-    private struct ReplacementSearch(ulong nonce, Address payer, IReleaseSpec spec)
+    private struct ReplacementSearch(Transaction tx, Address payer, IReleaseSpec spec)
     {
-        public readonly ulong Nonce = nonce;
+        public readonly Transaction Tx = tx;
+        public readonly ulong Nonce = tx.Nonce;
         public readonly Address Payer = payer;
         public readonly IReleaseSpec Spec = spec;
         public UInt256 Reserved;

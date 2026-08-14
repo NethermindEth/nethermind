@@ -132,6 +132,12 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
 
         /// <summary>
+        /// An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c> in the head state.
+        /// Unlike an account nonce this is an exact match in both directions, so the transaction is neither old nor future.
+        /// </summary>
+        public static readonly AcceptTxResult KeyedNonceUnmet = new(24, TxPoolErrorMessages.KeyedNonceUnmet);
+
+        /// <summary>
         /// An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.
         /// </summary>
         public static readonly AcceptTxResult FrameTxPayerExposureExceeded = new(22, TxPoolErrorMessages.FrameTxPayerExposureExceeded);
@@ -145,7 +151,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.
         /// </summary>
-        public static readonly AcceptTxResult FrameSimulationFailed = new(24, TxPoolErrorMessages.FrameSimulationFailed);
+        public static readonly AcceptTxResult FrameSimulationFailed = new(25, TxPoolErrorMessages.FrameSimulationFailed);
 
         /// <summary>
         /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were
@@ -155,7 +161,7 @@ namespace Nethermind.TxPool
         /// Distinct from <see cref="FrameSimulationFailed"/> so peer scoring can tell load shedding apart from
         /// a peer sending transactions this node rejects.
         /// </remarks>
-        public static readonly AcceptTxResult FrameSimulationDeferred = new(25, TxPoolErrorMessages.FrameSimulationDeferred);
+        public static readonly AcceptTxResult FrameSimulationDeferred = new(26, TxPoolErrorMessages.FrameSimulationDeferred);
 
         private int Id { get; } = id;
         private string Code { get; } = code;
