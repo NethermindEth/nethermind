@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Disconnects_a_session_that_misses_every_pong_and_reports_a_timeout()
+        public async Task Disconnects_a_session_that_misses_every_pong_and_reports_a_timeout()
         {
             ISession responsive = CreateSession();
             ISession unresponsive = CreateUnresponsiveSession();
@@ -78,13 +78,19 @@ namespace Nethermind.Network.Test
             unresponsive.Disconnected += (_, args) => reason = args.DisconnectReason;
 
             NetworkConfig networkConfig = new();
-            networkConfig.P2PPingInterval = 20;
+            networkConfig.P2PPingInterval = 200;
             SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
             sessionMonitor.AddSession(responsive);
             sessionMonitor.AddSession(unresponsive);
+            responsive.LastPongUtc = DateTime.UtcNow;
+            unresponsive.LastPongUtc = DateTime.UtcNow;
             sessionMonitor.Start();
             try
             {
+                await Task.Delay(600);
+                Assert.That(unresponsive.IsClosing, Is.False,
+                    "the window is measured from the last pong, so the first missed pongs have to be tolerated");
+
                 Assert.That(() => unresponsive.IsClosing, Is.True.After(10_000, 20));
                 Assert.That(() => reason, Is.EqualTo(DisconnectReason.ReceiveMessageTimeout).After(5_000, 20),
                     "the reason selects the reconnect delay and lets the privileged-node gate reap dead static sessions");
@@ -97,7 +103,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Keeps_a_session_that_recovers_between_missed_pongs()
+        public async Task Keeps_a_session_that_recovers_between_missed_pongs()
         {
             int calls = 0;
             IPingSender flaky = Substitute.For<IPingSender>();
@@ -111,8 +117,14 @@ namespace Nethermind.Network.Test
             sessionMonitor.Start();
             try
             {
-                Assert.That(() => session.IsClosing, Is.False.After(4_000),
-                    "two missed pongs followed by a pong is a slow peer, not a dead one");
+                await Task.Delay(4_000);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Volatile.Read(ref calls), Is.GreaterThanOrEqualTo(3),
+                        "the recovery path is only exercised once the third ping has returned a pong");
+                    Assert.That(session.IsClosing, Is.False,
+                        "two missed pongs followed by a pong is a slow peer, not a dead one");
+                }
             }
             finally
             {
@@ -125,6 +137,8 @@ namespace Nethermind.Network.Test
         private ISession CreateSession(IPingSender pingSender)
         {
             ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.RemoteHost = "1.2.3.4";
+            session.RemotePort = 12345;
             session.PingSender = pingSender;
             session.Handshake(TestItem.PublicKeyB);
             session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());

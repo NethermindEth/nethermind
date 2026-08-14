@@ -24,8 +24,10 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
 
         // The window is measured from the last pong received, so a session is disconnected once no pong has
-        // arrived for this many ping intervals - roughly 30 to 40 seconds at the default 10 second interval.
-        private const int MissedPongIntervalsBeforeDisconnect = 3;
+        // arrived for this many ping intervals. A ping only goes out every other tick - LastPingUtc is stamped
+        // after the tick that sent it, so the guard below fails on the next one - which makes the effective ping
+        // period two intervals. Three missed pongs therefore need a window of six intervals.
+        private const int MissedPongIntervalsBeforeDisconnect = 6;
 
         private readonly TimeSpan _pingInterval;
         private readonly List<Task<bool>> _pingTasks = [];
