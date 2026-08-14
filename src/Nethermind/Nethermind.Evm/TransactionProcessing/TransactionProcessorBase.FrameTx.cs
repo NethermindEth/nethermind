@@ -584,14 +584,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
             }
 
-            // Measured before the budget is priced, as the main path does: TryCalculateGasBudget memoizes
-            // per spec, so pricing an unmeasured tx here would leave execution reusing the low value.
-            if (tx.NonceKeys is not null)
-            {
-                tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
-            }
-            tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
-
             // max_cost (TXPARAM 0x06) from the same helper the main path escrows on, so the simulated
             // APPROVE gate cannot decide against a different number.
             if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
@@ -613,13 +605,23 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 accessTracker.WarmUp(sender);
             }
 
+            // RECENTROOTREFLOAD is legal in a VERIFY frame and reads the envelope on the strength of this
+            // check, so the prefix must not run before it. Anchored to the earliest slot the transaction
+            // could execute in, since a reference to the head slot is referenceable only from the next one.
+            ulong? executionSlot = header.SlotNumber is { } headSlot ? headSlot + 1 : null;
+            if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker))
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
+            }
+
             for (int i = 0; i < frames.Length; i++)
             {
                 TxFrame frame = frames[i];
 
                 // EIP8141-GAP: deploy-frame carve-outs are unimplemented. Positional, as RecognizedPrefixLength
-                // applies it — a later default-mode frame is the execution frame ending an unpaid prefix.
-                if (i <= 1 && i + 1 < frames.Length && FrameTxValidation.IsDeployFrame(frame) && frames[i + 1].Mode == TxFrame.ModeVerify)
+                // reaches index 1 only past an expiry-verify frame at index 0.
+                if ((i == 0 || (i == 1 && FrameTxValidation.IsExpiryVerifyFrame(frames[0])))
+                    && i + 1 < frames.Length && FrameTxValidation.IsDeployFrame(frame) && frames[i + 1].Mode == TxFrame.ModeVerify)
                 {
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
                 }

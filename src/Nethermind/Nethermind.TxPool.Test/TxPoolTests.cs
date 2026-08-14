@@ -1002,6 +1002,31 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task EvictTransaction_surfaces_a_drop_and_clears_the_hash_cache_so_the_tx_can_re_enter()
+        {
+            _txPool = CreatePool();
+            Transaction transaction = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithGasPrice(2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(transaction);
+            _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
+            Assert.That(_txPool.IsKnown(transaction.Hash), Is.True);
+
+            Transaction dropped = null;
+            _txPool.EvictedPending += (_, e) => dropped = e.Transaction;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.EvictTransaction(transaction), Is.True);
+                Assert.That(dropped, Is.SameAs(transaction), "the drop is surfaced to EvictedPending subscribers");
+                Assert.That(_txPool.IsKnown(transaction.Hash), Is.False, "the long-term cache is cleared so the tx can re-enter");
+            }
+        }
+
+        [Test]
         public void should_calculate_gasBottleneck_properly()
         {
             _txPool = CreatePool();
