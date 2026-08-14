@@ -49,7 +49,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         IForkInfo forkInfo,
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
-        ISpecProvider specProvider,
+        IChainHeadSpecProvider specProvider,
         ITxGossipPolicy? transactionsGossipPolicy = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
             gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) =>
