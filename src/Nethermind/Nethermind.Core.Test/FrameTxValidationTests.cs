@@ -158,6 +158,9 @@ public class FrameTxValidationTests
         yield return Case("BlobFeeWithoutBlobHashes_BlobFeeWithoutBlobs",
             static tx => tx.MaxFeePerBlobGas = UInt256.One, FrameTxValidation.BlobFeeWithoutBlobs);
 
+        yield return Case("BlobHashesWithBlobFee_Valid",
+            static tx => { tx.BlobVersionedHashes = [new byte[32]]; tx.MaxFeePerBlobGas = UInt256.One; }, null);
+
         yield return Case("TooManyRecentRootReferences_TooManyRecentRootReferences",
             static tx => tx.RecentRootReferences = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1],
             FrameTxValidation.TooManyRecentRootReferences);
