@@ -224,6 +224,7 @@ namespace Nethermind.Synchronization.SnapSync
                                         _snapProvider.UpdatePivot();
 
                                         _resultLog.Clear();
+
                                         break;
                                     }
                                 }
