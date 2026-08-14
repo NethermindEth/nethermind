@@ -127,9 +127,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         {
             ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
 
-            // The devp2p eth spec recommends at most 256 hashes per GetPooledTransactions request.
-            // Serve at most that many unique hashes in request order, so repeated hashes in one
-            // request cannot multiply transaction pool and storage lookups.
+            // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
+            // first 256 hashes miss, keep scanning without growing the deduplication set.
             HashSet<ValueHash256> seenHashes = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
 
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
@@ -137,14 +136,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                if (hash is null || !seenHashes.Add(hash.ValueHash256))
-                {
-                    continue;
-                }
-
-                if (seenHashes.Count > MaxNumberOfTxsInOneMsg)
+                if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && txsToSend.Count > 0)
                 {
                     break;
+                }
+
+                if (seenHashes.Count < MaxNumberOfTxsInOneMsg && !seenHashes.Add(hash.ValueHash256))
+                {
+                    continue;
                 }
 
                 if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
@@ -168,6 +167,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected virtual bool CanServePooledTransaction(Transaction tx) => true;
 
+        /// <summary>
+        /// Gets the representation of a pooled transaction that this protocol version can serve.
+        /// </summary>
         protected virtual bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
             => _txPool.TryGetPendingTransaction(hash, out tx);
 

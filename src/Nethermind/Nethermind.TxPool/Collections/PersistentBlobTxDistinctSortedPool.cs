@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -26,10 +27,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     private const int MaxBlobCellCandidates = BlobCellMask.CellCount;
     private const int MaxFullBlobCandidatesPerHash = 4;
     private readonly ITxStorage _blobTxStorage;
+    private readonly IBlobTxMetadataStorage? _blobTxMetadataStorage;
     private readonly LruCache<ValueHash256, Transaction> _blobTxCache;
+    private readonly LruCache<ValueHash256, Transaction> _blobTxMetadataCache;
     private readonly ILogger _logger;
     private readonly Dictionary<ValueHash256, PendingBlobUpdate> _pendingBlobUpdates = [];
     private readonly Dictionary<ValueHash256, Transaction> _unpersistableBlobUpdates = [];
+    private readonly Dictionary<ValueHash256, TaskCompletionSource<bool>> _metadataFallbackReads = [];
     private readonly int _maxPendingBlobUpdates;
     private const int MaxBlobUpdateWriteAttempts = 2;
     private const int MaxBlobUpdateRetryExponent = 5;
@@ -44,7 +48,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         : base(txPoolConfig.PersistentBlobStorageSize, comparer, logManager)
     {
         _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
+        _blobTxMetadataStorage = blobTxStorage as IBlobTxMetadataStorage;
         _blobTxCache = new(txPoolConfig.BlobCacheSize, txPoolConfig.BlobCacheSize, "blob txs cache");
+        _blobTxMetadataCache = new(txPoolConfig.BlobCacheSize, txPoolConfig.BlobCacheSize, "blob tx metadata cache");
         _maxPendingBlobUpdates = Math.Max(1, txPoolConfig.BlobCacheSize);
         _logger = logManager?.GetClassLogger<PersistentBlobTxDistinctSortedPool>() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -80,6 +86,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         if (base.InsertCore(hash, new LightTransaction(fullBlobTx), groupKey))
         {
             _blobTxCache.Set(fullBlobTx.Hash, fullBlobTx);
+            _blobTxMetadataCache.Set(hash, BlobTransactionPayload.Elide(fullBlobTx));
             if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate))
             {
                 if (pendingUpdate.WriterActive)
@@ -154,40 +161,190 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     protected override bool TryGetValueForCellMerge(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
         => TryGetFullBlobTransactionOutsideLock(hash, out blobTx);
 
-    public override bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    internal override bool TryGetValueWithoutBlobs(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
     {
-        Transaction? lightTx;
-        using (McsLock.Disposable lockRelease = Lock.Acquire())
+        while (true)
         {
-            if (!base.TryGetValueNonLocked(hash, out lightTx))
+            Transaction? lightTx;
+            BlobCellMask lightCellMask;
+            using (McsLock.Disposable lockRelease = Lock.Acquire())
+            {
+                if (!base.TryGetValueNonLocked(hash, out lightTx))
+                {
+                    blobTx = default;
+                    return false;
+                }
+
+                if (TryGetCurrentValueWithoutBlobsNonLocked(hash, out blobTx))
+                {
+                    return true;
+                }
+
+                lightCellMask = lightTx is LightTransaction lightBlobTx
+                    ? lightBlobTx.BlobCellMask
+                    : BlobCellMask.Empty;
+            }
+
+            if (lightTx.SenderAddress is null)
             {
                 blobTx = default;
                 return false;
             }
 
-            if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate)
-                && pendingUpdate.Transaction is not null)
+            if (_blobTxMetadataStorage?.TryGetWithoutBlobs(hash, lightTx.SenderAddress, out Transaction? loadedTx) == true
+                && loadedTx is not null)
             {
-                blobTx = pendingUpdate.Transaction;
-                return true;
+                return TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
             }
 
-            if (_blobTxCache.TryGet(hash, out blobTx))
+            TaskCompletionSource<bool> fallbackRead;
+            bool ownsFallbackRead;
+            using (McsLock.Disposable lockRelease = Lock.Acquire())
             {
-                return true;
+                if (!base.TryGetValueNonLocked(hash, out Transaction? currentLightTx))
+                {
+                    blobTx = default;
+                    return false;
+                }
+
+                if (TryGetCurrentValueWithoutBlobsNonLocked(hash, out blobTx))
+                {
+                    return true;
+                }
+
+                if (!MatchesLightTransactionSnapshot(currentLightTx, lightTx, lightCellMask))
+                {
+                    blobTx = default;
+                    return false;
+                }
+
+                if (_metadataFallbackReads.TryGetValue(hash, out fallbackRead!))
+                {
+                    ownsFallbackRead = false;
+                }
+                else
+                {
+                    fallbackRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _metadataFallbackReads.Add(hash, fallbackRead);
+                    ownsFallbackRead = true;
+                }
+            }
+
+            if (!ownsFallbackRead)
+            {
+                if (!fallbackRead.Task.GetAwaiter().GetResult())
+                {
+                    blobTx = default;
+                    return false;
+                }
+
+                continue;
+            }
+
+            bool readCompleted = false;
+            try
+            {
+                if (!_blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
+                    || loadedTx is null)
+                {
+                    blobTx = default;
+                    return false;
+                }
+
+                readCompleted = TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
+                if (readCompleted)
+                {
+                    TryPersistMetadataRecord(loadedTx);
+                }
+
+                return readCompleted;
+            }
+            finally
+            {
+                using (McsLock.Disposable lockRelease = Lock.Acquire())
+                {
+                    _metadataFallbackReads.Remove(hash);
+                }
+
+                fallbackRead.TrySetResult(readCompleted);
             }
         }
+    }
 
-        // Cache miss: serve from the small sidecar-free record instead of loading the full row.
-        // The result is deliberately not stored in the blob cache, whose readers require blobs.
-        if (lightTx.SenderAddress is null)
+    private bool TryCompleteValueWithoutBlobsRead(
+        ValueHash256 hash,
+        Transaction lightTx,
+        BlobCellMask lightCellMask,
+        Transaction loadedTx,
+        [NotNullWhen(true)] out Transaction? blobTx)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        if (!base.TryGetValueNonLocked(hash, out Transaction? currentLightTx))
         {
             blobTx = default;
             return false;
         }
 
-        return _blobTxStorage.TryGetWithoutBlobs(hash, lightTx.SenderAddress, lightTx.Timestamp, out blobTx);
+        if (TryGetCurrentValueWithoutBlobsNonLocked(hash, out blobTx))
+        {
+            return true;
+        }
+
+        if (!MatchesLightTransactionSnapshot(currentLightTx, lightTx, lightCellMask))
+        {
+            blobTx = default;
+            return false;
+        }
+
+        blobTx = BlobTransactionPayload.Elide(loadedTx);
+        _blobTxMetadataCache.Set(hash, blobTx);
+
+        return true;
     }
+
+    private void TryPersistMetadataRecord(Transaction transaction)
+    {
+        try
+        {
+            _blobTxMetadataStorage?.AddWithoutBlobs(transaction);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to persist sidecar-free blob transaction {transaction.Hash}.", ex);
+        }
+    }
+
+    private bool TryGetCurrentValueWithoutBlobsNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
+    {
+        if (_blobTxMetadataCache.TryGet(hash, out blobTx) && blobTx is not null)
+        {
+            return true;
+        }
+
+        if (_pendingBlobUpdates.TryGetValue(hash, out PendingBlobUpdate? pendingUpdate)
+            && pendingUpdate.Transaction is not null)
+        {
+            blobTx = BlobTransactionPayload.Elide(pendingUpdate.Transaction);
+            _blobTxMetadataCache.Set(hash, blobTx);
+            return true;
+        }
+
+        if (_blobTxCache.TryGet(hash, out blobTx) && blobTx is not null)
+        {
+            blobTx = BlobTransactionPayload.Elide(blobTx);
+            _blobTxMetadataCache.Set(hash, blobTx);
+            return true;
+        }
+
+        blobTx = default;
+        return false;
+    }
+
+    private static bool MatchesLightTransactionSnapshot(Transaction currentLightTx, Transaction lightTx, BlobCellMask lightCellMask) =>
+        ReferenceEquals(currentLightTx, lightTx)
+        && currentLightTx.Timestamp == lightTx.Timestamp
+        && (currentLightTx is not LightTransaction currentLightBlobTx
+            || currentLightBlobTx.BlobCellMask == lightCellMask);
 
     protected override bool TryGetValueForCellMergeNonLocked(ValueHash256 hash, [NotNullWhen(true)] out Transaction? blobTx)
     {
@@ -582,6 +739,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             }
 
             _blobTxCache.Delete(hash);
+            _blobTxMetadataCache.Delete(hash);
             if (retryAt is { } pendingRetryAt)
             {
                 ScheduleBlobUpdateRetry(pendingRetryAt);

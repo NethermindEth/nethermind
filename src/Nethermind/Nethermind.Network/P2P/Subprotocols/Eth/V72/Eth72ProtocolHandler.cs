@@ -524,8 +524,6 @@ public class Eth72ProtocolHandler(
     protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
         => _txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx);
 
-    protected override Transaction PreparePooledTransactionForResponse(Transaction tx) => ElideBlobPayload(tx);
-
     public override void HandleMessage(PooledTransactionRequestMessage message)
     {
         ArrayPoolList<Hash256> hashes = new(1) { new Hash256(message.TxHash) };
@@ -1745,20 +1743,6 @@ public class Eth72ProtocolHandler(
 
     private static int GetFixedByteArrayListLength(int count, int itemLength)
         => Rlp.LengthOfSequence(checked(count * Rlp.LengthOfByteString(itemLength, firstByte: 0)));
-
-    private static Transaction ElideBlobPayload(Transaction tx)
-    {
-        if (!tx.SupportsBlobs || tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
-        {
-            return tx;
-        }
-
-        Transaction clone = new();
-        tx.CopyTo(clone, copyHash: true);
-        clone.NetworkWrapper = wrapper with { Blobs = [] };
-        clone.ClearLengthCache();
-        return clone;
-    }
 
     private readonly record struct SentCellRequest(
         ValueHash256 Hash,

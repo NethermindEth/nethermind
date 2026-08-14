@@ -13,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -222,6 +223,19 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.True);
             Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
+            Assert.That(_txPool.TryGetPendingTransactionWithoutBlobs(blobTxAdded.Hash!, out Transaction metadataTx), Is.True);
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper!;
+            ShardBlobNetworkWrapper metadataWrapper = (ShardBlobNetworkWrapper)metadataTx.NetworkWrapper!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fullWrapper.HasFullBlobs(), Is.True);
+                Assert.That(metadataWrapper.Blobs, Is.Empty);
+                Assert.That(metadataWrapper.CellMask, Is.EqualTo(BlobCellMask.Empty));
+                Assert.That(metadataWrapper.Cells, Is.Null);
+                Assert.That(metadataWrapper.Commitments, Is.SameAs(fullWrapper.Commitments));
+                Assert.That(metadataWrapper.Proofs, Is.SameAs(fullWrapper.Proofs));
+            }
 
             Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
             if (isPersistentStorage)
@@ -233,77 +247,65 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_load_full_sidecar_from_db_when_getting_blob_tx_after_cache_eviction()
         {
-            TxPoolConfig txPoolConfig = new()
+            (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
+                CreatePersistentBlobPoolWithEvictedCacheEntry();
+            using (blobPool)
             {
-                BlobsSupport = BlobsSupportMode.Storage,
-                PersistentBlobStorageSize = 10,
-                BlobCacheSize = 1
-            };
-
-            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
-            CountingBlobTxStorage blobTxStorage = new();
-            PersistentBlobTxDistinctSortedPool blobPool = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
-
-            Transaction[] blobTxs = new Transaction[2];
-            for (int i = 0; i < blobTxs.Length; i++)
-            {
-                blobTxs[i] = Build.A.Transaction
-                    .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-                    .WithMaxFeePerGas(1.GWei + (UInt256)i)
-                    .WithMaxPriorityFeePerGas(1.GWei + (UInt256)i)
-                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
-
-                Assert.That(blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _), Is.True);
+                Assert.That(blobPool.TryGetValue(target.Hash, out Transaction fullTx), Is.True);
+                Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(1));
+                Assert.That(fullTx.NetworkWrapper, Is.Not.Null);
             }
+        }
 
-            // the blob cache holds only the most recent tx, so the first tx is loaded from the db
-            Assert.That(blobPool.TryGetValue(blobTxs[0].Hash, out Transaction fullTx), Is.True);
-            Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(1));
-            Assert.That(fullTx.NetworkWrapper, Is.Not.Null);
+        [TestCase(false)]
+        [TestCase(true)]
+        public void should_avoid_repeated_full_sidecar_reads_when_getting_blob_tx_without_blobs(bool legacyRecord)
+        {
+            (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
+                CreatePersistentBlobPoolWithEvictedCacheEntry();
+            using (blobPool)
+            {
+                if (legacyRecord)
+                {
+                    blobTxStorage.RemoveWithoutBlobs(target.Hash);
+                }
+
+                Assert.That(blobPool.TryGetValueWithoutBlobs(target.Hash, out Transaction metadataTx), Is.True);
+                Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(legacyRecord ? 1 : 0));
+                Assert.That(blobTxStorage.ContainsWithoutBlobs(target.Hash), Is.True);
+
+                blobTxStorage.ResetTryGetCount();
+                Assert.That(blobPool.TryGetValueWithoutBlobs(target.Hash, out _), Is.True);
+                Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(0));
+
+                ShardBlobNetworkWrapper originalWrapper = (ShardBlobNetworkWrapper)target.NetworkWrapper!;
+                ShardBlobNetworkWrapper metadataWrapper = (ShardBlobNetworkWrapper)metadataTx.NetworkWrapper!;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(metadataTx.Hash, Is.EqualTo(target.Hash));
+                    Assert.That(metadataTx.Nonce, Is.EqualTo(target.Nonce));
+                    Assert.That(metadataTx.SenderAddress, Is.EqualTo(target.SenderAddress));
+                    Assert.That(metadataTx.Signature, Is.Not.Null);
+                    Assert.That(metadataWrapper.Blobs, Is.Empty);
+                    Assert.That(metadataWrapper.Commitments, Is.EqualTo(originalWrapper.Commitments));
+                    Assert.That(metadataWrapper.Proofs, Is.EqualTo(originalWrapper.Proofs));
+                    Assert.That(metadataWrapper.Version, Is.EqualTo(originalWrapper.Version));
+                }
+            }
         }
 
         [Test]
-        public void should_not_load_full_sidecar_from_db_when_getting_blob_tx_without_blobs_after_cache_eviction()
+        public void should_cache_sidecar_free_fallback_for_storage_without_metadata_capability()
         {
-            TxPoolConfig txPoolConfig = new()
+            (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
+                CreatePersistentBlobPoolWithEvictedCacheEntry(supportsMetadata: false);
+            using (blobPool)
             {
-                BlobsSupport = BlobsSupportMode.Storage,
-                PersistentBlobStorageSize = 10,
-                BlobCacheSize = 1
-            };
+                blobTxStorage.RemoveWithoutBlobs(target.Hash);
 
-            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
-            CountingBlobTxStorage blobTxStorage = new();
-            PersistentBlobTxDistinctSortedPool blobPool = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
-
-            Transaction[] blobTxs = new Transaction[2];
-            for (int i = 0; i < blobTxs.Length; i++)
-            {
-                blobTxs[i] = Build.A.Transaction
-                    .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-                    .WithMaxFeePerGas(1.GWei + (UInt256)i)
-                    .WithMaxPriorityFeePerGas(1.GWei + (UInt256)i)
-                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
-
-                Assert.That(blobPool.TryInsert(blobTxs[i].Hash, blobTxs[i], out _), Is.True);
-            }
-
-            // the blob cache holds only the most recent tx, so the first tx is served from the sidecar-free record
-            Assert.That(blobPool.TryGetValueWithoutBlobs(blobTxs[0].Hash, out Transaction metadataTx), Is.True);
-            Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(0));
-
-            ShardBlobNetworkWrapper originalWrapper = (ShardBlobNetworkWrapper)blobTxs[0].NetworkWrapper!;
-            ShardBlobNetworkWrapper metadataWrapper = (ShardBlobNetworkWrapper)metadataTx.NetworkWrapper!;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(metadataTx.Hash, Is.EqualTo(blobTxs[0].Hash));
-                Assert.That(metadataTx.Nonce, Is.EqualTo(blobTxs[0].Nonce));
-                Assert.That(metadataTx.SenderAddress, Is.EqualTo(blobTxs[0].SenderAddress));
-                Assert.That(metadataTx.Signature, Is.Not.Null);
-                Assert.That(metadataWrapper.Blobs, Is.Empty);
-                Assert.That(metadataWrapper.Commitments, Is.EqualTo(originalWrapper.Commitments));
-                Assert.That(metadataWrapper.Proofs, Is.EqualTo(originalWrapper.Proofs));
-                Assert.That(metadataWrapper.Version, Is.EqualTo(originalWrapper.Version));
+                Assert.That(blobPool.TryGetValueWithoutBlobs(target.Hash, out _), Is.True);
+                Assert.That(blobPool.TryGetValueWithoutBlobs(target.Hash, out _), Is.True);
+                Assert.That(blobTxStorage.TryGetCount, Is.EqualTo(1));
             }
         }
 
@@ -2830,6 +2832,89 @@ namespace Nethermind.TxPool.Test
             Assert.That(await merge, Is.EqualTo(BlobCellMergeResult.Accepted));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task should_not_return_or_restore_sidecar_free_record_after_concurrent_removal(bool legacyRecord)
+        {
+            (BlockingReadBlobTxStorage storage, PersistentBlobTxDistinctSortedPool blobPool, Transaction storedTx) =
+                CreatePersistentBlobPoolWithBlockingReadStorage();
+            using (storage)
+            using (blobPool)
+            {
+                if (legacyRecord)
+                {
+                    storage.RemoveWithoutBlobs(storedTx.Hash);
+                    storage.BlockNextRead();
+                }
+                else
+                {
+                    storage.BlockNextElidedRead();
+                }
+
+                Task<bool> staleRead = RunOnDedicatedThread(() =>
+                    blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
+                Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+                Task<bool> duplicateRead = null;
+                if (legacyRecord)
+                {
+                    duplicateRead = RunOnDedicatedThread(() =>
+                        blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
+                    Assert.That(storage.WaitForSecondElidedRead(TimeSpan.FromSeconds(5)), Is.True);
+                    Assert.That(duplicateRead.IsCompleted, Is.False);
+                    Assert.That(storage.FullReadCount, Is.EqualTo(1));
+                }
+
+                try
+                {
+                    Assert.That(blobPool.TryRemove(storedTx.Hash!.ValueHash256), Is.True);
+                }
+                finally
+                {
+                    storage.ReleaseBlockedRead();
+                }
+
+                Assert.That(await staleRead, Is.False);
+                if (duplicateRead is not null)
+                {
+                    Assert.That(await duplicateRead, Is.False);
+                }
+
+                Assert.That(storage.ContainsWithoutBlobs(storedTx.Hash), Is.False);
+            }
+        }
+
+        [Test]
+        public async Task should_share_concurrent_legacy_sidecar_read()
+        {
+            (BlockingReadBlobTxStorage storage, PersistentBlobTxDistinctSortedPool blobPool, Transaction storedTx) =
+                CreatePersistentBlobPoolWithBlockingReadStorage();
+            using (storage)
+            using (blobPool)
+            {
+                storage.RemoveWithoutBlobs(storedTx.Hash);
+                storage.BlockNextRead();
+
+                Task<bool> firstRead = RunOnDedicatedThread(() =>
+                    blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
+                Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+                Task<bool> duplicateRead = RunOnDedicatedThread(() =>
+                    blobPool.TryGetValueWithoutBlobs(storedTx.Hash!.ValueHash256, out _));
+                try
+                {
+                    Assert.That(storage.WaitForSecondElidedRead(TimeSpan.FromSeconds(5)), Is.True);
+                    Assert.That(duplicateRead.IsCompleted, Is.False);
+                }
+                finally
+                {
+                    storage.ReleaseBlockedRead();
+                }
+
+                Assert.That(await firstRead, Is.True);
+                Assert.That(await duplicateRead, Is.True);
+                Assert.That(storage.FullReadCount, Is.EqualTo(1));
+            }
+        }
+
         [Test]
         public async Task should_not_accept_stale_persistent_read_after_same_hash_replacement()
         {
@@ -3099,12 +3184,88 @@ namespace Nethermind.TxPool.Test
         private static Task<TResult> RunOnDedicatedThread<TResult>(Func<TResult> action) =>
             Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-        private sealed class CountingBlobTxStorage : IBlobTxStorage
+        private (BlockingReadBlobTxStorage Storage, PersistentBlobTxDistinctSortedPool Pool, Transaction Target)
+            CreatePersistentBlobPoolWithBlockingReadStorage()
         {
-            private readonly BlobTxStorage _inner = new();
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4,
+                Size = 4,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            BlockingReadBlobTxStorage storage = new();
+            PersistentBlobTxDistinctSortedPool pool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction template = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction target = CloneFullBlobTransaction(template, 0, firstBlobByte: 0);
+            Assert.That(pool.TryInsert(target.Hash, target, out _), Is.True);
+            Transaction cacheEvictor = CloneFullBlobTransaction(template, 1, firstBlobByte: 1);
+            Assert.That(pool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
+            return (storage, pool, target);
+        }
+
+        private (CountingBlobTxStorage Storage, PersistentBlobTxDistinctSortedPool Pool, Transaction Target)
+            CreatePersistentBlobPoolWithEvictedCacheEntry(bool supportsMetadata = true)
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 10,
+                BlobCacheSize = 1,
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            CountingBlobTxStorage storage = new();
+            ITxStorage poolStorage = supportsMetadata ? storage : new BlobTxStorageWithoutMetadata(storage);
+            PersistentBlobTxDistinctSortedPool pool = new(poolStorage, txPoolConfig, comparer, LimboLogs.Instance);
+            Transaction target = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            target.Timestamp = 42;
+            Transaction cacheEvictor = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei + UInt256.One)
+                .WithMaxPriorityFeePerGas(1.GWei + UInt256.One)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            cacheEvictor.Timestamp = 43;
+            Assert.That(pool.TryInsert(target.Hash, target, out _), Is.True);
+            Assert.That(pool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
+            return (storage, pool, target);
+        }
+
+        private sealed class CountingBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage
+        {
+            private readonly MemColumnsDb<BlobTxsColumns> _columnsDb = new();
+            private readonly BlobTxStorage _inner;
+
+            public CountingBlobTxStorage() => _inner = new BlobTxStorage(_columnsDb);
 
             public int LastTryGetManyCount { get; private set; }
             public int TryGetCount { get; private set; }
+
+            public void ResetTryGetCount() => TryGetCount = 0;
+
+            public void RemoveWithoutBlobs(in ValueHash256 hash)
+            {
+                Span<byte> key = stackalloc byte[33];
+                key[0] = 0x01;
+                hash.Bytes.CopyTo(key[1..]);
+                _columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Remove(key);
+            }
+
+            public bool ContainsWithoutBlobs(in ValueHash256 hash)
+            {
+                Span<byte> key = stackalloc byte[33];
+                key[0] = 0x01;
+                hash.Bytes.CopyTo(key[1..]);
+                return _columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).KeyExists(key);
+            }
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
             {
@@ -3112,8 +3273,10 @@ namespace Nethermind.TxPool.Test
                 return _inner.TryGet(hash, sender, timestamp, out transaction);
             }
 
-            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
-                => _inner.TryGetWithoutBlobs(hash, sender, timestamp, out transaction);
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, out transaction);
+
+            public void AddWithoutBlobs(Transaction transaction) => _inner.AddWithoutBlobs(transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
             {
@@ -3134,6 +3297,29 @@ namespace Nethermind.TxPool.Test
                 => _inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
 
             public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
+        }
+
+        private sealed class BlobTxStorageWithoutMetadata(CountingBlobTxStorage inner) : IBlobTxStorage
+        {
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => inner.TryGet(hash, sender, timestamp, out transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
+                => inner.TryGetMany(keys, count, results);
+
+            public IEnumerable<LightTransaction> GetAll() => inner.GetAll();
+
+            public void Add(Transaction transaction) => inner.Add(transaction);
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => inner.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions)
+                => inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
+                => inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => inner.DeleteBlobTransactionsFromBlock(blockNumber);
         }
 
         private sealed class RehydratingBlobTxDistinctSortedPool(
@@ -3177,7 +3363,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private sealed class FailingBlobTxUpdateStorage : IBlobTxStorage
+        private sealed class FailingBlobTxUpdateStorage : IBlobTxStorage, IBlobTxMetadataStorage
         {
             private readonly BlobTxStorage _inner = new();
             private readonly HashSet<ValueHash256> _insertedHashes = [];
@@ -3185,8 +3371,10 @@ namespace Nethermind.TxPool.Test
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
                 => _inner.TryGet(hash, sender, timestamp, out transaction);
 
-            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
-                => _inner.TryGetWithoutBlobs(hash, sender, timestamp, out transaction);
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, out transaction);
+
+            public void AddWithoutBlobs(Transaction transaction) => _inner.AddWithoutBlobs(transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
                 => _inner.TryGetMany(keys, count, results);
@@ -3272,7 +3460,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private sealed class BlockingBlobTxStorage(int failedUpdateCount = 0, int failedDeleteCount = 0) : IBlobTxStorage, IDisposable
+        private sealed class BlockingBlobTxStorage(int failedUpdateCount = 0, int failedDeleteCount = 0) : IBlobTxStorage, IBlobTxMetadataStorage, IDisposable
         {
             private readonly BlobTxStorage _inner = new();
             private readonly ManualResetEventSlim _firstUpdateEntered = new();
@@ -3298,8 +3486,10 @@ namespace Nethermind.TxPool.Test
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
                 => _inner.TryGet(hash, sender, timestamp, out transaction);
 
-            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
-                => _inner.TryGetWithoutBlobs(hash, sender, timestamp, out transaction);
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
+                => _inner.TryGetWithoutBlobs(hash, sender, out transaction);
+
+            public void AddWithoutBlobs(Transaction transaction) => _inner.AddWithoutBlobs(transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
                 => _inner.TryGetMany(keys, count, results);
@@ -3360,21 +3550,39 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private sealed class BlockingReadBlobTxStorage : IBlobTxStorage, IDisposable
+        private sealed class BlockingReadBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IDisposable
         {
-            private readonly BlobTxStorage _inner = new();
+            private readonly MemColumnsDb<BlobTxsColumns> _columnsDb = new();
+            private readonly BlobTxStorage _inner;
             private readonly ManualResetEventSlim _readEntered = new();
             private readonly ManualResetEventSlim _releaseRead = new();
+            private readonly ManualResetEventSlim _secondElidedReadEntered = new();
             private int _blockNextRead;
+            private int _blockNextElidedRead;
+            private int _elidedReadCount;
+            private int _fullReadCount;
+
+            public BlockingReadBlobTxStorage() => _inner = new BlobTxStorage(_columnsDb);
 
             public void BlockNextRead() => Volatile.Write(ref _blockNextRead, 1);
 
+            public void BlockNextElidedRead() => Volatile.Write(ref _blockNextElidedRead, 1);
+
+            public int FullReadCount => Volatile.Read(ref _fullReadCount);
+
             public bool WaitForBlockedRead(TimeSpan timeout) => _readEntered.Wait(timeout);
+
+            public bool WaitForSecondElidedRead(TimeSpan timeout) => _secondElidedReadEntered.Wait(timeout);
 
             public void ReleaseBlockedRead() => _releaseRead.Set();
 
+            public bool ContainsWithoutBlobs(in ValueHash256 hash) => GetElidedDb().KeyExists(GetElidedKey(hash));
+
+            public void RemoveWithoutBlobs(in ValueHash256 hash) => GetElidedDb().Remove(GetElidedKey(hash));
+
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
             {
+                Interlocked.Increment(ref _fullReadCount);
                 if (Interlocked.Exchange(ref _blockNextRead, 0) == 0)
                 {
                     return _inner.TryGet(hash, sender, timestamp, out transaction);
@@ -3391,8 +3599,28 @@ namespace Nethermind.TxPool.Test
                 return found;
             }
 
-            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
-                => _inner.TryGetWithoutBlobs(hash, sender, timestamp, out transaction);
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
+            {
+                if (Interlocked.Increment(ref _elidedReadCount) == 2)
+                {
+                    _secondElidedReadEntered.Set();
+                }
+
+                bool found = _inner.TryGetWithoutBlobs(hash, sender, out Transaction snapshot);
+                if (Interlocked.Exchange(ref _blockNextElidedRead, 0) != 0)
+                {
+                    _readEntered.Set();
+                    if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                    {
+                        throw new TimeoutException("Timed out waiting to release the sidecar-free transaction read.");
+                    }
+                }
+
+                transaction = snapshot;
+                return found;
+            }
+
+            public void AddWithoutBlobs(Transaction transaction) => _inner.AddWithoutBlobs(transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
             {
@@ -3425,10 +3653,21 @@ namespace Nethermind.TxPool.Test
 
             public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
 
+            private IDb GetElidedDb() => _columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
+
+            private static byte[] GetElidedKey(in ValueHash256 hash)
+            {
+                byte[] key = new byte[33];
+                key[0] = 0x01;
+                hash.Bytes.CopyTo(key.AsSpan(1));
+                return key;
+            }
+
             public void Dispose()
             {
                 _readEntered.Dispose();
                 _releaseRead.Dispose();
+                _secondElidedReadEntered.Dispose();
             }
         }
     }

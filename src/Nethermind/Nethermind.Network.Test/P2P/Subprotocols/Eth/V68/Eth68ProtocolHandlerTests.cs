@@ -5,6 +5,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -359,6 +360,33 @@ public class Eth68ProtocolHandlerTests
         using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
 
         Assert.That(response.Transactions, Is.Empty);
+    }
+
+    [Test]
+    public async Task should_reject_many_sparse_blob_hashes_without_loading_transactions()
+    {
+        const int hashCount = 300;
+        Hash256[] hashes = new Hash256[hashCount];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = new Hash256(i.ToString("X64"));
+        }
+
+        BlobCellMask sparseMask = BlobCellMask.FromIndices([0]);
+        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<Hash256>(), out Arg.Any<BlobCellMask>())
+            .Returns(x =>
+            {
+                x[1] = sparseMask;
+                return true;
+            });
+
+        using GetPooledTransactionsMessage65 request = new(hashes.ToPooledList());
+        using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage response =
+            await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        Assert.That(response.Transactions, Is.Empty);
+        _transactionPool.Received(hashCount).TryGetPendingBlobCellMask(Arg.Any<Hash256>(), out Arg.Any<BlobCellMask>());
+        _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
     }
 
     [TestCase(NewPooledTransactionHashesMessage68.MaxCount - 1)]
