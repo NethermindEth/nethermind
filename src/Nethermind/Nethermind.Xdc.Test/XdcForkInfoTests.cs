@@ -41,6 +41,34 @@ public class XdcForkInfoTests
     }
 
     [Test]
+    public void Engine_parameter_forks_are_part_of_the_schedule()
+    {
+        // Mainnet values. These gate fee, orderbook and consensus rules rather than a release spec, so none of
+        // them reaches the spec transitions - the reference client gathers them from the chain config instead.
+        XdcChainSpecEngineParameters engineParameters = new()
+        {
+            SwitchBlock = SwitchBlock,
+            TIP2019Block = 1,
+            TipTrc21Fee = 38383838,
+            TipXDCX = 38383838,
+            BlackListHFNumber = 38383838,
+            TIPXDCXMinerDisable = SwitchBlock,
+            TIPXDCXReceiverDisable = 80370900,
+            DynamicGasLimitBlock = 99999999999999,
+        };
+        XdcForkInfo forkInfo = new(SpecProvider(), SyncServer(), engineParameters);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(forkInfo.GetForkId(100, 0).Next, Is.EqualTo(38383838));
+            Assert.That(forkInfo.GetForkId(38383838, 0).Next, Is.EqualTo(SwitchBlock));
+            Assert.That(forkInfo.GetForkId(SwitchBlock, 0).Next, Is.EqualTo(80370900));
+            Assert.That(forkInfo.GetForkId(80370900, 0).Next, Is.EqualTo(99999999999999));
+            Assert.That(forkInfo.GetForkId(99999999999999, 0).Next, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
     public void Switch_at_genesis_is_not_a_transition()
     {
         Nethermind.Network.ForkId forkId = XdcForkId(headNumber: 100, switchBlock: 0);

@@ -10,12 +10,17 @@ using Nethermind.Xdc.Spec;
 namespace Nethermind.Xdc;
 
 /// <summary>
-/// EIP-2124 fork identity for XDC, whose fork schedule includes the XDPoS 1.0 to 2.0 consensus switch.
+/// EIP-2124 fork identity for XDC, whose fork schedule is only partly described by the spec transitions.
 /// </summary>
 /// <remarks>
-/// The switch block gates the consensus engine rather than a release spec, so it is absent from the spec
-/// transitions every other chain derives its checksum from. The reference client folds it into the same
-/// list (<c>ChainConfig.GatherForks</c>), and a checksum computed without it is rejected by every XDC peer.
+/// The reference client gathers every fork-gating block number from its chain config (<c>ChainConfig.GatherForks</c>),
+/// including XDC's own TIP blocks and the nested XDPoS 1.0 to 2.0 consensus switch. Most of those gate consensus or
+/// fee rules rather than a release spec, so they never reach <see cref="ISpecProvider.TransitionActivations"/> and a
+/// checksum built from the spec transitions alone is rejected by XDC peers.
+/// <para>
+/// XDC has no timestamp-based forks - the reference client's fork IDs are block numbers only - so the schedule is
+/// merged on block number.
+/// </para>
 /// </remarks>
 public class XdcForkInfo(
     ISpecProvider specProvider,
@@ -24,21 +29,28 @@ public class XdcForkInfo(
 {
     protected override ForkActivation[] GetForkActivations()
     {
-        ForkActivation[] transitions = base.GetForkActivations();
-        ulong switchBlock = engineParameters.SwitchBlock;
+        SortedSet<ForkActivation> activations = [.. base.GetForkActivations()];
+
+        Add(engineParameters.SwitchBlock);
+        Add(engineParameters.TIP2019Block);
+        Add(engineParameters.TipTrc21Fee);
+        Add(engineParameters.TipXDCX);
+        Add(engineParameters.TIPXDCXMinerDisable);
+        Add(engineParameters.TIPXDCXReceiverDisable);
+        Add(engineParameters.BlackListHFNumber);
+        Add(engineParameters.DynamicGasLimitBlock);
+        Add(engineParameters.TipUpgradeReward);
+        Add(engineParameters.TipUpgradePenalty);
+
+        return [.. activations];
 
         // A fork at genesis is part of the genesis ruleset, not a transition.
-        if (switchBlock == 0)
-            return transitions;
-
-        ForkActivation switchActivation = new(switchBlock);
-        List<ForkActivation> activations = new(transitions.Length + 1);
-        activations.AddRange(transitions);
-        if (activations.Contains(switchActivation))
-            return transitions;
-
-        activations.Add(switchActivation);
-        activations.Sort();
-        return [.. activations];
+        void Add(ulong? block)
+        {
+            if (block is > 0)
+            {
+                activations.Add(new ForkActivation(block.Value));
+            }
+        }
     }
 }
