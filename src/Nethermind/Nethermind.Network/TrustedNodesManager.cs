@@ -55,50 +55,20 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
     public async Task<bool> AddAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         NetworkNode networkNode = new(enode);
-        if (!TryAddNode(networkNode))
+        bool added = TryAddNode(networkNode);
+        if (added)
         {
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Trusted node was already added: {enode}");
-            }
-            // The node may have been added earlier with updateFile=false; honor the upgrade to a persistent entry.
-            if (updateFile && Loaded) await SaveFileAsync(cancellationToken);
-            return false;
+            // Publish the newly added node to the channel so DiscoverNodes will yield it.
+            await _nodeChannel.Writer.WriteAsync(new Node(networkNode) { IsTrusted = true }, cancellationToken);
         }
 
-        if (_logger.IsInfo)
-        {
-            _logger.Info($"Trusted node added: {enode}");
-        }
-
-        // Publish the newly added node to the channel so DiscoverNodes will yield it.
-        Node newNode = new(networkNode) { IsTrusted = true };
-        await _nodeChannel.Writer.WriteAsync(newNode, cancellationToken);
-
-        if (updateFile)
-        {
-            await SaveFileAsync(cancellationToken);
-        }
-        return true;
+        return await LogAndSaveAsync(added, $"Trusted node added: {enode}", $"Trusted node was already added: {enode}", updateFile, cancellationToken);
     }
 
-    public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
-    {
-        NetworkNode networkNode = new(enode);
-        // Fire NodeRemoved BEFORE the file write: a cancelled SaveFileAsync must not leave
-        // the peer disconnected in-memory but still persisted as trusted.
-        if (!TryRemoveNode(networkNode.NodeId))
-        {
-            if (_logger.IsInfo) _logger.Info($"Trusted node was not found: {enode}");
-            // The node may have been removed earlier with updateFile=false; still scrub any stale file entry.
-            if (updateFile && Loaded) await SaveFileAsync(cancellationToken);
-            return false;
-        }
-
-        if (_logger.IsInfo) _logger.Info($"Trusted node was removed: {enode}");
-        if (updateFile) await SaveFileAsync(cancellationToken);
-        return true;
-    }
+    // TryRemoveNode fires NodeRemoved BEFORE the file write: a cancelled SaveFileAsync must not leave
+    // the peer disconnected in-memory but still persisted as trusted.
+    public Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default) =>
+        LogAndSaveAsync(TryRemoveNode(new NetworkNode(enode).NodeId), $"Trusted node was removed: {enode}", $"Trusted node was not found: {enode}", updateFile, cancellationToken);
 
     public bool IsTrusted(Enode enode) => _nodes.ContainsKey(enode.PublicKey);
 }

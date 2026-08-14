@@ -31,41 +31,17 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
 
     public async Task<bool> AddAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
-        if (!TryAddNode(networkNode))
+        bool added = TryAddNode(networkNode);
+        if (added)
         {
-            if (_logger.IsInfo) _logger.Info($"Static node was already added: {networkNode}");
-            // The node may have been added earlier with updateFile=false; honor the upgrade to a persistent entry.
-            if (updateFile && Loaded) await SaveFileAsync(cancellationToken);
-            return false;
+            NodeAdded?.Invoke(this, new NodeEventArgs(new Node(networkNode, isStatic: true)));
         }
 
-        if (_logger.IsInfo) _logger.Info($"Static node added: {networkNode}");
-
-        Node node = new(networkNode, isStatic: true);
-        NodeAdded?.Invoke(this, new NodeEventArgs(node));
-
-        if (updateFile)
-        {
-            await SaveFileAsync(cancellationToken);
-        }
-
-        return true;
+        return await LogAndSaveAsync(added, $"Static node added: {networkNode}", $"Static node was already added: {networkNode}", updateFile, cancellationToken);
     }
 
-    public async Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
-    {
-        if (!TryRemoveNode(networkNode.NodeId))
-        {
-            if (_logger.IsInfo) _logger.Info($"Static node was not found: {networkNode}");
-            // The node may have been removed earlier with updateFile=false; still scrub any stale file entry.
-            if (updateFile && Loaded) await SaveFileAsync(cancellationToken);
-            return false;
-        }
-
-        if (_logger.IsInfo) _logger.Info($"Static node was removed: {networkNode}");
-        if (updateFile) await SaveFileAsync(cancellationToken);
-        return true;
-    }
+    public Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default) =>
+        LogAndSaveAsync(TryRemoveNode(networkNode.NodeId), $"Static node was removed: {networkNode}", $"Static node was not found: {networkNode}", updateFile, cancellationToken);
 
     public bool IsStatic(NetworkNode node) =>
         _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) &&
