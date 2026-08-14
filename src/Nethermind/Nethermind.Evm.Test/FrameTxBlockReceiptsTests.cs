@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 
@@ -32,6 +33,8 @@ public class FrameTxBlockReceiptsTests
 {
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Observer = TestItem.AddressB;
+    private static readonly Address Payer = TestItem.AddressC;
+    private static readonly Address Asserter = TestItem.AddressD;
 
     [Test]
     public void Execute_FrameTxUnderBlockReceiptsTracer_BuildsFrameAwareReceipt()
@@ -74,11 +77,44 @@ public class FrameTxBlockReceiptsTests
 
         (TxReceipt receipt, _, _) = RunFrameTx(revert);
 
+        ReceiptMessageDecoder decoder = new();
+        RlpReader reader = new(decoder.EncodeNew(receipt));
+        TxReceipt decoded = decoder.Decode(ref reader)!;
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
             Assert.That(receipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusFailure),
                 "a reverted frame must not be reported as a successful transaction");
+            Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode),
+                "a node that only received the receipt must report the status the executing node reported");
+        }
+    }
+
+    [Test]
+    public void GetGasInfo_BlobCarryingFrameTx_ReportsBlobGas()
+    {
+        IReleaseSpec spec = Eip8141Prototype.Instance;
+        BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithExcessBlobGas(0).TestObject;
+
+        Transaction blobFrameTx = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+        TxGasInfo blobInfo = blobFrameTx.GetGasInfo(spec, header);
+
+        Transaction bloblessFrameTx = new() { Type = TxType.FrameTx, DecodedMaxFeePerGas = 1 };
+        TxGasInfo bloblessInfo = bloblessFrameTx.GetGasInfo(spec, header);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blobInfo.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobFrameTx)), "blob frame tx reports its blob gas");
+            Assert.That(blobInfo.BlobGasPrice, Is.Not.Null);
+            Assert.That(bloblessInfo.BlobGasUsed, Is.Null, "a blobless frame tx reports no blob gas");
+            Assert.That(bloblessInfo.BlobGasPrice, Is.Null);
         }
     }
 
@@ -136,5 +172,74 @@ public class FrameTxBlockReceiptsTests
         Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(1));
 
         return (receiptsTracer.TxReceipts[0], block, spec);
+    }
+
+    // EIP-7906: a failed assertion drops the body's logs but keeps the validation prefix's, so the
+    // failed receipt still has to carry them — an empty log set would contradict the frame receipts
+    // it is built from and leave the prefix's logs out of the bloom.
+    [Test]
+    public void Execute_PostTxReverts_FailedReceiptKeepsThePrefixLogs()
+    {
+        ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        IReleaseSpec spec = specProvider.GenesisSpec;
+
+        Deploy(stateProvider, spec, Sender, Approve(TxFrame.ApproveExecution), 1.Ether);
+        Deploy(stateProvider, spec, Payer, Approve(TxFrame.ApprovePayment), 1.Ether);
+        Deploy(stateProvider, spec, Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.LOG0).Op(Instruction.STOP).Done);
+        Deploy(stateProvider, spec, Asserter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = Sender,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 200_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModeSender, 0, Observer, 200_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModeSender, 0, Observer, 200_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModePostTx, 0, Asserter, 200_000, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        TxReceipt receipt = receiptsTracer.TxReceipts[0];
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the prefix frame keeps its log");
+        Assert.That(receipt.FrameReceipts[3].Logs, Is.Empty, "the body's log goes with the state that produced it");
+        Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must stay the union of frame logs");
+    }
+
+    private static byte[] Approve(byte scope) =>
+        Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    private static void Deploy(IWorldState state, IReleaseSpec spec, Address address, byte[] code, UInt256 balance = default)
+    {
+        state.CreateAccount(address, balance);
+        state.InsertCode(address, code, spec);
     }
 }

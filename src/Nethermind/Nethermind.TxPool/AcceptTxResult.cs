@@ -125,6 +125,29 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult FrameTxExpired = new(20, TxPoolErrorMessages.FrameTxExpired);
 
+        /// <summary>
+        /// An EIP-8141 frame transaction whose validation prefix plus signature verification would cost a node more
+        /// than <c>MAX_VERIFY_GAS</c> to check. It stays consensus-valid; only public mempool propagation is refused.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxVerifyGasTooHigh = new(21, TxPoolErrorMessages.FrameTxVerifyGasTooHigh);
+
+        /// <summary>
+        /// An EIP-8250 transaction whose selected nonce keys are not all at its <c>nonce_seq</c> in the head state.
+        /// Unlike an account nonce this is an exact match in both directions, so the transaction is neither old nor future.
+        /// </summary>
+        public static readonly AcceptTxResult KeyedNonceUnmet = new(24, TxPoolErrorMessages.KeyedNonceUnmet);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction whose resolved payer's summed pending maximum cost would exceed the payer's balance.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxPayerExposureExceeded = new(22, TxPoolErrorMessages.FrameTxPayerExposureExceeded);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction whose validation prefix can never approve a payer.
+        /// </summary>
+        /// <remarks>Unincludable rather than malformed, so it must not disconnect the peer that relayed it.</remarks>
+        public static readonly AcceptTxResult FrameTxNoPayer = new(23, TxPoolErrorMessages.FrameTxNoPayer);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

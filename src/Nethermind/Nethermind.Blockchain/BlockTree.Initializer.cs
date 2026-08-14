@@ -313,7 +313,7 @@ public partial class BlockTree
     private Hash256? DecodeMetadataKeccak(int key)
     {
         byte[]? rlp = _metadataDb.Get(key);
-        return rlp is null ? null : new RlpReader(rlp).DecodeKeccak();
+        return rlp is null ? null : new RlpReader(rlp).DecodeKeccakOrNull();
     }
 
     private ulong? DecodeMetadataULong(int key)
@@ -403,7 +403,7 @@ public partial class BlockTree
 
         RlpReader pivotReader = new(pivotFromDb!);
         ulong updatedPivotBlockNumber = pivotReader.DecodeULong();
-        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak()!;
+        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak();
 
         if (updatedPivotBlockHash.IsZero)
         {

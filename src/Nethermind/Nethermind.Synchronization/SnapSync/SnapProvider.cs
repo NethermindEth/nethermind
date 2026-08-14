@@ -146,6 +146,16 @@ namespace Nethermind.Synchronization.SnapSync
 
                 int requestLength = request.Accounts.Count;
 
+                if (responses.Length > requestLength)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"SNAP - GetStorageRange - got {responses.Length} slot lists for {requestLength} accounts, RootHash:{request.RootHash}");
+
+                    _progressTracker.RetryStorageRange(request.Copy());
+                    Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.OutOfBounds));
+
+                    return AddRangeResult.OutOfBounds;
+                }
+
                 for (int i = 0; i < responses.Length; i++)
                 {
                     // only the last can have proofs

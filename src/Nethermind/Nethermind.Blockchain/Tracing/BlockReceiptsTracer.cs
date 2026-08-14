@@ -81,7 +81,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     protected TxReceipt BuildFailedReceipt(Address recipient, in GasConsumed gasSpent, string error, Hash256? stateRoot)
     {
-        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, [], stateRoot);
+        // EIP-7906: a failed assertion discards the body but keeps the validation prefix, whose logs
+        // stay in the surviving frame receipts and so in the transaction's log set and bloom.
+        LogEntry[] logs = _frameTxReceipts is { } frameReceipts ? TxFrameReceipt.ConcatLogs(frameReceipts) : [];
+        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, logs, stateRoot);
         receipt.Error = error;
         return receipt;
     }
@@ -94,13 +97,13 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     /// <returns>The cumulative post-refund gas for receipts</returns>
     protected ulong UpdateCumulativeGasTracking(in GasConsumed gasConsumed)
     {
-        // Track cumulative block gas for restore (regular + EIP-8037 state)
-        (ulong prevRegular, ulong prevState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
-        ulong cumulativeBlockGas = prevRegular + gasConsumed.EffectiveBlockGas;
+        // Track cumulative block gas for restore (execution + EIP-8037 state)
+        (ulong prevExecution, ulong prevState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
+        ulong cumulativeBlockGas = prevExecution + gasConsumed.EffectiveBlockGas;
         ulong cumulativeBlockStateGas = prevState + gasConsumed.BlockStateGas;
         _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
 
-        // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
+        // EIP-8037: block gasUsed = max(sum_execution, sum_state). Override header accumulation.
         if (!parallel)
         {
             Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeBlockGas, cumulativeBlockStateGas);
@@ -144,7 +147,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
             PostTransactionState = stateRoot
         };
 
-        // EIP-7778: regular-dimension block accounting introduces the
+        // EIP-7778: execution-dimension block accounting introduces the
         // pre-refund/post-refund split. BlockGasUsed is pre-refund; ExecutionGasUsed
         // (= OperationGas) is post-refund without EIP-7976 floor.
         if (gasConsumed.BlockGas > 0)
@@ -285,7 +288,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = [];
-    private readonly List<(ulong Regular, ulong State)> _cumulativeBlockGasPerTx = [];  // Track pre-refund block gas for restore (regular + EIP-8037 state)
+    private readonly List<(ulong Execution, ulong State)> _cumulativeBlockGasPerTx = [];  // Track pre-refund block gas for restore (execution + EIP-8037 state)
     private ulong _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
@@ -314,7 +317,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     /// </summary>
     public ulong BlockStateGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].State : 0;
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
-    public ulong CumulativeRegularGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].Regular : 0;
+    public ulong CumulativeExecutionGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].Execution : 0;
 
     public ITxTracer InnerTracer => _currentTxTracer;
 
@@ -332,9 +335,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         Debug.Assert(_txReceipts.Count == _cumulativeBlockGasPerTx.Count,
             "Receipt and gas tracking lists must remain synchronized after restore");
 
-        // Restore block gas from tracking: max(cumulative_regular, cumulative_state) for EIP-8037
-        (ulong cumulativeRegular, ulong cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
-        Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeRegular, cumulativeState);
+        // Restore block gas from tracking: max(cumulative_execution, cumulative_state) for EIP-8037
+        (ulong cumulativeExecution, ulong cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
+        Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeExecution, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;

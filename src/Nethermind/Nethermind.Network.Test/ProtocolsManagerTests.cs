@@ -102,7 +102,7 @@ public class ProtocolsManagerTests
     [Test]
     public void Advertised_capabilities_are_cached_and_rebuilt_on_resolver_change()
     {
-        FakeCapabilityResolver resolver = new(caps => caps.Add(new Capability(Protocol.Snap, 1)));
+        FakeCapabilityResolver resolver = new(caps => caps.Add(new Capability(Protocol.Snap, SnapVersions.Snap1)));
         ProtocolsManager manager = BuildManagerWithResolvers(resolver);
 
         Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));
@@ -169,7 +169,7 @@ public class ProtocolsManagerTests
         private readonly IPeerManager _peerManager;
         private readonly INetworkConfig _networkConfig;
         private readonly ITxPoolConfig _txPoolConfig;
-        private readonly ISpecProvider _specProvider;
+        private readonly IChainHeadSpecProvider _specProvider;
         private readonly IForkInfo _forkInfo;
 
         public Context()
@@ -210,7 +210,7 @@ public class ProtocolsManagerTests
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _txPoolConfig = Substitute.For<ITxPoolConfig>();
-            _specProvider = Substitute.For<ISpecProvider>();
+            _specProvider = Substitute.For<IChainHeadSpecProvider>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
                 _txPool,
