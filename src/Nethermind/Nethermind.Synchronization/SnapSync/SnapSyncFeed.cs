@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -17,10 +18,13 @@ namespace Nethermind.Synchronization.SnapSync
 
         internal const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
-        // Guards the stale-pivot heuristic below: a pivot update wipes the result log, so a peer that keeps
-        // failing while staying the allocator's favorite would re-trip the same path forever without ever being
-        // punished. Set when the heuristic fires, cleared by the first useful response from anyone.
-        private bool _pivotUpdatedSinceLastSuccess;
+        // Guards the single-peer stale-pivot heuristic below: a pivot update wipes the result log, so a peer
+        // that keeps failing while staying the allocator's favorite would re-trip the same path forever without
+        // ever being punished. Holds the node the heuristic last fired for, cleared by the first useful range
+        // response from anyone; only that same node failing through a second streak is treated as the offender.
+        // Keyed on the node id rather than the PeerInfo instance, which the pool replaces on every reconnect -
+        // a peer that drops and comes back between two streaks would otherwise start over as a first offender.
+        private PublicKey? _stalePivotUpdateTrigger;
 
         private const SnapSyncBatch EmptyBatch = null;
 
@@ -71,6 +75,8 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             AddRangeResult result = AddRangeResult.OK;
+            // A code response carries no AddRangeResult of its own, so it would otherwise read as range success.
+            bool isRangeResult = true;
 
             try
             {
@@ -84,6 +90,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (batch.CodesResponse is not null)
                 {
+                    isRangeResult = false;
                     _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
                 }
                 else if (batch.AccountsToRefreshResponse is not null)
@@ -110,10 +117,16 @@ namespace Nethermind.Synchronization.SnapSync
                 batch.Dispose();
             }
 
-            return AnalyzeResponsePerPeer(result, peer);
+            return AnalyzeResponsePerPeer(result, peer, isRangeResult);
         }
 
-        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer)
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer) =>
+            AnalyzeResponsePerPeer(result, peer, isRangeResult: true);
+
+        /// <param name="isRangeResult">Whether <paramref name="result"/> reflects range work. A code response
+        /// carries no <see cref="AddRangeResult"/> of its own and reads as OK even when it matched nothing, so it
+        /// must not count as the useful progress that clears the repeat-offender guard.</param>
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer, bool isRangeResult)
         {
             if (peer is null)
             {
@@ -139,7 +152,14 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (result == AddRangeResult.OK)
             {
-                _pivotUpdatedSinceLastSuccess = false;
+                if (isRangeResult)
+                {
+                    lock (_syncLock)
+                    {
+                        _stalePivotUpdateTrigger = null;
+                    }
+                }
+
                 return SyncResponseHandlingResult.OK;
             }
             else
@@ -193,15 +213,16 @@ namespace Nethermind.Synchronization.SnapSync
                                     // heuristic loops forever on a wiped log.
                                     if (!seenOtherPeer && allLastSuccess == 0)
                                     {
-                                        bool repeatOffender = _pivotUpdatedSinceLastSuccess;
-                                        _pivotUpdatedSinceLastSuccess = true;
+                                        PublicKey? peerNodeId = peer.SyncPeer?.Node?.Id;
+                                        bool repeatOffender = peerNodeId is not null && peerNodeId.Equals(_stalePivotUpdateTrigger);
+                                        _stalePivotUpdateTrigger = peerNodeId;
                                         _snapProvider.UpdatePivot();
 
                                         _resultLog.Clear();
 
                                         if (repeatOffender)
                                         {
-                                            _logger.Trace($"SNAP - peer kept failing across a pivot update, punishing:{peer}");
+                                            if (_logger.IsDebug) _logger.Debug($"SNAP - peer kept failing across a pivot update, punishing:{peer}");
                                             return SyncResponseHandlingResult.LesserQuality;
                                         }
 
@@ -216,17 +237,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                                     if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
                                     {
-                                        bool repeatOffender = _pivotUpdatedSinceLastSuccess;
-                                        _pivotUpdatedSinceLastSuccess = true;
                                         _snapProvider.UpdatePivot();
 
                                         _resultLog.Clear();
-
-                                        if (repeatOffender)
-                                        {
-                                            _logger.Trace($"SNAP - peer kept failing across a pivot update, punishing:{peer}");
-                                            return SyncResponseHandlingResult.LesserQuality;
-                                        }
 
                                         break;
                                     }

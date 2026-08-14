@@ -253,19 +253,31 @@ namespace Nethermind.Network.Test.P2P
                 P2PVersion = 5,
             };
 
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
-            data.ReadByte();
-
-            Packet packet = new(data.ReadAllBytesAsArray())
-            {
-                Protocol = message.Protocol,
-                PacketType = (byte)message.PacketType,
-            };
-
-            p2PProtocolHandler.HandleMessage(packet);
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
             _session.Received(1).InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, Arg.Any<string>());
             _session.DidNotReceive().InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
+        }
+
+        [Test]
+        public void On_hello_from_a_session_authenticated_as_this_node_disconnects()
+        {
+            _session.RemoteNodeId.Returns(TestItem.PublicKeyA);
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                NodeId = TestItem.PublicKeyB,
+                ClientId = "Nethermind/v1.0",
+                ListenPort = 30303,
+                P2PVersion = 5,
+            };
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, Arg.Any<string>());
         }
 
         [Test]
