@@ -1537,10 +1537,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP-8141: a blob-carrying frame tx lives in the blob pool, so the on-head expiry pass must scan it there
-        // (the blob pool's Inserted/Removed feed the same expiry counter as the normal pool). This holds only under
-        // BlobsSupportMode.InMemory: persistent storage's LightTransaction hard-codes TxType.Blob (SupportsFrames
-        // false), so it cannot be evicted until the light record carries the tx type.
+        // The blob pool feeds the same expiry counter as the normal pool, so the on-head pass scans both.
         [Test]
         public async Task Expired_blob_carrying_frame_tx_is_evicted_from_blob_pool_on_new_head()
         {
@@ -1572,9 +1569,6 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
         }
 
-        // EIP-8141: a persistent blob pool would store a blob-carrying frame tx via the frame RLP decoder, which drops
-        // the sidecar and reloads a wrapper-less, unproducible LightTransaction. Such txs are therefore rejected at
-        // ingress under the persistent modes and admitted only under BlobsSupportMode.InMemory, where the full tx is kept.
         [TestCase(BlobsSupportMode.Storage)]
         [TestCase(BlobsSupportMode.StorageWithReorgs)]
         public void Blob_carrying_frame_tx_is_rejected_under_persistent_blob_pool(BlobsSupportMode blobsSupport)
@@ -1608,6 +1602,30 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 1, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 2, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 3, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceTooFarInFuture));
+            }
+        }
+
+        // Nothing re-adds a reorged blob-frame tx in memory, so an un-marked hash is what lets it resend.
+        [Test]
+        public async Task Reorged_blob_carrying_frame_tx_can_be_resubmitted()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block blockA = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
+            Block blockB = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockB, blockA);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
+                    "a blob-carrying frame tx dropped on reorg must not stay AlreadyKnown");
             }
         }
 
