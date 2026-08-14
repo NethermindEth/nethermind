@@ -84,6 +84,19 @@ public class ArchiveCloneImporterTests
     }
 
     [Test]
+    public void CloneAsync_WhenSourceWatermarkDoesNotRiseAboveTheLocalFloor_RefusesWithoutTouchingAnyColumn()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 0 };
+        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
+
+        ArchiveCloneImporter importer = CreateImporter(source);
+
+        Assert.That(async () => await importer.CloneAsync(CancellationToken.None), Throws.InstanceOf<InvalidConfigurationException>(),
+            "an empty range is the one input the sampled-root check cannot inspect, so it must be refused up front instead of importing rows no sample can ever cover");
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.Null, "no row may land locally before the refusal check");
+    }
+
+    [Test]
     public void CloneAsync_WhenSourceFormatDoesNotMatchLocallyResolvedFormat_Refuses()
     {
         FakeCloneSource source = new((byte)(_rowFormat.FormatVersion + 1));
@@ -174,7 +187,8 @@ public class ArchiveCloneImporterTests
         for (byte i = 0; i < 12; i++) rows.Add(([i], [i]));
 
         // Call 1 is the empty Code column, so the throw lands on the third AccountHistory page.
-        FakeCloneSource throwingSource = new(rowFormat.FormatVersion) { PageSize = 3, ThrowOnCallNumber = 4 };
+        FakeCloneSource throwingSource = new(rowFormat.FormatVersion) { PageSize = 3, ThrowOnCallNumber = 4, Watermark = 5 };
+        SeedAgreedBlock(throwingSource, 5, ValueKeccak.Compute("root"u8));
         foreach ((byte[] key, byte[] value) in rows) throwingSource.Seed(HistoryRowColumn.AccountHistory, (key, value));
 
         ArchiveCloneImporter firstAttempt = new(throwingSource, _historyColumns, _codeDb, _metadataDb, singleShardConfig, _pruner, availability, rowFormat,
@@ -182,7 +196,8 @@ public class ArchiveCloneImporterTests
         Assert.That(async () => await firstAttempt.CloneAsync(CancellationToken.None), Throws.InstanceOf<InvalidOperationException>(),
             "precondition: the fake source must actually interrupt the clone partway through the Code column");
 
-        FakeCloneSource resumedSource = new(rowFormat.FormatVersion) { PageSize = 3 };
+        FakeCloneSource resumedSource = new(rowFormat.FormatVersion) { PageSize = 3, Watermark = 5 };
+        SeedAgreedBlock(resumedSource, 5, ValueKeccak.Compute("root"u8));
         foreach ((byte[] key, byte[] value) in rows) resumedSource.Seed(HistoryRowColumn.AccountHistory, (key, value));
 
         ArchiveCloneImporter resumedAttempt = new(resumedSource, _historyColumns, _codeDb, _metadataDb, singleShardConfig, _pruner, availability, rowFormat,

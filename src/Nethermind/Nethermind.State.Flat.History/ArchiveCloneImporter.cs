@@ -111,6 +111,13 @@ public sealed class ArchiveCloneImporter
         }
 
         ulong targetWatermark = ReadOrStoreTargetWatermark();
+        _availability.TryGetGlobalFloor(out ulong currentFloor);
+        if (targetWatermark <= currentFloor)
+        {
+            throw new InvalidConfigurationException(
+                $"The clone source's watermark {targetWatermark} does not rise above this node's retention floor {currentFloor}, so the clone has nothing to add and no height could be sampled to verify what it serves; refusing rather than importing an unverifiable range.", -1);
+        }
+
         Volatile.Write(ref _progressTargetWatermark, targetWatermark);
 
         foreach (HistoryRowColumn column in ColumnsInCloneOrder)
@@ -153,8 +160,8 @@ public sealed class ArchiveCloneImporter
         _availability.TryGetGlobalFloor(out ulong floor);
         if (targetWatermark <= floor)
         {
-            // Nothing was imported above the floor, so there is no root to disagree about.
-            return;
+            throw new InvalidOperationException(
+                $"The cloned range {floor}..{targetWatermark} is empty, so no height could be sampled to check it against this node's own headers; it was not published.");
         }
 
         ArchiveCloneVerdict verdict = _verifier.VerifyImportedRange(floor, targetWatermark, VerificationSampleCount);
@@ -262,7 +269,8 @@ public sealed class ArchiveCloneImporter
         if (_logger.IsInfo) _logger.Info($"Archive clone: streaming {column} ({_shardCount} shards, {_streamCount} concurrent streams).");
 
         IDb destination = ResolveColumn(column);
-        (destination as ITunableDb)?.Tune(ITunableDb.TuneType.HeavyWrite);
+        ITunableDb? tunable = column == HistoryRowColumn.Code ? null : destination as ITunableDb;
+        tunable?.Tune(ITunableDb.TuneType.HeavyWrite);
         try
         {
             using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -321,7 +329,7 @@ public sealed class ArchiveCloneImporter
         }
         finally
         {
-            (destination as ITunableDb)?.Tune(ITunableDb.TuneType.Default);
+            tunable?.Tune(ITunableDb.TuneType.Default);
         }
 
         _metadata.PutSpan(ColumnDoneKey(column), [1]);
