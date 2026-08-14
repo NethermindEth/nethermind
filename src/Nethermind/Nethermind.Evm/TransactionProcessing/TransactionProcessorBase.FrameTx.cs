@@ -640,8 +640,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // Execution scope (or both) reads signature index 0; a payment-only verifier reads index 1
-        // (ethereum/EIPs#11954).
         int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
         TxFrameSignature[] signatures = frameContext.Signatures;
         if (signatures.Length <= sigIndex
