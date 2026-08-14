@@ -13,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Evm.TransactionProcessing;
 
@@ -69,6 +70,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             prevIsAtomicBatch = frame.IsAtomicBatch;
+        }
+
+        if (tx.NonceKeys is not null)
+        {
+            tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
         }
 
         // The frame gas sum is overflow-checked so the processor does not depend on static validation

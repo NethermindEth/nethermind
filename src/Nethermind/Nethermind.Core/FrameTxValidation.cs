@@ -402,6 +402,13 @@ public static class FrameTxValidation
             }
         }
 
+        if (transaction.NonceKeys is not null && spec.IsEip8250Enabled)
+        {
+            (int zeroBytes, int nonZeroBytes) = transaction.FrameCalldataStats;
+            tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
+            dataLength += (ulong)(zeroBytes + nonZeroBytes);
+        }
+
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost;
