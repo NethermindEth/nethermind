@@ -39,10 +39,10 @@ internal sealed class FrameTxPayerExposureFilter(
             ? state.SenderAccount.Balance
             : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
-        // This runs before AddCore resolves the replacement, so the displaced tx is still reserved. The
-        // bound is on the pending set the pool would hold, which a replacement does not grow (EIP-8141
-        // decrements on "eviction, replacement, inclusion, or reorg removal").
-        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, ReplacedPendingReservation(tx, payer)))
+        // A snapshot: AddCore settles the replacement later, under the pool lock. TryReserve ignores the
+        // discount when the payer holds no reservation, so skip the bucket walk and its pool lock there.
+        UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer);
+        if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
         {
             // Atomic: this filter runs under the pool's head read lock, so payers reject concurrently.
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPayerExposureExceeded);

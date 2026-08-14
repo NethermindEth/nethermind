@@ -446,6 +446,13 @@ public static class FrameTxValidation
             }
         }
 
+        if (transaction.RecentRootReferences is not null && spec.IsEip8272Enabled)
+        {
+            (int zeroBytes, int nonZeroBytes) = transaction.ReferenceCalldataStats;
+            tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
+            dataLength += (ulong)(zeroBytes + nonZeroBytes);
+        }
+
         if (transaction.NonceKeys is not null && spec.IsEip8250Enabled)
         {
             (int zeroBytes, int nonZeroBytes) = transaction.FrameCalldataStats;
@@ -455,7 +462,8 @@ public static class FrameTxValidation
 
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
-                             + signatureVerificationCost;
+                             + signatureVerificationCost
+                             + RecentRootReference.IntrinsicGas(transaction.RecentRootReferences, spec);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;

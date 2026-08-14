@@ -84,7 +84,9 @@ public class FrameTxPayerExposureFilterTests
         bump.Nonce = bumpNonce;
         bump.Hash = TestItem.KeccakB;
 
-        // 600 + 700 exceeds the balance, so only discounting the displaced 600 can admit the bump.
+        // 600 + 700 exceeds the balance, so only discounting the displaced 600 can admit the bump. In the
+        // third case the 600 is synthetic: it stands in for another pending tx of Payer's, since a
+        // reservation with nothing pending behind it is not a state admission can reach.
         PayerExposureCache cache = new();
         cache.TryReserve(Payer, 600, balance: 1200, out _);
 

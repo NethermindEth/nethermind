@@ -154,9 +154,7 @@ namespace Nethermind.TxPool
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             // EIP-8141: blob-carrying frame txs live in the blob pool, so it wires the same insert/removal
-            // bookkeeping (delegations, frame expiry) as the normal pool. Frame expiry only takes effect
-            // under BlobsSupportMode.InMemory: persistent storage keeps a LightTransaction whose Type is
-            // hard-coded TxType.Blob, so SupportsFrames is false until the light record carries the tx type.
+            // bookkeeping (delegations, frame expiry) as the normal pool.
             _blobTransactions.Inserted += OnInsertedTx;
             _blobTransactions.Removed += OnRemovedTx;
             if (_blobTransactions.Count > 0)
@@ -207,18 +205,15 @@ namespace Nethermind.TxPool
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
-            // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved, and gate on the
-            // payer straight after, since the gate reads what the resolver recorded.
+            // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
 
-            // EIP-8141: simulate the validation prefix of opaque (RequiresSimulation) frame txs to
-            // resolve their payer and enforce the trace/opcode rules; runs after FrameTxPayerFilter
-            // so the natively-resolved fast path bypasses it. Optional: when unwired, opaque frame
-            // txs stay deferred as in Phase 1.
+            // EIP-8141: runs after FrameTxPayerFilter so the natively-resolved fast path bypasses it.
+            // Optional: when unwired, opaque frame txs stay deferred as in Phase 1.
             postHashFilters.Add(new FrameTxSimulationFilter(chainHeadInfoProvider.ReadOnlyStateProvider, frameTxPrefixSimulator, _logger));
 
-            // EIP-8141: bound each resolved payer's summed pending exposure to its balance; runs
-            // after payer resolution/simulation, which records the payer this gate reads.
+            // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
+            // second registration would reserve every frame tx's cost twice.
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
@@ -359,8 +354,6 @@ namespace Nethermind.TxPool
 
                         ReAddReorganisedTransactions(args.PreviousBlock);
                         RemoveProcessedTransactions(args.Block);
-                        // EIP-8141: for blob-carrying frame txs this evicts only under BlobsSupportMode.InMemory,
-                        // since persistent storage's LightTransaction hard-codes TxType.Blob (SupportsFrames false).
                         RemoveExpiredFrameTransactions(args.Block);
 
                         if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
@@ -397,11 +390,13 @@ namespace Nethermind.TxPool
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = txs[i];
+                    // Un-mark the hash first: a blob-carrying tx (type-3 or type-6 frame) is re-added below only
+                    // from blob storage, and a dropped one must not stay AlreadyKnown or the sender cannot resend.
+                    _hashCache.Delete(tx.Hash!);
                     if (tx.CarriesBlobs)
                     {
                         continue;
                     }
-                    _hashCache.Delete(tx.Hash!);
                     SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
 

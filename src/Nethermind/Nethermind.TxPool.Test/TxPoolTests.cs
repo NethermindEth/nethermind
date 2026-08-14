@@ -2554,6 +2554,26 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void Frame_transaction_payer_exposure_counts_pending_nonces_above_the_replaced_one()
+        {
+            // The gate's teeth beyond BalanceTooLowFilter, which sums only nonces below tx.Nonce: here it
+            // admits the bump on its own count while the payer's summed pending cost exceeds the balance.
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * TxGasLimit);
+
+            for (ulong nonce = 0; nonce < 3; nonce++)
+            {
+                Assert.That(_txPool.SubmitTx(SelfPayingFrameTx(nonce, feePerGas: 3), TxHandlingOptions.None),
+                    Is.EqualTo(AcceptTxResult.Accepted), $"pending nonce {nonce} is within the payer's balance");
+            }
+
+            // Displacing the nonce-0 tx frees only its 3 of the 9 pending, so the bump is priced at 6 + 7.
+            AcceptTxResult overBound = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 7), TxHandlingOptions.None);
+
+            Assert.That(overBound, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
         /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
         private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, bool distinctHash = false)
         {

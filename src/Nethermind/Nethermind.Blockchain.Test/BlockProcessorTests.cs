@@ -309,6 +309,10 @@ public class BlockProcessorTests
             .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
         yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray())
             .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
+        // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
+        // code-only idempotency probe would never fire it.
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray())
+            .SetName("Installs_eip8272_recent_root_predeploy_once_and_captures_it_in_bal");
     }
 
     [TestCaseSource(nameof(PredeployInstallCases)), MaxTime(Timeout.MaxTestTime)]
@@ -340,8 +344,12 @@ public class BlockProcessorTests
         Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(1));
-            Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
+            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(code.Length == 0 ? 0 : 1));
+            if (code.Length != 0)
+            {
+                Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
+            }
+
             Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(1));
             Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(1ul));
         }
