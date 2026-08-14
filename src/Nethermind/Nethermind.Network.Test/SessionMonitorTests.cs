@@ -101,17 +101,17 @@ namespace Nethermind.Network.Test
         {
             int calls = 0;
             IPingSender flaky = Substitute.For<IPingSender>();
-            flaky.SendPing().Returns(_ => Task.FromResult(Interlocked.Increment(ref calls) % 2 == 0));
+            flaky.SendPing().Returns(_ => Task.FromResult(Interlocked.Increment(ref calls) % 3 == 0));
             ISession session = CreateSession(flaky);
 
             NetworkConfig networkConfig = new();
-            networkConfig.P2PPingInterval = 300;
+            networkConfig.P2PPingInterval = 500;
             SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
             sessionMonitor.AddSession(session);
             sessionMonitor.Start();
             try
             {
-                Assert.That(() => session.IsClosing, Is.False.After(2_000),
+                Assert.That(() => session.IsClosing, Is.False.After(4_000),
                     "two missed pongs followed by a pong is a slow peer, not a dead one");
             }
             finally

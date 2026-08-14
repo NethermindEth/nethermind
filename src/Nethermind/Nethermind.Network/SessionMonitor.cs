@@ -23,7 +23,9 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
-        private const int MaxConsecutiveMissedPongs = 3;
+        // The window is measured from the last pong received, so a session is disconnected once no pong has
+        // arrived for this many ping intervals - roughly 30 to 40 seconds at the default 10 second interval.
+        private const int MissedPongIntervalsBeforeDisconnect = 3;
 
         private readonly TimeSpan _pingInterval;
         private readonly List<Task<bool>> _pingTasks = [];
@@ -129,7 +131,7 @@ namespace Nethermind.Network
                     if (!session.IsClosing)
                     {
                         if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
-                        if (pingTime - session.LastPongUtc > MaxConsecutiveMissedPongs * _pingInterval)
+                        if (pingTime - session.LastPongUtc > MissedPongIntervalsBeforeDisconnect * _pingInterval)
                         {
                             if (_logger.IsDebug) _logger.Debug($"Disconnecting {session} after missing every pong since {session.LastPongUtc:T}; the connection is considered dead.");
                             session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "no pong received");
