@@ -33,9 +33,12 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP8141-GAP (devnet only): still missing before public activation are canonical-paymaster
-        // reservation, the failed-APPROVE replay bound, dependency-set revalidation ordering, re-counting
-        // the cap when a pay target gains code, and reorg re-admission beyond one tx per sponsor.
+        // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
+        // Still missing before any public activation: canonical-paymaster reservation, the failed-APPROVE
+        // replay bound, dependency-set revalidation/eviction ordering, payer-exposure accounting beyond
+        // natively-resolved payers (under-reserved until the shared max_cost helper), re-counting the cap
+        // when a pay target gains code, and reorg re-admission beyond one tx per sponsor.
+        // MalformedTxFilter still enforces static well-formedness downstream.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;

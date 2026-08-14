@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Filters;
 
@@ -53,30 +54,42 @@ internal sealed class FrameTxPaymasterFilter(
         stateProvider.TryGetAccount(paymaster, out AccountStruct account) && account.HasCode;
 
     /// <summary>
-    /// Whether a pending transaction from the same sender holds the same nonce and pays through
-    /// <paramref name="paymaster"/>, so <paramref name="tx"/> would replace it rather than join it.
+    /// Whether the pending transaction <paramref name="tx"/> would displace pays through
+    /// <paramref name="paymaster"/>, so admitting it does not grow that paymaster's pending count.
     /// </summary>
-    /// <remarks>Matches on the paymaster too: replacing a tx sponsored elsewhere frees that sponsor's slot
-    /// while still taking one here.</remarks>
+    /// <remarks>
+    /// Tested with the pool's own competing key, so the EIP-8250 nonce-key domain is part of the match: a
+    /// same-nonce transaction in another domain joins the pending set and must not be discounted.
+    /// Matches on the paymaster too: replacing a tx sponsored elsewhere frees that sponsor's slot
+    /// while still taking one here.
+    /// </remarks>
     private bool ReplacesPendingTxOfSamePaymaster(Transaction tx, Address paymaster)
     {
-        ReplacementSearch search = new(tx.Nonce, paymaster);
+        ReplacementSearch search = new(tx, paymaster);
         TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
         pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
         {
-            // Buckets are visited in ascending nonce order, so stop once past the replaced nonce.
+            // Buckets are visited in ascending nonce order, so skip below and stop past the replaced nonce.
             if (pending.Nonce < state.Nonce) return true;
-            if (pending.Nonce == state.Nonce)
+            if (pending.Nonce > state.Nonce) return false;
+
+            if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending))
+            {
                 state.Found = state.Paymaster == FrameTxValidation.GetPrefixPaymaster(pending);
-            return false;
+                return false;
+            }
+
+            // Same nonce, another domain: only one entry can compete, so keep looking for it.
+            return true;
         });
 
         return search.Found;
     }
 
-    private struct ReplacementSearch(ulong nonce, Address paymaster)
+    private struct ReplacementSearch(Transaction tx, Address paymaster)
     {
-        public readonly ulong Nonce = nonce;
+        public readonly Transaction Tx = tx;
+        public readonly ulong Nonce = tx.Nonce;
         public readonly Address Paymaster = paymaster;
         public bool Found;
     }
