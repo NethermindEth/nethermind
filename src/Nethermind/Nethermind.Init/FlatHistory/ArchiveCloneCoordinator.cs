@@ -112,8 +112,21 @@ public sealed class ArchiveCloneCoordinator : IDisposable
                 // The capture floor is already known here, so require a source that reaches it and wait for one
                 // rather than spending hours on a pass whose result is discarded.
                 ulong requiredWatermark = resumeWatermark;
-                if (resumeWatermark == 0 && _availability.TryGetPendingCaptureRange(out ulong captureFirst, out _) && captureFirst > 0)
+                if (resumeWatermark == 0)
                 {
+                    // A fresh pass freezes its target from the source's watermark of the moment. This node's own
+                    // capture picks its first block later, once sync leaves it state to walk, by which time the
+                    // chain has moved on - so the target lands below the capture start and the two ranges cannot
+                    // touch. Nothing can then publish, and the only repair the protocol has is re-streaming every
+                    // column from scratch. Waiting for the capture floor to exist first makes the target answer to
+                    // it, which costs the wait once and removes the discarded pass entirely.
+                    if (!_availability.TryGetPendingCaptureRange(out ulong captureFirst, out _) || captureFirst == 0)
+                    {
+                        diagnostics?.Invoke("this node's own history capture has not started, and a pass that froze its target first would land below the capture floor and be thrown away");
+                        await Task.Delay(RetryDelay, token);
+                        continue;
+                    }
+
                     requiredWatermark = captureFirst - 1;
                 }
 
