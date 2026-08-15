@@ -2005,6 +2005,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
         if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(_perTableDbConfig.ReadAheadSize ?? 256UL.KiB);
 
+        // A view promises every key between its bounds. The code database is built for point lookups - a capped
+        // prefix extractor, a hash index and a prefix-hash memtable - and on that shape an iterator is only
+        // required to stay correct within the seek key's prefix bucket, so a range crossing buckets can come back
+        // short or empty. Asking for total order costs the prefix optimisation on this one iterator, which a
+        // range scan cannot use anyway, and is a no-op where no prefix extractor is configured.
+        readOptions.SetTotalOrderSeek(true);
+
         IntPtr iterateLowerBound;
         IntPtr iterateUpperBound;
 
