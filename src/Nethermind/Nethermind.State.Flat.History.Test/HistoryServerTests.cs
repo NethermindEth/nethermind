@@ -638,6 +638,35 @@ public class HistoryServerTests
     }
 
     [Test]
+    public void GetHistoryRows_Code_StreamsContractCodeInsideTheImportersShardBounds()
+    {
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 1);
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
+
+        // Code keys are 32-byte hashes; seed one inside the first importer shard, which covers first bytes 0x00-0x0F.
+        byte[] codeHash = new byte[32];
+        codeHash[0] = 0x05;
+        _codeDb.PutSpan(codeHash, [0x60, 0x00]);
+
+        // The bounds the importer sends for shard 0: a one-byte start and a MaxRowKeyBytes-long exclusive end.
+        byte[] shardStart = [0x00];
+        byte[] shardEnd = new byte[IHistoryServer.MaxRowKeyBytes];
+        shardEnd[0] = 0x0F;
+        shardEnd.AsSpan(1).Fill(0xFF);
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, byte[]? cursor, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.Code, shardStart, shardEnd, null, 1_000_000, NoEntryCap, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused, Is.False, "the code column is not versioned, so it must be servable");
+            Assert.That(entries.Count, Is.EqualTo(1), "a code row inside the shard's key range must stream out");
+        }
+
+        entries.Dispose();
+    }
+
+    [Test]
     public void GetHistoryRows_ScanCancelledBeforeGatheringAnything_RefusesRatherThanRepeatingTheCursor()
     {
         for (int i = 0; i < Addresses.Length; i++)
