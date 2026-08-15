@@ -62,6 +62,30 @@ public class ArchiveCloneImporterTests
 
     /// Seeds a block's state root on the source and on this node's headers at once: a clone only publishes when
     /// the two agree, so a test that wants a successful clone has to set up both sides.
+    private static void SeedEveryVersionedColumn(FakeCloneSource source)
+    {
+        byte[] code = [0x60, 0x00];
+        source.Seed(HistoryRowColumn.Code, (ValueKeccak.Compute(code).BytesAsSpan.ToArray(), code));
+        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [4]));
+        source.Seed(HistoryRowColumn.StorageHistory, ([5, 6, 7], [8]));
+        source.Seed(HistoryRowColumn.StorageClears, ([9, 10, 11], [12]));
+    }
+
+    [Test]
+    public async Task CloneAsync_ColumnThatFetchedNothing_IsAskedForAgainOnTheNextPass()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
+        await CreateImporter(source).CloneAsync(CancellationToken.None);
+
+        FakeCloneSource second = new(_rowFormat.FormatVersion) { Watermark = 5 };
+        SeedAgreedBlock(second, 5, ValueKeccak.Compute("root"u8));
+        await CreateImporter(second).CloneAsync(CancellationToken.None);
+
+        Assert.That(second.Calls.Any(c => c.Column == HistoryRowColumn.Code), Is.True,
+            "a column the source answered with nothing is not complete; marking it done would carry the hole forward forever, so the next pass has to ask again");
+    }
+
     private void SeedAgreedBlock(FakeCloneSource source, ulong block, ValueHash256 root)
     {
         byte[] key = new byte[8];
@@ -254,6 +278,7 @@ public class ArchiveCloneImporterTests
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
+        SeedEveryVersionedColumn(source);
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
         FakeCloneSource newer = new(_rowFormat.FormatVersion) { Watermark = 99 };
@@ -261,7 +286,7 @@ public class ArchiveCloneImporterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(newer.Calls, Is.Empty, "every column carries a done marker after a completed clone, so a re-run must not fetch a single page");
+            Assert.That(newer.Calls, Is.Empty, "every column that carried rows gets a done marker, so a re-run must not fetch a single page");
             Assert.That(_availability.TryGetWatermark(out ulong watermark), Is.True);
             Assert.That(watermark, Is.EqualTo(5UL), "a re-run against a source that moved forward must republish the stored watermark of the original run - the rows on disk cover nothing newer");
         }
