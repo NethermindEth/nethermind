@@ -199,10 +199,9 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         }
     }
 
-    private async ValueTask ThrottleForServedBytesAsync(long responseBytes, CancellationToken cancellationToken)
+    private void RecordServedBytes(long responseBytes)
     {
         long nowWindow = Stopwatch.GetTimestamp() / TicksPerWindow;
-        long servedInWindow;
 
         while (true)
         {
@@ -214,30 +213,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             long newServed = Math.Min(baseServed + responseBytes, uint.MaxValue);
             long newState = (nowWindow << 32) | newServed;
 
-            if (Interlocked.CompareExchange(ref _windowState, newState, snapshot) == snapshot)
-            {
-                servedInWindow = newServed;
-                break;
-            }
-        }
-
-        if (servedInWindow > _servedBytesPerWindowCap)
-        {
-            long ticksIntoWindow = Stopwatch.GetTimestamp() - nowWindow * TicksPerWindow;
-            TimeSpan remaining = ServedBytesWindow - TimeSpan.FromSeconds((double)ticksIntoWindow / Stopwatch.Frequency);
-            if (remaining > TimeSpan.Zero)
-            {
-                // The token matters: this runs on one of a handful of shared background executors, so an
-                // uncancellable wait here parks capacity that every other subprotocol's serving needs, and keeps
-                // it parked through block processing and session teardown.
-                try
-                {
-                    await Task.Delay(remaining, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                }
-            }
+            if (Interlocked.CompareExchange(ref _windowState, newState, snapshot) == snapshot) return;
         }
     }
 
@@ -259,7 +235,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
     private void Handle(HistoryRowsMessage msg, long size) => _getHistoryRowsRequests.Handle(msg.RequestId, msg, size);
 
-    private async ValueTask<HistoryRangeAtHeightMessage> Handle(GetHistoryRangeAtHeightMessage getMessage, CancellationToken cancellationToken)
+    private ValueTask<HistoryRangeAtHeightMessage> Handle(GetHistoryRangeAtHeightMessage getMessage, CancellationToken cancellationToken)
     {
         IOwnedReadOnlyList<HistoryRangeEntry>? entries = null;
         try
@@ -273,7 +249,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
             long responseBytes = 0;
             for (int i = 0; i < entries.Count; i++) responseBytes += entries[i].Value.Length;
-            await ThrottleForServedBytesAsync(responseBytes, cancellationToken);
+            RecordServedBytes(responseBytes);
 
             HistoryRangeAtHeightMessage response = new()
             {
@@ -282,7 +258,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 NextCursor = nextCursor
             };
             entries = null;
-            return response;
+            return new ValueTask<HistoryRangeAtHeightMessage>(response);
         }
         catch
         {
@@ -311,7 +287,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 responseBytes += chunk.Payload.Length;
             }
 
-            await ThrottleForServedBytesAsync(responseBytes, cancellationToken);
+            RecordServedBytes(responseBytes);
 
             ChangesetsMessage response = new() { RequestId = message.RequestId, Chunks = chunks };
             chunks = null;
@@ -328,7 +304,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         }
     }
 
-    private async ValueTask<HistoryRowsMessage> Handle(GetHistoryRowsMessage getMessage, CancellationToken cancellationToken)
+    private ValueTask<HistoryRowsMessage> Handle(GetHistoryRowsMessage getMessage, CancellationToken cancellationToken)
     {
         IOwnedReadOnlyList<HistoryRowEntry>? entries = null;
         try
@@ -336,7 +312,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             using GetHistoryRowsMessage message = getMessage;
             if (IsOverServedBytesBudget())
             {
-                return new HistoryRowsMessage { RequestId = message.RequestId, Entries = ArrayPoolList<HistoryRowEntry>.Empty(), Refused = true };
+                return new ValueTask<HistoryRowsMessage>(new HistoryRowsMessage { RequestId = message.RequestId, Entries = ArrayPoolList<HistoryRowEntry>.Empty(), Refused = true });
             }
 
             long byteLimit = NHistMessageLimits.ClampResponseBytes(message.ResponseBytes);
@@ -363,7 +339,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
 
             long responseBytes = 0;
             for (int i = 0; i < entries.Count; i++) responseBytes += entries[i].Key.Length + entries[i].Value.Length;
-            await ThrottleForServedBytesAsync(responseBytes, cancellationToken);
+            RecordServedBytes(responseBytes);
 
             HistoryRowsMessage response = new()
             {
@@ -373,7 +349,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 Refused = refused
             };
             entries = null;
-            return response;
+            return new ValueTask<HistoryRowsMessage>(response);
         }
         catch
         {
