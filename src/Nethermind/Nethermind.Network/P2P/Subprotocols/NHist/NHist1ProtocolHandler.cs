@@ -193,6 +193,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         if (!BackgroundTaskScheduler.TryScheduleSyncServe(request, handle, ServeTimeout))
         {
             Interlocked.Decrement(ref _inFlightRequests);
+            if (Logger.IsInfo) Logger.Info($"nhist could not schedule a serve for {Session}; refusing it. The scheduler is saturated or shutting down.");
             if (refusalFactory is not null) Send(refusalFactory(requestId));
         }
     }
@@ -335,8 +336,15 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             byte[]? cursor = message.Cursor.Length == 0 ? null : message.Cursor;
             byte[]? nextCursor;
             bool refused;
+            long serveStarted = Stopwatch.GetTimestamp();
             (entries, nextCursor, refused) = HistoryServer.GetHistoryRows(
                 message.Column, message.StartKey, message.EndKey, cursor, byteLimit, NHistMessageLimits.MaxResponseRowEntries, cancellationToken);
+
+            TimeSpan served = Stopwatch.GetElapsedTime(serveStarted);
+            if (served > ServeTimeout && Logger.IsInfo)
+            {
+                Logger.Info($"nhist spent {served.TotalSeconds:F1}s scanning {message.Column} for {Session}, past its {ServeTimeout.TotalSeconds:F0}s deadline; the requester has likely given up on this page already.");
+            }
 
             if (entries.Count == 0 && !refused && Logger.IsInfo)
             {
