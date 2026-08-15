@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Core.Collections;
@@ -206,6 +207,71 @@ public class NHistMessageSerializerTests
             Assert.That(deserialized.Entries[0].Value.ToArray(), Is.EqualTo(new byte[] { 0xAA }));
             Assert.That(deserialized.NextCursor, Is.EqualTo(message.NextCursor));
         }
+    }
+
+    [Test]
+    public void HistoryRowsMessage_roundtrips_keys_that_share_a_prefix_with_the_previous_row()
+    {
+        HistoryRowsMessageSerializer serializer = new();
+        ArrayPoolList<HistoryRowEntry> entries = new(4)
+        {
+            new HistoryRowEntry(StorageHistoryKey(slot: 1, block: 900), new byte[] { 0x11 }),
+            new HistoryRowEntry(StorageHistoryKey(slot: 1, block: 400), new byte[] { 0x22 }),
+            new HistoryRowEntry(StorageHistoryKey(slot: 1, block: 7), Array.Empty<byte>()),
+            new HistoryRowEntry(StorageHistoryKey(slot: 2, block: 5), new byte[] { 0x33 }),
+        };
+        using HistoryRowsMessage message = new() { RequestId = 4, Entries = entries, NextCursor = null, Refused = false };
+
+        byte[] serialized = serializer.Serialize(message);
+        using HistoryRowsMessage deserialized = serializer.Deserialize(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Entries.Count, Is.EqualTo(4));
+            Assert.That(deserialized.Entries[0].Key, Is.EqualTo(StorageHistoryKey(slot: 1, block: 900)));
+            Assert.That(deserialized.Entries[1].Key, Is.EqualTo(StorageHistoryKey(slot: 1, block: 400)),
+                "a key encoded as a delta against its predecessor must rebuild byte for byte");
+            Assert.That(deserialized.Entries[2].Key, Is.EqualTo(StorageHistoryKey(slot: 1, block: 7)));
+            Assert.That(deserialized.Entries[3].Key, Is.EqualTo(StorageHistoryKey(slot: 2, block: 5)),
+                "a row that starts a new flat key must still carry the bytes that differ");
+            Assert.That(deserialized.Entries[2].Value.ToArray(), Is.Empty);
+            Assert.That(deserialized.Entries[3].Value.ToArray(), Is.EqualTo(new byte[] { 0x33 }));
+        }
+    }
+
+    [Test]
+    public void HistoryRowsMessage_does_not_repeat_the_flat_key_of_every_version()
+    {
+        HistoryRowsMessageSerializer serializer = new();
+        ArrayPoolList<HistoryRowEntry> repeated = new(4);
+        ArrayPoolList<HistoryRowEntry> distinct = new(4);
+        for (int i = 0; i < 4; i++)
+        {
+            byte[] unrelated = StorageHistoryKey(slot: 1, block: 100);
+            unrelated[0] = (byte)(i + 1);
+            repeated.Add(new HistoryRowEntry(StorageHistoryKey(slot: 1, block: (ulong)(100 - i)), new byte[] { 0x11 }));
+            distinct.Add(new HistoryRowEntry(unrelated, new byte[] { 0x11 }));
+        }
+
+        using HistoryRowsMessage repeatedMessage = new() { RequestId = 1, Entries = repeated, NextCursor = null };
+        using HistoryRowsMessage distinctMessage = new() { RequestId = 1, Entries = distinct, NextCursor = null };
+
+        int repeatedLength = serializer.Serialize(repeatedMessage).Length;
+        int distinctLength = serializer.Serialize(distinctMessage).Length;
+
+        Assert.That(repeatedLength, Is.LessThan(distinctLength - 100),
+            "four versions of one slot must cost far less on the wire than four different slots; without prefix encoding both weigh the same");
+    }
+
+    private static byte[] StorageHistoryKey(byte slot, ulong block)
+    {
+        // [4B account prefix | 32B slot | 16B account suffix | 8B block], the shape StorageHistory rows carry.
+        byte[] key = new byte[52 + 8];
+        key[0] = 0xAB;
+        key[35] = slot;
+        key[51] = 0xCD;
+        BinaryPrimitives.WriteUInt64BigEndian(key.AsSpan(52), ~block);
+        return key;
     }
 
     [Test]
