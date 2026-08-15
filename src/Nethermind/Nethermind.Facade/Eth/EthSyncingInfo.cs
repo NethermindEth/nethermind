@@ -16,6 +16,7 @@ namespace Nethermind.Facade.Eth
         ISyncConfig syncConfig,
         ISyncModeSelector syncModeSelector,
         ISyncProgressResolver syncProgressResolver,
+        IBeaconSyncStrategy beaconSyncStrategy,
         ILogManager logManager) : IEthSyncingInfo
     {
         public const int MaxDistanceForSynced = 8;
@@ -26,16 +27,20 @@ namespace Nethermind.Facade.Eth
         private readonly ISyncPointers _syncPointers = syncPointers;
         private readonly ISyncModeSelector _syncModeSelector = syncModeSelector;
         private readonly ISyncProgressResolver _syncProgressResolver = syncProgressResolver;
+        private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
 
         public SyncingResult GetFullInfo()
         {
-            // CL-driven catch-up keeps Head close to BestSuggestedHeader while the beacon tip
-            // (BestSuggestedBeaconHeader) remains far ahead. Include that tip so eth_syncing does
-            // not report false for the entire forward sync (#12673). Same widening as TaikoEthSyncingInfo.
+            // CL-driven catch-up keeps Head close to BestSuggestedHeader while the FCU/beacon
+            // destination remains far ahead. Include IBeaconSyncStrategy.GetTargetBlockHeight
+            // so eth_syncing does not report false for the entire forward sync (#12673).
+            // That API is null for No.BeaconSync and after the beacon pivot is removed, so
+            // PoW and idle post-Merge keep Head vs BestSuggestedHeader. Do not use
+            // BestSuggestedBeaconHeader: it is a historical high-water mark, not the current CL target.
             ulong headNumberOrZero = _blockTree.Head?.Number ?? 0;
             ulong suggestedHeader = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
-            ulong beaconSuggestedHeader = _blockTree.BestSuggestedBeaconHeader?.Number ?? 0;
-            ulong bestSuggestedNumber = Math.Max(suggestedHeader, beaconSuggestedHeader);
+            ulong beaconSyncTarget = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
+            ulong bestSuggestedNumber = Math.Max(suggestedHeader, beaconSyncTarget);
             bool isSyncing = bestSuggestedNumber == 0 || bestSuggestedNumber > headNumberOrZero + (ulong)MaxDistanceForSynced;
             SyncMode syncMode = _syncModeSelector.Current;
 

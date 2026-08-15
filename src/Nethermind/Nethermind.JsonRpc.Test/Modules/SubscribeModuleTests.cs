@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _syncConfig = new SyncConfig();
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
-                new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager);
+                new StaticSelector(SyncMode.All), _syncProgressResolver, No.BeaconSync, _logManager);
             _peerPool = Substitute.For<IPeerPool>();
             _rlpxPeer = Substitute.For<IRlpxHost>();
 
