@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             if (!skipBloom)
-                txReceipt.Bloom = ctx.DecodeBloom();
+                txReceipt.Bloom = ctx.DecodeBloomOrNull();
             // When _skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
