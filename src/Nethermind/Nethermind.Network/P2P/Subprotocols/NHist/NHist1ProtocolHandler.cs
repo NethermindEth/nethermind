@@ -308,6 +308,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         try
         {
             using GetHistoryRowsMessage message = getMessage;
+            if (Logger.IsInfo) Logger.Info($"nhist rows request {message.RequestId} arrived from {Session}: column={message.Column}, start={Convert.ToHexString(message.StartKey.AsSpan(0, Math.Min(8, message.StartKey.Length)))}, cursor={(message.Cursor.Length == 0 ? "none" : Convert.ToHexString(message.Cursor.AsSpan(0, Math.Min(8, message.Cursor.Length))))}.");
             if (IsOverServedBytesBudget())
             {
                 return new ValueTask<HistoryRowsMessage>(new HistoryRowsMessage { RequestId = message.RequestId, Entries = ArrayPoolList<HistoryRowEntry>.Empty(), Refused = true });
@@ -346,6 +347,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 NextCursor = nextCursor,
                 Refused = refused
             };
+            if (Logger.IsInfo) Logger.Info($"nhist rows request {message.RequestId} answered for {Session}: {response.Entries.Count} entries, refused={refused}, served in {served.TotalMilliseconds:F0}ms.");
             entries = null;
             return new ValueTask<HistoryRowsMessage>(response);
         }
@@ -378,6 +380,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         }
         catch (TimeoutException)
         {
+            if (Logger.IsInfo) Logger.Info($"nhist rows request to {Session} timed out after {RowsResponseTimeout.TotalSeconds:F0}s: column={column}, start={Convert.ToHexString(startKey.AsSpan(0, Math.Min(8, startKey.Length)))}, cursor={(cursor is null || cursor.Length == 0 ? "none" : Convert.ToHexString(cursor.AsSpan(0, Math.Min(8, cursor.Length))))}.");
             RegisterRowsTimeout();
             throw;
         }
