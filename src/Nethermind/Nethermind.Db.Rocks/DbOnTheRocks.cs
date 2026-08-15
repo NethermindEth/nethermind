@@ -758,6 +758,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     internal byte[]? GetWithIterator(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags, out bool success)
     {
+        ThrowIfDisposing();
+
         success = true;
 
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
@@ -2070,10 +2072,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
         Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
-    ) => TryGetCeilingWithIterator(
-        lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
-        keyBuffer, out keyLength, valueBuffer, out valueLength
-    );
+    )
+    {
+        ThrowIfDisposing();
+
+        return TryGetCeilingWithIterator(
+            lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
+            keyBuffer, out keyLength, valueBuffer, out valueLength
+        );
+    }
 
     public IKeyValueStoreSnapshot CreateSnapshot()
     {

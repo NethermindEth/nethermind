@@ -176,10 +176,15 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     public bool TryGetCeiling(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
         Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
-    ) => DbOnTheRocks.TryGetCeilingWithIterator(
-        lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
-        keyBuffer, out keyLength, valueBuffer, out valueLength
-    );
+    )
+    {
+        _mainDb.ThrowIfDisposing();
+
+        return DbOnTheRocks.TryGetCeilingWithIterator(
+            lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
+            keyBuffer, out keyLength, valueBuffer, out valueLength
+        );
+    }
 
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
