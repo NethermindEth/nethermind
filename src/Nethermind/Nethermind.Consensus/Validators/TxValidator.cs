@@ -227,8 +227,10 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 /// <summary>Admits the EIP-8250 keyed-nonce envelope only on forks that define it, and only well-formed.</summary>
 /// <remarks>
 /// Pre-fork the keys carry no replay protection at all — the account nonce is left untouched — so admitting
-/// one would make the transaction replayable. Well-formedness is re-checked because <c>eth_call</c>,
-/// <c>eth_estimateGas</c> and block building construct a transaction without going through the decoder.
+/// one would make the transaction replayable. Post-fork EIP-8250 replaces the scalar <c>nonce</c> with
+/// <c>nonce_keys, nonce_seq</c>, so the fork-blind decoder's legacy scalar-nonce shape is refused. Well-formedness
+/// is re-checked because <c>eth_call</c>, <c>eth_estimateGas</c> and block building construct a transaction
+/// without going through the decoder.
 /// </remarks>
 public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 {
@@ -240,7 +242,9 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
         UInt256[]? nonceKeys = transaction.NonceKeys;
         if (nonceKeys is null)
         {
-            return ValidationResult.Success;
+            return releaseSpec.IsEip8250Enabled
+                ? FrameTxValidation.LegacyNonceNotAllowed
+                : ValidationResult.Success;
         }
 
         if (!releaseSpec.IsEip8250Enabled)
