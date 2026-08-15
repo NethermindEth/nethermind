@@ -638,6 +638,39 @@ public class HistoryServerTests
     }
 
     [Test]
+    public void GetHistoryRows_ScanCancelledBeforeGatheringAnything_RefusesRatherThanRepeatingTheCursor()
+    {
+        for (int i = 0; i < Addresses.Length; i++)
+        {
+            HistoryColumnsWriter.RecordAccount(_historyColumns, Addresses[i], block: 1, new Account((ulong)i + 1, (ulong)(i + 1) * 100));
+        }
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 1);
+
+        HistoryServer server = CreateServer(new FlatDbConfig { HistoryEnabled = true });
+
+        (IOwnedReadOnlyList<HistoryRowEntry> firstPage, byte[]? resumeFrom, bool _) = server.GetHistoryRows(
+            HistoryRowColumn.AccountHistory, [0x00], Enumerable.Repeat((byte)0xFF, 64).ToArray(), null, 1_000_000, 1, CancellationToken.None);
+        Assert.That(firstPage.Count, Is.EqualTo(1), "precondition: the entry cap stops the scan after one row and hands back a cursor");
+        firstPage.Dispose();
+
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+
+        (IOwnedReadOnlyList<HistoryRowEntry> entries, byte[]? cursor, bool refused) = server.GetHistoryRows(
+            HistoryRowColumn.AccountHistory, [0x00], Enumerable.Repeat((byte)0xFF, 64).ToArray(), resumeFrom, 1_000_000, NoEntryCap, cancelled.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused, Is.True,
+                "with nothing gathered there is no cursor that moves the requester on, and echoing the one it sent would stall its scan");
+            Assert.That(cursor, Is.Null);
+            Assert.That(entries.Count, Is.Zero);
+        }
+
+        entries.Dispose();
+    }
+
+    [Test]
     public void GetHistoryRows_WindowedNode_RefusesVersionedColumnsIncludingAvailableBlocks()
     {
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, TestItem.AddressA, block: 5, new Account(5, 500));

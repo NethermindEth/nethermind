@@ -19,6 +19,7 @@ public sealed class HistoryServer : IHistoryServer
 {
     private const int BlockBytes = sizeof(ulong);
     private const int MinEntryChargeBytes = 32;
+    private const int ScannedEntriesPerEmittedEntryBudget = 4;
     private static readonly HistoryServingScope[] NoScopes = [];
     private static readonly HistoryRowColumn[] VersionedRowColumns =
         [HistoryRowColumn.AccountHistory, HistoryRowColumn.StorageHistory, HistoryRowColumn.StorageClears, HistoryRowColumn.AvailableBlocks];
@@ -363,20 +364,28 @@ public sealed class HistoryServer : IHistoryServer
         try
         {
             long consumed = 0;
-            byte[]? lastEmittedKey = cursor;
+            long scanned = 0;
+            long scanBudget = Math.Max(maxEntries, 1L) * ScannedEntriesPerEmittedEntryBudget;
+
+            byte[]? lastHandledKey = cursor;
             bool exhausted = true;
 
             using ISortedView view = sorted.GetViewBetween(from, endKey, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead);
             while (view.MoveNext())
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested || scanned >= scanBudget)
                 {
-                    results.Dispose();
-                    return Refuse();
+                    exhausted = false;
+                    break;
                 }
 
+                scanned++;
                 ReadOnlySpan<byte> key = view.CurrentKey;
-                if (column == HistoryRowColumn.AvailableBlocks && key.Length != BlockBytes) continue;
+                if (column == HistoryRowColumn.AvailableBlocks && key.Length != BlockBytes)
+                {
+                    lastHandledKey = key.ToArray();
+                    continue;
+                }
 
                 if (consumed >= byteLimit || results.Count >= maxEntries)
                 {
@@ -388,10 +397,16 @@ public sealed class HistoryServer : IHistoryServer
                 byte[] keyArray = key.ToArray();
                 results.Add(new HistoryRowEntry(keyArray, value.ToArray()));
                 consumed += key.Length + Math.Max(value.Length, MinEntryChargeBytes);
-                lastEmittedKey = keyArray;
+                lastHandledKey = keyArray;
             }
 
-            return (results, exhausted ? null : lastEmittedKey, false);
+            if (!exhausted && ReferenceEquals(lastHandledKey, cursor))
+            {
+                results.Dispose();
+                return Refuse();
+            }
+
+            return (results, exhausted ? null : lastHandledKey, false);
         }
         catch
         {
