@@ -343,6 +343,12 @@ public sealed class ArchiveCloneImporter
             tunable?.Tune(ITunableDb.TuneType.Default);
         }
 
+        if (Volatile.Read(ref _columnRows) == 0 && _logger.IsWarn)
+        {
+            _logger.Warn(
+                $"Archive clone: the source served no {column} rows at all across {_shardCount} shards, and the column is now marked complete so no later pass will revisit it. If the source does hold {column} data, this node is left with a permanent hole in it.");
+        }
+
         _metadata.PutSpan(ColumnDoneKey(column), [1]);
         _metadata.SyncWal();
         for (int shard = 0; shard < _shardCount; shard++)

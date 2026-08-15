@@ -338,6 +338,11 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
             (entries, nextCursor, refused) = HistoryServer.GetHistoryRows(
                 message.Column, message.StartKey, message.EndKey, cursor, byteLimit, NHistMessageLimits.MaxResponseRowEntries, cancellationToken);
 
+            if (entries.Count == 0 && !refused && Logger.IsInfo)
+            {
+                Logger.Info($"nhist served an empty {message.Column} page to {Session}: start={Convert.ToHexString(message.StartKey)}, end={Convert.ToHexString(message.EndKey)}, cursor={(message.Cursor.Length == 0 ? "none" : Convert.ToHexString(message.Cursor))}, nextCursor={(nextCursor is null ? "none" : Convert.ToHexString(nextCursor))}, canServe={HistoryServer.CanServe}.");
+            }
+
             long responseBytes = 0;
             for (int i = 0; i < entries.Count; i++) responseBytes += entries[i].Key.Length + entries[i].Value.Length;
             await ThrottleForServedBytesAsync(responseBytes, cancellationToken);
