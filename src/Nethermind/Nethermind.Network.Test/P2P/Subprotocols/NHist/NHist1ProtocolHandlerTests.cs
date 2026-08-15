@@ -437,6 +437,60 @@ public class NHist1ProtocolHandlerTests
         Assert.That(captured!.Refused, Is.True, "a windowed-source refusal must reach the wire as Refused=true, not an ambiguous empty result");
     }
 
+    private sealed class ExpiredDeadlineScheduler : IBackgroundTaskScheduler
+    {
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+        {
+            using CancellationTokenSource expired = new();
+            expired.Cancel();
+            try
+            {
+                fulfillFunc(request, expired.Token).Wait();
+            }
+            catch (AggregateException)
+            {
+            }
+
+            return true;
+        }
+    }
+
+    [Test]
+    public void GetHistoryRows_WhenServeDeadlineExpiredWhileQueued_StillSendsResponse()
+    {
+        ArrayPoolList<HistoryRowEntry> entries = new(1) { new HistoryRowEntry([1], new byte[2 * 1024 * 1024]) };
+
+        IHistoryServer historyServer = Substitute.For<IHistoryServer>();
+        historyServer.CanServe.Returns(true);
+        historyServer.GetHistoryRows(Arg.Any<HistoryRowColumn>(), Arg.Any<byte[]>(), Arg.Any<byte[]>(), Arg.Any<byte[]?>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns((entries, (byte[]?)null, false));
+
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+
+        HistoryRowsMessage? captured = null;
+        session.When(s => s.DeliverMessage(Arg.Any<HistoryRowsMessage>())).Do(call => captured = call.Arg<HistoryRowsMessage>());
+
+        IMessageSerializationService serializer = new MessageSerializationService(
+            SerializerInfo.Create(new GetHistoryRowsMessageSerializer()),
+            SerializerInfo.Create(new HistoryRowsMessageSerializer()));
+
+        NHist1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            serializer,
+            new ExpiredDeadlineScheduler(),
+            LimboLogs.Instance,
+            historyServer,
+            new SyncConfig { HistoryServingMaxBytesPerSecond = 1 });
+
+        using GetHistoryRowsMessage request = new() { RequestId = 1, Column = HistoryRowColumn.AccountHistory, StartKey = [0], EndKey = [0xFF], Cursor = [] };
+
+        Handle(handler, serializer, request, NHist1MessageCode.GetHistoryRows);
+
+        Assert.That(captured, Is.Not.Null, "a serve whose deadline expired while it was queued must still answer; silence costs the requester a full response timeout and eventually the session");
+    }
+
     [Test]
     public void HandleMessage_WhenStatusReceived_StoresPeerServedScopes()
     {

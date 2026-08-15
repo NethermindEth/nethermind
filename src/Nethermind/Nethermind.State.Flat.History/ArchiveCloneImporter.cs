@@ -540,7 +540,7 @@ public sealed class ArchiveCloneImporter
                 throw new InvalidOperationException($"The clone source kept refusing {column} rows for shard {shard} after {RefusedRetryLimit} attempts.");
             }
 
-            if (refusals == 1 && _logger.IsInfo) _logger.Info($"Archive clone: the source is refusing {column} pages (it is likely persisting); waiting for it to resume.");
+            if (refusals == 1 && _logger.IsInfo) _logger.Info($"Archive clone: the source is refusing {column} pages because this peer has spent its serving byte budget for the moment; backing off until the budget refills.");
             else if (_logger.IsDebug) _logger.Debug($"Archive clone: {column} shard {shard} page refused by the source (attempt {refusals}/{RefusedRetryLimit}); retrying in {RefusedRetryDelay.TotalSeconds:F0}s.");
             await Task.Delay(RefusedRetryDelay, cancellationToken);
         }

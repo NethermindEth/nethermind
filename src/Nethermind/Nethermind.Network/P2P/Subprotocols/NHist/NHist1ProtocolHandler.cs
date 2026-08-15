@@ -46,11 +46,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     // genuinely dead, not on every flush cycle of a busy source.
     private const int MaxConsecutiveRowsTimeouts = 5;
     private static readonly TimeSpan ServedBytesWindow = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(8);
-
-    // The scheduler abandons a serve at ServeTimeout and sends nothing, so a scan that runs to that deadline
-    // answers the requester with silence and costs it a full 30s row timeout. Stopping the scan earlier leaves
-    // room to encode and send whatever it gathered, which the requester can resume from.
+    private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ScanDeadline = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RowsResponseTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RowsRequestCleanupThreshold = RowsResponseTimeout * 1.5;
@@ -234,7 +230,13 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 // The token matters: this runs on one of a handful of shared background executors, so an
                 // uncancellable wait here parks capacity that every other subprotocol's serving needs, and keeps
                 // it parked through block processing and session teardown.
-                await Task.Delay(remaining, cancellationToken);
+                try
+                {
+                    await Task.Delay(remaining, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                }
             }
         }
     }
