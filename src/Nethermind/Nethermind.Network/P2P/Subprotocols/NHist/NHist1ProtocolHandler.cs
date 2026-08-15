@@ -308,7 +308,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
         try
         {
             using GetHistoryRowsMessage message = getMessage;
-            if (Logger.IsInfo) Logger.Info($"nhist rows request {message.RequestId} arrived from {Session}: column={message.Column}, start={Convert.ToHexString(message.StartKey.AsSpan(0, Math.Min(8, message.StartKey.Length)))}, cursor={(message.Cursor.Length == 0 ? "none" : Convert.ToHexString(message.Cursor.AsSpan(0, Math.Min(8, message.Cursor.Length))))}.");
+            if (Logger.IsDebug) Logger.Debug($"nhist rows request {message.RequestId} arrived from {Session}: column={message.Column}, start={Convert.ToHexString(message.StartKey)}, cursor={(message.Cursor.Length == 0 ? "none" : Convert.ToHexString(message.Cursor))}.");
             if (IsOverServedBytesBudget())
             {
                 return new ValueTask<HistoryRowsMessage>(new HistoryRowsMessage { RequestId = message.RequestId, Entries = ArrayPoolList<HistoryRowEntry>.Empty(), Refused = true });
@@ -347,7 +347,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 NextCursor = nextCursor,
                 Refused = refused
             };
-            if (Logger.IsInfo) Logger.Info($"nhist rows request {message.RequestId} answered for {Session}: {response.Entries.Count} entries, refused={refused}, served in {served.TotalMilliseconds:F0}ms.");
+            if (Logger.IsDebug) Logger.Debug($"nhist rows request {message.RequestId} answered for {Session}: {response.Entries.Count} entries, refused={refused}, served in {served.TotalMilliseconds:F0}ms, nextCursor={(nextCursor is null ? "none" : Convert.ToHexString(nextCursor))}.");
             entries = null;
             return new ValueTask<HistoryRowsMessage>(response);
         }
