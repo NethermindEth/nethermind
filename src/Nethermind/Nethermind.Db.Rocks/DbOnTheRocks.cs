@@ -97,8 +97,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private CacheLinePaddedLong _totalReads;
     private CacheLinePaddedLong _totalWrites;
 
-    private readonly Lazy<IteratorManager>? _iteratorManager;
-    private readonly Lazy<IteratorManager> _seekIteratorManager;
+    private readonly DisposableLazy<IteratorManager>? _iteratorManager;
+    private readonly DisposableLazy<IteratorManager> _seekIteratorManager;
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
@@ -809,15 +809,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// Pool for calls with <see cref="ReadFlags.HintReadAhead"/> - tailing iterators with large read steps.
     /// Null when read-ahead is turned off.
     /// </summary>
-    internal Lazy<IteratorManager>? CreateLazyReadAheadIteratorManager(ColumnFamilyHandle? cf) =>
+    internal DisposableLazy<IteratorManager>? CreateLazyReadAheadIteratorManager(ColumnFamilyHandle? cf) =>
         _readAheadReadOptions is null ? null : CreateLazyIteratorManager(cf, _readAheadReadOptions);
 
     /// <summary> Pool for ceiling seeks - tailing iterators. </summary>
-    internal Lazy<IteratorManager> CreateLazySeekIteratorManager(ColumnFamilyHandle? cf) =>
+    internal DisposableLazy<IteratorManager> CreateLazySeekIteratorManager(ColumnFamilyHandle? cf) =>
         CreateLazyIteratorManager(cf, _seekReadOptions);
 
-    private Lazy<IteratorManager> CreateLazyIteratorManager(ColumnFamilyHandle? cf, ReadOptions readOptions) =>
-        new(() => new IteratorManager(_db, cf, readOptions), LazyThreadSafetyMode.ExecutionAndPublication);
+    private DisposableLazy<IteratorManager> CreateLazyIteratorManager(ColumnFamilyHandle? cf, ReadOptions readOptions) =>
+        new(() => new IteratorManager(_db, cf, readOptions));
 
     internal unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
     {
@@ -1631,8 +1631,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             batch.Dispose();
         }
 
-        _iteratorManager?.DisposeIfCreated();
-        _seekIteratorManager.DisposeIfCreated();
+        _iteratorManager?.Dispose();
+        _seekIteratorManager.Dispose();
         _db.Dispose();
 
         if (_rowCache.HasValue)

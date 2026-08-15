@@ -25,12 +25,12 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions options,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
-    Lazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
+    DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
     ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
-    private readonly Lazy<DbOnTheRocks.IteratorManager>? _iteratorManager = iteratorManager;
+    private readonly DisposableLazy<DbOnTheRocks.IteratorManager>? _iteratorManager = iteratorManager;
     private readonly ColumnFamilyHandle? _columnFamily = columnFamily;
 
     private readonly ReadOptions _options = options;
@@ -40,7 +40,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
-        Lazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
+        DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
         ColumnFamilyHandle? columnFamily = null)
         : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
     {
