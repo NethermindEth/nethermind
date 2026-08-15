@@ -23,6 +23,12 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
+        // The window is measured from the last pong received, so a session is disconnected once no pong has
+        // arrived for this many ping intervals. A ping only goes out every other tick - LastPingUtc is stamped
+        // after the tick that sent it, so the guard below fails on the next one - which makes the effective ping
+        // period two intervals. Three missed pongs therefore need a window of six intervals.
+        private const int MissedPongIntervalsBeforeDisconnect = 6;
+
         private readonly TimeSpan _pingInterval;
         private readonly List<Task<bool>> _pingTasks = [];
 
@@ -40,10 +46,7 @@ namespace Nethermind.Network
 
         public void Stop() => StopPingTimer();
 
-        private const int MaxConsecutiveMissedPongs = 3;
-
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
-        private readonly ConcurrentDictionary<Guid, int> _missedPongCounts = new();
         public IEnumerable<ISession> Sessions => _sessions.Select(static kvp => kvp.Value);
 
         public void AddSession(ISession session)
@@ -58,11 +61,8 @@ namespace Nethermind.Network
             }
         }
 
-        public void RemoveSession(ISession session)
-        {
+        public void RemoveSession(ISession session) =>
             _sessions.TryRemove(session.SessionId, out _);
-            _missedPongCounts.TryRemove(session.SessionId, out _);
-        }
 
         private async Task SendPingMessagesAsync()
         {
@@ -133,11 +133,9 @@ namespace Nethermind.Network
                     if (!session.IsClosing)
                     {
                         if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
-                        int missedPongs = _missedPongCounts.AddOrUpdate(session.SessionId, 1, static (_, count) => count + 1);
-                        if (missedPongs >= MaxConsecutiveMissedPongs)
+                        if (pingTime - session.LastPongUtc > MissedPongIntervalsBeforeDisconnect * _pingInterval)
                         {
-                            if (_logger.IsInfo) _logger.Info($"Disconnecting {session} after {missedPongs} consecutive missed pongs; the connection is considered dead.");
-                            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, $"{missedPongs} consecutive missed pongs");
+                            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "no pong received");
                         }
 
                         return false;
@@ -146,7 +144,6 @@ namespace Nethermind.Network
                     return true;
                 }
 
-                _missedPongCounts.TryRemove(session.SessionId, out _);
                 session.LastPongUtc = DateTime.UtcNow;
                 return true;
             }
