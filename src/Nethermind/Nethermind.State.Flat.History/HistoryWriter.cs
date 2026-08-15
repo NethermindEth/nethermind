@@ -317,7 +317,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (pending is not null) ResolvePendingV3(pending);
             if (sidecarByBlock is not null) FlushSidecarBuilders(sidecarByBlock);
 
-            _availability.PublishPendingCaptureRange(hasPendingRange ? Math.Min(pendingFirst, lowestCaptured) : lowestCaptured, target);
+            _availability.PublishPendingCaptureRange(lowestCaptured, target);
             _history.SyncWal();
             if (_logger.IsInfo) _logger.Info(
                 $"History capture is recording a detached range [{lowestCaptured}, {target}] while the archive clone " +
