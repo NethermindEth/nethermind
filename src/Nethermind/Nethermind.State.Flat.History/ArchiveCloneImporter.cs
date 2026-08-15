@@ -133,15 +133,19 @@ public sealed class ArchiveCloneImporter
         return targetWatermark;
     }
 
-    /// <summary>Discards the stored target watermark, done markers, and shard cursors so the next
-    /// <see cref="CloneAsync"/> re-streams everything against the source's current watermark. Rows already
-    /// imported stay (re-imports overwrite idempotently); the already-published watermark stays honest because
-    /// the new pass only ever adds rows above it.</summary>
+    /// <summary>Discards the stored target watermark, and the done markers and shard cursors of every column whose
+    /// rows carry a block, so the next <see cref="CloneAsync"/> re-streams them against the source's current
+    /// watermark. Rows already imported stay (re-imports overwrite idempotently); the already-published watermark
+    /// stays honest because the new pass only ever adds rows above it. A raised target cannot invalidate content
+    /// addressed by hash, so <see cref="HistoryRowColumn.Code"/> keeps its progress: re-streaming it would refetch
+    /// every byte of code the node already holds to arrive at exactly the same rows.</summary>
     public void ResetForNewTarget()
     {
         _metadata.Remove(TargetWatermarkKey);
         foreach (HistoryRowColumn column in ColumnsInCloneOrder)
         {
+            if (column == HistoryRowColumn.Code) continue;
+
             _metadata.Remove(ColumnDoneKey(column));
             for (int shard = 0; shard < _shardCount; shard++)
             {

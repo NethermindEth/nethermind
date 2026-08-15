@@ -317,6 +317,31 @@ public class ArchiveCloneImporterTests
     }
 
     [Test]
+    public async Task ResetForNewTarget_KeepsCodeProgress_BecauseARaisedTargetCannotStaleHashAddressedRows()
+    {
+        byte[] code = [0xEF, 0x01, 0x02];
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
+        source.Seed(HistoryRowColumn.Code, (ValueKeccak.Compute(code).BytesAsSpan.ToArray(), code));
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
+        await CreateImporter(source).CloneAsync(CancellationToken.None);
+
+        FakeCloneSource newer = new(_rowFormat.FormatVersion) { Watermark = 99 };
+        newer.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [7]));
+        SeedAgreedBlock(newer, 99, ValueKeccak.Compute("root99"u8));
+        ArchiveCloneImporter second = CreateImporter(newer);
+        second.ResetForNewTarget();
+        await second.CloneAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newer.Calls.Any(c => c.Column == HistoryRowColumn.Code), Is.False,
+                "code is addressed by its hash and carries no block, so raising the target cannot stale it; refetching the whole column would cost every byte again to arrive at identical rows");
+            Assert.That(newer.Calls.Any(c => c.Column == HistoryRowColumn.AccountHistory), Is.True,
+                "columns whose rows carry a block do go stale when the target rises, so they must be re-streamed");
+        }
+    }
+
+    [Test]
     public async Task CloneAsync_PageTimeout_IsRetriedAndSucceedsWhenTheSourceRecovers()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, TimeoutFirstNCalls = 2 };
