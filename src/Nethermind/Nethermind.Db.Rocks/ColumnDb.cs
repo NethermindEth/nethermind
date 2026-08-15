@@ -38,6 +38,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Dispose()
     {
+        _reader.Dispose();
         _iteratorManager?.DisposeIfCreated();
         _seekIteratorManager.DisposeIfCreated();
     }
