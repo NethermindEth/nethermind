@@ -749,6 +749,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     internal byte[]? GetWithIterator(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags, out bool success)
     {
+        ThrowIfDisposing();
+
         success = true;
 
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
