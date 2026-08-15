@@ -1091,6 +1091,23 @@ public class TxValidatorTests
         Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
     }
 
+    private static IEnumerable<TestCaseData> NonceKeysEnvelopeCases()
+    {
+        yield return new TestCaseData(null, false, true).SetName("IsWellFormed_FrameTxLegacyNonce_BeforeEip8250_ReturnTrue");
+        yield return new TestCaseData(null, true, false).SetName("IsWellFormed_FrameTxLegacyNonce_AfterEip8250_ReturnFalse");
+        yield return new TestCaseData(new UInt256[] { 0 }, false, false).SetName("IsWellFormed_FrameTxKeyedNonce_BeforeEip8250_ReturnFalse");
+        yield return new TestCaseData(new UInt256[] { 0 }, true, true).SetName("IsWellFormed_FrameTxKeyedNonce_AfterEip8250_ReturnTrue");
+    }
+
+    [TestCaseSource(nameof(NonceKeysEnvelopeCases))]
+    public void IsWellFormed_FrameTxNonceKeys_GatedOnEip8250(UInt256[]? nonceKeys, bool eip8250Enabled, bool expectedWellFormed)
+    {
+        Transaction tx = new() { Type = TxType.FrameTx, NonceKeys = nonceKeys };
+        IReleaseSpec releaseSpec = new ReleaseSpec { IsEip8250Enabled = eip8250Enabled };
+
+        Assert.That(FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
+    }
+
     private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
     {
         byte[][] versionedHashes = new byte[blobCount][];
