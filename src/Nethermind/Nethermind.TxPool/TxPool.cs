@@ -82,6 +82,11 @@ namespace Nethermind.TxPool
         private bool _isDisposed;
         private long _pendingTransactionsAdded = 0;
 
+        // Count of pending frame txs carrying an EIP-8141 expiry deadline; lets the per-head expiry
+        // pass skip the pool walk entirely when there is nothing to expire (the case on every network
+        // where the fork is inactive). Maintained under the pool lock via the Inserted/Removed events.
+        private int _expiringFrameTxCount;
+
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
@@ -151,7 +156,7 @@ namespace Nethermind.TxPool
 
             _preHashFilters =
             [
-                new NotSupportedTxFilter(txPoolConfig, _logger),
+                new NotSupportedTxFilter(txPoolConfig, _specProvider, _logger),
                 new SizeTxFilter(txPoolConfig, _logger),
                 new GasLimitTxFilter(_headInfo, txPoolConfig, logManager),
                 new PriorityFeeTooLowFilter(_headInfo, txPoolConfig, _logger),
@@ -163,6 +168,7 @@ namespace Nethermind.TxPool
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
                 new MalformedTxFilter(_specProvider, validator, ecdsa, _logger),
+                new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
@@ -279,10 +285,19 @@ namespace Nethermind.TxPool
             return BlobCellMergeResult.Accepted;
         }
 
-        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args) => AddPendingDelegations(args.Value);
+        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
+        {
+            AddPendingDelegations(args.Value);
+            if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+        }
 
-        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        {
+            RemovePendingDelegations(args.Value);
+            if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
+        }
 
+        private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             if (_headInfo.IsSyncing)
@@ -344,6 +359,7 @@ namespace Nethermind.TxPool
 
                         ReAddReorganisedTransactions(args.PreviousBlock);
                         RemoveProcessedTransactions(args.Block);
+                        RemoveExpiredFrameTransactions(args.Block);
 
                         if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
                         {
@@ -490,6 +506,49 @@ namespace Nethermind.TxPool
             bool removed = RemoveTransaction(tx.Hash);
             _broadcaster.EnsureStopBroadcastUpToNonce(tx.SenderAddress!, tx.Nonce);
             return removed;
+        }
+
+        /// <summary>
+        /// Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.
+        /// </summary>
+        /// <remarks>
+        /// An expired frame tx can never be included (the expiry-verifier predeploy reverts once
+        /// <c>block.timestamp &gt; deadline</c>), so it is evicted rather than re-propagated
+        /// (ethereum/EIPs#12007, "Revalidation"). The predicate matches that revert condition exactly (not
+        /// <c>&gt;=</c>) so the pool never drops a tx the predeploy would accept.
+        /// The count guard skips the pool walk when no expiring frame tx is present.
+        /// EIP8141: a deadline-ordered index (evict without scanning) is deferred to the scalable eviction layer;
+        /// so is sweeping expired frame txs held only in the broadcaster's persistent-broadcast pool (locally
+        /// submitted, then cheap-evicted from <see cref="_transactions"/>), which this pass does not yet reach.
+        /// </remarks>
+        private void RemoveExpiredFrameTransactions(Block block)
+        {
+            if (Volatile.Read(ref _expiringFrameTxCount) == 0
+                || !_specProvider.GetSpec(block.Header).IsEip8141Enabled)
+            {
+                return;
+            }
+
+            ulong timestamp = block.Timestamp;
+            Transaction[] snapshot = _transactions.GetSnapshot();
+            for (int i = 0; i < snapshot.Length; i++)
+            {
+                Transaction tx = snapshot[i];
+                if (tx.SupportsFrames
+                    && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
+                    && timestamp > deadline)
+                {
+                    if (RemoveTransaction(tx.Hash))
+                    {
+                        // Surface as a genuine drop to eth_subscribe("droppedPendingTransactions"): an expired
+                        // frame tx can never be included. Unlike a capacity eviction it is deliberately left in
+                        // _hashCache (RemoveTransaction does not touch it) so it cannot re-enter the pool.
+                        EvictedPending?.Invoke(this, new TxEventArgs(tx));
+                        Metrics.PendingTransactionsEvicted++;
+                        if (_logger.IsTrace) _logger.Trace($"Evicted expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
+                    }
+                }
+            }
         }
 
         public void AddPeer(ITxPoolPeer peer)

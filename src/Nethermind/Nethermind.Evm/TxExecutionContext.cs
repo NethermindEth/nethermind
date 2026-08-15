@@ -11,11 +11,15 @@ namespace Nethermind.Evm
         Address origin,
         ICodeInfoRepository codeInfoRepository,
         byte[][]? blobVersionedHashes,
-        in UInt256 gasPrice)
+        in UInt256 gasPrice,
+        FrameTxContext? frameTxContext = null)
     {
         public readonly ValueHash256 Origin = origin.ToHash();
         public readonly ICodeInfoRepository CodeInfoRepository = codeInfoRepository;
         public readonly byte[][]? BlobVersionedHashes = blobVersionedHashes;
         public readonly UInt256 GasPrice = gasPrice;
+
+        /// <summary>Non-null only while processing an EIP-8141 frame transaction.</summary>
+        public readonly FrameTxContext? FrameTxContext = frameTxContext;
     }
 }

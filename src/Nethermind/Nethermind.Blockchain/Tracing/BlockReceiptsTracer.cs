@@ -15,9 +15,20 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
+public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
+
+    // EIP-8141: reported by the transaction processor before MarkAsSuccess/MarkAsFailed and
+    // attached to the receipt of the current frame transaction, then cleared.
+    private Address? _frameTxPayer;
+    private TxFrameReceipt[]? _frameTxReceipts;
+
+    public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+    {
+        _frameTxPayer = payer;
+        _frameTxReceipts = frameReceipts;
+    }
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
@@ -147,6 +158,14 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         if (gasConsumed.BlockStateGas > 0)
         {
             txReceipt.StorageGasUsed = gasConsumed.BlockStateGas;
+        }
+
+        if (transaction.Type == TxType.FrameTx)
+        {
+            txReceipt.Payer = _frameTxPayer;
+            txReceipt.FrameReceipts = _frameTxReceipts;
+            _frameTxPayer = null;
+            _frameTxReceipts = null;
         }
 
         return txReceipt;

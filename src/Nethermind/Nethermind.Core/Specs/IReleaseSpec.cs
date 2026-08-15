@@ -321,6 +321,11 @@ namespace Nethermind.Core.Specs
         bool IsEip8282Enabled { get; }
 
         /// <summary>
+        /// EIP-8141: frame transactions (abstract transaction validation, execution, and gas payment).
+        /// </summary>
+        bool IsEip8141Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }
