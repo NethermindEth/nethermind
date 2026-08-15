@@ -97,6 +97,26 @@ public class ArchiveCloneImporterTests
     }
 
     [Test]
+    public void CloneAsync_WhenThisNodesCaptureStartsAboveTheFrozenTarget_AbandonsThePassBeforeStreamingTheRest()
+    {
+        FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
+        SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
+        for (int i = 0; i < 40; i++)
+        {
+            source.Seed(HistoryRowColumn.StorageHistory, ([(byte)i, 7], [(byte)i]));
+        }
+
+        _availability.PublishPendingCaptureRange(9, 12);
+
+        ArchiveCloneImporter importer = CreateImporter(source);
+
+        Assert.That(async () => await importer.CloneAsync(CancellationToken.None), Throws.InstanceOf<ArchiveCloneTargetTooLowException>(),
+            "a target the local capture has already outrun can never be joined, so every further column streamed would be discarded");
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory).Get(new byte[] { 0, 7 }), Is.Null,
+            "the pass must stop at the column boundary rather than fetch rows it already knows will be thrown away");
+    }
+
+    [Test]
     public void CloneAsync_WhenSourceCursorDoesNotAdvance_AbandonsTheImportInsteadOfScanningForever()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RepeatCursorForever = true };

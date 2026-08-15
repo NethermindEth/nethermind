@@ -91,6 +91,7 @@ public sealed class ArchiveCloneCoordinator : IDisposable
         long lastDiagnosticsTimestamp = 0;
         while (!token.IsCancellationRequested)
         {
+            ArchiveCloneImporter? importer = null;
             try
             {
                 Action<string>? diagnostics = null;
@@ -106,11 +107,21 @@ public sealed class ArchiveCloneCoordinator : IDisposable
                 // while the pass went on to publish the frozen target as covered.
                 ArchiveCloneImporter.TryReadStoredTargetWatermark(_metadataDb, out ulong resumeWatermark);
 
-                if (_selector.TryGetEligibleCloneSource(_rowFormat.FormatVersion, resumeWatermark, NHistPeerSelector.NoExclusions, out PeerInfo peer, out INHistSyncPeer syncPeer, diagnostics))
+                // A pass that freezes a target below this node's own capture start is doomed before it sends a
+                // single request: the two ranges cannot touch, so the whole stream is thrown away and re-fetched.
+                // The capture floor is already known here, so require a source that reaches it and wait for one
+                // rather than spending hours on a pass whose result is discarded.
+                ulong requiredWatermark = resumeWatermark;
+                if (resumeWatermark == 0 && _availability.TryGetPendingCaptureRange(out ulong captureFirst, out _) && captureFirst > 0)
+                {
+                    requiredWatermark = captureFirst - 1;
+                }
+
+                if (_selector.TryGetEligibleCloneSource(_rowFormat.FormatVersion, requiredWatermark, NHistPeerSelector.NoExclusions, out PeerInfo peer, out INHistSyncPeer syncPeer, diagnostics))
                 {
                     NHistArchiveCloneSource source = NHistArchiveCloneSource.FromPeer(peer, syncPeer);
                     if (_logger.IsInfo) _logger.Info($"Full archive clone starting from peer {peer} (row format {source.RowFormatVersion}, source watermark {source.Watermark}).");
-                    ArchiveCloneImporter importer = new(
+                    importer = new ArchiveCloneImporter(
                         source, _history, _codeDb, _metadataDb, _config, _pruner, _availability, _rowFormat, _verifier, _logManager);
                     ulong targetWatermark = await importer.CloneAsync(token);
                     if (_logger.IsInfo) _logger.Info($"Full archive clone from peer {peer} completed at watermark {targetWatermark}.");
@@ -133,6 +144,14 @@ public sealed class ArchiveCloneCoordinator : IDisposable
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 return;
+            }
+            catch (ArchiveCloneTargetTooLowException e)
+            {
+                // The frozen target can no longer meet this node's capture, so every further row it fetches would
+                // be discarded. Drop the target here rather than on the retry path, otherwise the next pass would
+                // resume the same doomed one.
+                if (_logger.IsInfo) _logger.Info($"Abandoning the current archive clone target. {e.Message}");
+                importer?.ResetForNewTarget();
             }
             catch (Exception e)
             {

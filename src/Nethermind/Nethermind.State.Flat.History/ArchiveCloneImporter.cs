@@ -123,6 +123,7 @@ public sealed class ArchiveCloneImporter
 
         foreach (HistoryRowColumn column in ColumnsInCloneOrder)
         {
+            ThrowIfTargetCannotReachCapture(targetWatermark);
             await CloneColumnAsync(column, cancellationToken);
         }
 
@@ -199,6 +200,15 @@ public sealed class ArchiveCloneImporter
 
         watermark = 0;
         return false;
+    }
+
+    private void ThrowIfTargetCannotReachCapture(ulong targetWatermark)
+    {
+        if (!_availability.TryGetPendingCaptureRange(out ulong captureFirst, out _)) return;
+        if (captureFirst <= targetWatermark + 1) return;
+
+        throw new ArchiveCloneTargetTooLowException(
+            $"This node's own capture starts at block {captureFirst}, above the frozen clone target {targetWatermark}, so the two ranges can never touch; abandoning the pass before streaming the remaining columns rather than fetching rows that would be discarded.");
     }
 
     private ulong ReadOrStoreTargetWatermark()
@@ -589,3 +599,5 @@ public sealed class ArchiveCloneImporter
         return key;
     }
 }
+
+public sealed class ArchiveCloneTargetTooLowException(string message) : Exception(message);
