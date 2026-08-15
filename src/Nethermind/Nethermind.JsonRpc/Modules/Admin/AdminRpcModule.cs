@@ -204,7 +204,7 @@ public class AdminRpcModule : IAdminRpcModule
         bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
         return unsubscribed
             ? ResultWrapper<bool>.Success(true)
-            : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
+            : ResultWrapper<bool>.Fail(ErrorMessages.SubscriptionNotFound, ErrorCodes.ResourceNotFound, isTemporary: true);
     }
 
     public JsonRpcContext Context { get; set; }
