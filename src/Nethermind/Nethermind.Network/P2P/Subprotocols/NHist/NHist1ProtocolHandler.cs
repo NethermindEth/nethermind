@@ -41,13 +41,11 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     private const string TooManyInFlightMessage = "Too many concurrent nhist requests in flight for this peer.";
     private const string RowsTimeoutDisconnectMessage = "nhist history row requests keep timing out.";
     private const int MaxInFlightRequestsPerPeer = IHistoryServer.MaxInFlightRequestsPerPeer;
-    // Sized to outlast a serving node's periodic persist window (~60s of starved reads observed live):
-    // recycling the session costs a redial round-trip, so it must only happen when the transport is
-    // genuinely dead, not on every flush cycle of a busy source.
-    private const int MaxConsecutiveRowsTimeouts = 5;
+    private const int MaxConsecutiveRowsTimeouts = 2;
     private static readonly TimeSpan ServedBytesWindow = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ScanDeadline = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan SlowServeLogThreshold = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan RowsResponseTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RowsRequestCleanupThreshold = RowsResponseTimeout * 1.5;
     private static readonly long TicksPerWindow = (long)(Stopwatch.Frequency * ServedBytesWindow.TotalSeconds);
@@ -327,9 +325,9 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
                 message.Column, message.StartKey, message.EndKey, cursor, byteLimit, NHistMessageLimits.MaxResponseRowEntries, scanDeadline.Token);
 
             TimeSpan served = Stopwatch.GetElapsedTime(serveStarted);
-            if (served > ServeTimeout && Logger.IsInfo)
+            if (served > SlowServeLogThreshold && Logger.IsInfo)
             {
-                Logger.Info($"nhist spent {served.TotalSeconds:F1}s scanning {message.Column} for {Session}, past its {ServeTimeout.TotalSeconds:F0}s deadline; the requester has likely given up on this page already.");
+                Logger.Info($"nhist spent {served.TotalSeconds:F1}s scanning {message.Column} for {Session}, returning {entries.Count} entries (refused={refused}); the scan deadline is {ScanDeadline.TotalSeconds:F0}s and the requester gives up at {RowsResponseTimeout.TotalSeconds:F0}s.");
             }
 
             if (entries.Count == 0 && !refused && Logger.IsInfo)

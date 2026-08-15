@@ -463,12 +463,6 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                (bool Result, NodeStatsEventType? DelayReason) delay = peer.Stats.IsConnectionDelayed(nowUTC);
-                if (delay.Result)
-                {
-                    LogStaticPeerSkip(peer, $"reconnection is delayed ({delay.DelayReason})");
-                    continue;
-                }
 
                 // The queued dial only marks IsAwaitingConnection once a worker picks it up, so back-to-back
                 // loop iterations would re-queue (and re-log) the same peer during that window.
