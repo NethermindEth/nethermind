@@ -19,7 +19,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
-    private readonly DbOnTheRocks.IteratorManager _iteratorManager;
+    private readonly Lazy<DbOnTheRocks.IteratorManager>? _iteratorManager;
     private readonly RocksDbReader _reader;
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
@@ -30,11 +30,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _columnFamily = _rocksDb.GetColumnFamily(name);
         Name = name;
 
-        _iteratorManager = new DbOnTheRocks.IteratorManager(_rocksDb, _columnFamily, _mainDb._readAheadReadOptions);
+        _iteratorManager = _mainDb.CreateLazyReadAheadIteratorManager(_columnFamily);
         _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, _iteratorManager, _columnFamily);
     }
 
-    public void Dispose() => _iteratorManager.Dispose();
+    public void Dispose() => _iteratorManager?.DisposeIfCreated();
     public string Name { get; }
 
     byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags) => _reader.Get(key, flags);
