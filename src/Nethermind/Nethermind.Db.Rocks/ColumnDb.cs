@@ -34,7 +34,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _reader = new RocksDbReader(mainDb, mainDb.CreateReadOptions, _iteratorManager, _columnFamily);
     }
 
-    public void Dispose() => _iteratorManager?.DisposeIfCreated();
+    public void Dispose()
+    {
+        _reader.Dispose();
+        _iteratorManager?.DisposeIfCreated();
+    }
     public string Name { get; }
 
     byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags) => _reader.Get(key, flags);
