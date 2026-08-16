@@ -263,6 +263,7 @@ public sealed partial class KeccakHash
     internal static void KeccakF1600Avx512F(Span<ulong> state)
     {
         Debug.Assert(state.Length == 25);
+        Debug.Assert(RoundConstantVec.Length == ROUNDS && ROUNDS % 2 == 0);
 
         ref ulong s = ref MemoryMarshal.GetReference(state);
 
@@ -276,6 +277,8 @@ public sealed partial class KeccakHash
             Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20)),
             Vector256.CreateScalar(Unsafe.Add(ref s, 24)));
 
+        // The const bound lets the JIT hoist the vector constants out of the loop;
+        // bounding by RoundConstantVec.Length makes it re-load all of them every iteration.
         ref Vector512<ulong> roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstantVec);
         for (int round = 0; round < ROUNDS; round += 2)
         {
