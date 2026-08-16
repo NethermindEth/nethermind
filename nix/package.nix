@@ -4,10 +4,11 @@
 {
   lib,
   buildDotnetModule,
-  dotnetCorePackages,
+  callPackage,
   sourceRevision ? null,
 }:
 let
+  dotnet = callPackage ./dotnet-11-preview7.nix { };
   buildProps = builtins.readFile ../src/Nethermind/Directory.Build.props;
   getXmlValue =
     name:
@@ -41,8 +42,8 @@ buildDotnetModule {
 
   nugetDeps = ./nuget-deps.json;
 
-  dotnet-sdk = dotnetCorePackages.sdk_10_0-bin;
-  dotnet-runtime = dotnetCorePackages.aspnetcore_10_0-bin;
+  dotnet-sdk = dotnet.sdk;
+  dotnet-runtime = dotnet.aspnetcore;
 
   dotnetFlags = lib.optionals (sourceRevision != null) [ "-p:SourceRevisionId=${sourceRevision}" ];
 

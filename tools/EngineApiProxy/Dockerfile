@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0.100-preview.7 AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -18,7 +18,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     dotnet publish tools/EngineApiProxy -c $BUILD_CONFIG -a $arch -o /publish --sc false \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-preview.7
 
 WORKDIR /engineproxy
 
