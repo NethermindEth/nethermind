@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -20,7 +19,6 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
     IKademliaDiscovery<PublicKey, Node> kademliaDiscovery,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
-    IDiscv5RecordFilter recordFilter,
     ILogManager logManager)
     : IKademliaNodeSource
 {
@@ -157,11 +155,6 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
 
         try
         {
-            if (recordFilter.Excludes(record))
-            {
-                return false;
-            }
-
             return Node.TryFromDiscoveryEnr(record, out discoveryCandidate);
         }
         catch (Exception e)

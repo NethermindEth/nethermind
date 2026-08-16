@@ -9,7 +9,6 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
@@ -51,7 +50,6 @@ public class BootnodeDiscoveryV5NodeSourceTests
             EmptyDiscovery.Instance,
             new DiscoveryConfig(),
             new KademliaConfig<Node> { CurrentNodeId = currentNode },
-            ExecutionLayerDiscv5RecordFilter.Instance,
             LimboLogs.Instance);
 
         Node? emitted = null;
