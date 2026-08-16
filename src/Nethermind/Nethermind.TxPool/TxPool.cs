@@ -703,13 +703,6 @@ namespace Nethermind.TxPool
             }
             finally
             {
-                if (accepted)
-                {
-                    if (tx.CarriesBlobs)
-                        _blobTransactionSnapshot = null;
-                    else
-                        _transactionSnapshot = null;
-                }
                 _newHeadLock.ExitReadLock();
             }
 

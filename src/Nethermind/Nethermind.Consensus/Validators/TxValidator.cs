@@ -97,7 +97,6 @@ public sealed class TxValidator : ITxValidator
             // The frame-tx decoder always populates both blob fields, so the presence-based
             // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
             FrameTxFieldsTxValidator.Instance,
-            FrameTxEnvelopeTxValidator.Instance,
             MempoolBlobTxProofVersionValidator.Instance,
             MempoolBlobTxValidator.Instance
         ]));

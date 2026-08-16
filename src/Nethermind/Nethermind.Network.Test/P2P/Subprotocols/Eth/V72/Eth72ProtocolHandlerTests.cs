@@ -56,7 +56,7 @@ public class Eth72ProtocolHandlerTests
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
     private IGossipPolicy _gossipPolicy = null!;
-    private ISpecProvider _specProvider = null!;
+    private IChainHeadSpecProvider _specProvider = null!;
     private ITxPoolConfig _txPoolConfig = null!;
     private Block _genesisBlock = null!;
     private Eth72ProtocolHandler _handler = null!;
@@ -70,7 +70,7 @@ public class Eth72ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider = Substitute.For<IChainHeadSpecProvider>();
         _svc = Build.A.SerializationService().WithEth72(_specProvider).TestObject;
 
         NetworkDiagTracer.IsEnabled = true;

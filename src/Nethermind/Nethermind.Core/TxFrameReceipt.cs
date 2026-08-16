@@ -40,4 +40,30 @@ public class TxFrameReceipt(byte status, ulong gasUsed, LogEntry[] logs)
 
         return StatusSuccess;
     }
+
+    /// <summary>The transaction's log set: the frame logs in frame order.</summary>
+    /// <remarks>
+    /// Derived rather than accumulated in parallel, so a frame whose logs are dropped — such as one in
+    /// an unrolled atomic batch — also drops out of the bloom.
+    /// </remarks>
+    public static LogEntry[] ConcatLogs(TxFrameReceipt[] frameReceipts)
+    {
+        int total = 0;
+        foreach (TxFrameReceipt frameReceipt in frameReceipts)
+        {
+            total += frameReceipt.Logs.Length;
+        }
+
+        if (total == 0) return [];
+
+        LogEntry[] logs = new LogEntry[total];
+        int offset = 0;
+        foreach (TxFrameReceipt frameReceipt in frameReceipts)
+        {
+            frameReceipt.Logs.CopyTo(logs, offset);
+            offset += frameReceipt.Logs.Length;
+        }
+
+        return logs;
+    }
 }
