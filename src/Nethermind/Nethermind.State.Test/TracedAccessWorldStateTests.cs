@@ -110,6 +110,29 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    [TestCase(1ul, 1ul, false, TestName = "SetNonce_UnchangedValue_RecordsNoNonceChange")]
+    [TestCase(1ul, 2ul, true, TestName = "SetNonce_ChangedValue_RecordsNonceChange")]
+    public void SetNonce_RecordsNonceChange_OnlyWhenValueChanges(
+        ulong initialNonce, ulong newNonce, bool expectRecorded)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 0, initialNonce));
+        using (scope)
+        {
+            tws.SetNonce(TestItem.AddressA, newNonce);
+
+            AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac?.NonceChange is not null, Is.EqualTo(expectRecorded));
+                if (expectRecorded)
+                {
+                    Assert.That(ac!.NonceChange!.Value.Value, Is.EqualTo(newNonce));
+                }
+            }
+        }
+    }
+
     [Test]
     public void InsertCode_RecordsCodeChange()
     {
