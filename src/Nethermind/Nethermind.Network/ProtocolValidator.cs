@@ -86,7 +86,9 @@ namespace Nethermind.Network
             if (!ValidateGenesisHash(session, syncPeerArgs))
                 return false;
 
-            if (!MustValidateForkId(syncPeerArgs.ProtocolVersion))
+            // The negotiated version, not the one the peer put in its status - that field is unvalidated,
+            // so gating on it would let a peer opt out of fork ID validation by claiming an older version.
+            if (!MustValidateForkId(syncPeerArgs.Subprotocol.ProtocolVersion))
                 return true;
 
             if (syncPeerArgs.ForkId is null)
