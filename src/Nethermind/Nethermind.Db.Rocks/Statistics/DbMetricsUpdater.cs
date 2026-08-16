@@ -12,7 +12,7 @@ using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, bool isUsingSharedBlockCache, ILogger logger)
+public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, RocksDb db, IColumnFamilyHandle? cf, IDbConfig dbConfig, bool isUsingSharedBlockCache, ILogger logger)
     : IDisposable
     where T : Options<T>
 {
@@ -190,7 +190,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         long numKeys = Prop("rocksdb.estimate-num-keys");
         long liveFiles = 0;
         // num_levels is configurable above the default 7; querying only levels 0..6 would undercount L7+.
-        int numLevels = RocksDbInterop.GetNumLevels(dbOptions.Handle);
+        int numLevels = dbOptions.GetNumLevels();
         for (int level = 0; level < numLevels; level++)
         {
             liveFiles += Math.Max(0, Prop($"rocksdb.num-files-at-level{level}"));

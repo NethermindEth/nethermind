@@ -17,7 +17,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
-    internal readonly ColumnFamilyHandle _columnFamily;
+    internal readonly IColumnFamilyHandle _columnFamily;
 
     private readonly DbOnTheRocks.IteratorManager _iteratorManager;
     private readonly RocksDbReader _reader;
@@ -67,7 +67,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         get
         {
-            ColumnFamilyHandle[] columnFamilies = new ColumnFamilyHandle[keys.Length];
+            IColumnFamilyHandle[] columnFamilies = new IColumnFamilyHandle[keys.Length];
             Array.Fill(columnFamilies, _columnFamily);
             return _rocksDb.MultiGet(keys, columnFamilies);
         }
@@ -137,9 +137,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void SetWriteBuffer(long sizeBytes)
     {
-        string[] keys = ["write_buffer_size", "max_bytes_for_level_base"];
-        string[] values = [sizeBytes.ToString(), (sizeBytes * 4).ToString()];
-        RocksDbInterop.SetOptionsCf(_rocksDb.Handle, _columnFamily.Handle, keys, values);
+        KeyValuePair<string, string>[] options =
+        [
+            new("write_buffer_size", sizeBytes.ToString()),
+            new("max_bytes_for_level_base", (sizeBytes * 4).ToString()),
+        ];
+        _rocksDb.SetOptions(_columnFamily, options);
     }
 
     public byte[]? FirstKey

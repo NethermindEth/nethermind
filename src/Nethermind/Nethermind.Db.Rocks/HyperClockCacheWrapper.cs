@@ -2,26 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Microsoft.Win32.SafeHandles;
-using Nethermind.RocksDbBindings.Native;
-
-using static Nethermind.RocksDbBindings.Native.RocksDbNative;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
 public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
 {
-    private static readonly Lock _nativeCacheLock = new();
-
+    private readonly Cache _cache;
     private readonly long _capacity;
 
-    public unsafe HyperClockCacheWrapper(ulong capacity = 32_000_000) : base(ownsHandle: true)
+    public HyperClockCacheWrapper(ulong capacity = 32_000_000) : base(ownsHandle: true)
     {
-        lock (_nativeCacheLock)
-        {
-            SetHandle((nint)rocksdb_cache_create_hyper_clock((nuint)capacity, 0));
-        }
+        _cache = Cache.CreateHyperClock(capacity);
+        SetHandle(_cache.Handle);
         // If the native call returned a zero/null handle, SafeHandle won't call ReleaseHandle,
         // so don't add pressure either — keep add/remove balanced.
         _capacity = IsInvalid ? 0 : (long)capacity;
@@ -30,24 +24,21 @@ public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
 
     public nint Handle => DangerousGetHandle();
 
-    protected override unsafe bool ReleaseHandle()
+    protected override bool ReleaseHandle()
     {
-        lock (_nativeCacheLock)
-        {
-            rocksdb_cache_destroy((rocksdb_cache_t*)handle);
-        }
+        _cache.Dispose();
         if (_capacity > 0) GC.RemoveMemoryPressure(_capacity);
         return true;
     }
 
-    public unsafe long GetUsage()
+    public long GetUsage()
     {
         bool addedRef = false;
         try
         {
             // Keep the cache alive if disposal races this call.
             DangerousAddRef(ref addedRef);
-            return (long)rocksdb_cache_get_usage((rocksdb_cache_t*)DangerousGetHandle());
+            return (long)_cache.GetUsage();
         }
         finally
         {

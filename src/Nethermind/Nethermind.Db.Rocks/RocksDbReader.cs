@@ -25,12 +25,12 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DbOnTheRocks.IteratorManager? iteratorManager = null,
-    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
+    IColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
     private readonly DbOnTheRocks.IteratorManager? _iteratorManager = iteratorManager;
-    private readonly ColumnFamilyHandle? _columnFamily = columnFamily;
+    private readonly IColumnFamilyHandle? _columnFamily = columnFamily;
 
     private readonly ReadOptions _options = options;
     private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
@@ -40,7 +40,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
         DbOnTheRocks.IteratorManager? iteratorManager = null,
-        ColumnFamilyHandle? columnFamily = null)
+        IColumnFamilyHandle? columnFamily = null)
         : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
     {
         _ownsReadOptions = true;
@@ -54,8 +54,8 @@ public class RocksDbReader(DbOnTheRocks mainDb,
             return;
         }
 
-        RocksDbInterop.DestroyReadOptions(_options);
-        RocksDbInterop.DestroyReadOptions(_hintCacheMissOptions);
+        _options.Dispose();
+        _hintCacheMissOptions.Dispose();
     }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -113,10 +113,9 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
     {
         ReadOptions readOptions = _readOptionsFactory();
-
-        RocksDbInterop.SetIterateBounds(readOptions, firstKey, lastKey, out nint iterateLowerBound, out nint iterateUpperBound);
+        readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
+        return new RocksdbSortedView(iterator, readOptions);
     }
 }

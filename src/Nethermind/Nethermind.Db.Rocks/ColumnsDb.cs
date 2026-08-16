@@ -43,11 +43,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         long total = 0;
         foreach (KeyValuePair<T, ColumnDb> kv in _columnDbs)
         {
-            long value = long.TryParse(_db.GetProperty(propertyName, kv.Value._columnFamily), out long parsedValue)
-                ? parsedValue
-                : 0;
-
-            total += value;
+            total += _db.TryGetIntProperty(propertyName, kv.Value._columnFamily, out ulong value) ? (long)value : 0;
         }
 
         return total;
@@ -114,11 +110,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     protected override void ApplyOptions(IDictionary<string, string> options)
     {
-        string[] keys = options.Select<KeyValuePair<string, string>, string>(static e => e.Key).ToArray();
-        string[] values = options.Select<KeyValuePair<string, string>, string>(static e => e.Value).ToArray();
         foreach (KeyValuePair<T, ColumnDb> cols in _columnDbs)
         {
-            RocksDbInterop.SetOptionsCf(_db.Handle, cols.Value._columnFamily.Handle, keys, values);
+            _db.SetOptions(cols.Value._columnFamily, options);
         }
         base.ApplyOptions(options);
     }
@@ -263,9 +257,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
-            // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
-            RocksDbInterop.DestroyReadOptions(_sharedReadOptions);
-            RocksDbInterop.DestroyReadOptions(_sharedCacheMissReadOptions);
+            _sharedReadOptions.Dispose();
+            _sharedCacheMissReadOptions.Dispose();
 
             _snapshot.Dispose();
         }

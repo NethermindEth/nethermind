@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
-using Nethermind.RocksDbBindings;
+
+using INativeMergeOperator = Nethermind.RocksDbBindings.IMergeOperator;
 
 namespace Nethermind.Db.Rocks;
 
-// Also see RocksDbSharp.MergeOperatorImpl
-internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
+// Also see Nethermind.RocksDbBindings.MergeOperators.MergeOperatorImpl
+internal class MergeOperatorAdapter(IMergeOperator inner) : INativeMergeOperator
 {
     public string Name => inner.Name;
 
@@ -31,10 +31,7 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
             data.AsSpan().CopyTo(result);
 
             resultLength = result.Length;
-
-            // Fixing RocksDbSharp invalid callback signature, TODO: submit an issue/PR
-            Unsafe.SkipInit(out success);
-            Unsafe.As<byte, byte>(ref success) = 1;
+            success = 1;
 
             return (nint)resultPtr;
         }
@@ -60,5 +57,5 @@ internal class MergeOperatorAdapter(IMergeOperator inner) : MergeOperator
         return GetResult(result, out newValueLength, out success);
     }
 
-    unsafe void MergeOperator.DeleteValue(nint value, nuint valueLength) => NativeMemory.Free((void*)value);
+    unsafe void INativeMergeOperator.DeleteValue(nint value, nuint valueLength) => NativeMemory.Free((void*)value);
 }
