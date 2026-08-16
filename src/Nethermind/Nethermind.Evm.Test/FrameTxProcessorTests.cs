@@ -496,6 +496,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x06, 3UL, TestName = "Execute_FrameParam_AllowedScope")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_FrameParam_AtomicBatch")]
     [TestCase((byte)0x08, 0UL, TestName = "Execute_FrameParam_Value")]
+    [TestCase((byte)0x09, 0UL, TestName = "Execute_FrameParam_StateGasLimit")]
     public void Execute_FrameParamIntrospection_ReadsCompletedFrame(byte param, ulong expected)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -509,6 +510,22 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         AssertStorage(Observer, 0, (UInt256)expected);
+    }
+
+    [Test]
+    public void Execute_FrameParam_StateGasLimit_ReadsDeclaredStateBudget()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x09).PushData(1).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDefault, 0, Observer, 200_000, 50_000, UInt256.Zero, default));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, (UInt256)50_000);
     }
 
     [Test]

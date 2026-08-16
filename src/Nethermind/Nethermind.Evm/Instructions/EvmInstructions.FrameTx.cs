@@ -217,14 +217,14 @@ public static unsafe partial class EvmInstructions
         // Spec stack order: frameIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 frameIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
-        if (param > 0x08) return EvmExceptionType.BadInstruction;
+        if (param > 0x09) return EvmExceptionType.BadInstruction;
 
         int index = (int)frameIndex.u0;
         TxFrame frame = ctx.Frames[index];
         return param.u0 switch
         {
             0x00 => stack.PushAddress<TTracingInst>(ctx.ResolvedTarget(index)),
-            0x01 => stack.PushUInt256<TTracingInst>((UInt256)frame.GasLimit),
+            0x01 => stack.PushUInt256<TTracingInst>((UInt256)frame.ExecutionGasLimit),
             0x02 => stack.PushUInt32<TTracingInst>(frame.Mode),
             0x03 => stack.PushUInt32<TTracingInst>(frame.Flags),
             0x04 => stack.PushUInt256<TTracingInst>((UInt256)frame.Data.Length),
@@ -232,6 +232,7 @@ public static unsafe partial class EvmInstructions
             0x06 => stack.PushUInt32<TTracingInst>(frame.AllowedApproveScope),
             0x07 => stack.PushUInt32<TTracingInst>((uint)(frame.IsAtomicBatch ? 1 : 0)),
             0x08 => stack.PushUInt256<TTracingInst>(frame.Value),
+            0x09 => stack.PushUInt256<TTracingInst>((UInt256)frame.StateGasLimit),
             _ => EvmExceptionType.BadInstruction,
         };
     }

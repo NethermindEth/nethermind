@@ -155,7 +155,7 @@ public static class FrameTxValidation
 
             if (frame.Mode == TxFrame.ModeVerify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
             {
-                if (frame.Flags != 0 || !frame.Value.IsZero || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
+                if (frame.Flags != 0 || !frame.Value.IsZero || frame.StateGasLimit != 0 || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
                 {
                     error = InvalidExpiryFrame;
                     return false;
@@ -170,8 +170,9 @@ public static class FrameTxValidation
                 hasExpiryFrame = true;
             }
 
-            ulong accumulated = totalFrameGas + frame.GasLimit;
-            if (accumulated < totalFrameGas)
+            ulong frameGas = frame.ExecutionGasLimit + frame.StateGasLimit;
+            ulong accumulated = totalFrameGas + frameGas;
+            if (frameGas < frame.ExecutionGasLimit || accumulated < totalFrameGas)
             {
                 error = FrameGasOverflow;
                 return false;
@@ -250,8 +251,10 @@ public static class FrameTxValidation
     };
 
     /// <summary>
-    /// An upper bound on the public-mempool validation work of <paramref name="transaction"/>: the gas limits
-    /// of its validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
+    /// An upper bound on the public-mempool validation work of <paramref name="transaction"/>: the execution-gas
+    /// limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) of its validation prefix plus the cost of verifying its signatures,
+    /// saturating at <see cref="ulong.MaxValue"/>. The prefix's <c>limits.state</c> is bounded separately by
+    /// <c>MAX_VERIFY_STATE_GAS</c> and does not enter this budget.
     /// </summary>
     /// <remarks>
     /// Derived from the frame layout alone, so no state is read. Each layout of EIP-8141 "Public
@@ -269,7 +272,7 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].GasLimit);
+            total = Saturating(total, frames[i].ExecutionGasLimit);
         }
 
         foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
@@ -401,8 +404,9 @@ public static class FrameTxValidation
             tokens += CountCalldataTokens(frame.Data.Span, spec);
             dataLength += (ulong)frame.Data.Length;
 
-            ulong accumulated = totalFrameGas + frame.GasLimit;
-            if (accumulated < totalFrameGas)
+            ulong frameGas = frame.ExecutionGasLimit + frame.StateGasLimit;
+            ulong accumulated = totalFrameGas + frameGas;
+            if (frameGas < frame.ExecutionGasLimit || accumulated < totalFrameGas)
             {
                 return false;
             }
