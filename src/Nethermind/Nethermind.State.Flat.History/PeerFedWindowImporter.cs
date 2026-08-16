@@ -374,7 +374,7 @@ public sealed class PeerFedWindowImporter
     /// an imported row is byte-identical to what forward capture would have written for the same change.</summary>
     private void AppendTouches(ulong block, List<ChangesetAccountEntry> entries, List<RawTouch> touches)
     {
-        Span<byte> accountKeyBuffer = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        Span<byte> accountKeyBuffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
         Span<byte> storageKeyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> storageValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
 
@@ -384,7 +384,7 @@ public sealed class PeerFedWindowImporter
 
             if (entry.AccountChanged)
             {
-                byte[] flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKeyBuffer, addrHash).ToArray();
+                byte[] flatKey = HistoryKeyLayout.EncodeAccountKey(accountKeyBuffer, addrHash).ToArray();
                 byte[] preValue = entry.AccountPreValue.IsEmpty ? [] : entry.AccountPreValue.ToArray();
                 touches.Add(new RawTouch(flatKey, block, preValue, IsAccount: true));
             }

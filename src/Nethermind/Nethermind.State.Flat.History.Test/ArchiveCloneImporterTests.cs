@@ -14,6 +14,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -66,9 +67,9 @@ public class ArchiveCloneImporterTests
     {
         byte[] code = [0x60, 0x00];
         source.Seed(HistoryRowColumn.Code, (ValueKeccak.Compute(code).BytesAsSpan.ToArray(), code));
-        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [4]));
-        source.Seed(HistoryRowColumn.StorageHistory, ([5, 6, 7], [8]));
-        source.Seed(HistoryRowColumn.StorageClears, ([9, 10, 11], [12]));
+        source.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [4]));
+        source.Seed(HistoryRowColumn.StorageHistory, (RowKey(HistoryRowColumn.StorageHistory, 5, 6, 7), [8]));
+        source.Seed(HistoryRowColumn.StorageClears, (RowKey(HistoryRowColumn.StorageClears, 9, 10, 11), [12]));
     }
 
     [Test]
@@ -86,6 +87,22 @@ public class ArchiveCloneImporterTests
             "a column the source answered with nothing is not complete; marking it done would carry the hole forward forever, so the next pass has to ask again");
     }
 
+    /// <summary>Right-pads a fixture's short, readable key to the width its column's rows actually carry, so the
+    /// importer sees production-shaped rows while these tests keep expressing ordering in one or two bytes.</summary>
+    private static byte[] RowKey(HistoryRowColumn column, params byte[] leading)
+    {
+        int width = column switch
+        {
+            HistoryRowColumn.AccountHistory or HistoryRowColumn.StorageClears => HistoryKeyLayout.AccountKeyLength + sizeof(ulong),
+            HistoryRowColumn.StorageHistory => BaseFlatPersistence.StorageKeyLength + sizeof(ulong),
+            _ => leading.Length,
+        };
+
+        byte[] key = new byte[width];
+        leading.CopyTo(key, 0);
+        return key;
+    }
+
     private void SeedAgreedBlock(FakeCloneSource source, ulong block, ValueHash256 root)
     {
         byte[] key = new byte[8];
@@ -98,26 +115,26 @@ public class ArchiveCloneImporterTests
     public void CloneAsync_WhenSourceCannotServeFullClone_RefusesWithoutTouchingAnyColumn()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { SupportsFullClone = false };
-        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [9, 9]));
 
         ArchiveCloneImporter importer = CreateImporter(source);
 
         Assert.That(async () => await importer.CloneAsync(CancellationToken.None), Throws.InstanceOf<InvalidConfigurationException>(),
             "a windowed/partial source must be refused outright rather than silently imported as if it were a complete history");
-        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.Null, "no row may land locally before the refusal check");
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3)), Is.Null, "no row may land locally before the refusal check");
     }
 
     [Test]
     public void CloneAsync_WhenSourceWatermarkDoesNotRiseAboveTheLocalFloor_RefusesWithoutTouchingAnyColumn()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 0 };
-        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [9, 9]));
 
         ArchiveCloneImporter importer = CreateImporter(source);
 
         Assert.That(async () => await importer.CloneAsync(CancellationToken.None), Throws.InstanceOf<InvalidConfigurationException>(),
             "an empty range is the one input the sampled-root check cannot inspect, so it must be refused up front instead of importing rows no sample can ever cover");
-        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.Null, "no row may land locally before the refusal check");
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3)), Is.Null, "no row may land locally before the refusal check");
     }
 
     [Test]
@@ -127,7 +144,7 @@ public class ArchiveCloneImporterTests
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
         for (int i = 0; i < 40; i++)
         {
-            source.Seed(HistoryRowColumn.StorageHistory, ([(byte)i, 7], [(byte)i]));
+            source.Seed(HistoryRowColumn.StorageHistory, (RowKey(HistoryRowColumn.StorageHistory, (byte)i, 7), [(byte)i]));
         }
 
         _availability.PublishPendingCaptureRange(9, 12);
@@ -136,7 +153,7 @@ public class ArchiveCloneImporterTests
 
         Assert.That(async () => await importer.CloneAsync(CancellationToken.None), Throws.InstanceOf<ArchiveCloneTargetTooLowException>(),
             "a target the local capture has already outrun can never be joined, so every further column streamed would be discarded");
-        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory).Get(new byte[] { 0, 7 }), Is.Null,
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory).Get(RowKey(HistoryRowColumn.StorageHistory, 0, 7)), Is.Null,
             "the pass must stop at the column boundary rather than fetch rows it already knows will be thrown away");
     }
 
@@ -145,7 +162,7 @@ public class ArchiveCloneImporterTests
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RepeatCursorForever = true };
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
-        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [9, 9]));
 
         ArchiveCloneImporter importer = CreateImporter(source);
         using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
@@ -171,10 +188,9 @@ public class ArchiveCloneImporterTests
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5 };
         for (int i = 0; i < 40; i++)
         {
-            byte[] key = [(byte)(i * 6), 0, 0];
-            source.Seed(HistoryRowColumn.AccountHistory, (key, [(byte)i]));
-            source.Seed(HistoryRowColumn.StorageHistory, (key, [(byte)(i + 1)]));
-            source.Seed(HistoryRowColumn.StorageClears, (key, [(byte)(i + 2)]));
+            source.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, (byte)(i * 6)), [(byte)i]));
+            source.Seed(HistoryRowColumn.StorageHistory, (RowKey(HistoryRowColumn.StorageHistory, (byte)(i * 6)), [(byte)(i + 1)]));
+            source.Seed(HistoryRowColumn.StorageClears, (RowKey(HistoryRowColumn.StorageClears, (byte)(i * 6)), [(byte)(i + 2)]));
             byte[] code = [(byte)(i + 3)];
             source.Seed(HistoryRowColumn.Code, (ValueKeccak.Compute(code).BytesAsSpan.ToArray(), code));
         }
@@ -191,10 +207,9 @@ public class ArchiveCloneImporterTests
         {
             for (int i = 0; i < 40; i++)
             {
-                byte[] key = [(byte)(i * 6), 0, 0];
-                Assert.That(accountHistory.Get(key), Is.EqualTo(new byte[] { (byte)i }), $"AccountHistory row {i} spread across the full byte range must land in whichever shard covers it");
-                Assert.That(storageHistory.Get(key), Is.EqualTo(new byte[] { (byte)(i + 1) }));
-                Assert.That(storageClears.Get(key), Is.EqualTo(new byte[] { (byte)(i + 2) }));
+                Assert.That(accountHistory.Get(RowKey(HistoryRowColumn.AccountHistory, (byte)(i * 6))), Is.EqualTo(new byte[] { (byte)i }), $"AccountHistory row {i} spread across the full byte range must land in whichever shard covers it");
+                Assert.That(storageHistory.Get(RowKey(HistoryRowColumn.StorageHistory, (byte)(i * 6))), Is.EqualTo(new byte[] { (byte)(i + 1) }));
+                Assert.That(storageClears.Get(RowKey(HistoryRowColumn.StorageClears, (byte)(i * 6))), Is.EqualTo(new byte[] { (byte)(i + 2) }));
                 byte[] code = [(byte)(i + 3)];
                 Assert.That(_codeDb.Get(ValueKeccak.Compute(code).BytesAsSpan), Is.EqualTo(code), "code is keyed by its own hash");
             }
@@ -223,7 +238,7 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_InterruptedBeforeAvailableBlocksCompletes_LeavesAFreshReaderSeeingNothingCovered()
     {
         FakeCloneSource throwingSource = new(_rowFormat.FormatVersion) { Watermark = 5 };
-        throwingSource.Seed(HistoryRowColumn.AccountHistory, ([1], [1]));
+        throwingSource.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1), [1]));
         throwingSource.ThrowOnColumn = HistoryRowColumn.AvailableBlocks;
 
         ArchiveCloneImporter interrupted = CreateImporter(throwingSource);
@@ -242,7 +257,7 @@ public class ArchiveCloneImporterTests
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, singleShardConfig);
 
         List<(byte[] Key, byte[] Value)> rows = [];
-        for (byte i = 0; i < 12; i++) rows.Add(([i], [i]));
+        for (byte i = 0; i < 12; i++) rows.Add((RowKey(HistoryRowColumn.AccountHistory, i), [i]));
 
         // Call 1 is the empty Code column, so the throw lands on the third AccountHistory page.
         FakeCloneSource throwingSource = new(rowFormat.FormatVersion) { PageSize = 3, ThrowOnCallNumber = 4, Watermark = 5 };
@@ -300,7 +315,7 @@ public class ArchiveCloneImporterTests
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
         FakeCloneSource newer = new(_rowFormat.FormatVersion) { Watermark = 99 };
-        newer.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [7]));
+        newer.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [7]));
         SeedAgreedBlock(newer, 99, ValueKeccak.Compute("root99"u8));
         ArchiveCloneImporter second = CreateImporter(newer);
         second.ResetForNewTarget();
@@ -312,7 +327,7 @@ public class ArchiveCloneImporterTests
             Assert.That(republished, Is.EqualTo(99UL));
             Assert.That(_availability.TryGetWatermark(out ulong watermark), Is.True);
             Assert.That(watermark, Is.EqualTo(99UL), "the new pass publishes the fresh source watermark the re-streamed rows actually cover");
-            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get([1, 2, 3]), Is.EqualTo(new byte[] { 7 }));
+            Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3)), Is.EqualTo(new byte[] { 7 }));
         }
     }
 
@@ -326,7 +341,7 @@ public class ArchiveCloneImporterTests
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
         FakeCloneSource newer = new(_rowFormat.FormatVersion) { Watermark = 99 };
-        newer.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [7]));
+        newer.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [7]));
         SeedAgreedBlock(newer, 99, ValueKeccak.Compute("root99"u8));
         ArchiveCloneImporter second = CreateImporter(newer);
         second.ResetForNewTarget();
@@ -345,12 +360,12 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_PageTimeout_IsRetriedAndSucceedsWhenTheSourceRecovers()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, TimeoutFirstNCalls = 2 };
-        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [9, 9]));
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
-        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3)), Is.EqualTo(new byte[] { 9, 9 }),
             "a page timeout (a paused or briefly overloaded source) must be retried at page level, not tear the whole stream down");
     }
 
@@ -358,12 +373,12 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_RefusedPage_IsRetriedAndSucceedsWhenTheSourceRecovers()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 2 };
-        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [9, 9]));
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
-        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3)), Is.EqualTo(new byte[] { 9, 9 }),
             "a transiently refusing source (server-side deadline, cancellation) must be retried, not treated as fatal");
     }
 
@@ -371,12 +386,12 @@ public class ArchiveCloneImporterTests
     public async Task CloneAsync_RefusalStreakLongerThanTheTimeoutBudget_IsWaitedOut()
     {
         FakeCloneSource source = new(_rowFormat.FormatVersion) { Watermark = 5, RefuseFirstNCalls = 6 };
-        source.Seed(HistoryRowColumn.AccountHistory, ([1, 2, 3], [9, 9]));
+        source.Seed(HistoryRowColumn.AccountHistory, (RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3), [9, 9]));
         SeedAgreedBlock(source, 5, ValueKeccak.Compute("root"u8));
 
         await CreateImporter(source).CloneAsync(CancellationToken.None);
 
-        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(new byte[] { 1, 2, 3 }), Is.EqualTo(new byte[] { 9, 9 }),
+        Assert.That(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).Get(RowKey(HistoryRowColumn.AccountHistory, 1, 2, 3)), Is.EqualTo(new byte[] { 9, 9 }),
             "refusal is explicit backpressure from a live source; a persist window longer than the timeout budget must be waited out, not treated as fatal");
     }
 

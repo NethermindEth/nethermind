@@ -26,6 +26,7 @@ public sealed class HistoryScopeGate
     private long _epoch0Active;
     private long _epoch1Active;
     private int _currentEpoch;
+    private int _strandedEpoch = -1;
 
     /// <summary>
     /// Marks a historical read scope as open, returning the epoch it joined for the matching
@@ -61,18 +62,21 @@ public sealed class HistoryScopeGate
     internal bool TryDrainForFloorAdvance(TimeSpan timeout, CancellationToken token)
     {
         int drainEpoch = FlipEpoch();
+        int strandedEpoch = _strandedEpoch;
         Stopwatch stopwatch = Stopwatch.StartNew();
-        while (ActiveInEpoch(drainEpoch) > 0)
+        while (ActiveInEpoch(drainEpoch) > 0 || (strandedEpoch >= 0 && ActiveInEpoch(strandedEpoch) > 0))
         {
             if (token.IsCancellationRequested || stopwatch.Elapsed >= timeout)
             {
                 Volatile.Write(ref _currentEpoch, drainEpoch);
+                _strandedEpoch = 1 - drainEpoch;
                 return false;
             }
 
             Thread.Sleep(10);
         }
 
+        _strandedEpoch = -1;
         return true;
     }
 

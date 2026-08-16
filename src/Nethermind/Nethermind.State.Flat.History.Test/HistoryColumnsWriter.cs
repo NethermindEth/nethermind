@@ -23,8 +23,8 @@ internal static class HistoryColumnsWriter
     {
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
 
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-            stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
+            stackalloc byte[HistoryKeyLayout.AccountKeyLength], address.ToAccountPath);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
@@ -62,8 +62,8 @@ internal static class HistoryColumnsWriter
     {
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
 
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-            stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
+            stackalloc byte[HistoryKeyLayout.AccountKeyLength], address.ToAccountPath);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         store.RecordChange(block, flatKey, rawRow, batch.GetColumnBatch(FlatHistoryColumns.AccountHistory));
@@ -118,7 +118,7 @@ internal static class HistoryColumnsWriter
     public static (HistoryAvailability Availability, HistoryRowFormat RowFormat) CreateSharedFormat(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config)
     {
         HistoryAvailability availability = new(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
-        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config.HistoryRetentionBlocks > 0);
+        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
         return (availability, rowFormat);
     }
 
@@ -128,8 +128,8 @@ internal static class HistoryColumnsWriter
     {
         HistoryStoreV3 store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory));
 
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-            stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
+            stackalloc byte[HistoryKeyLayout.AccountKeyLength], address.ToAccountPath);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
@@ -184,15 +184,4 @@ internal static class HistoryColumnsWriter
         using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
         accountColumn.PutSpan(flatKey, rlp);
     }
-}
-
-internal sealed class TestCaptureStatus : IStateHistoryCaptureStatus
-{
-    public bool CaptureHealthy { get; set; } = true;
-
-#pragma warning disable CS0067
-    public event Action<ulong>? WatermarkAdvanced;
-
-    public event Action? CaptureDisabled;
-#pragma warning restore CS0067
 }

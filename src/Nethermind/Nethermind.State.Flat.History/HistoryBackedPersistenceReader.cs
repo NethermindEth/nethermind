@@ -175,7 +175,7 @@ internal sealed class RestrictedHistoryBackedPersistenceReader : IPersistence.IP
     /// was pruned along with the general window. O(scope count) in memory only - no DB read on this path.</summary>
     private void RequireRetainedBySlice(Address address)
     {
-        ReadOnlySpan<byte> key = address.ToAccountPath.Bytes[..BaseFlatPersistence.AccountKeyLength];
+        ReadOnlySpan<byte> key = address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength];
         for (int i = 0; i < _sliceScopes.Count; i++)
         {
             ScopeFloor scope = _sliceScopes[i];

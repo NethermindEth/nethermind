@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using Nethermind.Core.Exceptions;
+using Nethermind.Db;
 
 namespace Nethermind.State.Flat.History;
 
@@ -15,10 +17,25 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 public sealed class HistoryRowFormat
 {
-    private const int BlockBytes = sizeof(ulong);
+    /// <exception cref="InvalidConfigurationException">The resolved format is v3 on a layout other than
+    /// <see cref="FlatLayout.Flat"/>.</exception>
+    public static HistoryRowFormat Resolve(HistoryAvailability availability, IFlatDbConfig config)
+    {
+        HistoryRowFormat format = new(availability.ResolveFormatVersion(config.HistoryRetentionBlocks > 0));
 
-    public static HistoryRowFormat Resolve(HistoryAvailability availability, bool windowingConfigured) =>
-        new(availability.ResolveFormatVersion(windowingConfigured));
+        if (format.IsV3 && config.Layout != FlatLayout.Flat)
+        {
+            throw new InvalidConfigurationException(
+                $"Flat history resolves to the windowed (v3) row format, which is only sound on FlatDb.Layout={nameof(FlatLayout.Flat)}; " +
+                $"this node is configured for {config.Layout}. A v3 read that finds no captured change above the queried block falls " +
+                $"through to the live flat Account column, and that column is keyed by the raw address under the preimage layouts and " +
+                $"holds no accounts at all under {nameof(FlatLayout.FlatInTrie)} - so every account unchanged since the queried block " +
+                $"would read as absent instead of failing. Set FlatDb.Layout={nameof(FlatLayout.Flat)}, or run unwindowed " +
+                "(HistoryRetentionBlocks=0, no HistorySliceAddresses) on a database that has never been stamped windowed.", -1);
+        }
+
+        return format;
+    }
 
     private HistoryRowFormat(byte formatVersion)
     {

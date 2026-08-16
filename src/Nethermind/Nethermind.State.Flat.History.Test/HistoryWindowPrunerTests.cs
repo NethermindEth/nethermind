@@ -300,8 +300,8 @@ public class HistoryWindowPrunerTests
     public void PruneClearsColumn_KeepsOnlyTheNewestBelowFloorClearPerAccount_AndItAloneStillAnswersAQuery()
     {
         StorageClearStore clears = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageClears));
-        Span<byte> accountKeyBuffer = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
-        byte[] flatAccountKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKeyBuffer, Address.ToAccountPath).ToArray();
+        Span<byte> accountKeyBuffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
+        byte[] flatAccountKey = HistoryKeyLayout.EncodeAccountKey(accountKeyBuffer, Address.ToAccountPath).ToArray();
 
         RecordClear(clears, flatAccountKey, block: 3);
         RecordClear(clears, flatAccountKey, block: 7);
@@ -482,8 +482,8 @@ public class HistoryWindowPrunerTests
 
     private static byte[] AccountKey()
     {
-        Span<byte> buffer = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
-        return BaseFlatPersistence.EncodeAccountKeyHashed(buffer, Address.ToAccountPath).ToArray();
+        Span<byte> buffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
+        return HistoryKeyLayout.EncodeAccountKey(buffer, Address.ToAccountPath).ToArray();
     }
 
     private static byte[] StorageKey()

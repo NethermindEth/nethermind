@@ -20,7 +20,9 @@ public class WindowBackfillCoordinatorTests
     private static WindowBackfillCoordinator CreateCoordinator(IFlatDbConfig config, bool windowingConfigured)
     {
         HistoryAvailability availability = new(new SnapshotableMemDb());
-        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, windowingConfigured);
+        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(
+            availability,
+            new FlatDbConfig { HistoryRetentionBlocks = windowingConfigured ? 1UL : 0UL });
         ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
         pool.InitializedPeers.Returns([]);
         NHistPeerSelector selector = new(pool);

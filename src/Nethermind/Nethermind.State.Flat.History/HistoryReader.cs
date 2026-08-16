@@ -104,8 +104,8 @@ public sealed class HistoryReader
     [SkipLocalsInit]
     public bool TryGetAccount(ulong block, Address address, out AccountStruct account)
     {
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-            stackalloc byte[BaseFlatPersistence.AccountKeyLength], address.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
+            stackalloc byte[HistoryKeyLayout.AccountKeyLength], address.ToAccountPath);
 
         Span<byte> valueBuffer = stackalloc byte[AccountValueBufferSize];
         int written = _isV3
@@ -124,7 +124,7 @@ public sealed class HistoryReader
     private int TryGetAccountV3(ulong block, ReadOnlySpan<byte> flatKey, Span<byte> valueBuffer)
     {
         int written = _accountHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
-        return written >= 0 ? written : _persistedAccounts!.Get(flatKey, valueBuffer);
+        return written >= 0 ? written : _persistedAccounts!.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), valueBuffer);
     }
 
     /// <summary>
@@ -154,8 +154,8 @@ public sealed class HistoryReader
             // pre-value rows for this account above the destruct block — silently falling through would omit
             // slots rather than answer wrong, but fail closed instead: a caller cannot tell "no history" from
             // "history exists but was too large to record" otherwise.
-            ReadOnlySpan<byte> destructAccountKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-                stackalloc byte[BaseFlatPersistence.AccountKeyLength], addrHash);
+            ReadOnlySpan<byte> destructAccountKey = HistoryKeyLayout.EncodeAccountKey(
+                stackalloc byte[HistoryKeyLayout.AccountKeyLength], addrHash);
             if (_storageClears.HasPoisonedClearAbove(destructAccountKey, block))
                 throw new StateUnavailableException(
                     $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
@@ -177,8 +177,8 @@ public sealed class HistoryReader
 
         // A self-destruct between the slot's last write and the read block kills the value. The live column
         // expresses the destruct as a range-delete, which leaves no per-slot tombstone in the history.
-        ReadOnlySpan<byte> accountKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-            stackalloc byte[BaseFlatPersistence.AccountKeyLength], addrHash);
+        ReadOnlySpan<byte> accountKey = HistoryKeyLayout.EncodeAccountKey(
+            stackalloc byte[HistoryKeyLayout.AccountKeyLength], addrHash);
         bool mayHaveClear = clearsCache?.HasAnyClearUpTo(addrHash, accountKey, _storageClears, block) ?? true;
         if (mayHaveClear && _storageClears.HasClearInRange(accountKey, changedAtBlock, block))
         {

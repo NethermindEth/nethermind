@@ -174,7 +174,7 @@ public class HistoryBackedPersistenceReaderTests
 
         for (int i = 0; i < 200; i++)
         {
-            byte[] unrelatedKey = new byte[BaseFlatPersistence.AccountKeyLength];
+            byte[] unrelatedKey = new byte[HistoryKeyLayout.ScopeKeyLength];
             BitConverter.TryWriteBytes(unrelatedKey, i);
             availability.PublishScope(unrelatedKey, floor: 0);
         }
@@ -321,11 +321,8 @@ public class RestrictedHistoryBackedPersistenceReaderTests
 
     private static IReadOnlyList<ScopeFloor> SliceScopes() => [new ScopeFloor(AccountKeyOf(SlicedAddress), Floor: 0, IsGeneral: false)];
 
-    private static byte[] AccountKeyOf(Address address)
-    {
-        Span<byte> buffer = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
-        return BaseFlatPersistence.EncodeAccountKeyHashed(buffer, address.ToAccountPath).ToArray();
-    }
+    private static byte[] AccountKeyOf(Address address) =>
+        address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
 
     private RestrictedHistoryBackedPersistenceReader Reader(ulong block, IReadOnlyList<ScopeFloor> sliceScopes) =>
         Reader(block, sliceScopes, new HistoryScopeGate(), Keccak.EmptyTreeHash);

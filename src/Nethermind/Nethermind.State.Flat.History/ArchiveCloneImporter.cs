@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
@@ -40,6 +41,12 @@ public sealed class ArchiveCloneImporter
     private static ReadOnlySpan<byte> ShardCursorKeyPrefix => "archiveclone:cursor:"u8;
     private static ReadOnlySpan<byte> ColumnDoneKeyPrefix => "archiveclone:done:"u8;
     private static ReadOnlySpan<byte> TargetWatermarkKey => "archiveclone:watermark"u8;
+
+    // A row-format bump forces the operator to delete the flatHistory database, but this pass's own progress lives
+    // in the Metadata database, which that deletion leaves behind. Without this stamp the surviving done markers
+    // make the next pass fetch nothing at all and then fail verification against an empty index - blaming the peer
+    // for what is stale local state, with no way out of the retry loop.
+    private static ReadOnlySpan<byte> FormatVersionKey => "archiveclone:format"u8;
 
     private readonly IArchiveCloneSource _source;
     private readonly IColumnsDb<FlatHistoryColumns> _history;
@@ -217,6 +224,8 @@ public sealed class ArchiveCloneImporter
 
     private ulong ReadOrStoreTargetWatermark()
     {
+        DiscardProgressFromAnotherFormat();
+
         if (TryReadStoredTargetWatermark(_metadata, out ulong storedWatermark))
         {
             return storedWatermark;
@@ -228,6 +237,36 @@ public sealed class ArchiveCloneImporter
         _metadata.PutSpan(TargetWatermarkKey, value);
         _metadata.SyncWal();
         return watermark;
+    }
+
+    /// <summary>The exact key width a column's rows must arrive at, or <c>null</c> for the columns whose shape is
+    /// already checked (<see cref="HistoryRowColumn.AvailableBlocks"/> skips anything that is not a block marker,
+    /// <see cref="HistoryRowColumn.Code"/> is content-addressed).</summary>
+    private static int? ExpectedRowKeyLength(HistoryRowColumn column) => column switch
+    {
+        HistoryRowColumn.AccountHistory => HistoryKeyLayout.AccountKeyLength + BlockBytes,
+        HistoryRowColumn.StorageHistory => BaseFlatPersistence.StorageKeyLength + BlockBytes,
+        HistoryRowColumn.StorageClears => HistoryKeyLayout.AccountKeyLength + BlockBytes,
+        _ => null,
+    };
+
+    /// <summary>Drops progress recorded by a pass that ran under a different row format - see
+    /// <see cref="FormatVersionKey"/>. Code keeps its progress across the reset by
+    /// <see cref="ResetForNewTarget"/>'s own rule, which holds here too: code is content-addressed and lives in
+    /// its own database, so a format bump cannot invalidate a byte of it.</summary>
+    private void DiscardProgressFromAnotherFormat()
+    {
+        byte[]? stamped = _metadata.Get(FormatVersionKey);
+        if (stamped is [byte version] && version == _rowFormat.FormatVersion) return;
+
+        if (_logger.IsInfo && stamped is not null)
+        {
+            _logger.Info($"Archive clone: discarding progress recorded under row format {stamped[0]}; this node now resolves format {_rowFormat.FormatVersion}.");
+        }
+
+        ResetForNewTarget();
+        _metadata.PutSpan(FormatVersionKey, [_rowFormat.FormatVersion]);
+        _metadata.SyncWal();
     }
 
     public ArchiveCloneVerdict VerifyAndBan(ArchiveCloneVerifier verifier, int sampleCount, IArchiveClonePeerSink? peerSink)
@@ -478,6 +517,13 @@ public sealed class ArchiveCloneImporter
                         {
                             throw new InvalidOperationException(
                                 $"The clone source served a code row whose value does not hash to its key; the source is serving forged code and the import was abandoned.");
+                        }
+
+                        if (ExpectedRowKeyLength(column) is int expectedKeyLength && entry.Key.Length != expectedKeyLength)
+                        {
+                            throw new InvalidOperationException(
+                                $"The clone source served a {column} row keyed by {entry.Key.Length} bytes, not the {expectedKeyLength} this row format uses. " +
+                                "A wrong-width row is invisible to every reader and to the pruner - it would sit on disk forever, unreadable and unreclaimable - so the import was abandoned.");
                         }
 
                         WriteRow(batch, entry);

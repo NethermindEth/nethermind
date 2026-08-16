@@ -694,7 +694,7 @@ public class HistoryWriterTests
         (HistoryWriter windowed, _) = CreateWindowedPair(retentionBlocks: 100);
         windowed.SeedGenesis([], StateAt(0).StateRoot);
 
-        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)3),
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)HistoryAvailability.WindowedFormatVersion),
             "precondition: a windowed writer's seed must stamp the windowed format version");
 
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
@@ -702,7 +702,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
         windowed.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)3),
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)HistoryAvailability.WindowedFormatVersion),
             "further captures on a windowed writer must never regress the stamp back to the plain format version");
     }
 
@@ -713,7 +713,7 @@ public class HistoryWriterTests
         _writer.SeedGenesis([], StateAt(0).StateRoot);
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)2),
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)HistoryAvailability.FormatVersion),
             "a writer with no window configured must retain today's shipped format version unchanged");
     }
 
@@ -746,7 +746,7 @@ public class HistoryWriterTests
         // at construction time, so writing to it first would flip the resolved encoding out from under this test.
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(5, 500)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(5, 500)));
         Span<byte> slotValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         int slotValueLength = BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero([0xAA]), RlpWrapSlots, slotValueBuffer);
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), slotValueBuffer[..slotValueLength]);
@@ -782,7 +782,7 @@ public class HistoryWriterTests
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
         // "Persisted flat, as of the old watermark (block 0)": AddrA's value before this round's only change.
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(0, 100)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(0, 100)));
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 111))]);
@@ -794,7 +794,7 @@ public class HistoryWriterTests
         bool foundAtZero = windowedReader.TryGetAccount(0, AddrA, out AccountStruct atZero);
 
         // Now simulate the flat persist catching up to what this round captured.
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(1, 111)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(1, 111)));
 
         bool foundAtOne = windowedReader.TryGetAccount(1, AddrA, out AccountStruct atOne);
 
@@ -873,7 +873,7 @@ public class HistoryWriterTests
             storageChanges: [(AddrA, Slot1, HistorySlot(0x0a)), (AddrA, Slot2, HistorySlot(0x0b))]);
         windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(1, 100)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(1, 100)));
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0a));
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot2), EncodedHistorySlot(0x0b));
 
@@ -885,7 +885,7 @@ public class HistoryWriterTests
         bool foundSlot2Below = windowedReader.TryGetStorage(1, AddrA, Slot2, out SlotValue slot2Below);
 
         // Simulate the destruct's own persist (account tombstone + storage range-delete) catching up.
-        _db.GetColumnDb(FlatDbColumns.Account).Remove(AccountKey(AddrA));
+        _db.GetColumnDb(FlatDbColumns.Account).Remove(FlatAccountKey(AddrA));
         _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot1));
         _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot2));
 
@@ -975,7 +975,7 @@ public class HistoryWriterTests
     {
         HistoryWriter windowedWriter = CreateWindowedWriterWithSidecar(retentionBlocks: 1000);
 
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(0, 100)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(0, 100)));
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 111))]);
@@ -1332,6 +1332,12 @@ public class HistoryWriterTests
     }
 
     private static byte[] AccountKey(Address address)
+    {
+        Span<byte> buffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
+        return HistoryKeyLayout.EncodeAccountKey(buffer, address.ToAccountPath).ToArray();
+    }
+
+    private static byte[] FlatAccountKey(Address address)
     {
         Span<byte> buffer = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         return BaseFlatPersistence.EncodeAccountKeyHashed(buffer, address.ToAccountPath).ToArray();

@@ -38,7 +38,7 @@ public class FlatHistoryModule : Module
             .AddSingleton<HistoryAvailability>(ctx =>
                 new HistoryAvailability(ctx.Resolve<IColumnsDb<FlatHistoryColumns>>().GetColumnDb(FlatHistoryColumns.AvailableBlocks)))
             .AddSingleton<HistoryRowFormat>(ctx =>
-                HistoryRowFormat.Resolve(ctx.Resolve<HistoryAvailability>(), ctx.Resolve<IFlatDbConfig>().HistoryRetentionBlocks > 0))
+                HistoryRowFormat.Resolve(ctx.Resolve<HistoryAvailability>(), ctx.Resolve<IFlatDbConfig>()))
             .AddSingleton<HistoryReader>()
             .AddSingleton<HistoryWriter>()
             .AddSingleton<HistoryScopeGate>()

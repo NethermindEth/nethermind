@@ -181,7 +181,7 @@ public sealed class HistoryWindowPruner : IDisposable
     }
 
     private static byte[] AccountKeyOf(Address address) =>
-        address.ToAccountPath.Bytes[..BaseFlatPersistence.AccountKeyLength].ToArray();
+        address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
 
     /// <summary>Blocks (briefly — only against an already-in-flight prune pass, bounded by its own budget) until
     /// the gate is claimed for backfill, then marks it active for the duration of the returned scope. Multiple
@@ -617,7 +617,7 @@ public sealed class HistoryWindowPruner : IDisposable
         byte[]? currentGroupKey = null;
         bool currentGroupHasFloorRow = false;
         ulong currentGroupFloor = floor;
-        Span<byte> addressKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        Span<byte> addressKey = stackalloc byte[HistoryKeyLayout.ScopeKeyLength];
         int sinceFlush = 0;
 
         using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound);
@@ -684,7 +684,7 @@ public sealed class HistoryWindowPruner : IDisposable
     /// </summary>
     private bool PruneClearsColumn(ulong floor, IPruneBudget budget, CancellationToken token)
     {
-        const int accountKeyLength = BaseFlatPersistence.AccountKeyLength;
+        const int accountKeyLength = HistoryKeyLayout.AccountKeyLength;
         ISortedKeyValueStore sorted = (ISortedKeyValueStore)_storageClears;
         byte[]? cursor = ReadCursor(ClearsCursorKey);
 

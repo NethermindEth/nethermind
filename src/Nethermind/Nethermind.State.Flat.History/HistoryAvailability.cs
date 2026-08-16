@@ -20,12 +20,13 @@ namespace Nethermind.State.Flat.History;
 /// </summary>
 public sealed class HistoryAvailability
 {
-    // v2: no ChangeSets columns, descending block suffix — v1 data is unreadable under v2 seeks.
-    internal const byte FormatVersion = 2;
+    // No ChangeSets columns, descending block suffix, and a whole-trie-path account key — data stamped 3 or below
+    // keys accounts by a truncated path and is unreadable under these seeks.
+    internal const byte FormatVersion = 4;
 
     // Stamped the first time a retention floor is ever published on this DB. Older, floor-unaware binaries must
     // refuse a windowed DB outright (VerifyFormat rejects it) rather than silently read pruned rows as absent.
-    internal const byte WindowedFormatVersion = 3;
+    internal const byte WindowedFormatVersion = 5;
 
     private const int BlockBytes = sizeof(ulong);
     private const int RootBytes = 32;
@@ -41,7 +42,7 @@ public sealed class HistoryAvailability
     // of this one - see SliceScopeConfig's remarks.
     private static ReadOnlySpan<byte> ScopeRecordPrefix => "history:floor:scope:"u8;
     private const int ScopeRecordPrefixLength = 20;
-    private const int ScopeRecordKeyLength = ScopeRecordPrefixLength + BaseFlatPersistence.AccountKeyLength;
+    private const int ScopeRecordKeyLength = ScopeRecordPrefixLength + HistoryKeyLayout.ScopeKeyLength;
     private const int ScopeRecordValueLength = BlockBytes;
 
     // A peer-fed backfill importer can publish a connected, contiguous imported range that extends the window
@@ -423,8 +424,26 @@ public sealed class HistoryAvailability
 
     private static void EncodeScopeRecordKey(ReadOnlySpan<byte> accountKey, Span<byte> buffer)
     {
+        RequireScopeKey(accountKey);
         ScopeRecordPrefix.CopyTo(buffer);
-        accountKey[..BaseFlatPersistence.AccountKeyLength].CopyTo(buffer[ScopeRecordPrefixLength..]);
+        accountKey.CopyTo(buffer[ScopeRecordPrefixLength..]);
+    }
+
+    /// <summary>
+    /// A scope is keyed by <see cref="HistoryKeyLayout.ScopeKeyLength"/> bytes, narrower than an account row's
+    /// whole path, because a storage row only carries that much of its address. Silently truncating a wider key
+    /// here would let every write path "succeed" while <see cref="ResolveScope(ReadOnlySpan{byte}, ulong)"/> - which
+    /// compares whole keys - resolves that same address to the general floor instead, and the slice's rows would be
+    /// pruned with no exception and no failing test. Narrow explicitly, via
+    /// <see cref="HistoryKeyLayout.ExtractAddressKey"/>, and the mismatch cannot happen.
+    /// </summary>
+    private static void RequireScopeKey(ReadOnlySpan<byte> key)
+    {
+        if (key.Length != HistoryKeyLayout.ScopeKeyLength)
+        {
+            throw new ArgumentException(
+                $"A retention scope is keyed by exactly {HistoryKeyLayout.ScopeKeyLength} bytes; got {key.Length}.", nameof(key));
+        }
     }
 
     private void InvalidateScopeCache()
@@ -461,7 +480,7 @@ public sealed class HistoryAvailability
     private ScopeFloor[] ScanScopeRecords()
     {
         List<ScopeFloor> scopes = [];
-        byte[] upperBound = new byte[ScopeRecordPrefixLength + BaseFlatPersistence.AccountKeyLength + 1];
+        byte[] upperBound = new byte[ScopeRecordPrefixLength + HistoryKeyLayout.ScopeKeyLength + 1];
         ScopeRecordPrefix.CopyTo(upperBound);
         upperBound.AsSpan(ScopeRecordPrefixLength).Fill(0xFF);
 
@@ -484,6 +503,7 @@ public sealed class HistoryAvailability
     /// general floor so a per-group hot-path caller (the pruner) never re-reads the DB for it.</summary>
     public ScopeFloor ResolveScope(ReadOnlySpan<byte> key, ulong knownGeneralFloor)
     {
+        RequireScopeKey(key);
         ScopeFloor[] scopes = GetScopesArray();
         for (int i = 0; i < scopes.Length; i++)
         {
@@ -495,7 +515,7 @@ public sealed class HistoryAvailability
 
     public ScopeFloor ResolveScope(ReadOnlySpan<byte> key) => ResolveScope(key, GeneralFloorOrZero());
 
-    public ScopeFloor ResolveScope(in ValueHash256 accountHash) => ResolveScope(accountHash.Bytes[..BaseFlatPersistence.AccountKeyLength]);
+    public ScopeFloor ResolveScope(in ValueHash256 accountHash) => ResolveScope(accountHash.Bytes[..HistoryKeyLayout.ScopeKeyLength]);
 
     private ulong GeneralFloorOrZero()
     {
@@ -532,7 +552,8 @@ public sealed class HistoryAvailability
     /// it would read as a pre-release layout on restart. The caller (not this method) decides which version is
     /// current for the DB — see the field comment on <see cref="HistoryWriter"/>'s format-version field for why
     /// this can never default to the plain <see cref="FormatVersion"/>: doing so would silently downgrade a
-    /// windowed DB's stamp back to 2 on the very next captured block after a prune pass bumped it to 3.</remarks>
+    /// windowed DB's stamp back to <see cref="FormatVersion"/> on the very next captured block after a prune pass
+    /// bumped it to <see cref="WindowedFormatVersion"/>.</remarks>
     public static void MarkBlock(IWriteBatch batch, ulong block, in ValueHash256 stateRoot, byte formatVersion)
     {
         Span<byte> key = stackalloc byte[BlockBytes];

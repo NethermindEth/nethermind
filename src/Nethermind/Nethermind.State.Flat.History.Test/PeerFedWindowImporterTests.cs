@@ -249,8 +249,8 @@ public class PeerFedWindowImporterTests
 
     private static byte[] FlatAccountKey(Address address)
     {
-        Span<byte> buffer = stackalloc byte[Nethermind.State.Flat.Persistence.BaseFlatPersistence.AccountKeyLength];
-        return Nethermind.State.Flat.Persistence.BaseFlatPersistence.EncodeAccountKeyHashed(buffer, address.ToAccountPath).ToArray();
+        Span<byte> buffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
+        return HistoryKeyLayout.EncodeAccountKey(buffer, address.ToAccountPath).ToArray();
     }
 
     // Builds pre-values on the wire - the only field this importer reads (see AppendTouches) - so a caller

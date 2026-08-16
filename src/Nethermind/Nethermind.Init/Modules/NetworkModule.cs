@@ -101,8 +101,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<SnapV1.StorageRangeMessage, SnapV1.StorageRangesMessageSerializer>()
             .AddMessageSerializer<SnapV1.TrieNodesMessage, SnapV1.TrieNodesMessageSerializer>()
 
-            .AddMessageSerializer<NHist.GetHistoryRangeAtHeightMessage, NHist.GetHistoryRangeAtHeightMessageSerializer>()
-            .AddMessageSerializer<NHist.HistoryRangeAtHeightMessage, NHist.HistoryRangeAtHeightMessageSerializer>()
             .AddMessageSerializer<NHist.GetChangesetsMessage, NHist.GetChangesetsMessageSerializer>()
             .AddMessageSerializer<NHist.ChangesetsMessage, NHist.ChangesetsMessageSerializer>()
             .AddMessageSerializer<NHist.NHistStatusMessage, NHist.NHistStatusMessageSerializer>()

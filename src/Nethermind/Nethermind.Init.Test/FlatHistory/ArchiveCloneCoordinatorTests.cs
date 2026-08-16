@@ -19,7 +19,7 @@ public class ArchiveCloneCoordinatorTests
     private static ArchiveCloneCoordinator CreateCoordinator(IFlatDbConfig config)
     {
         HistoryAvailability availability = new(new SnapshotableMemDb());
-        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config.HistoryRetentionBlocks > 0);
+        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
         ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
         pool.InitializedPeers.Returns([]);
         NHistPeerSelector selector = new(pool);

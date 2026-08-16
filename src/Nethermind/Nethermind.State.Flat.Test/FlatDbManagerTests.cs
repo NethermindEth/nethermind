@@ -64,7 +64,7 @@ public class FlatDbManagerTests
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
-        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, _config.HistoryRetentionBlocks > 0);
+        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, _config);
         _historyReader = new HistoryReader(_historyDb, _historyColumns, _config, availability, rowFormat, LimboLogs.Instance);
         _accountStore = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
         _storageStore = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
@@ -547,8 +547,8 @@ public class FlatDbManagerTests
 
     private void RecordAccount(ulong block, Account? account)
     {
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(
-            stackalloc byte[BaseFlatPersistence.AccountKeyLength], HistoryAddr.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
+            stackalloc byte[HistoryKeyLayout.AccountKeyLength], HistoryAddr.ToAccountPath);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);

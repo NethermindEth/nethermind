@@ -31,6 +31,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // Internal so tests can exercise the exact boundary without duplicating the number.
     internal const int DestructSlotEnumerationCap = 10_000;
 
+    private const int PendingPreValueBufferSize = 512;
+
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly HistoryStore? _accountHistory;
     private readonly HistoryStore? _storageHistory;
@@ -377,7 +379,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (!_isV3)
             {
-                Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+                Span<byte> accountKey = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
                 foreach (KeyValuePair<Address, Account> allocation in allocations)
                 {
                     RecordAccount(0, allocation.Key.ToAccountPath, allocation.Value, accountKey, in columns);
@@ -431,7 +433,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         HistoryColumnBatches columns = new(batch);
         HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion);
 
-        Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        Span<byte> accountKey = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
         foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
         {
             // Value == true means the account had no persisted storage before the destruct; PersistenceManager
@@ -439,7 +441,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (destructed.Value) continue;
 
             ValueHash256 addrHash = destructed.Key.Key.ToAccountPath;
-            ReadOnlySpan<byte> destructedAccountKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, addrHash);
+            ReadOnlySpan<byte> destructedAccountKey = HistoryKeyLayout.EncodeAccountKey(accountKey, addrHash);
             _storageClears.RecordClear(block, destructedAccountKey, columns.StorageClears);
 
             if (_isV3)
@@ -558,7 +560,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         // v3 + sidecar only: mirrors CaptureBlock(Snapshot, ...)'s per-block builder dictionary.
         Dictionary<Address, SidecarAccountBuilder>? sidecarEntries = _isV3 && sidecarByBlock is not null ? [] : null;
 
-        Span<byte> accountKey = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        Span<byte> accountKey = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
@@ -567,7 +569,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (entry.SelfDestructFlag is false)
             {
-                ReadOnlySpan<byte> destructedAccountKey = BaseFlatPersistence.EncodeAccountKeyHashed(accountKey, addrHash);
+                ReadOnlySpan<byte> destructedAccountKey = HistoryKeyLayout.EncodeAccountKey(accountKey, addrHash);
                 _storageClears.RecordClear(block, destructedAccountKey, columns.StorageClears);
 
                 if (_isV3)
@@ -623,7 +625,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     private void RecordAccount(ulong block, in ValueHash256 addrHash, Account? account, Span<byte> keyBuffer, scoped in HistoryColumnBatches columns)
     {
-        ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(keyBuffer, addrHash);
+        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(keyBuffer, addrHash);
 
         if (account is null)
         {
@@ -663,7 +665,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// this one) — see <see cref="PendingV3Writes.ResolveAndTrack"/>.</param>
     private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Address address, Account? account, Span<byte> keyBuffer, PendingV3Writes pending, IWriteBatch accountBatch, Dictionary<Address, SidecarAccountBuilder>? sidecarEntries)
     {
-        byte[] flatKey = BaseFlatPersistence.EncodeAccountKeyHashed(keyBuffer, addrHash).ToArray();
+        byte[] flatKey = HistoryKeyLayout.EncodeAccountKey(keyBuffer, addrHash).ToArray();
 
         if (sidecarEntries is null)
         {
@@ -784,10 +786,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch accountBatch = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
         IWriteBatch storageBatch = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
 
-        Span<byte> valueBuffer = stackalloc byte[512];
+        Span<byte> valueBuffer = stackalloc byte[PendingPreValueBufferSize];
         foreach ((byte[] flatKey, ulong block, ISidecarPreValueSink? sink) in pending.Accounts.Values)
         {
-            int written = _persistedAccounts.Get(flatKey, valueBuffer);
+            int written = _persistedAccounts.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), valueBuffer);
             ReadOnlySpan<byte> preValue = valueBuffer[..Math.Max(written, 0)];
             _accountHistoryV3!.RecordPreValue(block, flatKey, preValue, accountBatch);
             sink?.SetPreValue(preValue.ToArray());
