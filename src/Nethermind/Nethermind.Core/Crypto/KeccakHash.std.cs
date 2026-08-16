@@ -265,20 +265,22 @@ public sealed partial class KeccakHash
         Debug.Assert(state.Length == 25);
 
         ref ulong s = ref MemoryMarshal.GetReference(state);
-        Vector512<ulong> mask = Vector512.Create(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0UL, 0UL, 0UL);
 
-        Vector512<ulong> c0 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref s));
-        Vector512<ulong> c1 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5)));
-        Vector512<ulong> c2 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10)));
-        Vector512<ulong> c3 = Vector512.BitwiseAnd(mask, Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15)));
+        // Lanes 5-7 hold over-read neighbor lanes and need no masking: Theta/Rho/Pi/Chi
+        // map result lanes 0-4 only from lanes 0-4, and the stores below overwrite 5-7.
+        Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref s);
+        Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5));
+        Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10));
+        Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15));
         Vector512<ulong> c4 = Vector512.Create(
             Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20)),
             Vector256.CreateScalar(Unsafe.Add(ref s, 24)));
 
+        ref Vector512<ulong> roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstantVec);
         for (int round = 0; round < ROUNDS; round += 2)
         {
-            Round(ref c0, ref c1, ref c2, ref c3, ref c4, round);
-            Round(ref c0, ref c1, ref c2, ref c3, ref c4, round + 1);
+            Round(ref c0, ref c1, ref c2, ref c3, ref c4, Unsafe.Add(ref roundConstants, round));
+            Round(ref c0, ref c1, ref c2, ref c3, ref c4, Unsafe.Add(ref roundConstants, round + 1));
         }
 
         Unsafe.As<ulong, Vector512<ulong>>(ref s) = c0;
@@ -292,7 +294,7 @@ public sealed partial class KeccakHash
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Round(ref Vector512<ulong> c0, ref Vector512<ulong> c1,
-        ref Vector512<ulong> c2, ref Vector512<ulong> c3, ref Vector512<ulong> c4, int round)
+        ref Vector512<ulong> c2, ref Vector512<ulong> c3, ref Vector512<ulong> c4, Vector512<ulong> roundConstant)
     {
         // Theta
         Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
@@ -344,7 +346,7 @@ public sealed partial class KeccakHash
         c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, LaneShift1), Avx512F.PermuteVar8x64(c3, LaneShift2), 0xD2);
         c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, LaneShift1), Avx512F.PermuteVar8x64(c4, LaneShift2), 0xD2);
 
-        // Iota - Pre-broadcast constant, no vmovq
-        c0 = Vector512.Xor(c0, RoundConstantVec[round]);
+        // Iota
+        c0 = Vector512.Xor(c0, roundConstant);
     }
 }
