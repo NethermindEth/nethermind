@@ -457,10 +457,17 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (peer.IsAwaitingConnection)
+                bool dialedRecently = _lastStaticDialAttempt.TryGetValue(peer.Node.Id, out long lastDial)
+                    && Environment.TickCount64 - lastDial < StaleDialThresholdMs;
+                if (peer.IsAwaitingConnection && dialedRecently)
                 {
                     LogStaticPeerSkip(peer, "a dial is already in flight");
                     continue;
+                }
+
+                if (peer.IsAwaitingConnection && _logger.IsInfo)
+                {
+                    _logger.Info($"Static peer {peer.Node.Host}:{peer.Node.Port} has been marked as awaiting a connection for over {StaleDialThresholdMs / 1000}s with nothing to show for it; dialing it again rather than waiting on a flag that no longer tracks a live attempt.");
                 }
 
 
@@ -542,6 +549,7 @@ namespace Nethermind.Network
         }
 
         private const long StaticDialDebounceMs = 5_000;
+    private const long StaleDialThresholdMs = 60_000;
         private const long StaticSkipLogIntervalMs = 60_000;
         private static readonly TimeSpan StalePongThreshold = TimeSpan.FromSeconds(35);
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();

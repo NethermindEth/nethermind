@@ -41,7 +41,7 @@ public class NHist1ProtocolHandler : ZeroProtocolHandlerBase, IStaticProtocolInf
     private const string TooManyInFlightMessage = "Too many concurrent nhist requests in flight for this peer.";
     private const string RowsTimeoutDisconnectMessage = "nhist history row requests keep timing out.";
     private const int MaxInFlightRequestsPerPeer = IHistoryServer.MaxInFlightRequestsPerPeer;
-    private const int MaxConsecutiveRowsTimeouts = 2;
+    private const int MaxConsecutiveRowsTimeouts = 5;
     private static readonly TimeSpan ServedBytesWindow = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ServeTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan ScanDeadline = TimeSpan.FromSeconds(5);
