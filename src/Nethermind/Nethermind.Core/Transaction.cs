@@ -291,6 +291,11 @@ namespace Nethermind.Core
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
+        /// <summary>
+        /// In-memory only. Consecutive block-production attempts in which this frame transaction's validation prefix failed to approve payment.
+        /// </summary>
+        public int FrameProductionFailures { get; set; }
+
         protected int? _size = null;
 
         /// <summary>
@@ -394,6 +399,7 @@ namespace Nethermind.Core
                 obj.NetworkWrapper = default;
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
+                obj.FrameProductionFailures = default;
                 obj._size = default;
                 obj.AuthorizationList = default;
                 obj.Frames = default;
