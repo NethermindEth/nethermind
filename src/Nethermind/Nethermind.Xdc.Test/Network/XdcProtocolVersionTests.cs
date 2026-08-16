@@ -159,22 +159,22 @@ public class XdcProtocolVersionTests
             ITxGossipPolicy txGossipPolicy = Substitute.For<ITxGossipPolicy>();
             txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             IForkInfo forkInfo = Substitute.For<IForkInfo>();
+            XdcConsensusMessageHandler.Factory consensusMessages = new(
+                Substitute.For<ITimeoutCertificateManager>(), votesManager, Substitute.For<ISyncInfoManager>(),
+                blockTree, LimboLogs.Instance);
 
             ZeroProtocolHandlerBase handler = version switch
             {
                 XdcProtocolVersions.Legacy => new XdcProtocolHandler(
-                    Substitute.For<ITimeoutCertificateManager>(), votesManager, Substitute.For<ISyncInfoManager>(),
-                    blockTree, session, serializer, nodeStatsManager, syncServer,
+                    consensusMessages, session, serializer, nodeStatsManager, syncServer,
                     Substitute.For<IBackgroundTaskScheduler>(), txPool, Substitute.For<IGossipPolicy>(),
                     LimboLogs.Instance, txGossipPolicy),
                 XdcProtocolVersions.Xdc164 => new Xdc164ProtocolHandler(
-                    Substitute.For<ITimeoutCertificateManager>(), votesManager, Substitute.For<ISyncInfoManager>(),
-                    blockTree, session, serializer, nodeStatsManager, syncServer,
+                    consensusMessages, session, serializer, nodeStatsManager, syncServer,
                     Substitute.For<IBackgroundTaskScheduler>(), txPool, Substitute.For<IGossipPolicy>(), forkInfo,
                     LimboLogs.Instance, txGossipPolicy),
                 XdcProtocolVersions.Xdc165 => new Xdc165ProtocolHandler(
-                    Substitute.For<ITimeoutCertificateManager>(), votesManager, Substitute.For<ISyncInfoManager>(),
-                    blockTree, session, serializer, nodeStatsManager, syncServer,
+                    consensusMessages, session, serializer, nodeStatsManager, syncServer,
                     Substitute.For<IBackgroundTaskScheduler>(), txPool, Substitute.For<IGossipPolicy>(), forkInfo,
                     LimboLogs.Instance, txGossipPolicy),
                 _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unknown XDC protocol version")

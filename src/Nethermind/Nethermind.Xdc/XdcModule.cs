@@ -123,6 +123,7 @@ public class XdcModule : Module
             //Network
             .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
             .AddSingleton<IForkInfo, XdcForkInfo>()
+            .AddSingleton<XdcConsensusMessageHandler.Factory>()
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()

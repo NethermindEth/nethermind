@@ -121,4 +121,16 @@ internal sealed class XdcConsensusMessageHandler(
         }
         syncInfoManager.ProcessSyncInfo(syncInfoMsg.SyncInfo);
     }
+
+    /// <summary>Builds the per-session handler, so the protocol handlers take one dependency rather than five.</summary>
+    internal sealed class Factory(
+        ITimeoutCertificateManager timeoutCertificateManager,
+        IVotesManager votesManager,
+        ISyncInfoManager syncInfoManager,
+        IBlockTree blockTree,
+        ILogManager logManager)
+    {
+        public XdcConsensusMessageHandler ForSession(ISession session) =>
+            new(timeoutCertificateManager, votesManager, syncInfoManager, blockTree, session, logManager);
+    }
 }

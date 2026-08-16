@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
@@ -14,7 +13,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
-using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.P2P;
 
@@ -22,10 +20,7 @@ namespace Nethermind.Xdc.P2P;
 /// XDC's port of <c>eth/64</c> (EIP-2364): the fork ID handshake plus the XDC-only messages.
 /// </summary>
 internal class Xdc164ProtocolHandler(
-    ITimeoutCertificateManager timeoutCertificateManager,
-    IVotesManager votesManager,
-    ISyncInfoManager syncInfoManager,
-    IBlockTree blockTree,
+    XdcConsensusMessageHandler.Factory consensusMessages,
     ISession session,
     IMessageSerializationService serializer,
     INodeStatsManager nodeStatsManager,
@@ -35,10 +30,9 @@ internal class Xdc164ProtocolHandler(
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo, IXdcConsensusPeer, IXdcMessageContext
+    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo, IXdcConsensusPeer
 {
-    private readonly XdcConsensusMessageHandler _consensusMessages =
-        new(timeoutCertificateManager, votesManager, syncInfoManager, blockTree, session, logManager);
+    private readonly XdcConsensusMessageHandler _consensusMessages = consensusMessages.ForSession(session);
 
     public override string Name => "xdc164";
 
@@ -50,19 +44,9 @@ internal class Xdc164ProtocolHandler(
     protected override bool HandleMessageCore(ZeroPacket message) =>
         _consensusMessages.TryHandle(message, this) || base.HandleMessageCore(message);
 
-    public void SendVote(Vote vote)
-    {
-        if (_consensusMessages.ShouldNotify(vote))
-            Send(new VoteMsg() { Vote = vote });
-    }
+    XdcConsensusMessageHandler IXdcConsensusPeer.ConsensusMessages => _consensusMessages;
 
-    public void SendTimeout(Timeout timeout)
-    {
-        if (_consensusMessages.ShouldNotify(timeout))
-            Send(new TimeoutMsg() { Timeout = timeout });
-    }
-
-    public void SendSyncInfo(SyncInfo syncInfo) => Send(new SyncInfoMsg() { SyncInfo = syncInfo });
+    void IXdcConsensusPeer.Dispatch<T>(T message) => Send(message);
 
     T IXdcMessageContext.Decode<T>(IByteBuffer buffer) => Deserialize<T>(buffer);
 

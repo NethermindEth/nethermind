@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -20,7 +19,6 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Xdc.P2P.Messages;
-using Nethermind.Xdc.Types;
 using System;
 
 namespace Nethermind.Xdc.P2P;
@@ -30,10 +28,7 @@ namespace Nethermind.Xdc.P2P;
 /// <c>0xe3</c>-<c>0xe5</c>, because <c>0x08</c>/<c>0x09</c> already carry order and lending transactions.
 /// </summary>
 internal class Xdc165ProtocolHandler(
-    ITimeoutCertificateManager timeoutCertificateManager,
-    IVotesManager votesManager,
-    ISyncInfoManager syncInfoManager,
-    IBlockTree blockTree,
+    XdcConsensusMessageHandler.Factory consensusMessages,
     ISession session,
     IMessageSerializationService serializer,
     INodeStatsManager nodeStatsManager,
@@ -43,10 +38,9 @@ internal class Xdc165ProtocolHandler(
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth65ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo, IXdcConsensusPeer, IXdcMessageContext
+    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth65ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo, IXdcConsensusPeer
 {
-    private readonly XdcConsensusMessageHandler _consensusMessages =
-        new(timeoutCertificateManager, votesManager, syncInfoManager, blockTree, session, logManager);
+    private readonly XdcConsensusMessageHandler _consensusMessages = consensusMessages.ForSession(session);
 
     public override string Name => "xdc165";
 
@@ -102,19 +96,9 @@ internal class Xdc165ProtocolHandler(
     public override void HandleMessages(ReadOnlySpan<ValueHash256> txHashes) =>
         HandleMessages<XdcGetPooledTransactionsMessage>(txHashes);
 
-    public void SendVote(Vote vote)
-    {
-        if (_consensusMessages.ShouldNotify(vote))
-            Send(new VoteMsg() { Vote = vote });
-    }
+    XdcConsensusMessageHandler IXdcConsensusPeer.ConsensusMessages => _consensusMessages;
 
-    public void SendTimeout(Timeout timeout)
-    {
-        if (_consensusMessages.ShouldNotify(timeout))
-            Send(new TimeoutMsg() { Timeout = timeout });
-    }
-
-    public void SendSyncInfo(SyncInfo syncInfo) => Send(new SyncInfoMsg() { SyncInfo = syncInfo });
+    void IXdcConsensusPeer.Dispatch<T>(T message) => Send(message);
 
     T IXdcMessageContext.Decode<T>(IByteBuffer buffer) => Deserialize<T>(buffer);
 
