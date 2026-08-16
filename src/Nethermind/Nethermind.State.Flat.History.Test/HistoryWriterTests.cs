@@ -17,6 +17,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Test;
+using Nethermind.Trie.Pruning;
 using System.IO;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -1216,6 +1217,35 @@ public class HistoryWriterTests
     private static byte[] CompactionSlotBytes(ulong block) => [0xAB, (byte)(block >> 8), (byte)block];
 
     private static SlotValue CompactionSlotFor(ulong block) => SlotValue.FromSpanWithoutLeadingZero(CompactionSlotBytes(block));
+
+    [Test]
+    public void Accounts_read_back_at_a_height_reproduce_that_height_state_root()
+    {
+        Account accountA = new(3, 300);
+        Account accountB = new(7, 700);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100)), (AddrB, new Account(1, 100))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, accountA), (AddrB, accountB)]);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        StateTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        expected.Set(AddrA, accountA);
+        expected.Set(AddrB, accountB);
+        expected.UpdateRootHash();
+
+        StateTree rebuilt = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        foreach (Address address in new[] { AddrA, AddrB })
+        {
+            Assert.That(_reader.TryGetAccount(2, address, out AccountStruct account), Is.True,
+                $"account {address} must be readable from history at the height whose root is being rebuilt");
+            rebuilt.Set(address, new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment()));
+        }
+
+        rebuilt.UpdateRootHash();
+
+        Assert.That(rebuilt.RootHash, Is.EqualTo(expected.RootHash),
+            "a state root rebuilt from what history returns at a height must equal the root of a trie built directly from the same accounts - if it does not, cloned history cannot be checked against headers whatever shape the key takes");
+    }
 
     private void CommitBlock(
         ulong fromBlock,
