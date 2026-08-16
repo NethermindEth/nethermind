@@ -534,12 +534,12 @@ namespace Nethermind.Blockchain.Test
         // approves burns its whole budget for free. Nothing else evicts it, so without this the producer
         // repeats that work on every block it builds. A fee cap under the base fee must survive: it clears
         // on its own once the base fee falls.
-        [TestCase(FramePrefix.NeverApproves, true, TestName = "A prefix that can never approve is evicted after one attempt")]
-        [TestCase(FramePrefix.Approves, false, TestName = "A prefix that approves is included, not evicted")]
-        [TestCase(FramePrefix.BelowBaseFee, false, TestName = "A fee cap under the base fee is not an eviction reason")]
-        public void Frame_transaction_that_can_never_pay_is_evicted_from_the_pool(FramePrefix prefix, bool expectedEvicted)
+        [TestCase(FramePrefix.NeverApproves, true, 3, TestName = "A prefix that can never approve is evicted after the retry budget")]
+        [TestCase(FramePrefix.Approves, false, 1, TestName = "A prefix that approves is included, not evicted")]
+        [TestCase(FramePrefix.BelowBaseFee, false, 5, TestName = "A fee cap under the base fee is not an eviction reason")]
+        public void Frame_transaction_that_can_never_pay_is_evicted_from_the_pool(FramePrefix prefix, bool expectedEvicted, int expectedAttempts)
         {
-            const int blocks = 3;
+            const int blocks = 5;
             ISpecProvider specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
             IReleaseSpec spec = specProvider.GenesisSpec;
 
@@ -613,9 +613,89 @@ namespace Nethermind.Blockchain.Test
                 Assert.That(adapter.Attempts, Is.GreaterThan(0), "the transaction never reached execution");
                 Assert.That(evicted, Is.EqualTo(expectedEvicted));
                 Assert.That(included, Is.EqualTo(prefix == FramePrefix.Approves ? 1 : 0));
-                // One attempt after an eviction, one after an inclusion (the nonce has moved on), and one
-                // per block for the transaction that stays pooled: that last one is the cost being fixed.
-                Assert.That(adapter.Attempts, Is.EqualTo(prefix == FramePrefix.BelowBaseFee ? blocks : 1));
+                Assert.That(adapter.Attempts, Is.EqualTo(expectedAttempts));
+            }
+        }
+
+        [Test]
+        public void Frame_transaction_whose_failing_prefix_recovers_within_the_budget_is_not_evicted()
+        {
+            ISpecProvider specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+            IReleaseSpec spec = specProvider.GenesisSpec;
+
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 100.Ether);
+            byte[] neverApproves = Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done;
+            byte[] approves = Prepare.EvmCode.PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            stateProvider.InsertCode(TestItem.AddressA, neverApproves, spec);
+            stateProvider.Commit(spec);
+            stateProvider.CommitTree(0);
+
+            const ulong verifyGas = 100_000;
+            Transaction frameTx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = TestBlockchainIds.ChainId,
+                Nonce = 0,
+                SenderAddress = TestItem.AddressA,
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
+                FrameSignatures = [],
+                GasLimit = verifyGas,
+                GasPrice = 1,
+                DecodedMaxFeePerGas = 1,
+            };
+            frameTx.Hash = frameTx.CalculateHash();
+
+            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
+                BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine,
+                new EthereumCodeInfoRepository(stateProvider), LimboLogs.Instance);
+            CountingTxProcessorAdapter adapter = new(new BuildUpTransactionProcessorAdapter(transactionProcessor));
+
+            bool evicted = false;
+            ITxPool txPool = Substitute.For<ITxPool>();
+            txPool.EvictTransaction(frameTx).Returns(_ => evicted = true);
+
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                adapter,
+                stateProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider),
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance,
+                txPool);
+
+            int included = 0;
+            for (int i = 0; i < 3 && !evicted; i++)
+            {
+                if (i == 2)
+                {
+                    stateProvider.InsertCode(TestItem.AddressA, approves, spec);
+                    stateProvider.Commit(spec);
+                    stateProvider.CommitTree(1 + i);
+                }
+
+                Block block = Build.A.Block
+                    .WithNumber(1 + i)
+                    .WithBaseFeePerGas(UInt256.Zero)
+                    .WithGasLimit(30_000_000)
+                    .WithTransactions(frameTx)
+                    .TestObject;
+
+                BlockReceiptsTracer receiptsTracer = new();
+                receiptsTracer.StartNewBlockTrace(block);
+                txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+                txExecutor.ProcessTransactions(block, ProcessingOptions.ProducingBlock, receiptsTracer, CancellationToken.None);
+                receiptsTracer.EndBlockTrace();
+
+                if (block.Header.TxRoot != Keccak.EmptyTreeHash) included++;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(adapter.Attempts, Is.EqualTo(3), "the transaction must be tried each block until its prefix recovers");
+                Assert.That(evicted, Is.False, "a prefix that recovers within the budget must not be evicted");
+                Assert.That(included, Is.EqualTo(1), "once the prefix approves the transaction is included");
             }
         }
 

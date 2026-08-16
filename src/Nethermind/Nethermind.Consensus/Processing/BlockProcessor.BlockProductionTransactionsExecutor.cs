@@ -133,7 +133,7 @@ namespace Nethermind.Consensus.Processing
 
             /// <summary>
             /// Evicts an EIP-8141 frame transaction whose frames did not approve payment, so the producer runs
-            /// its validation prefix at most once per time the transaction is pooled.
+            /// its validation prefix at most <see cref="FrameProductionRetryBudget"/> times per time the transaction is pooled.
             /// </summary>
             /// <remarks>
             /// A frame transaction only charges a fee once a frame approves payment. One whose prefix does not
@@ -147,12 +147,16 @@ namespace Nethermind.Consensus.Processing
             /// frame reading storage), so <see cref="ITxPool.EvictTransaction"/> clears the long-term cache and
             /// the transaction can re-enter once that state changes.
             /// </remarks>
+            private const int FrameProductionRetryBudget = 3;
+
             private void EvictUnpaidFrameTx(Transaction tx, in TransactionResult result)
             {
                 if (!tx.SupportsFrames || result.Error != TransactionResult.ErrorType.MalformedTransaction) return;
 
+                if (++tx.FrameProductionFailures < FrameProductionRetryBudget) return;
+
                 if (txPool.EvictTransaction(tx) && _logger.IsDebug)
-                    _logger.Debug($"Evicted frame transaction {tx.ToShortString()} from the pool: {result.ErrorDescription}.");
+                    _logger.Debug($"Evicted frame transaction {tx.ToShortString()} from the pool after {tx.FrameProductionFailures} unpaid production attempts: {result.ErrorDescription}.");
             }
         }
     }
