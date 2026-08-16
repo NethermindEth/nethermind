@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.Intrinsics.Arm;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -165,6 +166,39 @@ namespace Nethermind.Core.Test
             {
                 Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(expected));
                 Assert.That(Keccak.Compute(byteArray), Is.EqualTo(expected));
+            }
+        }
+
+        [Test]
+        public void Arm_sha3_permutation_matches_scalar()
+        {
+            if (!Sha3.IsSupported)
+            {
+                Assert.Ignore("Arm SHA-3 intrinsics are not supported on this machine.");
+            }
+
+            const int stateLength = 25;
+            ulong[] input = new ulong[stateLength];
+
+            for (int testCase = 0; testCase < 64; testCase++)
+            {
+                for (int lane = 0; lane < stateLength; lane++)
+                {
+                    input[lane] = testCase switch
+                    {
+                        0 => 0,
+                        1 => ulong.MaxValue,
+                        _ => unchecked((ulong)(testCase * stateLength + lane + 1) * 0x9e3779b97f4a7c15UL)
+                    };
+                }
+
+                ulong[] expected = (ulong[])input.Clone();
+                ulong[] actual = (ulong[])input.Clone();
+
+                KeccakHash.KeccakF1600Scalar(expected);
+                KeccakHash.KeccakF1600ArmSha3(actual);
+
+                Assert.That(actual, Is.EqualTo(expected), $"Permutation mismatch for test case {testCase}.");
             }
         }
 
