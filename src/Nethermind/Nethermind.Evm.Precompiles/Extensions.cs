@@ -66,6 +66,11 @@ public static class Extensions
         OrderedDictionary<string, Address> systemContracts = [];
 
         if (spec.IsBeaconBlockRootAvailable) systemContracts[Eip4788Constants.ContractAddressKey] = Eip4788Constants.BeaconRootsAddress;
+        if (spec.BuilderRequestsEnabled)
+        {
+            systemContracts[Eip8282Constants.BuilderDepositContractAddressKey] = Eip8282Constants.BuilderDepositRequestPredeployAddress;
+            systemContracts[Eip8282Constants.BuilderExitContractAddressKey] = Eip8282Constants.BuilderExitRequestPredeployAddress;
+        }
         if (spec.ConsolidationRequestsEnabled) systemContracts[Eip7251Constants.ContractAddressKey] = Eip7251Constants.ConsolidationRequestPredeployAddress;
         if (spec.DepositsEnabled) systemContracts[Eip6110Constants.ContractAddressKey] = spec.DepositContractAddress!;
         if (spec.IsEip2935Enabled) systemContracts[Eip2935Constants.ContractAddressKey] = Eip2935Constants.BlockHashHistoryAddress;
