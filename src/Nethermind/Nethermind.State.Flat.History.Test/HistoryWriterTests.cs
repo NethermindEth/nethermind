@@ -1233,6 +1233,12 @@ public class HistoryWriterTests
         expected.Set(AddrB, accountB);
         expected.UpdateRootHash();
 
+        foreach (KeyValuePair<byte[], byte[]?> row in _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).GetAll())
+        {
+            Assert.That(row.Key.Length - sizeof(ulong), Is.EqualTo(Hash256.Size),
+                "an account row has to carry the whole trie path, otherwise a scan of the column cannot place its leaf and no root can be rebuilt from cloned history");
+        }
+
         StateTree rebuilt = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach (Address address in new[] { AddrA, AddrB })
         {
