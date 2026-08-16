@@ -260,7 +260,7 @@ public sealed partial class KeccakHash
     }
 
     [SkipLocalsInit]
-    public static void KeccakF1600Avx512F(Span<ulong> state)
+    internal static void KeccakF1600Avx512F(Span<ulong> state)
     {
         Debug.Assert(state.Length == 25);
 
