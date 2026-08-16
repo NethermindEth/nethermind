@@ -545,7 +545,7 @@ internal static class Program
 
                     foreach (JsonProperty dll in runtime.EnumerateObject())
                     {
-                        string dllRelativePath = dll.Name; // e.g. "lib/net10.0/Nethermind.Int256.dll"
+                        string dllRelativePath = dll.Name; // e.g. "lib/net11.0/Nethermind.Int256.dll"
                         string asmName = Path.GetFileNameWithoutExtension(dllRelativePath);
 
                         // Skip if already in the local directory

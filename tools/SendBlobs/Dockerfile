@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-resolute AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0.100-preview.7-resolute AS build
 
 ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
@@ -21,7 +21,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   -p:DebugType=None \
   -p:DebugSymbols=false
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-resolute
+FROM mcr.microsoft.com/dotnet/runtime-deps:11.0.0-preview.7-resolute
 
 WORKDIR /nethermind
 

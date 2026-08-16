@@ -31,7 +31,7 @@ ECC_LEADERBOARD_TOP="${ECC_LEADERBOARD_TOP:-50}"
 # qualifies nothing, so CI ranks slowest cases regardless (mean>1ms, cv gate off).
 ECC_MIN_MEAN_MS="${ECC_MIN_MEAN_MS:-1}"
 ECC_MAX_CV="${ECC_MAX_CV:-10}"
-SDK_IMAGE="${SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0}"
+SDK_IMAGE="${SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:11.0.100-preview.7}"
 CONTAINER_NAME="${ECC_CONTAINER_NAME:-ethcallchaos-bench}"
 
 mkdir -p "$OUT_DIR"
