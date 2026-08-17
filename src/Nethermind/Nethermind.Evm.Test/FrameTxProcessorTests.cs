@@ -1376,12 +1376,12 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
-    /// <remarks>A frame pays no entry cost on this branch, so the identity gas is the whole figure.</remarks>
+    /// <remarks>The frame pays warm entry access on top, precompiles being pre-warmed by EIP-2929.</remarks>
     [TestCase(TxFrame.ModeDefault, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, one byte)")]
     [TestCase(TxFrame.ModeDefault, 64, 21UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, two words)")]
     [TestCase(TxFrame.ModeSender, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(SENDER)")]
     [TestCase(TxFrame.ModePostTx, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(POST_TX)")]
-    public void Execute_FrameTargetsPrecompile_RunsIt(byte mode, int dataLength, ulong expectedGas)
+    public void Execute_FrameTargetsPrecompile_RunsIt(byte mode, int dataLength, ulong identityGas)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         byte[] data = new byte[dataLength];
@@ -1395,7 +1395,8 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(expectedGas), "the frame must be charged for the precompile it ran");
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(identityGas + Eip8038Constants.WarmAccess),
+                "the frame must be charged for the precompile it ran, plus its warm entry access");
         }
     }
 
@@ -1415,7 +1416,10 @@ public class FrameTxProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.FrameReceipts![1].GasUsed, Is.EqualTo(18UL), "the frame must be charged for the precompile it ran");
+            // The precompile account is not alive, so the transfer also pays the NEW_ACCOUNT state cost.
+            Assert.That(tracer.FrameReceipts![1].GasUsed,
+                Is.EqualTo(18UL + Eip8038Constants.WarmAccess + (ulong)GasCostOf.NewAccountState),
+                "the frame must be charged for the precompile it ran, plus its entry charge");
             Assert.That(_stateProvider.GetBalance(IdentityPrecompile.Address), Is.EqualTo(value), "the value must reach the target");
             Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
         }
@@ -1471,11 +1475,61 @@ public class FrameTxProcessorTests
         }
     }
 
+    [Test]
+    public void Execute_FrameTargetIsAPrecompile_PaysWarmEntryAccessWhereAColdAccountPaysCold()
+    {
+        // create_evm_from_frame charges the target's access; EIP-2929 pre-warms every precompile.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        // The baseline still runs the precompile over its empty input, which the STOP target does not.
+        long identityBaseGas = (long)IdentityPrecompile.Instance.BaseGasCost(Spec);
+
+        Assert.That(EntryGasDelta(Recipient, IdentityPrecompile.Address) + identityBaseGas,
+            Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+            "a cold account target must pay cold entry access where a precompile pays warm");
+    }
+
+    [Test]
+    public void Execute_FrameGasBelowItsEntryCharge_FailsConsumingTheWholeFrameLimit()
+    {
+        // create_evm_from_frame raises instead of building the EVM, so the frame halts exceptionally.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        TxFrame frame = new(TxFrame.ModeDefault, flags: 0, Recipient,
+            gasLimit: Eip8038Constants.ColdAccountAccess - 1, UInt256.Zero, default);
+        FrameReceiptTracer tracer = new();
+
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(), frame), tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(Eip8038Constants.ColdAccountAccess - 1),
+                "a frame failing at entry consumes its whole gas limit");
+        }
+    }
+
     private sealed class FrameReceiptTracer : CallOutputTracer, IFrameTxReceiptTracer
     {
         public TxFrameReceipt[]? FrameReceipts { get; private set; }
 
         public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => FrameReceipts = frameReceipts;
+    }
+
+    /// <summary>Difference in frame gas between two <c>DEFAULT</c> frames, isolating their entry charges.</summary>
+    private long EntryGasDelta(Address target, Address baseline)
+    {
+        CallOutputTracer targetTracer = new();
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: target)),
+            tracer: targetTracer).TransactionExecuted, Is.True);
+
+        CallOutputTracer baselineTracer = new();
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: baseline)),
+            tracer: baselineTracer).TransactionExecuted, Is.True);
+
+        return (long)targetTracer.GasSpent - (long)baselineTracer.GasSpent;
     }
 
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null, ulong? slotNumber = null)
@@ -1926,10 +1980,9 @@ public class FrameTxProcessorTests
     /// An empty reference list is a different envelope from an absent one and still occupies the single
     /// byte <c>0xc0</c> on the wire, so it is priced: EIP-8272 short-circuits the per-reference term at
     /// zero references, not the calldata term over <c>rlp(recent_root_references)</c>, which enters the
-    /// EIP-7623/7976 floor at the same per-byte rate as frame and signature data. The absent baseline is
-    /// standard-bound, so it spends its frame execution above its floor; the empty envelope is floor-bound,
-    /// so that headroom is subsumed. The extra gas is therefore the floor charge for the added byte less
-    /// the baseline's headroom over its own floor.
+    /// EIP-7623/7976 floor at the same per-byte rate as frame and signature data. Both envelopes clear
+    /// their floors once the frame entry charge is counted, so the extra gas is the standard calldata
+    /// charge for the added byte rather than its floor charge.
     /// </remarks>
     [Test]
     public void Execute_EmptyRecentRootReferenceList_IsPricedAsTheBytesItAdds()
@@ -1946,11 +1999,8 @@ public class FrameTxProcessorTests
         Assert.That(Process(absent, tracer: absentTracer).TransactionExecuted, Is.True);
 
         (int zeroBytes, int nonZeroBytes) = empty.ReferenceCalldataStats;
-        ulong referenceFloorCharge = ((ulong)zeroBytes + (ulong)nonZeroBytes * Spec.GasCosts.TxDataNonZeroMultiplier)
-            * Spec.GasCosts.TotalCostFloorPerToken;
-        FrameTxValidation.TryCalculateGasBudget(absent, Spec, out _, out ulong absentFloor, out _);
-        ulong baselineHeadroom = absentTracer.GasSpent - absentFloor;
-        Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent, Is.EqualTo(referenceFloorCharge - baselineHeadroom));
+        ulong referenceTokens = (ulong)zeroBytes + (ulong)nonZeroBytes * Spec.GasCosts.TxDataNonZeroMultiplier;
+        Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent, Is.EqualTo(referenceTokens * GasCostOf.TxDataZero));
     }
 
     [Test]
