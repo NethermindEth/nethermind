@@ -58,6 +58,9 @@ public class InitDatabaseSnapshot(
         if (snapshotConfig.StripComponents < 0)
             throw new InvalidOperationException($"Snapshot.StripComponents must be non-negative, got {snapshotConfig.StripComponents}.");
 
+        if (snapshotConfig.Streaming && snapshotConfig.StreamingConnections < 1)
+            throw new InvalidOperationException($"Snapshot.StreamingConnections must be positive, got {snapshotConfig.StreamingConnections}.");
+
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
 
         if (Path.Exists(dbPath))
@@ -78,6 +81,15 @@ public class InitDatabaseSnapshot(
         }
 
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
+
+        if (snapshotConfig.Streaming)
+        {
+            StreamingSnapshotInitializer initializer = new(
+                snapshotConfig, snapshotUrl, dbPath, drives,
+                SnapshotStreamSettings.Default(snapshotConfig.StreamingConnections), api.LogManager);
+            await initializer.InitializeAsync(checkpoint, cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         using SnapshotDownloader downloader = new(api.LogManager);
         await DownloadWithRetryAsync(downloader, snapshotUrl, snapshotPath, checkpoint, cancellationToken).ConfigureAwait(false);
@@ -122,10 +134,7 @@ public class InitDatabaseSnapshot(
                 await downloader.DownloadAsync(url, destinationPath, cancellationToken).ConfigureAwait(false);
                 break;
             }
-            catch (HttpRequestException e) when (
-                e.StatusCode is >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError
-                    and not HttpStatusCode.TooManyRequests
-                    and not HttpStatusCode.RequestedRangeNotSatisfiable)
+            catch (HttpRequestException e) when (SnapshotHttpClient.IsPermanentHttpError(e))
             {
                 if (_logger.IsError)
                     _logger.Error($"Snapshot download failed with permanent HTTP error {(int?)e.StatusCode}. Aborting.");
@@ -160,32 +169,45 @@ public class InitDatabaseSnapshot(
         if (checkpoint.Read() >= SnapshotStage.Verified)
             return true;
 
-        if (config.Checksum is null)
-        {
-            if (_logger.IsWarn)
-                _logger.Warn("Snapshot checksum is not configured.");
-        }
-        else
+        if (config.Checksum is not null)
         {
             if (_logger.IsInfo)
                 _logger.Info($"Verifying snapshot checksum {config.Checksum}.");
 
-            byte[] expected = Bytes.FromHexString(config.Checksum);
             byte[] actual = await ComputeChecksumAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
-
-            if (!Bytes.AreEqual(actual, expected))
-            {
-                if (_logger.IsError)
-                    _logger.Error($"Snapshot checksum verification failed. Expected: {config.Checksum}, actual: {Convert.ToHexString(actual).ToLowerInvariant()}. Aborting snapshot initialization, but the node will continue running.");
+            if (!VerifyChecksum(actual, config.Checksum, "Aborting snapshot initialization, but the node will continue running.", _logger))
                 return false;
-            }
-
-            if (_logger.IsInfo)
-                _logger.Info("Snapshot checksum verified.");
+        }
+        else if (_logger.IsWarn)
+        {
+            _logger.Warn("Snapshot checksum is not configured.");
         }
 
         checkpoint.Advance(SnapshotStage.Verified);
         return true;
+    }
+
+    internal static bool VerifyChecksum(byte[] actual, string? expectedHex, string onMismatch, ILogger logger)
+    {
+        if (expectedHex is null)
+        {
+            if (logger.IsWarn)
+                logger.Warn("Snapshot checksum is not configured.");
+            return true;
+        }
+
+        byte[] expected = Bytes.FromHexString(expectedHex);
+        if (Bytes.AreEqual(actual, expected))
+        {
+            if (logger.IsInfo)
+                logger.Info("Snapshot checksum verified.");
+            return true;
+        }
+
+        if (logger.IsError)
+            logger.Error(
+                $"Snapshot checksum verification failed. Expected: {expectedHex}, actual: {Convert.ToHexString(actual).ToLowerInvariant()}. {onMismatch}");
+        return false;
     }
 
     private async Task ExtractAsync(
@@ -194,7 +216,7 @@ public class InitDatabaseSnapshot(
         if (checkpoint.Read() >= SnapshotStage.Extracted)
             return;
 
-        CheckDiskSpace(GetRequiredSpaceForExtraction(GetFileSize(snapshotPath)), "extract");
+        CheckDiskSpace(drives, GetRequiredSpaceForExtraction(GetFileSize(snapshotPath)), "extract");
 
         SnapshotExtractor extractor = new(api.LogManager);
         await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
@@ -224,7 +246,7 @@ public class InitDatabaseSnapshot(
             return;
         }
 
-        CheckDiskSpace(GetRequiredSpaceForDownload(totalSize.Value, existingSize), "download and extract");
+        CheckDiskSpace(drives, GetRequiredSpaceForDownload(totalSize.Value, existingSize), "download and extract");
     }
 
     internal static long GetRequiredSpaceForDownload(long totalSize, long existingSize) =>
@@ -233,7 +255,7 @@ public class InitDatabaseSnapshot(
     internal static long GetRequiredSpaceForExtraction(long snapshotSize) =>
         (long)(snapshotSize * ExtractionSpaceMultiplier);
 
-    private void CheckDiskSpace(long required, string operation)
+    internal static void CheckDiskSpace(IDriveInfo[] drives, long required, string operation)
     {
         foreach (IDriveInfo drive in drives)
         {

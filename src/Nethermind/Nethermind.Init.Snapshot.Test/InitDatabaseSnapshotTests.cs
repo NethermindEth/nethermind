@@ -4,6 +4,7 @@
 using System;
 using System.Formats.Tar;
 using System.IO;
+using System.Security.Cryptography;
 using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
@@ -102,6 +103,36 @@ public class InitDatabaseSnapshotTests
             "the download should be rejected when free space cannot fit the snapshot and its extraction");
         Assert.That(File.Exists(_snapshotPath), Is.False,
             "no bytes should be downloaded when free space is insufficient");
+    }
+
+    [Test]
+    public async Task Execute_StreamingEnabled_ExtractsSnapshotFromStream()
+    {
+        using FlakySnapshotServer server = new();
+        Dictionary<string, byte[]> files = TestArchive.BuildFiles();
+        byte[] archive = TestArchive.BuildTarZst(files);
+        server.Content = archive;
+        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = true;
+        _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state/a42.sst")), Is.True,
+            "the streaming path must extract the snapshot into the database directory");
+    }
+
+    [Test]
+    public void Execute_StreamingConnectionsNotPositive_Throws()
+    {
+        _snapshotConfig.Streaming = true;
+        _snapshotConfig.StreamingConnections = 0;
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(CancellationToken.None),
+            "a non-positive connection count must be rejected before any network activity");
     }
 
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]

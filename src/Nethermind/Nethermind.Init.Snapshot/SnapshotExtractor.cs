@@ -23,6 +23,24 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
     public Task ExtractAsync(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken) =>
         Task.Run(() => Extract(archivePath, destinationPath, stripComponents, cancellationToken), cancellationToken);
 
+    public Task ExtractTarStreamAsync(Stream archiveStream, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken) =>
+        Task.Run(() =>
+        {
+            if (_logger.IsInfo)
+                _logger.Info($"Extracting streamed snapshot to {destinationPath}. Do not interrupt!");
+
+            Stream decompressedStream = OpenDecompressedStream(archiveStream, extension, leaveOpen: true);
+            try
+            {
+                ExtractTarEntries(decompressedStream, destinationPath, stripComponents, cancellationToken);
+            }
+            finally
+            {
+                if (!ReferenceEquals(decompressedStream, archiveStream))
+                    decompressedStream.Dispose();
+            }
+        }, cancellationToken);
+
     private void Extract(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken)
     {
         if (_logger.IsInfo)
@@ -55,11 +73,16 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
     private static void ExtractTar(string archivePath, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken)
     {
+        using FileStream fileStream = File.OpenRead(archivePath);
+        using Stream decompressedStream = OpenDecompressedStream(fileStream, extension, leaveOpen: false);
+        ExtractTarEntries(decompressedStream, destinationPath, stripComponents, cancellationToken);
+    }
+
+    private static void ExtractTarEntries(Stream decompressedStream, string destinationPath, int stripComponents, CancellationToken cancellationToken)
+    {
         Directory.CreateDirectory(destinationPath);
 
-        using FileStream fileStream = File.OpenRead(archivePath);
-        using Stream decompressedStream = OpenDecompressedStream(fileStream, extension);
-        using TarReader tarReader = new(decompressedStream);
+        using TarReader tarReader = new(decompressedStream, leaveOpen: true);
 
         string destinationRoot = destinationPath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
@@ -84,14 +107,14 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         }
     }
 
-    private static Stream OpenDecompressedStream(Stream fileStream, string extension) =>
+    private static Stream OpenDecompressedStream(Stream archiveStream, string extension, bool leaveOpen) =>
         extension switch
         {
-            ".zst" or ".zstd" => new DecompressionStream(fileStream),
-            ".gz" => new GZipStream(fileStream, CompressionMode.Decompress),
+            ".zst" or ".zstd" => new DecompressionStream(archiveStream, leaveOpen: leaveOpen),
+            ".gz" => new GZipStream(archiveStream, CompressionMode.Decompress, leaveOpen),
             // .bz2 and .xz are matched by IsTarArchive but have no decompression support in .NET BCL.
             ".bz2" or ".xz" => throw new NotSupportedException($"Tar compression format '{extension}' is not supported. Use .gz or .zst instead."),
-            _ => fileStream
+            _ => archiveStream
         };
 
     /// <summary>
