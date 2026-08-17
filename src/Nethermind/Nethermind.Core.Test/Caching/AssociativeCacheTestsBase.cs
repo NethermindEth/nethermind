@@ -156,9 +156,10 @@ public abstract class AssociativeCacheTestsBase
     {
         // Catches hash signature extraction bugs: if the signature is computed from
         // wrong bits, Get won't find keys that were just inserted (tag mismatch).
-        // Insert only 50% of capacity to avoid set-conflict eviction.
+        // Hashing is process-seeded, so key-to-set placement is arbitrary; cap inserts
+        // at one set's worth (8 ways) so no set can overflow and evict a fresh key.
         CreateCache(capacity);
-        int insertCount = Math.Min(capacity / 2, _keys.Length - 1);
+        int insertCount = Math.Min(capacity / 2, 8);
 
         for (int i = 0; i < insertCount; i++)
             Assert.That(Set(in _keys[i], i), Is.True);
