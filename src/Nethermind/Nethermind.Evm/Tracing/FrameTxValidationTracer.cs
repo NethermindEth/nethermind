@@ -28,7 +28,9 @@ public sealed class FrameTxValidationTracer(
     TimeSpan timeout = default)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer
 {
-    private const byte SetDelegateOpcode = 0xf6; // EIP-7819; not modelled as an Instruction on all forks.
+    // EIP-8141 "Banned Opcodes" lists SETDELEGATE (0xF6, EIP-7819). EIP-7819 is unimplemented here, so the
+    // byte is undefined on every fork we ship and this ban only bites if it ever activates.
+    private const byte SetDelegateOpcode = 0xf6;
 
     private readonly long _deadline = timeout > TimeSpan.Zero
         ? Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency)
@@ -55,13 +57,11 @@ public sealed class FrameTxValidationTracer(
     /// <summary>True once the wall-clock bound was reached; the transaction is then rejected, not cancelled.</summary>
     public bool TimedOut => _deadline != 0 && Stopwatch.GetTimestamp() > _deadline;
 
-    /// <summary>True once a trace/opcode rule was violated; the transaction must then be rejected.</summary>
     public bool Violated { get; private set; }
 
-    /// <summary>Human-readable reason for the first recorded violation.</summary>
+    /// <summary>The first violation recorded; later ones do not overwrite it.</summary>
     public string? ViolationReason { get; private set; }
 
-    /// <summary>The payer resolved by the simulated prefix, or <c>null</c> if it never set one.</summary>
     public Address? Payer { get; private set; }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
