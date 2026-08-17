@@ -274,8 +274,11 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
 fi
 
-# Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
-# same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
+# Each entry is 'ctype[@image][#KEY=V[,KEY=V...]]' (e.g. nethermind@nethermindeth/nethermind:master).
+# Sequential (one node up at a time), so same-snapshot variants are safe.
+# The optional '#' suffix sets extra node env (docker -e), so one sweep can A/B a runtime knob on
+# the SAME image: "nethermind nethermind#DOTNET_GCDynamicAdaptationMode=0". The env feeds the label
+# — two arms differing only in env must not collapse onto one result directory.
 # Listing the same image twice is how a sweep measures its own run-to-run drift, so repeats get a
 # distinct label: sharing one would make each repeat overwrite the previous one's cells and state,
 # and the sweep would silently report fewer results than it ran.
@@ -283,12 +286,15 @@ log_system_provenance
 
 declare -A LABEL_SEEN=()
 for entry in $CLIENTS; do
+  node_env=""
+  if [[ "$entry" == *"#"* ]]; then node_env="${entry#*#}"; entry="${entry%%#*}"; fi
   ctype="${entry%%@*}"
   if [[ "$entry" == *@* ]]; then
     img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
   else
     img="$(default_image "$ctype")" || { echo "skip $entry: no image"; continue; }; label="$ctype"
   fi
+  [[ -n "$node_env" ]] && label="${label}_$(printf '%s' "$node_env" | tr -c 'a-zA-Z0-9' '_')"
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
@@ -301,6 +307,7 @@ for entry in $CLIENTS; do
        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$(layout_flags "$ctype")" \
        ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
+       NODE_ENV_VARS="${node_env//,/ }" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
        "$here/start-node.sh"; then
     echo "::warning::${label} failed to start — skipping its cells"; echo "::endgroup::"; continue
