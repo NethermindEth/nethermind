@@ -366,7 +366,10 @@ achieved rate, concurrency, and `warmup_seconds` — the seconds of discarded wa
 node absorbed before the matrix (0 = measured cold). **Only compare matrices whose metadata
 matches** — a different head, rate or concurrency makes the numbers incomparable, and
 `warmup_seconds` most of all: a cold matrix reads ~60% higher on p99 than the same node warm,
-and nothing in the CSV itself would reveal that.
+and nothing in the CSV itself would reveal that. On k6-warmed runs the field is the exact
+requested duration and can be matched literally; on replay-warmed runs it is a measured
+elapsed value (and ~request+60 when the wall-clock bound fired), so compare it as
+"both warm and within a few percent", not byte-for-byte.
 
 **What a corpus sweep does per client:** first a discarded **warm-up, once per
 corpus** (`corpus_warmup_duration`, integer seconds with an optional `s` suffix — `5m` is
@@ -398,7 +401,9 @@ reports contain counters and client labels only; node logs are scanned for the
 usual Exception / invalid-block / shutdown gates but print **counts only** and
 are deleted (sweep) or excluded from upload; the artifact is assembled by
 `corpus_results.py stage`, which copies nothing but files on its allowlist, each
-behind an exact-schema validator: `summary.json`, `parity.json`, `timings.csv`
+behind an exact-schema validator (`jsonbench-summary.md` is the one exception — it
+is generated strictly downstream of the sanitized schema; `summaries.manifest` is
+validated line-by-line and its paths rewritten artifact-relative): `summary.json`, `parity.json`, `timings.csv`
 (indexes, milliseconds and outcome names), `timings.meta.json` (block identity and
 run parameters, including `warmup_seconds`), `resources.json` (cgroup counters),
 `parity-diffs.json`, and the generated markdown/manifest. `parity-diffs.json` is
