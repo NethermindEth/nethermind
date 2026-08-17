@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Nethermind.State.Flat.Collections;
 using NUnit.Framework;
 
@@ -14,6 +15,8 @@ namespace Nethermind.State.Flat.Test.Collections;
 public class SortedMergeDictionaryTests
 {
     private static readonly IComparer<int> Cmp = Comparer<int>.Default;
+    private static readonly FieldInfo BucketSaltField = typeof(SortedMergeDictionary<int, int>)
+        .GetField("_bucketSalt", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     [Test]
     public void FromUnsorted_LooksUpEveryKey_AndIteratesSorted()
@@ -244,6 +247,62 @@ public class SortedMergeDictionaryTests
         Assert.That(dict.TryGetValue(202, out _), Is.True);
     }
 
+    [Test]
+    public void ThrowingComparer_DuringSort_LeavesDictionaryEmptyAndReusable()
+    {
+        using SortedMergeDictionary<int, int> dict = FromPairs((1, 10), (2, 20), (3, 30));
+        List<KeyValuePair<int, int>> source = [];
+        for (int i = 20; i > 0; i--) source.Add(new KeyValuePair<int, int>(100 + i, i));
+
+        Assert.That(
+            () => dict.BuildFromUnsorted(source, new ThrowingComparer(3)),
+            Throws.InvalidOperationException);
+
+        AssertEmptyAndReusable(dict, 1, 2, 3, 101, 110, 120);
+    }
+
+    [Test]
+    public void ThrowingSourceEnumerator_LeavesDictionaryEmptyAndReusable()
+    {
+        using SortedMergeDictionary<int, int> dict = FromPairs((1, 10), (2, 20), (3, 30));
+
+        Assert.That(
+            () => dict.BuildFromUnsorted(new ThrowingSource(5, 2), Cmp),
+            Throws.InvalidOperationException);
+
+        AssertEmptyAndReusable(dict, 1, 2, 3, 101, 102);
+    }
+
+    [Test]
+    public void BucketSaltOverflow_ResetsSequenceAndPreservesLookups()
+    {
+        using SortedMergeDictionary<int, int> dict = new();
+        Dictionary<int, int> initial = [];
+        for (int i = 0; i < 64; i++) initial[i] = i * 10;
+        dict.BuildFromUnsorted(initial, Cmp);
+
+        BucketSaltField.SetValue(dict, int.MaxValue - 1);
+        Dictionary<int, int> replacement = new()
+        {
+            [100] = 1,
+            [200] = 2,
+            [300] = 3,
+            [400] = 4,
+        };
+        dict.BuildFromUnsorted(replacement, Cmp);
+
+        Assert.That(BucketSaltField.GetValue(dict), Is.EqualTo(replacement.Count));
+        foreach (KeyValuePair<int, int> kv in replacement)
+        {
+            Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
+            Assert.That(value, Is.EqualTo(kv.Value), $"key {kv.Key}");
+        }
+        foreach (int staleKey in initial.Keys)
+        {
+            Assert.That(dict.TryGetValue(staleKey, out _), Is.False, $"stale key {staleKey} survived the reset");
+        }
+    }
+
     [TestCase(40, 60)]
     [TestCase(60, 40)]
     public void CountEnumerationMismatch_ThrowsAndLeavesDictionaryEmptyAndReusable(int reportedCount, int actualCount)
@@ -303,6 +362,30 @@ public class SortedMergeDictionaryTests
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
+    private sealed class ThrowingComparer(int comparisonsBeforeThrow) : IComparer<int>
+    {
+        private int _remaining = comparisonsBeforeThrow;
+
+        public int Compare(int x, int y)
+        {
+            if (_remaining-- == 0) throw new InvalidOperationException();
+            return x.CompareTo(y);
+        }
+    }
+
+    private sealed class ThrowingSource(int count, int itemsBeforeThrow) : IReadOnlyCollection<KeyValuePair<int, int>>
+    {
+        public int Count => count;
+
+        public IEnumerator<KeyValuePair<int, int>> GetEnumerator()
+        {
+            for (int i = 1; i <= itemsBeforeThrow; i++) yield return new KeyValuePair<int, int>(100 + i, i);
+            throw new InvalidOperationException();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private static SortedMergeDictionary<int, int> FromPairs(params (int Key, int Value)[] pairs)
     {
         Dictionary<int, int> source = [];
@@ -314,5 +397,18 @@ public class SortedMergeDictionaryTests
     {
         Assert.That(dict.TryGetValue(key, out int value), Is.True, $"missing key {key}");
         Assert.That(value, Is.EqualTo(expected), $"key {key}");
+    }
+
+    private static void AssertEmptyAndReusable(SortedMergeDictionary<int, int> dict, params int[] absentKeys)
+    {
+        Assert.That(dict.Count, Is.EqualTo(0));
+        foreach (int key in absentKeys)
+        {
+            Assert.That(dict.TryGetValue(key, out _), Is.False, $"key {key} survived the failed build");
+        }
+
+        dict.BuildFromUnsorted(new Dictionary<int, int> { [901] = 902 }, Cmp);
+        Assert.That(dict.Count, Is.EqualTo(1));
+        AssertValue(dict, 901, 902);
     }
 }
