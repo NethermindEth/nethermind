@@ -28,7 +28,7 @@ public class SnapSyncRunnerTests
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
         factory.When(f => f.EnsureInitialize()).Do(_ => calls.Add("EnsureInitialize"));
         factory.When(f => f.FinalizeSync()).Do(_ => calls.Add("FinalizeSync"));
-        factory.IsAccountRangePhaseCompleted().Returns(_ =>
+        factory.IsRangePhaseFinished().Returns(_ =>
         {
             calls.Add("LoadProgress");
             return false;

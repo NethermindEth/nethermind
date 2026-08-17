@@ -17,19 +17,19 @@ public class PatriciaSnapTrieFactory(
     [KeyFilter(DbNames.State)] IDb stateDb,
     ILogManager logManager) : ISnapTrieFactory
 {
-    private static readonly byte[] AccountRangePhaseKey = "AccountProgressKey"u8.ToArray();
+    private static readonly byte[] RangePhaseKey = "AccountProgressKey"u8.ToArray();
 
     private readonly RawScopedTrieStore _stateTrieStore = new(nodeStorage, null);
 
-    public bool IsAccountRangePhaseCompleted()
+    public bool IsRangePhaseFinished()
     {
-        byte[]? recorded = stateDb.Get(AccountRangePhaseKey);
+        byte[]? recorded = stateDb.Get(RangePhaseKey);
         return recorded is { Length: 32 } && new ValueHash256(recorded) == ValueKeccak.MaxValue;
     }
 
-    public void MarkAccountRangePhaseCompleted()
+    public void MarkRangePhaseFinished()
     {
-        stateDb.PutSpan(AccountRangePhaseKey, ValueKeccak.MaxValue.Bytes, WriteFlags.DisableWAL);
+        stateDb.PutSpan(RangePhaseKey, ValueKeccak.MaxValue.Bytes, WriteFlags.DisableWAL);
         stateDb.Flush();
     }
 

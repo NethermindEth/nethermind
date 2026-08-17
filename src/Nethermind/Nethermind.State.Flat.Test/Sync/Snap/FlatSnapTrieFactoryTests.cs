@@ -70,13 +70,13 @@ public class FlatSnapTrieFactoryTests
     }
 
     [Test]
-    public void AccountRangePhase_NeverCarriesIntoTheNextRun()
+    public void RangePhase_NeverCarriesIntoTheNextRun()
     {
         (FlatSnapTrieFactory factory, _) = Build();
 
-        factory.MarkAccountRangePhaseCompleted();
+        factory.MarkRangePhaseFinished();
 
-        Assert.That(factory.IsAccountRangePhaseCompleted(), Is.False);
+        Assert.That(factory.IsRangePhaseFinished(), Is.False);
     }
 
     [TestCase(true)]

@@ -18,13 +18,13 @@ public class PatriciaSnapTrieFactoryTests
     private static readonly byte[] AccountProgressKey = "AccountProgressKey"u8.ToArray();
 
     [Test]
-    public void Records_completed_account_range_phase_in_the_state_db()
+    public void Records_finished_range_phase_in_the_state_db()
     {
         TestMemDb stateDb = new();
         PatriciaSnapTrieFactory factory = new(new NodeStorage(stateDb), stateDb, LimboLogs.Instance);
-        Assert.That(factory.IsAccountRangePhaseCompleted(), Is.False);
+        Assert.That(factory.IsRangePhaseFinished(), Is.False);
 
-        factory.MarkAccountRangePhaseCompleted();
+        factory.MarkRangePhaseFinished();
 
         using (Assert.EnterMultipleScope())
         {
@@ -35,14 +35,14 @@ public class PatriciaSnapTrieFactoryTests
 
     // The flag shares the state DB with the trie nodes it describes, so neither outlives the other.
     [Test]
-    public void Reads_back_a_phase_completed_by_an_earlier_run()
+    public void Reads_back_a_range_phase_finished_by_an_earlier_run()
     {
         TestMemDb stateDb = new();
         PatriciaSnapTrieFactory before = new(new NodeStorage(stateDb), stateDb, LimboLogs.Instance);
-        before.MarkAccountRangePhaseCompleted();
+        before.MarkRangePhaseFinished();
 
         PatriciaSnapTrieFactory afterRestart = new(new NodeStorage(stateDb), stateDb, LimboLogs.Instance);
 
-        Assert.That(afterRestart.IsAccountRangePhaseCompleted(), Is.True);
+        Assert.That(afterRestart.IsRangePhaseFinished(), Is.True);
     }
 }

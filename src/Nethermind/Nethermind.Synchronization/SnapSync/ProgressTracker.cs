@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (rangePhaseFinished)
                 {
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
-                    _snapTrieFactory.MarkAccountRangePhaseCompleted();
+                    _snapTrieFactory.MarkRangePhaseFinished();
                 }
 
                 LogRequest(NO_REQUEST);
@@ -459,7 +459,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void LoadProgress()
         {
-            if (!_snapTrieFactory.IsAccountRangePhaseCompleted()) return;
+            if (!_snapTrieFactory.IsRangePhaseFinished()) return;
 
             _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
             foreach (KeyValuePair<ValueHash256, AccountRangePartition> partition in AccountRangePartitions)

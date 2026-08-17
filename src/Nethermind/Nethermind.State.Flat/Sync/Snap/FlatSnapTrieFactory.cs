@@ -29,8 +29,8 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
     public void FinalizeSync() => persistence.Flush();
 
-    public bool IsAccountRangePhaseCompleted() => false;
-    public void MarkAccountRangePhaseCompleted() { }
+    public bool IsRangePhaseFinished() => false;
+    public void MarkRangePhaseFinished() { }
 
     public ISnapTree<PathWithAccount> CreateStateTree()
     {

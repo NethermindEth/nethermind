@@ -137,7 +137,7 @@ public class ProgressTrackerTests
     }
 
     [Test]
-    public void Will_mark_account_range_phase_completed_when_finished()
+    public void Will_mark_range_phase_finished_when_ranges_drain()
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
         using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
@@ -150,14 +150,14 @@ public class ProgressTrackerTests
         bool finished = progressTracker.IsFinished(out _);
         Assert.That(finished, Is.True);
 
-        snapTrieFactory.Received(1).MarkAccountRangePhaseCompleted();
+        snapTrieFactory.Received(1).MarkRangePhaseFinished();
     }
 
     [Test]
-    public void Will_skip_account_range_phase_when_already_completed()
+    public void Will_skip_account_ranges_when_range_phase_already_finished()
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
-        snapTrieFactory.IsAccountRangePhaseCompleted().Returns(true);
+        snapTrieFactory.IsRangePhaseFinished().Returns(true);
         using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
 
         progressTracker.LoadProgress();
@@ -168,10 +168,10 @@ public class ProgressTrackerTests
 
     // Regression: account ranges must be requested again rather than skipped over a store that was just emptied.
     [Test]
-    public void Will_request_account_ranges_when_store_reports_no_completed_phase()
+    public void Will_request_account_ranges_when_range_phase_not_finished()
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
-        snapTrieFactory.IsAccountRangePhaseCompleted().Returns(false);
+        snapTrieFactory.IsRangePhaseFinished().Returns(false);
         using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
 
         progressTracker.LoadProgress();
