@@ -81,6 +81,11 @@ public partial class VirtualMachine<TGasPolicy>(
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<VmState<TGasPolicy>> _stateStack = new(MaxCallDepth + 1);
 
+    // Bind a frame's memory window to the shared buffer. Implemented in the std build; the ZK build
+    // excludes VirtualMachine.std.cs, so these calls elide to nothing (classic partial methods).
+    partial void AttachTopLevelMemory(VmState<TGasPolicy> state);
+    partial void AttachChildMemory(VmState<TGasPolicy> parent, VmState<TGasPolicy> child);
+
     protected IWorldState _worldState;
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
 
@@ -164,6 +169,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // Initialize the code repository and set up the initial execution state.
         _codeInfoRepository = TxExecutionContext.CodeInfoRepository;
         _currentState = vmState;
+        AttachTopLevelMemory(_currentState);
         _previousCallResult = null;
         _previousCallOutputDestination = UInt256.Zero;
         ReadOnlySpan<byte> previousCallOutput = ReadOnlySpan<byte>.Empty;
@@ -727,10 +733,13 @@ public partial class VirtualMachine<TGasPolicy>(
     protected void PrepareNextCallFrame(in CallResult callResult, ref ReadOnlySpan<byte> previousCallOutput)
     {
         // Push the current execution state onto the state stack so it can be restored later.
-        _stateStack.Push(_currentState);
+        VmState<TGasPolicy> parent = _currentState;
+        _stateStack.Push(parent);
 
         // Transition to the next call frame's state provided by the call result.
         _currentState = callResult.StateToExecute;
+        // Anchor the child's memory window just past the (suspended) parent's window (std build only).
+        AttachChildMemory(parent, _currentState);
 
         // Clear the previous call result as the execution context is moving to a new frame.
         _previousCallResult = null;

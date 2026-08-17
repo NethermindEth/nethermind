@@ -443,6 +443,106 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
+    [TestCase(1024)]
+    [TestCase(64 * 1024)]
+    [TestCase(256 * 1024)]
+    public void Shared_sibling_frame_reuse_reads_zero(int size)
+    {
+        SharedEvmMemory shared = new(512 * 1024);
+        UInt256 zero = UInt256.Zero;
+
+        EvmPooledMemory a = new();
+        a.AttachShared(shared, 0);
+        Span<byte> pattern = new byte[size];
+        pattern.Fill(0xff);
+        Assert.That(a.TrySave(in zero, pattern), Is.True);
+        a.Dispose();
+
+        EvmPooledMemory c = new();
+        c.AttachShared(shared, 0);
+        UInt256 length = (UInt256)size;
+        Assert.That(c.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
+        Assert.That(data.Length, Is.EqualTo(size));
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "sibling frame leaked stale data");
+        c.Dispose();
+    }
+
+    [Test]
+    public void Shared_nested_frame_grows_above_parent_and_leaves_it_intact()
+    {
+        SharedEvmMemory shared = new(64 * 1024);
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        EvmPooledMemory parent = new();
+        parent.AttachShared(shared, 0);
+        Assert.That(parent.TrySaveWord(0, word), Is.True);
+        Span<byte> parentPattern = new byte[2048];
+        parentPattern.Fill(0xaa);
+        Assert.That(parent.TrySave((UInt256)64, parentPattern), Is.True);
+
+        EvmPooledMemory child = new();
+        child.AttachShared(shared, parent.FrameFrontier);
+        UInt256 childLength = (UInt256)4096;
+        Assert.That(child.TryLoadSpan(0, in childLength, out Span<byte> childData), Is.True);
+        Assert.That(childData.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "child window must read as zero");
+        Span<byte> childPattern = new byte[4096];
+        childPattern.Fill(0xbb);
+        Assert.That(child.TrySave(0, childPattern), Is.True);
+        child.Dispose();
+
+        // Parent's window below the child is untouched.
+        Assert.That(parent.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> parentFirst), Is.True);
+        Assert.That(parentFirst.ToArray(), Is.EqualTo(word));
+        Assert.That(parent.TryLoadSpan((UInt256)64, (UInt256)2048, out Span<byte> parentMid), Is.True);
+        Assert.That(parentMid.ToArray(), Is.EqualTo(parentPattern.ToArray()));
+        parent.Dispose();
+    }
+
+    [Test]
+    public void Shared_frame_exceeding_reserve_spills_and_reads_zero()
+    {
+        SharedEvmMemory shared = new(4096); // tiny reserve so growth spills to a private buffer
+        EvmPooledMemory a = new();
+        a.AttachShared(shared, 0);
+
+        UInt256 length = (UInt256)8192;
+        Assert.That(a.TryLoadSpan(0, in length, out Span<byte> data), Is.True); // grows past reserve → spill
+        Assert.That(data.Length, Is.EqualTo(8192));
+        Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "spilled frame must read as zero");
+
+        Span<byte> pattern = new byte[8192];
+        pattern.Fill(0x7f);
+        Assert.That(a.TrySave(0, pattern), Is.True);
+        Assert.That(a.TryLoadSpan(0, in length, out Span<byte> readBack), Is.True);
+        Assert.That(readBack.ToArray(), Is.EqualTo(pattern.ToArray()), "spilled frame must preserve writes");
+        a.Dispose();
+    }
+
+    [Test]
+    public void Shared_tracing_read_beyond_size_does_not_leak_child_bytes()
+    {
+        // Inspect past Size (tracing) must not mark [Size, _) as clean: a child anchors at Size, writes
+        // there, and the parent must still read zero once it later grows into that band.
+        SharedEvmMemory shared = new(64 * 1024);
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        EvmPooledMemory parent = new();
+        parent.AttachShared(shared, 0);
+        Assert.That(parent.TrySaveWord((UInt256)EvmPooledMemory.WordSize, word), Is.True); // Size = 64
+        parent.Inspect((UInt256)48, (UInt256)EvmPooledMemory.WordSize); // tracing read spanning [48, 80)
+
+        EvmPooledMemory child = new();
+        child.AttachShared(shared, parent.FrameFrontier);
+        Span<byte> dirty = new byte[EvmPooledMemory.WordSize];
+        dirty.Fill(0xff);
+        Assert.That(child.TrySave(0, dirty), Is.True); // writes [64, 96)
+        child.Dispose();
+
+        Assert.That(parent.TryLoadSpan((UInt256)64, (UInt256)EvmPooledMemory.WordSize, out Span<byte> read), Is.True);
+        Assert.That(read.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "parent read the child's stale bytes");
+        parent.Dispose();
+    }
+
     [Test]
     public void GetTrace_should_not_throw_on_not_initialized_memory()
     {

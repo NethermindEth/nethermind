@@ -2,19 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct EvmPooledMemory
+public partial struct EvmPooledMemory
 {
     public const int WordSize = 32;
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
@@ -23,7 +21,29 @@ public struct EvmPooledMemory
     private ulong _lastZeroedSize;
 
     private byte[]? _memory;
+    // Start of this frame's window inside _memory; nonzero only for a shared-buffer frame.
+    private int _offset;
     public ulong Size { get; private set; }
+
+#if !ZK_EVM
+    // Shared-buffer binding. A struct's instance fields must all live in one partial declaration (CS0282),
+    // so they stay here under #if; the methods that use them are in EvmPooledMemory.std.cs.
+    private SharedEvmMemory? _shared;
+    private int _base;
+    private bool _spilled;
+#endif
+
+    // Apply _offset in one place so no access forgets it. AggressiveInlining keeps the hot MSTORE/MLOAD
+    // paths at a single add with no bounds check; AsSpan/AsMemory build stack structs, they don't allocate.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private readonly ref byte FrameRef(int offset)
+        => ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), _offset + offset);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private readonly Span<byte> FrameSpan(int offset, int length) => _memory.AsSpan(_offset + offset, length);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private readonly Memory<byte> FrameMemory(int offset, int length) => _memory.AsMemory(_offset + offset, length);
 
     public bool TrySaveWord(in UInt256 location, Span<byte> word)
     {
@@ -35,8 +55,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         EvmWord word1 = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
-        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
+        Unsafe.WriteUnaligned(ref FrameRef(offset), word1);
         return true;
     }
 
@@ -47,7 +66,7 @@ public struct EvmPooledMemory
 
         int offset = TruncateToInt32(location.u0);
         UpdateSize(newLength);
-        _memory![offset] = value;
+        FrameRef(offset) = value;
         return true;
     }
 
@@ -62,7 +81,7 @@ public struct EvmPooledMemory
         if (isViolation) return false;
 
         UpdateSize(newLength);
-        value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
+        value.CopyTo(FrameSpan(TruncateToInt32(location.u0), value.Length));
         return true;
     }
 
@@ -121,7 +140,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
+        value.AsSpan().CopyTo(FrameSpan(TruncateToInt32(location.u0), value.Length));
         return true;
     }
 
@@ -145,7 +164,7 @@ public struct EvmPooledMemory
         PrepareAccessAfterGas(location.u0 + (ulong)length);
 
         int intLocation = TruncateToInt32(location.u0);
-        value.CopyTo(_memory.AsSpan(intLocation, length));
+        value.CopyTo(FrameSpan(intLocation, length));
     }
 
     /// <summary>
@@ -168,7 +187,7 @@ public struct EvmPooledMemory
         Debug.Assert(destination.u0 + (ulong)length <= Size);
         PrepareAccessAfterGas(destination.u0 + (ulong)length);
 
-        Span<byte> target = _memory.AsSpan(TruncateToInt32(destination.u0), length);
+        Span<byte> target = FrameSpan(TruncateToInt32(destination.u0), length);
         int copiedLength = 0;
         if (sourceOffset < source.Length)
         {
@@ -232,7 +251,7 @@ public struct EvmPooledMemory
 
         UpdateSize(newLength);
 
-        data = _memory.AsMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        data = FrameMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
         return true;
     }
 
@@ -258,23 +277,13 @@ public struct EvmPooledMemory
             return default;
         }
         UInt256 largeSize = location + length;
-        if (largeSize > _memory.Length)
+        if (largeSize > (ulong)(_memory.Length - _offset))
         {
             return default;
         }
 
         ClearForTracing((ulong)largeSize);
-        return _memory.AsMemory((int)location, (int)length);
-    }
-
-    private void ClearForTracing(ulong size)
-    {
-        if (_memory is not null && size > _lastZeroedSize)
-        {
-            int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
-            Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
-            _lastZeroedSize += (uint)lengthToClear;
-        }
+        return FrameMemory((int)location, (int)length);
     }
 
     public ulong CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
@@ -312,8 +321,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         PrepareAccessAfterGas(location.u0 + WordSize);
-        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
+        Unsafe.WriteUnaligned(ref FrameRef(offset), value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -322,7 +330,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + 1);
-        _memory![offset] = value;
+        FrameRef(offset) = value;
     }
 
     /// <summary>
@@ -340,7 +348,7 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + WordSize);
-        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), offset);
+        return ref FrameRef(offset);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -350,7 +358,7 @@ public struct EvmPooledMemory
         int offset = TruncateToInt32(location.u0);
         int intLength = TruncateToInt32(length);
         PrepareAccessAfterGas(location.u0 + length);
-        return _memory!.AsSpan(offset, intLength);
+        return FrameSpan(offset, intLength);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -366,7 +374,7 @@ public struct EvmPooledMemory
         int intLength = TruncateToInt32(length);
 
         PrepareAccessAfterGas(destination.u0 + length);
-        _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
+        FrameSpan(sourceOffset, intLength).CopyTo(FrameSpan(destinationOffset, intLength));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -402,23 +410,14 @@ public struct EvmPooledMemory
             return EmptyTraceMemory;
 
         ClearForTracing(size);
-        // Clamp to Size so TraceMemory.Slice past the EVM high-water cannot see dirty tail bytes.
+        // Clamp to the frame window so TraceMemory.Slice past the EVM high-water cannot see dirty tail bytes.
         if (_memory is null)
-            return new(size, default);
-
-        int visible = (int)Math.Min(size, (ulong)_memory.Length);
-        return new(size, _memory.AsMemory(0, visible));
-    }
-
-    public void Dispose()
-    {
-        byte[]? memory = _memory;
-
-        if (memory is not null)
         {
-            _memory = null;
-            Return(memory);
+            return new(size, default);
         }
+
+        int len = (int)Math.Min(size, (ulong)(_memory.Length - _offset));
+        return new(size, FrameMemory(0, len));
     }
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
@@ -441,7 +440,7 @@ public struct EvmPooledMemory
     private Span<byte> LoadSpan(ulong newLength, int offset, int length)
     {
         UpdateSize(newLength);
-        return _memory!.AsSpan(offset, length);
+        return FrameSpan(offset, length);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -462,120 +461,6 @@ public struct EvmPooledMemory
     }
 
     private const int MinRentSize = 1_024;
-    // Above this, a cache miss rents from the shared pool instead of allocating (pow2 sizes from
-    // here up are LOH-sized).
-    private const int MaxNewAllocLength = 1 << 16;
-    // Buffers up to this stay in the per-thread cache. Frames zero-extend their buffer on growth
-    // (RentSlow), and a buffer that round-tripped through the shared pool between frames comes
-    // back cold and coherence-invalidated under concurrent load — so those zeroing stores stall.
-    // Keeping mid-size buffers on the renting thread keeps the lines warm; the byte budget bounds
-    // per-thread retention.
-    private const int MaxThreadCachedArrayLength = 1 << 18;
-    private const int MaxThreadCachedBytes = 2 << 20;
-    private const int CacheSlots = 16;
-
-    [ThreadStatic] private static byte[]?[]? _cachedArrays;
-    [ThreadStatic] private static int _cachedArrayCount;
-    [ThreadStatic] private static int _cachedArrayBytes;
-
-    // Cached dirty; RentSlow zero-extends past Size in chunks on growth.
-    private static byte[] Rent(int minLength)
-    {
-        byte[]?[]? cache = _cachedArrays;
-        int cachedArrayCount = _cachedArrayCount - 1;
-        for (int i = cachedArrayCount; i >= 0; i--)
-        {
-            byte[] candidate = cache![i]!;
-            if (candidate.Length >= minLength)
-            {
-                _cachedArrayCount = cachedArrayCount;
-                _cachedArrayBytes -= candidate.Length;
-                cache[i] = cache[cachedArrayCount];
-                cache[cachedArrayCount] = null;
-                return candidate;
-            }
-        }
-
-        if (minLength > MaxNewAllocLength)
-        {
-            return RentLarge(minLength);
-        }
-
-        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
-    }
-
-    private static void Return(byte[] array)
-    {
-        // Provenance: arrays <= MaxNewAllocLength are plain allocations, larger ones came from
-        // RentLarge — an array must never reach a pool it was not rented from.
-        if (array.Length <= MaxThreadCachedArrayLength
-            && _cachedArrayCount < CacheSlots
-            && _cachedArrayBytes + array.Length <= MaxThreadCachedBytes)
-        {
-            byte[]?[] cache = _cachedArrays ??= new byte[CacheSlots][];
-            cache[_cachedArrayCount++] = array;
-            _cachedArrayBytes += array.Length;
-            return;
-        }
-
-        if (array.Length > MaxNewAllocLength)
-        {
-            ReturnLarge(array);
-        }
-    }
-
-#if ZK_EVM
-    private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
-
-    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
-#else
-    private const int MaxSharedArrayLength = 1 << 20;
-    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
-    private const int MaxLargePooledArrayLength = 1 << 22;
-    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
-        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
-
-    private static byte[] RentLarge(int minLength)
-        => minLength > MaxSharedArrayLength
-            ? _largeArrayPool.Rent(minLength)
-            : SafeArrayPool<byte>.Shared.Rent(minLength);
-
-    private static void ReturnLarge(byte[] array)
-    {
-        if (array.Length > MaxSharedArrayLength)
-            _largeArrayPool.Return(array);
-        else
-            SafeArrayPool<byte>.Shared.Return(array);
-    }
-#endif
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void RentSlow()
-    {
-        byte[]? memory = _memory;
-        if (memory is null)
-        {
-            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize));
-            _lastZeroedSize = 0;
-        }
-        else if (Size > (ulong)memory.LongLength)
-        {
-            byte[] grown = Rent(TruncateToInt32(Size));
-            Array.Copy(memory, 0, grown, 0, (int)_lastZeroedSize);
-            Return(memory);
-            _memory = memory = grown;
-        }
-
-        ulong size = Size;
-        if (size > _lastZeroedSize)
-        {
-            // Over-zero to a chunk boundary so sequential MSTORE growth does not take RentSlow per word.
-            const ulong zeroChunk = 4 * 1024;
-            ulong target = Math.Min((ulong)memory.Length, (size + (zeroChunk - 1)) & ~(zeroChunk - 1));
-            Array.Clear(memory, (int)_lastZeroedSize, (int)(target - _lastZeroedSize));
-            _lastZeroedSize = target;
-        }
-    }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
     // direct ulong->int narrowing (treats it as a signed truncation and keeps the operation
