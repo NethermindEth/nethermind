@@ -403,7 +403,9 @@ are deleted (sweep) or excluded from upload; the artifact is assembled by
 `corpus_results.py stage`, which copies nothing but files on its allowlist, each
 behind an exact-schema validator (`jsonbench-summary.md` is the one exception — it
 is generated strictly downstream of the sanitized schema; `summaries.manifest` is
-validated line-by-line and its paths rewritten artifact-relative): `summary.json`, `parity.json`, `timings.csv`
+validated line-by-line with its paths rewritten artifact-relative — and being an index of
+files that are themselves validated, a malformed manifest drops only itself with a warning
+rather than failing the artifact): `summary.json`, `parity.json`, `timings.csv`
 (indexes, milliseconds and outcome names), `timings.meta.json` (block identity and
 run parameters, including `warmup_seconds`), `resources.json` (cgroup counters),
 `parity-diffs.json`, and the generated markdown/manifest. `parity-diffs.json` is
