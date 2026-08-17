@@ -29,7 +29,6 @@ public sealed class AssociativeKeyCache<TKey>
     private readonly int _hashShift;
     private readonly int[] _setGates;
     private long _epochAndCount;
-    private long _ticker;
 
     public int Count => ReadCount(ref _epochAndCount);
 
@@ -95,11 +94,20 @@ public sealed class AssociativeKeyCache<TKey>
             if (h1 == h2 && storedKey.Equals(in key))
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
+                // Eviction age uses the coarse OS clock rather than a shared counter: a per-hit
+                // Interlocked on a cache-wide field is a serialized cross-core RMW under
+                // concurrent readers (and it dirtied the line _epochAndCount lives on, which
+                // every Get reads first). Millisecond granularity is plenty for 3-random
+                // eviction, and the guarded store keeps steady-state hits write-free.
                 // Ticker store without the set gate is safe: 8-byte aligned long is atomic on
                 // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
                 // not key/value correctness — the "losing" ticker value is simply slightly stale.
                 if (TRefreshTicker.IsActive)
-                    e.Ticker = Interlocked.Increment(ref _ticker);
+                {
+                    long now = Environment.TickCount64;
+                    if (e.Ticker != now)
+                        e.Ticker = now;
+                }
                 return true;
             }
         }
@@ -158,7 +166,7 @@ public sealed class AssociativeKeyCache<TKey>
                         // Unlike AssociativeCache.SetCore (which calls WriteEntry to update the value),
                         // the key-only variant has nothing to write, so a bare ticker store suffices.
                         // The seqlock header is unchanged, which is correct: readers see a stable entry.
-                        e.Ticker = Interlocked.Increment(ref _ticker);
+                        e.Ticker = Environment.TickCount64;
                         return false;
                     }
                 }
@@ -174,12 +182,14 @@ public sealed class AssociativeKeyCache<TKey>
 
             if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
 
-            long timestamp = Interlocked.Increment(ref _ticker);
+            long timestamp = Environment.TickCount64;
+            // The millisecond timestamp repeats within a burst, so the eviction pick draws its
+            // randomness from the high-resolution clock instead (rare path, cost acceptable).
             int target = bestEmpty >= 0
                 ? bestEmpty
                 : bestStale >= 0
                     ? bestStale
-                    : Pick3RandomEvictEntry(ref entries, baseIdx, timestamp);
+                    : Pick3RandomEvictEntry(ref entries, baseIdx, System.Diagnostics.Stopwatch.GetTimestamp());
 
             ref Entry te = ref Unsafe.Add(ref entries, baseIdx + target);
             long existing = Volatile.Read(ref te.Header);
