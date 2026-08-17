@@ -3074,10 +3074,13 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void RecalculateTreeLevels_WhenBestSuggestedHeaderUnresolvableInPoS_StopsAtBeaconJunction()
+    public void RecalculateTreeLevels_WhenBeaconSegmentOverlapsBestSuggested_MovesPointerToBeaconJunction()
     {
-        // Post-merge repro of the O(n) startup walk: reconciliation must stop at the
+        // Post-merge repro of the O(n) startup walk: reconciliation must walk down to the
         // beacon/non-beacon junction rather than walking every already-synced header to genesis.
+        // The beacon fork overlaps the best-suggested level, so a stop bound anchored on the
+        // BestSuggestedHeader number would refuse the walk entirely — only the IsKnownBlock
+        // anchor moves the pointer while still stopping at the junction.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         _blocksDb = new TestMemDb();
@@ -3090,19 +3093,29 @@ public class BlockTreeTests
             .WithoutSettingHead
             .TestObject;
 
-        Block previous = SuggestProcessedPostMergeChain(tree);
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
 
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
         tree.SuggestBlock(block5);
 
-        // Beacon header backfilled on top; pointer parked one above the junction.
-        BlockHeader header6 = Build.A.BlockHeader.WithNumber(6).WithParent(block5.Header).TestObject;
-        tree.Insert(header6, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        // A beacon fork next to the suggested block; an interrupted backfill parked the pointer
+        // above the beacon header it had already inserted.
+        BlockHeader beacon5 = Build.A.BlockHeader.WithParent(previous.Header).WithExtraData(new byte[] { 2 }).TestObject;
+        BlockHeader beacon6 = Build.A.BlockHeader.WithParent(beacon5).TestObject;
+        BlockTreeInsertHeaderOptions beaconInsert = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+        tree.Insert(beacon5, beaconInsert);
+        tree.Insert(beacon6, beaconInsert);
+        tree.LowestInsertedBeaconHeader = beacon6;
 
         tree.RecalculateTreeLevels();
 
-        // Must stay at the lowest beacon header, not descend into the synced chain (was 1 before the fix).
-        Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(6UL));
+        using (Assert.EnterMultipleScope())
+        {
+            // Must descend to the lowest inserted beacon header, not into the synced chain (was 1 before the fix).
+            Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(5UL), "lowest beacon");
+            // The mixed level restores the non-beacon suggestion, not the beacon fork header.
+            Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(block5.Hash), "suggested header");
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -3113,7 +3126,7 @@ public class BlockTreeTests
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
         BlockTree tree = builder.TestObject;
 
-        Block previous = SuggestProcessedPostMergeChain(tree);
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
 
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
         Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
@@ -3128,8 +3141,63 @@ public class BlockTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reloaded.Head?.Number, Is.EqualTo(4UL), "head");
-            Assert.That(reloaded.BestSuggestedHeader?.Number, Is.EqualTo(6UL), "suggested header");
-            Assert.That(reloaded.BestSuggestedBody?.Number, Is.EqualTo(6UL), "suggested body");
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(block6.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(block6.Hash), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_latest_suggested_sibling_post_merge_when_level_has_competing_payloads()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        Block olderSibling = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).WithExtraData(new byte[] { 1 }).TestObject;
+        Block latestSibling = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).WithExtraData(new byte[] { 2 }).TestObject;
+        tree.SuggestBlock(olderSibling);
+        tree.SuggestBlock(latestSibling);
+        Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(latestSibling.Hash), "runtime pointer");
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(latestSibling.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(latestSibling.Hash), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_post_merge_when_header_sits_ahead_of_body()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
+        tree.SuggestBlock(block5);
+        tree.SuggestHeader(block6.Header);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.BestSuggestedHeader?.Hash, Is.EqualTo(block6.Hash), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Hash, Is.EqualTo(block5.Hash), "suggested body");
         }
     }
 
@@ -3141,7 +3209,7 @@ public class BlockTreeTests
         BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
         BlockTree tree = builder.TestObject;
 
-        Block previous = SuggestProcessedPostMergeChain(tree);
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
 
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
         Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
@@ -3155,9 +3223,32 @@ public class BlockTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reloaded.BestSuggestedBeaconHeader?.Number, Is.EqualTo(6UL), "beacon header");
-            Assert.That(reloaded.BestSuggestedBeaconBody?.Number, Is.EqualTo(6UL), "beacon body");
+            Assert.That(reloaded.BestSuggestedBeaconHeader?.Hash, Is.EqualTo(block6.Hash), "beacon header");
+            Assert.That(reloaded.BestSuggestedBeaconBody?.Hash, Is.EqualTo(block6.Hash), "beacon body");
         }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_best_suggested_beacon_from_beacon_entry_when_level_also_has_canonical_block()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block[] chain = SuggestProcessedPostMergeChain(tree);
+
+        // A beacon fork header at the processed head's level: the canonical lookup resolves the
+        // main-chain sibling, so the restore must probe the beacon entries first.
+        BlockHeader beaconSibling = Build.A.BlockHeader.WithParent(chain[3].Header).WithExtraData(new byte[] { 2 }).TestObject;
+        tree.Insert(beaconSibling, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        Assert.That(reloaded.BestSuggestedBeaconHeader?.Hash, Is.EqualTo(beaconSibling.Hash));
     }
 
     private static CustomSpecProvider PostMergeSpecProvider() => new(((ForkActivation)0, London.Instance))
@@ -3165,20 +3256,21 @@ public class BlockTreeTests
         TerminalTotalDifficulty = UInt256.Zero
     };
 
-    private static Block SuggestProcessedPostMergeChain(BlockTree tree)
+    private static Block[] SuggestProcessedPostMergeChain(BlockTree tree)
     {
-        Block previous = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        Block[] chain = new Block[5];
+        Block previous = chain[0] = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
         tree.SuggestBlock(previous);
         tree.TryUpdateMainChain(previous.Header, true, preloadedBlocks: new[] { previous });
-        for (ulong i = 1; i <= 4; i++)
+        for (int i = 1; i <= 4; i++)
         {
-            Block block = Build.A.Block.WithNumber(i).WithDifficulty(0).WithParent(previous).TestObject;
+            Block block = chain[i] = Build.A.Block.WithNumber((ulong)i).WithDifficulty(0).WithParent(previous).TestObject;
             tree.SuggestBlock(block);
             tree.TryUpdateMainChain(block.Header, true, preloadedBlocks: new[] { block });
             previous = block;
         }
 
-        return previous;
+        return chain;
     }
 
     private static void AssertSuggestNotifications(AddBlockResult result, bool hasNotified, bool hasNotifiedNewSuggested)
