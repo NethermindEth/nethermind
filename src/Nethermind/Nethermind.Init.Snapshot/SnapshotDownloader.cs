@@ -17,7 +17,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
     private const int BufferSize = 65536;
     private const int ResumeWarningDelaySeconds = 5;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan StallTimeout = SnapshotHttpClient.DefaultStallTimeout;
 
     // A single client is shared for all retries to preserve the connection pool.
     private readonly SnapshotHttpClient _client = new();

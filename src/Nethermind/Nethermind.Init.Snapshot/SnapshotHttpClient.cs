@@ -11,6 +11,8 @@ internal sealed record SnapshotRemoteInfo(long? Length, EntityTagHeaderValue? ET
 
 internal sealed class SnapshotHttpClient : IDisposable
 {
+    internal static readonly TimeSpan DefaultStallTimeout = TimeSpan.FromMinutes(2);
+
     private const int MaxRedirects = 10;
     private const int SkipBufferSize = 65536;
     private static readonly TimeSpan HeaderTimeout = TimeSpan.FromSeconds(100);

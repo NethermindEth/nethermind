@@ -3,7 +3,6 @@
 
 using System.Buffers;
 using System.IO.Abstractions;
-using System.Net;
 using System.Security.Cryptography;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;

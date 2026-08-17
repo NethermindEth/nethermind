@@ -15,7 +15,7 @@ namespace Nethermind.Init.Snapshot;
 internal sealed record SnapshotStreamSettings(int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay, TimeSpan StallTimeout)
 {
     public static SnapshotStreamSettings Default(int connections) =>
-        new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300), TimeSpan.FromMinutes(2));
+        new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300), SnapshotHttpClient.DefaultStallTimeout);
 }
 
 internal sealed class SnapshotHttpStream : Stream
