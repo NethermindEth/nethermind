@@ -61,8 +61,9 @@ if perf record -F "$RECORD_FREQ" --call-graph fp -o "$data" -p "$pid" -- sleep "
     || note "perf report (dso) failed"
   perf report --stdio -i "$data" --no-children -s dso,sym 2>/dev/null | head -n 250 > "$OUT_DIR/perf-symbols.txt" \
     || note "perf report (symbols) failed"
-  # Folded stacks (root;...;leaf count) for flame/differential charts. Aggregated on the box so
-  # the staged file stays small; symbol names only, no request content.
+  # Folded stacks ("count root;...;leaf" — count first because managed symbol names contain
+  # spaces) for flame/differential charts. Aggregated on the box so the staged file stays small;
+  # symbol names only, no request content.
   perf script -i "$data" 2>/dev/null | awk '
     /^[^\t ]/ { if (stack != "") counts[stack]++; stack=""; next }
     /^[\t ]+[0-9a-f]+ / {
@@ -72,8 +73,8 @@ if perf record -F "$RECORD_FREQ" --call-graph fp -o "$data" -p "$pid" -- sleep "
       sub(/\+0x[0-9a-f]+$/, "", line)
       stack = (stack == "" ? line : line ";" stack)
     }
-    END { if (stack != "") counts[stack]++; for (s in counts) print s, counts[s] }
-  ' | sort -t' ' -k2 -rn | head -n 2000 > "$OUT_DIR/perf-folded.txt" \
+    END { if (stack != "") counts[stack]++; for (s in counts) print counts[s], s }
+  ' | sort -rn | head -n 4000 > "$OUT_DIR/perf-folded.txt" \
     || note "stack folding failed"
 else
   note "perf record failed — module split unavailable"
