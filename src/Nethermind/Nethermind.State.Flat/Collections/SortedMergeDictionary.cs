@@ -17,18 +17,44 @@ namespace Nethermind.State.Flat.Collections;
 /// </summary>
 /// <remarks>
 /// Buckets store <c>entryIndex + 1 + _bucketSalt</c>; the salt grows every build, so stale slots decode out of
-/// range and read as empty without per-build clearing. Entry arrays pool through a type private to this class
-/// and are always returned all-default (<see cref="_entriesDirty"/>), so renting them needs no clearing either.
+/// range and read as empty without per-build clearing. Both entry-array owners return their arrays all-default
+/// (<see cref="_entriesDirty"/>); every user of the shared entry pool must preserve this convention so rents can
+/// skip clearing.
 /// </remarks>
 internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, IDisposable
     where TKey : IEquatable<TKey>
 {
-    private struct Entry
+    internal struct Entry
     {
         public uint HashCode;
         public int Next;
         public TKey Key;
         public TValue Value;
+    }
+
+    internal readonly struct Run(Entry[] entries, int count)
+    {
+        internal Entry[] Entries { get; } = entries;
+        internal int Count { get; } = count;
+    }
+
+    internal sealed class PooledRun(ArrayPool<Entry> pool, Entry[] entries, int count) : IDisposable
+    {
+        private Entry[] _entries = entries;
+        private int _count = count;
+
+        internal Run AsRun() => new(_entries, _count);
+
+        public void Dispose()
+        {
+            Entry[] owned = _entries;
+            if (owned.Length == 0) return;
+
+            if (_count > 0) Array.Clear(owned, 0, _count);
+            _entries = [];
+            _count = 0;
+            pool.Return(owned);
+        }
     }
 
     private Entry[] _entries = [];
@@ -82,18 +108,37 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         int count = source.Count;
         _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
         EnsureEntryCapacity(count);
-        int i = 0;
-        foreach (KeyValuePair<TKey, TValue> kv in source)
-        {
-            if (i == count) ThrowSourceOverYielded();
-            _entries[i++] = new Entry { HashCode = (uint)kv.Key.GetHashCode(), Key = kv.Key, Value = kv.Value };
-        }
-
-        if (i != count) ThrowSourceUnderYielded();
-        _entries.AsSpan(0, count).Sort(new EntryKeyComparer<TComparer>(keyComparer));
+        FillAndSort(_entries.AsSpan(0, count), source, keyComparer);
         _count = count;
         BuildBuckets();
     }
+
+    internal static PooledRun BuildRunFromUnsorted<TComparer>(
+        IReadOnlyCollection<KeyValuePair<TKey, TValue>> source,
+        TComparer keyComparer,
+        ArrayPool<Entry>? pool = null)
+        where TComparer : IComparer<TKey>
+    {
+        pool ??= ArrayPool<Entry>.Shared;
+        int count = source.Count;
+        Entry[] entries = count == 0 ? [] : pool.Rent(count);
+        try
+        {
+            FillAndSort(entries.AsSpan(0, count), source, keyComparer);
+            return new PooledRun(pool, entries, count);
+        }
+        catch
+        {
+            if (entries.Length > 0)
+            {
+                if (count > 0) Array.Clear(entries, 0, count);
+                pool.Return(entries);
+            }
+            throw;
+        }
+    }
+
+    internal Run AsRun() => new(_entries, _count);
 
     /// <summary>
     /// Merges already-sorted inputs (ascending priority; the highest-index source wins on equal keys). When
@@ -112,14 +157,27 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
         if (sources.Length == 0) return;
 
+        Run[] runs = new Run[sources.Length];
+        for (int i = 0; i < sources.Length; i++) runs[i] = sources[i].AsRun();
+        BuildFromMerge(runs, keyComparer, keep);
+    }
+
+    internal void BuildFromMerge<TComparer>(
+        ReadOnlySpan<Run> sources,
+        TComparer keyComparer,
+        Func<int, TKey, bool>? keep = null)
+        where TComparer : IComparer<TKey>
+    {
+        _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
+        if (sources.Length == 0) return;
+
         int total = 0;
-        foreach (SortedMergeDictionary<TKey, TValue> source in sources) total += source._count;
+        foreach (Run source in sources) total += source.Count;
         EnsureEntryCapacity(total);
 
         LoserTree<TComparer> tree = new(sources, keyComparer);
         Entry[] entries = _entries;
         int count = 0;
-        // count < total also guards the dirty watermark against sources mutated in violation of their lease.
         while (count < total && tree.TryNext(keep, out Entry chosen))
         {
             entries[count++] = chosen;
@@ -282,6 +340,23 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         public int Compare(Entry x, Entry y) => keyComparer.Compare(x.Key, y.Key);
     }
 
+    private static void FillAndSort<TComparer>(
+        Span<Entry> entries,
+        IReadOnlyCollection<KeyValuePair<TKey, TValue>> source,
+        TComparer keyComparer)
+        where TComparer : IComparer<TKey>
+    {
+        int i = 0;
+        foreach (KeyValuePair<TKey, TValue> kv in source)
+        {
+            if (i == entries.Length) ThrowSourceOverYielded();
+            entries[i++] = new Entry { HashCode = (uint)kv.Key.GetHashCode(), Key = kv.Key, Value = kv.Value };
+        }
+
+        if (i != entries.Length) ThrowSourceUnderYielded();
+        entries.Sort(new EntryKeyComparer<TComparer>(keyComparer));
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSourceOverYielded() => throw new InvalidOperationException("Source yielded more entries than Count.");
 
@@ -297,13 +372,13 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     /// </summary>
     private ref struct LoserTree<TComparer> where TComparer : IComparer<TKey>
     {
-        private readonly ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> _sources;
+        private readonly ReadOnlySpan<Run> _sources;
         private readonly TComparer _keyComparer;
         private readonly int _k;
         private readonly int[] _tree;
         private readonly int[] _position;
 
-        public LoserTree(ReadOnlySpan<SortedMergeDictionary<TKey, TValue>> sources, TComparer keyComparer)
+        public LoserTree(ReadOnlySpan<Run> sources, TComparer keyComparer)
         {
             _sources = sources;
             _keyComparer = keyComparer;
@@ -322,22 +397,22 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             while (true)
             {
                 int winner = _tree[0];
-                if (winner == _k || _position[winner] >= _sources[winner]._count)
+                if (winner == _k || _position[winner] >= _sources[winner].Count)
                 {
                     chosen = default;
                     return false;
                 }
 
-                TKey key = _sources[winner]._entries[_position[winner]].Key;
+                TKey key = _sources[winner].Entries[_position[winner]].Key;
                 bool hasChosen = false;
                 chosen = default;
 
                 while (true)
                 {
                     int current = _tree[0];
-                    if (current == _k || _position[current] >= _sources[current]._count) break;
+                    if (current == _k || _position[current] >= _sources[current].Count) break;
 
-                    ref Entry currentHead = ref _sources[current]._entries[_position[current]];
+                    ref Entry currentHead = ref _sources[current].Entries[_position[current]];
                     if (_keyComparer.Compare(currentHead.Key, key) != 0) break;
 
                     if (keep is null || keep(current, currentHead.Key))
@@ -370,8 +445,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             if (a == _k) return b == _k ? 0 : -1;
             if (b == _k) return 1;
 
-            bool aExhausted = _position[a] >= _sources[a]._count;
-            bool bExhausted = _position[b] >= _sources[b]._count;
+            bool aExhausted = _position[a] >= _sources[a].Count;
+            bool bExhausted = _position[b] >= _sources[b].Count;
             if (aExhausted || bExhausted)
             {
                 if (aExhausted && bExhausted) return a.CompareTo(b);
@@ -379,8 +454,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             }
 
             int cmp = _keyComparer.Compare(
-                _sources[a]._entries[_position[a]].Key,
-                _sources[b]._entries[_position[b]].Key);
+                _sources[a].Entries[_position[a]].Key,
+                _sources[b].Entries[_position[b]].Key);
             return cmp != 0 ? cmp : a.CompareTo(b);
         }
     }

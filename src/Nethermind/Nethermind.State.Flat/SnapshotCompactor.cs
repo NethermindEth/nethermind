@@ -186,10 +186,10 @@ public class SnapshotCompactor(
         where TComparer : IComparer<TKey>
     {
         int count = snapshots.Count;
-        SortedMergeDictionary<TKey, TValue>[] sources = new SortedMergeDictionary<TKey, TValue>[count];
+        SortedMergeDictionary<TKey, TValue>.Run[] sources = new SortedMergeDictionary<TKey, TValue>.Run[count];
 
         // Mutable inputs are sorted into transients that are disposed once the merge has copied them.
-        List<SortedMergeDictionary<TKey, TValue>>? transients = null;
+        List<SortedMergeDictionary<TKey, TValue>.PooledRun>? transients = null;
         try
         {
             for (int i = 0; i < count; i++)
@@ -197,13 +197,13 @@ public class SnapshotCompactor(
                 Snapshot source = snapshots[i];
                 if (source.IsSorted)
                 {
-                    sources[i] = fromSorted(source.SortedContent);
+                    sources[i] = fromSorted(source.SortedContent).AsRun();
                 }
                 else
                 {
-                    SortedMergeDictionary<TKey, TValue> transient = new();
-                    transient.BuildFromUnsorted(fromMutable(source.Content), comparer);
-                    sources[i] = transient;
+                    SortedMergeDictionary<TKey, TValue>.PooledRun transient =
+                        SortedMergeDictionary<TKey, TValue>.BuildRunFromUnsorted(fromMutable(source.Content), comparer);
+                    sources[i] = transient.AsRun();
                     (transients ??= []).Add(transient);
                 }
             }
@@ -213,7 +213,7 @@ public class SnapshotCompactor(
         finally
         {
             if (transients is not null)
-                foreach (SortedMergeDictionary<TKey, TValue> transient in transients) transient.Dispose();
+                foreach (SortedMergeDictionary<TKey, TValue>.PooledRun transient in transients) transient.Dispose();
         }
     }
 }
