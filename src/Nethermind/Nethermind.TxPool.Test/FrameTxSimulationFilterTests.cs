@@ -88,6 +88,25 @@ public class FrameTxSimulationFilterTests
     }
 
     [Test]
+    public void Accept_OpaquePrefixUndecidedBySimulator_DefersInsteadOfChargingTheSender()
+    {
+        // A node-side fault must not produce a non-accepting result, which the peer's flood counter
+        // would charge and eventually disconnect over.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx).Returns(FrameTxSimulationResult.Undecided("simulation unavailable"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.Null);
+        }
+    }
+
+    [Test]
     public void Accept_OpaquePrefixWithoutSimulator_DefersLikePhase1()
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();

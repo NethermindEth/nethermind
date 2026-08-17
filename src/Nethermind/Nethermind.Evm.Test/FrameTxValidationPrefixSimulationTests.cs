@@ -138,6 +138,24 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
+    public void Simulate_PrefixUsesAnUndefinedOpcode_RejectedByTheBadInstructionHalt()
+    {
+        // 0xF6 has no Instruction member on any fork we ship, so the EVM's undefined-opcode halt fails the
+        // prefix on its own and the tracer needs no rule of its own for it.
+        byte[] code = [0xf6, .. ApproveCode(TxFrame.ApproveExecutionAndPayment)];
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
+    [Test]
     public void Simulate_PrefixExceedsMaxVerifyGas_RejectedAsOverBudget()
     {
         // A capped frame that then runs out of gas must report as over-budget, not as a plain revert.
@@ -217,8 +235,6 @@ public class FrameTxValidationPrefixSimulationTests
 
         yield return new TestCaseData((byte)Instruction.CREATE, 3).SetName("banned CREATE");
         yield return new TestCaseData((byte)Instruction.CREATE2, 4).SetName("banned CREATE2");
-        // EIP-7819; matched by raw byte rather than through the Instruction enum, on its own code path.
-        yield return new TestCaseData((byte)0xf6, 3).SetName("banned SETDELEGATE");
     }
 
     [TestCaseSource(nameof(BannedOpcodes))]

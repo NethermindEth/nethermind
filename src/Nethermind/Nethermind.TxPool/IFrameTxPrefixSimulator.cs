@@ -22,21 +22,38 @@ public interface IFrameTxPrefixSimulator
     FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false);
 }
 
-public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, string? rejectionReason, bool indeterminate = false, bool nodeBound = false)
+public enum FrameTxSimulationOutcome
 {
-    public bool Accepted { get; } = accepted;
+    /// <summary>The validation prefix ran to a resolved payer.</summary>
+    Accepted,
 
-    /// <summary>Non-null only when <see cref="Accepted"/>.</summary>
+    /// <summary>The prefix is invalid, and the failure is attributable to the transaction.</summary>
+    Rejected,
+
+    /// <summary>A node-side fault stopped the simulation before it could judge the transaction.</summary>
+    Undecided,
+}
+
+public readonly struct FrameTxSimulationResult(
+    FrameTxSimulationOutcome outcome,
+    Address? payer,
+    string? reason,
+    bool indeterminate = false,
+    bool nodeBound = false)
+{
+    public FrameTxSimulationOutcome Outcome { get; } = outcome;
+
+    /// <summary>Non-null only when <see cref="Outcome"/> is <see cref="FrameTxSimulationOutcome.Accepted"/>.</summary>
     public Address? Payer { get; } = payer;
 
-    public string? RejectionReason { get; } = rejectionReason;
+    public string? Reason { get; } = reason;
 
     /// <summary>
-    /// True when the rejection reflects an admission bound rather than the prefix, so it says nothing
-    /// about validity.
+    /// True when the outcome reflects an admission bound or a node fault rather than the prefix, so it
+    /// says nothing about validity.
     /// </summary>
-    /// <remarks>No production code reads this yet: admission is driven by <see cref="NodeBound"/>, and the
-    /// retention it is meant to govern arrives with a revalidation pass that consults the simulator.</remarks>
+    /// <remarks>Retention is meant to consult this; today only <see cref="NodeBound"/> and
+    /// <see cref="Outcome"/> drive admission.</remarks>
     public bool Indeterminate { get; } = indeterminate;
 
     /// <summary>
@@ -45,12 +62,17 @@ public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, st
     /// </summary>
     public bool NodeBound { get; } = nodeBound;
 
-    public static FrameTxSimulationResult Accept(Address payer) => new(true, payer, null);
-    public static FrameTxSimulationResult Reject(string reason) => new(false, null, reason);
+    public static FrameTxSimulationResult Accept(Address payer) => new(FrameTxSimulationOutcome.Accepted, payer, null);
+    public static FrameTxSimulationResult Reject(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason);
 
-    /// <summary>A rejection caused by a bound this node spent on itself, not by the prefix.</summary>
-    public static FrameTxSimulationResult RejectIndeterminate(string reason) => new(false, null, reason, indeterminate: true, nodeBound: true);
+    /// <summary>A rejection caused by a bound this node spent on itself, not by the prefix. Still charged to
+    /// the peer as load, because shedding is what the throttle is for.</summary>
+    public static FrameTxSimulationResult RejectIndeterminate(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason, indeterminate: true, nodeBound: true);
 
     /// <summary>A rejection the prefix's own wall-clock consumption caused; retained, but chargeable to the sender.</summary>
-    public static FrameTxSimulationResult RejectTimedOut(string reason) => new(false, null, reason, indeterminate: true);
+    public static FrameTxSimulationResult RejectTimedOut(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason, indeterminate: true);
+
+    /// <summary>The node malfunctioned rather than shed load, so the caller must not turn this into a
+    /// rejection at all.</summary>
+    public static FrameTxSimulationResult Undecided(string reason) => new(FrameTxSimulationOutcome.Undecided, null, reason, indeterminate: true, nodeBound: true);
 }

@@ -3,15 +3,18 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Metrics = Nethermind.TxPool.Metrics;
 
@@ -55,7 +58,7 @@ public sealed class FrameTxPrefixSimulator(
         BlockHeader? head = blockFinder.Head?.Header;
         if (head is null)
         {
-            return FrameTxSimulationResult.RejectIndeterminate("no chain head to simulate against");
+            return FrameTxSimulationResult.Undecided("no chain head to simulate against");
         }
 
         // Bounded wait: an admission thread must not queue indefinitely behind other peers' simulations.
@@ -69,7 +72,7 @@ public sealed class FrameTxPrefixSimulator(
         {
             if (_disposed)
             {
-                return FrameTxSimulationResult.RejectIndeterminate("simulator disposed");
+                return FrameTxSimulationResult.Undecided("simulator disposed");
             }
 
             // The budget rations simulation between gossiping peers; a local submission is not competing
@@ -143,6 +146,13 @@ public sealed class FrameTxPrefixSimulator(
             // env (a cancellable state read during shutdown) and decides nothing about the prefix.
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation cancelled");
         }
+        catch (Exception e) when (IsNodeFault(e))
+        {
+            // A fault this node is answerable for, wherever it surfaced: a trie read can fail mid-execution,
+            // long after the tracer exists, and blaming the transaction for it throttles honest peers.
+            if (_logger.IsWarn) _logger.Warn($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. {e}");
+            return FrameTxSimulationResult.Undecided("validation-prefix simulation unavailable");
+        }
         catch (Exception e) when (e is not OperationCanceledException and not OutOfMemoryException)
         {
             // Attacker-chosen bytecode over env build, trie reads and the EVM: the throw surface is not
@@ -153,6 +163,12 @@ public sealed class FrameTxPrefixSimulator(
                 : FrameTxSimulationResult.Reject("validation-prefix simulation error");
         }
     }
+
+    /// <summary>Whether an exception indicts the node rather than the transaction.</summary>
+    /// <remarks><see cref="IInternalNethermindException"/> is the codebase's marker for that — it covers the
+    /// <see cref="TrieException"/> family, including the missing trie nodes that pruning can expose.</remarks>
+    private static bool IsNodeFault(Exception e) =>
+        e is IInternalNethermindException or ObjectDisposedException or IOException;
 
     /// <summary>Whether the per-head simulation time budget still has room, resetting it on a new head.</summary>
     /// <remarks>Checked before the simulation and charged after it, so it can overshoot by one simulation;
