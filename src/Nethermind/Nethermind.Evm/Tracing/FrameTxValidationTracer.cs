@@ -18,10 +18,6 @@ namespace Nethermind.Evm.Tracing;
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
     : TxTracer, IFrameTxReceiptTracer
 {
-    // EIP-8141 "Banned Opcodes" lists SETDELEGATE (0xF6, EIP-7819). EIP-7819 is unimplemented here, so the
-    // byte is undefined on every fork we ship and this ban only bites if it ever activates.
-    private const byte SetDelegateOpcode = 0xf6;
-
     // Stack slot holding the current CALL*/EXTCODE* target, or -1. Set in StartOperation and consumed in
     // SetOperationStack for the same instruction, as the stack operands aren't available any earlier.
     private int _targetStackIndex = -1;
@@ -42,12 +38,6 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
     {
         _targetStackIndex = -1;
         if (Violated) return;
-
-        if ((byte)opcode == SetDelegateOpcode)
-        {
-            Violate("banned opcode SETDELEGATE in validation prefix");
-            return;
-        }
 
         switch (opcode)
         {

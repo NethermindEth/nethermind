@@ -135,6 +135,24 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
+    public void Simulate_PrefixUsesAnUndefinedOpcode_RejectedByTheBadInstructionHalt()
+    {
+        // 0xF6 has no Instruction member on any fork we ship, so the EVM's undefined-opcode halt fails the
+        // prefix on its own and the tracer needs no rule of its own for it.
+        byte[] code = [0xf6, .. ApproveCode(TxFrame.ApproveExecutionAndPayment)];
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
+    [Test]
     public void Simulate_PrefixExceedsMaxVerifyGas_RejectedAsOverBudget()
     {
         // A capped frame that then runs out of gas must report as over-budget, not as a plain revert.
