@@ -32,7 +32,5 @@ public static class Eip8141Constants
     /// </summary>
     public static readonly byte[] ExpiryVerifierCode = Bytes.FromHexString("0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd");
 
-    /// <summary>The <c>TIMESTAMP</c> validation-prefix exemption applies only to a frame whose
-    /// <see cref="ExpiryVerifierAddress"/> code hash matches this.</summary>
     public static readonly ValueHash256 ExpiryVerifierCodeHash = ValueKeccak.Compute(ExpiryVerifierCode);
 }
