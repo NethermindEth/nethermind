@@ -417,16 +417,22 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
+        // The shape fallback deliberately wraps deserialization only: letting it span conversion
+        // made an unmapped fork name resurface as an unrelated error against the trimmed shape.
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
         {
-            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
-            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
+            Dictionary<string, BlockchainTestJson> tests;
+            try { tests = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json); }
+            catch (Exception) { tests = CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json)); }
+            return ConvertToBlockchainTests(tests);
         }
 
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(ReadOnlySpan<byte> json)
         {
-            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
-            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
+            Dictionary<string, BlockchainTestJson> tests;
+            try { tests = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json); }
+            catch (Exception) { tests = CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json)); }
+            return ConvertToBlockchainTests(tests);
         }
 
         // Some BAL fixtures use the trimmed HalfBlockchainTestJson shape; coerce on demand.

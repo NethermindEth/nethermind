@@ -62,7 +62,8 @@ namespace Nethermind.Specs
                 "BPO4" => BPO4.Instance,
                 "BPO5" => BPO5.Instance,
                 "Amsterdam" => Amsterdam.Instance,
-                _ => throw new NotSupportedException()
+                "Bogota" => Bogota.Instance,
+                _ => throw new NotSupportedException($"Unknown fork name '{specName}'")
             };
         }
     }
