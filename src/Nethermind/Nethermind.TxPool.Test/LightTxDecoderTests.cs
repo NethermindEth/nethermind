@@ -47,6 +47,17 @@ public class LightTxDecoderTests
         Assert.That(decoded.ProofVersion, Is.EqualTo(expectedProofVersion));
     }
 
+    // ProofVersion.V0 encodes as the RLP empty string, which a raw byte read returns as 128.
+    [TestCase(ProofVersion.V0)]
+    [TestCase(ProofVersion.V1)]
+    public void Round_trip_preserves_the_proof_version(ProofVersion version)
+    {
+        Transaction tx = BlobCarryingTx(TxType.Blob);
+        tx.NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], version);
+
+        Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).ProofVersion, Is.EqualTo(version));
+    }
+
     private static Transaction BlobCarryingTx(TxType type)
     {
         byte[][] versionedHashes = [new byte[32]];
