@@ -14,7 +14,7 @@ public interface IHistoryConfig : IConfig
     PruningModes Pruning { get; set; }
 
     [ConfigItem(
-        Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. Must be at least the chain's minHistoryRetentionEpochs chainspec parameter. A freshly synced node holds less history than this default window, so pruning starts acting only once the stored history outgrows it.",
+        Description = "The number of epochs to retain historical blocks and receipts when using 'Rolling' pruning mode. Must be at least the chain's minHistoryRetentionEpochs chainspec parameter.",
         DefaultValue = "82125")]
     uint RetentionEpochs { get; set; }
 
