@@ -13,6 +13,11 @@ namespace Nethermind.State.Flat.Collections;
 /// with a BCL-dictionary-style bucket index, so lookups are O(1) and enumeration is in key order. Backing arrays
 /// are pooled and reused across builds via <see cref="NoResizeClear"/>.
 /// </summary>
+/// <remarks>
+/// Buckets store <c>entryIndex + 1 + _bucketSalt</c>; the salt grows every build, so stale slots decode out of
+/// range and read as empty without per-build clearing. Entry arrays pool through a type private to this class
+/// and are always returned all-default (<see cref="_entriesDirty"/>), so renting them needs no clearing either.
+/// </remarks>
 internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, IDisposable
     where TKey : IEquatable<TKey>
 {
@@ -27,8 +32,15 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     private Entry[] _entries = [];
     private int[] _buckets = [];
     private int _count;
-    private int _bucketCount;
+    /// <summary>High-water mark of entries written since <see cref="_entries"/> was last all-default.</summary>
+    private int _entriesDirty;
     private uint _bucketMask;
+    /// <summary>Total entries stamped into the current bucket array; each build stamps slots in <c>(salt, salt + count]</c>.</summary>
+    private int _bucketSalt;
+    /// <summary><c>-1 - salt</c> of the last build: slot + bias is the entry index, negative when the slot is stale.</summary>
+    private int _bucketBias;
+    /// <summary>Zeroed prefix of <see cref="_buckets"/>; Rent may return extra length still holding foreign garbage.</summary>
+    private int _bucketsCleared;
 
     public int Count => _count;
 
@@ -37,16 +49,21 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         if (_count != 0)
         {
             uint hashCode = (uint)key.GetHashCode();
-            int i = _buckets[hashCode & _bucketMask] - 1;
-            while ((uint)i < (uint)_count)
+            int i = _buckets[hashCode & _bucketMask] + _bucketBias;
+            if ((uint)i < (uint)_count)
             {
-                ref Entry entry = ref _entries[i];
-                if (entry.HashCode == hashCode && entry.Key.Equals(key))
+                Entry[] entries = _entries;
+                // Next descends within the build or goes negative; guarding on entries.Length elides the bounds check.
+                while ((uint)i < (uint)entries.Length)
                 {
-                    value = entry.Value;
-                    return true;
+                    ref Entry entry = ref entries[i];
+                    if (entry.HashCode == hashCode && entry.Key.Equals(key))
+                    {
+                        value = entry.Value;
+                        return true;
+                    }
+                    i = entry.Next;
                 }
-                i = entry.Next;
             }
         }
 
@@ -87,7 +104,6 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         if (sources.Length == 0)
         {
             _count = 0;
-            BuildBuckets();
             return;
         }
 
@@ -96,10 +112,11 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         EnsureEntryCapacity(total);
 
         LoserTree<TComparer> tree = new(sources, keyComparer);
+        Entry[] entries = _entries;
         int count = 0;
         while (tree.TryNext(keep, out Entry chosen))
         {
-            _entries[count++] = chosen;
+            entries[count++] = chosen;
         }
 
         _count = count;
@@ -108,17 +125,18 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
     public void NoResizeClear()
     {
-        if (_count > 0) Array.Clear(_entries, 0, _count);
-        if (_bucketCount > 0) Array.Clear(_buckets, 0, _bucketCount);
+        // Stale bucket stamps are invalidated by the next build's salt advance.
+        if (_entriesDirty > 0) Array.Clear(_entries, 0, _entriesDirty);
         _count = 0;
-        _bucketCount = 0;
+        _entriesDirty = 0;
     }
 
     public void Dispose()
     {
         if (_entries.Length > 0)
         {
-            ArrayPool<Entry>.Shared.Return(_entries, clearArray: true);
+            if (_entriesDirty > 0) Array.Clear(_entries, 0, _entriesDirty);
+            ArrayPool<Entry>.Shared.Return(_entries);
             _entries = [];
         }
         if (_buckets.Length > 0)
@@ -127,40 +145,80 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             _buckets = [];
         }
         _count = 0;
-        _bucketCount = 0;
+        _entriesDirty = 0;
+        _bucketSalt = 0;
+        _bucketsCleared = 0;
     }
 
     private void EnsureEntryCapacity(int count)
     {
-        if (_entries.Length >= count) return;
-
-        Entry[] old = _entries;
-        _entries = ArrayPool<Entry>.Shared.Rent(count);
-        Array.Clear(_entries); // rented arrays aren't zeroed; keep the tail clear so it never pins stale objects
-        if (old.Length > 0) ArrayPool<Entry>.Shared.Return(old, clearArray: true);
+        Entry[] entries = _entries;
+        if (entries.Length < count)
+        {
+            _entries = ArrayPool<Entry>.Shared.Rent(count);
+            if (entries.Length > 0)
+            {
+                if (_entriesDirty > 0) Array.Clear(entries, 0, _entriesDirty);
+                ArrayPool<Entry>.Shared.Return(entries);
+            }
+            _entriesDirty = count;
+        }
+        else if (count > _entriesDirty)
+        {
+            // Raised before any write so an aborted build is still fully cleared on reset/return.
+            _entriesDirty = count;
+        }
     }
 
     private void BuildBuckets()
     {
-        int size = BucketSize(_count);
-        if (_buckets.Length < size)
+        int count = _count;
+        if (count == 0) return; // reads are gated on _count
+
+        int size = BucketSize(count);
+        int[] buckets = _buckets;
+        int salt;
+        if (buckets.Length < size)
         {
-            int[] old = _buckets;
-            _buckets = ArrayPool<int>.Shared.Rent(size);
+            int[] old = buckets;
+            _buckets = buckets = ArrayPool<int>.Shared.Rent(size);
+            // Foreign garbage could alias stamps; zero decodes as empty for every salt.
+            Array.Clear(buckets, 0, size);
+            _bucketsCleared = size;
+            salt = 0;
             if (old.Length > 0) ArrayPool<int>.Shared.Return(old);
         }
-
-        _bucketCount = size;
-        _bucketMask = (uint)(size - 1);
-        Array.Clear(_buckets, 0, size);
-
-        // buckets store a 1-based entry index (0 == empty); Next is the 0-based previous chain head, -1 at the end.
-        for (int i = 0; i < _count; i++)
+        else
         {
-            ref Entry entry = ref _entries[i];
-            ref int bucket = ref _buckets[entry.HashCode & _bucketMask];
-            entry.Next = bucket - 1;
-            bucket = i + 1;
+            if (size > _bucketsCleared)
+            {
+                // Grow the zeroed prefix: beyond it is pre-rent garbage the salt cannot invalidate.
+                Array.Clear(buckets, _bucketsCleared, size - _bucketsCleared);
+                _bucketsCleared = size;
+            }
+            salt = _bucketSalt;
+            if (salt > int.MaxValue - count)
+            {
+                // Restart the stamp sequence before it overflows (once per ~2 billion stamped entries).
+                Array.Clear(buckets, 0, _bucketsCleared);
+                salt = 0;
+            }
+        }
+
+        _bucketSalt = salt + count;
+        int bias = -1 - salt;
+        _bucketBias = bias;
+        _bucketMask = (uint)(size - 1);
+
+        // A slot stores (i + 1 + salt); slots from earlier builds decode negative and read as empty.
+        Span<int> bucketSpan = buckets.AsSpan(0, size);
+        Span<Entry> entries = _entries.AsSpan(0, count);
+        for (int i = 0; i < entries.Length; i++)
+        {
+            ref Entry entry = ref entries[i];
+            ref int bucket = ref bucketSpan[(int)entry.HashCode & (bucketSpan.Length - 1)];
+            entry.Next = bucket + bias;
+            bucket = i - bias;
         }
     }
 

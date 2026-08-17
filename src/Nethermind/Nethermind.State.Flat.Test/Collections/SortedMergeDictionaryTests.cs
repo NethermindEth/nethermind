@@ -161,6 +161,64 @@ public class SortedMergeDictionaryTests
         Assert.That(dict.Select(static kv => kv.Key), Is.EqualTo(new[] { 1000, 1001, 1002 }));
     }
 
+    [Test]
+    public void RepeatedReuse_StaleBucketsNeverResurrectOldKeys()
+    {
+        // Reuses one instance across builds of very different sizes; every key from a previous build must miss
+        // even though the bucket array is reused without being rebuilt from scratch.
+        using SortedMergeDictionary<int, int> dict = new();
+        int[] sizes = [400, 3, 150, 1, 500, 0, 47];
+        List<int> previousKeys = [];
+
+        for (int cycle = 0; cycle < sizes.Length; cycle++)
+        {
+            Dictionary<int, int> source = [];
+            int baseKey = cycle * 1_000_000;
+            for (int i = 0; i < sizes[cycle]; i++) source[baseKey + i] = cycle;
+
+            dict.NoResizeClear();
+            dict.BuildFromUnsorted(source, Cmp);
+
+            Assert.That(dict.Count, Is.EqualTo(sizes[cycle]));
+            foreach (KeyValuePair<int, int> kv in source)
+            {
+                Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"cycle {cycle}: missing key {kv.Key}");
+                Assert.That(value, Is.EqualTo(kv.Value));
+            }
+            foreach (int stale in previousKeys)
+            {
+                Assert.That(dict.TryGetValue(stale, out _), Is.False, $"cycle {cycle}: stale key {stale} resurrected");
+            }
+            previousKeys = [.. source.Keys];
+        }
+    }
+
+    [Test]
+    public void Rebuild_WithoutClear_DropsAllPreviousKeys()
+    {
+        using SortedMergeDictionary<int, int> dict = new();
+
+        Dictionary<int, int> big = [];
+        for (int i = 0; i < 300; i++) big[i] = i;
+        dict.BuildFromUnsorted(big, Cmp);
+
+        // Rebuild smaller without NoResizeClear: the new content replaces the old completely.
+        Dictionary<int, int> small = [];
+        for (int i = 1000; i < 1003; i++) small[i] = i;
+        dict.BuildFromUnsorted(small, Cmp);
+
+        Assert.That(dict.Count, Is.EqualTo(3));
+        foreach (KeyValuePair<int, int> kv in small)
+        {
+            Assert.That(dict.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
+            Assert.That(value, Is.EqualTo(kv.Value));
+        }
+        foreach (int stale in big.Keys)
+        {
+            Assert.That(dict.TryGetValue(stale, out _), Is.False, $"stale key {stale} resurrected");
+        }
+    }
+
     private static SortedMergeDictionary<int, int> FromPairs(params (int Key, int Value)[] pairs)
     {
         Dictionary<int, int> source = [];
