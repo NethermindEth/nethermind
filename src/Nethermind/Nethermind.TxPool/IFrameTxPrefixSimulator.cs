@@ -18,15 +18,30 @@ public interface IFrameTxPrefixSimulator
     FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
 }
 
-public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, string? rejectionReason)
+public enum FrameTxSimulationOutcome
 {
-    public bool Accepted { get; } = accepted;
+    /// <summary>The validation prefix ran to a resolved payer.</summary>
+    Accepted,
 
-    /// <summary>Non-null only when <see cref="Accepted"/>.</summary>
+    /// <summary>The prefix is invalid, and the failure is attributable to the transaction.</summary>
+    Rejected,
+
+    /// <summary>A node-side fault stopped the simulation before it could judge the transaction.</summary>
+    Undecided,
+}
+
+public readonly struct FrameTxSimulationResult(FrameTxSimulationOutcome outcome, Address? payer, string? reason)
+{
+    public FrameTxSimulationOutcome Outcome { get; } = outcome;
+
+    /// <summary>Non-null only when <see cref="Outcome"/> is <see cref="FrameTxSimulationOutcome.Accepted"/>.</summary>
     public Address? Payer { get; } = payer;
 
-    public string? RejectionReason { get; } = rejectionReason;
+    public string? Reason { get; } = reason;
 
-    public static FrameTxSimulationResult Accept(Address payer) => new(true, payer, null);
-    public static FrameTxSimulationResult Reject(string reason) => new(false, null, reason);
+    public static FrameTxSimulationResult Accept(Address payer) => new(FrameTxSimulationOutcome.Accepted, payer, null);
+    public static FrameTxSimulationResult Reject(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason);
+
+    /// <summary>The node, not the transaction, is at fault, so the caller must not turn this into a rejection.</summary>
+    public static FrameTxSimulationResult Undecided(string reason) => new(FrameTxSimulationOutcome.Undecided, null, reason);
 }

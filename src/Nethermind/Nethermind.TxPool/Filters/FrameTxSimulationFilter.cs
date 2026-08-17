@@ -31,15 +31,23 @@ internal sealed class FrameTxSimulationFilter(
         }
 
         FrameTxSimulationResult result = simulator.Simulate(tx);
-        if (!result.Accepted)
+        switch (result.Outcome)
         {
-            Metrics.PendingTransactionsFrameTxSimulationFailed++;
-            if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.RejectionReason}.");
-            return AcceptTxResult.FrameSimulationFailed.WithMessage(result.RejectionReason ?? TxPoolErrorMessages.FrameSimulationFailed);
-        }
+            case FrameTxSimulationOutcome.Rejected:
+                Metrics.PendingTransactionsFrameTxSimulationFailed++;
+                if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
+                return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
 
-        tx.PayerAddress = result.Payer;
-        if (logger.IsTrace) logger.Trace($"Simulated frame transaction {tx.Hash} validation prefix; resolved payer {result.Payer}.");
-        return AcceptTxResult.Accepted;
+            case FrameTxSimulationOutcome.Undecided:
+                // No verdict was reached, so defer exactly as an unwired simulator does rather than return
+                // a non-accepting result the sending peer would be charged for.
+                if (logger.IsDebug) logger.Debug($"Admitting frame transaction {tx.Hash} with an unresolved payer, validation-prefix simulation was unavailable: {result.Reason}.");
+                return AcceptTxResult.Accepted;
+
+            default:
+                tx.PayerAddress = result.Payer;
+                if (logger.IsTrace) logger.Trace($"Simulated frame transaction {tx.Hash} validation prefix; resolved payer {result.Payer}.");
+                return AcceptTxResult.Accepted;
+        }
     }
 }
