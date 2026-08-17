@@ -17,7 +17,7 @@ using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
@@ -171,15 +171,12 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
         else if (blockNumber.Type == BlockParameterType.Finalized)
         {
-            BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
-            if (latestCommittedBlock != null)
-            {
-                header = tree.FindHeader(latestCommittedBlock.Hash);
-            }
-            else
+            if (tree.FinalizedHash is null)
             {
                 return ResultWrapper<MasternodesStatus>.Fail("No finalized block found from consensus");
             }
+
+            header = tree.FindHeader(tree.FinalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
         else if (blockNumber.BlockNumber is null)
         {
@@ -539,10 +536,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<V2BlockInfo>.Fail("Header is not an XDC block header");
         }
 
-        bool committed = false;
-        BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
-
-        if (latestCommittedBlock is null)
+        if (tree.FinalizedHash is null)
         {
             return ResultWrapper<V2BlockInfo>.Success(new V2BlockInfo
             {
@@ -551,10 +545,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             });
         }
 
-        if (header.Number <= latestCommittedBlock.BlockNumber)
-        {
-            committed = true;
-        }
+        bool committed = header.Number <= tree.LastFinalizedBlockLevel && tree.IsMainChain(header);
 
         // Get round number from extra consensus data
         ulong round = 0;

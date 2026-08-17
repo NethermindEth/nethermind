@@ -61,6 +61,28 @@ public class RlpDecoderTests
     }
 
     [Test]
+    public void Can_decode_contract_creating_deposit_transaction()
+    {
+        Transaction tx = BuildDepositTransaction(to: null);
+
+        byte[] rlp = new byte[_decoder.GetLength(tx, RlpBehaviors.None)];
+        RlpWriter writer = new(rlp);
+        _decoder.Encode(ref writer, tx);
+
+        RlpReader ctx = new(rlp);
+        Transaction? decodedTx = _decoder.Decode(ref ctx);
+
+        Assert.That(decodedTx!.To, Is.Null);
+    }
+
+    private static Transaction BuildDepositTransaction(Address? to) => Build.A.Transaction
+        .WithType(TxType.DepositTx)
+        .WithSourceHash(TestItem.KeccakA)
+        .WithSenderAddress(TestItem.AddressA)
+        .WithTo(to)
+        .TestObject;
+
+    [Test]
     public void Can_decode_Legacy_Empty_Signature()
     {
         // See: https://github.com/NethermindEth/nethermind/issues/7880
