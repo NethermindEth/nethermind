@@ -172,12 +172,17 @@ class CorpusResultsTests(unittest.TestCase):
 
         (out_root / "summaries.manifest").write_text(
             "iso|a|nm|100=/etc/passwd\n", encoding="utf-8")
-        with self.assertRaises(corpus_results.CorpusResultsError):
-            corpus_results.stage(str(out_root), str(self.dir / "stage-manifest2"))
-
-        (out_root / "summaries.manifest").write_text("not a manifest line\n", encoding="utf-8")
-        with self.assertRaises(corpus_results.CorpusResultsError):
-            corpus_results.stage(str(out_root), str(self.dir / "stage-manifest3"))
+        # A malformed INDEX drops only itself: content files still stage, because failing the
+        # whole artifact over an index nothing downstream reads would discard a multi-hour sweep.
+        for tag, bad in (("escape", "iso|a|nm|100=/etc/passwd"),
+                         ("shapeless", "not a manifest line"),
+                         ("arity", "iso|a|b|c|d|e=x/jsonbench-summary.md")):
+            (out_root / "summaries.manifest").write_text(bad + "\n", encoding="utf-8")
+            stage2 = self.dir / f"stage-manifest-{tag}"
+            corpus_results.stage(str(out_root), str(stage2))
+            staged2 = sorted(q.relative_to(stage2).as_posix() for q in stage2.rglob("*") if q.is_file())
+            self.assertNotIn("summaries.manifest", staged2, bad)
+            self.assertIn("corpus/a/nm/100/summary.json", staged2, bad)
 
     def test_stage_rejects_unsanitized_summary_and_bad_parity(self):
         for name, filename, payload in (
