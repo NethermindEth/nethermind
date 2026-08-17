@@ -28,10 +28,6 @@ public sealed class FrameTxValidationTracer(
     TimeSpan timeout = default)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer
 {
-    // EIP-8141 "Banned Opcodes" lists SETDELEGATE (0xF6, EIP-7819). EIP-7819 is unimplemented here, so the
-    // byte is undefined on every fork we ship and this ban only bites if it ever activates.
-    private const byte SetDelegateOpcode = 0xf6;
-
     private readonly long _deadline = timeout > TimeSpan.Zero
         ? Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency)
         : 0;
@@ -68,12 +64,6 @@ public sealed class FrameTxValidationTracer(
     {
         _targetStackIndex = -1;
         if (Violated) return;
-
-        if ((byte)opcode == SetDelegateOpcode)
-        {
-            Violate("banned opcode SETDELEGATE in validation prefix");
-            return;
-        }
 
         switch (opcode)
         {

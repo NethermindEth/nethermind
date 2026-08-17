@@ -803,7 +803,8 @@ namespace Nethermind.TxPool
                     // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
                     if (_frameTxPrefixSimulator is null) return true;
                     FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, _cts.Token);
-                    if (!simulated.Accepted) return simulated.Indeterminate;
+                    // A node fault or an admission bound decides nothing, so the transaction stays pending.
+                    if (simulated.Outcome != FrameTxSimulationOutcome.Accepted) return simulated.Indeterminate;
                     payer = simulated.Payer;
                     break;
             }
