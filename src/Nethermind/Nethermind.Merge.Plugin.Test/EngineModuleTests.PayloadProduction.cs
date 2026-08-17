@@ -254,8 +254,11 @@ public partial class EngineModuleTests
         {
             // Partial production: the source consumed every permit and blocks on the next
             // pull. getPayload cancels that wait and returns the block built so far.
-            await yieldedTransaction.Task;
+            // The guard turns a production fault before the first pull into a timeout, not a hang.
+            await yieldedTransaction.Task.WaitAsync(chain.CancellationToken);
             Assert.That(() => txSource.Pulls, Is.GreaterThanOrEqualTo(permits + 1).After(10000, 10));
+            // Exact count is safe: improvements are sequential per payload, and neither the
+            // getPayload cancel below nor the production timeout schedules a second one.
             Assert.That(txSource.Pulls, Is.EqualTo(permits + 1), "only one improvement may pull transactions before cancellation");
         }
 
