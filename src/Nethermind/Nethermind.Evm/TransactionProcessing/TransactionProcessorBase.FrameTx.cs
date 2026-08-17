@@ -557,58 +557,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Snapshot txSnapshot = WorldState.TakeSnapshot();
         try
         {
-            ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-            // As the main path does, so an unused P256 branch records no account access (EIP-7928).
-            IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-            if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+            using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
+            TransactionResult prepared = PrepareValidationPrefixSimulation(
+                tx, header, spec, in accessTracker,
+                out FrameTxContext frameContext, out UInt256 effectiveGasPrice, out ulong verifyGasUsed);
+            if (!prepared)
             {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
+                return prepared;
             }
 
             TxFrame[] frames = tx.Frames!;
-            UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
-
-            // Signature-verification work counts against MAX_VERIFY_GAS.
-            ulong verifyGasUsed = 0;
-            foreach (TxFrameSignature signature in tx.FrameSignatures ?? [])
-            {
-                verifyGasUsed += FrameTxValidation.SignatureVerificationGas(signature.Scheme);
-            }
-            if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
-            }
-
-            // max_cost (TXPARAM 0x06) from the same helper the main path escrows on, so the simulated
-            // APPROVE gate cannot decide against a different number.
-            if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas budget overflows");
-            }
-
-            FrameTxContext frameContext = new(
-                sender, tx.Nonce, frames, tx.FrameSignatures ?? [], sigHash,
-                in maxCost, in tx.MaxPriorityFeePerGas, tx.DecodedMaxFeePerGas, tx.MaxFeePerBlobGas.GetValueOrDefault(),
-                WorldState.GetNonce(sender),
-                tx.RecentRootReferences,
-                tx.NonceKeys);
-
-            using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
-            if (spec.UseHotAndColdStorage)
-            {
-                if (spec.AddCoinbaseToTxAccessList) accessTracker.WarmUp(header.GasBeneficiary!);
-                accessTracker.WarmUp(sender);
-            }
-
-            // RECENTROOTREFLOAD is legal in a VERIFY frame and reads the envelope on the strength of this
-            // check, so the prefix must not run before it. Anchored to the earliest slot the transaction
-            // could execute in, since a reference to the head slot is referenceable only from the next one.
-            ulong? executionSlot = header.SlotNumber is { } headSlot ? headSlot + 1 : null;
-            if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker))
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
-            }
-
             for (int i = 0; i < frames.Length; i++)
             {
                 TxFrame frame = frames[i];
@@ -619,7 +577,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
                 }
 
-                // Rule 8: a non-VERIFY frame ends the validation prefix, here without a payer.
+                // EIP-8141 § Validation Prefix: the prefix is the shortest one that sets a payer, so a
+                // non-VERIFY frame ends it — here without one.
                 if (frame.Mode != TxFrame.ModeVerify)
                 {
                     break;
@@ -634,14 +593,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameContext.CurrentFrameIndex = i;
                 WorldState.ResetTransient();
 
-                // Cap the frame's gas: an opaque prefix's declared gas_limits are not structurally bounded,
-                // so this is what keeps cumulative validation work under MAX_VERIFY_GAS.
-                ulong remainingVerifyGas = Eip8141Constants.MaxVerifyGas - verifyGasUsed;
-                ulong frameGasLimit = Math.Min(frame.GasLimit, remainingVerifyGas);
-                bool capped = frameGasLimit < frame.GasLimit;
-                TxFrame boundedFrame = capped
-                    ? new TxFrame(frame.Mode, frame.Flags, frame.Target, frameGasLimit, frame.Value, frame.Data)
-                    : frame;
+                TxFrame boundedFrame = CapFrameGas(frame, Eip8141Constants.MaxVerifyGas - verifyGasUsed, out bool capped);
 
                 Address resolvedTarget = frame.Target ?? sender;
                 Address caller = Eip8141Constants.EntryPointAddress;
@@ -683,6 +635,81 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             WorldState.Restore(txSnapshot);
         }
+    }
+
+    /// <summary>Validates the transaction-level preconditions of a prefix simulation and builds the context
+    /// its frames execute against.</summary>
+    private TransactionResult PrepareValidationPrefixSimulation(
+        Transaction tx,
+        BlockHeader header,
+        IReleaseSpec spec,
+        in StackAccessTracker accessTracker,
+        out FrameTxContext frameContext,
+        out UInt256 effectiveGasPrice,
+        out ulong verifyGasUsed)
+    {
+        frameContext = null!;
+        effectiveGasPrice = default;
+        verifyGasUsed = 0;
+
+        Address sender = tx.SenderAddress!;
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        // As the main path does, so an unused P256 branch records no account access (EIP-7928).
+        IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
+        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
+        }
+
+        // Signature-verification work counts against MAX_VERIFY_GAS.
+        foreach (TxFrameSignature signature in tx.FrameSignatures ?? [])
+        {
+            verifyGasUsed += FrameTxValidation.SignatureVerificationGas(signature.Scheme);
+        }
+        if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
+        }
+
+        // The shared upper-bound helper, so the admission gate and the processor cannot decide against
+        // different numbers; its blob leg over-reserves, which can only make admission stricter.
+        if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas budget overflows");
+        }
+
+        effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
+        frameContext = new FrameTxContext(
+            sender, tx.Nonce, tx.Frames!, tx.FrameSignatures ?? [], sigHash,
+            in maxCost, in tx.MaxPriorityFeePerGas, tx.DecodedMaxFeePerGas, tx.MaxFeePerBlobGas.GetValueOrDefault(),
+            WorldState.GetNonce(sender),
+            tx.RecentRootReferences,
+            tx.NonceKeys);
+
+        if (spec.UseHotAndColdStorage)
+        {
+            if (spec.AddCoinbaseToTxAccessList) accessTracker.WarmUp(header.GasBeneficiary!);
+            accessTracker.WarmUp(sender);
+        }
+
+        // RECENTROOTREFLOAD is legal in a VERIFY frame and reads the envelope on the strength of this
+        // check, so the prefix must not run before it. Anchored to the earliest slot the transaction
+        // could execute in, since a reference to the head slot is referenceable only from the next one.
+        ulong? executionSlot = header.SlotNumber is { } headSlot ? headSlot + 1 : null;
+        return RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker)
+            ? TransactionResult.Ok
+            : TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
+    }
+
+    /// <summary>Bounds a prefix frame's gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
+    /// <remarks>An opaque prefix's declared gas_limits are not structurally bounded, so this cap is what
+    /// keeps cumulative validation work under the budget.</remarks>
+    private static TxFrame CapFrameGas(TxFrame frame, ulong remainingVerifyGas, out bool capped)
+    {
+        capped = frame.GasLimit > remainingVerifyGas;
+        return capped
+            ? new TxFrame(frame.Mode, frame.Flags, frame.Target, remainingVerifyGas, frame.Value, frame.Data)
+            : frame;
     }
 
     /// <summary>Whether frame <paramref name="i"/> is a <c>deploy</c> frame opening the validation prefix.</summary>
