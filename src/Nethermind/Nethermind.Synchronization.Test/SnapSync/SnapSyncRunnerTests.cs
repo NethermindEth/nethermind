@@ -5,6 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Logging;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -25,6 +28,15 @@ public class SnapSyncRunnerTests
         ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
         factory.When(f => f.EnsureInitialize()).Do(_ => calls.Add("EnsureInitialize"));
         factory.When(f => f.FinalizeSync()).Do(_ => calls.Add("FinalizeSync"));
+        factory.IsAccountRangePhaseCompleted().Returns(_ =>
+        {
+            calls.Add("LoadProgress");
+            return false;
+        });
+
+        ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
+        syncConfig.SnapSyncAccountRangePartitionCount.Returns(1);
+        using ProgressTracker progressTracker = new(factory, syncConfig, Substitute.For<IStateSyncPivot>(), LimboLogs.Instance);
 
         using CancellationTokenSource cts = new();
         if (outcome == DispatcherOutcome.Cancels) cts.Cancel();
@@ -38,7 +50,7 @@ public class SnapSyncRunnerTests
                 DispatcherOutcome.Cancels => throw new OperationCanceledException(token),
                 _ => Task.CompletedTask,
             };
-        }, factory);
+        }, factory, progressTracker);
 
         Func<Task> act = () => runner.Run(cts.Token);
         if (expectedException is null)
@@ -46,6 +58,6 @@ public class SnapSyncRunnerTests
         else
             Assert.That(async () => await act(), Throws.InstanceOf(expectedException));
 
-        Assert.That(calls, Is.EqualTo(new[] { "EnsureInitialize", "dispatcher", "FinalizeSync" }));
+        Assert.That(calls, Is.EqualTo(new[] { "EnsureInitialize", "LoadProgress", "dispatcher", "FinalizeSync" }));
     }
 }

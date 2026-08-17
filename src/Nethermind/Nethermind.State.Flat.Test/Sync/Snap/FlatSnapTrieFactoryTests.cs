@@ -69,6 +69,16 @@ public class FlatSnapTrieFactoryTests
         persistence.DidNotReceive().Clear();
     }
 
+    [Test]
+    public void AccountRangePhase_NeverCarriesIntoTheNextRun()
+    {
+        (FlatSnapTrieFactory factory, _) = Build();
+
+        factory.MarkAccountRangePhaseCompleted();
+
+        Assert.That(factory.IsAccountRangePhaseCompleted(), Is.False);
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void Factory_CreatesTreesWithoutThrowing_ForBothDoubleWriteFlagValues(bool doubleWriteCheck)

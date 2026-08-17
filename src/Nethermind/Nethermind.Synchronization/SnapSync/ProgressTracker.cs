@@ -7,13 +7,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -29,7 +27,6 @@ namespace Nethermind.Synchronization.SnapSync
         private const int CODES_BATCH_SIZE = 1_000;
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
         private const uint StorageRangeSplitFactor = 2;
-        internal static readonly byte[] ACC_PROGRESS_KEY = "AccountProgressKey"u8.ToArray();
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
         // bottlenecked by _syncCommit lock in SnapProviderHelper, which in turns is limited by the IO.
@@ -47,7 +44,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeAccRefreshRequests;
 
         private readonly ILogger _logger;
-        private readonly IDb _db;
+        private readonly ISnapTrieFactory _snapTrieFactory;
         string? _lastStateRangesReport;
         private DateTimeOffset _lastLogTime = DateTimeOffset.MinValue;
         private readonly TimeSpan _maxTimeBetweenLog = TimeSpan.FromSeconds(5);
@@ -67,10 +64,10 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly FastSync.IStateSyncPivot _pivot;
         private readonly bool _enableStorageRangeSplit;
 
-        public ProgressTracker([KeyFilter(DbNames.State)] IDb db, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
+        public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<ProgressTracker>() ?? throw new ArgumentNullException(nameof(logManager));
-            _db = db ?? throw new ArgumentNullException(nameof(db));
+            _snapTrieFactory = snapTrieFactory ?? throw new ArgumentNullException(nameof(snapTrieFactory));
 
             _pivot = pivot;
 
@@ -82,9 +79,6 @@ namespace Nethermind.Synchronization.SnapSync
             _enableStorageRangeSplit = syncConfig.EnableSnapSyncStorageRangeSplit;
 
             SetupAccountRangePartition();
-
-            //TODO: maybe better to move to a init method instead of the constructor
-            GetSyncProgress();
         }
 
         private void SetupAccountRangePartition()
@@ -191,7 +185,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (rangePhaseFinished)
                 {
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
-                    FinishRangePhase();
+                    _snapTrieFactory.MarkAccountRangePhaseCompleted();
                 }
 
                 LogRequest(NO_REQUEST);
@@ -463,35 +457,16 @@ namespace Nethermind.Synchronization.SnapSync
                    && _activeCodeRequests == 0
                    && _activeAccRefreshRequests == 0;
 
-        private void GetSyncProgress()
+        public void LoadProgress()
         {
-            // Note, as before, the progress actually only store MaxValue or 0. So we can't actually resume
-            // snap sync on restart.
-            byte[] progress = _db.Get(ACC_PROGRESS_KEY);
-            if (progress is { Length: 32 })
+            if (!_snapTrieFactory.IsAccountRangePhaseCompleted()) return;
+
+            _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
+            foreach (KeyValuePair<ValueHash256, AccountRangePartition> partition in AccountRangePartitions)
             {
-                ValueHash256 path = new(progress);
-
-                if (path == ValueKeccak.MaxValue)
-                {
-                    _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
-                    foreach (KeyValuePair<ValueHash256, AccountRangePartition> partition in AccountRangePartitions)
-                    {
-                        partition.Value.MoreAccountsToRight = false;
-                    }
-                    AccountRangeReadyForRequest.Clear();
-                }
-                else
-                {
-                    _logger.Info($"Snap - State Ranges (Phase 1) progress loaded from DB:{path}");
-                }
+                partition.Value.MoreAccountsToRight = false;
             }
-        }
-
-        private void FinishRangePhase()
-        {
-            _db.PutSpan(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes, WriteFlags.DisableWAL);
-            _db.Flush();
+            AccountRangeReadyForRequest.Clear();
         }
 
         public void TrackAccountToHeal(ValueHash256 path)

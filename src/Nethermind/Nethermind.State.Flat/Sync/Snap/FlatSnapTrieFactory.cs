@@ -29,6 +29,9 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
     public void FinalizeSync() => persistence.Flush();
 
+    public bool IsAccountRangePhaseCompleted() => false;
+    public void MarkAccountRangePhaseCompleted() { }
+
     public ISnapTree<PathWithAccount> CreateStateTree()
     {
         IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
