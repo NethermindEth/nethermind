@@ -637,8 +637,9 @@ namespace Nethermind.TxPool
         /// EIP-8141 "Replacement and Eviction" orders eviction as invalid-against-head, then nearest expiry,
         /// then lowest effective priority fee; the first tier is <see cref="RevalidateFrameTransactions"/>.
         /// Applying the deadline order across the whole pool needs a deadline-ordered index inside the pool
-        /// (EIP8141-GAP), so this sheds at most one transaction per pool per head, and only within
-        /// <see cref="ExpiryShedHorizonSeconds"/> of the deadline.
+        /// (EIP8141-GAP), so this removes one transaction per pool per head, and only within
+        /// <see cref="ExpiryShedHorizonSeconds"/> of the deadline. Shedding a sender's current-nonce
+        /// transaction leaves a nonce gap, so the next head's bucket update drops that sender's remainder.
         /// </remarks>
         private void ShedNearlyExpiredFrameTransactions(Block block)
         {
@@ -688,8 +689,9 @@ namespace Nethermind.TxPool
             if (candidate is null || !RemoveTransaction(candidate.Hash)) return;
 
             EvictedPending?.Invoke(this, new TxEventArgs(candidate));
-            // A deadline only ever gets closer, so unlike a revalidation eviction this cannot
-            // reverse and the hash stays cached, as on the expiry path.
+            // Capacity pressure decided this, not expiry: the transaction is still includable, and the
+            // pressure reverses within a block, so the hash must stay resubmittable.
+            _hashCache.DeleteFromLongTerm(candidate.Hash!);
             Metrics.PendingTransactionsEvicted++;
             Metrics.FrameTxExpiryShedEvictions++;
             if (_logger.IsTrace) _logger.Trace($"Shed nearly-expired frame transaction {candidate.Hash} to relieve pool pressure.");

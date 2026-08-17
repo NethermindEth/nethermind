@@ -2381,6 +2381,23 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Shedding_leaves_the_transaction_resubmittable()
+        {
+            // Capacity pressure decided the shed, not expiry, so the transaction is still includable.
+            _txPool = CreatePool(new TxPoolConfig { Size = 1 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            _txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_010), TxHandlingOptions.None);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "the transaction must have been shed");
+
+            Assert.That(_txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_010), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
         public void Frame_transaction_from_a_contract_sender_is_not_rejected_by_eip3607()
         {
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
