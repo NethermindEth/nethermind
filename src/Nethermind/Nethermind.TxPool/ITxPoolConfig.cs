@@ -32,7 +32,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for the transaction to be accepted into the public mempool. `0` to lift the limit. It bounds the declared-gas check only: an opaque prefix that has to be simulated is always capped at the consensus `MAX_VERIFY_GAS`. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "100000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for the transaction to be accepted into the public mempool. `0` to lift the limit. It bounds the declared-gas check only: an opaque prefix that has to be simulated is always capped at the consensus `MAX_VERIFY_GAS`. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyGas { get; set; }
 
     [ConfigItem(DefaultValue = "250", Description = "The max time, in milliseconds, one EIP-8141 validation-prefix simulation may run before the transaction is rejected. Also bounds how long an admission thread waits for the simulator, so the two are additive. `0` to lift the limit.")]
