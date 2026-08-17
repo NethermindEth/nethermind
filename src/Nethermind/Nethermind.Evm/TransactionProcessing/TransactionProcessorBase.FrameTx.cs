@@ -307,13 +307,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
         ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
-        // EIP-8037: block gasUsed = max(execution sum, state sum); state gas is clamped (refunds can
-        // drive it negative) and the execution dimension carries the EIP-7623 floor.
+        // EIP-8037: state gas is clamped (later-frame refills can drive the running total negative); the execution dimension carries the EIP-7623 floor.
         ulong blockStateGas = (ulong)Math.Max(0, totalStateGas);
-        ulong blockExecutionGas = Math.Max(grossGas - blockStateGas, floorGas);
-        // BlockGasUsed feeds the header's execution dimension, like the regular path; the receipts stay
-        // combined post-refund.
-        tx.BlockGasUsed = blockExecutionGas;
+        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
+        tx.BlockGasUsed = blockRegularGas;
         Address payer = frameContext.Payer;
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
@@ -414,9 +411,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? TGasPolicy.GetNewAccountStateCost()
             : 0;
         ulong entryCharge = entryExecution + (ulong)entryState;
-        if (entryCharge > frame.GasLimit)
+        // EIP-8141 (ethereum/EIPs#12062): entry gas is drawn per dimension — cold access from limits.execution, the EIP-8037 new-account cost from limits.state.
+        if (entryExecution > frame.ExecutionGasLimit || (ulong)entryState > frame.StateGasLimit)
         {
-            gasUsed = frame.GasLimit;
+            gasUsed = frame.ExecutionGasLimit;
             return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
         }
 
@@ -471,10 +469,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             frameTracker.WarmUp(resolvedTarget);
         }
 
-        // The entry charge is deducted from the frame's gas before execution; the reservoir stays
-        // empty so the VM never draws entry state gas back from it.
+        // EIP-8141 (ethereum/EIPs#12062): seed the two pools from limits, each already net of its entry charge, so execution and state gas are drawn independently.
         using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(
-            TGasPolicy.FromULong(frame.GasLimit - entryCharge),
+            TGasPolicy.FromFrameLimits(frame.ExecutionGasLimit - entryExecution, frame.StateGasLimit - (ulong)entryState),
             isStatic ? ExecutionType.STATICCALL : ExecutionType.TRANSACTION,
             env,
             in frameTracker,
@@ -487,11 +484,19 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
             : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
-        ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
-        gasUsed = frame.GasLimit - remainingGas;
-        // Committed state gas = entry NEW_ACCOUNT + execution state gas; a reverted or halted frame
-        // commits none (its execution state gas is already restored to zero by the VM).
-        stateGasUsed = substate.ShouldRevert || substate.IsError ? 0 : entryState + TGasPolicy.GetStateGasUsed(in state.Gas);
+        // Pool gas is measured against the seeded budget (limits net of entry); GetPreRefundGas folds
+        // the reservoir-funded state gas into the total, and an errored frame draws its whole execution
+        // pool while its untouched state reservoir returns (ethereum/EIPs#12062).
+        ulong seededLimit = (frame.ExecutionGasLimit - entryExecution) + (frame.StateGasLimit - (ulong)entryState);
+        ulong poolGasUsed = substate.IsError
+            ? seededLimit - (ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in state.Gas))
+            : TGasPolicy.GetPreRefundGas(in state.Gas, seededLimit);
+        // Clamp: a reverted or errored frame carries no non-negativity guarantee on its state gas.
+        long statePoolUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas));
+        bool committed = !substate.ShouldRevert && !substate.IsError;
+        // Committed state gas = entry NEW_ACCOUNT + execution state gas; a reverted or halted frame commits none (EIP-8037: state is restored to entry).
+        stateGasUsed = committed ? entryState + statePoolUsed : 0;
+        gasUsed = entryExecution + (poolGasUsed - (ulong)statePoolUsed) + (ulong)stateGasUsed;
 
         if (substate.ShouldRevert || substate.IsError)
         {

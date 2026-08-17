@@ -236,6 +236,27 @@ public static class FrameTxValidation
     }
 
     /// <summary>
+    /// An upper bound on the state growth EIP-8141 admits through the public mempool for
+    /// <paramref name="transaction"/>: the sum of its validation prefix's <c>limits.state</c>, saturating at
+    /// <see cref="ulong.MaxValue"/>. Bounded separately by <c>MAX_VERIFY_STATE_GAS</c>; signature verification
+    /// uses no state gas, so it does not enter this budget.
+    /// </summary>
+    /// <param name="transaction">The frame transaction to price.</param>
+    public static ulong ValidationWorkStateGas(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int counted = RecognizedPrefixLength(frames, transaction.SenderAddress) ?? frames.Length;
+
+        ulong total = 0;
+        for (int i = 0; i < counted; i++)
+        {
+            total = Saturating(total, frames[i].StateGasLimit);
+        }
+
+        return total;
+    }
+
+    /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>

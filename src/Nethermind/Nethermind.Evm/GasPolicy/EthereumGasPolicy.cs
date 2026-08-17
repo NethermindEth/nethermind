@@ -40,6 +40,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static EthereumGasPolicy FromULong(ulong value) => new() { Value = value };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EthereumGasPolicy FromFrameLimits(ulong executionGasLimit, ulong stateGasLimit) =>
+        new() { Value = executionGasLimit, StateReservoir = (long)stateGasLimit };
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateSystemTransactionIntrinsicGas(ulong blockGasLimit) =>
         new()
         {
