@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -92,22 +91,27 @@ public class SortedMergeDictionaryTests
     [Test]
     public void Merge_SingleAndEmptySources()
     {
-        SortedMergeDictionary<int, int> only = FromPairs((7, 70), (8, 80));
-        Assert.That(SortedMergeDictionary<int, int>.Merge([only], Cmp).Count, Is.EqualTo(2));
+        using SortedMergeDictionary<int, int> only = FromPairs((7, 70), (8, 80));
+        using SortedMergeDictionary<int, int> single = SortedMergeDictionary<int, int>.Merge([only], Cmp);
+        Assert.That(single.Count, Is.EqualTo(2));
 
-        SortedMergeDictionary<int, int> empty = FromPairs();
-        SortedMergeDictionary<int, int> merged = SortedMergeDictionary<int, int>.Merge([empty, only, empty], Cmp);
-        Assert.That(merged.Count, Is.EqualTo(2));
+        using SortedMergeDictionary<int, int> empty = FromPairs();
+        using SortedMergeDictionary<int, int> merged = new();
+        merged.BuildFromMerge([empty, only, empty], Cmp, static (source, key) => source == 1 && key == 7);
+        Assert.That(merged.Count, Is.EqualTo(1));
         AssertValue(merged, 7, 70);
     }
 
-    [TestCase(2, 50)]
-    [TestCase(3, 200)]
-    [TestCase(8, 500)]
-    [TestCase(16, 1000)]
-    public void Merge_RandomizedAgainstReference(int sourceCount, int keySpace)
+    [TestCase(1, 50, true)]
+    [TestCase(2, 50, true)]
+    [TestCase(2, 50, false)]
+    [TestCase(3, 200, false)]
+    [TestCase(8, 500, false)]
+    [TestCase(16, 1000, false)]
+    public void Merge_RandomizedAgainstReference(int sourceCount, int keySpace, bool filter)
     {
         Random random = new(sourceCount * 31 + keySpace);
+        static bool Keep(int source, int key) => key % 5 != 0 && (source != 1 || key % 3 != 0);
 
         List<SortedMergeDictionary<int, int>> sources = new(sourceCount);
         Dictionary<int, int> reference = [];
@@ -121,12 +125,13 @@ public class SortedMergeDictionaryTests
                 int key = random.Next(keySpace);
                 int value = key * 100 + s;
                 sorted[key] = value;
-                reference[key] = value; // reference applies sources in the same ascending order -> last wins
+                if (!filter || Keep(s, key)) reference[key] = value;
             }
             sources.Add(SortedMergeDictionary<int, int>.FromUnsorted(sorted, Cmp));
         }
 
-        SortedMergeDictionary<int, int> merged = SortedMergeDictionary<int, int>.Merge(sources.ToArray(), Cmp);
+        SortedMergeDictionary<int, int> merged = SortedMergeDictionary<int, int>.Merge(
+            sources.ToArray(), Cmp, filter ? Keep : null);
 
         Assert.That(merged.Count, Is.EqualTo(reference.Count));
         List<int> keys = merged.Select(static kv => kv.Key).ToList();
@@ -156,12 +161,6 @@ public class SortedMergeDictionaryTests
         SortedMergeDictionary<int, int>.Run[] runs =
             [oldestRun.AsRun(), middleRun.AsRun(), newestRun.AsRun()];
 
-        using SortedMergeDictionary<int, int> oldest = SortedMergeDictionary<int, int>.FromUnsorted(oldestData, Cmp);
-        using SortedMergeDictionary<int, int> middle = SortedMergeDictionary<int, int>.FromUnsorted(middleData, Cmp);
-        using SortedMergeDictionary<int, int> newest = SortedMergeDictionary<int, int>.FromUnsorted(newestData, Cmp);
-        using SortedMergeDictionary<int, int> expected = new();
-        expected.BuildFromMerge([oldest, middle, newest], Cmp, Keep);
-
         using SortedMergeDictionary<int, int> actual = new();
         actual.BuildFromMerge(runs, Cmp, Keep);
 
@@ -173,53 +172,6 @@ public class SortedMergeDictionaryTests
             new(5, 30),
         ];
         Assert.That(actual.ToArray(), Is.EqualTo(expectedEntries));
-        Assert.That(actual.ToArray(), Is.EqualTo(expected.ToArray()));
-    }
-
-    [Test]
-    public void PooledRuns_MergeFailureClearsAndReturnsBackingArraysOnce()
-    {
-        TrackingArrayPool<SortedMergeDictionary<string, string>.Entry> pool = new();
-        SortedMergeDictionary<string, string>.PooledRun first =
-            SortedMergeDictionary<string, string>.BuildRunFromUnsorted(
-                new Dictionary<string, string> { ["c"] = "3", ["a"] = "1" }, StringComparer.Ordinal, pool);
-        SortedMergeDictionary<string, string>.PooledRun second =
-            SortedMergeDictionary<string, string>.BuildRunFromUnsorted(
-                new Dictionary<string, string> { ["d"] = "4", ["b"] = "2" }, StringComparer.Ordinal, pool);
-        using SortedMergeDictionary<string, string> target = new();
-        try
-        {
-            SortedMergeDictionary<string, string>.Run[] runs = [first.AsRun(), second.AsRun()];
-            Assert.That(
-                () => target.BuildFromMerge(
-                    runs,
-                    StringComparer.Ordinal,
-                    static (_, key) => key != "c" ? true : throw new InvalidOperationException()),
-                Throws.InvalidOperationException);
-            Assert.That(target.Count, Is.EqualTo(0));
-        }
-        finally
-        {
-            first.Dispose();
-            second.Dispose();
-        }
-
-        first.Dispose();
-        second.Dispose();
-        Assert.That(pool.Returned.Count, Is.EqualTo(2));
-        foreach (SortedMergeDictionary<string, string>.Entry[] returned in pool.Returned)
-        {
-            foreach (SortedMergeDictionary<string, string>.Entry entry in returned)
-            {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(entry.HashCode, Is.EqualTo(0));
-                    Assert.That(entry.Next, Is.EqualTo(0));
-                    Assert.That(entry.Key, Is.Null);
-                    Assert.That(entry.Value, Is.Null);
-                }
-            }
-        }
     }
 
     [Test]
@@ -489,19 +441,6 @@ public class SortedMergeDictionaryTests
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-    }
-
-    private sealed class TrackingArrayPool<T> : ArrayPool<T>
-    {
-        public List<T[]> Returned { get; } = [];
-
-        public override T[] Rent(int minimumLength) => new T[minimumLength + 3];
-
-        public override void Return(T[] array, bool clearArray = false)
-        {
-            if (Returned.Contains(array)) throw new InvalidOperationException("Array returned more than once.");
-            Returned.Add(array);
-        }
     }
 
     private static SortedMergeDictionary<int, int> FromPairs(params (int Key, int Value)[] pairs)

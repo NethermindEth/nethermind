@@ -38,7 +38,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         internal int Count { get; } = count;
     }
 
-    internal sealed class PooledRun(ArrayPool<Entry> pool, Entry[] entries, int count) : IDisposable
+    internal sealed class PooledRun(Entry[] entries, int count) : IDisposable
     {
         private Entry[] _entries = entries;
         private int _count = count;
@@ -53,7 +53,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             if (_count > 0) Array.Clear(owned, 0, _count);
             _entries = [];
             _count = 0;
-            pool.Return(owned);
+            ArrayPool<Entry>.Shared.Return(owned);
         }
     }
 
@@ -115,24 +115,22 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
     internal static PooledRun BuildRunFromUnsorted<TComparer>(
         IReadOnlyCollection<KeyValuePair<TKey, TValue>> source,
-        TComparer keyComparer,
-        ArrayPool<Entry>? pool = null)
+        TComparer keyComparer)
         where TComparer : IComparer<TKey>
     {
-        pool ??= ArrayPool<Entry>.Shared;
         int count = source.Count;
-        Entry[] entries = count == 0 ? [] : pool.Rent(count);
+        Entry[] entries = count == 0 ? [] : ArrayPool<Entry>.Shared.Rent(count);
         try
         {
             FillAndSort(entries.AsSpan(0, count), source, keyComparer);
-            return new PooledRun(pool, entries, count);
+            return new PooledRun(entries, count);
         }
         catch
         {
             if (entries.Length > 0)
             {
                 if (count > 0) Array.Clear(entries, 0, count);
-                pool.Return(entries);
+                ArrayPool<Entry>.Shared.Return(entries);
             }
             throw;
         }
@@ -172,19 +170,115 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         if (sources.Length == 0) return;
 
         int total = 0;
-        foreach (Run source in sources) total += source.Count;
+        int nonEmptyCount = 0;
+        int nonEmptyIndex = -1;
+        for (int i = 0; i < sources.Length; i++)
+        {
+            int sourceCount = sources[i].Count;
+            total += sourceCount;
+            if (sourceCount == 0) continue;
+            nonEmptyCount++;
+            nonEmptyIndex = i;
+        }
         EnsureEntryCapacity(total);
 
-        LoserTree<TComparer> tree = new(sources, keyComparer);
         Entry[] entries = _entries;
-        int count = 0;
-        while (count < total && tree.TryNext(keep, out Entry chosen))
+        int count;
+        if (nonEmptyCount <= 1)
         {
-            entries[count++] = chosen;
+            count = nonEmptyCount == 0 ? 0 : CopySingleRun(sources[nonEmptyIndex], nonEmptyIndex, entries, keep);
+        }
+        else if (sources.Length == 2)
+        {
+            count = MergeTwoRuns(sources[0], sources[1], entries, keyComparer, keep);
+        }
+        else
+        {
+            LoserTree<TComparer> tree = new(sources, keyComparer);
+            count = 0;
+            while (count < total && tree.TryNext(keep, out Entry chosen))
+            {
+                entries[count++] = chosen;
+            }
         }
 
         _count = count;
         BuildBuckets();
+    }
+
+    private static int CopySingleRun(Run source, int sourceIndex, Entry[] destination, Func<int, TKey, bool>? keep)
+    {
+        int sourceCount = source.Count;
+        if (keep is null)
+        {
+            source.Entries.AsSpan(0, sourceCount).CopyTo(destination);
+            return sourceCount;
+        }
+
+        int written = 0;
+        Span<Entry> entries = source.Entries.AsSpan(0, sourceCount);
+        for (int i = 0; i < entries.Length; i++)
+        {
+            ref Entry entry = ref entries[i];
+            if (keep(sourceIndex, entry.Key)) destination[written++] = entry;
+        }
+        return written;
+    }
+
+    private static int MergeTwoRuns<TComparer>(
+        Run first,
+        Run second,
+        Entry[] destination,
+        TComparer keyComparer,
+        Func<int, TKey, bool>? keep)
+        where TComparer : IComparer<TKey>
+    {
+        int firstPosition = 0;
+        int secondPosition = 0;
+        int written = 0;
+        while (firstPosition < first.Count && secondPosition < second.Count)
+        {
+            ref Entry firstEntry = ref first.Entries[firstPosition];
+            ref Entry secondEntry = ref second.Entries[secondPosition];
+            int comparison = keyComparer.Compare(firstEntry.Key, secondEntry.Key);
+            if (comparison < 0)
+            {
+                if (keep is null || keep(0, firstEntry.Key)) destination[written++] = firstEntry;
+                firstPosition++;
+            }
+            else if (comparison > 0)
+            {
+                if (keep is null || keep(1, secondEntry.Key)) destination[written++] = secondEntry;
+                secondPosition++;
+            }
+            else
+            {
+                bool keepFirst = keep is null || keep(0, firstEntry.Key);
+                bool keepSecond = keep is null || keep(1, secondEntry.Key);
+                if (keepSecond)
+                {
+                    destination[written++] = secondEntry;
+                }
+                else if (keepFirst)
+                {
+                    destination[written++] = firstEntry;
+                }
+                firstPosition++;
+                secondPosition++;
+            }
+        }
+
+        while (firstPosition < first.Count)
+        {
+            ref Entry entry = ref first.Entries[firstPosition++];
+            if (keep is null || keep(0, entry.Key)) destination[written++] = entry;
+        }
+        while (secondPosition < second.Count)
+        {
+            ref Entry entry = ref second.Entries[secondPosition++];
+            if (keep is null || keep(1, entry.Key)) destination[written++] = entry;
+        }
+        return written;
     }
 
     public void NoResizeClear()
