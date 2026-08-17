@@ -14,6 +14,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
@@ -721,8 +722,17 @@ public partial class EngineModuleTests
         if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
+
+        // The tx pool applies head changes asynchronously; wait for it to process this block so its txs
+        // are removed and follow-up txs (e.g. the sender's next nonce) are selectable for the next payload —
+        // otherwise a leftover tx can slip into the next produced block.
+        Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
+            h => chain.TxPool.TxPoolHeadChanged += h,
+            h => chain.TxPool.TxPoolHeadChanged -= h,
+            b => b.Hash == payload.BlockHash);
         await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(payload.BlockHash!, payload.BlockHash!, payload.BlockHash!), null);
+        await txPoolHeadWait;
     }
 
     /// <summary>
