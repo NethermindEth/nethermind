@@ -7,14 +7,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
 
-/// <summary>
-/// Simulates the validation prefix of the opaque EIP-8141 frame transactions the native resolver defers
-/// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>), rejecting those whose prefix does not validate.
-/// </summary>
-/// <remarks>
-/// Must run after <see cref="FrameTxPayerFilter"/>, whose resolved payer is the EVM-free fast path here.
-/// Runs inside the pool's head read lock, so the simulator has to bound its own wait.
-/// </remarks>
+/// <summary>Simulates the validation prefix of opaque EIP-8141 frame transactions
+/// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>), rejecting those that do not validate.</summary>
+/// <remarks>Must run after <see cref="FrameTxPayerFilter"/>, whose resolved payer is the EVM-free fast
+/// path here. Runs inside the pool's head read lock, so the simulator has to bound its own wait.</remarks>
 internal sealed class FrameTxSimulationFilter(
     IReadOnlyStateProvider stateProvider,
     IFrameTxPrefixSimulator? simulator,

@@ -78,9 +78,10 @@ public sealed class FrameTxPrefixSimulator(
                 // Shutdown, not a verdict on the transaction.
                 throw;
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
-                // A malformed opaque prefix must never crash admission: reject and keep the pool up.
+                // Attacker-chosen bytecode over env build, trie reads and the EVM: the throw surface is not
+                // enumerable, and one escaping exception would stop admission for every peer.
                 if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
                 return FrameTxSimulationResult.Reject("validation-prefix simulation error");
             }

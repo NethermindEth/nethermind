@@ -18,7 +18,9 @@ namespace Nethermind.Evm.Tracing;
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
     : TxTracer, IFrameTxReceiptTracer
 {
-    private const byte SetDelegateOpcode = 0xf6; // EIP-7819; not modelled as an Instruction on all forks.
+    // EIP-8141 "Banned Opcodes" lists SETDELEGATE (0xF6, EIP-7819). EIP-7819 is unimplemented here, so the
+    // byte is undefined on every fork we ship and this ban only bites if it ever activates.
+    private const byte SetDelegateOpcode = 0xf6;
 
     // Stack slot holding the current CALL*/EXTCODE* target, or -1. Set in StartOperation and consumed in
     // SetOperationStack for the same instruction, as the stack operands aren't available any earlier.
@@ -29,13 +31,11 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
     public override bool IsTracingStack => true;
     public override bool IsTracingReceipt => true;
 
-    /// <summary>True once a trace/opcode rule was violated; the transaction must then be rejected.</summary>
     public bool Violated { get; private set; }
 
-    /// <summary>Human-readable reason for the first recorded violation.</summary>
+    /// <summary>The first violation recorded; later ones do not overwrite it.</summary>
     public string? ViolationReason { get; private set; }
 
-    /// <summary>The payer resolved by the simulated prefix, or <c>null</c> if it never set one.</summary>
     public Address? Payer { get; private set; }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)

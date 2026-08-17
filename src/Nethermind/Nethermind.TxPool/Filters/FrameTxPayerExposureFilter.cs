@@ -55,15 +55,10 @@ internal sealed class FrameTxPayerExposureFilter(
         return AcceptTxResult.Accepted;
     }
 
-    /// <summary>
-    /// The reservation held by the pending transaction <paramref name="tx"/> would displace, or zero when it
-    /// would join the pending set rather than replace one.
-    /// </summary>
-    /// <remarks>
-    /// Tested with the pool's own competing key, so the EIP-8250 nonce-key domain is part of the match: a
-    /// same-nonce transaction in another domain joins the pending set and must not be discounted.
-    /// Matches on the payer too: displacing a tx paid by someone else frees that payer, not this one.
-    /// </remarks>
+    /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending
+    /// set instead.</summary>
+    /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
+    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.</remarks>
     private UInt256 ReplacedPendingReservation(Transaction tx, Address payer)
     {
         ReplacementSearch search = new(tx, payer);
