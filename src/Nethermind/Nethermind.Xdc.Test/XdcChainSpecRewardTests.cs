@@ -7,6 +7,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using NUnit.Framework;
 
@@ -19,6 +20,9 @@ namespace Nethermind.Xdc.Test;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcChainSpecRewardTests
 {
+    /// <summary>The only Apothem v2 config that sets rewards.</summary>
+    private const ulong ApothemRewardSwitchRound = 27_360_000;
+
     private const string RewardPlaceholder = "$REWARD$";
     private const string CoreParamsPlaceholder = "$CORE_PARAMS$";
     private const string EnginePeriodPlaceholder = "$PERIOD$";
@@ -73,7 +77,16 @@ public class XdcChainSpecRewardTests
         });
     }
 
+    /// <remarks>
+    /// The wei case is the one the migration produces: 63420000000000001704 is the literal this
+    /// chainspec used to carry, and read as XDC it is ~6.342e37 wei — far inside
+    /// <see cref="UInt256"/>, so only the plausibility bound stops the node from starting and
+    /// inflating every payout by 10^18.
+    /// </remarks>
+    [TestCase("63420000000000001704", TestName = "Reward still stated in wei")]
+    [TestCase("1000000000000000000", TestName = "One XDC stated in wei")]
     [TestCase("-1", TestName = "Negative")]
+    [TestCase("-0.0", TestName = "Negative zero")]
     [TestCase("1e60", TestName = "Beyond UInt256 once scaled")]
     [TestCase("\"0x37f0e6c9e9dd0e0000\"", TestName = "Hex string, which would have to mean wei")]
     [TestCase("\"63.42\"", TestName = "Quoted amount")]
@@ -104,20 +117,49 @@ public class XdcChainSpecRewardTests
     [Test]
     public void Shipped_testnet_rewards_are_unchanged()
     {
-        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
-            .LoadEmbeddedOrFromFile("chainspec/xdc-testnet.json");
+        V2ConfigParams config = LoadShippedTestnetRewardConfig();
 
-        XdcChainSpecEngineParameters parameters = chainSpec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<XdcChainSpecEngineParameters>();
-
-        // Rewards are only set by the newest config, which sorts last by switch round.
-        V2ConfigParams config = parameters.V2Configs[^1];
         Assert.Multiple(() =>
         {
             Assert.That(config.MasternodeReward, Is.EqualTo(UInt256.Parse("63420000000000001704")));
             Assert.That(config.ProtectorReward, Is.EqualTo(UInt256.Parse("50270000000000003128")));
             Assert.That(config.ObserverReward, Is.EqualTo(UInt256.Parse("25129999999999999006")));
         });
+    }
+
+    /// <summary>
+    /// <see cref="V2ConfigParams"/> doubles as the <c>XDPoS_networkInformation</c> response DTO, so
+    /// the reward properties are serialized as well as read. The response reports wei, unchanged by
+    /// the chainspec moving to XDC.
+    /// </summary>
+    [Test]
+    public void Network_information_response_reports_rewards_in_wei()
+    {
+        NetworkInformation response = new()
+        {
+            ConsensusConfigs = new XDPoSConfig { V2Configs = [LoadShippedTestnetRewardConfig()] }
+        };
+
+        string json = new EthereumJsonSerializer().Serialize(response);
+
+        // 63420000000000001704 wei, the masternode reward, as the QUANTITY the endpoint has always emitted.
+        Assert.That(json, Does.Contain("0x3702119fc874606a8"));
+    }
+
+    private static V2ConfigParams LoadShippedTestnetRewardConfig()
+    {
+        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile("chainspec/xdc-testnet.json");
+
+        XdcChainSpecEngineParameters parameters = chainSpec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<XdcChainSpecEngineParameters>();
+
+        foreach (V2ConfigParams config in parameters.V2Configs)
+        {
+            if (config.SwitchRound == ApothemRewardSwitchRound) return config;
+        }
+
+        throw new AssertionException($"No v2 config at switch round {ApothemRewardSwitchRound}");
     }
 
     private static XdcChainSpecEngineParameters LoadEngineParameters(string reward, string coreParams = "", string period = "2")
