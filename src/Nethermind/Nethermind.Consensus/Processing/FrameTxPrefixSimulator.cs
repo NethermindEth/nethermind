@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing;
@@ -40,14 +43,14 @@ public sealed class FrameTxPrefixSimulator(
         BlockHeader? head = blockFinder.Head?.Header;
         if (head is null)
         {
-            return FrameTxSimulationResult.Reject("no chain head to simulate against");
+            return FrameTxSimulationResult.Undecided("no chain head to simulate against");
         }
 
         lock (_lock)
         {
             if (_disposed)
             {
-                return FrameTxSimulationResult.Reject("simulator disposed");
+                return FrameTxSimulationResult.Undecided("simulator disposed");
             }
 
             IReadOnlyTxProcessorSource source = _source ??= envFactory.Create();
@@ -78,15 +81,28 @@ public sealed class FrameTxPrefixSimulator(
                 // Shutdown, not a verdict on the transaction.
                 throw;
             }
+            catch (Exception e) when (IsNodeFault(e))
+            {
+                // Blaming the transaction for our own fault would feed the peer flood counter and
+                // eventually disconnect honest peers, so leave the transaction unjudged instead.
+                if (_logger.IsWarn) _logger.Warn($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. {e}");
+                return FrameTxSimulationResult.Undecided("validation-prefix simulation unavailable");
+            }
             catch (Exception e) when (e is not OutOfMemoryException)
             {
-                // Attacker-chosen bytecode over env build, trie reads and the EVM: the throw surface is not
-                // enumerable, and one escaping exception would stop admission for every peer.
+                // Attacker-chosen bytecode over the EVM: the throw surface is not enumerable, and one
+                // escaping exception would stop admission for every peer.
                 if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
                 return FrameTxSimulationResult.Reject("validation-prefix simulation error");
             }
         }
     }
+
+    /// <summary>Whether an exception indicts the node rather than the transaction.</summary>
+    /// <remarks><see cref="IInternalNethermindException"/> is the codebase's marker for that — it covers the
+    /// <see cref="TrieException"/> family, including the missing trie nodes that pruning can expose.</remarks>
+    private static bool IsNodeFault(Exception e) =>
+        e is IInternalNethermindException or ObjectDisposedException or IOException;
 
     public void Dispose()
     {
