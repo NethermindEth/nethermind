@@ -120,7 +120,6 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadV5), SszRestPaths.GetPayloads, GateWithWarn(spec.IsEip7594Enabled));
         Configure(nameof(IEngineRpcModule.engine_getBlobsV2), SszRestPaths.PostBlobsV2, Gate(spec.IsEip7594Enabled));
         Configure(nameof(IEngineRpcModule.engine_getBlobsV3), SszRestPaths.PostBlobsV3, Gate(spec.IsEip7594Enabled));
-        Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostBlobsV4, Gate(spec.IsEip7594Enabled));
 
         // Amsterdam
         Configure(nameof(IEngineRpcModule.engine_getPayloadV6), SszRestPaths.GetPayloads, GateWithWarn(spec.IsEip7928Enabled));
@@ -129,6 +128,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.GetBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
         Configure(nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5), SszRestPaths.PostPayloadsWitness, Gate(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV4), SszRestPaths.PostBlobsV4, Gate(spec.IsEip7843Enabled));
 
         json = jsonLocal;
         ssz = sszLocal;
