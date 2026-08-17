@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -58,8 +59,11 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong TIP2019Block { get; set; }
     public ulong? TipUpgradePenalty { get; set; }
     public ulong? TipUpgradeReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 MasternodeReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ProtectorReward { get; set; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ObserverReward { get; set; }
     public ulong MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
@@ -109,8 +113,11 @@ public sealed class V2ConfigParams
     public int TimeoutSyncThreshold { get; init; }
     public int TimeoutPeriod { get; init; }
     public ulong MinePeriod { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 MasternodeReward { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ProtectorReward { get; init; }
+    [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 ObserverReward { get; init; }
     public ulong MinimumMinerBlockPerEpoch { get; init; }
     public ulong LimitPenaltyEpoch { get; init; }
