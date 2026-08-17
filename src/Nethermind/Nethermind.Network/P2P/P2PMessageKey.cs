@@ -16,6 +16,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1;
+using Nethermind.Network.P2P.Subprotocols.Snap.V2;
 
 namespace Nethermind.Network.P2P;
 
@@ -33,6 +34,7 @@ public readonly record struct P2PMessageKey(VersionedProtocol Protocol, int Pack
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth69MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth70MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Snap, typeof(Snap1MessageCode)))
+            .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Snap, typeof(Snap2MessageCode)))
             .ToFrozenDictionary();
 
     private static IEnumerable<KeyValuePair<(string, int), string>> FromMessageCodeClass(string protocol, Type classType) =>

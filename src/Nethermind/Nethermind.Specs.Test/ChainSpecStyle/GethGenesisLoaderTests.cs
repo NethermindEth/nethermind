@@ -165,6 +165,47 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Can_load_plataberget_eip7949()
+    {
+        ChainSpec chainSpec = LoadChainSpec(
+            Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/plataberget.json"));
+
+        Assert.That(chainSpec.Genesis, Is.Not.Null);
+        Assert.That(chainSpec.Allocations, Is.Not.Empty);
+        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Not.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(7091047534));
+            Assert.That(chainSpec.NetworkId, Is.EqualTo(7091047534));
+
+            Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.BerlinBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0));
+            Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.CancunTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.PragueTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.OsakaTimestamp, Is.EqualTo(0));
+            Assert.That(chainSpec.AmsterdamTimestamp, Is.EqualTo(1787212224));
+
+            Assert.That(chainSpec.Genesis.Header.GasLimit, Is.EqualTo(60000000));
+
+            Assert.That(chainSpec.Allocations[Address.Zero].Balance, Is.EqualTo(UInt256.One));
+
+            // All blob schedule forks activate at genesis, so they collapse to the latest one (bpo2).
+            Assert.That(chainSpec.Parameters.BlobSchedule!.Count, Is.EqualTo(1));
+            Assert.That(chainSpec.Parameters.BlobSchedule!.First().Max, Is.EqualTo(21));
+
+            Assert.That(chainSpec.Parameters.DepositContractAddress, Is.EqualTo(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa")));
+        }
+    }
+
+    [Test]
     public void Can_load_minimal_geth_genesis()
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(
