@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -735,7 +734,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _reader.DangerousReleaseMemory(span);
 
-    internal static byte[]? GetWithIterator(ReadOnlySpan<byte> key, IColumnFamilyHandle? _, IteratorManager iteratorManager, ReadFlags flags, out bool success)
+    internal static byte[]? GetWithIterator(ReadOnlySpan<byte> key, IteratorManager iteratorManager, ReadFlags flags, out bool success)
     {
         success = true;
 
@@ -1083,7 +1082,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
     internal IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCore(bool ordered, IColumnFamilyHandle? ch = null) =>
-        GetAllCore(ordered, ch, static iterator => new KeyValuePair<byte[], byte[]?>(iterator.GetKeySpan().ToArray(), iterator.Value()));
+        GetAllCore(ordered, ch, static iterator => new KeyValuePair<byte[], byte[]?>(iterator.GetKeySpan().ToArray(), iterator.GetValueSpan().ToArray()));
 
     internal IEnumerable<byte[]> GetAllKeysCore(bool ordered, IColumnFamilyHandle? ch = null) =>
         GetAllCore(ordered, ch, static iterator => iterator.GetKeySpan().ToArray());

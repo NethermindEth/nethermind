@@ -64,6 +64,9 @@ namespace Nethermind.Db.Test
             Assert.That(LowPriority(options), Is.EqualTo(0));
             Assert.That(DisableWal(options), Is.EqualTo(1));
 
+            // The bindings expose no managed getters for these two flags, so they are read through the raw
+            // native layer. The cast is safe because `db` keeps the options alive for the whole test and
+            // `WriteOptions.Handle` is a live `rocksdb_writeoptions_t*` until the owner is disposed.
             static unsafe byte LowPriority(WriteOptions options) =>
                 RocksDbNative.rocksdb_writeoptions_get_low_pri((rocksdb_writeoptions_t*)options.Handle);
 
@@ -458,6 +461,40 @@ namespace Nethermind.Db.Test
 
             _db.Set([2, 3, 4], [5, 6, 7], WriteFlags.LowPriority);
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
+        }
+
+        [Test]
+        public void Can_read_back_empty_value()
+        {
+            byte[] key = [1, 2, 3];
+            _db.Set(key, []);
+
+            Assert.That(_db.KeyExists(key), Is.True);
+            Assert.That(_db.Get(key), Is.Empty);
+            Assert.That(_db.Get(key, []), Is.Zero);
+
+            Span<byte> span = _db.GetSpan(key);
+            Assert.That(span.IsEmpty, Is.True);
+            _db.DangerousReleaseMemory(span);
+
+            if (_db is IReadOnlyNativeKeyValueStore nativeStore)
+            {
+                ReadOnlySpan<byte> slice = nativeStore.GetNativeSlice(key, out nint handle);
+                Assert.That(slice.IsEmpty, Is.True);
+                nativeStore.DangerousReleaseHandle(handle);
+            }
+
+            Assert.That(AllocatedSpan, Is.Zero);
+        }
+
+        [Test]
+        public void Get_into_output_buffer_reports_missing_key_and_rejects_undersized_buffer()
+        {
+            byte[] key = [1, 2, 3];
+            _db.Set(key, [4, 5, 6]);
+
+            Assert.That(_db.Get([9, 9, 9], new byte[3]), Is.Zero);
+            Assert.That(() => _db.Get(key, new byte[2]), Throws.ArgumentException);
         }
 
         [Test]

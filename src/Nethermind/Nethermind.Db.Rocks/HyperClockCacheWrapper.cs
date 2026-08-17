@@ -2,47 +2,34 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Microsoft.Win32.SafeHandles;
 using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
-public class HyperClockCacheWrapper : SafeHandleZeroOrMinusOneIsInvalid
+public sealed class HyperClockCacheWrapper : IDisposable
 {
     private readonly Cache _cache;
     private readonly long _capacity;
 
-    public HyperClockCacheWrapper(ulong capacity = 32_000_000) : base(ownsHandle: true)
+    private bool _disposed;
+
+    public HyperClockCacheWrapper(ulong capacity = 32_000_000)
     {
         _cache = Cache.CreateHyperClock(capacity);
-        SetHandle(_cache.Handle);
-        // If the native call returned a zero/null handle, SafeHandle won't call ReleaseHandle,
-        // so don't add pressure either — keep add/remove balanced.
-        _capacity = IsInvalid ? 0 : (long)capacity;
-        if (_capacity > 0) GC.AddMemoryPressure(_capacity);
+        _capacity = (long)capacity;
+        GC.AddMemoryPressure(_capacity);
     }
 
-    public nint Handle => DangerousGetHandle();
+    public nint Handle => _cache.Handle;
 
-    protected override bool ReleaseHandle()
+    public long GetUsage() => (long)_cache.GetUsage();
+
+    public void Dispose()
     {
+        if (_disposed) return;
+
+        _disposed = true;
         _cache.Dispose();
-        if (_capacity > 0) GC.RemoveMemoryPressure(_capacity);
-        return true;
-    }
-
-    public long GetUsage()
-    {
-        bool addedRef = false;
-        try
-        {
-            // Keep the cache alive if disposal races this call.
-            DangerousAddRef(ref addedRef);
-            return (long)_cache.GetUsage();
-        }
-        finally
-        {
-            if (addedRef) DangerousRelease();
-        }
+        GC.RemoveMemoryPressure(_capacity);
     }
 }

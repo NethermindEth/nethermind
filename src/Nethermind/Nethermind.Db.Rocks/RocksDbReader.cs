@@ -62,7 +62,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null)
         {
-            byte[]? result = DbOnTheRocks.GetWithIterator(key, _columnFamily, _iteratorManager, flags, out bool success);
+            byte[]? result = DbOnTheRocks.GetWithIterator(key, _iteratorManager, flags, out bool success);
             if (success)
             {
                 return result;

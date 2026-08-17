@@ -41,6 +41,10 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
                 {
                     ProcessStatisticsString(dbStatsString);
                 }
+                else
+                {
+                    logger.Warn($"No RocksDB statistics available for {dbName} database.");
+                }
             }
         }
         catch (Exception exc)
