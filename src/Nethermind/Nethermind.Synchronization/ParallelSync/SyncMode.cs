@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return nameof(SyncMode.None);
             }
 
-            StringBuilder builder = new();
+            StringBuilder builder = new(64);
             SyncMode printed = SyncMode.None;
             foreach (SyncMode flag in FlagsDescending)
             {
