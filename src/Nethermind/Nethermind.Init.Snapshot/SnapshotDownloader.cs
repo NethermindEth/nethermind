@@ -17,6 +17,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
     private const int BufferSize = 65536;
     private const int ResumeWarningDelaySeconds = 5;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(2);
 
     // A single client is shared for all retries to preserve the connection pool.
     private readonly SnapshotHttpClient _client = new();
@@ -73,7 +74,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         progress.Update(initialProgress);
 
         if (bytesToSkip > 0)
-            await SnapshotHttpClient.SkipAsync(contentStream, bytesToSkip, cancellationToken).ConfigureAwait(false);
+            await SnapshotHttpClient.SkipAsync(contentStream, bytesToSkip, StallTimeout, cancellationToken).ConfigureAwait(false);
 
         await CopyWithProgressAsync(contentStream, fileStream, progress, cancellationToken).ConfigureAwait(false);
 
@@ -111,12 +112,13 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
     private static async Task CopyWithProgressAsync(
         Stream source, FileStream destination, ProgressReporter progress, CancellationToken cancellationToken)
     {
+        using StallGuardedReader reader = new(StallTimeout, cancellationToken);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
             ulong downloaded = progress.Logger.CurrentValue;
             int bytesRead;
-            while ((bytesRead = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            while ((bytesRead = await reader.ReadAsync(source, buffer.AsMemory(0, BufferSize)).ConfigureAwait(false)) > 0)
             {
                 await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
                 downloaded += (ulong)bytesRead;

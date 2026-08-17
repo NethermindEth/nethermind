@@ -46,7 +46,7 @@ internal sealed class StreamingSnapshotInitializer(
     private async Task StreamAndExtractAsync(SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
     {
         using SnapshotHttpClient client = new();
-        SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(url, cancellationToken).ConfigureAwait(false);
+        SnapshotRemoteInfo remoteInfo = await ProbeWithRetryAsync(client, cancellationToken).ConfigureAwait(false);
         if (remoteInfo.Length is null && config.Checksum is null)
             throw new InvalidOperationException(
                 "The server does not report the snapshot size and Snapshot.Checksum is not set, so a truncated download could not be detected. Set Snapshot.Checksum or disable Snapshot.Streaming.");
@@ -81,6 +81,29 @@ internal sealed class StreamingSnapshotInitializer(
         checkpoint.Advance(SnapshotStage.Completed);
         if (_logger.IsInfo)
             _logger.Info("Database successfully initialized from streamed snapshot.");
+    }
+
+    private async Task<SnapshotRemoteInfo> ProbeWithRetryAsync(SnapshotHttpClient client, CancellationToken cancellationToken)
+    {
+        TimeSpan retryDelay = settings.InitialRetryDelay;
+        while (true)
+        {
+            try
+            {
+                return await client.ProbeAsync(url, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException e) when (SnapshotHttpClient.IsPermanentHttpError(e))
+            {
+                throw;
+            }
+            catch (Exception e) when (e is IOException or HttpRequestException)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Snapshot probe failed. Retrying in {retryDelay.TotalSeconds}s. Error: {e.Message}");
+                await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+                retryDelay = retryDelay * 2 > settings.MaxRetryDelay ? settings.MaxRetryDelay : retryDelay * 2;
+            }
+        }
     }
 
     private static void EnsureStreamableArchive(string fileName)

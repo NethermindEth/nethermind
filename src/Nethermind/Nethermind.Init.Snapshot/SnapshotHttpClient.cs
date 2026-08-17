@@ -55,9 +55,9 @@ internal sealed class SnapshotHttpClient : IDisposable
                 response = await _httpClient.SendAsync(
                     request, HttpCompletionOption.ResponseHeadersRead, headerCts.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (headerCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException e) when (headerCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
-                throw new HttpRequestException($"No response headers received within {HeaderTimeout.TotalSeconds}s.");
+                throw new HttpRequestException($"No response headers received within {HeaderTimeout.TotalSeconds}s.", e);
             }
 
             switch (response.StatusCode)
@@ -92,17 +92,19 @@ internal sealed class SnapshotHttpClient : IDisposable
             and not HttpStatusCode.TooManyRequests
             and not HttpStatusCode.RequestedRangeNotSatisfiable;
 
-    public static async Task SkipAsync(Stream content, long bytesToSkip, CancellationToken cancellationToken)
+    public static async Task SkipAsync(Stream content, long bytesToSkip, TimeSpan stallTimeout, CancellationToken cancellationToken)
     {
+        using StallGuardedReader reader = new(stallTimeout, cancellationToken);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(SkipBufferSize);
         try
         {
             long remaining = bytesToSkip;
             while (remaining > 0)
             {
-                int chunk = (int)Math.Min(SkipBufferSize, remaining);
-                await content.ReadAtLeastAsync(buffer.AsMemory(0, chunk), chunk, throwOnEndOfStream: true, cancellationToken).ConfigureAwait(false);
-                remaining -= chunk;
+                int read = await reader.ReadAsync(content, buffer.AsMemory(0, (int)Math.Min(SkipBufferSize, remaining))).ConfigureAwait(false);
+                if (read == 0)
+                    throw new EndOfStreamException($"Connection ended while skipping {bytesToSkip} already received bytes.");
+                remaining -= read;
             }
         }
         finally

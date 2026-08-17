@@ -167,6 +167,23 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
+    public async Task InitializeAsync_ProbeFailsTransientlyOnce_RetriesAndCompletes()
+    {
+        Dictionary<string, byte[]> files = TestArchive.BuildFiles();
+        byte[] archive = TestArchive.BuildTarZst(files);
+        _server.Content = archive;
+        _server.ServerErrorFirstRequests = 1;
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        SnapshotCheckpoint checkpoint = CreateCheckpoint();
+
+        await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
+
+        AssertExtracted(files);
+        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Completed),
+            "a transient probe failure must be retried instead of failing node startup");
+    }
+
+    [Test]
     public async Task InitializeAsync_SourceKeepsChanging_GivesUpWithoutThrowing()
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
