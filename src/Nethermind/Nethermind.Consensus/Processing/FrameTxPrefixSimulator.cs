@@ -144,10 +144,11 @@ public sealed class FrameTxPrefixSimulator(
             // env (a cancellable state read during shutdown) and decides nothing about the prefix.
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation cancelled");
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException and not OutOfMemoryException)
         {
-            // A malformed opaque prefix must never crash admission. Once the tracer exists the prefix is
-            // the expected source, so the rejection is definite: one that throws every head cannot pin a slot.
+            // Attacker-chosen bytecode over env build, trie reads and the EVM: the throw surface is not
+            // enumerable. Once the tracer exists the prefix is the expected source, so the rejection is
+            // definite: one that throws every head cannot pin a slot.
             if (_logger.IsDebug) _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation threw; rejecting. {e}");
             return tracer is null
                 ? FrameTxSimulationResult.RejectIndeterminate("validation-prefix processing env unavailable")

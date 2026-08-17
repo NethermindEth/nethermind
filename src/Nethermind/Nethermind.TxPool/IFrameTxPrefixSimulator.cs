@@ -10,13 +10,10 @@ namespace Nethermind.TxPool;
 /// Runs the validation prefix of an EIP-8141 frame transaction whose payer the native resolver could not
 /// decide (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>) in a bounded, read-only EVM at chain head.
 /// </summary>
-/// <remarks>
-/// Optional in the pool: with no simulator wired, such transactions are admitted with an unresolved payer
-/// and therefore without an exposure reservation. https://eips.ethereum.org/EIPS/eip-8141
-/// </remarks>
+/// <remarks>Optional in the pool: with no simulator wired, such transactions are admitted with an
+/// unresolved payer and therefore without an exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
-    /// <summary>Simulates <paramref name="tx"/>'s validation prefix against the current head.</summary>
     /// <param name="token">Cancels the simulation cooperatively and bounds the wait for the serialized
     /// processing env; the implementation's own wall-clock bound surfaces as a rejection instead.</param>
     /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers;
@@ -25,16 +22,13 @@ public interface IFrameTxPrefixSimulator
     FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false);
 }
 
-/// <summary>Outcome of <see cref="IFrameTxPrefixSimulator.Simulate"/>.</summary>
 public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, string? rejectionReason, bool indeterminate = false, bool nodeBound = false)
 {
-    /// <summary>True when the prefix validated and set a payer within the gas bound.</summary>
     public bool Accepted { get; } = accepted;
 
-    /// <summary>The resolved fee-payer; non-null only when <see cref="Accepted"/> is true.</summary>
+    /// <summary>Non-null only when <see cref="Accepted"/>.</summary>
     public Address? Payer { get; } = payer;
 
-    /// <summary>Human-readable rejection reason; null when accepted.</summary>
     public string? RejectionReason { get; } = rejectionReason;
 
     /// <summary>
