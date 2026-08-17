@@ -577,7 +577,7 @@ public partial class EngineModuleTests
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
 
-        Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash);
+        Task blockImprovementWait = chain.WaitForImprovedBlock(currentHeadHash, txs.Length);
 
         string payloadId = (await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes)).Data.PayloadId!;
 
@@ -917,7 +917,8 @@ public partial class EngineModuleTests
         };
 
         ForkchoiceStateV1 fcuState = new(parentHash, parentHash, parentHash);
-        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash);
+        // All three txs have sequential nonces from AddressA and must land, or the expected hashes below are meaningless.
+        Task blockImprovementWait = chain.WaitForImprovedBlock(parentHash, minTransactions: 3);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await rpc.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
         Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
         await blockImprovementWait;

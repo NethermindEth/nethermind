@@ -159,9 +159,22 @@ public abstract partial class BaseEngineModuleTests
         public IPayloadPreparationService PayloadPreparationService => Container.Resolve<IPayloadPreparationService>();
         public StoringBlockImprovementContextFactory StoringBlockImprovementContextFactory => (StoringBlockImprovementContextFactory)BlockImprovementContextFactory;
 
-        public Task WaitForImprovedBlock(Hash256? parentHash = null) =>
+        /// <summary>
+        /// Waits for an improved block built on <paramref name="parentHash"/> that carries at least
+        /// <paramref name="minTransactions"/> transactions.
+        /// </summary>
+        /// <remarks>
+        /// The payload service publishes an initial empty block for a parent and only then improves it, so a wait
+        /// matching on the parent hash alone is satisfied by the first improvement even when that improvement is
+        /// still empty. Callers that submitted transactions must therefore pass <paramref name="minTransactions"/>;
+        /// otherwise <c>engine_getPayload*</c> races the tx pool (whose head processing is asynchronous) and can
+        /// return the empty block. Improvements are monotonic — each new context is seeded with the previous best
+        /// block — so once an improvement carrying N transactions is observed, the payload keeps at least N.
+        /// </remarks>
+        public Task WaitForImprovedBlock(Hash256? parentHash = null, int minTransactions = 0) =>
             StoringBlockImprovementContextFactory.WaitForImprovedBlockWithCondition(CreateCancellationSource().Token,
-                b => parentHash is null || b.Header.ParentHash == parentHash);
+                b => (parentHash is null || b.Header.ParentHash == parentHash)
+                     && b.Transactions.Length >= minTransactions);
 
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
