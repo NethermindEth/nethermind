@@ -2595,7 +2595,7 @@ namespace Nethermind.TxPool.Test
 
             // Sized off the reservation itself, so a repricing of max_cost moves the balance with it:
             // 3 pending at fee 3 fit within 10, the bump's 3 undiscounted plus its own 7 do not.
-            FrameTxValidation.TryCalculateMaxCost(SelfPayingFrameTx(nonce: 0, feePerGas: 1), Bogota.Instance, out UInt256 unitCost);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(SelfPayingFrameTx(nonce: 0, feePerGas: 1), Bogota.Instance, out UInt256 unitCost), Is.True);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)10 * unitCost);
 
             for (ulong nonce = 0; nonce < 3; nonce++)
@@ -2673,7 +2673,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(null, KeyedNonceSpecProvider());
 
             // The probe carries no nonce keys, so its max cost does not depend on the EIP-8250 surcharge.
-            FrameTxValidation.TryCalculateMaxCost(SelfPayingFrameTx(nonce: 0, feePerGas: 1), Bogota.Instance, out UInt256 unitCost);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(SelfPayingFrameTx(nonce: 0, feePerGas: 1), Bogota.Instance, out UInt256 unitCost), Is.True);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)4 * unitCost); // fits one at fee 3, not two
 
             AcceptTxResult first = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 3), TxHandlingOptions.None);
