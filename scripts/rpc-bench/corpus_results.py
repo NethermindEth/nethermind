@@ -278,7 +278,11 @@ def stage(output_root: str, stage_root: str) -> None:
         # Discarded warm-up output must never publish: comment() keys cells by directory position,
         # so a staged warmup/summary.json would displace a measured cell in the PR comment. The
         # sweep writes warm-ups to scratch, but staging is the boundary, so it enforces this too.
-        if any(part.startswith("warmup") for part in path.relative_to(source_root).parts):
+        parts = path.relative_to(source_root).parts
+        # Anchored to the two positions warm-up output can occupy (the scratch tree root and the
+        # cell-slot under a label) — a corpus LABEL containing "warmup" must not trip this, or a
+        # legitimately named scenario would vanish from the artifact without a word.
+        if parts[0].startswith("warmup") or path.parent.name.startswith("warmup"):
             continue
         try:
             if path.name == "summary.json":

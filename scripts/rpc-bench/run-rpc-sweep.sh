@@ -324,6 +324,13 @@ for entry in $CLIENTS; do
         # measured cell in the published PR comment.
         warm_cell="$SCRATCH_ROOT/warmup-cell/${clabel}/${label}"
         echo "-- WARMUP ${clabel} ${label} @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
+        # warmup_seconds must state the OUTCOME, so both paths record elapsed wall time, not the
+        # request. k6's constant-arrival executor is inherently time-bounded; the replay is
+        # request-count-bounded (pacing can only delay, never accelerate: its ceiling is
+        # concurrency/latency), so on a cold node it could overrun the request by an order of
+        # magnitude — a hard `timeout` bounds it, and hitting that bound still IS a completed
+        # warm-up: the node absorbed warm load for the whole window.
+        warm_started=$SECONDS
         if [[ -n "$RPS_LIST" ]]; then
           # The k6 cells build the JSON-array fixture anyway, so warming through run_cell adds no
           # extra materialization. The fail-rate gate is LIFTED for this cell: the warm-up exists
@@ -331,24 +338,32 @@ for entry in $CLIENTS; do
           # status (a warm-up that did its job would report failure).
           if JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" \
               "$warm_cell" "$ctype" "$label" "$corpus" ""; then
-            WARMED_SECONDS="$WARMUP_SECONDS"
+            WARMED_SECONDS=$(( SECONDS - warm_started ))
           else
             echo "::warning::warmup for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
           fi
           report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
+        elif [[ -z "${CORPUS_RECORDS[$corpus]:-}" ]]; then
+          # Cannot size the replay without the record count (validate fills it for every corpus,
+          # so this is defensive). A wrong guess would multiply by the real count inside
+          # timings() and run for hours; skipping states the truth: not warmed.
+          echo "::warning::no record count for $(corpus_label "$corpus") — skipping warmup (recorded warmup_seconds=0)"
         else
           # Fixture-free mode: an empty rps_list exists so a large corpus never materializes the
           # k6 JSON-array fixture, so the warm-up must not build it either. corpus_parity's
           # paced replay drives the same eth_calls without k6; it exits nonzero only on a real
           # crash (cold per-call failures are reported in its output, not the exit code).
-          records="${CORPUS_RECORDS[$corpus]:-1}"
+          records="${CORPUS_RECORDS[$corpus]}"
           warm_passes=$(( (warm_rps * WARMUP_SECONDS + records - 1) / records ))
           mkdir -p "$warm_cell"
-          if python3 "$here/corpus_parity.py" timings \
+          timeout $(( WARMUP_SECONDS + 60 )) python3 "$here/corpus_parity.py" timings \
               --corpus "$corpus" --rpc-url "http://localhost:8545" \
               --out "$warm_cell/warmup-timings.csv" --passes "$warm_passes" \
-              --rps "$warm_rps" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"; then
-            WARMED_SECONDS="$WARMUP_SECONDS"
+              --rps "$warm_rps" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"
+          warm_status=$?
+          # 124 = the timeout fired: the node still absorbed warm load for the whole window.
+          if [[ "$warm_status" -eq 0 || "$warm_status" -eq 124 ]]; then
+            WARMED_SECONDS=$(( SECONDS - warm_started ))
           else
             echo "::warning::warmup replay for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
           fi
