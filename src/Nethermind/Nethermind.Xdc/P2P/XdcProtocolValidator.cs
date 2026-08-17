@@ -17,6 +17,6 @@ internal class XdcProtocolValidator(
     ILogManager logManager) : ProtocolValidator(nodeStatsManager, blockTree, forkInfo, networkConfig, logManager)
 {
     /// <remarks>The legacy XDPoS 2.0 handshake has no fork ID field, so it cannot be validated.</remarks>
-    protected override bool MustValidateForkId(byte protocolVersion) =>
+    protected override bool RequiresForkId(byte protocolVersion) =>
         protocolVersion >= XdcProtocolVersions.FirstVersionWithForkId;
 }
