@@ -3076,11 +3076,9 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void RecalculateTreeLevels_WhenBeaconSegmentOverlapsBestSuggested_MovesPointerToBeaconJunction()
     {
-        // Post-merge repro of the O(n) startup walk: reconciliation must walk down to the
-        // beacon/non-beacon junction rather than walking every already-synced header to genesis.
-        // The beacon fork overlaps the best-suggested level, so a stop bound anchored on the
-        // BestSuggestedHeader number would refuse the walk entirely — only the IsKnownBlock
-        // anchor moves the pointer while still stopping at the junction.
+        // The beacon fork overlaps the best-suggested level: a stop bound anchored on the
+        // BestSuggestedHeader number would refuse the walk entirely, while an unanchored
+        // walk would descend past the junction into the synced chain.
         CustomSpecProvider specProvider = PostMergeSpecProvider();
 
         _blocksDb = new TestMemDb();
@@ -3098,8 +3096,6 @@ public class BlockTreeTests
         Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
         tree.SuggestBlock(block5);
 
-        // A beacon fork next to the suggested block; an interrupted backfill parked the pointer
-        // above the beacon header it had already inserted.
         BlockHeader beacon5 = Build.A.BlockHeader.WithParent(previous.Header).WithExtraData(new byte[] { 2 }).TestObject;
         BlockHeader beacon6 = Build.A.BlockHeader.WithParent(beacon5).TestObject;
         BlockTreeInsertHeaderOptions beaconInsert = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
@@ -3111,9 +3107,7 @@ public class BlockTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Must descend to the lowest inserted beacon header, not into the synced chain (was 1 before the fix).
             Assert.That(tree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(5UL), "lowest beacon");
-            // The mixed level restores the non-beacon suggestion, not the beacon fork header.
             Assert.That(tree.BestSuggestedHeader?.Hash, Is.EqualTo(block5.Hash), "suggested header");
         }
     }
@@ -3238,8 +3232,7 @@ public class BlockTreeTests
 
         Block[] chain = SuggestProcessedPostMergeChain(tree);
 
-        // A beacon fork header at the processed head's level: the canonical lookup resolves the
-        // main-chain sibling, so the restore must probe the beacon entries first.
+        // beacon fork at the head's level: the canonical lookup would resolve the main-chain sibling
         BlockHeader beaconSibling = Build.A.BlockHeader.WithParent(chain[3].Header).WithExtraData(new byte[] { 2 }).TestObject;
         tree.Insert(beaconSibling, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
 

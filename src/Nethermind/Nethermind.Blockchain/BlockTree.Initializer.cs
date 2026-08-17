@@ -240,7 +240,7 @@ public partial class BlockTree
 
             if (findBeacon)
             {
-                // Mirror ChainLevelInfo.BeaconMainChainBlock: the beacon-main-chain entry wins, else the first entry.
+                // mirrors ChainLevelInfo.BeaconMainChainBlock
                 if (blockInfo.IsBeaconMainChain)
                 {
                     return header;
@@ -249,8 +249,7 @@ public partial class BlockTree
             }
             else
             {
-                // InsertBlockInfo appends, and at equal height the latest suggestion wins
-                // (BestSuggestedImprovementRequirementsSatisfied uses <=), so the last entry matches the runtime pointer.
+                // last entry: at equal height the latest suggestion wins
                 found = header;
             }
         }
@@ -334,8 +333,7 @@ public partial class BlockTree
         }
 
         BestKnownBeaconNumber = bestKnownNumberFound;
-        // The numbers came from beacon-filtered searches, so probe the beacon entries first: beacon
-        // inserts are NotOnMainChain, and the canonical lookup can resolve a non-beacon sibling.
+        // beacon entries first — the canonical lookup can resolve a non-beacon sibling
         BestSuggestedBeaconHeader = FindHeaderAtLevel(bestBeaconHeaderNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded, findBeacon: true)
             ?? FindHeader(bestBeaconHeaderNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         BestSuggestedBeaconBody = FindBlockAtLevel(bestBeaconBodyNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded, findBeacon: true)
