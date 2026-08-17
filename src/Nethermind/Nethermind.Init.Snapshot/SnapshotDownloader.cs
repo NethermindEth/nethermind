@@ -83,6 +83,16 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
             _logger.Info($"Snapshot downloaded to {destinationPath}.");
     }
 
+    public async Task<long?> GetTotalSizeAsync(string url, long existingSize, CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await SendWithRangeAsync(_httpClient, url, existingSize, cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+            return existingSize;
+
+        return ResolveCopyStrategy(response.StatusCode, existingSize, response.Content.Headers.ContentLength).totalSize;
+    }
+
     public void Dispose() => _httpClient.Dispose();
 
     private static (FileMode fileMode, long bytesToSkip, long? totalSize) ResolveCopyStrategy(

@@ -26,6 +26,7 @@ public class InitDatabaseSnapshot(
     INethermindApi api,
     [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives) : IStep
 {
+    private const double ExtractionSpaceMultiplier = 1.5;
     private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
     private const int MaxRetryDelaySeconds = 300;
@@ -109,6 +110,8 @@ public class InitDatabaseSnapshot(
         if (checkpoint.Read() >= SnapshotStage.Downloaded)
             return;
 
+        await CheckDiskSpaceBeforeDownloadAsync(downloader, url, destinationPath, cancellationToken).ConfigureAwait(false);
+
         TimeSpan retryDelay = TimeSpan.FromSeconds(InitialRetryDelaySeconds);
         long lastSize = GetFileSize(destinationPath);
 
@@ -191,26 +194,52 @@ public class InitDatabaseSnapshot(
         if (checkpoint.Read() >= SnapshotStage.Extracted)
             return;
 
-        CheckDiskSpace(snapshotPath);
+        CheckDiskSpace(GetRequiredSpaceForExtraction(GetFileSize(snapshotPath)), "extract");
 
         SnapshotExtractor extractor = new(api.LogManager);
         await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
         checkpoint.Advance(SnapshotStage.Extracted);
     }
 
-    private void CheckDiskSpace(string snapshotPath)
+    private async Task CheckDiskSpaceBeforeDownloadAsync(
+        SnapshotDownloader downloader, string url, string destinationPath, CancellationToken cancellationToken)
     {
-        if (drives.Length == 0)
+        long existingSize = GetFileSize(destinationPath);
+        long? totalSize;
+        try
+        {
+            totalSize = await downloader.GetTotalSizeAsync(url, existingSize, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is IOException or HttpRequestException)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Could not determine the snapshot size upfront. Skipping the pre-download disk space check. Error: {e.Message}");
             return;
+        }
 
-        long snapshotSize = api.FileSystem.FileInfo.New(snapshotPath).Length;
-        long required = (long)(snapshotSize * 2.5);
+        if (totalSize is null)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn("The server did not report the snapshot size. Skipping the pre-download disk space check.");
+            return;
+        }
 
+        CheckDiskSpace(GetRequiredSpaceForDownload(totalSize.Value, existingSize), "download and extract");
+    }
+
+    internal static long GetRequiredSpaceForDownload(long totalSize, long existingSize) =>
+        totalSize - existingSize + GetRequiredSpaceForExtraction(totalSize);
+
+    internal static long GetRequiredSpaceForExtraction(long snapshotSize) =>
+        (long)(snapshotSize * ExtractionSpaceMultiplier);
+
+    private void CheckDiskSpace(long required, string operation)
+    {
         foreach (IDriveInfo drive in drives)
         {
             if (drive.AvailableFreeSpace < required)
                 throw new IOException(
-                    $"Insufficient disk space on '{drive.RootDirectory.FullName}' to extract snapshot: " +
+                    $"Insufficient disk space on '{drive.RootDirectory.FullName}' to {operation} the snapshot: " +
                     $"need at least {required} bytes, {drive.AvailableFreeSpace} available.");
         }
     }
