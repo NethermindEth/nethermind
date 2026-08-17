@@ -368,9 +368,10 @@ matches** — a different head, rate or concurrency makes the numbers incomparab
 `warmup_seconds` most of all: a cold matrix reads ~60% higher on p99 than the same node warm,
 and nothing in the CSV itself would reveal that.
 
-**What a corpus sweep does per client:** first a discarded **warm-up**
-(`corpus_warmup_duration`, integer seconds with an optional `s` suffix — `5m` is rejected;
-default `240s`, `0` measures cold on purpose): a k6 cell at the highest requested rate when
+**What a corpus sweep does per client:** first a discarded **warm-up, once per
+corpus** (`corpus_warmup_duration`, integer seconds with an optional `s` suffix — `5m` is
+rejected; default `240s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
+N x 240 s per client before measuring): a k6 cell at the highest requested rate when
 `rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
 fixture-free mode stays fixture-free. Cold nodes fail ~2% of calls and read ~60% higher p99,
 so every measured number below assumes this ran. Then one k6 latency cell per corpus per
@@ -396,8 +397,14 @@ rewritten by `corpus_results.py sanitize` to a fixed numeric schema; parity
 reports contain counters and client labels only; node logs are scanned for the
 usual Exception / invalid-block / shutdown gates but print **counts only** and
 are deleted (sweep) or excluded from upload; the artifact is assembled by
-`corpus_results.py stage`, which copies nothing but validated `summary.json`,
-`parity.json`, and generated markdown. Failures print category + counts (e.g.
+`corpus_results.py stage`, which copies nothing but files on its allowlist, each
+behind an exact-schema validator: `summary.json`, `parity.json`, `timings.csv`
+(indexes, milliseconds and outcome names), `timings.meta.json` (block identity and
+run parameters, including `warmup_seconds`), `resources.json` (cgroup counters),
+`parity-diffs.json`, and the generated markdown/manifest. `parity-diffs.json` is
+the one artifact derived from response bytes: **opt-in** (`parity_diffs`, default
+off) and reduced to word positions plus a higher/lower direction — no operands, no
+magnitudes, enforced by its validator. Failures print category + counts (e.g.
 `rpc_error=3`), never request or response bytes — raw detail stays on the
 runner in `<scratch>/jsonbench/` for SSH diagnosis until the next run wipes it.
 

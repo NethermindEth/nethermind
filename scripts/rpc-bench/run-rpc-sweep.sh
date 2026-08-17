@@ -324,13 +324,14 @@ for entry in $CLIENTS; do
         # measured cell in the published PR comment.
         warm_cell="$SCRATCH_ROOT/warmup-cell/${clabel}/${label}"
         echo "-- WARMUP ${clabel} ${label} @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
-        # warmup_seconds must state the OUTCOME, so both paths record elapsed wall time, not the
-        # request. k6's constant-arrival executor is inherently time-bounded; the replay is
-        # request-count-bounded (pacing can only delay, never accelerate: its ceiling is
-        # concurrency/latency), so on a cold node it could overrun the request by an order of
-        # magnitude — a hard `timeout` bounds it, and hitting that bound still IS a completed
-        # warm-up: the node absorbed warm load for the whole window.
-        warm_started=$SECONDS
+        # warmup_seconds must state the OUTCOME. On the k6 branch the request IS the outcome:
+        # the constant-arrival executor runs for exactly the given duration, and an elapsed
+        # clock here would bill the whole json-bench wrapper (clone, docker build, fixture
+        # write — which scales with corpus size) as warm-up the idle node never received. The
+        # replay branch is request-count-bounded (pacing can only delay: its ceiling is
+        # concurrency/latency), so THERE an elapsed clock plus a hard `timeout` state the
+        # truth; hitting the bound still IS a completed warm-up — the node absorbed load for
+        # the whole window.
         if [[ -n "$RPS_LIST" ]]; then
           # The k6 cells build the JSON-array fixture anyway, so warming through run_cell adds no
           # extra materialization. The fail-rate gate is LIFTED for this cell: the warm-up exists
@@ -338,7 +339,7 @@ for entry in $CLIENTS; do
           # status (a warm-up that did its job would report failure).
           if JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" \
               "$warm_cell" "$ctype" "$label" "$corpus" ""; then
-            WARMED_SECONDS=$(( SECONDS - warm_started ))
+            WARMED_SECONDS="$WARMUP_SECONDS"
           else
             echo "::warning::warmup for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
           fi
@@ -356,6 +357,7 @@ for entry in $CLIENTS; do
           records="${CORPUS_RECORDS[$corpus]}"
           warm_passes=$(( (warm_rps * WARMUP_SECONDS + records - 1) / records ))
           mkdir -p "$warm_cell"
+          warm_started=$SECONDS
           timeout $(( WARMUP_SECONDS + 60 )) python3 "$here/corpus_parity.py" timings \
               --corpus "$corpus" --rpc-url "http://localhost:8545" \
               --out "$warm_cell/warmup-timings.csv" --passes "$warm_passes" \
