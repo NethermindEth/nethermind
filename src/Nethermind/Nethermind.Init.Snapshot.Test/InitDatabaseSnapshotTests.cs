@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Formats.Tar;
-using System.IO;
-using System.Security.Cryptography;
 using System.IO.Abstractions;
 using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Security.Cryptography;
 using Nethermind.Api;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
