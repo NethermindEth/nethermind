@@ -561,26 +561,57 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, out gasUsed);
         }
 
-        // create_evm_from_frame: the frame pays cold/warm target access plus the EIP-8037 NEW_ACCOUNT
-        // state cost of a value transfer reviving a dead target, from its own gas limit.
-        // EIP-2929 seeds the accessed set with every precompile, which the shared tracker does not hold.
+        // create_evm_from_frame: the frame pays its target's access, plus the state cost of a value
+        // transfer reviving a dead target, out of its own gas limit. Precompiles are checked explicitly
+        // because EIP-2929 pre-warms them without the shared tracker holding them.
         ulong entryExecution = spec.UseHotAndColdStorage
             ? (accessTracker.IsCold(resolvedTarget) && !spec.IsPrecompile(resolvedTarget)
                 ? TGasPolicy.GetColdAccountAccessCost(spec)
                 : Eip8038Constants.WarmAccess)
             : 0;
+        // Checked before the deadness query below, which is itself a recorded read: a frame that cannot
+        // afford its target's access must leave the target untouched, as the CALL path does.
+        if (entryExecution > frame.GasLimit)
+        {
+            gasUsed = frame.GasLimit;
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+        }
+
+        // The revival charge has no pre-EIP-8037 form here: EIP-8141 is only composed onto specs carrying it.
         long entryState = spec.IsEip8037Enabled && !value.IsZero && WorldState.IsDeadAccount(resolvedTarget)
             ? TGasPolicy.GetNewAccountStateCost()
             : 0;
         ulong entryCharge = entryExecution + (ulong)entryState;
-        // An entry charge the frame cannot afford halts it exceptionally, consuming its whole gas limit.
         if (entryCharge > frame.GasLimit)
         {
             gasUsed = frame.GasLimit;
             return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
         }
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, followDelegation: false, spec, out Address? delegation);
+        if (delegation is not null)
+        {
+            // resolve_delegated_code_address: the target counts as accessed by now, so a self-designation is warm.
+            if (spec.UseHotAndColdStorage)
+            {
+                entryCharge += delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
+                    ? TGasPolicy.GetColdAccountAccessCost(spec)
+                    : Eip8038Constants.WarmAccess;
+                if (entryCharge > frame.GasLimit)
+                {
+                    gasUsed = frame.GasLimit;
+                    return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                }
+            }
+
+            // create_evm_from_frame reads the designated code only after its access is paid for.
+            // EIP-7702: a precompile must not execute via delegation.
+            WorldState.AddAccountRead(delegation);
+            codeInfo = spec.IsPrecompile(delegation)
+                ? CodeInfo.Empty
+                : _codeInfoRepository.GetCachedCodeInfoNoDelegation(delegation, spec);
+        }
+
         ReadOnlyMemory<byte> inputData = frame.Data;
 
         // VmState.Dispose releases its environment only below the top level, so this one is caller-owned;
@@ -609,6 +640,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (spec.UseHotAndColdStorage)
         {
             frameTracker.WarmUp(resolvedTarget);
+            if (delegation is not null) frameTracker.WarmUp(delegation);
         }
 
         // The reservoir starts empty, so the VM cannot draw the entry state gas back out of it.
@@ -629,10 +661,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
         gasUsed = frame.GasLimit - remainingGas;
         // Clamp rather than assert: unlike the standard path, this also runs for reverted or errored
-        // frames, where the state-gas value carries no non-negativity guarantee.
-        // A reverted or halted frame rolls the revival back, so its entry state gas commits nothing.
-        stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas))
-            + (substate.ShouldRevert || substate.IsError ? 0 : entryState);
+        // frames, where the state-gas value carries no non-negativity guarantee. The caller discards it
+        // unless the frame succeeded, so the entry state gas is added unconditionally.
+        stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas)) + entryState;
 
         if (substate.ShouldRevert || substate.IsError)
         {
