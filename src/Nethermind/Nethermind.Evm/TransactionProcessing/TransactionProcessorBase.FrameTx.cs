@@ -547,14 +547,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         return logs;
     }
 
-    /// <summary>
-    /// EIP-8141 mempool admission: simulate the validation prefix against read-only head state,
-    /// resolving the payer and enforcing the trace/opcode rules under the <c>MAX_VERIFY_GAS</c> bound.
-    /// </summary>
-    /// <remarks>Per-opcode rules belong to the caller's <c>FrameTxValidationTracer</c>; state is always
-    /// restored. Nonce equality is deliberately not required: the prefix never reads the account nonce.
-    /// EIP8141: result caching, head-change re-simulation and a wall-clock guard are deferred; the
-    /// per-transaction gas bound is the DoS bound implemented here.</remarks>
+    /// <summary>Simulates a frame transaction's validation prefix against read-only head state for mempool
+    /// admission, resolving the payer under the <c>MAX_VERIFY_GAS</c> bound.</summary>
+    /// <remarks>Nonce equality is deliberately not required: the prefix never reads the account nonce.
+    /// Rule numbers below are EIP-8141 § Structural Rules.</remarks>
     private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;
@@ -562,8 +558,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         try
         {
             ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
-            // GetPrecompile, as the main path does, so an unused P256 branch records no account access
-            // (EIP-7928) and the two paths resolve the precompile the same way.
+            // As the main path does, so an unused P256 branch records no account access (EIP-7928).
             IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
             if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
             {
@@ -618,10 +613,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 TxFrame frame = frames[i];
 
-                // EIP8141-GAP: deploy-frame carve-outs are unimplemented. Positional, as RecognizedPrefixLength
-                // reaches index 1 only past an expiry-verify frame at index 0.
-                if ((i == 0 || (i == 1 && FrameTxValidation.IsExpiryVerifyFrame(frames[0])))
-                    && i + 1 < frames.Length && FrameTxValidation.IsDeployFrame(frame) && frames[i + 1].Mode == TxFrame.ModeVerify)
+                // EIP8141-GAP: deploy-frame carve-outs are unimplemented, so such a prefix is declined.
+                if (OpensDeployPrefix(frames, i))
                 {
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
                 }
@@ -691,6 +684,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.Restore(txSnapshot);
         }
     }
+
+    /// <summary>Whether frame <paramref name="i"/> is a <c>deploy</c> frame opening the validation prefix.</summary>
+    /// <remarks>Positional, as RecognizedPrefixLength reaches index 1 only past an expiry-verify frame at index 0.</remarks>
+    private static bool OpensDeployPrefix(TxFrame[] frames, int i) =>
+        (i == 0 || (i == 1 && FrameTxValidation.IsExpiryVerifyFrame(frames[0])))
+        && i + 1 < frames.Length
+        && FrameTxValidation.IsDeployFrame(frames[i])
+        && frames[i + 1].Mode == TxFrame.ModeVerify;
 
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {

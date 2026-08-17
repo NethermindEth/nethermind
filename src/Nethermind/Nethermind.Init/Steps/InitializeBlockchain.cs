@@ -66,7 +66,6 @@ namespace Nethermind.Init.Steps
                 _txGossipPolicy,
                 null,
                 _api.HeadTxValidator,
-                // EIP-8141: without a registered simulator, opaque frame-tx prefixes stay unresolved.
                 frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
             );
 
