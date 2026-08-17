@@ -129,6 +129,8 @@ class CorpusResultsTests(unittest.TestCase):
         sanitized = corpus_results.sanitize_data(raw_summary())
         self.write_json(out_root / "corpus" / "a" / "nm" / "100" / "summary.json", sanitized)
         self.write_json(out_root / "corpus" / "a" / "nm" / "warmup" / "summary.json", sanitized)
+        # the sweep's actual scratch layout uses a 'warmup-cell' segment - the guard must match it
+        self.write_json(out_root / "warmup-cell" / "a" / "nm" / "summary.json", sanitized)
 
         stage_root = self.dir / "stage-warm"
         corpus_results.stage(str(out_root), str(stage_root))
@@ -182,8 +184,8 @@ class CommentRenderingTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _cell(self, label, avg, p99, fail=0.0):
-        cell = self.root / "corpus" / "corpus-a" / label / "100"
+    def _cell(self, label, avg, p99, fail=0.0, slot="100"):
+        cell = self.root / "corpus" / "corpus-a" / label / slot
         cell.mkdir(parents=True)
         (cell / "summary.json").write_text(json.dumps({"metrics": {
             "http_req_duration": {"values": {"avg": avg, "med": avg, "p(90)": avg * 2,
@@ -218,6 +220,19 @@ class CommentRenderingTests(unittest.TestCase):
         body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
         self.assertIn("497/497 identical to master", body)
         self.assertNotIn("DIVERGES", body)
+
+    def test_repeated_rate_slots_render_as_separate_rows(self):
+        """A repeated rate is the drift control; keying on (corpus, label) alone kept only the
+        slot that sorted last, silently discarding it."""
+        self._cell("nethermind_master", 20.0, 100.0, slot="100")
+        self._cell("nethermind", 19.0, 90.0, slot="100")
+        self._cell("nethermind_master", 21.0, 110.0, slot="100_r2")
+        self._cell("nethermind", 20.0, 95.0, slot="100_r2")
+        body = corpus_results.comment(str(self.root), "nethermind_master", "nethermind")
+        self.assertIn("@ `100` rps", body)
+        self.assertIn("@ `100_r2` rps", body)
+        self.assertIn("| avg | 20.00 ms | 19.00 ms |", body)
+        self.assertIn("| avg | 21.00 ms | 20.00 ms |", body)
 
     def test_missing_client_does_not_crash(self):
         self._cell("nethermind_master", 20.0, 100.0)

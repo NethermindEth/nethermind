@@ -278,7 +278,7 @@ def stage(output_root: str, stage_root: str) -> None:
         # Discarded warm-up output must never publish: comment() keys cells by directory position,
         # so a staged warmup/summary.json would displace a measured cell in the PR comment. The
         # sweep writes warm-ups to scratch, but staging is the boundary, so it enforces this too.
-        if "warmup" in path.relative_to(source_root).parts:
+        if any(part.startswith("warmup") for part in path.relative_to(source_root).parts):
             continue
         try:
             if path.name == "summary.json":
@@ -316,31 +316,41 @@ def comment(stage_root: str, baseline_label: str, candidate_label: str) -> str:
     aggregate-only boundary, so anything reaching a public PR comment has already passed it.
     """
     root = Path(stage_root)
-    cells: dict[tuple[str, str], dict] = {}
+    # Keyed by rate slot as well: a multi-rate sweep produces sibling rate directories under one
+    # label, and keying on (corpus, label) alone silently kept whichever slot sorted last.
+    cells: dict[tuple[str, str, str], dict] = {}
     for path in sorted(root.rglob("summary.json")):
+        slot = path.parent.name
         label, corpus = path.parent.parent.name, path.parent.parent.parent.name
-        cells[(corpus, label)] = json.loads(path.read_text(encoding="utf-8"))["metrics"]
+        cells[(corpus, label, slot)] = json.loads(path.read_text(encoding="utf-8"))["metrics"]
     if not cells:
         return "No corpus cells were produced, so there is nothing to compare."
 
+    def slot_order(slot: str):
+        head = slot.split("_")[0]
+        return (int(head) if head.isdigit() else 0, slot)
+
     lines: list[str] = ["### `eth_call` corpus — PR vs master", ""]
-    for corpus in sorted({c for c, _ in cells}):
-        base = cells.get((corpus, baseline_label))
-        cand = cells.get((corpus, candidate_label))
-        if not base or not cand:
-            lines.append(f"`{corpus}`: missing a client, cannot compare.")
-            continue
-        b_fail = base["http_req_failed"]["values"]["rate"] * 100
-        c_fail = cand["http_req_failed"]["values"]["rate"] * 100
-        lines += [f"**`{corpus}`** · {int(cand['http_reqs']['values']['count'])} requests/client", "",
-                  "| metric | master | PR | delta |", "|---|---|---|---|"]
-        for key, name in COMMENT_METRICS:
-            bv = base["http_req_duration"]["values"][key]
-            cv = cand["http_req_duration"]["values"][key]
-            delta = (cv - bv) / bv * 100 if bv else float("nan")
-            arrow = "🟢" if delta < -1 else ("🔴" if delta > 1 else "⚪")
-            lines.append(f"| {name} | {bv:.2f} ms | {cv:.2f} ms | {arrow} {delta:+.1f}% |")
-        lines += ["", f"Failure rate — master {b_fail:.2f}%, PR {c_fail:.2f}%.", ""]
+    for corpus in sorted({c for c, _, _ in cells}):
+        slots = sorted({s for c, _, s in cells if c == corpus}, key=slot_order)
+        for slot in slots:
+            base = cells.get((corpus, baseline_label, slot))
+            cand = cells.get((corpus, candidate_label, slot))
+            if not base or not cand:
+                lines.append(f"`{corpus}` @ `{slot}`: missing a client, cannot compare.")
+                continue
+            b_fail = base["http_req_failed"]["values"]["rate"] * 100
+            c_fail = cand["http_req_failed"]["values"]["rate"] * 100
+            lines += [f"**`{corpus}`** @ `{slot}` rps · "
+                      f"{int(cand['http_reqs']['values']['count'])} requests/client", "",
+                      "| metric | master | PR | delta |", "|---|---|---|---|"]
+            for key, name in COMMENT_METRICS:
+                bv = base["http_req_duration"]["values"][key]
+                cv = cand["http_req_duration"]["values"][key]
+                delta = (cv - bv) / bv * 100 if bv else float("nan")
+                arrow = "🟢" if delta < -1 else ("🔴" if delta > 1 else "⚪")
+                lines.append(f"| {name} | {bv:.2f} ms | {cv:.2f} ms | {arrow} {delta:+.1f}% |")
+            lines += ["", f"Failure rate — master {b_fail:.2f}%, PR {c_fail:.2f}%.", ""]
 
         report = root / "corpus" / corpus / candidate_label / "parity.json"
         if report.is_file():
