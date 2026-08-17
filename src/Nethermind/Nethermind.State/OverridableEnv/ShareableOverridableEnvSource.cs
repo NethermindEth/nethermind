@@ -22,13 +22,6 @@ public sealed class ShareableOverridableEnvSource<T>(
 {
     private readonly ConcurrentStack<IOverridableEnv<T>> _idle = new();
     private readonly ConcurrentDictionary<IOverridableEnv<T>, byte> _tracked = new();
-    // A request rents and releases on one thread and thread-pool threads are long-lived, so the
-    // env this thread used last is the one whose per-request state (override dictionaries,
-    // overlay caches, world-state internals) is still warm in this core's cache — envs handed
-    // around through the shared stack arrive cold under concurrent load. One slot per thread;
-    // the slot participates in the same retained budget as the idle stack, so total retention
-    // stays bounded by maxConcurrent.
-    private readonly ThreadLocal<IOverridableEnv<T>?> _threadEnv = new();
     private int _retainedCount;
     private int _activeCount;
     private volatile bool _disposed;
@@ -58,13 +51,11 @@ public sealed class ShareableOverridableEnvSource<T>(
         {
             DisposeAndUntrack(env);
         }
-        // Still-rented and thread-slot envs are disposed too (all envs are tracked at creation);
-        // a later Release becomes a no-op via TryRemove, and Rent checks _disposed before slots.
+        // Still-rented envs are disposed too; a later Release becomes a no-op via TryRemove.
         foreach (KeyValuePair<IOverridableEnv<T>, byte> entry in _tracked)
         {
             DisposeAndUntrack(entry.Key);
         }
-        _threadEnv.Dispose();
     }
 
     private IOverridableEnv<T> Rent()
@@ -77,14 +68,6 @@ public sealed class ShareableOverridableEnvSource<T>(
             Interlocked.Decrement(ref _activeCount);
             throw new ConcurrencyLimitReachedException(
                 $"Unable to start new override request. Too many in-flight override calls. In-flight: {active - 1}.");
-        }
-
-        IOverridableEnv<T>? affine = _threadEnv.Value;
-        if (affine is not null)
-        {
-            _threadEnv.Value = null;
-            Interlocked.Decrement(ref _retainedCount);
-            return affine;
         }
 
         if (_idle.TryPop(out IOverridableEnv<T>? env))
@@ -121,11 +104,6 @@ public sealed class ShareableOverridableEnvSource<T>(
         {
             Interlocked.Decrement(ref _retainedCount);
             DisposeAndUntrack(env);
-            return;
-        }
-        if (_threadEnv.Value is null)
-        {
-            _threadEnv.Value = env;
             return;
         }
         _idle.Push(env);
