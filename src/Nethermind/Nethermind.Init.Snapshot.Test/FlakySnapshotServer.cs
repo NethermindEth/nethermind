@@ -10,7 +10,9 @@ internal sealed class FlakySnapshotServer : IDisposable
 {
     private readonly HttpListener _listener;
     private readonly ConcurrentDictionary<string, int> _attemptsPerRange = new();
+    private readonly CancellationTokenSource _hangCts = new();
     private int _requestCount;
+    private int _hangConsumed;
     private int _switchAfterRequests = int.MaxValue;
     private byte[] _newContent = [];
     private string? _newETag;
@@ -36,6 +38,10 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public bool OmitContentLength { get; set; }
 
+    public bool RotateETagEveryRequest { get; set; }
+
+    public int? HangOnceAfterBytes { get; set; }
+
     public int RequestCount => _requestCount;
 
     public void SwitchSourceAfterRequests(int requestCount, byte[] newContent, string? newETag)
@@ -47,6 +53,7 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public void Dispose()
     {
+        _hangCts.Cancel();
         _listener.Stop();
         _listener.Close();
     }
@@ -74,6 +81,8 @@ internal sealed class FlakySnapshotServer : IDisposable
         int requestNumber = Interlocked.Increment(ref _requestCount);
         byte[] content = requestNumber > _switchAfterRequests ? _newContent : Content;
         string? etag = requestNumber > _switchAfterRequests ? _newETag : ETag;
+        if (RotateETagEveryRequest)
+            etag = $"\"v{requestNumber}\"";
         HttpListenerResponse response = context.Response;
 
         try
@@ -121,6 +130,21 @@ internal sealed class FlakySnapshotServer : IDisposable
                 response.SendChunked = true;
             else
                 response.ContentLength64 = length;
+
+            if (HangOnceAfterBytes is int hangAfter && length > hangAfter && Interlocked.Exchange(ref _hangConsumed, 1) == 0)
+            {
+                await response.OutputStream.WriteAsync(content.AsMemory((int)from, hangAfter));
+                await response.OutputStream.FlushAsync();
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), _hangCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                response.Abort();
+                return;
+            }
 
             string rangeKey = rangeHeader ?? "full";
             int attempt = _attemptsPerRange.AddOrUpdate(rangeKey, 1, static (_, previous) => previous + 1);

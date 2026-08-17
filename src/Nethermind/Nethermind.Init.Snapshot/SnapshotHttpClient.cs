@@ -13,8 +13,12 @@ internal sealed class SnapshotHttpClient : IDisposable
 {
     private const int MaxRedirects = 10;
     private const int SkipBufferSize = 65536;
+    private static readonly TimeSpan HeaderTimeout = TimeSpan.FromSeconds(100);
 
-    private readonly HttpClient _httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
+    private readonly HttpClient _httpClient = new(new HttpClientHandler { AllowAutoRedirect = false })
+    {
+        Timeout = Timeout.InfiniteTimeSpan
+    };
 
     public async Task<SnapshotRemoteInfo> ProbeAsync(string url, CancellationToken cancellationToken)
     {
@@ -43,8 +47,18 @@ internal sealed class SnapshotHttpClient : IDisposable
             if (ifRange is not null && !ifRange.IsWeak)
                 request.Headers.IfRange = new RangeConditionHeaderValue(ifRange);
 
-            HttpResponseMessage response = await _httpClient.SendAsync(
-                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            using CancellationTokenSource headerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            headerCts.CancelAfter(HeaderTimeout);
+            HttpResponseMessage response;
+            try
+            {
+                response = await _httpClient.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead, headerCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (headerCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                throw new HttpRequestException($"No response headers received within {HeaderTimeout.TotalSeconds}s.");
+            }
 
             switch (response.StatusCode)
             {

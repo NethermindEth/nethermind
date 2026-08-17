@@ -167,6 +167,20 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
+    public async Task InitializeAsync_SourceKeepsChanging_GivesUpWithoutThrowing()
+    {
+        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _server.RotateETagEveryRequest = true;
+        SnapshotCheckpoint checkpoint = CreateCheckpoint();
+
+        await CreateInitializer(connections: 1).InitializeAsync(checkpoint, CancellationToken.None);
+
+        Assert.That(Directory.Exists(_dbPath), Is.False,
+            "after exhausting the restart budget the partial database must be deleted so the node can continue without a snapshot");
+        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when the download never completes");
+    }
+
+    [Test]
     public void InitializeAsync_InsufficientDiskSpace_Throws()
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());

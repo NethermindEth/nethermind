@@ -110,9 +110,22 @@ public class SnapshotHttpStreamTests
             "a permanent HTTP error must abort the stream instead of retrying forever");
     }
 
-    private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(int connections)
+    [Test]
+    public async Task Read_ServerStallsOnce_DetectsStallAndResumes()
     {
-        SnapshotStreamSettings settings = new(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30));
+        byte[] content = BuildContent(100_000);
+        _server.Content = content;
+        _server.HangOnceAfterBytes = 2000;
+
+        (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 2, stallTimeout: TimeSpan.FromMilliseconds(250));
+
+        Assert.That(delivered, Is.EqualTo(content), "a connection that stops delivering bytes must be detected as stalled and the chunk re-fetched");
+        Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "bytes received before the stall must be hashed exactly once");
+    }
+
+    private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(int connections, TimeSpan? stallTimeout = null)
+    {
+        SnapshotStreamSettings settings = new(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), stallTimeout ?? TimeSpan.FromSeconds(30));
         using SnapshotHttpClient client = new();
         SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, CancellationToken.None);
         await using SnapshotHttpStream stream = new(client, _server.Url, remoteInfo, settings, LimboLogs.Instance, CancellationToken.None);
