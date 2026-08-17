@@ -123,10 +123,44 @@ public class VmState<TGasPolicy> : IDisposable
         return state;
     }
 
+    // Frames are rented and disposed on the executing thread in LIFO order, so a small per-thread
+    // stack serves nearly every rent without touching the shared queue. Under concurrent RPC load
+    // the shared MPMC queue costs a contended CAS per frame and hands back objects last touched by
+    // another core; the per-thread cache keeps both the queue traffic and the object's cache lines
+    // local. The shared queue remains as overflow so deeper chains keep pooling.
+    private const int MaxStatesCachedPerThread = 64;
+    [ThreadStatic] private static VmState<TGasPolicy>?[]? _threadStatePool;
+    [ThreadStatic] private static int _threadStateCount;
+
     private static VmState<TGasPolicy> Rent()
     {
+        VmState<TGasPolicy>?[]? threadPool = _threadStatePool;
+        int count = _threadStateCount;
+        if (threadPool is not null && count > 0)
+        {
+            count--;
+            VmState<TGasPolicy> pooled = threadPool[count]!;
+            threadPool[count] = null;
+            _threadStateCount = count;
+            return pooled;
+        }
         if (_statePool.TryDequeue(out VmState<TGasPolicy>? state)) return state;
         return new VmState<TGasPolicy>();
+    }
+
+    private void Return()
+    {
+        VmState<TGasPolicy>?[] threadPool = _threadStatePool ??= new VmState<TGasPolicy>?[MaxStatesCachedPerThread];
+        int count = _threadStateCount;
+        if (count < MaxStatesCachedPerThread)
+        {
+            threadPool[count] = this;
+            _threadStateCount = count + 1;
+        }
+        else
+        {
+            _statePool.Enqueue(this);
+        }
     }
 
     [SkipLocalsInit]
@@ -233,7 +267,7 @@ public class VmState<TGasPolicy> : IDisposable
         _snapshot = default;
         StateGasRefundAdvanced = 0;
 
-        _statePool.Enqueue(this);
+        Return();
 
 #if DEBUG
         GC.SuppressFinalize(this);
