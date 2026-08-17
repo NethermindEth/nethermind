@@ -1642,7 +1642,7 @@ namespace Nethermind.TxPool.Test
             IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
             BlobTxStorage blobTxStorage = new();
 
-            Transaction frameBlobTx = BuildBlobFrameTxWithSidecar(nonce: 0, blobCount: 1);
+            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
 
             PersistentBlobTxDistinctSortedPool poolBeforeRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
             Assert.That(poolBeforeRestart.TryInsert(frameBlobTx.Hash, frameBlobTx, out _), Is.True);
@@ -1667,51 +1667,31 @@ namespace Nethermind.TxPool.Test
 
         private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
 
-        private Transaction BuildBlobFrameTxWithSidecar(ulong nonce, int blobCount)
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false)
         {
-            if (!KzgPolynomialCommitments.IsInitialized)
-            {
-                KzgPolynomialCommitments.InitializeAsync().Wait();
-            }
-
-            IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
-            byte[][] rawBlobs = new byte[blobCount][];
-            for (int i = 0; i < blobCount; i++)
-            {
-                byte[] blob = new byte[Ckzg.BytesPerBlob];
-                blob[0] = (byte)(i % 256);
-                rawBlobs[i] = blob;
-            }
-
-            ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(rawBlobs);
-            proofsManager.ComputeProofsAndCommitments(wrapper);
-
-            Transaction tx = new()
-            {
-                Type = TxType.FrameTx,
-                ChainId = _specProvider.ChainId,
-                SenderAddress = TestItem.AddressA,
-                Nonce = nonce,
-                GasLimit = 1_000_000,
-                GasPrice = 1,
-                DecodedMaxFeePerGas = 1.GWei,
-                MaxFeePerBlobGas = 1.GWei,
-                Frames =
-                [
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
-                ],
-                FrameSignatures = [],
-                BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
-                NetworkWrapper = wrapper,
-            };
-            tx.Hash = tx.CalculateHash();
-            return tx;
-        }
-
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null)
-        {
+            ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
-            if (blobCount > 0)
+            if (withSidecar && blobCount > 0)
+            {
+                if (!KzgPolynomialCommitments.IsInitialized)
+                {
+                    KzgPolynomialCommitments.InitializeAsync().Wait();
+                }
+
+                IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
+                byte[][] rawBlobs = new byte[blobCount][];
+                for (int i = 0; i < blobCount; i++)
+                {
+                    byte[] blob = new byte[Ckzg.BytesPerBlob];
+                    blob[0] = (byte)(i % 256);
+                    rawBlobs[i] = blob;
+                }
+
+                wrapper = proofsManager.AllocateWrapper(rawBlobs);
+                proofsManager.ComputeProofsAndCommitments(wrapper);
+                versionedHashes = proofsManager.ComputeHashes(wrapper);
+            }
+            else if (blobCount > 0)
             {
                 versionedHashes = new byte[blobCount][];
                 for (int i = 0; i < blobCount; i++)
@@ -1747,6 +1727,7 @@ namespace Nethermind.TxPool.Test
                 Frames = [.. frames],
                 FrameSignatures = [],
                 BlobVersionedHashes = versionedHashes,
+                NetworkWrapper = wrapper,
             };
             tx.Hash = tx.CalculateHash();
             return tx;

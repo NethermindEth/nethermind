@@ -420,7 +420,7 @@ namespace Nethermind.Core
             tx.AccessList = AccessList;
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
-            tx.NetworkWrapper = NetworkWrapper; // clears tx._size, so the copy below must stay after it
+            tx.NetworkWrapper = NetworkWrapper;
             tx.IsServiceTransaction = IsServiceTransaction;
             tx.PoolIndex = PoolIndex;
             tx._size = _size;

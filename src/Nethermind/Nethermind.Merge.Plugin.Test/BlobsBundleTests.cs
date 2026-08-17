@@ -26,9 +26,11 @@ public class BlobsBundleTests
 
         BlobsBundleV1 bundle = new(block);
 
-        Assert.That(bundle.Blobs, Has.Length.EqualTo(3));
-        Assert.That(bundle.Commitments, Has.Length.EqualTo(3));
-        Assert.That(bundle.Proofs, Has.Length.EqualTo(3));
+        // The arrays are sized from the type-agnostic blob count, so only the filled entries prove the
+        // frame tx was copied in rather than skipped.
+        Assert.That(bundle.Blobs, Has.Length.EqualTo(3).And.None.Null);
+        Assert.That(bundle.Commitments, Has.Length.EqualTo(3).And.None.Null);
+        Assert.That(bundle.Proofs, Has.Length.EqualTo(3).And.None.Null);
     }
 
     [Test]
@@ -39,9 +41,9 @@ public class BlobsBundleTests
 
         BlobsBundleV2 bundle = new(block);
 
-        Assert.That(bundle.Blobs, Has.Length.EqualTo(2));
-        Assert.That(bundle.Commitments, Has.Length.EqualTo(2));
-        Assert.That(bundle.Proofs, Has.Length.EqualTo(2 * Ckzg.CellsPerExtBlob));
+        Assert.That(bundle.Blobs, Has.Length.EqualTo(2).And.None.Null);
+        Assert.That(bundle.Commitments, Has.Length.EqualTo(2).And.None.Null);
+        Assert.That(bundle.Proofs, Has.Length.EqualTo(2 * Ckzg.CellsPerExtBlob).And.None.Null);
     }
 
     private static Transaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
