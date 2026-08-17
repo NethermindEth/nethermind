@@ -85,6 +85,14 @@ for _rps in $RPS_LIST; do require_positive_int "rps_list entry" "$_rps"; done
 if [[ -n "$CORPUS_TIMINGS_RPS" && ! "$CORPUS_TIMINGS_RPS" =~ ^(0|[1-9][0-9]*)$ ]]; then
   echo "::error::timings_rps must be a non-negative integer, got '${CORPUS_TIMINGS_RPS}'"; exit 1
 fi
+# The warm-up duration is recorded in timings.meta.json as numeric seconds, so a duration that
+# cannot be stated as integer seconds (e.g. "4m") is rejected up front instead of silently
+# recording 0 ("measured cold") for a warm run. "0" or "0s" disables the warm-up.
+if [[ ! "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]]; then
+  echo "::error::corpus_warmup_duration must be integer seconds (optional 's' suffix), got '${CORPUS_WARMUP_DURATION}'"; exit 1
+fi
+WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
+
 
 default_image() {
   case "$1" in
@@ -303,25 +311,48 @@ for entry in $CLIENTS; do
       # Parity/timings-only runs (empty rps_list) warm too — they measure the same node, and a
       # cold matrix looks exactly as authoritative as a warm one. Runs once per corpus on
       # purpose: different corpora can touch disjoint state.
-      if [[ "$CORPUS_WARMUP_DURATION" != "0" ]]; then
-        # Warm at the highest rate the run will measure — warming at less leaves the faster
-        # cells partly cold. Timings-only runs use their own rate; unpaced (0) falls back flat.
+      WARMED_SECONDS=0
+      if (( WARMUP_SECONDS > 0 )); then
+        # Warm at the highest rate the run will measure — the k6 cells AND the timings matrix
+        # both count, so the max spans both knobs; unpaced timings (0) falls back flat.
         warm_rps=0
         for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
-        (( warm_rps == 0 )) && warm_rps="${CORPUS_TIMINGS_RPS}"
+        [[ -n "$CORPUS_TIMINGS_PASSES" ]] && (( CORPUS_TIMINGS_RPS > warm_rps )) && warm_rps="$CORPUS_TIMINGS_RPS"
         (( warm_rps == 0 )) && warm_rps=100
         # Discarded output must stay OUT of OUT_DIR: stage() publishes by filename and comment()
-        # keys cells by directory position, so a staged warmup/summary.json would displace the
+        # keys cells by directory position, so a staged warmup summary.json would displace the
         # measured cell in the published PR comment.
         warm_cell="$SCRATCH_ROOT/warmup-cell/${clabel}/${label}"
-        echo "-- WARMUP ${clabel} ${label} @ rps=${warm_rps} for ${CORPUS_WARMUP_DURATION} (discarded) --"
-        run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "$CORPUS_WARMUP_DURATION" "$warm_cell" \
-          "$ctype" "$label" "$corpus" "" \
-          || echo "::warning::warmup cell for ${label} did not complete cleanly — measured cells may still be cold"
-        report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
-        WARMED_SECONDS="${CORPUS_WARMUP_DURATION%s}"
-      else
-        WARMED_SECONDS=0
+        echo "-- WARMUP ${clabel} ${label} @ rps=${warm_rps} for ${WARMUP_SECONDS}s (discarded) --"
+        if [[ -n "$RPS_LIST" ]]; then
+          # The k6 cells build the JSON-array fixture anyway, so warming through run_cell adds no
+          # extra materialization. The fail-rate gate is LIFTED for this cell: the warm-up exists
+          # to absorb exactly the cold failures the gate rejects, so gating it inverts its exit
+          # status (a warm-up that did its job would report failure).
+          if JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" \
+              "$warm_cell" "$ctype" "$label" "$corpus" ""; then
+            WARMED_SECONDS="$WARMUP_SECONDS"
+          else
+            echo "::warning::warmup for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
+          fi
+          report_fail_rate "$warm_cell" "warmup ${clabel}/${label}"
+        else
+          # Fixture-free mode: an empty rps_list exists so a large corpus never materializes the
+          # k6 JSON-array fixture, so the warm-up must not build it either. corpus_parity's
+          # paced replay drives the same eth_calls without k6; it exits nonzero only on a real
+          # crash (cold per-call failures are reported in its output, not the exit code).
+          records="${CORPUS_RECORDS[$corpus]:-1}"
+          warm_passes=$(( (warm_rps * WARMUP_SECONDS + records - 1) / records ))
+          mkdir -p "$warm_cell"
+          if python3 "$here/corpus_parity.py" timings \
+              --corpus "$corpus" --rpc-url "http://localhost:8545" \
+              --out "$warm_cell/warmup-timings.csv" --passes "$warm_passes" \
+              --rps "$warm_rps" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"; then
+            WARMED_SECONDS="$WARMUP_SECONDS"
+          else
+            echo "::warning::warmup replay for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
+          fi
+        fi
       fi
 
       # An empty rps_list runs no k6 cells: for a large corpus the JSON-array fixture alone can
@@ -370,8 +401,6 @@ for entry in $CLIENTS; do
       if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
         tdir="$OUT_DIR/corpus/${clabel}/${label}"; mkdir -p "$tdir"
         echo "-- TIMINGS ${clabel}: ${label} (${CORPUS_TIMINGS_PASSES} passes @ ${CORPUS_TIMINGS_RPS} rps) --"
-        # Non-integer durations (e.g. "2m") cannot be stated as seconds — record 0 rather than guess.
-        [[ "$WARMED_SECONDS" =~ ^[0-9]+$ ]] || WARMED_SECONDS=0
         if ! python3 "$here/corpus_parity.py" timings \
             --corpus "$corpus" --rpc-url "http://localhost:8545" \
             --out "$tdir/timings.csv" --passes "$CORPUS_TIMINGS_PASSES" \
