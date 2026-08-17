@@ -7,7 +7,6 @@ using Nethermind.Config;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Network.StaticNodes;
-using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
