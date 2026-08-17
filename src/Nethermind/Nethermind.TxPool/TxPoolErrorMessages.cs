@@ -34,4 +34,5 @@ public static class TxPoolErrorMessages
     public const string FrameTxPayerExposureExceeded = "frame transaction payer exposure exceeds balance";
     public const string FrameTxNoPayer = "frame transaction never approves a payer";
     public const string FrameTxVerifyAfterPrefix = "frame transaction has a VERIFY frame after its validation prefix";
+    public const string FrameTxMisplacedExpiryFrame = "frame transaction has an expiry verifier frame that does not lead its frame list";
 }

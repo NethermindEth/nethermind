@@ -155,6 +155,12 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult FrameTxVerifyAfterPrefix = new(25, TxPoolErrorMessages.FrameTxVerifyAfterPrefix);
 
+        /// <summary>
+        /// An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list, the only placement
+        /// the spec permits. It stays consensus-valid; only public mempool propagation is refused.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(26, TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;
