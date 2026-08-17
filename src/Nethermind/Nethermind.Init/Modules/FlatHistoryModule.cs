@@ -74,8 +74,17 @@ public class FlatHistoryModule : Module
                 new NHistArchiveClonePeerSink(ctx.Resolve<ISyncPeerPool>(), ctx.Resolve<NHistPeerSelector>(), ctx.Resolve<HistoryRowFormat>().FormatVersion))
             .AddSingleton<WindowBackfillCoordinator>()
             .AddSingleton<ArchiveCloneCoordinator>()
+            .AddSingleton<HistoryWalkVerificationCoordinator>(ctx => new HistoryWalkVerificationCoordinator(
+                ctx.Resolve<IColumnsDb<FlatDbColumns>>(),
+                ctx.Resolve<IColumnsDb<FlatHistoryColumns>>(),
+                ctx.Resolve<ICloneHeaderSource>(),
+                ctx.Resolve<HistoryAvailability>(),
+                ctx.Resolve<HistoryRowFormat>(),
+                ctx.Resolve<IFlatDbConfig>(),
+                ctx.Resolve<ILogManager>()))
             .AddStep(typeof(StartHistoryWindowBackfill))
-            .AddStep(typeof(StartArchiveClone));
+            .AddStep(typeof(StartArchiveClone))
+            .AddStep(typeof(StartHistoryWalkVerification));
 
         builder.RegisterBuildCallback(ctx =>
         {

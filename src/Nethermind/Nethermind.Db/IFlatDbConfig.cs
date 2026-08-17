@@ -61,6 +61,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Concurrent shard streams the archive clone keeps in flight against its source peer. Capped at 3 to stay under the nhist/1 per-peer in-flight limit (4) with headroom; the default matches a feeder's background serve concurrency, and raising it past what the source sustains only adds queueing.", DefaultValue = "2")]
     int HistoryCloneStreamCount { get; set; }
 
+    [ConfigItem(Description = "Once a contiguous history watermark exists, rebuild the state root from flat history rows at EVERY covered block and compare it (and the captured per-block marker) against this node's own headers - the full trustless proof of an archive's content, run once in the background. Unwindowed (v2) archives only. The range covered at the moment the check starts is what gets verified, so enable it on a node whose history is already where you want it. The pass currently holds a verified range's working set in memory; on a full mainnet archive wait for the spill-store hardening before enabling.", DefaultValue = "false")]
+    bool HistoryVerifyEveryBlock { get; set; }
+
+    [ConfigItem(Description = "Concurrent segments the every-block history verification splits its range into. Each segment is independently anchored to its own start header, so segments share nothing but the read-only columns. 0 means half the processor count.", DefaultValue = "0")]
+    int HistoryVerifySegments { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

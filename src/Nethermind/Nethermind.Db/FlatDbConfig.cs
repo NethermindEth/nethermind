@@ -22,6 +22,8 @@ public class FlatDbConfig : IFlatDbConfig
     public int HistoryImportShardBufferBudgetEntries { get; set; } = 65536;
     public bool HistoryArchiveCloneEnabled { get; set; } = false;
     public int HistoryCloneStreamCount { get; set; } = 2;
+    public bool HistoryVerifyEveryBlock { get; set; } = false;
+    public int HistoryVerifySegments { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
