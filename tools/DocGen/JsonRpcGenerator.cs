@@ -7,6 +7,7 @@ using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Spectre.Console;
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.DocGen;
@@ -353,7 +354,7 @@ internal static class JsonRpcGenerator
 
     private static string GetSerializedName(PropertyInfo prop) =>
         prop.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
-            ?? $"{prop.Name[0].ToString().ToLowerInvariant()}{prop.Name[1..]}"; // Ugly incomplete camel case
+            ?? JsonNamingPolicy.CamelCase.ConvertName(prop.Name);
 
     private static string Indent(int depth) => string.Empty.PadLeft(depth, ' ');
 
