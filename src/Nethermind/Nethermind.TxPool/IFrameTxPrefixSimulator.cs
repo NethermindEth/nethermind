@@ -14,8 +14,8 @@ namespace Nethermind.TxPool;
 /// unresolved payer and therefore without an exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
-    /// <param name="token">Cancels the simulation cooperatively and bounds the wait for the serialized
-    /// processing env; the implementation's own wall-clock bound surfaces as a rejection instead.</param>
+    /// <param name="token">Honored at entry and polled cooperatively during execution. It does not bound the
+    /// wait for the serialized processing env; the implementation's own timeout does, as a rejection.</param>
     /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers;
     /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply. Assumes a trusted RPC: publicly
     /// exposed, it is the one admission path with no cumulative bound.</param>
