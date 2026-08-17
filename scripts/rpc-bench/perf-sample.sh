@@ -49,10 +49,32 @@ perf stat \
 # perf.data itself is deleted: it is large and the reports carry everything needed.
 data="$OUT_DIR/perf.data"
 if perf record -F "$RECORD_FREQ" --call-graph fp -o "$data" -p "$pid" -- sleep "$RECORD_SECONDS" >/dev/null 2>&1; then
+  # JIT-compiled managed code resolves only when the runtime ran with DOTNET_PerfMapEnabled=1.
+  # The runtime names the map after its OWN pid (the container namespace one) while perf looks
+  # it up by host pid — bridge with a symlink through the container's /proc root.
+  nspid="$(awk '/^NSpid:/ {print $NF}' "/proc/$pid/status" 2>/dev/null)"
+  if [[ -n "$nspid" && "$nspid" != "$pid" && -e "/proc/$pid/root/tmp/perf-$nspid.map" ]]; then
+    ln -sf "/proc/$pid/root/tmp/perf-$nspid.map" "/tmp/perf-$pid.map" 2>/dev/null \
+      || note "perfmap symlink failed — managed symbols unavailable"
+  fi
   perf report --stdio -i "$data" --no-children -s dso 2>/dev/null > "$OUT_DIR/perf-dso.txt" \
     || note "perf report (dso) failed"
   perf report --stdio -i "$data" --no-children -s dso,sym 2>/dev/null | head -n 250 > "$OUT_DIR/perf-symbols.txt" \
     || note "perf report (symbols) failed"
+  # Folded stacks (root;...;leaf count) for flame/differential charts. Aggregated on the box so
+  # the staged file stays small; symbol names only, no request content.
+  perf script -i "$data" 2>/dev/null | awk '
+    /^[^\t ]/ { if (stack != "") counts[stack]++; stack=""; next }
+    /^[\t ]+[0-9a-f]+ / {
+      line=$0
+      sub(/^[\t ]+[0-9a-f]+ /, "", line)
+      sub(/ \([^)]*\)$/, "", line)
+      sub(/\+0x[0-9a-f]+$/, "", line)
+      stack = (stack == "" ? line : line ";" stack)
+    }
+    END { if (stack != "") counts[stack]++; for (s in counts) print s, counts[s] }
+  ' | sort -t' ' -k2 -rn | head -n 2000 > "$OUT_DIR/perf-folded.txt" \
+    || note "stack folding failed"
 else
   note "perf record failed — module split unavailable"
 fi

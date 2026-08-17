@@ -40,7 +40,7 @@ STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summ
                     "resources.json",
                     # Host perf sampler output: hardware counters and symbol-level CPU splits.
                     # Symbols and counts only — no request content — so aggregate-safe.
-                    "perf-stat.txt", "perf-dso.txt", "perf-symbols.txt")
+                    "perf-stat.txt", "perf-dso.txt", "perf-symbols.txt", "perf-folded.txt")
 
 
 class CorpusResultsError(Exception):
