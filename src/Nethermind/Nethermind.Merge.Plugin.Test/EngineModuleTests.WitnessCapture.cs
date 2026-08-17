@@ -707,6 +707,8 @@ public partial class EngineModuleTests
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
+            "the built payload must contain exactly the submitted transactions");
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
 
@@ -721,14 +723,18 @@ public partial class EngineModuleTests
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
+            "the built payload must contain exactly the submitted transactions");
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
         Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
             h => chain.TxPool.TxPoolHeadChanged += h,
             h => chain.TxPool.TxPoolHeadChanged -= h,
             b => b.Hash == payload.BlockHash);
-        await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(payload.BlockHash!, payload.BlockHash!, payload.BlockHash!), null);
+        Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the canonicalizing forkchoiceUpdated must succeed, otherwise the tx pool head wait would time out");
         await txPoolHeadWait;
     }
 
