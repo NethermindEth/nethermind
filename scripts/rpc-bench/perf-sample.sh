@@ -14,14 +14,17 @@ set -u
 CONTAINER="${1:?container name}"
 OUT_DIR="${2:?output directory}"
 # Delay skips the cell's ramp-up so the windows sample steady state. The three windows run
-# sequentially; their sum must stay below the shortest measured cell (50s at the default knobs).
-DELAY_SECONDS="${PERF_SAMPLE_DELAY_SECONDS:-5}"
-STAT_SECONDS="${PERF_STAT_SECONDS:-15}"
-RECORD_SECONDS="${PERF_RECORD_SECONDS:-15}"
+# sequentially; their sum (plus ~2s of report generation) must fit the shortest measured cell —
+# defaults are sized for 30s cells.
+DELAY_SECONDS="${PERF_SAMPLE_DELAY_SECONDS:-3}"
+STAT_SECONDS="${PERF_STAT_SECONDS:-12}"
+RECORD_SECONDS="${PERF_RECORD_SECONDS:-12}"
 RECORD_FREQ="${PERF_RECORD_FREQ:-99}"
 
 mkdir -p "$OUT_DIR"
-note() { printf '%s\n' "$*" >> "$OUT_DIR/perf-stat.txt"; }
+# Notes land in the cell file (published) and on stderr (job log), so a skipped sampler is
+# visible while the run is still executing, not only after the artifact is downloaded.
+note() { printf '%s\n' "$*" >> "$OUT_DIR/perf-stat.txt"; printf 'perf-sample: %s\n' "$*" >&2; }
 
 if ! command -v perf >/dev/null 2>&1; then
   note "perf not available on this host — sampling skipped"
