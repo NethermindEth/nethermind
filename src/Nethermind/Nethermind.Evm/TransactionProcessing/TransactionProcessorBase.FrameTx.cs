@@ -428,9 +428,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
         ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
         ulong blockStateGas = (ulong)totalFrameStateGasUsed;
-        // blockStateGas <= grossGas by the reservoir-0 invariant: each frame rents an empty state-gas
-        // reservoir, so every state charge is already counted inside totalFrameGasUsed (hence grossGas),
-        // which is what makes the SaturatingSub in CalculateBlockExecutionGas sound.
+        // blockStateGas <= grossGas: each frame's charge folded into totalFrameGasUsed already includes
+        // the state gas it used, whether drawn from its limits.state reservoir or spilled into
+        // limits.execution, so the state total is a subset of grossGas, which is what makes the
+        // SaturatingSub in CalculateBlockExecutionGas sound.
         ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
         // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
         // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
@@ -591,7 +592,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(
-            TGasPolicy.FromULong(frame.GasLimit),
+            TGasPolicy.FromFrameLimits(frame.ExecutionGasLimit, frame.StateGasLimit),
             isStatic ? ExecutionType.STATICCALL : ExecutionType.TRANSACTION,
             env,
             in frameTracker,
@@ -604,8 +605,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
             : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
-        ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
-        gasUsed = frame.GasLimit - remainingGas;
+        ulong combinedLimit = frame.ExecutionGasLimit + frame.StateGasLimit;
+        gasUsed = substate.IsError
+            ? combinedLimit - (ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in state.Gas))
+            : TGasPolicy.GetPreRefundGas(in state.Gas, combinedLimit);
         // Clamp rather than assert: unlike the standard path, this also runs for reverted or errored
         // frames, where the state-gas value carries no non-negativity guarantee.
         stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas));

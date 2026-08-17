@@ -90,6 +90,63 @@ public class FrameTxBlockGasTests
             "a reverted frame commits no state, so it grows none");
     }
 
+    /// <summary>
+    /// A frame's state gas is drawn from its own <c>limits.state</c> reservoir, independent of
+    /// <c>limits.execution</c>: a fresh-slot write whose execution budget cannot absorb the state charge
+    /// still succeeds when the state budget covers it, and the same charge lands in the state dimension.
+    /// </summary>
+    [Test]
+    public void Execute_PayloadFrameStateBudgetCoversTheWrite_SucceedsFromTheStateReservoir()
+    {
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        const ulong executionBudget = 30_000;
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Writer, executionBudget, 150_000, UInt256.Zero, default));
+
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        const ulong stateCharge = (ulong)GasCostOf.SSetState;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+                "the write committed, so its state gas came from the reservoir rather than out-of-gassing");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
+                "the reservoir-funded write still bills the state dimension");
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
+                Is.EqualTo(tracer.GasConsumedResult.SpentGas - stateCharge));
+        }
+    }
+
+    /// <summary>
+    /// With no state budget the same write's state charge spills into <c>limits.execution</c>, which cannot
+    /// cover it, so the frame halts and commits nothing — proving the two budgets are independent pools.
+    /// </summary>
+    [Test]
+    public void Execute_PayloadFrameStateSpillsIntoTooSmallExecutionBudget_HaltsAndOwesNoStateGas()
+    {
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        const ulong executionBudget = 30_000;
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Writer, executionBudget, 0, UInt256.Zero, default));
+
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+                "the write halted out of gas, so no slot was committed");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        }
+    }
+
     /// <summary>An atomic batch whose later frame fails gives back the state gas its earlier frame owed.</summary>
     /// <remarks>
     /// The unroll restores the pre-batch state, so the fresh slot the first frame wrote never reaches the
