@@ -566,7 +566,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
         ReadOnlyMemory<byte> inputData = frame.Data;
 
-        ExecutionEnvironment env = ExecutionEnvironment.Rent(
+        // VmState.Dispose releases its environment only below the top level, so this one is caller-owned;
+        // declared before the VmState so it returns to the pool after it (reverse declaration order).
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: resolvedTarget,
             caller: caller,
