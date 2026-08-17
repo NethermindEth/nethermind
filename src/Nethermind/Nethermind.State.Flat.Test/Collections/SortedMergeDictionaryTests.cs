@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using Nethermind.State.Flat.Collections;
 using NUnit.Framework;
@@ -17,6 +18,8 @@ public class SortedMergeDictionaryTests
     private static readonly IComparer<int> Cmp = Comparer<int>.Default;
     private static readonly FieldInfo BucketSaltField = typeof(SortedMergeDictionary<int, int>)
         .GetField("_bucketSalt", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo BucketMaskField = typeof(SortedMergeDictionary<int, int>)
+        .GetField("_bucketMask", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     [Test]
     public void FromUnsorted_LooksUpEveryKey_AndIteratesSorted()
@@ -301,6 +304,24 @@ public class SortedMergeDictionaryTests
         {
             Assert.That(dict.TryGetValue(staleKey, out _), Is.False, $"stale key {staleKey} survived the reset");
         }
+    }
+
+    [TestCase(1)]
+    [TestCase(5)]
+    [TestCase(11)]
+    [TestCase(22)]
+    [TestCase(89)]
+    [TestCase(1000)]
+    public void BucketSize_MatchesLegacyLoadFactorRounding(int count)
+    {
+        using SortedMergeDictionary<int, int> dict = new();
+        Dictionary<int, int> source = new(count);
+        for (int i = 0; i < count; i++) source[i] = i;
+
+        dict.BuildFromUnsorted(source, Cmp);
+
+        uint expectedSize = BitOperations.RoundUpToPowerOf2((uint)(count / 0.7) + 1);
+        Assert.That(BucketMaskField.GetValue(dict), Is.EqualTo(expectedSize - 1));
     }
 
     [TestCase(40, 60)]

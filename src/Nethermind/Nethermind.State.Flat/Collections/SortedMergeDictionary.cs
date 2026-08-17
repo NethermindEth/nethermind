@@ -248,12 +248,9 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         return dictionary;
     }
 
-    // Target load factor: size buckets so at most ~70% are occupied, keeping chains short.
-    private const double MaxLoadFactor = 0.7;
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int BucketSize(int count) =>
-        count == 0 ? 1 : (int)BitOperations.RoundUpToPowerOf2((uint)(count / MaxLoadFactor) + 1);
+        count == 0 ? 1 : (int)BitOperations.RoundUpToPowerOf2((uint)(count * 10L / 7) + 1);
 
     public Enumerator GetEnumerator() => new(this);
     IEnumerator<KeyValuePair<TKey, TValue>> IEnumerable<KeyValuePair<TKey, TValue>>.GetEnumerator() => GetEnumerator();
