@@ -131,12 +131,15 @@ class CorpusResultsTests(unittest.TestCase):
         self.write_json(out_root / "corpus" / "a" / "nm" / "warmup" / "summary.json", sanitized)
         # the sweep's actual scratch layout uses a 'warmup-cell' segment - the guard must match it
         self.write_json(out_root / "warmup-cell" / "a" / "nm" / "summary.json", sanitized)
+        # ...but a corpus LABEL containing 'warmup' is a legitimate scenario and must survive
+        self.write_json(out_root / "corpus" / "warmup-heavy" / "nm" / "100" / "summary.json", sanitized)
 
         stage_root = self.dir / "stage-warm"
         corpus_results.stage(str(out_root), str(stage_root))
 
         staged = sorted(p.relative_to(stage_root).as_posix() for p in stage_root.rglob("*") if p.is_file())
-        self.assertEqual(staged, ["corpus/a/nm/100/summary.json"])
+        self.assertEqual(staged, ["corpus/a/nm/100/summary.json",
+                                  "corpus/warmup-heavy/nm/100/summary.json"])
 
     def test_timings_meta_schema_requires_warmup_seconds(self):
         """The matrix must say whether it was measured warm — cold p99 runs ~60% high and a cold

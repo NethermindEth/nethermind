@@ -362,11 +362,18 @@ random draw. The CSV carries record indexes, milliseconds and outcome names only
 safe to publish under the same boundary as the parity reports.
 
 A `timings.meta.json` sidecar records the head block hash, record/pass counts, target and
-achieved rate, and concurrency. **Only compare matrices whose metadata matches** — a
-different head, rate or concurrency makes the numbers incomparable, and nothing in the CSV
-itself would reveal that.
+achieved rate, concurrency, and `warmup_seconds` — the seconds of discarded warm load the
+node absorbed before the matrix (0 = measured cold). **Only compare matrices whose metadata
+matches** — a different head, rate or concurrency makes the numbers incomparable, and
+`warmup_seconds` most of all: a cold matrix reads ~60% higher on p99 than the same node warm,
+and nothing in the CSV itself would reveal that.
 
-**What a corpus sweep does per client:** one k6 latency cell per corpus per
+**What a corpus sweep does per client:** first a discarded **warm-up**
+(`corpus_warmup_duration`, integer seconds with an optional `s` suffix — `5m` is rejected;
+default `240s`, `0` measures cold on purpose): a k6 cell at the highest requested rate when
+`rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
+fixture-free mode stays fixture-free. Cold nodes fail ~2% of calls and read ~60% higher p99,
+so every measured number below assumes this ran. Then one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
 JSON-array fixture because json-bench's JSONL reader caps lines at ~64 KiB),
 then one full-corpus replay via `corpus_parity.py` while the node is still up.
