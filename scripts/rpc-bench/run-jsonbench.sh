@@ -319,8 +319,10 @@ stop_resource_sampler() {
     sampler_pid=""
   fi
   if [[ -n "$perf_sampler_pid" ]]; then
-    kill -TERM -- "-$perf_sampler_pid" 2>/dev/null
-    wait "$perf_sampler_pid" 2>/dev/null
+    # The sampler normally finishes before the cell does, so its process group may already be
+    # gone — a failed group-kill must not fail the cell (set -e).
+    kill -TERM -- "-$perf_sampler_pid" 2>/dev/null || true
+    wait "$perf_sampler_pid" 2>/dev/null || true
     perf_sampler_pid=""
   fi
 }
