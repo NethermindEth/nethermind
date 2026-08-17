@@ -3,6 +3,8 @@
 
 using System.Buffers;
 using System.Collections;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -83,12 +85,11 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         int i = 0;
         foreach (KeyValuePair<TKey, TValue> kv in source)
         {
-            // A concurrently mutated source can yield more items than Count; never write past the dirty watermark.
-            if (i == count) break;
+            if (i == count) ThrowSourceOverYielded();
             _entries[i++] = new Entry { HashCode = (uint)kv.Key.GetHashCode(), Key = kv.Key, Value = kv.Value };
         }
 
-        count = i; // it can also yield fewer; only what was written is the build
+        if (i != count) ThrowSourceUnderYielded();
         _entries.AsSpan(0, count).Sort(new EntryKeyComparer<TComparer>(keyComparer));
         _count = count;
         BuildBuckets();
@@ -283,6 +284,12 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     {
         public int Compare(Entry x, Entry y) => keyComparer.Compare(x.Key, y.Key);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSourceOverYielded() => throw new InvalidOperationException("Source yielded more entries than Count.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSourceUnderYielded() => throw new InvalidOperationException("Source yielded fewer entries than Count.");
 
     /// <summary>
     /// Tournament (loser) tree over the k sorted runs. Each internal node holds the loser of a match; the overall

@@ -244,27 +244,30 @@ public class SortedMergeDictionaryTests
         Assert.That(dict.TryGetValue(202, out _), Is.True);
     }
 
-    [TestCase(40, 60)] // yields more than Count: extras are ignored and never written past the counted capacity
-    [TestCase(60, 40)] // yields fewer: only written entries form the build, no phantom default-key entries
-    public void CountEnumerationMismatch_BuildsExactlyWhatWasWritten(int reportedCount, int actualCount)
+    [TestCase(40, 60)]
+    [TestCase(60, 40)]
+    public void CountEnumerationMismatch_ThrowsAndLeavesDictionaryEmptyAndReusable(int reportedCount, int actualCount)
     {
-        // Production sources are ConcurrentDictionary, whose Count and lock-free enumerator can disagree.
         using SortedMergeDictionary<int, int> dict = new();
-        dict.BuildFromUnsorted(new MismatchedCountSource(reportedCount, actualCount), Cmp);
+        dict.BuildFromUnsorted(new MismatchedCountSource(3, 3), Cmp);
 
-        int expected = Math.Min(reportedCount, actualCount);
-        Assert.That(dict.Count, Is.EqualTo(expected));
-        for (int i = 1; i <= expected; i++)
+        Assert.That(
+            () => dict.BuildFromUnsorted(new MismatchedCountSource(reportedCount, actualCount), Cmp),
+            Throws.InvalidOperationException);
+
+        Assert.That(dict.Count, Is.EqualTo(0));
+        for (int i = 1; i <= Math.Max(reportedCount, actualCount); i++)
         {
-            Assert.That(dict.TryGetValue(i * 3, out int value), Is.True, $"missing key {i * 3}");
+            Assert.That(dict.TryGetValue(i * 3, out _), Is.False, $"key {i * 3} survived the failed build");
+        }
+
+        dict.BuildFromUnsorted(new MismatchedCountSource(2, 2), Cmp);
+        Assert.That(dict.Count, Is.EqualTo(2));
+        for (int i = 1; i <= 2; i++)
+        {
+            Assert.That(dict.TryGetValue(i * 3, out int value), Is.True, $"missing key {i * 3} after recovery");
             Assert.That(value, Is.EqualTo(i));
         }
-        for (int i = expected + 1; i <= Math.Max(reportedCount, actualCount); i++)
-        {
-            Assert.That(dict.TryGetValue(i * 3, out _), Is.False, $"unexpected key {i * 3}");
-        }
-        Assert.That(dict.TryGetValue(0, out _), Is.False, "phantom default entry");
-        Assert.That(dict.Select(static kv => kv.Key), Is.Ordered);
     }
 
     [TestCase(1)]
