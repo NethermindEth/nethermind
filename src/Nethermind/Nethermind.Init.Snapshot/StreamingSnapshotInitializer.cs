@@ -24,26 +24,33 @@ internal sealed class StreamingSnapshotInitializer(
         EnsureStreamableArchive(config.SnapshotFileName);
         DeleteStaleArchive();
 
-        for (int attempt = 1; ; attempt++)
+        for (int attempt = 1; attempt <= MaxSourceChangedRestarts; attempt++)
         {
             try
             {
                 await StreamAndExtractAsync(checkpoint, cancellationToken).ConfigureAwait(false);
                 return;
             }
-            catch (SnapshotSourceChangedException e) when (attempt < MaxSourceChangedRestarts)
+            catch (SnapshotSourceChangedException e)
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"{e.Message} Restarting the snapshot download.");
                 DeleteDatabase();
             }
         }
+
+        if (_logger.IsError)
+            _logger.Error($"The snapshot kept changing on the server across {MaxSourceChangedRestarts} attempts. Giving up; the node will continue running.");
     }
 
     private async Task StreamAndExtractAsync(SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
     {
         using SnapshotHttpClient client = new();
         SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(url, cancellationToken).ConfigureAwait(false);
+        if (remoteInfo.Length is null && config.Checksum is null)
+            throw new InvalidOperationException(
+                "The server does not report the snapshot size and Snapshot.Checksum is not set, so a truncated download could not be detected. Set Snapshot.Checksum or disable Snapshot.Streaming.");
+
         LogMode(remoteInfo);
         CheckDiskSpace(remoteInfo.Length);
 
@@ -81,7 +88,7 @@ internal sealed class StreamingSnapshotInitializer(
         string extension = Path.GetExtension(fileName).ToLowerInvariant();
         if (extension is not (".tar" or ".zst" or ".zstd" or ".gz"))
             throw new NotSupportedException(
-                $"Snapshot streaming supports only tar-based archives (.tar, .tar.zst, .tar.gz); got '{fileName}'. Disable Snapshot.Streaming to use other formats.");
+                $"Snapshot streaming supports only tar-based archives (.tar, .tar.zst, .tar.gz), but Snapshot.SnapshotFileName is '{fileName}'. Set Snapshot.SnapshotFileName to match the archive or disable Snapshot.Streaming.");
     }
 
     private void DeleteStaleArchive()

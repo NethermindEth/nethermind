@@ -28,6 +28,6 @@ public interface ISnapshotConfig : IConfig
     [ConfigItem(Description = "Whether to stream the snapshot directly into the database directory without storing the archive file, reducing peak disk usage to the extracted size. Interrupted connections are resumed automatically. Supported for tar-based archives only.", DefaultValue = "false")]
     bool Streaming { get; set; }
 
-    [ConfigItem(Description = "The number of parallel connections the streaming snapshot download uses when the server supports range requests.", DefaultValue = "4")]
+    [ConfigItem(Description = "The number of parallel connections the streaming snapshot download uses when the server supports range requests. Each connection buffers up to 64 MiB in memory. Allowed range: 1-16.", DefaultValue = "4")]
     int StreamingConnections { get; set; }
 }

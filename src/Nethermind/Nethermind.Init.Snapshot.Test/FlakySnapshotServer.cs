@@ -17,7 +17,7 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public FlakySnapshotServer()
     {
-        (_listener, int port) = StartListener();
+        (_listener, int port) = TestHttpListener.Start();
         Url = $"http://127.0.0.1:{port}/snapshot.tar.zst";
         Task.Run(AcceptLoopAsync);
     }
@@ -34,6 +34,8 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public int? FailWithNotFoundAfterRequests { get; set; }
 
+    public bool OmitContentLength { get; set; }
+
     public int RequestCount => _requestCount;
 
     public void SwitchSourceAfterRequests(int requestCount, byte[] newContent, string? newETag)
@@ -41,25 +43,6 @@ internal sealed class FlakySnapshotServer : IDisposable
         _newContent = newContent;
         _newETag = newETag;
         _switchAfterRequests = requestCount;
-    }
-
-    private static (HttpListener Listener, int Port) StartListener()
-    {
-        for (int attempt = 0; ; attempt++)
-        {
-            HttpListener listener = new();
-            int port = Random.Shared.Next(20000, 60000);
-            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            try
-            {
-                listener.Start();
-                return (listener, port);
-            }
-            catch (HttpListenerException) when (attempt < 5)
-            {
-                listener.Close();
-            }
-        }
     }
 
     public void Dispose()
@@ -134,7 +117,10 @@ internal sealed class FlakySnapshotServer : IDisposable
             }
 
             long length = to - from + 1;
-            response.ContentLength64 = length;
+            if (OmitContentLength)
+                response.SendChunked = true;
+            else
+                response.ContentLength64 = length;
 
             string rangeKey = rangeHeader ?? "full";
             int attempt = _attemptsPerRange.AddOrUpdate(rangeKey, 1, static (_, previous) => previous + 1);

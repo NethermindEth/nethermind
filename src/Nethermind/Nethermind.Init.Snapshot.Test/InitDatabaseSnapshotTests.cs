@@ -124,15 +124,32 @@ public class InitDatabaseSnapshotTests
             "the streaming path must extract the snapshot into the database directory");
     }
 
-    [Test]
-    public void Execute_StreamingConnectionsNotPositive_Throws()
+    [TestCase(0, TestName = "Zero")]
+    [TestCase(17, TestName = "AboveMaximum")]
+    public void Execute_StreamingConnectionsOutOfRange_Throws(int connections)
     {
         _snapshotConfig.Streaming = true;
-        _snapshotConfig.StreamingConnections = 0;
+        _snapshotConfig.StreamingConnections = connections;
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
 
         Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(CancellationToken.None),
-            "a non-positive connection count must be rejected before any network activity");
+            "a connection count outside 1-16 must be rejected before any network activity");
+    }
+
+    [Test]
+    public async Task Execute_StreamingEnabledWithDownloadedArchive_ExtractsWithoutStreaming()
+    {
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        _snapshotConfig.Streaming = true;
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+            "an already downloaded archive must be extracted through the two-phase path instead of being deleted and re-streamed");
+        Assert.That(File.Exists(_snapshotPath), Is.False,
+            "the archive must be deleted after a successful two-phase extraction");
     }
 
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
@@ -183,7 +200,7 @@ public class InitDatabaseSnapshotTests
 
         public static SnapshotServer Start(long contentLength)
         {
-            (HttpListener listener, int port) = StartListener();
+            (HttpListener listener, int port) = TestHttpListener.Start();
 
             _ = Task.Run(async () =>
             {
@@ -205,25 +222,6 @@ public class InitDatabaseSnapshotTests
             });
 
             return new SnapshotServer(listener, $"http://127.0.0.1:{port}/snapshot.tar");
-        }
-
-        private static (HttpListener Listener, int Port) StartListener()
-        {
-            for (int attempt = 0; ; attempt++)
-            {
-                HttpListener listener = new();
-                int port = Random.Shared.Next(20000, 60000);
-                listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-                try
-                {
-                    listener.Start();
-                    return (listener, port);
-                }
-                catch (HttpListenerException) when (attempt < 5)
-                {
-                    listener.Close();
-                }
-            }
         }
 
         public void Dispose()

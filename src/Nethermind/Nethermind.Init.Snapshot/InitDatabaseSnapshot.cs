@@ -27,6 +27,7 @@ public class InitDatabaseSnapshot(
     [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives) : IStep
 {
     private const double ExtractionSpaceMultiplier = 1.5;
+    private const int MaxStreamingConnections = 16;
     private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
     private const int MaxRetryDelaySeconds = 300;
@@ -58,8 +59,8 @@ public class InitDatabaseSnapshot(
         if (snapshotConfig.StripComponents < 0)
             throw new InvalidOperationException($"Snapshot.StripComponents must be non-negative, got {snapshotConfig.StripComponents}.");
 
-        if (snapshotConfig.Streaming && snapshotConfig.StreamingConnections < 1)
-            throw new InvalidOperationException($"Snapshot.StreamingConnections must be positive, got {snapshotConfig.StreamingConnections}.");
+        if (snapshotConfig.Streaming && snapshotConfig.StreamingConnections is < 1 or > MaxStreamingConnections)
+            throw new InvalidOperationException($"Snapshot.StreamingConnections must be between 1 and {MaxStreamingConnections}, got {snapshotConfig.StreamingConnections}.");
 
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
 
@@ -84,11 +85,17 @@ public class InitDatabaseSnapshot(
 
         if (snapshotConfig.Streaming)
         {
-            StreamingSnapshotInitializer initializer = new(
-                snapshotConfig, snapshotUrl, dbPath, drives,
-                SnapshotStreamSettings.Default(snapshotConfig.StreamingConnections), api.LogManager);
-            await initializer.InitializeAsync(checkpoint, cancellationToken).ConfigureAwait(false);
-            return;
+            if (checkpoint.Read() < SnapshotStage.Downloaded || !File.Exists(snapshotPath))
+            {
+                StreamingSnapshotInitializer initializer = new(
+                    snapshotConfig, snapshotUrl, dbPath, drives,
+                    SnapshotStreamSettings.Default(snapshotConfig.StreamingConnections), api.LogManager);
+                await initializer.InitializeAsync(checkpoint, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            if (_logger.IsWarn)
+                _logger.Warn($"A fully downloaded snapshot archive exists at {snapshotPath}. Extracting it instead of streaming.");
         }
 
         using SnapshotDownloader downloader = new(api.LogManager);

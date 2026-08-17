@@ -36,6 +36,22 @@ internal static class TestArchive
         return compressed.ToArray();
     }
 
+    public static byte[] BuildTarZstWithSymlink()
+    {
+        using MemoryStream tarBuffer = new();
+        using (TarWriter writer = new(tarBuffer, leaveOpen: true))
+        {
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "db"));
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.SymbolicLink, "db/escape") { LinkName = "/tmp" });
+        }
+
+        tarBuffer.Position = 0;
+        using MemoryStream compressed = new();
+        using (CompressionStream zstd = new(compressed, leaveOpen: true))
+            tarBuffer.CopyTo(zstd);
+        return compressed.ToArray();
+    }
+
     public static Dictionary<string, byte[]> BuildFiles(int seed = 42)
     {
         Random random = new(seed);

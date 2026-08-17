@@ -12,10 +12,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Snapshot;
 
-internal sealed record SnapshotStreamSettings(int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay)
+internal sealed record SnapshotStreamSettings(int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay, TimeSpan StallTimeout)
 {
     public static SnapshotStreamSettings Default(int connections) =>
-        new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300));
+        new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300), TimeSpan.FromMinutes(2));
 }
 
 internal sealed class SnapshotHttpStream : Stream
@@ -268,7 +268,7 @@ internal sealed class SnapshotHttpStream : Stream
                 await using Stream content = await response.Content.ReadAsStreamAsync(_cts.Token).ConfigureAwait(false);
                 while (received < length)
                 {
-                    int read = await content.ReadAsync(buffer.AsMemory(received, length - received), _cts.Token).ConfigureAwait(false);
+                    int read = await ReadWithStallTimeoutAsync(content, buffer.AsMemory(received, length - received)).ConfigureAwait(false);
                     if (read == 0)
                         throw new IOException($"Connection ended {received} bytes into a {length} byte chunk at {offset}.");
                     received += read;
@@ -280,7 +280,7 @@ internal sealed class SnapshotHttpStream : Stream
             {
                 throw;
             }
-            catch (Exception e) when (e is IOException or HttpRequestException && e is not SnapshotSourceChangedException)
+            catch (Exception e) when (IsRetryable(e))
             {
                 if (received > receivedAtLastFailure)
                 {
@@ -315,7 +315,7 @@ internal sealed class SnapshotHttpStream : Stream
                     if (content is null)
                         (response, content) = await ConnectSequentialAsync(produced + filled).ConfigureAwait(false);
 
-                    int read = await content.ReadAsync(buffer.AsMemory(filled, _settings.ChunkSize - filled), _cts.Token).ConfigureAwait(false);
+                    int read = await ReadWithStallTimeoutAsync(content, buffer.AsMemory(filled, _settings.ChunkSize - filled)).ConfigureAwait(false);
                     if (read == 0)
                     {
                         if (_remoteInfo.Length is long expected && produced + filled < expected)
@@ -338,7 +338,7 @@ internal sealed class SnapshotHttpStream : Stream
                 {
                     throw;
                 }
-                catch (Exception e) when (e is IOException or HttpRequestException && e is not SnapshotSourceChangedException)
+                catch (Exception e) when (IsRetryable(e))
                 {
                     response?.Dispose();
                     response = null;
@@ -391,7 +391,7 @@ internal sealed class SnapshotHttpStream : Stream
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"Server does not support range requests. Re-reading {skip} already received bytes to resume.");
-                await SnapshotHttpClient.SkipAsync(content, skip, _cts.Token).ConfigureAwait(false);
+                await SkipWithStallTimeoutAsync(content, skip).ConfigureAwait(false);
             }
 
             return (response, content);
@@ -445,6 +445,45 @@ internal sealed class SnapshotHttpStream : Stream
         foreach (KeyValuePair<long, TaskCompletionSource<Chunk>> pending in _pending)
             pending.Value.TrySetCanceled();
     }
+
+    private async Task<int> ReadWithStallTimeoutAsync(Stream content, Memory<byte> buffer)
+    {
+        using CancellationTokenSource stallCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        stallCts.CancelAfter(_settings.StallTimeout);
+        try
+        {
+            return await content.ReadAsync(buffer, stallCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!_cts.IsCancellationRequested)
+        {
+            throw new IOException($"No data received for {_settings.StallTimeout.TotalSeconds}s.");
+        }
+    }
+
+    private async Task SkipWithStallTimeoutAsync(Stream content, long bytesToSkip)
+    {
+        byte[] scratch = ArrayPool<byte>.Shared.Rent(DrainBufferSize);
+        try
+        {
+            long remaining = bytesToSkip;
+            while (remaining > 0)
+            {
+                int read = await ReadWithStallTimeoutAsync(content, scratch.AsMemory(0, (int)Math.Min(DrainBufferSize, remaining))).ConfigureAwait(false);
+                if (read == 0)
+                    throw new EndOfStreamException($"Connection ended while skipping {bytesToSkip} already received bytes.");
+                remaining -= read;
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(scratch);
+        }
+    }
+
+    private bool IsRetryable(Exception e) =>
+        e is not SnapshotSourceChangedException
+        && !_cts.IsCancellationRequested
+        && e is IOException or HttpRequestException or OperationCanceledException;
 
     private byte[] RentBuffer() => _buffers.TryTake(out byte[]? buffer) ? buffer : new byte[_settings.ChunkSize];
 

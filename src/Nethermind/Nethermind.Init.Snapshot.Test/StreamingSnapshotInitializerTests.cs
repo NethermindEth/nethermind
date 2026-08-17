@@ -109,6 +109,33 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
+    public async Task InitializeAsync_ArchiveWithSymlinkEntry_DeletesDatabaseWithoutThrowing()
+    {
+        byte[] archive = TestArchive.BuildTarZstWithSymlink();
+        _server.Content = archive;
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        SnapshotCheckpoint checkpoint = CreateCheckpoint();
+
+        await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
+
+        Assert.That(Directory.Exists(_dbPath), Is.False,
+            "an archive with link entries must be rejected and the partial extraction deleted, because links can escape the database directory");
+        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started), "the checkpoint must not advance when extraction is rejected");
+    }
+
+    [Test]
+    public void InitializeAsync_UnknownLengthWithoutChecksum_Throws()
+    {
+        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _server.SupportsRanges = false;
+        _server.OmitContentLength = true;
+
+        Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
+            "without a length and without a checksum a truncated download would be undetectable, so streaming must refuse to start");
+    }
+
+    [Test]
     public void InitializeAsync_ZipArchiveConfigured_Throws()
     {
         _config.SnapshotFileName = "snapshot.zip";
@@ -157,7 +184,7 @@ public class StreamingSnapshotInitializerTests
 
     private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null) =>
         new(_config, _server.Url, _dbPath, drives ?? [],
-            new SnapshotStreamSettings(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50)),
+            new SnapshotStreamSettings(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30)),
             LimboLogs.Instance);
 
     private SnapshotCheckpoint CreateCheckpoint() => new(_config, LimboLogs.Instance);

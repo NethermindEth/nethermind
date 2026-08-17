@@ -91,6 +91,9 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (entry.EntryType is TarEntryType.GlobalExtendedAttributes)
+                continue;
+
             string? strippedPath = StripLeadingComponents(entry.Name, stripComponents);
             if (strippedPath is null)
                 continue;
@@ -102,8 +105,10 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
             if (entry.EntryType is TarEntryType.Directory)
                 Directory.CreateDirectory(destinationEntryPath);
-            else
+            else if (entry.EntryType is TarEntryType.RegularFile or TarEntryType.V7RegularFile)
                 entry.ExtractToFile(destinationEntryPath, overwrite: true);
+            else
+                throw new IOException($"Tar entry '{entry.Name}' has unsupported type {entry.EntryType}.");
         }
     }
 
