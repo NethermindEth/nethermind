@@ -90,6 +90,7 @@ on:
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
           All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/extra_args.
           All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/corpus_warmup_duration (discarded warm-up per corpus per client, default 240s; 0 measures cold — cold p99 runs ~60% high)/resource_sampling (cgroup counters per cell, default true).
+          perf_stat is an opt-in JSON boolean for host perf stat on measured private corpus k6 cells only; it requires benchmark_tool=jsonbench-sweep with eth_call_corpus=true.
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -274,6 +275,17 @@ jobs:
               echo "eth_call_corpus is benchmark-only; leave reference_client=none (a corpus sweep compares its clients itself)."
               exit 1
             fi
+          fi
+          perf_raw="$(echo "${tool_config}" | jq -r 'if has("perf_stat") then (.perf_stat|type) else "absent" end')"
+          case "${perf_raw}" in
+            absent|boolean) ;;
+            *) echo "perf_stat must be a JSON boolean (true/false), got ${perf_raw}."; exit 1;;
+          esac
+          perf_stat="$(echo "${tool_config}" | jq -r 'if .perf_stat == true then "true" else "false" end')"
+          if [[ "${perf_stat}" == "true" \
+                && ( "${benchmark_tool}" != "jsonbench-sweep" || "${eth_call_corpus}" != "true" ) ]]; then
+            echo "perf_stat requires benchmark_tool=jsonbench-sweep with eth_call_corpus=true."
+            exit 1
           fi
           [[ -z "${node_config}" ]] && node_config="{}"
           if ! echo "${node_config}" | jq -e . >/dev/null 2>&1; then
@@ -760,6 +772,7 @@ jobs:
           # option was unreachable (the guard names an env var no dispatcher could set).
           iso_mut="$(getb '.db_isolation_allow_snapshot_mutation')"; [[ -n "${iso_mut}" ]] && export DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${iso_mut}"
           rsamp="$(getb '.resource_sampling')"; [[ -n "${rsamp}" ]] && export CORPUS_RESOURCE_SAMPLING="${rsamp}"
+          pstat="$(getb '.perf_stat')"; [[ -n "${pstat}" ]] && export CORPUS_PERF_STAT="${pstat}"
           # Size corpus cells by request count rather than wall time (rate is still rps_list).
           corpus_requests="$(get '.corpus_requests')"; [[ -n "${corpus_requests}" ]] && export CORPUS_REQUESTS="${corpus_requests}"
           corpus_passes="$(get '.corpus_passes')";     [[ -n "${corpus_passes}" ]] && export CORPUS_PASSES="${corpus_passes}"

@@ -393,6 +393,25 @@ fields are not clamped into artificial failures. Clients, images (`ctype@image`)
 free-form — pick rates the node can sustain, and mind that latency numbers from
 a cold node at low rps are indicative, not steady-state.
 
+**Host counter diagnostics (`perf_stat`).** `tool_config.perf_stat` is a JSON boolean,
+defaulting to `false`. It is accepted only with `benchmark_tool=jsonbench-sweep` and
+`eth_call_corpus:true`; using `true` elsewhere fails configuration rather than being ignored.
+When enabled, the runner preflights `perf stat` for `task-clock`, `cycles`, and
+`instructions`, plus Linux/Python `pidfd` signaling, before it pulls or starts a node. The
+pidfd check intentionally fails closed: a recorded PID/start-time alone cannot safely authorize
+a later signal after PID reuse. It then attaches one fixed-event `perf stat`
+process to the running node PID for each measured corpus k6 rate/repeat cell, in the same window
+as cgroup resource sampling. It excludes clone/build, fixture conversion, discarded warm-up,
+parity replay, timings replay, and post-processing.
+
+The opt-in artifact is `perf-stat.json`, written only after the sanitized k6 summary supplies the
+actual delivered `http_reqs` count. Its schema is fixed: task-clock (milliseconds), cycles,
+ref-cycles, instructions, cache/LLC/dTLB load and miss counters, faults, context switches, and
+CPU migrations, each with a count and per-request value plus nullable multiplexing metadata.
+`task-clock`, `cycles`, and `instructions` must be collected; optional unsupported events are
+recorded as `unsupported`. Raw perf output, stderr, PID, host details, command line, and corpus
+data remain in scratch and are never staged.
+
 **How contents stay off GitHub:** the json-bench container's output goes to a
 VM-scratch file instead of the job log; per-call k6 outputs, deep-check, and
 HTML reports are disabled or left in scratch; the published `summary.json` is
@@ -408,6 +427,7 @@ files that are themselves validated, a malformed manifest drops only itself with
 rather than failing the artifact): `summary.json`, `parity.json`, `timings.csv`
 (indexes, milliseconds and outcome names), `timings.meta.json` (block identity and
 run parameters, including `warmup_seconds`), `resources.json` (cgroup counters),
+`perf-stat.json` (fixed host counter aggregates, when opted in),
 `parity-diffs.json`, and the generated markdown/manifest. `parity-diffs.json` is
 the one artifact derived from response bytes: **opt-in** (`parity_diffs`, default
 off) and reduced to word positions plus a higher/lower direction — no operands, no

@@ -13,10 +13,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import errno
 import json
-import re
 import math
+import os
+import re
 import shutil
+import signal
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -37,7 +41,43 @@ STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(
 
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
                     "timings.csv", "parity-diffs.json", "timings.meta.json",
-                    "resources.json")
+                    "resources.json", "perf-stat.json")
+
+# The profiler command is intentionally fixed in the shell scripts. Keep its event names, required
+# subset, units, and public artifact schema in one place so raw perf output cannot expand the
+# aggregate-only corpus artifact surface.
+PERF_COUNTERS: tuple[tuple[str, str, bool], ...] = (
+    ("task-clock", "milliseconds", True),
+    ("cycles", "count", True),
+    ("ref-cycles", "count", False),
+    ("instructions", "count", True),
+    ("cache-references", "count", False),
+    ("cache-misses", "count", False),
+    ("LLC-loads", "count", False),
+    ("LLC-load-misses", "count", False),
+    ("dTLB-loads", "count", False),
+    ("dTLB-load-misses", "count", False),
+    ("minor-faults", "count", False),
+    ("page-faults", "count", False),
+    ("context-switches", "count", False),
+    ("cpu-migrations", "count", False),
+)
+PERF_COUNTER_NAMES = tuple(name for name, _, _ in PERF_COUNTERS)
+PERF_REQUIRED_COUNTERS = tuple(name for name, _, required in PERF_COUNTERS if required)
+PERF_COUNTER_UNITS = {name: unit for name, unit, _ in PERF_COUNTERS}
+PERF_OPTIONAL_COUNTERS = frozenset(name for name, _, required in PERF_COUNTERS if not required)
+PERF_COUNTER_FIELDS = {
+    "status", "unit", "raw_count", "per_request", "time_enabled_ns", "time_running_ns", "scale",
+}
+PERF_RAW_RECORD_FIELDS = {
+    "counter-value", "unit", "event", "event-runtime", "pcnt-running",
+    # perf emits derived metric fields for some default aliases. They are parsed only as a
+    # recognized envelope and never copied to the sanitized output.
+    "metric-value", "metric-unit", "metric-threshold", "variance",
+}
+PERF_COUNTER_VALUE_UNAVAILABLE = {"<not supported>", "<not counted>"}
+PERF_NUMERIC_STRING_PATTERN = re.compile(
+    r"[+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
 
 
 class CorpusResultsError(Exception):
@@ -49,6 +89,312 @@ def _number(value: Any, label: str) -> int | float:
             or not math.isfinite(float(value)) or value < 0:
         raise CorpusResultsError(f"{label} is not a finite non-negative number")
     return value
+
+
+def _perf_error() -> CorpusResultsError:
+    """Keep raw perf data, including diagnostic text, out of workflow logs."""
+    return CorpusResultsError("perf stat data is invalid")
+
+
+def _perf_number(value: Any) -> float:
+    """Accept only finite, locale-independent non-negative perf number encodings."""
+    if isinstance(value, bool):
+        raise _perf_error()
+    if isinstance(value, (int, float)):
+        number = float(value)
+    elif isinstance(value, str) and PERF_NUMERIC_STRING_PATTERN.fullmatch(value):
+        try:
+            number = float(value)
+        except ValueError:
+            raise _perf_error() from None
+    else:
+        raise _perf_error()
+    if not math.isfinite(number) or number < 0:
+        raise _perf_error()
+    return number
+
+
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate JSON keys instead of allowing json.load to overwrite one."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(_: str) -> Any:
+    """Reject non-standard JSON constants such as NaN and Infinity."""
+    raise ValueError("non-finite JSON constant")
+
+
+def _pidfd_error() -> CorpusResultsError:
+    """Keep process identity and host capability details out of workflow logs."""
+    return CorpusResultsError("identity-safe perf signaling is unavailable")
+
+
+def _perf_process_identity(pid: int) -> tuple[str, str]:
+    """Return the Linux process state and start time after validating the proc-stat shape."""
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1:
+        raise _pidfd_error()
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ProcessLookupError from None
+    except OSError:
+        raise _pidfd_error() from None
+    tail_index = stat.rfind(") ")
+    if tail_index < 0:
+        raise _pidfd_error()
+    fields = stat[tail_index + 2:].split()
+    if len(fields) < 20 or not fields[0] or not fields[19].isdigit():
+        raise _pidfd_error()
+    return fields[0], fields[19]
+
+
+def _pidfd_supported() -> bool:
+    """Whether this Python/Linux host exposes the two pidfd operations needed for safe signaling."""
+    return hasattr(os, "pidfd_open") and hasattr(signal, "pidfd_send_signal")
+
+
+def signal_perf_process(pid: int, expected_start_time: str, signal_name: str) -> str:
+    """Signal the captured Linux process through a pidfd, never a reused numeric PID.
+
+    Returns ``sent``, ``zombie``, or ``gone``. A missing/replaced process is deliberately a
+    non-error because the caller's original perf process has already stopped.
+    """
+    if not _pidfd_supported():
+        raise _pidfd_error()
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1 \
+            or not isinstance(expected_start_time, str) or not expected_start_time.isascii() \
+            or not expected_start_time.isdigit():
+        raise _pidfd_error()
+    signals = {"INT": signal.SIGINT, "TERM": signal.SIGTERM, "KILL": signal.SIGKILL}
+    signal_number = signals.get(signal_name)
+    if signal_number is None:
+        raise _pidfd_error()
+    try:
+        pidfd = os.pidfd_open(pid, 0)
+    except ProcessLookupError:
+        return "gone"
+    except OSError as error:
+        if error.errno == errno.ESRCH:
+            return "gone"
+        raise _pidfd_error() from None
+    try:
+        try:
+            state, start_time = _perf_process_identity(pid)
+        except ProcessLookupError:
+            return "gone"
+        if start_time != expected_start_time:
+            return "gone"
+        if state == "Z":
+            return "zombie"
+        try:
+            signal.pidfd_send_signal(pidfd, signal_number, None, 0)
+        except ProcessLookupError:
+            return "gone"
+        except OSError as error:
+            if error.errno == errno.ESRCH:
+                return "gone"
+            raise _pidfd_error() from None
+        return "sent"
+    finally:
+        try:
+            os.close(pidfd)
+        except OSError:
+            raise _pidfd_error() from None
+
+
+def validate_perf_pidfd_support() -> None:
+    """Exercise the host pidfd operations using a short-lived child before a benchmark starts."""
+    if not _pidfd_supported():
+        raise _pidfd_error()
+    child: subprocess.Popen[str] | None = None
+    try:
+        child = subprocess.Popen(["/bin/sleep", "60"], stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+        _, start_time = _perf_process_identity(child.pid)
+        if signal_perf_process(child.pid, start_time, "TERM") != "sent" \
+                or child.wait(timeout=5) != -signal.SIGTERM:
+            raise _pidfd_error()
+    except (OSError, subprocess.SubprocessError):
+        raise _pidfd_error() from None
+    finally:
+        if child is not None and child.poll() is None:
+            try:
+                child.kill()
+            except OSError:
+                pass
+            try:
+                child.wait(timeout=5)
+            except subprocess.SubprocessError:
+                pass
+
+
+def _load_perf_records(text: str) -> list[Any]:
+    """Decode perf's JSON-record stream without accepting non-JSON text around it."""
+    if not text or not text.strip():
+        raise _perf_error()
+    decoder = json.JSONDecoder(object_pairs_hook=_strict_json_object,
+                               parse_constant=_reject_json_constant)
+    length = len(text)
+
+    def skip_whitespace(position: int) -> int:
+        while position < length and text[position] in " \t\r\n":
+            position += 1
+        return position
+
+    try:
+        position = skip_whitespace(0)
+        if position == length:
+            raise ValueError("empty")
+        if text[position] == "[":
+            records, position = decoder.raw_decode(text, position)
+            if not isinstance(records, list):
+                raise ValueError("invalid array")
+            if skip_whitespace(position) != length:
+                raise ValueError("trailing data")
+            return records
+
+        records = []
+        while position < length:
+            record, position = decoder.raw_decode(text, position)
+            records.append(record)
+            position = skip_whitespace(position)
+            if position == length:
+                break
+            if text[position] == ",":
+                position = skip_whitespace(position + 1)
+                if position == length:
+                    raise ValueError("trailing separator")
+            elif text[position] != "{":
+                raise ValueError("unexpected data")
+        return records
+    except (json.JSONDecodeError, TypeError, ValueError):
+        raise _perf_error() from None
+
+
+def _perf_timing(record: dict[str, Any]) -> tuple[float | None, float | None, float | None]:
+    """Derive enabled/running time and scale from perf's documented runtime percentage."""
+    runtime = record.get("event-runtime")
+    percent = record.get("pcnt-running")
+    if runtime is None or percent is None:
+        return None, None, None
+    running = _perf_number(runtime)
+    running_percent = _perf_number(percent)
+    if running_percent > 100:
+        raise _perf_error()
+    if running_percent == 0:
+        return None, None, None
+    scale = 100.0 / running_percent
+    enabled = running * scale
+    if not math.isfinite(enabled):
+        raise _perf_error()
+    return enabled, running, scale
+
+
+def _validate_perf_raw_envelope(record: Any, expected_events: tuple[str, ...]) -> tuple[str, dict[str, Any]]:
+    """Validate one raw perf record before its fixed fields are normalized."""
+    if not isinstance(record, dict) or not {"counter-value", "unit", "event"} <= set(record) \
+            or not set(record) <= PERF_RAW_RECORD_FIELDS:
+        raise _perf_error()
+    event = record["event"]
+    if not isinstance(event, str) or event not in expected_events:
+        raise _perf_error()
+    unit = record["unit"]
+    expected_raw_unit = "msec" if event == "task-clock" else ""
+    if not isinstance(unit, str) or unit != expected_raw_unit:
+        raise _perf_error()
+    for field in ("metric-value", "variance"):
+        if field in record and record[field] is not None:
+            _perf_number(record[field])
+    for field in ("metric-unit", "metric-threshold"):
+        if field in record and record[field] is not None and (not isinstance(record[field], str)
+                                                               or len(record[field]) > 128
+                                                               or "\n" in record[field]
+                                                               or "\r" in record[field]):
+            raise _perf_error()
+    # A present timing field is numeric (or explicit null); invalid metadata is not silently
+    # discarded as an unavailable counter.
+    for field in ("event-runtime", "pcnt-running"):
+        if field in record and record[field] is not None:
+            _perf_number(record[field])
+    return event, record
+
+
+def _parse_perf_records(raw: str, expected_events: tuple[str, ...]) -> dict[str, dict[str, Any]]:
+    """Return safe fixed records, rejecting every omitted, duplicate, or unknown event."""
+    parsed: dict[str, dict[str, Any]] = {}
+    for candidate in _load_perf_records(raw):
+        event, record = _validate_perf_raw_envelope(candidate, expected_events)
+        if event in parsed:
+            raise _perf_error()
+        raw_value = record["counter-value"]
+        if isinstance(raw_value, str) and raw_value in PERF_COUNTER_VALUE_UNAVAILABLE:
+            if event not in PERF_OPTIONAL_COUNTERS:
+                raise _perf_error()
+            parsed[event] = {
+                "status": "unsupported",
+                "unit": PERF_COUNTER_UNITS[event],
+                "raw_count": None,
+                "per_request": None,
+                "time_enabled_ns": None,
+                "time_running_ns": None,
+                "scale": None,
+            }
+            continue
+        raw_count = _perf_number(raw_value)
+        enabled, running, scale = _perf_timing(record)
+        parsed[event] = {
+            "status": "collected",
+            "unit": PERF_COUNTER_UNITS[event],
+            "raw_count": raw_count,
+            "per_request": None,
+            "time_enabled_ns": enabled,
+            "time_running_ns": running,
+            "scale": scale,
+        }
+    if set(parsed) != set(expected_events):
+        raise _perf_error()
+    return parsed
+
+
+def normalize_perf_data(raw: str, requests: int) -> dict[str, Any]:
+    """Normalize a complete fixed perf-stat record stream into the aggregate-only schema."""
+    if isinstance(requests, bool) or not isinstance(requests, int) or requests < 1:
+        raise _perf_error()
+    counters = _parse_perf_records(raw, PERF_COUNTER_NAMES)
+    for counter in counters.values():
+        if counter["status"] == "collected":
+            counter["per_request"] = counter["raw_count"] / requests
+    return {"schema_version": 1, "requests": requests,
+            "counters": {name: counters[name] for name in PERF_COUNTER_NAMES}}
+
+
+def normalize_perf(raw_path: str, out_path: str, requests: int) -> None:
+    """Read raw perf output and write only its sanitized fixed aggregate summary."""
+    try:
+        raw = Path(raw_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise _perf_error() from None
+    data = normalize_perf_data(raw, requests)
+    try:
+        with Path(out_path).open("w", encoding="utf-8") as output:
+            json.dump(data, output, sort_keys=True, separators=(",", ":"))
+            output.write("\n")
+    except OSError:
+        raise CorpusResultsError("could not write perf stat summary") from None
+
+
+def validate_perf_preflight(raw_path: str) -> None:
+    """Exercise the same strict raw parser for the required perf-stat event subset."""
+    try:
+        raw = Path(raw_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise _perf_error() from None
+    _parse_perf_records(raw, PERF_REQUIRED_COUNTERS)
 
 
 def _metric_value(metric: Any, field: str, label: str) -> int | float:
@@ -302,6 +648,49 @@ def _stage_manifest(path: Path, source_root: Path, target: Path) -> bool:
     return True
 
 
+def _validate_perf_stat(path: Path) -> None:
+    """A perf-stat artifact is fixed counters and numeric aggregates only."""
+    try:
+        with path.open("r", encoding="utf-8") as source:
+            data = json.load(source, object_pairs_hook=_strict_json_object,
+                             parse_constant=_reject_json_constant)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        raise CorpusResultsError(f"{path.name} does not match the perf stat schema") from None
+    if not isinstance(data, dict) or set(data) != {"schema_version", "requests", "counters"} \
+            or isinstance(data["schema_version"], bool) or not isinstance(data["schema_version"], int) \
+            or data["schema_version"] != 1 \
+            or isinstance(data["requests"], bool) or not isinstance(data["requests"], int) \
+            or data["requests"] < 1 or not isinstance(data["counters"], dict) \
+            or set(data["counters"]) != set(PERF_COUNTER_NAMES):
+        raise CorpusResultsError(f"{path.name} does not match the perf stat schema")
+    requests = data["requests"]
+    for name in PERF_COUNTER_NAMES:
+        counter = data["counters"][name]
+        if not isinstance(counter, dict) or set(counter) != PERF_COUNTER_FIELDS \
+                or counter["unit"] != PERF_COUNTER_UNITS[name] \
+                or counter["status"] not in {"collected", "unsupported"}:
+            raise CorpusResultsError(f"{path.name}: invalid perf counter")
+        if counter["status"] == "unsupported":
+            if name not in PERF_OPTIONAL_COUNTERS or any(
+                    counter[field] is not None for field in PERF_COUNTER_FIELDS - {"status", "unit"}):
+                raise CorpusResultsError(f"{path.name}: invalid unsupported perf counter")
+            continue
+        raw_count = _number(counter["raw_count"], "perf raw_count")
+        per_request = _number(counter["per_request"], "perf per_request")
+        if not math.isclose(float(per_request), float(raw_count) / requests, rel_tol=1e-12, abs_tol=1e-12):
+            raise CorpusResultsError(f"{path.name}: invalid perf per-request value")
+        timing = tuple(counter[field] for field in ("time_enabled_ns", "time_running_ns", "scale"))
+        if any(value is None for value in timing):
+            if not all(value is None for value in timing):
+                raise CorpusResultsError(f"{path.name}: incomplete perf timing metadata")
+            continue
+        enabled, running, scale = (_number(value, "perf timing") for value in timing)
+        if scale == 0 or (running == 0 and enabled != 0) \
+                or (running > 0 and not math.isclose(float(enabled) / float(running), float(scale),
+                                                      rel_tol=1e-12, abs_tol=1e-12)):
+            raise CorpusResultsError(f"{path.name}: invalid perf timing metadata")
+
+
 def stage(output_root: str, stage_root: str) -> None:
     """Copy only validated aggregate files from output_root into a fresh stage_root."""
     source_root = Path(output_root)
@@ -335,6 +724,8 @@ def stage(output_root: str, stage_root: str) -> None:
                 _validate_timings_meta(path)
             elif path.name == "resources.json":
                 _validate_resources(path)
+            elif path.name == "perf-stat.json":
+                _validate_perf_stat(path)
             elif path.name == "summaries.manifest":
                 target = destination_root / path.relative_to(source_root)
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -427,6 +818,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     sanitize_parser.add_argument("raw")
     sanitize_parser.add_argument("out")
 
+    perf_normalize_parser = subparsers.add_parser(
+        "perf-normalize", help="write a fixed aggregate-only perf-stat summary")
+    perf_normalize_parser.add_argument("raw")
+    perf_normalize_parser.add_argument("out")
+    perf_normalize_parser.add_argument("requests", type=int)
+
+    perf_preflight_parser = subparsers.add_parser(
+        "perf-preflight", help="validate required perf-stat counters without publishing output")
+    perf_preflight_parser.add_argument("raw")
+
+    subparsers.add_parser("perf-pidfd-preflight",
+                          help="verify the host supports identity-safe perf signaling")
+
+    perf_signal_parser = subparsers.add_parser(
+        "perf-pidfd-signal", help="signal a captured perf process through a pidfd")
+    perf_signal_parser.add_argument("pid", type=int)
+    perf_signal_parser.add_argument("start_time")
+    perf_signal_parser.add_argument("signal", choices=("INT", "TERM", "KILL"))
+
     stage_parser = subparsers.add_parser("stage", help="stage only validated aggregate files")
     stage_parser.add_argument("output_root")
     stage_parser.add_argument("stage_root")
@@ -440,6 +850,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments.command == "sanitize":
             sanitize(arguments.raw, arguments.out)
+        elif arguments.command == "perf-normalize":
+            normalize_perf(arguments.raw, arguments.out, arguments.requests)
+        elif arguments.command == "perf-preflight":
+            validate_perf_preflight(arguments.raw)
+        elif arguments.command == "perf-pidfd-preflight":
+            validate_perf_pidfd_support()
+        elif arguments.command == "perf-pidfd-signal":
+            print(signal_perf_process(arguments.pid, arguments.start_time, arguments.signal))
         elif arguments.command == "stage":
             stage(arguments.output_root, arguments.stage_root)
         else:

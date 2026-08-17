@@ -2,9 +2,12 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
+import copy
 import contextlib
 import io
 import json
+import signal
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -36,6 +39,44 @@ def valid_parity_report():
                   divergences=[{"index": 7, "kind": "content_mismatch"}],
                   baseline_client="nethermind", candidate_client="reth")
     return report
+
+
+def perf_records():
+    records = []
+    for index, name in enumerate(corpus_results.PERF_COUNTER_NAMES, start=1):
+        records.append({
+            "counter-value": f"{index * 10}.500000",
+            "unit": "msec" if name == "task-clock" else "",
+            "event": name,
+            "event-runtime": 2_500_000,
+            "pcnt-running": 50.0,
+            "metric-value": "1.000000",
+            "metric-unit": "ignored",
+        })
+    return records
+
+
+def perf_json(records):
+    # perf stat emits one JSON object per line, rather than a single JSON array.
+    return "\n".join(json.dumps(record) for record in records) + "\n"
+
+
+def perf_preflight_records():
+    return [record for record in perf_records()
+            if record["event"] in corpus_results.PERF_REQUIRED_COUNTERS]
+
+
+def malformed_perf_json(records):
+    raw = perf_json(records).replace('"metric-unit": "ignored"',
+                                     f'"metric-unit": "{SENTINEL}"', 1)
+    marker = '"counter-value": "10.500000"'
+    return (
+        ("duplicate key", raw.replace(marker,
+                                       f'{marker}, "counter-value": "{SENTINEL}"', 1)),
+        ("NaN", raw.replace(marker, '"counter-value": NaN', 1)),
+        ("Infinity", raw.replace(marker, '"counter-value": Infinity', 1)),
+        ("overflow", raw.replace(marker, '"counter-value": 1e1000000', 1)),
+    )
 
 
 class CorpusResultsTests(unittest.TestCase):
@@ -91,14 +132,139 @@ class CorpusResultsTests(unittest.TestCase):
                     corpus_results.sanitize_data(raw)
 
     def test_sanitize_cli_reports_content_free_error_for_missing_raw(self):
-        import subprocess
         result = subprocess.run(
             [sys.executable, str(Path(__file__).with_name("corpus_results.py")),
-             "sanitize", str(self.dir / f"{SENTINEL}.json"), str(self.dir / "out.json")],
+            "sanitize", str(self.dir / f"{SENTINEL}.json"), str(self.dir / "out.json")],
             check=False, text=True, capture_output=True,
         )
         self.assertEqual(result.returncode, 1)
         self.assertNotIn(SENTINEL, result.stderr)
+
+    def test_normalize_perf_stat_keeps_the_fixed_counter_schema(self):
+        data = corpus_results.normalize_perf_data(perf_json(perf_records()), 10)
+
+        self.assertEqual(set(data), {"schema_version", "requests", "counters"})
+        self.assertEqual(data["schema_version"], 1)
+        self.assertEqual(data["requests"], 10)
+        self.assertEqual(tuple(data["counters"]), corpus_results.PERF_COUNTER_NAMES)
+        task_clock = data["counters"]["task-clock"]
+        self.assertEqual(task_clock["status"], "collected")
+        self.assertEqual(task_clock["unit"], "milliseconds")
+        self.assertEqual(task_clock["raw_count"], 10.5)
+        self.assertEqual(task_clock["per_request"], 1.05)
+        self.assertEqual(task_clock["time_running_ns"], 2_500_000.0)
+        self.assertEqual(task_clock["time_enabled_ns"], 5_000_000.0)
+        self.assertEqual(task_clock["scale"], 2.0)
+        self.assertNotIn("ignored", json.dumps(data))
+
+    def test_normalize_perf_stat_marks_optional_unavailable_events(self):
+        records = perf_records()
+        next(record for record in records if record["event"] == "LLC-loads")["counter-value"] = "<not supported>"
+
+        data = corpus_results.normalize_perf_data(perf_json(records), 10)
+
+        self.assertEqual(data["counters"]["LLC-loads"], {
+            "status": "unsupported", "unit": "count", "raw_count": None, "per_request": None,
+            "time_enabled_ns": None, "time_running_ns": None, "scale": None,
+        })
+
+    def test_perf_parser_rejects_missing_required_malformed_and_injected_records(self):
+        cases = []
+        missing = perf_records()
+        missing.pop()
+        cases.append(("missing", missing))
+        required_unavailable = perf_records()
+        next(record for record in required_unavailable if record["event"] == "cycles")["counter-value"] = "<not counted>"
+        cases.append(("required unavailable", required_unavailable))
+        duplicate = perf_records()
+        duplicate.append(copy.deepcopy(duplicate[0]))
+        cases.append(("duplicate", duplicate))
+        unknown = perf_records()
+        unknown[-1]["event"] = SENTINEL
+        cases.append(("unknown event", unknown))
+        injected = perf_records()
+        injected[0]["injected"] = SENTINEL
+        cases.append(("injected field", injected))
+        unsafe = perf_records()
+        unsafe[0]["counter-value"] = "NaN"
+        cases.append(("unsafe count", unsafe))
+        wrong_unit = perf_records()
+        wrong_unit[0]["unit"] = SENTINEL
+        cases.append(("wrong unit", wrong_unit))
+
+        for name, records in cases:
+            with self.subTest(name=name):
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results.normalize_perf_data(perf_json(records), 10)
+
+    def test_perf_preflight_uses_the_required_counter_parser(self):
+        raw = self.dir / "perf-preflight.json"
+        raw.write_text(perf_json(perf_preflight_records()), encoding="utf-8")
+
+        corpus_results.validate_perf_preflight(str(raw))
+
+    def test_literal_invalid_perf_json_is_rejected_without_echo_by_normalize_and_preflight(self):
+        commands = (
+            ("normalize", perf_records(),
+             lambda raw, out: ("perf-normalize", str(raw), str(out), "10"),
+             lambda raw: corpus_results.normalize_perf_data(raw.read_text(encoding="utf-8"), 10)),
+            ("preflight", perf_preflight_records(),
+             lambda raw, _: ("perf-preflight", str(raw)),
+             lambda raw: corpus_results.validate_perf_preflight(str(raw))),
+        )
+        for command_name, records, arguments, validate in commands:
+            for case_name, content in malformed_perf_json(records):
+                with self.subTest(command=command_name, case=case_name):
+                    raw = self.dir / f"raw-perf-{command_name}-{case_name}.json"
+                    raw.write_text(content, encoding="utf-8")
+                    with self.assertRaises(corpus_results.CorpusResultsError) as error:
+                        validate(raw)
+                    self.assertNotIn(SENTINEL, str(error.exception))
+                    result = subprocess.run(
+                        [sys.executable, str(Path(__file__).with_name("corpus_results.py")),
+                         *arguments(raw, self.dir / "out-perf.json")],
+                        check=False, text=True, capture_output=True,
+                    )
+                    self.assertEqual(result.returncode, 1)
+                    self.assertNotIn(SENTINEL, result.stderr)
+                    self.assertNotIn(SENTINEL, result.stdout)
+
+    @unittest.skipUnless(corpus_results._pidfd_supported() and Path("/proc").is_dir(),
+                         "pidfd signaling is unavailable")
+    def test_perf_pidfd_signal_requires_matching_process_start_time(self):
+        child = subprocess.Popen(["/bin/sleep", "60"], stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+        try:
+            _, start_time = corpus_results._perf_process_identity(child.pid)
+            mismatched_start_time = str(int(start_time) + 1)
+
+            self.assertEqual(corpus_results.signal_perf_process(
+                child.pid, mismatched_start_time, "TERM"), "gone")
+            self.assertIsNone(child.poll())
+            self.assertEqual(corpus_results.signal_perf_process(child.pid, start_time, "TERM"), "sent")
+            self.assertEqual(child.wait(timeout=5), -signal.SIGTERM)
+        finally:
+            if child.poll() is None:
+                try:
+                    child.kill()
+                except OSError:
+                    pass
+                child.wait(timeout=5)
+
+    def test_perf_normalize_cli_reports_content_free_error(self):
+        records = perf_records()
+        records[0]["event"] = SENTINEL
+        raw = self.dir / "raw-perf.json"
+        raw.write_text(perf_json(records), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("corpus_results.py")),
+             "perf-normalize", str(raw), str(self.dir / "out-perf.json"), "10"],
+            check=False, text=True, capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn(SENTINEL, result.stderr)
+        self.assertNotIn(SENTINEL, result.stdout)
 
     def test_stage_copies_only_validated_allowlisted_files(self):
         out_root = self.dir / "out"
@@ -121,6 +287,74 @@ class CorpusResultsTests(unittest.TestCase):
         ])
         blob = "\n".join(p.read_text(encoding="utf-8") for p in stage_root.rglob("*") if p.is_file())
         self.assertNotIn(SENTINEL, blob)
+
+    def test_stage_allows_valid_perf_stat_and_rejects_its_injected_fields(self):
+        out_root = self.dir / "out-perf"
+        self.write_json(out_root / "summary.json", corpus_results.sanitize_data(raw_summary()))
+        valid = corpus_results.normalize_perf_data(perf_json(perf_records()), 90)
+        valid["counters"]["LLC-loads"].update(status="unsupported", raw_count=None,
+                                                 per_request=None, time_enabled_ns=None,
+                                                 time_running_ns=None, scale=None)
+        self.write_json(out_root / "perf-stat.json", valid)
+
+        stage_root = self.dir / "stage-perf"
+        corpus_results.stage(str(out_root), str(stage_root))
+        staged = json.loads((stage_root / "perf-stat.json").read_text(encoding="utf-8"))
+        self.assertEqual(staged["counters"]["LLC-loads"], {
+            "status": "unsupported", "unit": "count", "raw_count": None, "per_request": None,
+            "time_enabled_ns": None, "time_running_ns": None, "scale": None,
+        })
+
+        invalid = copy.deepcopy(valid)
+        invalid["counters"]["cycles"]["unexpected"] = SENTINEL
+        bad_root = self.dir / "out-bad-perf"
+        self.write_json(bad_root / "summary.json", corpus_results.sanitize_data(raw_summary()))
+        self.write_json(bad_root / "perf-stat.json", invalid)
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results.stage(str(bad_root), str(self.dir / "stage-bad-perf"))
+
+    def test_stage_rejects_duplicate_perf_stat_json_keys(self):
+        out_root = self.dir / "out-duplicate-perf"
+        self.write_json(out_root / "summary.json", corpus_results.sanitize_data(raw_summary()))
+        counters = json.dumps(corpus_results.normalize_perf_data(perf_json(perf_records()), 90)["counters"])
+        (out_root / "perf-stat.json").write_text(
+            f'{{"schema_version":1,"requests":90,"requests":90,"counters":{counters}}}',
+            encoding="utf-8")
+
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results.stage(str(out_root), str(self.dir / "stage-duplicate-perf"))
+
+    def test_stage_rejects_wrong_perf_stat_status_unit_and_required_data(self):
+        valid = corpus_results.normalize_perf_data(perf_json(perf_records()), 90)
+
+        def unsupported_required(data):
+            counter = data["counters"]["cycles"]
+            counter.update(status="unsupported", raw_count=None, per_request=None,
+                           time_enabled_ns=None, time_running_ns=None, scale=None)
+
+        def unsupported_optional_with_metadata(data):
+            counter = data["counters"]["LLC-loads"]
+            counter.update(status="unsupported", raw_count=None, per_request=None,
+                           time_enabled_ns=None, time_running_ns=None, scale=1)
+
+        cases = [
+            ("wrong status", lambda data: data["counters"]["cycles"].update(status=SENTINEL)),
+            ("wrong unit", lambda data: data["counters"]["cycles"].update(unit=SENTINEL)),
+            ("required unavailable", unsupported_required),
+            ("optional unavailable metadata", unsupported_optional_with_metadata),
+            ("unsafe raw count", lambda data: data["counters"]["cycles"].update(raw_count=float("inf"))),
+            ("missing counter", lambda data: data["counters"].pop("cycles")),
+            ("boolean schema", lambda data: data.update(schema_version=True)),
+        ]
+        for name, mutate in cases:
+            with self.subTest(name=name):
+                out_root = self.dir / f"out-invalid-perf-{name.replace(' ', '-') }"
+                self.write_json(out_root / "summary.json", corpus_results.sanitize_data(raw_summary()))
+                payload = copy.deepcopy(valid)
+                mutate(payload)
+                self.write_json(out_root / "perf-stat.json", payload)
+                with self.assertRaises(corpus_results.CorpusResultsError):
+                    corpus_results.stage(str(out_root), str(self.dir / f"stage-invalid-perf-{name.replace(' ', '-') }"))
 
     def test_stage_excludes_warmup_cells(self):
         """A staged warmup/summary.json would displace the measured cell in the PR comment:
@@ -293,4 +527,3 @@ class CommentRenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -55,6 +55,27 @@ JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
 JB_MAX_FAIL_RATE_PCT="${JB_MAX_FAIL_RATE_PCT:-1}"
 JB_EXTRA_ARGS="${JB_EXTRA_ARGS:-}"
 CONTAINER_NAME="${JB_CONTAINER_NAME:-jsonbench-bench}"
+# Set only by the private corpus sweep for a measured k6 cell. The complete fixed event list
+# lives here rather than accepting an event string from workflow input.
+PERF_STAT_CONTAINER="${PERF_STAT_CONTAINER:-}"
+PERF_STAT_OUT="${PERF_STAT_OUT:-}"
+PERF_STAT_EVENTS=(
+  task-clock cycles ref-cycles instructions cache-references cache-misses
+  LLC-loads LLC-load-misses dTLB-loads dTLB-load-misses minor-faults page-faults
+  context-switches cpu-migrations
+)
+perf_stat_enabled="false"
+perf_finalized="false"
+perf_pid=""
+perf_launcher_pid=""
+perf_pid_file=""
+perf_start_time=""
+perf_start_time_file=""
+perf_raw=""
+perf_stderr=""
+perf_bin=""
+perf_int_sent="false"
+perf_signal_result=""
 
 if [[ -z "$JB_MODE" ]]; then
   if [[ -n "$REFERENCE_RPC_URL" ]]; then JB_MODE="compare"; else JB_MODE="benchmark"; fi
@@ -81,6 +102,17 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   # Both would write raw request/response content into OUT_DIR — keep the artifact aggregate-only.
   JB_DEEP_CHECK="false"
   JB_HTML_REPORT="false"
+fi
+if [[ -n "$PERF_STAT_CONTAINER" || -n "$PERF_STAT_OUT" ]]; then
+  [[ -n "$PERF_STAT_CONTAINER" && -n "$PERF_STAT_OUT" ]] \
+    || die "perf stat requires both the node container and output values"
+  [[ "$JB_MODE" == "benchmark" && "$JB_ETH_CALL_CORPUS" == "true" ]] \
+    || die "perf stat is supported only for private eth_call corpus benchmarks"
+  [[ "$PERF_STAT_OUT" == "$OUT_DIR/perf-stat.json" ]] \
+    || die "perf stat output must be the private corpus cell perf-stat.json"
+  perf_bin="$(command -v perf 2>/dev/null)" || die "perf stat is not available on this host"
+  rm -f -- "$PERF_STAT_OUT"
+  perf_stat_enabled="true"
 fi
 
 mkdir -p "$OUT_DIR"
@@ -304,13 +336,213 @@ if [[ -n "${RESOURCE_SAMPLER_CONTAINER:-}" && -n "${RESOURCE_SAMPLER_OUT:-}" ]];
     --container "$RESOURCE_SAMPLER_CONTAINER" --out "$RESOURCE_SAMPLER_OUT" &
   sampler_pid=$!
 fi
-stop_resource_sampler() {
+signal_resource_sampler_stop() {
   [[ -n "$sampler_pid" ]] || return 0
-  kill -TERM "$sampler_pid" 2>/dev/null
-  wait "$sampler_pid" 2>/dev/null
-  sampler_pid=""
+  kill -TERM "$sampler_pid" 2>/dev/null || ! kill -0 "$sampler_pid" 2>/dev/null
 }
-trap stop_resource_sampler EXIT
+
+reap_resource_sampler() {
+  local pid="$sampler_pid" sampler_failed=0
+  [[ -n "$pid" ]] || return 0
+  wait "$pid" 2>/dev/null || sampler_failed=1
+  sampler_pid=""
+  return "$sampler_failed"
+}
+
+start_perf_stat() {
+  [[ "$perf_stat_enabled" == "true" ]] || return 0
+  local node_pid event perf_arguments=()
+  node_pid="$(docker inspect --format '{{.State.Pid}}' "$PERF_STAT_CONTAINER" 2>/dev/null)" \
+    || { echo "ERROR: perf stat could not resolve the node container PID" >&2; return 1; }
+  [[ "$node_pid" =~ ^[1-9][0-9]*$ ]] \
+    || { echo "ERROR: perf stat received an invalid node container PID" >&2; return 1; }
+  perf_raw="$work/perf-stat.raw.json"
+  perf_stderr="$work/perf-stat.stderr"
+  perf_pid_file="$work/perf-stat.pid"
+  perf_start_time_file="$work/perf-stat.start-time"
+  perf_pid=""
+  perf_start_time=""
+  perf_launcher_pid=""
+  perf_int_sent="false"
+  rm -f -- "$perf_raw" "$perf_stderr" "$perf_pid_file" "$perf_start_time_file"
+  # Root perf preserves ownership when opening these pre-created runner-readable scratch files.
+  : > "$perf_raw"; : > "$perf_stderr"; : > "$perf_pid_file"; : > "$perf_start_time_file"
+  chmod 600 "$perf_raw" "$perf_stderr" "$perf_pid_file" "$perf_start_time_file"
+  for event in "${PERF_STAT_EVENTS[@]}"; do perf_arguments+=(-e "$event"); done
+  # The root shell records its PID and start time, then execs perf. The start time binds later root
+  # signals to this process even when as_root is sudo and the host reuses the numeric PID.
+  as_root bash -c '
+    pid_file=$1
+    raw=$2
+    stderr_file=$3
+    perf_binary=$4
+    node_pid=$5
+    start_time_file=$6
+    shift 6
+    perf_arguments=("$@")
+    stat="$(<"/proc/$$/stat")" || exit 1
+    stat="${stat##*) }"
+    IFS=' '
+    set -f
+    set -- $stat
+    start_time="${20:-}"
+    case "$start_time" in ''|*[!0-9]*) exit 1 ;; esac
+    printf "%s\n" "$$" > "$pid_file"
+    printf "%s\n" "$start_time" > "$start_time_file"
+    exec env LC_ALL=C LANG=C "$perf_binary" stat --json-output --no-big-num \
+      --output "$raw" --pid "$node_pid" "${perf_arguments[@]}" >/dev/null 2>"$stderr_file"
+  ' perf-stat-root-wrapper "$perf_pid_file" "$perf_raw" "$perf_stderr" "$perf_bin" "$node_pid" \
+    "$perf_start_time_file" \
+    "${perf_arguments[@]}" < /dev/null > /dev/null 2>&1 &
+  perf_launcher_pid=$!
+  wait_for_perf_start
+}
+
+perf_process_state() {
+  local pid="$1"
+  [[ "$pid" =~ ^[1-9][0-9]*$ && "$perf_start_time" =~ ^[0-9]+$ ]] || return 1
+  as_root bash -c '
+    pid=$1
+    expected_start_time=$2
+    stat="$(<"/proc/$pid/stat")" || exit 1
+    stat="${stat##*) }"
+    IFS=' '
+    set -f
+    set -- $stat
+    state="${1:-}"
+    start_time="${20:-}"
+    case "$start_time" in ''|*[!0-9]*) exit 1 ;; esac
+    [[ "$start_time" == "$expected_start_time" ]] || exit 1
+    printf "%s\n" "$state"
+  ' perf-stat-identity "$pid" "$perf_start_time" 2>/dev/null
+}
+
+perf_process_exists() {
+  [[ -n "$(perf_process_state "$1")" ]]
+}
+
+signal_perf_process() {
+  local signal="$1" pid="$2"
+  perf_signal_result=""
+  [[ "$pid" =~ ^[1-9][0-9]*$ && "$perf_start_time" =~ ^[0-9]+$ ]] || return 1
+  case "$signal" in INT|TERM|KILL) ;; *) return 1 ;; esac
+  perf_signal_result="$(as_root python3 "$HERE/corpus_results.py" perf-pidfd-signal \
+    "$pid" "$perf_start_time" "$signal" 2>/dev/null)" || return 1
+  [[ "$perf_signal_result" == "sent" || "$perf_signal_result" == "zombie" \
+      || "$perf_signal_result" == "gone" ]]
+}
+
+wait_for_perf_start() {
+  local attempts recorded_start_time recorded_pid
+  for ((attempts = 0; attempts < 50; attempts++)); do
+    if [[ -s "$perf_pid_file" && -s "$perf_start_time_file" ]]; then
+      recorded_pid="$(<"$perf_pid_file")"
+      recorded_start_time="$(<"$perf_start_time_file")"
+      if [[ "$recorded_pid" =~ ^[1-9][0-9]*$ && "$recorded_start_time" =~ ^[0-9]+$ ]]; then
+        perf_pid="$recorded_pid"
+        perf_start_time="$recorded_start_time"
+        if perf_process_exists "$perf_pid"; then
+          return 0
+        fi
+      fi
+      wait "$perf_launcher_pid" 2>/dev/null || true
+      perf_launcher_pid=""
+      return 1
+    fi
+    if ! kill -0 "$perf_launcher_pid" 2>/dev/null; then
+      wait "$perf_launcher_pid" 2>/dev/null || true
+      perf_launcher_pid=""
+      return 1
+    fi
+    sleep 0.1
+  done
+  kill -TERM "$perf_launcher_pid" 2>/dev/null || true
+  wait "$perf_launcher_pid" 2>/dev/null || true
+  perf_launcher_pid=""
+  return 1
+}
+
+wait_for_perf_exit() {
+  local pid="$1" attempts state
+  for ((attempts = 0; attempts < 50; attempts++)); do
+    state="$(perf_process_state "$pid" 2>/dev/null || true)"
+    [[ -n "$state" ]] || return 0
+    [[ "$state" == Z* ]] && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+signal_perf_stat_stop() {
+  local pid="$perf_pid"
+  [[ -n "$pid" ]] || return 0
+  if perf_process_exists "$pid"; then
+    if signal_perf_process INT "$pid"; then
+      case "$perf_signal_result" in
+        sent) perf_int_sent="true" ;;
+        zombie|gone) ;;
+        *) return 1 ;;
+      esac
+    else
+      ! perf_process_exists "$pid"
+    fi
+  fi
+}
+
+reap_perf_stat() {
+  local pid="$perf_pid" launcher="$perf_launcher_pid" launcher_status=0 stop_failed=0
+  [[ -n "$pid" || -n "$launcher" ]] || return 0
+  if [[ -n "$pid" ]] && perf_process_exists "$pid"; then
+    if ! wait_for_perf_exit "$pid"; then
+      signal_perf_process TERM "$pid" || { perf_process_exists "$pid" && stop_failed=1; }
+      if ! wait_for_perf_exit "$pid"; then
+        signal_perf_process KILL "$pid" || stop_failed=1
+        wait_for_perf_exit "$pid" || stop_failed=1
+      fi
+    fi
+  fi
+  if [[ -n "$launcher" ]]; then
+    if wait "$launcher" 2>/dev/null; then
+      :
+    else
+      launcher_status=$?
+      # perf re-raises the deliberate SIGINT through the root wrapper as status 130.
+      if [[ "$launcher_status" -ne 130 || "$perf_int_sent" != "true" ]]; then
+        stop_failed=1
+      fi
+    fi
+  fi
+  perf_pid=""
+  perf_start_time=""
+  perf_launcher_pid=""
+  perf_int_sent="false"
+  [[ -n "$perf_pid_file" ]] && rm -f -- "$perf_pid_file"
+  [[ -n "$perf_start_time_file" ]] && rm -f -- "$perf_start_time_file"
+  perf_pid_file=""
+  perf_start_time_file=""
+  return "$stop_failed"
+}
+
+cleanup_benchmark_window() {
+  local status=$? cleanup_failed=0
+  trap - EXIT
+  set +e
+  signal_perf_stat_stop || cleanup_failed=1
+  signal_resource_sampler_stop || true
+  reap_perf_stat || cleanup_failed=1
+  reap_resource_sampler || true
+  if [[ "$perf_stat_enabled" == "true" && "$perf_finalized" != "true" ]]; then
+    rm -f -- "$PERF_STAT_OUT"
+  fi
+  [[ -n "$perf_raw" ]] && rm -f -- "$perf_raw"
+  [[ -n "$perf_stderr" ]] && rm -f -- "$perf_stderr"
+  [[ -n "$perf_pid_file" ]] && rm -f -- "$perf_pid_file"
+  [[ -n "$perf_start_time_file" ]] && rm -f -- "$perf_start_time_file"
+  [[ -n "${corpus_fixture:-}" ]] && rm -f -- "$corpus_fixture"
+  if [[ "$status" -eq 0 && "$cleanup_failed" -ne 0 ]]; then status=1; fi
+  exit "$status"
+}
+trap cleanup_benchmark_window EXIT
 
 # Run the selected mode.
 tool_failed=0
@@ -341,6 +573,7 @@ else
   log "json-bench benchmark (config: ${JB_BENCHMARK_CONFIG:-<generated default>}, summary.json metrics)..."
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     # Tool output may echo call contents — keep it in VM scratch (wiped next run), not the job log.
+    start_perf_stat || die "perf stat could not start for the private corpus cell"
     docker run "${docker_common[@]}" "$image_tag" \
       benchmark \
       --config "$bench_cfg" \
@@ -348,7 +581,6 @@ else
       --output /io/out \
       ${extra_args_arr[@]+"${extra_args_arr[@]}"} > "$work/jsonbench-tool.log" 2>&1 \
       || tool_failed=1
-    rm -f "$corpus_fixture"
     if [[ "$tool_failed" == "1" ]]; then
       die "json-bench exited non-zero — $(wc -l < "$work/jsonbench-tool.log" | tr -d ' ') tool log lines retained on the runner at $work/jsonbench-tool.log"
     fi
@@ -363,8 +595,17 @@ else
       || tool_failed=1
   fi
 fi
-# Close the window before summary post-processing; the EXIT trap only covers an early exit.
-stop_resource_sampler
+# Close the window before summary post-processing; signal both collectors before either reaps.
+perf_stop_failed=0
+signal_perf_stat_stop || perf_stop_failed=1
+signal_resource_sampler_stop || true
+reap_perf_stat || perf_stop_failed=1
+reap_resource_sampler || true
+if [[ "$perf_stop_failed" == "1" ]]; then
+  [[ "$perf_stat_enabled" == "true" ]] && rm -f -- "$PERF_STAT_OUT"
+  die "perf stat did not stop cleanly for the private corpus cell"
+fi
+[[ "$JB_ETH_CALL_CORPUS" == "true" ]] && rm -f -- "$corpus_fixture"
 
 # Deep-check capture: replay each request once after the timed load (won't perturb k6),
 # storing raw responses keyed by request fingerprint for offline cross-client diff. Non-fatal.
@@ -426,6 +667,40 @@ if [[ -d "$work/io/out" ]]; then
   else
     cp -r "$work/io/out/." "$OUT_DIR/" 2>/dev/null || true
   fi
+fi
+if [[ "$perf_stat_enabled" == "true" ]]; then
+  [[ -s "$perf_raw" && -s "$OUT_DIR/summary.json" ]] \
+    || die "perf stat produced no usable aggregate counter output"
+  delivered="$(python3 - "$OUT_DIR/summary.json" <<'PY' 2>/dev/null || true
+import json
+import math
+import sys
+
+try:
+    count = ((json.load(open(sys.argv[1], encoding="utf-8")) or {}).get("metrics", {})
+             .get("http_reqs", {}).get("values", {}).get("count"))
+    if isinstance(count, bool) or not isinstance(count, (int, float)) \
+            or not math.isfinite(count) or count < 1 or int(count) != count:
+        raise ValueError
+    print(int(count))
+except Exception:
+    pass
+PY
+)"
+  [[ "$delivered" =~ ^[1-9][0-9]*$ ]] \
+    || die "perf stat could not determine the delivered request count"
+  perf_temp="$(mktemp "$OUT_DIR/.perf-stat.XXXXXX")" \
+    || die "perf stat could not prepare its aggregate output"
+  if ! python3 "$HERE/corpus_results.py" perf-normalize "$perf_raw" "$perf_temp" "$delivered"; then
+    rm -f -- "$perf_temp" "$PERF_STAT_OUT"
+    die "perf stat output was malformed or missing required counters"
+  fi
+  if ! mv -f -- "$perf_temp" "$PERF_STAT_OUT"; then
+    rm -f -- "$perf_temp" "$PERF_STAT_OUT"
+    die "perf stat could not publish its aggregate output"
+  fi
+  perf_finalized="true"
+  rm -f -- "$perf_raw" "$perf_stderr"
 fi
 cp "$clients_yaml" "$OUT_DIR/clients.yaml" 2>/dev/null || true
 

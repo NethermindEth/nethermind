@@ -56,6 +56,15 @@ CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 # is a no-op, so this is on by default: without it a cross-client latency gap cannot be attributed
 # to doing more work, waiting on IO, or leaving the machine idle.
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
+# Optional host perf stat capture. It is deliberately narrower than resource sampling: only
+# measured private corpus k6 cells attach to the currently running node process.
+CORPUS_PERF_STAT="${CORPUS_PERF_STAT:-false}"
+PERF_STAT_EVENTS=(
+  task-clock cycles ref-cycles instructions cache-references cache-misses
+  LLC-loads LLC-load-misses dTLB-loads dTLB-load-misses minor-faults page-faults
+  context-switches cpu-migrations
+)
+PERF_STAT_REQUIRED_EVENTS=(task-clock cycles instructions)
 # Discarded load applied to each node before its measured cells. Default covers two 120s cells,
 # which is what the 2026-08-13 measurements showed is needed to reach a 0% failure rate; set to 0
 # to measure a cold node deliberately.
@@ -152,13 +161,53 @@ run_cell() {
   if [[ -n "$node" && "$CORPUS_RESOURCE_SAMPLING" == "true" ]]; then
     sampler_container="$node"; sampler_out="$cell/resources.json"
   fi
+  local perf_container="" perf_out=""
+  if [[ "$is_corpus" == "true" && -n "$node" && "$CORPUS_PERF_STAT" == "true" ]]; then
+    perf_container="$node"; perf_out="$cell/perf-stat.json"
+  fi
   OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$ctype" LABEL="$label" \
     SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
     JB_BENCHMARK_CONFIG="$cfg" JB_RPS="$rps" JB_DURATION="$dur" \
     JB_DEEP_CHECK="$deep" JB_HTML_REPORT="false" \
     JB_ETH_CALL_CORPUS="$is_corpus" JB_ETH_CALL_CORPUS_FILE="$corpus" \
     RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
+    PERF_STAT_CONTAINER="$perf_container" PERF_STAT_OUT="$perf_out" \
     "$here/run-jsonbench.sh"
+}
+
+preflight_perf_stat() {
+  local preflight_dir="$SCRATCH_ROOT/perf-stat-preflight"
+  local raw="$preflight_dir/perf-stat.json" stderr_file="$preflight_dir/perf-stat.stderr"
+  local perf_bin perf_command=() event
+  perf_bin="$(command -v perf 2>/dev/null)" || {
+    echo "::error::perf_stat requires host perf with task-clock, cycles, and instructions support"
+    return 1
+  }
+  mkdir -p "$preflight_dir"
+  rm -f "$raw" "$stderr_file"
+  # perf runs as root, but opening pre-created files preserves the runner's ownership for the
+  # parser and cleanup. The child sleep inherits root from perf, so this checks the real privilege path.
+  : > "$raw"; : > "$stderr_file"; chmod 600 "$raw" "$stderr_file"
+  perf_command=("$perf_bin" stat --json-output --no-big-num --output "$raw")
+  for event in "${PERF_STAT_REQUIRED_EVENTS[@]}"; do perf_command+=(-e "$event"); done
+  if ! as_root env LC_ALL=C LANG=C "${perf_command[@]}" -- /bin/sleep 0.05 \
+      >/dev/null 2>"$stderr_file"; then
+    rm -f "$raw" "$stderr_file"
+    echo "::error::perf_stat preflight failed: required host counters are unavailable"
+    return 1
+  fi
+  if ! python3 "$here/corpus_results.py" perf-preflight "$raw" >/dev/null 2>&1; then
+    rm -f "$raw" "$stderr_file"
+    echo "::error::perf_stat preflight produced unusable required counter data"
+    return 1
+  fi
+  if ! as_root python3 "$here/corpus_results.py" perf-pidfd-preflight >/dev/null 2>&1; then
+    rm -f "$raw" "$stderr_file"
+    echo "::error::perf_stat preflight failed: identity-safe host signaling is unavailable"
+    return 1
+  fi
+  rm -f "$raw" "$stderr_file"
+  rmdir "$preflight_dir" 2>/dev/null || true
 }
 
 # Print a cell's failure rate next to its name. Latency percentiles above the failure rate are
@@ -232,6 +281,13 @@ case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
   *) echo "::error::JB_ETH_CALL_CORPUS must be true or false"; exit 1 ;;
 esac
+case "$CORPUS_PERF_STAT" in
+  true|false) ;;
+  *) echo "::error::CORPUS_PERF_STAT must be true or false"; exit 1 ;;
+esac
+if [[ "$CORPUS_PERF_STAT" == "true" && "$JB_ETH_CALL_CORPUS" != "true" ]]; then
+  echo "::error::perf_stat is supported only for private eth_call corpus sweep cells"; exit 1
+fi
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   for f in "$CORPUS_DIR"/$CORPUS_GLOB; do
     [[ -f "$f" ]] && CORPORA+=("$f")
@@ -262,6 +318,9 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     fi
   done
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
+  if [[ "$CORPUS_PERF_STAT" == "true" ]] && ! preflight_perf_stat; then
+    exit 1
+  fi
 fi
 
 # Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
