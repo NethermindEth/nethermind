@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.Text.Json;
+using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -26,10 +27,16 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
     {
         if (!streamData.CanSeek)
         {
-            using MemoryStream bufferedStream = new();
-            streamData.CopyTo(bufferedStream);
+            using Stream bufferedStream = RecyclableStream.GetStream(nameof(AutoDetectingChainSpecLoader));
+            GenesisFormat format;
+            using (CapturingStream detectionStream = new(streamData, bufferedStream))
+            {
+                format = DetectFormat(detectionStream);
+            }
+
             bufferedStream.Position = 0;
-            return LoadSeekable(bufferedStream);
+            using PrefixedStream replayStream = new(bufferedStream, streamData);
+            return LoadDetected(format, replayStream);
         }
 
         return LoadSeekable(streamData);
@@ -41,12 +48,14 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
         GenesisFormat format = DetectFormat(streamData);
         streamData.Position = startPosition;
 
-        return format switch
-        {
-            GenesisFormat.Geth => _gethLoader.Load(streamData),
-            _ => _parityLoader.Load(streamData),
-        };
+        return LoadDetected(format, streamData);
     }
+
+    private ChainSpec LoadDetected(GenesisFormat format, Stream streamData) => format switch
+    {
+        GenesisFormat.Geth => _gethLoader.Load(streamData),
+        _ => _parityLoader.Load(streamData),
+    };
 
     /// <summary>
     /// Geth genesis contains a top-level <c>"config"</c> property, while Parity-style chainspecs
@@ -61,7 +70,11 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
         {
             int bytesInBuffer = 0;
             bool hasGethConfig = false;
-            JsonReaderState readerState = new(new JsonReaderOptions { AllowTrailingCommas = true });
+            JsonReaderState readerState = new(new JsonReaderOptions
+            {
+                AllowTrailingCommas = true,
+                MaxDepth = EthereumJsonSerializer.DefaultMaxDepth,
+            });
 
             while (true)
             {
@@ -131,6 +144,99 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
 
         if (_logger.IsWarn) _logger.Warn("Failed to detect genesis file format, assuming Parity-like style.");
         return GenesisFormat.Unknown;
+    }
+
+    private sealed class CapturingStream(Stream inner, Stream capture) : Stream
+    {
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            int bytesRead = inner.Read(buffer, offset, count);
+            if (bytesRead > 0)
+            {
+                capture.Write(buffer, offset, bytesRead);
+            }
+
+            return bytesRead;
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            int bytesRead = inner.Read(buffer);
+            if (bytesRead > 0)
+            {
+                capture.Write(buffer[..bytesRead]);
+            }
+
+            return bytesRead;
+        }
+
+        public override int ReadByte()
+        {
+            int value = inner.ReadByte();
+            if (value >= 0)
+            {
+                capture.WriteByte((byte)value);
+            }
+
+            return value;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private sealed class PrefixedStream(Stream prefix, Stream inner) : Stream
+    {
+        private bool _prefixExhausted;
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (!_prefixExhausted)
+            {
+                int bytesRead = prefix.Read(buffer, offset, count);
+                if (bytesRead > 0)
+                {
+                    return bytesRead;
+                }
+
+                _prefixExhausted = true;
+            }
+
+            return inner.Read(buffer, offset, count);
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            if (!_prefixExhausted)
+            {
+                int bytesRead = prefix.Read(buffer);
+                if (bytesRead > 0)
+                {
+                    return bytesRead;
+                }
+
+                _prefixExhausted = true;
+            }
+
+            return inner.Read(buffer);
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private enum GenesisFormat
