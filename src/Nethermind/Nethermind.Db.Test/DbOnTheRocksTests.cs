@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
@@ -167,6 +168,24 @@ namespace Nethermind.Db.Test
                 Assert.That(act, Throws.InstanceOf<RocksDbException>());
             }
         }
+
+        [Test]
+        public void SharedCacheCanBeCreatedAndDisposed()
+        {
+            HyperClockCacheWrapper cache = new((ulong)10.KiB);
+
+            Assert.That(cache.Handle, Is.Not.Zero);
+            Assert.That(() => cache.GetUsage(), Throws.Nothing);
+
+            cache.Dispose();
+            // Disposal must stay exactly-once so the GC memory pressure accounting cannot go negative.
+            cache.Dispose();
+        }
+
+        [Test]
+        // rocksdb aborts the process on a zero capacity, so this must fail as a configuration error.
+        public void SharedCacheRejectsZeroCapacity() =>
+            Assert.That(() => new HyperClockCacheWrapper(0), Throws.TypeOf<InvalidConfigurationException>());
 
         [TestCase(true)]
         [TestCase(false)]

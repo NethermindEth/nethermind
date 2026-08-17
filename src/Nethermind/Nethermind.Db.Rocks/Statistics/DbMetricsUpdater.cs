@@ -41,7 +41,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
                 {
                     ProcessStatisticsString(dbStatsString);
                 }
-                else
+                else if (logger.IsWarn)
                 {
                     logger.Warn($"No RocksDB statistics available for {dbName} database.");
                 }
@@ -49,7 +49,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         }
         catch (Exception exc)
         {
-            logger.Error($"Error when updating metrics for {dbName} database.", exc);
+            if (logger.IsError) logger.Error($"Error when updating metrics for {dbName} database.", exc);
             // Maybe we would like to stop the _timer here to avoid logging the same error all over again?
         }
     }
@@ -99,7 +99,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         }
         else
         {
-            logger.Warn($"No RocksDB compaction stats available for {dbName} database.");
+            if (logger.IsWarn) logger.Warn($"No RocksDB compaction stats available for {dbName} database.");
         }
     }
 
@@ -160,7 +160,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
             }
             else
             {
-                logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
+                if (logger.IsWarn) logger.Warn($"Cannot find 'Interval compaction' stats for {dbName} database in the compaction stats dump:{Environment.NewLine}{compactionStatsDump}");
             }
         }
     }
@@ -223,7 +223,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         using ManualResetEvent waitHandle = new(false);
         if (timer.Dispose(waitHandle) && !waitHandle.WaitOne(TimeSpan.FromSeconds(1)))
         {
-            logger.Warn($"DbMetricsUpdater for {dbName} did not complete within the timeout during disposal.");
+            if (logger.IsWarn) logger.Warn($"DbMetricsUpdater for {dbName} did not complete within the timeout during disposal.");
         }
     }
 }
