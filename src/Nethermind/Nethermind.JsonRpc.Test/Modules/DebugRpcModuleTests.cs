@@ -59,8 +59,12 @@ public partial class DebugRpcModuleTests
 
         foreach (JToken fork in forks)
         {
-            Assert.That(fork["active"], Is.Not.Null);
-            if (fork["active"]!.Value<bool>()) activeForkCount++;
+            JToken? active = fork["active"];
+            if (active is not null)
+            {
+                Assert.That(active.Value<bool>(), Is.True);
+                activeForkCount++;
+            }
         }
 
         using (Assert.EnterMultipleScope())

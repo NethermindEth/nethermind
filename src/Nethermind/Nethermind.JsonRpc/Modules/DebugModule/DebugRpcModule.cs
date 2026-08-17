@@ -522,7 +522,8 @@ public class DebugRpcModule(
         ForkConfig[] forks = new ForkConfig[forkSchedule.Length];
         for (int index = 0; index < forkSchedule.Length; index++)
         {
-            forks[index] = ForkConfigFactory.Create(forkSchedule[index], specProvider, forkSchedule[index].Id.Equals(activations.Current.Id));
+            bool? active = forkSchedule[index].Id.Equals(activations.Current.Id) ? true : null;
+            forks[index] = ForkConfigFactory.Create(forkSchedule[index], specProvider, active);
         }
 
         DebugConfigSummary config = new()
