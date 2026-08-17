@@ -295,6 +295,11 @@ for entry in $CLIENTS; do
     img="$(default_image "$ctype")" || { echo "skip $entry: no image"; continue; }; label="$ctype"
   fi
   [[ -n "$node_env" ]] && label="${label}_$(printf '%s' "$node_env" | tr -c 'a-zA-Z0-9' '_')"
+  # Staging validators cap label fields at 128 chars; hash-compress long labels (image tag plus
+  # verbose per-arm env) so they stay stageable and still unique.
+  if (( ${#label} > 96 )); then
+    label="${label:0:80}_$(printf '%s' "$label" | cksum | cut -d' ' -f1)"
+  fi
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
