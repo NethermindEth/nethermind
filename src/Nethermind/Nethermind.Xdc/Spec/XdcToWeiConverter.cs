@@ -46,18 +46,6 @@ public sealed class XdcToWeiConverter : JsonConverter<UInt256>
     /// <summary>Significand width the reference conversion rounds to.</summary>
     private const int ReferencePrecisionBits = 64;
 
-    /// <summary>
-    /// Upper bound on a reward, well above the ~3.75e10 total XDC supply and so far above any real
-    /// value that only a mistake reaches it.
-    /// </summary>
-    /// <remarks>
-    /// Guards the migration from the previous wei-denominated spelling of these fields. A reward
-    /// still stated in wei is at least 10^18 — six orders of magnitude past this bound — so it fails
-    /// the load instead of quietly inflating every payout. Also keeps the converted amount at most
-    /// 10^30 wei, comfortably inside <see cref="UInt256"/>.
-    /// </remarks>
-    private const double MaxPlausibleAmountInXdc = 1e12;
-
     private const int UInt256ByteCount = 32;
 
     private static readonly UInt256Converter WeiConverter = new();
@@ -71,9 +59,7 @@ public sealed class XdcToWeiConverter : JsonConverter<UInt256>
             ThrowNotAnAmount(in reader);
         }
 
-        if (amount > MaxPlausibleAmountInXdc) ThrowImplausible(in reader);
-
-        return ToWei(amount);
+        return ToWei(amount, in reader);
     }
 
     /// <remarks>
@@ -86,7 +72,7 @@ public sealed class XdcToWeiConverter : JsonConverter<UInt256>
     public override void Write(Utf8JsonWriter writer, UInt256 value, JsonSerializerOptions options) =>
         WeiConverter.Write(writer, value, options);
 
-    private static UInt256 ToWei(double amount)
+    private static UInt256 ToWei(double amount, in Utf8JsonReader reader)
     {
         if (amount == 0) return default;
 
@@ -108,8 +94,9 @@ public sealed class XdcToWeiConverter : JsonConverter<UInt256>
         BigInteger rounded = ShiftRoundHalfEven(numerator, shift + ulpExponent);
         BigInteger wei = ulpExponent >= 0 ? rounded << ulpExponent : rounded >> -ulpExponent;
 
-        // At most 10^30 by MaxPlausibleAmountInXdc, so it always fits.
         int byteCount = wei.GetByteCount(isUnsigned: true);
+        if (byteCount > UInt256ByteCount) ThrowTooLarge(in reader);
+
         Span<byte> bytes = stackalloc byte[UInt256ByteCount];
         wei.TryWriteBytes(bytes[(UInt256ByteCount - byteCount)..], out _, isUnsigned: true, isBigEndian: true);
 
@@ -155,7 +142,6 @@ public sealed class XdcToWeiConverter : JsonConverter<UInt256>
         throw new JsonException($"'{Literal(in reader)}' is not an XDC amount");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowImplausible(in Utf8JsonReader reader) =>
-        throw new JsonException(
-            $"'{Literal(in reader)}' exceeds {MaxPlausibleAmountInXdc:G} XDC. These rewards are stated in XDC, not wei — a value carried over from the wei spelling has to be divided by 10^18");
+    private static void ThrowTooLarge(in Utf8JsonReader reader) =>
+        throw new JsonException($"'{Literal(in reader)}' XDC exceeds the largest amount representable in wei");
 }

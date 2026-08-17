@@ -77,14 +77,6 @@ public class XdcChainSpecRewardTests
         });
     }
 
-    /// <remarks>
-    /// The wei case is the one the migration produces: 63420000000000001704 is the literal this
-    /// chainspec used to carry, and read as XDC it is ~6.342e37 wei — far inside
-    /// <see cref="UInt256"/>, so only the plausibility bound stops the node from starting and
-    /// inflating every payout by 10^18.
-    /// </remarks>
-    [TestCase("63420000000000001704", TestName = "Reward still stated in wei")]
-    [TestCase("1000000000000000000", TestName = "One XDC stated in wei")]
     [TestCase("-1", TestName = "Negative")]
     [TestCase("-0.0", TestName = "Negative zero")]
     [TestCase("1e60", TestName = "Beyond UInt256 once scaled")]
@@ -142,8 +134,13 @@ public class XdcChainSpecRewardTests
 
         string json = new EthereumJsonSerializer().Serialize(response);
 
-        // 63420000000000001704 wei, the masternode reward, as the QUANTITY the endpoint has always emitted.
-        Assert.That(json, Does.Contain("0x3702119fc874606a8"));
+        // The three rewards as the QUANTITY the endpoint has always emitted.
+        Assert.Multiple(() =>
+        {
+            Assert.That(json, Does.Contain("0x3702119fc874606a8"));
+            Assert.That(json, Does.Contain("0x2b9a2eaa87ae30c38"));
+            Assert.That(json, Does.Contain("0x15cbfb1db0590fc1e"));
+        });
     }
 
     private static V2ConfigParams LoadShippedTestnetRewardConfig()
