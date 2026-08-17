@@ -29,7 +29,7 @@ public sealed class HyperClockCacheWrapper : IDisposable
         if (capacity == 0)
         {
             throw new InvalidConfigurationException(
-                $"Block cache capacity must be greater than zero. Check {nameof(IDbConfig.SharedBlockCacheSize)} and {nameof(IFlatDbConfig.BlockCacheSizeBudget)}.",
+                $"Block cache capacity must be greater than zero. Check Db.{nameof(IDbConfig.SharedBlockCacheSize)} and FlatDb.{nameof(IFlatDbConfig.BlockCacheSizeBudget)}.",
                 ExitCodes.ForbiddenOptionValue);
         }
 

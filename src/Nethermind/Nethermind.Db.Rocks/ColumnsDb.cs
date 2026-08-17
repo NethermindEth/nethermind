@@ -163,16 +163,15 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         {
             _snapshot = snapshot;
 
-            // Create two shared ReadOptions for all column readers instead of 2 per reader.
-            // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
-            // short-lived instances causes Gen1/Gen2 GC pressure from finalizer queue buildup.
+            // Create two shared ReadOptions for all column readers instead of 2 per reader —
+            // creating many short-lived instances costs a native handle each and, when one is left
+            // to its finalizer, Gen1/Gen2 GC pressure from finalizer queue buildup.
             _sharedReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions.SetFillCache(false);
 
             // Single shared delegate for GetViewBetween — avoids per-reader closure allocation.
-            // Note: each GetViewBetween call still creates a new ReadOptions with a finalizer;
-            // that is pre-existing behavior not addressed by this PR.
+            // Each call still creates its own ReadOptions, disposed by the returned view.
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
             T[] keys = CreateKeyCache(columnsDb);
             GetCachedMaxOrdinal(columnsDb, keys);
