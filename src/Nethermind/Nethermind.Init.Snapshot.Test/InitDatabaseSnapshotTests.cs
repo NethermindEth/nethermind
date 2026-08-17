@@ -6,6 +6,7 @@ using System.Formats.Tar;
 using System.IO;
 using System.IO.Abstractions;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -104,6 +105,34 @@ public class InitDatabaseSnapshotTests
             "no bytes should be downloaded when free space is insufficient");
     }
 
+    [Test]
+    public async Task Execute_ServerDoesNotReportSize_SkipsPreDownloadCheckAndCompletes()
+    {
+        byte[] tarBytes = BuildSnapshotTar();
+        using SnapshotServer server = SnapshotServer.Start(payload: tarBytes);
+        _snapshotConfig.DownloadUrl = server.Url;
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(tarBytes.Length * 2L));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+            "the download and extraction should proceed when the server reports no snapshot size");
+    }
+
+    [Test]
+    public async Task Execute_SizeProbeFailsTransiently_SkipsPreDownloadCheckAndCompletes()
+    {
+        byte[] tarBytes = BuildSnapshotTar();
+        using SnapshotServer server = SnapshotServer.Start(contentLength: tarBytes.Length, payload: tarBytes, failFirstRequests: 1);
+        _snapshotConfig.DownloadUrl = server.Url;
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(tarBytes.Length * 2L));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+            "the download and extraction should proceed when the size probe fails transiently");
+    }
+
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(
@@ -113,8 +142,15 @@ public class InitDatabaseSnapshotTests
 
     private long WriteSnapshotTar()
     {
-        using (FileStream fileStream = File.Create(_snapshotPath))
-        using (TarWriter tarWriter = new(fileStream))
+        byte[] tarBytes = BuildSnapshotTar();
+        File.WriteAllBytes(_snapshotPath, tarBytes);
+        return tarBytes.Length;
+    }
+
+    private static byte[] BuildSnapshotTar()
+    {
+        using MemoryStream tarStream = new();
+        using (TarWriter tarWriter = new(tarStream, leaveOpen: true))
         {
             tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "data"));
             PaxTarEntry fileEntry = new(TarEntryType.RegularFile, "data/state.bin")
@@ -124,7 +160,7 @@ public class InitDatabaseSnapshotTests
             tarWriter.WriteEntry(fileEntry);
         }
 
-        return new FileInfo(_snapshotPath).Length;
+        return tarStream.ToArray();
     }
 
     private void AdvanceCheckpoint(SnapshotStage stage) =>
@@ -150,25 +186,44 @@ public class InitDatabaseSnapshotTests
             Url = url;
         }
 
-        public static SnapshotServer Start(long contentLength)
+        public static SnapshotServer Start(long? contentLength = null, byte[] payload = null, int failFirstRequests = 0)
         {
             (HttpListener listener, int port) = StartListener();
+            int requestIndex = 0;
 
             _ = Task.Run(async () =>
             {
                 while (listener.IsListening)
                 {
+                    HttpListenerContext context;
                     try
                     {
-                        HttpListenerContext context = await listener.GetContextAsync();
-                        context.Response.ContentLength64 = contentLength;
-                        byte[] chunk = new byte[1024];
-                        await context.Response.OutputStream.WriteAsync(chunk);
-                        context.Response.OutputStream.Flush();
+                        context = await listener.GetContextAsync();
                     }
                     catch (Exception)
                     {
                         return;
+                    }
+
+                    try
+                    {
+                        if (requestIndex++ < failFirstRequests)
+                        {
+                            context.Response.StatusCode = (int)HttpStatusCode.ServiceUnavailable;
+                            context.Response.Close();
+                            continue;
+                        }
+
+                        byte[] body = payload ?? new byte[1024];
+                        if (contentLength is not null)
+                            context.Response.ContentLength64 = contentLength.Value;
+                        else
+                            context.Response.SendChunked = true;
+                        await context.Response.OutputStream.WriteAsync(body);
+                        context.Response.OutputStream.Close();
+                    }
+                    catch (Exception)
+                    {
                     }
                 }
             });
@@ -180,8 +235,12 @@ public class InitDatabaseSnapshotTests
         {
             for (int attempt = 0; ; attempt++)
             {
+                TcpListener portProbe = new(IPAddress.Loopback, 0);
+                portProbe.Start();
+                int port = ((IPEndPoint)portProbe.LocalEndpoint).Port;
+                portProbe.Stop();
+
                 HttpListener listener = new();
-                int port = Random.Shared.Next(20000, 60000);
                 listener.Prefixes.Add($"http://127.0.0.1:{port}/");
                 try
                 {

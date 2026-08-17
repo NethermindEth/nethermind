@@ -210,7 +210,8 @@ public class InitDatabaseSnapshot(
         {
             totalSize = await downloader.GetTotalSizeAsync(url, existingSize, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception e) when (e is IOException or HttpRequestException)
+        catch (Exception e) when (e is IOException or HttpRequestException
+            || (e is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             if (_logger.IsWarn)
                 _logger.Warn($"Could not determine the snapshot size upfront. Skipping the pre-download disk space check. Error: {e.Message}");
@@ -224,8 +225,36 @@ public class InitDatabaseSnapshot(
             return;
         }
 
-        CheckDiskSpace(GetRequiredSpaceForDownload(totalSize.Value, existingSize), "download and extract");
+        CheckDiskSpaceBeforeDownload(totalSize.Value, existingSize, Path.GetDirectoryName(destinationPath)!);
     }
+
+    private void CheckDiskSpaceBeforeDownload(long totalSize, long existingSize, string snapshotDirectory)
+    {
+        IDriveInfo[] snapshotDrives = api.FileSystem.GetDriveInfos(snapshotDirectory);
+        if (snapshotDrives.Length == 0)
+        {
+            CheckDiskSpace(GetRequiredSpaceForDownload(totalSize, existingSize), "download and extract");
+            return;
+        }
+
+        long remainingDownload = totalSize - existingSize;
+        long extraction = GetRequiredSpaceForExtraction(totalSize);
+
+        foreach (IDriveInfo drive in drives)
+        {
+            bool holdsArchive = snapshotDrives.Any(snapshotDrive => IsSameDrive(snapshotDrive, drive));
+            CheckDiskSpace(drive, holdsArchive ? remainingDownload + extraction : extraction, "download and extract");
+        }
+
+        foreach (IDriveInfo snapshotDrive in snapshotDrives)
+        {
+            if (!drives.Any(drive => IsSameDrive(drive, snapshotDrive)))
+                CheckDiskSpace(snapshotDrive, remainingDownload, "download");
+        }
+    }
+
+    private static bool IsSameDrive(IDriveInfo first, IDriveInfo second) =>
+        string.Equals(first.RootDirectory.FullName, second.RootDirectory.FullName, StringComparison.Ordinal);
 
     internal static long GetRequiredSpaceForDownload(long totalSize, long existingSize) =>
         totalSize - existingSize + GetRequiredSpaceForExtraction(totalSize);
@@ -236,12 +265,15 @@ public class InitDatabaseSnapshot(
     private void CheckDiskSpace(long required, string operation)
     {
         foreach (IDriveInfo drive in drives)
-        {
-            if (drive.AvailableFreeSpace < required)
-                throw new IOException(
-                    $"Insufficient disk space on '{drive.RootDirectory.FullName}' to {operation} the snapshot: " +
-                    $"need at least {required} bytes, {drive.AvailableFreeSpace} available.");
-        }
+            CheckDiskSpace(drive, required, operation);
+    }
+
+    private static void CheckDiskSpace(IDriveInfo drive, long required, string operation)
+    {
+        if (drive.AvailableFreeSpace < required)
+            throw new IOException(
+                $"Insufficient disk space on '{drive.RootDirectory.FullName}' to {operation} the snapshot: " +
+                $"need at least {required} bytes, {drive.AvailableFreeSpace} available.");
     }
 
     private async Task<byte[]> ComputeChecksumAsync(string filePath, CancellationToken cancellationToken)
