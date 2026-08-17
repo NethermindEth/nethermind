@@ -71,7 +71,9 @@ def main():
             clients.append(client)
         if rps not in rpss:
             rpss.append(rps)
-    rpss.sort(key=int)
+    # Repeated rates get a "_rN" slot suffix (e.g. "50_r2"), so sort numerically by the rate
+    # and then by the repeat suffix rather than assuming the whole slot is an integer.
+    rpss.sort(key=lambda r: (int(r.split("_", 1)[0]), r))
     cols = [(c, r) for c in clients for r in rpss]
 
     # 1) MIXED overall (saturation)
