@@ -723,9 +723,6 @@ public partial class EngineModuleTests
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
 
-        // The tx pool applies head changes asynchronously; wait for it to process this block so its txs
-        // are removed and follow-up txs (e.g. the sender's next nonce) are selectable for the next payload —
-        // otherwise a leftover tx can slip into the next produced block.
         Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
             h => chain.TxPool.TxPoolHeadChanged += h,
             h => chain.TxPool.TxPoolHeadChanged -= h,
