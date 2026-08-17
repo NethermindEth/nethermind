@@ -148,6 +148,13 @@ namespace Nethermind.TxPool
         /// <remarks>Unincludable rather than malformed, so it must not disconnect the peer that relayed it.</remarks>
         public static readonly AcceptTxResult FrameTxNoPayer = new(23, TxPoolErrorMessages.FrameTxNoPayer);
 
+        /// <summary>
+        /// An EIP-8141 frame transaction carrying a <c>VERIFY</c> frame behind its validation prefix, whose revert
+        /// would invalidate the transaction on state the pool never validated. It stays consensus-valid; only public
+        /// mempool propagation is refused.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxVerifyAfterPrefix = new(25, TxPoolErrorMessages.FrameTxVerifyAfterPrefix);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

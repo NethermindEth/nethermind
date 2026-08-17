@@ -1646,16 +1646,18 @@ namespace Nethermind.TxPool.Test
                 }
             }
 
-            List<TxFrame> frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
-            ];
+            // An expiry verifier frame may only lead the frame list, so it goes ahead of the self_verify
+            // frame rather than behind it, where it would be a VERIFY frame past the validation prefix.
+            List<TxFrame> frames = [];
             if (deadline is not null)
             {
                 byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
                 BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
                 frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData));
             }
+
+            // Sized so the prefix still fits MAX_VERIFY_GAS once an expiry frame joins it.
+            frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default));
 
             Transaction tx = new()
             {

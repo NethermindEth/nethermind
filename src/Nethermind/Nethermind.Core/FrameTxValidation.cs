@@ -280,6 +280,38 @@ public static class FrameTxValidation
     }
 
     /// <summary>
+    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame behind its recognized
+    /// validation prefix, which EIP-8141 "Structural Rules" rule 8 bars from the public mempool.
+    /// </summary>
+    /// <remarks>
+    /// A public-mempool rule, not a validity rule: such a transaction stays consensus-valid, and the
+    /// reference implementation's static checks do not reject it. The bar exists because a VERIFY frame
+    /// reverting invalidates the whole transaction, and one sitting past the prefix does so on state the
+    /// pool never validated. Judged against the same prefix grammar <see cref="ValidationWorkGas"/>
+    /// prices admission with; a layout matching none of the recognized prefixes has no boundary for the
+    /// rule to apply to and is left to the rules that reject it on their own terms.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to inspect.</param>
+    public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        if (RecognizedPrefixLength(frames, transaction.SenderAddress) is not int prefixLength)
+        {
+            return false;
+        }
+
+        for (int i = prefixLength; i < frames.Length; i++)
+        {
+            if (frames[i].Mode == TxFrame.ModeVerify)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>
