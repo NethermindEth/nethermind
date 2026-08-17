@@ -486,7 +486,7 @@ namespace Nethermind.Synchronization
             if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
-            OnNewRange(_historyPruner.OldestBlockHeader?.Number ?? _blockTree.GetLowestBlock(), latestBlock.Header);
+            OnNewRange(_historyPruner.OldestBlockHeader?.Number ?? LowestBlock, latestBlock.Header);
         }
 
         private void OnNewRange(ulong earliest, BlockHeader latest)
