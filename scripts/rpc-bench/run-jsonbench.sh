@@ -304,11 +304,25 @@ if [[ -n "${RESOURCE_SAMPLER_CONTAINER:-}" && -n "${RESOURCE_SAMPLER_OUT:-}" ]];
     --container "$RESOURCE_SAMPLER_CONTAINER" --out "$RESOURCE_SAMPLER_OUT" &
   sampler_pid=$!
 fi
+# Host perf sampling rides the same window. Its windows are self-bounded and normally finish
+# before the cell does; setsid gives it its own process group so an early-ending cell can kill
+# the whole sampler tree (the script plus a still-running perf) in one signal.
+perf_sampler_pid=""
+if [[ -n "${PERF_SAMPLER_CONTAINER:-}" && -n "${PERF_SAMPLER_OUT_DIR:-}" ]]; then
+  setsid bash "$HERE/perf-sample.sh" "$PERF_SAMPLER_CONTAINER" "$PERF_SAMPLER_OUT_DIR" &
+  perf_sampler_pid=$!
+fi
 stop_resource_sampler() {
-  [[ -n "$sampler_pid" ]] || return 0
-  kill -TERM "$sampler_pid" 2>/dev/null
-  wait "$sampler_pid" 2>/dev/null
-  sampler_pid=""
+  if [[ -n "$sampler_pid" ]]; then
+    kill -TERM "$sampler_pid" 2>/dev/null
+    wait "$sampler_pid" 2>/dev/null
+    sampler_pid=""
+  fi
+  if [[ -n "$perf_sampler_pid" ]]; then
+    kill -TERM -- "-$perf_sampler_pid" 2>/dev/null
+    wait "$perf_sampler_pid" 2>/dev/null
+    perf_sampler_pid=""
+  fi
 }
 trap stop_resource_sampler EXIT
 

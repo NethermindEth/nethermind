@@ -37,7 +37,10 @@ STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(
 
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
                     "timings.csv", "parity-diffs.json", "timings.meta.json",
-                    "resources.json")
+                    "resources.json",
+                    # Host perf sampler output: hardware counters and symbol-level CPU splits.
+                    # Symbols and counts only — no request content — so aggregate-safe.
+                    "perf-stat.txt", "perf-dso.txt", "perf-symbols.txt")
 
 
 class CorpusResultsError(Exception):

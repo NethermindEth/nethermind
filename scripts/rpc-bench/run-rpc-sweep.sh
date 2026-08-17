@@ -56,6 +56,11 @@ CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 # is a no-op, so this is on by default: without it a cross-client latency gap cannot be attributed
 # to doing more work, waiting on IO, or leaving the machine idle.
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
+# Host-side perf during each measured corpus cell: hardware counters (GHz/IPC/LLC misses) and a
+# module-level CPU split of the node process. Requires perf on the runner; missing perf degrades
+# to a note in the cell. Off by default — it is a diagnosis tool for rate-scaling questions, and
+# perf record itself costs a little CPU that a pure latency gate should not carry.
+HOST_PERF_SAMPLING="${HOST_PERF_SAMPLING:-false}"
 # Discarded load applied to each node before its measured cells. Default covers two 120s cells,
 # which is what the 2026-08-13 measurements showed is needed to reach a 0% failure rate; set to 0
 # to measure a cold node deliberately.
@@ -152,12 +157,17 @@ run_cell() {
   if [[ -n "$node" && "$CORPUS_RESOURCE_SAMPLING" == "true" ]]; then
     sampler_container="$node"; sampler_out="$cell/resources.json"
   fi
+  local perf_container="" perf_out=""
+  if [[ -n "$node" && "$HOST_PERF_SAMPLING" == "true" ]]; then
+    perf_container="$node"; perf_out="$cell"
+  fi
   OUT_DIR="$cell" RPC_URL="http://localhost:8545" CLIENT_TYPE="$ctype" LABEL="$label" \
     SCRATCH_ROOT="$SCRATCH_ROOT" JB_REF="$JB_REF" JB_MODE="benchmark" \
     JB_BENCHMARK_CONFIG="$cfg" JB_RPS="$rps" JB_DURATION="$dur" \
     JB_DEEP_CHECK="$deep" JB_HTML_REPORT="false" \
     JB_ETH_CALL_CORPUS="$is_corpus" JB_ETH_CALL_CORPUS_FILE="$corpus" \
     RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
+    PERF_SAMPLER_CONTAINER="$perf_container" PERF_SAMPLER_OUT_DIR="$perf_out" \
     "$here/run-jsonbench.sh"
 }
 
