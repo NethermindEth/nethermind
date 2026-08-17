@@ -40,12 +40,12 @@ internal class EraReaderTests
     }
 
     [Test]
-    public async Task ReadAccumulatorRoot_InPreMergeEpoch_Succeeds()
+    public async Task ReadAccumulatorRoot_InPreMergeEpoch_ReturnsRootOfContents()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
         using EraReader sut = new(file.FilePath);
 
-        Assert.That(() => sut.ReadAccumulatorRoot(), Throws.Nothing);
+        Assert.That(sut.ReadAccumulatorRoot(), Is.EqualTo(ComputeAccumulatorRoot(file.Contents)));
     }
 
     [Test]
@@ -53,11 +53,7 @@ internal class EraReaderTests
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
 
-        using AccumulatorCalculator calculator = new();
-        foreach ((Block block, _) in file.Contents)
-            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
-
-        ValueHash256 expectedRoot = calculator.ComputeRoot();
+        ValueHash256 expectedRoot = ComputeAccumulatorRoot(file.Contents);
 
         using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
@@ -100,11 +96,7 @@ internal class EraReaderTests
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 2);
 
-        using AccumulatorCalculator calculator = new();
-        foreach ((Block block, _) in file.Contents.Where(c => !c.Block.Header.IsPostMerge))
-            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
-
-        ValueHash256 expectedRoot = calculator.ComputeRoot();
+        ValueHash256 expectedRoot = ComputeAccumulatorRoot(file.Contents.Where(c => !c.Block.Header.IsPostMerge));
 
         using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
@@ -152,4 +144,11 @@ internal class EraReaderTests
         Assert.That(receipts[0].Bloom, Is.Not.Null, "bloom must be auto-computed from logs");
     }
 
+    private static ValueHash256 ComputeAccumulatorRoot(IEnumerable<(Block Block, TxReceipt[] Receipts)> contents)
+    {
+        using AccumulatorCalculator calculator = new();
+        foreach ((Block block, _) in contents)
+            calculator.Add(block.Hash!, block.TotalDifficulty!.Value);
+        return calculator.ComputeRoot();
+    }
 }
