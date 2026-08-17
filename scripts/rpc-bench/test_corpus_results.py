@@ -155,6 +155,30 @@ class CorpusResultsTests(unittest.TestCase):
         with self.assertRaises(corpus_results.CorpusResultsError):
             corpus_results._validate_timings_meta(path2)
 
+    def test_manifest_is_validated_and_relativized(self):
+        """The staged manifest must not leak runner-absolute paths, and garbage must not stage."""
+        out_root = self.dir / "out"
+        sanitized = corpus_results.sanitize_data(raw_summary())
+        self.write_json(out_root / "corpus" / "a" / "nm" / "100" / "summary.json", sanitized)
+        cell = out_root / "corpus" / "a" / "nm" / "100"
+        (out_root / "summaries.manifest").write_text(
+            f"iso|a|nm|100={cell / 'jsonbench-summary.md'}\n", encoding="utf-8")
+
+        stage_root = self.dir / "stage-manifest"
+        corpus_results.stage(str(out_root), str(stage_root))
+        staged = (stage_root / "summaries.manifest").read_text(encoding="utf-8")
+        self.assertEqual(staged, "iso|a|nm|100=corpus/a/nm/100/jsonbench-summary.md\n")
+        self.assertNotIn(str(out_root), staged)
+
+        (out_root / "summaries.manifest").write_text(
+            "iso|a|nm|100=/etc/passwd\n", encoding="utf-8")
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results.stage(str(out_root), str(self.dir / "stage-manifest2"))
+
+        (out_root / "summaries.manifest").write_text("not a manifest line\n", encoding="utf-8")
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results.stage(str(out_root), str(self.dir / "stage-manifest3"))
+
     def test_stage_rejects_unsanitized_summary_and_bad_parity(self):
         for name, filename, payload in (
             ("raw k6 summary", "summary.json", raw_summary()),
