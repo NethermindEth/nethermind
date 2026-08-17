@@ -448,29 +448,28 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     public event EventHandler<TNode>? OnNodeAdded;
     public event EventHandler<TNode>? OnNodeRemoved;
 
-    public int Size
+    public RoutingTableOccupancy GetOccupancy()
     {
-        get
+        int nodeCount = 0;
+        int bucketCount = 0;
+        lock (_lock)
         {
-            int total = 0;
-            lock (_lock)
-            {
-                CountNodes(_root);
-            }
-
-            return total;
-
-            void CountNodes(TreeNode node)
-            {
-                if (node.IsLeaf)
-                {
-                    total += node.Bucket.Count;
-                    return;
-                }
-
-                CountNodes(node.Left!);
-                CountNodes(node.Right!);
-            }
+            CountOccupancy(_root, ref nodeCount, ref bucketCount);
         }
+
+        return new RoutingTableOccupancy(nodeCount, bucketCount * _k);
+    }
+
+    private static void CountOccupancy(TreeNode node, ref int nodeCount, ref int bucketCount)
+    {
+        if (node.IsLeaf)
+        {
+            nodeCount += node.Bucket.Count;
+            bucketCount++;
+            return;
+        }
+
+        CountOccupancy(node.Left!, ref nodeCount, ref bucketCount);
+        CountOccupancy(node.Right!, ref nodeCount, ref bucketCount);
     }
 }

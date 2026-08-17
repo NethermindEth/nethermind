@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
@@ -27,8 +28,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             writer.Encode(message.ProtocolVersion);
             writer.Encode(message.NetworkId);
             writer.Encode(message.TotalDifficulty);
-            writer.Encode(message.BestHash);
-            writer.Encode(message.GenesisHash);
+            writer.Encode(message.BestHash ?? Hash256.Zero);
+            writer.Encode(message.GenesisHash ?? Hash256.Zero);
             if (message.ForkId is not null)
             {
                 ForkId forkId = message.ForkId.Value;
@@ -53,8 +54,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Rlp.LengthOf(message.ProtocolVersion) +
                 Rlp.LengthOf(message.NetworkId) +
                 Rlp.LengthOf(message.TotalDifficulty) +
-                Rlp.LengthOf(message.BestHash) +
-                Rlp.LengthOf(message.GenesisHash) +
+                Rlp.LengthOf(message.BestHash ?? Hash256.Zero) +
+                Rlp.LengthOf(message.GenesisHash ?? Hash256.Zero) +
                 forkIdSequenceLength;
 
             return Rlp.LengthOfSequence(contentLength);
