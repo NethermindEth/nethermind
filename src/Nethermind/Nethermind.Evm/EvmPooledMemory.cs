@@ -462,11 +462,21 @@ public struct EvmPooledMemory
     }
 
     private const int MinRentSize = 1_024;
-    private const int MaxCachedArrayLength = 1 << 16;
+    // Above this, a cache miss rents from the shared pool instead of allocating (pow2 sizes from
+    // here up are LOH-sized).
+    private const int MaxNewAllocLength = 1 << 16;
+    // Buffers up to this stay in the per-thread cache. Frames zero-extend their buffer on growth
+    // (RentSlow), and a buffer that round-tripped through the shared pool between frames comes
+    // back cold and coherence-invalidated under concurrent load — so those zeroing stores stall.
+    // Keeping mid-size buffers on the renting thread keeps the lines warm; the byte budget bounds
+    // per-thread retention.
+    private const int MaxThreadCachedArrayLength = 1 << 18;
+    private const int MaxThreadCachedBytes = 2 << 20;
     private const int CacheSlots = 16;
 
     [ThreadStatic] private static byte[]?[]? _cachedArrays;
     [ThreadStatic] private static int _cachedArrayCount;
+    [ThreadStatic] private static int _cachedArrayBytes;
 
     // Cached dirty; RentSlow zero-extends past Size in chunks on growth.
     private static byte[] Rent(int minLength)
@@ -479,13 +489,14 @@ public struct EvmPooledMemory
             if (candidate.Length >= minLength)
             {
                 _cachedArrayCount = cachedArrayCount;
+                _cachedArrayBytes -= candidate.Length;
                 cache[i] = cache[cachedArrayCount];
                 cache[cachedArrayCount] = null;
                 return candidate;
             }
         }
 
-        if (minLength > MaxCachedArrayLength)
+        if (minLength > MaxNewAllocLength)
         {
             return RentLarge(minLength);
         }
@@ -495,16 +506,21 @@ public struct EvmPooledMemory
 
     private static void Return(byte[] array)
     {
-        if (array.Length > MaxCachedArrayLength)
+        // Provenance: arrays <= MaxNewAllocLength are plain allocations, larger ones came from
+        // RentLarge — an array must never reach a pool it was not rented from.
+        if (array.Length <= MaxThreadCachedArrayLength
+            && _cachedArrayCount < CacheSlots
+            && _cachedArrayBytes + array.Length <= MaxThreadCachedBytes)
         {
-            ReturnLarge(array);
+            byte[]?[] cache = _cachedArrays ??= new byte[CacheSlots][];
+            cache[_cachedArrayCount++] = array;
+            _cachedArrayBytes += array.Length;
             return;
         }
 
-        byte[]?[] cache = _cachedArrays ??= new byte[CacheSlots][];
-        if (_cachedArrayCount < CacheSlots)
+        if (array.Length > MaxNewAllocLength)
         {
-            cache[_cachedArrayCount++] = array;
+            ReturnLarge(array);
         }
     }
 
