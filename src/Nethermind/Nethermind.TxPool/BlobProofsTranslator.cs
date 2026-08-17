@@ -13,7 +13,7 @@ internal static class BlobProofsTranslator
 {
     public static bool TryTranslateToCurrentProofVersion(Transaction tx, ProofVersion currentProofVersion)
     {
-        if (tx is not { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper wrapper }
+        if (tx is not { CarriesBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper wrapper }
             || wrapper.Version == currentProofVersion)
         {
             return true;

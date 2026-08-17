@@ -84,6 +84,16 @@ namespace Nethermind.Core
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
 
+        /// <summary>Whether the transaction creates a contract at the top level, so a receipt names a <c>contractAddress</c>.</summary>
+        /// <remarks>
+        /// An EIP-8141 frame transaction carries no <c>to</c> field at all, which makes
+        /// <see cref="IsContractCreation"/> true for it, yet it creates nothing at the top level: a
+        /// creation happens inside a deploy frame through <c>CREATE</c>, at an address the frame
+        /// determines. Reporting a top-level contract address for one names an account that was never
+        /// created, and every site that derives it independently invents a different address.
+        /// </remarks>
+        public bool CreatesTopLevelContract => IsContractCreation && !SupportsFrames;
+
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
         public bool HasAuthorizationList =>
             Type == TxType.SetCode &&
@@ -200,7 +210,18 @@ namespace Nethermind.Core
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        public object? NetworkWrapper { get; set; }
+        private object? _networkWrapper;
+
+        /// <remarks>Replacing the sidecar changes the mempool-form length, so the memoized size is dropped.</remarks>
+        public object? NetworkWrapper
+        {
+            get => _networkWrapper;
+            set
+            {
+                _networkWrapper = value;
+                _size = null;
+            }
+        }
 
         /// <summary>
         /// List of EOA code authorizations.
@@ -233,6 +254,22 @@ namespace Nethermind.Core
         /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
         /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
         public UInt256[]? NonceKeys { get; set; }
+
+        /// <summary>
+        /// Recent-root references declared by a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8272
+        /// </summary>
+        /// <remarks><see langword="null"/> for an envelope that predates EIP-8272, which is a different
+        /// signing payload from one carrying an empty reference list.</remarks>
+        public RecentRootReference[]? RecentRootReferences { get; set; }
+
+        /// <summary>
+        /// The zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, which EIP-8141
+        /// prices in addition to frame and signature data. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>Set from the canonical encoding by the decoder and the frame processor, so the charge is
+        /// counted off the very bytes the wire form carries rather than recomputed.</remarks>
+        public (int ZeroBytes, int NonZeroBytes) ReferenceCalldataStats { get; set; }
 
         /// <summary>
         /// Zero and non-zero byte counts of the type-specific calldata EIP-8141 prices in addition to the
@@ -315,7 +352,7 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool MayHaveNetworkForm => Type is TxType.Blob;
+        public bool MayHaveNetworkForm => Type is TxType.Blob or TxType.FrameTx;
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
@@ -363,6 +400,8 @@ namespace Nethermind.Core
                 obj.FrameSignatures = default;
                 obj.PayerAddress = default;
                 obj.NonceKeys = default;
+                obj.RecentRootReferences = default;
+                obj.ReferenceCalldataStats = default;
                 obj.FrameCalldataStats = default;
 
                 return true;
@@ -400,11 +439,13 @@ namespace Nethermind.Core
             tx.FrameSignatures = FrameSignatures;
             tx.PayerAddress = PayerAddress;
             tx.NonceKeys = NonceKeys;
+            tx.RecentRootReferences = RecentRootReferences;
+            tx.ReferenceCalldataStats = ReferenceCalldataStats;
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 
         public virtual ProofVersion? GetProofVersion() =>
-            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version
                 : null;
     }

@@ -25,20 +25,60 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
+    /// <summary>Checks a frame transaction's nonce against the sender's state, under either nonce shape.</summary>
+    /// <remarks>
+    /// With <see cref="Transaction.NonceKeys"/> every selected key must currently sit at
+    /// <see cref="Transaction.Nonce"/>, so the set is consumed as a unit and a partially advanced set is not
+    /// replayable. A malformed set is rejected as malformed, not as a nonce mismatch: it names no sequence.
+    /// </remarks>
+    private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
+    {
+        UInt256[]? nonceKeys = tx.NonceKeys;
+        if (nonceKeys is null)
+        {
+            UInt256 accountNonce = WorldState.GetNonce(sender);
+            return accountNonce == tx.Nonce
+                ? TransactionResult.Ok
+                : (tx.Nonce < accountNonce
+                    ? TransactionResult.ErrorType.TransactionNonceTooLow
+                    : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce mismatch");
+        }
+
+        if (KeyedNonceManager.IsNonceSetValid(WorldState, sender, nonceKeys, tx.Nonce))
+        {
+            return TransactionResult.Ok;
+        }
+
+        // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
+        if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
+        }
+
+        if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
+        }
+
+        ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
+        return (tx.Nonce < current
+            ? TransactionResult.ErrorType.TransactionNonceTooLow
+            : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce sequence mismatch");
+    }
+
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;
         Snapshot txSnapshot = WorldState.TakeSnapshot();
 
-        // Pre-flight: nonce and protocol-validated signatures.
-        UInt256 accountNonce = WorldState.GetNonce(sender);
-        if (accountNonce != tx.Nonce)
+        if (tx.NonceKeys is not null && !spec.IsEip8250Enabled)
         {
-            TransactionResult.ErrorType nonceError = tx.Nonce < accountNonce
-                ? TransactionResult.ErrorType.TransactionNonceTooLow
-                : TransactionResult.ErrorType.TransactionNonceTooHigh;
-            return nonceError.WithDetail("frame transaction nonce mismatch");
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("keyed nonces are not enabled");
         }
+
+        // Pre-flight: nonce and protocol-validated signatures.
+        TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
+        if (!nonceResult) return nonceResult;
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         // EIP-7928: resolved without recording an account access - a tx that never takes the P256
@@ -72,6 +112,19 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             prevIsAtomicBatch = frame.IsAtomicBatch;
         }
 
+        if (tx.RecentRootReferences is { } references)
+        {
+            if (!spec.IsEip8272Enabled)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root references are not enabled");
+            }
+
+            if (references.Length > Eip8272Constants.MaxRecentRootReferences)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("too many recent root references");
+            }
+        }
+
         if (tx.NonceKeys is not null)
         {
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
@@ -79,6 +132,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // The frame gas sum is overflow-checked so the processor does not depend on static validation
         // having run.
+        tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
@@ -124,7 +178,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             in maxCost,
             in tx.MaxPriorityFeePerGas,
             tx.DecodedMaxFeePerGas,
-            tx.MaxFeePerBlobGas.GetValueOrDefault());
+            tx.MaxFeePerBlobGas.GetValueOrDefault(),
+            WorldState.GetNonce(sender),
+            tx.RecentRootReferences,
+            tx.NonceKeys);
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
         ulong totalFrameGasUsed = 0;
@@ -145,6 +202,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             accessTracker.WarmUp(sender);
+        }
+
+        if (!RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, header.SlotNumber, in accessTracker))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
         }
 
         // Atomic batch state: a maximal contiguous run [i, j] where i..j-1 have ATOMIC_BATCH_FLAG
@@ -492,17 +554,21 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // Default code: a codeless target (empty code hash, no EIP-7702 delegation indicator) runs
-        // the protocol-defined behavior instead of the EVM.
-        if (WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
+        // Only a VERIFY frame's codeless target runs default code (execute_frame, execution-specs);
+        // every other frame runs a top-level call, which dispatches a precompile by address.
+        if (frame.Mode == TxFrame.ModeVerify && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            return ExecuteDefaultCode(frame, resolvedTarget, caller, frameContext, in accessTracker, spec, tracer, out gasUsed);
+            return ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, out gasUsed);
         }
 
+        // EIP8141: create_evm_from_frame charges the target's access and any value transfer reviving it
+        // from the frame's own gas. That entry charge is pending branch-wide, so every frame here is short by it.
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
         ReadOnlyMemory<byte> inputData = frame.Data;
 
-        ExecutionEnvironment env = ExecutionEnvironment.Rent(
+        // VmState.Dispose releases its environment only below the top level, so this one is caller-owned;
+        // declared before the VmState so it returns to the pool after it (reverse declaration order).
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo: codeInfo,
             executingAccount: resolvedTarget,
             caller: caller,
@@ -558,67 +624,54 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>
-    /// EIP-8141 default code for a codeless target. VERIFY: require a canonical-hash SECP256K1
-    /// signature at index 0 whose resolved signer is the target, then signal APPROVE with the
-    /// frame's allowed scope. SENDER/DEFAULT: succeed as empty code, performing the value transfer
-    /// and emitting its EIP-7708 transfer log into the frame receipt.
+    /// EIP-8141 default code of a <c>VERIFY</c> frame whose target has no code: require a canonical-hash
+    /// SECP256K1 signature signed by the target, then APPROVE. No gas beyond the EIP-8250 surcharge.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
     /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
     /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
     /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
-    /// EIP8141: default-code gas metering is pending, so the transfer to a dead recipient always
-    /// logs (the EIP-8037 NEW_ACCOUNT charge that suppresses it on the VM path never applies) and
-    /// needs no frame-journal snapshot. A gas charge here would revisit both.
     /// </summary>
-    /// <param name="accessTracker">Cross-frame log/warm journal; the transfer log is appended to
-    /// its log list so it reaches the frame receipt and the transaction log union.</param>
-    private TransactionSubstate ExecuteDefaultCode(TxFrame frame, Address resolvedTarget, Address caller, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed)
+    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, ITxTracer tracer, out ulong gasUsed)
     {
         gasUsed = 0;
 
-        // Keyed on VERIFY rather than on staticness: EIP-7906 POST_TX frames are static too, but the
-        // spec routes them through the SENDER / DEFAULT branch below.
-        if (frame.Mode == TxFrame.ModeVerify)
+        byte allowedScope = frame.AllowedApproveScope;
+        if (allowedScope == 0)
         {
-            byte allowedScope = frame.AllowedApproveScope;
-            if (allowedScope == 0)
-            {
-                return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
-            }
-
-            // The expected signature index depends on the frame's scope: execution (or both) reads
-            // index 0; a payment-only verifier (a codeless EOA sponsor) reads index 1
-            // (ethereum/EIPs#11954).
-            int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
-            TxFrameSignature[] signatures = frameContext.Signatures;
-            if (signatures.Length <= sigIndex
-                || signatures[sigIndex].Scheme != TxFrameSignature.SchemeSecp256k1
-                || !signatures[sigIndex].Msg.IsEmpty
-                || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
-            {
-                return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
-            }
-
-            frameContext.ApprovalScopeSignal = allowedScope;
-            return DefaultCodeSuccess();
+            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // SENDER / DEFAULT: as if calling empty code — perform only the value transfer.
-        UInt256 value = frame.Value;
-        if (!value.IsZero)
+        int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
+        TxFrameSignature[] signatures = frameContext.Signatures;
+        if (signatures.Length <= sigIndex
+            || signatures[sigIndex].Scheme != TxFrameSignature.SchemeSecp256k1
+            || !signatures[sigIndex].Msg.IsEmpty
+            || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
         {
-            WorldState.SubtractFromBalance(caller, in value, spec);
-            WorldState.AddToBalanceAndCreateIfNotExists(resolvedTarget, in value, spec);
-            // EIP-7708: self-transfers emit no log; zero value is excluded by the outer guard.
-            if (spec.IsEip7708Enabled && caller != resolvedTarget)
-            {
-                LogEntry transferLog = TransferLog.CreateTransfer(caller, resolvedTarget, in value);
-                accessTracker.Logs.Add(transferLog);
-                if (tracer.IsTracingLogs) tracer.ReportLog(transferLog);
-            }
+            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
+        // Owes the surcharge APPROVE charges, but only where APPROVE would charge it: the guards below
+        // are the ones ApplyApproval discards on, so charging ahead of them bills a consumption that never happens.
+        if ((allowedScope & TxFrame.ApprovePayment) != 0
+            && frameContext.Payer is null
+            && ((allowedScope & TxFrame.ApproveExecution) != 0 || frameContext.SenderApproved)
+            && WorldState.GetBalance(resolvedTarget) >= frameContext.MaxCost
+            && frameContext.NonceKeys is { } nonceKeys)
+        {
+            ulong surcharge = KeyedNonceManager.FirstUseSurcharge(WorldState, frameContext.Sender, nonceKeys);
+            if (surcharge > frame.GasLimit)
+            {
+                // Match the EVM path, which charges an error frame its whole limit.
+                gasUsed = frame.GasLimit;
+                return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+            }
+
+            gasUsed = surcharge;
+        }
+
+        frameContext.ApprovalScopeSignal = allowedScope;
         return DefaultCodeSuccess();
     }
 
@@ -654,10 +707,27 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // frame approves payment.
             if (WorldState.GetBalance(resolvedTarget) < frameContext.MaxCost) return;
 
+            // EIP-8250: the account nonce cannot advance past MAX_NONCE_SEQ, and an approval that
+            // cannot consume its nonce performs no approval effects at all.
+            UInt256[]? keys = frameContext.NonceKeys;
+            if ((keys is null || (keys.Length == 1 && keys[0].IsZero))
+                && WorldState.GetNonce(frameContext.Sender) >= Eip8250Constants.MaxNonceSeq)
+            {
+                return;
+            }
+
             // Charge the max cost up front from the payer and consume the sender nonce; unused
             // gas is refunded to the payer at the end of the transaction.
             WorldState.SubtractFromBalance(resolvedTarget, frameContext.MaxCost, spec);
-            WorldState.IncrementNonce(frameContext.Sender);
+            if (frameContext.NonceKeys is { } nonceKeys)
+            {
+                KeyedNonceManager.ConsumeNonceSet(WorldState, frameContext.Sender, nonceKeys, frameContext.Nonce);
+            }
+            else
+            {
+                WorldState.IncrementNonce(frameContext.Sender);
+            }
+
             frameContext.Payer = resolvedTarget;
         }
     }
