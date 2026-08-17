@@ -25,14 +25,6 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP8141-GAP: frame expiry cannot see a persisted blob-carrying frame tx, so admit in memory only.
-        if (tx.SupportsFrames && tx.CarriesBlobs && !_txPoolConfig.BlobsSupport.SupportsBlobFrameTxs())
-        {
-            Metrics.PendingTransactionsNotSupportedTxType++;
-            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions require in-memory blob support.");
-            return AcceptTxResult.NotSupportedTxType;
-        }
-
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
         // Still missing before any public activation: validation-prefix simulation, paymaster reservation, the
         // failed-APPROVE replay bound, dependency-set revalidation/eviction ordering, and payer-exposure

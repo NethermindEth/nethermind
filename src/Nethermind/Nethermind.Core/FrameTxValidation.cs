@@ -485,7 +485,9 @@ public static class FrameTxValidation
         TxFrame[]? frames = transaction.Frames;
         if (frames is null)
         {
-            return false;
+            // A reloaded light record has no frames; its deadline comes back from storage instead.
+            deadline = transaction.PersistedExpiryDeadline.GetValueOrDefault();
+            return transaction.PersistedExpiryDeadline is not null;
         }
 
         for (int i = 0; i < frames.Length; i++)

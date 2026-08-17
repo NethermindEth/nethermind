@@ -1555,6 +1555,29 @@ namespace Nethermind.TxPool.Test
                 "an expired blob-carrying frame tx must be evicted from the blob pool on a new head");
         }
 
+        // The deadline lives in the frames, which a reloaded light record does not have — so without it
+        // persisted the sweep cannot see the transaction and it never leaves the pool.
+        [Test]
+        public async Task Expired_blob_carrying_frame_tx_is_evicted_after_a_restart()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A fresh pool over the same storage stands in for a node restart.
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the transaction must survive the restart");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
+                "a reloaded blob-carrying frame tx must still expire out of the pool");
+        }
+
         // EIP-8141: with blobs disabled the blob-pool routing has zero capacity, so a blob-carrying frame tx must be
         // rejected as an unsupported type at ingress rather than silently dropped as too-low-fee.
         [Test]
@@ -1571,18 +1594,18 @@ namespace Nethermind.TxPool.Test
 
         [TestCase(BlobsSupportMode.Storage)]
         [TestCase(BlobsSupportMode.StorageWithReorgs)]
-        public void Blob_carrying_frame_tx_is_rejected_under_persistent_blob_pool(BlobsSupportMode blobsSupport)
+        public void Blob_carrying_frame_tx_is_accepted_under_persistent_blob_pool(BlobsSupportMode blobsSupport)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            AcceptTxResult result = _txPool.SubmitTx(BuildBlobFrameTx(nonce: 0, blobCount: 1), TxHandlingOptions.None);
+            AcceptTxResult result = _txPool.SubmitTx(BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true), TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
-                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
             }
         }
 

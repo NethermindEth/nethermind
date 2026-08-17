@@ -23,7 +23,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(tx.GetLength())
                + Rlp.LengthOf(sizeof(byte))
-               + Rlp.LengthOf((byte)tx.Type);
+               + Rlp.LengthOf((byte)tx.Type)
+               + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -45,6 +46,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
         // Appended last so records written before it still decode, defaulting to TxType.Blob.
         writer.Encode((byte)tx.Type);
+        // Expiry needs the deadline after a reload, where the frames that carried it are gone.
+        if (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline)) writer.Encode(expiryDeadline);
 
         return bytes;
     }
@@ -67,6 +70,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             poolIndex: ctx.DecodeULong(),
             size: ctx.DecodePositiveInt(),
             proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.DecodeByte() : default,
-            type: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (TxType)ctx.DecodeByte() : TxType.Blob);
+            type: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (TxType)ctx.DecodeByte() : TxType.Blob,
+            expiryDeadline: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? ctx.DecodeULong() : null);
     }
 }

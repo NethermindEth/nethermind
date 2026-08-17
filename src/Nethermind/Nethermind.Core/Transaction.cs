@@ -434,6 +434,10 @@ namespace Nethermind.Core
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 
+        /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
+        /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
+        public virtual ulong? PersistedExpiryDeadline => null;
+
         public virtual ProofVersion? GetProofVersion() =>
             NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version

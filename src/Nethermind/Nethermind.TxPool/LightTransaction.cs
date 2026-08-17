@@ -30,6 +30,7 @@ public class LightTransaction : Transaction
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
         ProofVersion = fullTx.GetProofVersion();
+        PersistedExpiryDeadline = FrameTxValidation.TryGetExpiryDeadline(fullTx, out ulong deadline) ? deadline : null;
         _size = fullTx.GetLength();
     }
 
@@ -53,7 +54,7 @@ public class LightTransaction : Transaction
     {
     }
 
-    // Declared in the order LightTxDecoder reads them: the two optional trailing fields come last.
+    /// <summary>Signature without the persisted expiry deadline, kept for out-of-tree callers.</summary>
     public LightTransaction(
         UInt256 timestamp,
         Address sender,
@@ -69,6 +70,28 @@ public class LightTransaction : Transaction
         int size,
         ProofVersion proofVersion,
         TxType type)
+        : this(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas, maxFeePerBlobGas,
+            blobVersionHashes, poolIndex, size, proofVersion, type, null)
+    {
+    }
+
+    // Declared in the order LightTxDecoder reads them: the optional trailing fields come last.
+    public LightTransaction(
+        UInt256 timestamp,
+        Address sender,
+        ulong nonce,
+        Hash256 hash,
+        UInt256 value,
+        ulong gasLimit,
+        UInt256 gasPrice,
+        UInt256 maxFeePerGas,
+        UInt256 maxFeePerBlobGas,
+        byte[][] blobVersionHashes,
+        ulong poolIndex,
+        int size,
+        ProofVersion proofVersion,
+        TxType type,
+        ulong? expiryDeadline)
     {
         Type = type;
         Hash = hash;
@@ -83,10 +106,14 @@ public class LightTransaction : Transaction
         Timestamp = timestamp;
         PoolIndex = poolIndex;
         ProofVersion = proofVersion;
+        PersistedExpiryDeadline = expiryDeadline;
         _size = size;
     }
 
     public ProofVersion? ProofVersion { get; set; }
+
+    /// <inheritdoc/>
+    public override ulong? PersistedExpiryDeadline { get; }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
 }

@@ -45,7 +45,6 @@ public class Eth68ProtocolHandler(ISession session,
     private const int MaxPooledTransactionHashesPerRequest = 256;
 
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
-    private readonly bool _blobFrameTxsAdmissible = txPoolConfig.BlobsSupport.SupportsBlobFrameTxs();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
     private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
@@ -291,7 +290,7 @@ public class Eth68ProtocolHandler(ISession session,
                 if (!CanRequestPooledTransaction(txShape.Type, ref frameTxsEnabled)
                     || txShape.Size <= 0
                     // Blob-sized only where a blob-carrying frame tx is admissible: tracks NotSupportedTxFilter.
-                    || txShape.Size > (txShape.Type is TxType.Blob || (txShape.Type is TxType.FrameTx && _blobFrameTxsAdmissible)
+                    || txShape.Size > (txShape.Type is TxType.Blob || (txShape.Type is TxType.FrameTx && _blobSupportEnabled)
                         ? _configuredMaxBlobTxSize
                         : _configuredMaxTxSize))
                 {

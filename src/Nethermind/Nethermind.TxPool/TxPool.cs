@@ -155,7 +155,14 @@ namespace Nethermind.TxPool
             _blobTransactions.Inserted += OnInsertedTx;
             _blobTransactions.Removed += OnRemovedTx;
             if (_blobTransactions.Count > 0)
+            {
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
+                // Records restored inside the pool's constructor predate the Inserted handler above.
+                foreach (Transaction restored in _blobTransactions.GetSnapshot())
+                {
+                    if (HasExpiryDeadline(restored)) Interlocked.Increment(ref _expiringFrameTxCount);
+                }
+            }
 
             _headInfo.HeadChanged += OnHeadChange;
 
