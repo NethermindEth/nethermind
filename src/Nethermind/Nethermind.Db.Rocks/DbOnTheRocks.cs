@@ -675,13 +675,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         WriteOptions = CreateWriteOptions(dbConfig);
 
         _noWalWrite = CreateWriteOptions(dbConfig);
-        _noWalWrite.DisableWal(1);
+        _noWalWrite.SetDisableWal(true);
 
         _lowPriorityWriteOptions = CreateWriteOptions(dbConfig);
         _lowPriorityWriteOptions.SetLowPriority(true);
 
         _lowPriorityAndNoWalWrite = CreateWriteOptions(dbConfig);
-        _lowPriorityAndNoWalWrite.DisableWal(1);
+        _lowPriorityAndNoWalWrite.SetDisableWal(true);
         _lowPriorityAndNoWalWrite.SetLowPriority(true);
 
         _defaultReadOptions = CreateReadOptions();

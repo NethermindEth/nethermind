@@ -3,7 +3,6 @@
   <Import Project="../tests.props" />
   
   <PropertyGroup>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <Nullable>annotations</Nullable>
   </PropertyGroup>
   <ItemGroup>

@@ -19,7 +19,6 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
-using Nethermind.RocksDbBindings.Native;
 using NSubstitute;
 using NUnit.Framework;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -53,26 +52,17 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
-            WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
-            Assert.That(LowPriority(options), Is.EqualTo(1));
-            Assert.That(DisableWal(options), Is.EqualTo(0));
+            WriteOptions options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority)!;
+            Assert.That(options.GetLowPriority(), Is.True);
+            Assert.That(options.GetDisableWal(), Is.False);
 
-            options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL);
-            Assert.That(LowPriority(options), Is.EqualTo(1));
-            Assert.That(DisableWal(options), Is.EqualTo(1));
+            options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL)!;
+            Assert.That(options.GetLowPriority(), Is.True);
+            Assert.That(options.GetDisableWal(), Is.True);
 
-            options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
-            Assert.That(LowPriority(options), Is.EqualTo(0));
-            Assert.That(DisableWal(options), Is.EqualTo(1));
-
-            // The bindings expose no managed getters for these two flags, so they are read through the raw
-            // native layer. The cast is safe because `db` keeps the options alive for the whole test and
-            // `WriteOptions.Handle` is a live `rocksdb_writeoptions_t*` until the owner is disposed.
-            static unsafe byte LowPriority(WriteOptions options) =>
-                RocksDbNative.rocksdb_writeoptions_get_low_pri((rocksdb_writeoptions_t*)options.Handle);
-
-            static unsafe byte DisableWal(WriteOptions options) =>
-                RocksDbNative.rocksdb_writeoptions_get_disable_WAL((rocksdb_writeoptions_t*)options.Handle);
+            options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL)!;
+            Assert.That(options.GetLowPriority(), Is.False);
+            Assert.That(options.GetDisableWal(), Is.True);
         }
 
         [Test]
