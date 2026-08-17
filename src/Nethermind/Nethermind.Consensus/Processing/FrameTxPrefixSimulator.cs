@@ -29,9 +29,8 @@ public sealed class FrameTxPrefixSimulator(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FrameTxPrefixSimulator>();
     private readonly object _lock = new();
-    // Negative is clamped to the documented "0 lifts the limit" rather than to an unbounded wait.
-    private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(0, txPoolConfig.FrameTxSimulationTimeoutMs));
-    private readonly long _headBudgetTicks = (long)(Math.Max(0, txPoolConfig.FrameTxSimulationBudgetPerHeadMs) / 1000d * Stopwatch.Frequency);
+    private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(txPoolConfig.FrameTxSimulationTimeoutMs);
+    private readonly long _headBudgetTicks = (long)(txPoolConfig.FrameTxSimulationBudgetPerHeadMs / 1000d * Stopwatch.Frequency);
     private IReadOnlyTxProcessorSource? _source;
     private Hash256? _budgetHead;
     private long _budgetSpentTicks;
@@ -158,7 +157,8 @@ public sealed class FrameTxPrefixSimulator(
 
     /// <summary>Whether the per-head simulation time budget still has room, resetting it on a new head.</summary>
     /// <remarks>Checked before the simulation and charged after it, so it can overshoot by one simulation;
-    /// a stalled head keeps its exhausted budget.</remarks>
+    /// a stalled head keeps its exhausted budget. A reorg re-admits its transactions as gossip, so they are
+    /// the first claim on the new head's budget, spent on the head-change thread.</remarks>
     private bool HasHeadBudget(BlockHeader head)
     {
         if (_headBudgetTicks <= 0) return true;
