@@ -46,15 +46,18 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
     public bool TryGetValue(TKey key, out TValue value)
     {
-        if (_count != 0)
+        int count = _count;
+        if (count != 0)
         {
             uint hashCode = (uint)key.GetHashCode();
             int i = _buckets[hashCode & _bucketMask] + _bucketBias;
-            if ((uint)i < (uint)_count)
+            if ((uint)i < (uint)count)
             {
                 Entry[] entries = _entries;
-                // Next descends within the build or goes negative; guarding on entries.Length elides the bounds check.
-                while ((uint)i < (uint)entries.Length)
+                // Next descends within the build or goes negative; guarding on entries.Length elides the bounds
+                // check. The hop cap (a valid chain has at most count hops) bounds the walk even if a caller
+                // violates the lease and reads during a rebuild - a torn walk misses instead of spinning.
+                for (int hops = count; hops > 0 && (uint)i < (uint)entries.Length; hops--)
                 {
                     ref Entry entry = ref entries[i];
                     if (entry.HashCode == hashCode && entry.Key.Equals(key))
@@ -75,13 +78,17 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         where TComparer : IComparer<TKey>
     {
         int count = source.Count;
+        _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
         EnsureEntryCapacity(count);
         int i = 0;
         foreach (KeyValuePair<TKey, TValue> kv in source)
         {
+            // A concurrently mutated source can yield more items than Count; never write past the dirty watermark.
+            if (i == count) break;
             _entries[i++] = new Entry { HashCode = (uint)kv.Key.GetHashCode(), Key = kv.Key, Value = kv.Value };
         }
 
+        count = i; // it can also yield fewer; only what was written is the build
         _entries.AsSpan(0, count).Sort(new EntryKeyComparer<TComparer>(keyComparer));
         _count = count;
         BuildBuckets();
@@ -101,11 +108,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         Func<int, TKey, bool>? keep = null)
         where TComparer : IComparer<TKey>
     {
-        if (sources.Length == 0)
-        {
-            _count = 0;
-            return;
-        }
+        _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
+        if (sources.Length == 0) return;
 
         int total = 0;
         foreach (SortedMergeDictionary<TKey, TValue> source in sources) total += source._count;
@@ -114,7 +118,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         LoserTree<TComparer> tree = new(sources, keyComparer);
         Entry[] entries = _entries;
         int count = 0;
-        while (tree.TryNext(keep, out Entry chosen))
+        // count < total also guards the dirty watermark against sources mutated in violation of their lease.
+        while (count < total && tree.TryNext(keep, out Entry chosen))
         {
             entries[count++] = chosen;
         }

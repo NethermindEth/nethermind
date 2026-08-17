@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.State.Flat.Collections;
@@ -217,6 +218,86 @@ public class SortedMergeDictionaryTests
         {
             Assert.That(dict.TryGetValue(stale, out _), Is.False, $"stale key {stale} resurrected");
         }
+    }
+
+    [Test]
+    public void ThrowingKeep_MidMerge_LeavesDictionaryEmptyAndUsable()
+    {
+        using SortedMergeDictionary<int, int> dict = new();
+
+        Dictionary<int, int> initial = [];
+        for (int i = 0; i < 100; i++) initial[i] = i;
+        dict.BuildFromUnsorted(initial, Cmp);
+
+        // A keep delegate that throws mid-merge must not leave a lookup-able mix of old and new entries.
+        using SortedMergeDictionary<int, int> source = FromPairs((200, 1), (201, 1), (202, 1), (203, 1));
+        Assert.That(
+            () => dict.BuildFromMerge([source], Cmp, static (_, key) => key < 202 ? true : throw new InvalidOperationException()),
+            Throws.InvalidOperationException);
+
+        Assert.That(dict.Count, Is.EqualTo(0));
+        for (int i = 0; i < 100; i++) Assert.That(dict.TryGetValue(i, out _), Is.False, $"stale key {i} after failed merge");
+        for (int i = 200; i < 204; i++) Assert.That(dict.TryGetValue(i, out _), Is.False, $"partial key {i} after failed merge");
+
+        dict.BuildFromMerge([source], Cmp);
+        Assert.That(dict.Count, Is.EqualTo(4));
+        Assert.That(dict.TryGetValue(202, out _), Is.True);
+    }
+
+    [TestCase(40, 60)] // yields more than Count: extras are ignored and never written past the counted capacity
+    [TestCase(60, 40)] // yields fewer: only written entries form the build, no phantom default-key entries
+    public void CountEnumerationMismatch_BuildsExactlyWhatWasWritten(int reportedCount, int actualCount)
+    {
+        // Production sources are ConcurrentDictionary, whose Count and lock-free enumerator can disagree.
+        using SortedMergeDictionary<int, int> dict = new();
+        dict.BuildFromUnsorted(new MismatchedCountSource(reportedCount, actualCount), Cmp);
+
+        int expected = Math.Min(reportedCount, actualCount);
+        Assert.That(dict.Count, Is.EqualTo(expected));
+        for (int i = 1; i <= expected; i++)
+        {
+            Assert.That(dict.TryGetValue(i * 3, out int value), Is.True, $"missing key {i * 3}");
+            Assert.That(value, Is.EqualTo(i));
+        }
+        for (int i = expected + 1; i <= Math.Max(reportedCount, actualCount); i++)
+        {
+            Assert.That(dict.TryGetValue(i * 3, out _), Is.False, $"unexpected key {i * 3}");
+        }
+        Assert.That(dict.TryGetValue(0, out _), Is.False, "phantom default entry");
+        Assert.That(dict.Select(static kv => kv.Key), Is.Ordered);
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(37)]
+    [TestCase(400)]
+    public void SingleBucketChain_WalksItsFullLength(int count)
+    {
+        // Multiples of 65536 share the low bits, so every key lands in one bucket and the first-written key
+        // sits at the very end of the chain - the walk must reach it, and a same-bucket miss must terminate.
+        Dictionary<int, int> source = [];
+        for (int i = 0; i < count; i++) source[i * 65536] = i;
+
+        using SortedMergeDictionary<int, int> dict = SortedMergeDictionary<int, int>.FromUnsorted(source, Cmp);
+
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(dict.TryGetValue(i * 65536, out int value), Is.True, $"missing chain entry {i}");
+            Assert.That(value, Is.EqualTo(i));
+        }
+        Assert.That(dict.TryGetValue(500 * 65536, out _), Is.False);
+    }
+
+    private sealed class MismatchedCountSource(int reportedCount, int actualCount) : IReadOnlyCollection<KeyValuePair<int, int>>
+    {
+        public int Count => reportedCount;
+
+        public IEnumerator<KeyValuePair<int, int>> GetEnumerator()
+        {
+            for (int i = 1; i <= actualCount; i++) yield return new KeyValuePair<int, int>(i * 3, i);
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private static SortedMergeDictionary<int, int> FromPairs(params (int Key, int Value)[] pairs)
