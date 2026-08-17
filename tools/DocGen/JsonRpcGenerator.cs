@@ -5,9 +5,10 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Newtonsoft.Json;
 using Spectre.Console;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.DocGen;
 
@@ -348,12 +349,12 @@ internal static class JsonRpcGenerator
 
     private static IEnumerable<PropertyInfo> GetSerializableProperties(Type type) =>
         type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Where(p => p.GetCustomAttribute<JsonIgnoreAttribute>() is null)
+            .Where(p => p.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
             .OrderBy(p => p.Name);
 
     private static string GetSerializedName(PropertyInfo prop) =>
-        prop.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName
-            ?? $"{prop.Name[0].ToString().ToLowerInvariant()}{prop.Name[1..]}"; // Ugly incomplete camel case
+        prop.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
+            ?? JsonNamingPolicy.CamelCase.ConvertName(prop.Name);
 
     private static string Indent(int depth) => string.Empty.PadLeft(depth, ' ');
 
