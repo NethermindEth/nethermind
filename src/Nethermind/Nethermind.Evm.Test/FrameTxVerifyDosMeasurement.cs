@@ -184,7 +184,9 @@ public class FrameTxVerifyDosMeasurement
             $"us_per_Mgas={best * 1_000_000 / verifyGas:F1} " +
             $"tx_per_block={txPerBlock} unpaid_block_ms={best * txPerBlock / 1000.0:F1}";
         TestContext.Out.WriteLine(line);
-        System.IO.File.AppendAllText("/tmp/frame-dos-results.txt", line + System.Environment.NewLine);
+        string path = Environment.GetEnvironmentVariable("FRAME_RETRY_OUT")
+                      ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "frame-dos-results.txt");
+        System.IO.File.AppendAllText(path, line + Environment.NewLine);
     }
 
     /// <summary>
