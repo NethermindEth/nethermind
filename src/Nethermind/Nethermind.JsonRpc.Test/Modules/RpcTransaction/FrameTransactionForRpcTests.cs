@@ -104,6 +104,48 @@ public class FrameTransactionForRpcTests
     }
 
     [Test]
+    public void FrameTransactionForRpc_BindsSenderNonceKeysAndBlobFieldsFromJson()
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            ChainId = 3151908,
+            Nonce = 0,
+            MaxFeePerGas = 100,
+            MaxPriorityFeePerGas = UInt256.Zero,
+            Sender = TestItem.AddressA,
+            NonceKeys = [(UInt256)7, (UInt256)9],
+            MaxFeePerBlobGas = 123,
+            BlobVersionedHashes = [TestItem.KeccakA.BytesToArray()],
+            Frames =
+            [
+                new FrameForRpc
+                {
+                    Mode = TxFrame.ModeVerify,
+                    Flags = TxFrame.ApproveExecutionAndPayment,
+                    GasLimit = 100_000,
+                    Value = UInt256.Zero,
+                },
+            ],
+            Signatures = [],
+        };
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        FrameTransactionForRpc back = (FrameTransactionForRpc)new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+        Transaction tx = back.ToTransaction().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(back.Sender, Is.EqualTo(TestItem.AddressA));
+            Assert.That(back.NonceKeys, Is.EqualTo(new[] { (UInt256)7, (UInt256)9 }));
+            Assert.That(back.MaxFeePerBlobGas, Is.EqualTo((UInt256)123));
+            Assert.That(back.BlobVersionedHashes![0], Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+            Assert.That(tx.NonceKeys, Is.EqualTo(new[] { (UInt256)7, (UInt256)9 }));
+            Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo((UInt256)123));
+            Assert.That(tx.BlobVersionedHashes![0], Is.EqualTo(TestItem.KeccakA.BytesToArray()));
+        }
+    }
+
+    [Test]
     public void FrameTransactionForRpc_ToTransaction_RoundTripsType()
     {
         Transaction original = BuildMinimalFrameTx();
