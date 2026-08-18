@@ -24,6 +24,8 @@ namespace Nethermind.State.Flat.Collections;
 internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>, IDisposable
     where TKey : IEquatable<TKey>
 {
+    private const int StackScratchLength = 256;
+
     internal struct Entry
     {
         public uint HashCode;
@@ -160,6 +162,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         BuildFromMerge(runs, keyComparer, keep);
     }
 
+    [SkipLocalsInit]
     internal void BuildFromMerge<TComparer>(
         ReadOnlySpan<Run> sources,
         TComparer keyComparer,
@@ -194,12 +197,20 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         }
         else
         {
-            LoserTree<TComparer> tree = new(sources, keyComparer);
+            int[]? pooledScratch = null;
+            int scratchLength = sources.Length * 2;
+            Span<int> scratch = scratchLength <= StackScratchLength
+                ? stackalloc int[StackScratchLength]
+                : (pooledScratch = ArrayPool<int>.Shared.Rent(scratchLength));
+            scratch = scratch[..scratchLength];
+            LoserTree<TComparer> tree = new(
+                sources, keyComparer, scratch[..sources.Length], scratch.Slice(sources.Length, sources.Length));
             count = 0;
             while (count < total && tree.TryNext(keep, out Entry chosen))
             {
                 entries[count++] = chosen;
             }
+            if (pooledScratch is not null) ArrayPool<int>.Shared.Return(pooledScratch);
         }
 
         _count = count;
@@ -469,17 +480,18 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         private readonly ReadOnlySpan<Run> _sources;
         private readonly TComparer _keyComparer;
         private readonly int _k;
-        private readonly int[] _tree;
-        private readonly int[] _position;
+        private readonly Span<int> _tree;
+        private readonly Span<int> _position;
 
-        public LoserTree(ReadOnlySpan<Run> sources, TComparer keyComparer)
+        public LoserTree(ReadOnlySpan<Run> sources, TComparer keyComparer, Span<int> tree, Span<int> position)
         {
             _sources = sources;
             _keyComparer = keyComparer;
             _k = sources.Length;
-            _tree = new int[_k];
-            _position = new int[_k];
+            _tree = tree;
+            _position = position;
 
+            _position.Clear();
             for (int i = 0; i < _k; i++) _tree[i] = _k;
             for (int i = _k - 1; i >= 0; i--) Adjust(i);
         }

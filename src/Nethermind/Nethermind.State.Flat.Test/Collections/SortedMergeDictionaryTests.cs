@@ -108,6 +108,7 @@ public class SortedMergeDictionaryTests
     [TestCase(3, 200, false)]
     [TestCase(8, 500, false)]
     [TestCase(16, 1000, false)]
+    [TestCase(256, 20, false)]
     public void Merge_RandomizedAgainstReference(int sourceCount, int keySpace, bool filter)
     {
         Random random = new(sourceCount * 31 + keySpace);
