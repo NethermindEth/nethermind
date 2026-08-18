@@ -109,6 +109,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("approval scope on atomic batch frame");
             }
 
+            // The mode is undefined until EIP-7906 defines it, so it must not run with assertion semantics.
+            if (frame.Mode == TxFrame.ModePostTx && !spec.IsEip7906Enabled)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotEnabled);
+            }
+
             prevIsAtomicBatch = frame.IsAtomicBatch;
         }
 

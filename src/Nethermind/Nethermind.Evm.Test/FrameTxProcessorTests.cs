@@ -1114,6 +1114,27 @@ public class FrameTxProcessorTests
         return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
     }
 
+    /// <remarks>
+    /// EIP-8141 and EIP-7906 have independent transitions, so an 8141-on / 7906-off window is representable.
+    /// Static validation is not on the path from <c>eth_call</c>, <c>eth_estimateGas</c> or block building,
+    /// so the mode has to be refused here too rather than running with assertion semantics.
+    /// </remarks>
+    [Test]
+    public void Execute_PostTxFrameBeforeTheAssertionFork_IsRejected()
+    {
+        _spec.IsEip7906Enabled = false;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        Assert.That(result.ErrorDescription, Does.Contain("not enabled"));
+    }
+
     // The difference from a VERIFY revert: the body unwinds but the transaction stays valid and pays.
     [TestCase(false, ExpectedResult = StatusCode.Success, TestName = "Execute_PostTxAsserts_TransactionSucceeds")]
     [TestCase(true, ExpectedResult = StatusCode.Failure, TestName = "Execute_PostTxReverts_TransactionFailsButIsIncluded")]
