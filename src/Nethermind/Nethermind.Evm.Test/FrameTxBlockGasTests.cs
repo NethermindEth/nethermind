@@ -148,6 +148,37 @@ public class FrameTxBlockGasTests
         }
     }
 
+    /// <summary>
+    /// A frame whose state reservoir covers a fresh-slot write but then exceptionally halts commits nothing,
+    /// so it owes zero state gas and is charged only its execution budget rather than the depleted reservoir.
+    /// </summary>
+    [Test]
+    public void Execute_PayloadFrameConsumesStateThenHalts_OwesNoStateGas()
+    {
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.INVALID).Done);
+
+        const ulong executionBudget = 30_000;
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Writer, executionBudget, 150_000, UInt256.Zero, default));
+
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+                "the frame halted, so its write rolled back and committed no slot");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
+                "a halted frame grows no state, so it owes none even though it drew from the reservoir");
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
+                Is.EqualTo(tracer.GasConsumedResult.SpentGas),
+                "no state charge is carved out of the regular dimension when the state gas is zero");
+        }
+    }
+
     /// <summary>An atomic batch whose later frame fails gives back the state gas its earlier frame owed.</summary>
     /// <remarks>
     /// The unroll restores the pre-batch state, so the fresh slot the first frame wrote never reaches the

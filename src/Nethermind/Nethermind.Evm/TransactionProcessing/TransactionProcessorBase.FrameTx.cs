@@ -488,6 +488,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
             : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
+        if (substate.IsError)
+        {
+            // EIP-8141 (ethereum/EIPs#12062): an exceptionally halted frame grows no state and owes zero state gas.
+            TGasPolicy.ResetForHalt(ref state.Gas, (long)frame.StateGasLimit, 0);
+        }
+
         ulong combinedLimit = frame.ExecutionGasLimit + frame.StateGasLimit;
         gasUsed = substate.IsError
             ? combinedLimit - (ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in state.Gas))
