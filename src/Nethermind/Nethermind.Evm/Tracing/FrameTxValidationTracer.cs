@@ -95,7 +95,6 @@ public sealed class FrameTxValidationTracer(
             case Instruction.EXTCODECOPY:
                 _targetStackIndex = 0; // [address, ...]
                 break;
-            case Instruction.ORIGIN:
             case Instruction.GASPRICE:
             case Instruction.BLOCKHASH:
             case Instruction.COINBASE:
@@ -103,7 +102,6 @@ public sealed class FrameTxValidationTracer(
             case Instruction.PREVRANDAO:
             case Instruction.GASLIMIT:
             case Instruction.BASEFEE:
-            case Instruction.BLOBHASH:
             case Instruction.BLOBBASEFEE:
             case Instruction.CREATE:
             case Instruction.CREATE2:
@@ -112,8 +110,6 @@ public sealed class FrameTxValidationTracer(
             case Instruction.BALANCE:
             case Instruction.SELFBALANCE:
             case Instruction.SSTORE:
-            case Instruction.TLOAD:
-            case Instruction.TSTORE:
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
         }
@@ -151,7 +147,7 @@ public sealed class FrameTxValidationTracer(
     }
 
     /// <summary>
-    /// A CALL*/EXTCODE* target is disallowed unless it is an undelegated existing contract (spec L816);
+    /// A CALL*/EXTCODE* target is disallowed unless it is an undelegated existing contract or a precompile;
     /// tx.sender is exempt because its code hash and nonce are already tracked dependencies.
     /// </summary>
     private bool IsForbiddenCallTarget(Address target)
