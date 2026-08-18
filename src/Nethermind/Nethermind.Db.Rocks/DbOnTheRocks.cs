@@ -1158,7 +1158,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllValuesCore(ordered);
     }
 
-    // `_isDisposing` check/update is not atomic and concurrent readers may still hit,
+    // `_isDisposing` check/update is not atomic and concurrent dispose/read calls may still hit a disposed native DB,
     // yet adding any thread synchronization may affect all readers performance
     internal void ThrowIfDisposing() => ObjectDisposedException.ThrowIf(_isDisposing, this);
 
@@ -1594,6 +1594,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         _iteratorManager?.Dispose();
         _db.Dispose();
+
+        RocksDbReader.DestroyReadOptions(_defaultReadOptions);
+        RocksDbReader.DestroyReadOptions(_hintCacheMissOptions);
+        RocksDbReader.DestroyReadOptions(_readAheadReadOptions);
 
         if (_rowCache.HasValue)
         {
