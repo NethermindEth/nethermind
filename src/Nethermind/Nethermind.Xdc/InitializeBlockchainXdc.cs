@@ -38,11 +38,11 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
+                SpecChangeTxValidator.Instance,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
                 new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),
-                SpecChangeTxValidator.Instance,
                 true
             );
 

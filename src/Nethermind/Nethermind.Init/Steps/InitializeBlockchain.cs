@@ -61,11 +61,10 @@ namespace Nethermind.Init.Steps
                 chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
+                SpecChangeTxValidator.Instance,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _txGossipPolicy,
-                null,
-                SpecChangeTxValidator.Instance
+                _txGossipPolicy
             );
 
             _api.DisposeStack.Push(txPool);

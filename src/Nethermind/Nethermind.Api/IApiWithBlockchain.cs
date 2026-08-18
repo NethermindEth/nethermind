@@ -31,6 +31,9 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         TxValidator? TxValidator { get; }
 
+        [SkipServiceCollection]
+        ITxValidator? HeadTxValidator { get; }
+
         IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
     }
 }

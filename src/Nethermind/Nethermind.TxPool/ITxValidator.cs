@@ -12,5 +12,7 @@ namespace Nethermind.TxPool
         public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit) =>
             IsWellFormed(transaction, releaseSpec);
 
+        public const string HeadTxValidatorKey = "HeadTxValidator";
+        public const string SpecChangeTxValidatorKey = "SpecChangeTxValidator";
     }
 }

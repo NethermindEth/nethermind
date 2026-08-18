@@ -259,9 +259,9 @@ public class CensorshipDetectorTests
                 _stateProvider),
             new TxPoolConfig(),
                 new TxValidator(_specProvider.ChainId),
+                SpecChangeTxValidator.Instance,
                 _logManager,
-                _comparer,
-                specChangeTxValidator: SpecChangeTxValidator.Instance);
+                _comparer);
     }
 
     private async Task BlockProcessingWorkflowAsync(Block block)

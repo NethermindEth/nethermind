@@ -98,11 +98,11 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             chainHeadInfoProvider,
             NethermindApi.Config<ITxPoolConfig>(),
             api.TxValidator!,
+            SpecChangeTxValidator.Instance,
             api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _txGossipPolicy,
             new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider),
-            SpecChangeTxValidator.Instance,
             txPriorityContract is not null || localDataSource is not null);
     }
 

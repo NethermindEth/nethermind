@@ -60,9 +60,9 @@ namespace Nethermind.Network.Benchmarks
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId),
+                SpecChangeTxValidator.Instance,
                 LimboLogs.Instance,
-                new TransactionComparerProvider(specProvider, tree).GetDefaultComparer(),
-                specChangeTxValidator: SpecChangeTxValidator.Instance);
+                new TransactionComparerProvider(specProvider, tree).GetDefaultComparer());
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);

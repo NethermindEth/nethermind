@@ -81,6 +81,7 @@ namespace Nethermind.Api
         public INonceManager? NonceManager => Context.Resolve<INonceManager>();
         public ITxPool? TxPool { get; set; }
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
+        public ITxValidator? HeadTxValidator => Context.ResolveOptionalKeyed<ITxValidator>(ITxValidator.HeadTxValidatorKey);
 
         public IBackgroundTaskScheduler BackgroundTaskScheduler => Context.Resolve<IBackgroundTaskScheduler>();
         public IWallet Wallet => Context.Resolve<IWallet>();
