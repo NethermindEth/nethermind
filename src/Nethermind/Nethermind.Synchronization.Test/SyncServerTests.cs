@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,10 +33,12 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -600,6 +604,102 @@ public class SyncServerTests
             Assert.That(perPeerFinalRange[i].Wait(TimeSpan.FromSeconds(30)), Is.True,
                 $"Peer {i} was not notified of the latest block range (genesis -> {finalLatest})");
         }
+    }
+
+    [Test]
+    public void OnNewRange_is_thread_safe_under_concurrent_head_and_oldest_updates()
+    {
+        // NewHeadBlock (block-processing thread) and NewOldestBlock (history-pruning background task)
+        // both funnel into the private OnNewRange, which swaps the shared range-broadcast CTS. Raising
+        // NewOldestBlock from several threads reproduces that concurrency; without synchronisation the
+        // swap disposes a source another thread is about to hand to Task.Run, throwing ObjectDisposedException.
+        BlockTree blockTree = Build.A.BlockTree().OfChainLength(64).TestObject;
+        RaisableHistoryPruner historyPruner = new() { OldestBlockHeader = blockTree.Genesis };
+
+        // Hand-rolled fake rather than a mock: this loop drives tens of thousands of concurrent calls, which
+        // would both grow a mock's retained-call log and race its non-thread-safe recording.
+        StubSyncPeerPool peerPool = new();
+
+        // Block-scoped using: roots the server (and its event subscriptions) for the whole concurrent run
+        // and disposes it afterwards.
+        using (new SyncServer(
+            Substitute.For<IWorldStateManager>(),
+            new MemDb(),
+            blockTree,
+            NullReceiptStorage.Instance,
+            Substitute.For<IBlockAccessListStore>(),
+            Always.Valid,
+            Always.Valid,
+            peerPool,
+            StaticSelector.Full,
+            new TestSyncConfig(),
+            Policy.FullGossip,
+            historyPruner,
+            MainnetSpecProvider.Instance,
+            LimboLogs.Instance))
+        {
+            BlockHeader oldest = blockTree.Genesis!;
+            const int threadCount = 4;
+            const int iterationsPerThread = 3000;
+            using ManualResetEventSlim start = new(false);
+            ConcurrentQueue<Exception> failures = new();
+
+            Task[] tasks = Enumerable.Range(0, threadCount).Select(_ => Task.Run(() =>
+            {
+                start.Wait();
+                try
+                {
+                    for (int i = 0; i < iterationsPerThread; i++)
+                        historyPruner.RaiseNewOldestBlock(oldest);
+                }
+                catch (Exception e)
+                {
+                    failures.Enqueue(e);
+                }
+            })).ToArray();
+
+            start.Set();
+            Task.WaitAll(tasks);
+
+            Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures.Select(static e => e.ToString())));
+        }
+    }
+
+    private sealed class RaisableHistoryPruner : IHistoryPruner
+    {
+        public ulong? CutoffBlockNumber => null;
+        public ulong? BalCutoffBlockNumber => null;
+        public BlockHeader? OldestBlockHeader { get; set; }
+        public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
+        public void SchedulePruneHistory() { }
+        public ulong GetRetentionBlocks(ulong retentionEpochs) => 0;
+        public void RaiseNewOldestBlock(BlockHeader oldest) =>
+            NewOldestBlock?.Invoke(this, new OnNewOldestBlockArgs(oldest, isFinalUpdate: true));
+    }
+
+    // Minimal thread-safe ISyncPeerPool: exposes a single peer so OnNewRange runs, with no broadcast targets.
+    private sealed class StubSyncPeerPool : ISyncPeerPool
+    {
+        public IEnumerable<PeerInfo> AllPeers => Array.Empty<PeerInfo>();
+        public IEnumerable<PeerInfo> InitializedPeers => Array.Empty<PeerInfo>();
+        public int PeerCount => 1;
+        public int InitializedPeersCount => 0;
+        public int PeerMaxCount => 0;
+        public event EventHandler<PeerBlockNotificationEventArgs>? NotifyPeerBlock { add { } remove { } }
+        public Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, int timeoutMilliseconds = 0, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public void Free(SyncPeerAllocation syncPeerAllocation) => throw new NotSupportedException();
+        public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts) => throw new NotSupportedException();
+        public void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details) => throw new NotSupportedException();
+        public void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts allocationContexts) => throw new NotSupportedException();
+        public Task<int?> EstimateRequestLimit(RequestType requestType, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, CancellationToken token) => throw new NotSupportedException();
+        public void WakeUpAll() => throw new NotSupportedException();
+        public void AddPeer(ISyncPeer syncPeer) => throw new NotSupportedException();
+        public void RemovePeer(ISyncPeer syncPeer) => throw new NotSupportedException();
+        public void SetPeerPriority(PublicKey id) => throw new NotSupportedException();
+        public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 hash) => throw new NotSupportedException();
+        public void Start() => throw new NotSupportedException();
+        public PeerInfo? GetPeer(Node node) => throw new NotSupportedException();
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     [Test]

@@ -63,6 +63,7 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
         private CancellationTokenSource _rangeBroadcastCts = new();
         private Task _rangeBroadcastTask = Task.CompletedTask;
+        private readonly Lock _rangeBroadcastLock = new();
 
         private const int NewHeadBlockRangeUpdateFrequency = 32;
         private const int NewOldestBlockRangeUpdateFrequency = 10000;
@@ -498,24 +499,29 @@ namespace Nethermind.Synchronization
             if (_pool.PeerCount == 0)
                 return;
 
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
-            CancellationTokenSource cts = _rangeBroadcastCts = new();
+            // NewHeadBlock (block-processing thread) and NewOldestBlock (history-pruning background task)
+            // both funnel here, so the swap of _rangeBroadcastCts / _rangeBroadcastTask must be serialised;
+            // otherwise a concurrent CancelDisposeAndClear can dispose the source before Task.Run reads its
+            // token, throwing ObjectDisposedException, or leave a freshly created source orphaned.
+            lock (_rangeBroadcastLock)
+            {
+                CancellationTokenExtensions.CancelDisposeAndClear(ref _rangeBroadcastCts);
+                CancellationTokenSource cts = _rangeBroadcastCts = new();
+                // Capture the token now: RangeBroadcast runs on a pool thread and a later swap may already
+                // have disposed the source by the time it reads cancellation, so it must not touch the CTS.
+                CancellationToken token = cts.Token;
 
-            if (_rangeBroadcastTask.IsCompleted)
-            {
-                _rangeBroadcastTask = Task.Run(() => RangeBroadcast(earliest, latest, cts), cts.Token);
-            }
-            else
-            {
-                _rangeBroadcastTask.ContinueWith(
-                    t => RangeBroadcast(earliest, latest, cts),
-                    TaskContinuationOptions.RunContinuationsAsynchronously);
+                _rangeBroadcastTask = _rangeBroadcastTask.IsCompleted
+                    ? Task.Run(() => RangeBroadcast(earliest, latest, token), token)
+                    : _rangeBroadcastTask.ContinueWith(
+                        t => RangeBroadcast(earliest, latest, token),
+                        TaskContinuationOptions.RunContinuationsAsynchronously);
             }
         }
 
-        private void RangeBroadcast(BlockHeader earliest, BlockHeader latest, CancellationTokenSource cts)
+        private void RangeBroadcast(BlockHeader earliest, BlockHeader latest, CancellationToken token)
         {
-            if (cts.IsCancellationRequested)
+            if (token.IsCancellationRequested)
             {
                 return;
             }
@@ -526,7 +532,7 @@ namespace Nethermind.Synchronization
             ParallelUnbalancedWork.For(0, allPeers.Count,
                 (i) =>
                 {
-                    if (cts.IsCancellationRequested)
+                    if (token.IsCancellationRequested)
                     {
                         if (_logger.IsDebug) _logger.Debug("Cancelled broadcasting block range update due to cancellation request.");
                         return;
