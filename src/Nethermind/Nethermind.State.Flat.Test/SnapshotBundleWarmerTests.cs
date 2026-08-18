@@ -30,8 +30,11 @@ public class SnapshotBundleWarmerTests
 
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
+        public int TryGetCount;
+
         public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
+            TryGetCount++;
             node = null;
             return false;
         }
@@ -126,7 +129,7 @@ public class SnapshotBundleWarmerTests
     [Test]
     public void Repeated_warmer_miss_is_served_from_the_negative_cache()
     {
-        CountingTrieNodeCache cache = new();
+        NullTrieNodeCache cache = new();
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
 
         TreePath path = TreePath.FromHexString("12");
@@ -136,21 +139,6 @@ public class SnapshotBundleWarmerTests
         bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
 
         Assert.That(cache.TryGetCount, Is.EqualTo(1));
-    }
-
-    private sealed class CountingTrieNodeCache : ITrieNodeCache
-    {
-        public int TryGetCount;
-
-        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
-        {
-            TryGetCount++;
-            node = null;
-            return false;
-        }
-
-        public void Add(TransientResource transientResource) { }
-        public void Clear() { }
     }
 
     // Dispose releases the transient back to the pool while warmer jobs may still be in flight. A read that
