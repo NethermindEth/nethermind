@@ -614,6 +614,18 @@ jobs:
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
           echo "Scenario name: ${SCENARIO_NAME}"
 
+      - name: Ensure Docker is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+            run_as_root apt-get update
+            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+            run_as_root systemctl start docker || run_as_root service docker start
+          fi
+          docker version
+
       - name: Restore cached master metrics
         id: restore-master-metrics
         if: github.event_name == 'pull_request'
@@ -705,10 +717,13 @@ jobs:
             > "${flags_file}"
 
           YQ="${RUNNER_TEMP}/yq"
-          if [[ ! -x "${YQ}" ]]; then
-            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
-            chmod +x "${YQ}"
-          fi
+          case "$(uname -m)" in
+            x86_64) yq_arch="amd64" ;;
+            aarch64|arm64) yq_arch="arm64" ;;
+            *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+          esac
+          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          chmod +x "${YQ}"
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
@@ -1762,6 +1777,18 @@ jobs:
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
 
+      - name: Ensure Docker is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+            run_as_root apt-get update
+            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+            run_as_root systemctl start docker || run_as_root service docker start
+          fi
+          docker version
+
       - name: Ensure EXPB config file exists
         shell: bash
         run: |
@@ -1830,10 +1857,13 @@ jobs:
             > "${flags_file}"
 
           YQ="${RUNNER_TEMP}/yq"
-          if [[ ! -x "${YQ}" ]]; then
-            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
-            chmod +x "${YQ}"
-          fi
+          case "$(uname -m)" in
+            x86_64) yq_arch="amd64" ;;
+            aarch64|arm64) yq_arch="arm64" ;;
+            *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+          esac
+          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          chmod +x "${YQ}"
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \

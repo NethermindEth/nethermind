@@ -496,6 +496,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Ensure Docker is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+            run_as_root apt-get update
+            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+            run_as_root systemctl start docker || run_as_root service docker start
+          fi
+          docker version
+
       - name: Set up run paths
         run: |
           echo "OUT_DIR=$RUNNER_TEMP/rpcbench-out" >> "$GITHUB_ENV"
