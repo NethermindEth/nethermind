@@ -113,9 +113,7 @@ public class InclusionListBuilderTests
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
     }
 
-    // EIP-8369 includer VERIFY-budget fill. Each Profile-2 frame tx below costs `verifyGas` (the
-    // self-verify prefix frame; the trailing execution frame is outside the prefix), so with
-    // MAX_VERIFY_GAS_PER_IL = 2^20 exactly floor(2^20 / 300_000) = 3 of six such txs fit.
+    // Costs verifyGas: only the self-verify prefix frame counts, not the trailing execution frame.
     private static Transaction ProfileTwoFrameTx(ulong verifyGas) => new()
     {
         Type = TxType.FrameTx,

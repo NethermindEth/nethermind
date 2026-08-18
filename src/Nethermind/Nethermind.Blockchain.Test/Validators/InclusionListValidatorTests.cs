@@ -121,9 +121,8 @@ public class InclusionListValidatorTests
         return InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator);
     }
 
-    // EIP-8369 classification gate: a Profile-2 frame tx omitted from the block is not a FOCIL
-    // violation here — its omission is checked by bounded validation replay at the builder-claimed
-    // index, which is a marked deferral — so an ample-gas block stays satisfied.
+    // Profile-2 omission is not a FOCIL violation here: the claimed-index replay that would check it
+    // is deferred, so an ample-gas block stays satisfied.
     [Test]
     public void Profile_two_frame_tx_omission_is_not_enforced()
     {

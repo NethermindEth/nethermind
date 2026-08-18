@@ -7,10 +7,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
 
-/// <summary>
-/// EIP-8369 FOCIL Profile classification: Profile 1 (regular non-frame, non-blob), Profile 2
-/// (recognized-shape frame txs within the VERIFY budget), and everything else Outside enforcement.
-/// </summary>
+/// <summary>EIP-8369 FOCIL Profile classification and the includer VERIFY-budget helpers.</summary>
 public class Eip8369Tests
 {
     [TestCase(TxType.Legacy)]

@@ -65,11 +65,11 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                // EIP-8141: block production does not yet meter blob-carrying frame txs against the block
-                // blob budget, so exclude them conservatively rather than risk exceeding MaxBlobGasPerBlock.
-                if (currentTx.Type == TxType.FrameTx && currentTx.BlobVersionedHashes is { Length: > 0 })
+                // EIP-8141: blob-frame production is deferred — deliberately skip until a follow-up wires
+                // picker admission together with type-6 support in the blobs-bundle builders.
+                if (currentTx.Type == TxType.FrameTx && currentTx.CarriesBlobs)
                 {
-                    return args.Set(TxAction.Skip, "Blob-carrying frame transaction not yet supported in block production");
+                    return args.Set(TxAction.Skip, "Blob-carrying frame transaction production is deferred");
                 }
 
                 // A frame transaction's GasLimit is only the sum of its frame gas limits, so gating on it alone would
@@ -103,10 +103,15 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
                 }
 
-                UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                // A frame transaction's fees are paid by the frame that approves payment, which need not
+                // be the sender, so a sender-balance gate here would skip transactions that do pay.
+                if (!currentTx.SupportsFrames)
                 {
-                    return args;
+                    UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
+                    if (!HasEnoughFunds(currentTx, balance, args, block, spec))
+                    {
+                        return args;
+                    }
                 }
 
                 OnAddingTransaction(args);
@@ -134,7 +139,7 @@ namespace Nethermind.Consensus.Processing
                         return false;
                     }
 
-                    if (transaction.BlobVersionedHashes is { Length: > 0 } && (
+                    if (transaction.CarriesBlobs && (
                         !BlobGasCalculator.TryCalculateBlobBaseFee(block.Header, transaction, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee) ||
                         senderBalance < (maxFee += blobBaseFee)))
                     {

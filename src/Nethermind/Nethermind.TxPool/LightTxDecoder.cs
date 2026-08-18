@@ -22,7 +22,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(tx.GetLength())
-               + Rlp.LengthOf(sizeof(byte));
+               + Rlp.LengthOf(sizeof(byte))
+               + Rlp.LengthOf((byte)tx.Type);
 
     public static byte[] Encode(Transaction tx)
     {
@@ -42,6 +43,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.PoolIndex);
         writer.Encode(tx.GetLength());
         writer.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        // Appended last so records written before it still decode, defaulting to TxType.Blob.
+        writer.Encode((byte)tx.Type);
 
         return bytes;
     }
@@ -49,11 +52,12 @@ public class LightTxDecoder : TxDecoder<Transaction>
     public static LightTransaction Decode(byte[] data)
     {
         RlpReader ctx = new(data);
+        // Argument evaluation is left-to-right, so this read order must match Encode's write order.
         return new LightTransaction(
             timestamp: ctx.DecodeUInt256(),
-            sender: ctx.DecodeAddress()!,
+            sender: ctx.DecodeAddress(),
             nonce: ctx.DecodeULong(),
-            hash: ctx.DecodeKeccak()!,
+            hash: ctx.DecodeKeccak(),
             value: ctx.DecodeUInt256(),
             gasLimit: ctx.DecodeULong(),
             gasPrice: ctx.DecodeUInt256(),
@@ -62,6 +66,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
             poolIndex: ctx.DecodeULong(),
             size: ctx.DecodePositiveInt(),
-            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
+            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default,
+            type: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (TxType)ctx.ReadByte() : TxType.Blob);
     }
 }

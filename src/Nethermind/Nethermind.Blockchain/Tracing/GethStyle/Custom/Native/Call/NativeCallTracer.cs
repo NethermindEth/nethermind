@@ -192,6 +192,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         firstCallFrame.Output = new ArrayPoolList<byte>(output);
         ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
+
+        if (_config.WithLog)
+        {
+            ClearFailedLogs(firstCallFrame, parentFailed: false);
+        }
     }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
@@ -217,7 +222,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
         if (_config.WithLog)
         {
-            ClearFailedLogs(firstCallFrame, true);
+            ClearFailedLogs(firstCallFrame, parentFailed: true);
         }
     }
 
@@ -294,6 +299,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         bool failed = callFrame.Error is not null || parentFailed;
         if (failed)
         {
+            callFrame.Logs?.Dispose();
             callFrame.Logs = null;
         }
 
