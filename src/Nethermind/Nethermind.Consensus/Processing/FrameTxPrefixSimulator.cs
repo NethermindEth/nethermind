@@ -99,8 +99,7 @@ public sealed class FrameTxPrefixSimulator(
     }
 
     /// <summary>Whether an exception indicts the node rather than the transaction.</summary>
-    /// <remarks><see cref="IInternalNethermindException"/> is the codebase's marker for that — it covers the
-    /// <see cref="TrieException"/> family, including the missing trie nodes that pruning can expose.</remarks>
+    /// <remarks>The marker covers the <see cref="TrieException"/> family, including nodes pruning can remove.</remarks>
     private static bool IsNodeFault(Exception e) =>
         e is IInternalNethermindException or ObjectDisposedException or IOException;
 
