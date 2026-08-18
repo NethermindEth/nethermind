@@ -471,7 +471,7 @@ public struct EvmPooledMemory
     // Keeping mid-size buffers on the renting thread keeps the lines warm; the byte budget bounds
     // per-thread retention.
     private const int MaxThreadCachedArrayLength = 1 << 18;
-    private const int MaxThreadCachedBytes = 2 << 20;
+    private const int MaxThreadCachedBytes = 1 << 21;
     private const int CacheSlots = 16;
 
     [ThreadStatic] private static byte[]?[]? _cachedArrays;
@@ -506,8 +506,6 @@ public struct EvmPooledMemory
 
     private static void Return(byte[] array)
     {
-        // Provenance: arrays <= MaxNewAllocLength are plain allocations, larger ones came from
-        // RentLarge — an array must never reach a pool it was not rented from.
         if (array.Length <= MaxThreadCachedArrayLength
             && _cachedArrayCount < CacheSlots
             && _cachedArrayBytes + array.Length <= MaxThreadCachedBytes)
@@ -518,6 +516,9 @@ public struct EvmPooledMemory
             return;
         }
 
+        // Provenance: arrays <= MaxNewAllocLength are plain allocations, larger ones came from
+        // RentLarge — an array must never reach a pool it was not rented from, so sub-threshold
+        // arrays that miss the thread cache are dropped for the GC rather than pooled.
         if (array.Length > MaxNewAllocLength)
         {
             ReturnLarge(array);

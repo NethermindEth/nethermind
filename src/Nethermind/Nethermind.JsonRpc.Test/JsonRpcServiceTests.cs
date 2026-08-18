@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -634,6 +635,31 @@ public class JsonRpcServiceTests
             "Too many requests");
 
         Assert.That(response.Error!.SuppressWarning, Is.True);
+    }
+
+    [Test]
+    public void Overload_rejections_are_counted_from_both_shedding_paths()
+    {
+        long before = Metrics.JsonRpcOverloadRejections;
+
+        // During-invocation path: the override-environment cap throws from inside the handler.
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(new ConcurrencyLimitReachedException("cap"));
+        using JsonRpcErrorResponse invocationRejection = AssertJsonRpcError(
+            TestRequest(ethRpcModule, "eth_getLogs", "{}"),
+            ErrorCodes.LimitExceeded,
+            "Too many requests");
+
+        // Before-invocation path: module rental times out.
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(new ModuleRentalTimeoutException("timeout")));
+        using JsonRpcErrorResponse rentalRejection = AssertJsonRpcError(
+            TestRequestWithPool(pool, "eth_getLogs", "{}"),
+            ErrorCodes.ModuleTimeout,
+            "Timeout");
+
+        // >= rather than == : the counter is a global metric other parallel tests may also bump.
+        Assert.That(Metrics.JsonRpcOverloadRejections, Is.GreaterThanOrEqualTo(before + 2));
     }
 
     [TestCaseSource(nameof(ModuleRentalOverloadExceptions))]

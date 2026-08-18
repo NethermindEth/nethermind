@@ -12,6 +12,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -84,13 +85,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout", true),
             _ => (ErrorCodes.InternalError, "Internal error", false),
         };
-
-        // The warnings above are suppressed by design, so without a counter operators cannot see
-        // that callers are being shed at a concurrency cap.
-        if (errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
-        {
-            Metrics.JsonRpcOverloadRejections++;
-        }
 
         if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
@@ -922,6 +916,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool suppressWarning = false)
     {
         if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
+        // Counted here, at the funnel every error response passes through: concurrency-cap
+        // rejections reach this point along two distinct paths (module rental before invocation,
+        // and the override-environment cap during invocation), and their warnings are suppressed
+        // by design — without a counter operators cannot see that callers are being shed.
+        if (errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
+        {
+            Interlocked.Increment(ref Metrics.JsonRpcOverloadRejections);
+        }
         JsonRpcErrorResponse response = new(in id, disposableAction)
         {
             Error = new Error

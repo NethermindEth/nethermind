@@ -15,19 +15,21 @@ internal sealed partial class StackPool
     // Stacks are rented and returned on the executing thread in LIFO order, so a small per-thread
     // cache serves nearly every frame with an array that is hot in this core's cache. The shared
     // queue costs two atomics per frame and migrates ~33 KB pinned arrays between cores under
-    // concurrent load; it remains as overflow so deep chains keep pooling and total retention
-    // stays bounded. [ThreadStatic] is deliberately shared across pool instances: every pool
-    // deals in identically-shaped arrays.
+    // concurrent load; it remains as overflow so deep chains keep pooling. [ThreadStatic] is
+    // deliberately shared across pool instances: every pool deals in identically-shaped arrays.
+    // Retention becomes peak-bounded rather than hard-capped: on top of the queue's
+    // MaxStacksPooled, each thread that ever executed EVM code can hold up to
+    // MaxStacksCachedPerThread pinned (POH) arrays (~0.5 MB per thread).
     private const int MaxStacksCachedPerThread = 16;
     [ThreadStatic] private static byte[]?[]? _threadStacks;
     [ThreadStatic] private static int _threadStackCount;
 
     public partial void ReturnStacks(byte[] dataStack)
     {
-        byte[]?[] threadStacks = _threadStacks ??= new byte[]?[MaxStacksCachedPerThread];
         int cached = _threadStackCount;
         if (cached < MaxStacksCachedPerThread)
         {
+            byte[]?[] threadStacks = _threadStacks ??= new byte[]?[MaxStacksCachedPerThread];
             threadStacks[cached] = dataStack;
             _threadStackCount = cached + 1;
             return;

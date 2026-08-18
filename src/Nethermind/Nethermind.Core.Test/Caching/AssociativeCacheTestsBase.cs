@@ -347,6 +347,34 @@ public class AssociativeCacheDeterministicHashTests
         }
     }
 
+    [Test]
+    public void Refreshed_entry_survives_sustained_churn_in_its_set()
+    {
+        const int capacity = 64;
+        int setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((capacity + Ways - 1) / Ways));
+        int hashShift = BitOperations.Log2((uint)setCount);
+        // Every key collides into set 0, so each insert past the way count must evict from it.
+        static DeterministicHashKey MakeKey(int i, int shift) => new(i, (long)(i + 1) << shift);
+
+        AssociativeCache<DeterministicHashKey, TestValue> cache = new(capacity);
+        DeterministicHashKey hot = MakeKey(0, hashShift);
+        TestValue hotValue = new();
+        cache.Set(in hot, hotValue);
+
+        for (int i = 1; i <= 200; i++)
+        {
+            // The refreshing lookup gives the hot entry the newest eviction age, so 3-random
+            // eviction (which removes the oldest of its sample) must never select it. This pins
+            // the ticker semantics: a recency clock coarse enough to tie a refresh with the
+            // surrounding churn would make this probabilistic.
+            Assert.That(cache.Get(in hot), Is.SameAs(hotValue), $"hot entry evicted after {i - 1} churn inserts");
+            DeterministicHashKey filler = MakeKey(i, hashShift);
+            cache.Set(in filler, new TestValue());
+        }
+
+        Assert.That(cache.Get(in hot), Is.SameAs(hotValue));
+    }
+
     private static DeterministicHashKey[] BuildKeys(int capacity, int count)
     {
         int setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((capacity + Ways - 1) / Ways));

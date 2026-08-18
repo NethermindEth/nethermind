@@ -408,6 +408,35 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
     }
 
+    // Sizes bracket the pooling boundaries: 64 KiB (largest fresh allocation), 256 KiB (largest
+    // thread-cached buffer) and above (shared pools) — every rent source must hand out zeroed-
+    // reading memory even after a deliberately dirtied buffer was recycled through it.
+    [TestCase(64 * 1024 - 32)]
+    [TestCase(64 * 1024)]
+    [TestCase(64 * 1024 + 32)]
+    [TestCase(256 * 1024)]
+    [TestCase(256 * 1024 + 32)]
+    [TestCase(1024 * 1024)]
+    public void Growth_across_pooling_boundaries_reads_zero_and_recycles_clean(int size)
+    {
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        EvmPooledMemory original = new();
+        Assert.That(original.TrySaveWord(0, word), Is.True);
+        Assert.That(original.TryLoadSpan((UInt256)(size - EvmPooledMemory.WordSize), (UInt256)EvmPooledMemory.WordSize, out Span<byte> tail), Is.True);
+        Assert.That(tail.ToArray(), Is.EqualTo(new byte[EvmPooledMemory.WordSize]), "grown tail must read as zero");
+        Assert.That(original.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> head), Is.True);
+        Assert.That(head.ToArray(), Is.EqualTo(word), "written word must survive growth");
+        Assert.That(original.TryLoadSpan(0, (UInt256)size, out Span<byte> whole), Is.True);
+        whole.Fill(0xff);
+        original.Dispose();
+
+        EvmPooledMemory recycled = new();
+        Assert.That(recycled.TryLoadSpan(0, (UInt256)size, out Span<byte> reused), Is.True);
+        Assert.That(reused.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "recycled buffer must read as zero");
+        recycled.Dispose();
+    }
+
     [TestCaseSource(nameof(ZeroExtendedCopyCases))]
     public void CopyFromZeroExtendedAfterGas_copies_and_zeroes_only_the_destination(
         byte[] source,
