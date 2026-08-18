@@ -13,7 +13,7 @@ on:
   workflow_call:
     inputs:
       test_types:
-        description: Comma-separated test types to run (engineTest, blockTest, stateTest, syncTest, txTest)
+        description: Comma-separated test types to run (engineTest, blockTest, stateTest, syncTest, txTest, frameTest)
         required: false
         default: engineTest
         type: string
@@ -31,6 +31,11 @@ on:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
         default: tests-zkevm@v0.6.2
+        type: string
+      frames_version:
+        description: EIP-8141 frame fixtures release tag (frameTest only), or latest / latest-<keyword>
+        required: false
+        default: tests-frames-devnet@v0.0.0
         type: string
       filter:
         description: Regex filter for test names
@@ -55,7 +60,7 @@ on:
         default: ''
         type: string
       test_types:
-        description: Comma-separated test types (engineTest, blockTest, stateTest, syncTest, txTest)
+        description: Comma-separated test types (engineTest, blockTest, stateTest, syncTest, txTest, frameTest)
         required: false
         default: engineTest
         type: string
@@ -77,6 +82,11 @@ on:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
         default: tests-zkevm@v0.6.2
+        type: string
+      frames_version:
+        description: EIP-8141 frame fixtures release tag (frameTest only), or latest / latest-<keyword>
+        required: false
+        default: tests-frames-devnet@v0.0.0
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -109,6 +119,10 @@ env:
   # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.6.2, which this
   # branch's witness roots match (dispatch with zkevm_version to test other releases).
   ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.6.2' }}
+  # EIP-8141 frame-transaction fixtures. execution-specs merged them to the eips/amsterdam
+  # branch, not master, so they ship in their own release line rather than the devnet archive
+  # this branch otherwise pins; frameTest jobs resolve this instead of EEST_VERSION.
+  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-frames-devnet@v0.0.0' }}
   # ubuntu-latest runners have 16 GB of RAM. The runner ships with server GC
   # (throughput-oriented, collects lazily), which previously ballooned past the
   # runner limit on the full fixture set. Workstation GC keeps the heap tight,
@@ -133,6 +147,7 @@ jobs:
       matrix: ${{ steps.generate.outputs.matrix }}
       eest_version: ${{ steps.resolve.outputs.eest_version }}
       zkevm_version: ${{ steps.resolve.outputs.zkevm_version }}
+      frames_version: ${{ steps.resolve.outputs.frames_version }}
     steps:
       # Build the runner ONCE here and share it as an artifact, instead of rebuilding the
       # identical binary in every matrix job (~80s/job of pure redundancy). Test jobs
@@ -290,6 +305,13 @@ jobs:
                   emit "$type" sequential full '' '' '' 4 1
                 fi
                 ;;
+              frameTest)
+                # EIP-8141 blockchain fixtures from their own release; 159 cases, so one chunk.
+                # The BAL/layout toggles are already covered by the Amsterdam variants above.
+                if run_sequential; then
+                  emit "$type" sequential frames '' false false 4 1
+                fi
+                ;;
               *)
                 echo "::error::Unknown test type: '$type'"
                 exit 1
@@ -345,6 +367,12 @@ jobs:
             echo "Resolved zkEVM release: $RESOLVED_ZKEVM"
           fi
 
+          if [[ "$TEST_TYPES" == *frameTest* ]]; then
+            RESOLVED_FRAMES="$(resolve "$FRAMES_VERSION")"
+            echo "frames_version=$RESOLVED_FRAMES" >> "$GITHUB_OUTPUT"
+            echo "Resolved frame-fixture release: $RESOLVED_FRAMES"
+          fi
+
   nethtest:
     name: nethtest ${{ matrix.test_type }} ${{ matrix.test_setup }} ${{ matrix.chunk }}
     needs: prepare-matrix
@@ -382,6 +410,7 @@ jobs:
         env:
           RESOLVED_EEST: ${{ needs.prepare-matrix.outputs.eest_version }}
           RESOLVED_ZKEVM: ${{ needs.prepare-matrix.outputs.zkevm_version }}
+          RESOLVED_FRAMES: ${{ needs.prepare-matrix.outputs.frames_version }}
         run: |
           # Releases are resolved once in prepare-matrix; this step only picks the
           # release line and archive for this job's test type.
@@ -389,6 +418,10 @@ jobs:
             RESOLVED_EEST_VERSION="$RESOLVED_ZKEVM"
             VERSION_INPUT="$ZKEVM_VERSION"
             EEST_ARCHIVE="fixtures_zkevm.tar.gz"
+          elif [ "$TEST_TYPE" = "frameTest" ]; then
+            RESOLVED_EEST_VERSION="$RESOLVED_FRAMES"
+            VERSION_INPUT="$FRAMES_VERSION"
+            EEST_ARCHIVE="fixtures_frames-devnet.tar.gz"
           else
             RESOLVED_EEST_VERSION="$RESOLVED_EEST"
             VERSION_INPUT="$EEST_VERSION"
@@ -449,6 +482,8 @@ jobs:
             txTest)     FIXTURE_NAME=transaction_tests;       RUNNER_FLAG=--txTest ;;
             # The zkEVM archive ships blockchain-test-shaped fixtures with stateless bytes.
             zkevmTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--zkevmTest ;;
+            # Frame fixtures are ordinary blockchain tests; only their release differs.
+            frameTest)  FIXTURE_NAME=blockchain_tests;        RUNNER_FLAG=--blockTest ;;
             *) echo "::error::Unknown test type: '$TEST_TYPE'"; exit 1 ;;
           esac
 
@@ -457,6 +492,18 @@ jobs:
             echo "::error::Could not find fixture directory for $TEST_TYPE in $EEST_DIR"
             find "$EEST_DIR" -maxdepth 3 -type d | head -30
             exit 1
+          fi
+
+          if [ "$SCOPE" = "frames" ]; then
+            # The frame release re-ships the whole suite under for_bogota; only the EIP-8141
+            # subtree is new, so scope to it rather than re-running every fork's fixtures.
+            SCOPED_DIR="$(find "$FIXTURE_DIR" -type d -name 'eip8141_frame_transactions' | head -1)"
+            if [ -z "$SCOPED_DIR" ]; then
+              echo "::error::Could not find the EIP-8141 fixture subdirectory in $FIXTURE_DIR"
+              find "$FIXTURE_DIR" -maxdepth 2 -type d | head -30
+              exit 1
+            fi
+            FIXTURE_DIR="$SCOPED_DIR"
           fi
 
           if [ "$SCOPE" = "amsterdam" ]; then
