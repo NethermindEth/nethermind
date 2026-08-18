@@ -43,7 +43,7 @@ namespace Nethermind.Api
         public string? DataDir { get; set; }
         public bool HealCanonicalChain { get; set; } = false;
         public long HealCanonicalChainDepth { get; set; } = 8192;
-        public int InstructionStreamCacheSize { get; set; } = 1024;
+        public int InstructionStreamCacheSize { get; set; } = 4096;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

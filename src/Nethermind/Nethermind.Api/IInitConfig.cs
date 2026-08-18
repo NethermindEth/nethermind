@@ -109,8 +109,8 @@ public interface IInitConfig : IConfig
     long HealCanonicalChainDepth { get; set; }
 
     [ConfigItem(
-        Description = "The EVM instruction-stream cache size, in code entries. Each entry retains up to 512 KiB, bounding worst-case retention at size x 512 KiB. Nodes serving many concurrent eth_call-style requests benefit from a larger value (e.g. 4096): the simultaneously-hot code set grows with request parallelism, and once it conflict-evicts, execution falls back to a slower interpreter path.",
-        DefaultValue = "1024")]
+        Description = "The EVM instruction-stream cache size, in code entries. Each entry retains up to 512 KiB (typical entries are far smaller), bounding worst-case retention at size x 512 KiB. The simultaneously-hot code set grows with concurrent eth_call-style request parallelism, and once the cache conflict-evicts, execution falls back to a slower interpreter path — lower this only on memory-constrained setups.",
+        DefaultValue = "4096")]
     int InstructionStreamCacheSize { get; set; }
 }
 
