@@ -1041,6 +1041,118 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(chainSpec.Genesis.SlotNumber, Is.EqualTo(expectedSlotNumber));
     }
 
+    private static ChainSpecBasedSpecProvider ProviderFromParams(string paramsJson)
+    {
+        string chainSpecJson = $$"""
+        {
+          "name": "Test",
+          "engine": { "NethDev": {} },
+          "params": {
+            "networkID": "0x1",
+            "chainID": "0x1",
+            {{paramsJson}}
+          },
+          "genesis": {
+            "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+            "difficulty": "0x1",
+            "gasLimit": "0x1000000",
+            "timestamp": "0x0"
+          },
+          "accounts": {}
+        }
+        """;
+
+        return new ChainSpecBasedSpecProvider(LoadChainSpecFromString(chainSpecJson));
+    }
+
+    // Bogota schedules EIP-8141 (frames) and EIP-7805 (FOCIL) together via the Forks/26_Bogota.cs
+    // → HardforkLabels fan-out; both must flip on at the boundary and be off before it.
+    [TestCase(0x63ul, false, TestName = "Bogota label: before boundary both off")]
+    [TestCase(0x64ul, true, TestName = "Bogota label: at boundary both on")]
+    [TestCase(0xc8ul, true, TestName = "Bogota label: after boundary both on")]
+    public void Bogota_label_schedules_both_eip8141_and_eip7805(ulong timestamp, bool expected)
+    {
+        ChainSpecBasedSpecProvider provider = ProviderFromParams("\"bogota\": \"0x64\"");
+
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(1000, timestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8141Enabled, Is.EqualTo(expected));
+            Assert.That(spec.IsEip7805Enabled, Is.EqualTo(expected));
+        }
+    }
+
+    [TestCase(99ul, false, TestName = "Geth bogotaTime: before boundary both off")]
+    [TestCase(100ul, true, TestName = "Geth bogotaTime: at boundary both on")]
+    public void Geth_genesis_bogotaTime_schedules_both_eip8141_and_eip7805(ulong timestamp, bool expected)
+    {
+        const string genesisJson = """
+        {
+          "config": {
+            "chainId": 3151908,
+            "homesteadBlock": 0,
+            "eip150Block": 0,
+            "eip155Block": 0,
+            "eip158Block": 0,
+            "byzantiumBlock": 0,
+            "constantinopleBlock": 0,
+            "petersburgBlock": 0,
+            "istanbulBlock": 0,
+            "berlinBlock": 0,
+            "londonBlock": 0,
+            "bogotaTime": 100
+          },
+          "difficulty": "0x1",
+          "gasLimit": "0x3938700",
+          "timestamp": 0,
+          "alloc": {}
+        }
+        """;
+
+        ChainSpecBasedSpecProvider provider = new(LoadGethGenesisFromString(genesisJson));
+
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(1000, timestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8141Enabled, Is.EqualTo(expected));
+            Assert.That(spec.IsEip7805Enabled, Is.EqualTo(expected));
+        }
+    }
+
+    // Existing frames devnets activate frames via eip8141TransitionTimestamp with FOCIL off — this
+    // independent per-EIP path must stay untouched by the Bogota bundling.
+    [TestCase(0x63ul, false, TestName = "eip8141 alone: before boundary frames off")]
+    [TestCase(0x64ul, true, TestName = "eip8141 alone: at boundary frames on")]
+    public void Eip8141_transition_alone_enables_frames_without_focil(ulong timestamp, bool framesEnabled)
+    {
+        ChainSpecBasedSpecProvider provider = ProviderFromParams("\"eip8141TransitionTimestamp\": \"0x64\"");
+
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(1000, timestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip8141Enabled, Is.EqualTo(framesEnabled));
+            Assert.That(spec.IsEip7805Enabled, Is.False);
+        }
+    }
+
+    [TestCase(0x63ul, false, TestName = "eip7805 alone: before boundary FOCIL off")]
+    [TestCase(0x64ul, true, TestName = "eip7805 alone: at boundary FOCIL on")]
+    public void Eip7805_transition_alone_enables_focil_without_frames(ulong timestamp, bool focilEnabled)
+    {
+        ChainSpecBasedSpecProvider provider = ProviderFromParams("\"eip7805TransitionTimestamp\": \"0x64\"");
+
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(1000, timestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip7805Enabled, Is.EqualTo(focilEnabled));
+            Assert.That(spec.IsEip8141Enabled, Is.False);
+        }
+    }
+
     [Test]
     public void Geth_genesis_base_fee_per_gas_supports_uint256_quantity()
     {

@@ -264,9 +264,20 @@ public static class FrameTxValidation
     {
         TxFrame[] frames = transaction.Frames ?? [];
         int counted = RecognizedPrefixLength(frames, transaction.SenderAddress) ?? frames.Length;
+        return ValidationWorkGas(transaction, counted);
+    }
+
+    /// <summary>
+    /// <inheritdoc cref="ValidationWorkGas(Transaction)"/> for a caller that has already resolved the
+    /// number of validation-prefix frames, so the frame-shape walk is not repeated.
+    /// </summary>
+    /// <param name="countedFrames">The number of leading frames to charge, e.g. from <see cref="TryGetValidationPrefixLength"/>.</param>
+    internal static ulong ValidationWorkGas(Transaction transaction, int countedFrames)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
 
         ulong total = 0;
-        for (int i = 0; i < counted; i++)
+        for (int i = 0; i < countedFrames; i++)
         {
             total = Saturating(total, frames[i].GasLimit);
         }
@@ -277,6 +288,18 @@ public static class FrameTxValidation
         }
 
         return total;
+    }
+
+    /// <summary>
+    /// The number of leading frames forming a recognized EIP-8141 validation prefix, or <c>false</c>
+    /// when the frame layout matches none of them.
+    /// </summary>
+    /// <param name="prefixLength">The recognized prefix length; 0 when unrecognized.</param>
+    public static bool TryGetValidationPrefixLength(Transaction transaction, out int prefixLength)
+    {
+        int? length = RecognizedPrefixLength(transaction.Frames ?? [], transaction.SenderAddress);
+        prefixLength = length ?? 0;
+        return length is not null;
     }
 
     /// <summary>
