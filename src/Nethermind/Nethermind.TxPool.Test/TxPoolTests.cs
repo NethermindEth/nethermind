@@ -2206,7 +2206,12 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address), "no reservation is taken unless the payer resolves");
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            // A head the transaction survives first, so the DEBUG bookkeeping check meets a live reservation
+            // rather than an already-empty ledger.
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(500).TestObject);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "a deadline ahead of the head must not be swept");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_500).TestObject);
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "the expired frame transaction must be evicted");
 
             // Same payer and same cost, told apart only by its deadline: only a leaked reservation rejects it.
