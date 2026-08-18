@@ -7,8 +7,8 @@ workflow, which benchmarks Nethermind's **state-reading JSON-RPC**
 Drives three load tools and can optionally capture a JetBrains dotTrace snapshot
 and post-process it to XML.
 
-**Supported configuration.** That runner carries exactly one snapshot set —
-Nethermind at `SNAPSHOT_BLOCK` in the **flat** layout under
+**Supported configuration.** That runner carries exactly one kind of snapshot
+set — Nethermind in the **flat** layout under
 `/data/nethermind/nethermind-flat-<block>` — so `client`, `reference_client`
 (i.e. cross-client comparison mode) and `state_layout` are pinned to
 `nethermind` / `none` / `flat`. Anything else is refused before a node starts —
