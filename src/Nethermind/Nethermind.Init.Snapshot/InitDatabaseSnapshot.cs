@@ -63,7 +63,7 @@ public class InitDatabaseSnapshot(
 
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
 
-        if (Path.Exists(dbPath))
+        if (DatabaseExists(dbPath))
         {
             if (checkpoint.Read() < SnapshotStage.Extracted)
             {
@@ -78,6 +78,12 @@ public class InitDatabaseSnapshot(
                     _logger.Info($"Database already exists at {dbPath}. Skipping snapshot initialization.");
                 return;
             }
+        }
+        else if (checkpoint.Read() >= SnapshotStage.Extracted)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"The snapshot checkpoint indicates a completed extraction, but the database at {dbPath} is missing or empty. Reinitializing from the snapshot.");
+            checkpoint.Advance(SnapshotStage.Started);
         }
 
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
@@ -161,6 +167,22 @@ public class InitDatabaseSnapshot(
         }
 
         checkpoint.Advance(SnapshotStage.Downloaded);
+    }
+
+    private static bool DatabaseExists(string dbPath)
+    {
+        if (File.Exists(dbPath))
+            return true;
+        if (!Directory.Exists(dbPath))
+            return false;
+
+        foreach (string entry in Directory.EnumerateFileSystemEntries(dbPath))
+        {
+            if (Path.GetFileName(entry) != "lost+found")
+                return true;
+        }
+
+        return false;
     }
 
     private long GetFileSize(string path)

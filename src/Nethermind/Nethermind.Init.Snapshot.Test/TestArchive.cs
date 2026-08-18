@@ -36,6 +36,22 @@ internal static class TestArchive
         return compressed.ToArray();
     }
 
+    public static byte[] BuildTarZstWithoutTopLevelDirectory()
+    {
+        using MemoryStream tarBuffer = new();
+        using (TarWriter writer = new(tarBuffer, leaveOpen: true))
+        {
+            PaxTarEntry entry = new(TarEntryType.RegularFile, "state.bin") { DataStream = new MemoryStream(new byte[10_000]) };
+            writer.WriteEntry(entry);
+        }
+
+        tarBuffer.Position = 0;
+        using MemoryStream compressed = new();
+        using (CompressionStream zstd = new(compressed, leaveOpen: true))
+            tarBuffer.CopyTo(zstd);
+        return compressed.ToArray();
+    }
+
     public static byte[] BuildTarZstWithSymlink()
     {
         using MemoryStream tarBuffer = new();

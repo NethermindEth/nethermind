@@ -148,6 +148,27 @@ public class InitDatabaseSnapshotTests
             "the archive must be deleted after a successful two-phase extraction");
     }
 
+    [Test]
+    public async Task Execute_CompletedCheckpointButEmptyDatabaseDirectory_ReinitializesFromSnapshot()
+    {
+        using FlakySnapshotServer server = new();
+        Dictionary<string, byte[]> files = TestArchive.BuildFiles();
+        byte[] archive = TestArchive.BuildTarZst(files);
+        server.Content = archive;
+        Directory.CreateDirectory(Path.Combine(_dbPath, "lost+found"));
+        AdvanceCheckpoint(SnapshotStage.Completed);
+        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = true;
+        _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state/a42.sst")), Is.True,
+            "a stale completed checkpoint with a missing or empty database must reinitialize instead of skipping and leaving the node to sync from genesis");
+    }
+
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(

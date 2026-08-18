@@ -136,6 +136,22 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
+    public async Task InitializeAsync_ArchiveNotMatchingStripComponents_DeletesDatabaseWithoutThrowing()
+    {
+        byte[] archive = TestArchive.BuildTarZstWithoutTopLevelDirectory();
+        _server.Content = archive;
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        SnapshotCheckpoint checkpoint = CreateCheckpoint();
+
+        await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
+
+        Assert.That(Directory.Exists(_dbPath), Is.False,
+            "an extraction that produced no files must be treated as a failure, not silently completed");
+        Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started),
+            "the checkpoint must not advance when nothing was extracted");
+    }
+
+    [Test]
     public void InitializeAsync_ZipArchiveConfigured_Throws()
     {
         _config.SnapshotFileName = "snapshot.zip";
