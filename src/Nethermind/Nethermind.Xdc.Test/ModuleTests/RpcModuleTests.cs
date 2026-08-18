@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.Json;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -31,7 +32,6 @@ public class RpcModuleTests
     private IEpochSwitchManager _epochSwitchManager;
     private IVotesManager _votesManager;
     private ITimeoutCertificateManager _timeoutCertificateManager;
-    private ISyncInfoManager _syncInfoManager;
     private IRewardsStore _rewardsStore;
     private XdcRpcModule _rpcModule;
 
@@ -152,7 +152,6 @@ public class RpcModuleTests
         _epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         _votesManager = Substitute.For<IVotesManager>();
         _timeoutCertificateManager = Substitute.For<ITimeoutCertificateManager>();
-        _syncInfoManager = Substitute.For<ISyncInfoManager>();
         _rewardsStore = Substitute.For<IRewardsStore>();
 
         _rpcModule = new XdcRpcModule(
@@ -162,7 +161,6 @@ public class RpcModuleTests
             _epochSwitchManager,
             _votesManager,
             _timeoutCertificateManager,
-            _syncInfoManager,
             _rewardsStore);
     }
 
@@ -454,10 +452,12 @@ public class RpcModuleTests
     }
 
 
-    [Test]
-    public void GetLatestPoolStatus_ShouldReturnSuccess_WhenValidState()
+    /// <summary>
+    /// Sets up a head block whose vote pool holds a single entry signed by two of three masternodes,
+    /// and returns that entry's reference-client pool key.
+    /// </summary>
+    private string ArrangeLatestPoolStatus()
     {
-        // Arrange
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = 100;
 
@@ -482,7 +482,15 @@ public class RpcModuleTests
 
         _votesManager.GetReceivedVotes().Returns(receivedVotes);
         _timeoutCertificateManager.GetReceivedTimeouts().Returns(new Dictionary<(ulong, Hash256), Dictionary<Address, Timeout>>());
-        _syncInfoManager.GetReceivedSyncInfos().Returns(new Dictionary<(ulong, Hash256), SyncInfoTypes>());
+
+        return $"10:0:100:{TestItem.KeccakA}";
+    }
+
+    [Test]
+    public void GetLatestPoolStatus_ShouldReturnSuccess_WhenValidState()
+    {
+        // Arrange
+        ArrangeLatestPoolStatus();
 
         // Act
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
@@ -492,7 +500,29 @@ public class RpcModuleTests
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Vote, Is.Not.Null);
         Assert.That(result.Data.Timeout, Is.Not.Null);
-        Assert.That(result.Data.SyncInfo, Is.Not.Null);
+    }
+
+    /// <summary>
+    /// The response must carry the same structure as the reference client, which keys each bucket by its
+    /// <c>PoolKey()</c> and returns only <c>vote</c> and <c>timeout</c>. Member names stay camelCase per
+    /// this serializer's convention rather than the reference's PascalCase.
+    /// </summary>
+    [Test]
+    public void GetLatestPoolStatus_ShouldMatchReferenceClientStructure_WhenPoolIsNotEmpty()
+    {
+        // Arrange
+        string poolKey = ArrangeLatestPoolStatus();
+
+        // Act
+        PoolStatus poolStatus = _rpcModule.XDPoS_getLatestPoolStatus().Data;
+        string json = new EthereumJsonSerializer().Serialize(poolStatus);
+
+        // Assert
+        string expected = "{\"vote\":{\"" + poolKey + "\":{\"currentNumber\":2"
+            + ",\"currentSigners\":[\"" + TestItem.AddressA + "\",\"" + TestItem.AddressB + "\"]"
+            + ",\"missingSigners\":[\"" + TestItem.AddressC + "\"]}}"
+            + ",\"timeout\":{}}";
+        Assert.That(json, Is.EqualTo(expected));
     }
 
     [Test]
