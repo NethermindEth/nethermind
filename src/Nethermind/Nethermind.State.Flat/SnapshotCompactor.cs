@@ -148,20 +148,25 @@ public class SnapshotCompactor(
         try
         {
             using ArrayPoolListRef<Task> compactTask = new(4);
-            compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedAccounts, snapshots, default(AddressKeyComparer), static m => m.SortedAccounts, static c => c.Accounts)));
-            compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStorages, snapshots, default(StorageKeyComparer), static m => m.SortedStorages, static c => c.Storages,
-                new StorageBoundaryKeep<Address, UInt256>(slotClearBoundary))));
-            compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes)));
-            compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodes,
-                new StorageBoundaryKeep<Hash256, TreePath>(nodeClearBoundary))));
+            try
+            {
+                compactTask.Add(Task.Run(() => MergeInto(
+                    content.SortedAccounts, snapshots, default(AddressKeyComparer), static m => m.SortedAccounts, static c => c.Accounts)));
+                compactTask.Add(Task.Run(() => MergeInto(
+                    content.SortedStorages, snapshots, default(StorageKeyComparer), static m => m.SortedStorages, static c => c.Storages,
+                    new StorageBoundaryKeep<Address, UInt256>(slotClearBoundary))));
+                compactTask.Add(Task.Run(() => MergeInto(
+                    content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes)));
+                compactTask.Add(Task.Run(() => MergeInto(
+                    content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodes,
+                    new StorageBoundaryKeep<Hash256, TreePath>(nodeClearBoundary))));
 
-            content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, default(AddressKeyComparer));
-
-            Task.WaitAll(compactTask.AsSpan());
+                content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, default(AddressKeyComparer));
+            }
+            finally
+            {
+                Task.WaitAll(compactTask.AsSpan());
+            }
         }
         catch
         {
