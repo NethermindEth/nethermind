@@ -11,6 +11,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -1209,6 +1211,377 @@ public class RpcModuleTests
         // Assert
         Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [TestCase(BlockScopedEndpoint.GetSnapshot)]
+    [TestCase(BlockScopedEndpoint.GetSnapshotAtHash)]
+    public void SnapshotEndpoints_ShouldReturnSuccess_WhenSnapshotExists(BlockScopedEndpoint endpoint)
+    {
+        // Arrange
+        XdcBlockHeader header = BuildV2Header(50, 50);
+        BlockParameter blockParam = RegisterHeader(endpoint, header);
+
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec();
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        Address[] candidates = [TestItem.AddressA, TestItem.AddressB];
+        _snapshotManager.GetSnapshotByBlockNumber(header.Number, spec).Returns(new Snapshot(header.Number, header.Hash!, candidates));
+
+        // Act
+        IResultWrapper result = Invoke(endpoint, blockParam);
+
+        // Assert
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        PublicApiSnapshot snapshot = (PublicApiSnapshot)result.Data!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.Number, Is.EqualTo(header.Number));
+            Assert.That(snapshot.Hash, Is.EqualTo(header.Hash));
+            Assert.That(snapshot.Signers, Is.EquivalentTo(candidates));
+        }
+    }
+
+    [Test]
+    public void GetSignersAtHash_ShouldReturnSuccess_WithSpecificBlockHash()
+    {
+        // Arrange
+        XdcBlockHeader header = BuildV2Header(50, 50);
+        _blockTree.FindHeader(header.Hash!).Returns(header);
+
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec();
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        Address[] expectedSigners = [TestItem.AddressA, TestItem.AddressB];
+        _snapshotManager.GetSnapshotByBlockNumber(header.Number, spec).Returns(new Snapshot(header.Number, header.Hash!, expectedSigners));
+
+        // Act
+        ResultWrapper<Address[]> result = _rpcModule.XDPoS_getSignersAtHash(new BlockParameter(header.Hash!));
+
+        // Assert
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.EquivalentTo(expectedSigners));
+    }
+
+    [TestCase(BlockScopedEndpoint.GetSnapshot)]
+    [TestCase(BlockScopedEndpoint.GetSnapshotAtHash)]
+    [TestCase(BlockScopedEndpoint.GetSignersAtHash)]
+    public void SnapshotEndpoints_ShouldReturnFail_WhenBlockIsV1(BlockScopedEndpoint endpoint)
+    {
+        // Arrange
+        const ulong switchBlock = 10;
+        XdcBlockHeader header = BuildV2Header(switchBlock - 1, 5);
+        BlockParameter blockParam = RegisterHeader(endpoint, header);
+
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchBlock: switchBlock);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        _snapshotManager.GetSnapshotByBlockNumber(header.Number, spec).Returns(new Snapshot(header.Number, header.Hash!, [TestItem.AddressA]));
+
+        // Act
+        IResultWrapper result = Invoke(endpoint, blockParam);
+
+        // Assert
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [TestCase(BlockScopedEndpoint.GetSnapshot)]
+    [TestCase(BlockScopedEndpoint.GetSnapshotAtHash)]
+    [TestCase(BlockScopedEndpoint.GetSignersAtHash)]
+    public void SnapshotEndpoints_ShouldReturnFail_WhenSnapshotNotFound(BlockScopedEndpoint endpoint)
+    {
+        // Arrange
+        XdcBlockHeader header = BuildV2Header(100, 100);
+        BlockParameter blockParam = RegisterHeader(endpoint, header);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(CreateDummyXdcReleaseSpec());
+
+        // Act
+        IResultWrapper result = Invoke(endpoint, blockParam);
+
+        // Assert
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [TestCase(BlockScopedEndpoint.GetV2BlockByNumber, true)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByNumber, false)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByHash, true)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByHash, false)]
+    public void V2BlockEndpoints_ShouldReturnSuccess_WhenBlockExists(BlockScopedEndpoint endpoint, bool committed)
+    {
+        // Arrange
+        const ulong blockNumber = 100;
+        const ulong round = 97;
+        XdcBlockHeader header = BuildV2Header(blockNumber, round);
+        BlockParameter blockParam = RegisterHeader(endpoint, header);
+
+        _quorumCertificateManager.HighestKnownCertificate.Returns(Build.A.QuorumCertificate()
+            .WithBlockInfo(new BlockRoundInfo(TestItem.KeccakA, round, committed ? blockNumber : blockNumber - 1))
+            .TestObject);
+
+        // Act
+        IResultWrapper result = Invoke(endpoint, blockParam);
+
+        // Assert
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        V2BlockInfo blockInfo = (V2BlockInfo)result.Data!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfo.Hash, Is.EqualTo(header.Hash));
+            Assert.That(blockInfo.ParentHash, Is.EqualTo(header.ParentHash));
+            Assert.That(blockInfo.Number, Is.EqualTo((UInt256)blockNumber));
+            Assert.That(blockInfo.Round, Is.EqualTo((UInt256)round));
+            Assert.That(blockInfo.Committed, Is.EqualTo(committed));
+            Assert.That(blockInfo.Miner, Is.EqualTo(header.Beneficiary));
+            Assert.That(blockInfo.Timestamp, Is.EqualTo(header.Timestamp));
+            Assert.That(blockInfo.Error, Is.Null);
+            Assert.That(DecodeHeader(blockInfo.EncodedRLP!), Is.EqualTo(header).UsingXdcComparer(compareHash: false));
+        }
+    }
+
+    [TestCase(BlockScopedEndpoint.GetV2BlockByNumber)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByHash)]
+    public void V2BlockEndpoints_ShouldReportError_WhenNoCommittedBlockIsKnown(BlockScopedEndpoint endpoint)
+    {
+        // Arrange
+        XdcBlockHeader header = BuildV2Header(100, 97);
+        BlockParameter blockParam = RegisterHeader(endpoint, header);
+
+        // Act
+        IResultWrapper result = Invoke(endpoint, blockParam);
+
+        // Assert
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        V2BlockInfo blockInfo = (V2BlockInfo)result.Data!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockInfo.Hash, Is.EqualTo(header.Hash));
+            Assert.That(blockInfo.Error, Is.Not.Null);
+            Assert.That(blockInfo.Committed, Is.False);
+            Assert.That(blockInfo.EncodedRLP, Is.Null);
+        }
+    }
+
+    [TestCase(BlockScopedEndpoint.GetV2BlockByNumber)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByHash)]
+    public void V2BlockEndpoints_ShouldReturnFail_WhenConsensusDataIsMissing(BlockScopedEndpoint endpoint)
+    {
+        // Arrange
+        XdcBlockHeader header = Build.A.XdcBlockHeader().WithNumber(100).TestObject;
+        BlockParameter blockParam = RegisterHeader(endpoint, header);
+
+        _quorumCertificateManager.HighestKnownCertificate.Returns(Build.A.QuorumCertificate()
+            .WithBlockInfo(new BlockRoundInfo(TestItem.KeccakA, 97, 100))
+            .TestObject);
+
+        // Act
+        IResultWrapper result = Invoke(endpoint, blockParam);
+
+        // Assert
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [Test]
+    public void BlockScopedEndpoints_ShouldReturnSuccess_WhenResolvingHead(
+        [Values] BlockScopedEndpoint endpoint,
+        [Values] bool useLatestBlockParameter)
+    {
+        // Arrange
+        XdcBlockHeader head = BuildV2Header(100, 97);
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
+
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec();
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        _snapshotManager.GetSnapshotByBlockNumber(head.Number, spec).Returns(new Snapshot(head.Number, head.Hash!, [TestItem.AddressA]));
+        _quorumCertificateManager.HighestKnownCertificate.Returns(Build.A.QuorumCertificate()
+            .WithBlockInfo(new BlockRoundInfo(head.Hash!, 97, head.Number))
+            .TestObject);
+
+        // Act
+        IResultWrapper result = Invoke(endpoint, useLatestBlockParameter ? BlockParameter.Latest : null);
+
+        // Assert
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+    }
+
+    [Test]
+    public void BlockScopedEndpoints_ShouldReturnFail_WhenHeadIsUnknown(
+        [Values] BlockScopedEndpoint endpoint,
+        [Values] bool useLatestBlockParameter)
+    {
+        // Act
+        IResultWrapper result = Invoke(endpoint, useLatestBlockParameter ? BlockParameter.Latest : null);
+
+        // Assert
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [Test]
+    public void BlockScopedEndpoints_ShouldReturnFail_WhenHeaderNotFound([Values] BlockScopedEndpoint endpoint)
+    {
+        // Act
+        IResultWrapper result = Invoke(endpoint, UnknownBlockParameter(endpoint));
+
+        // Assert
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [TestCase(BlockScopedEndpoint.GetSnapshotAtHash)]
+    [TestCase(BlockScopedEndpoint.GetSignersAtHash)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByHash)]
+    public void HashBasedEndpoints_ShouldReturnFail_WhenBlockHashIsMissing(BlockScopedEndpoint endpoint)
+    {
+        // Act
+        IResultWrapper result = Invoke(endpoint, BlockParameter.Finalized);
+
+        // Assert
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [TestCase(BlockScopedEndpoint.GetSnapshot)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByNumber)]
+    public void NumberBasedEndpoints_ShouldReturnFail_WhenBlockNumberIsMissing(BlockScopedEndpoint endpoint)
+    {
+        // Act
+        IResultWrapper result = Invoke(endpoint, BlockParameter.Finalized);
+
+        // Assert
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [TestCase(BlockScopedEndpoint.GetSnapshot)]
+    [TestCase(BlockScopedEndpoint.GetSnapshotAtHash)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByNumber)]
+    [TestCase(BlockScopedEndpoint.GetV2BlockByHash)]
+    public void BlockScopedEndpoints_ShouldReturnFail_WhenHeaderIsNotXdcHeader(BlockScopedEndpoint endpoint)
+    {
+        // Arrange
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockParameter blockParam = RegisterHeader(endpoint, header);
+
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec();
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        _snapshotManager.GetSnapshotByBlockNumber(header.Number, spec).Returns(new Snapshot(header.Number, header.Hash!, [TestItem.AddressA]));
+        _quorumCertificateManager.HighestKnownCertificate.Returns(Build.A.QuorumCertificate()
+            .WithBlockInfo(new BlockRoundInfo(TestItem.KeccakA, 97, header.Number))
+            .TestObject);
+
+        // Act
+        IResultWrapper result = Invoke(endpoint, blockParam);
+
+        // Assert
+        Assert.That(result.Result, Is.Not.EqualTo(Result.Success));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    [Test]
+    public void NetworkInformation_ShouldProjectSpecOfHeadBlock()
+    {
+        // Arrange
+        const ulong networkId = 51;
+        const ulong epochLength = 900;
+        const ulong minePeriod = 2;
+        const ulong switchEpoch = 5;
+        const ulong switchBlock = 10;
+
+        XdcBlockHeader head = BuildV2Header(100, 97);
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
+
+        IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(
+            switchEpoch: switchEpoch,
+            epochLength: epochLength,
+            switchBlock: switchBlock,
+            minePeriod: minePeriod);
+        spec.MasternodeVotingContract = TestItem.AddressA;
+        spec.XDCXLendingAddressBinary = TestItem.AddressB;
+        spec.XDCXAddressBinary = TestItem.AddressC;
+
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        _specProvider.NetworkId.Returns(networkId);
+
+        // Act
+        ResultWrapper<NetworkInformation> result = _rpcModule.XDPoS_networkInformation();
+
+        // Assert
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        NetworkInformation info = result.Data!;
+        Assert.That(info.ConsensusConfigs, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(info.NetworkId, Is.EqualTo((UInt256)networkId));
+            Assert.That(info.XDCValidatorAddress, Is.EqualTo(TestItem.AddressA));
+            Assert.That(info.LendingAddress, Is.EqualTo(TestItem.AddressB));
+            Assert.That(info.XDCXListingAddress, Is.EqualTo(TestItem.AddressC));
+            Assert.That(info.ConsensusConfigs!.Epoch, Is.EqualTo(epochLength));
+            Assert.That(info.ConsensusConfigs.Gap, Is.EqualTo(spec.Gap));
+            Assert.That(info.ConsensusConfigs.Period, Is.EqualTo(minePeriod));
+            Assert.That(info.ConsensusConfigs.Reward, Is.EqualTo(spec.Reward));
+            Assert.That(info.ConsensusConfigs.SwitchEpoch, Is.EqualTo(switchEpoch));
+            Assert.That(info.ConsensusConfigs.SwitchBlock, Is.EqualTo(switchBlock));
+            Assert.That(info.ConsensusConfigs.V2Configs, Is.SameAs(spec.V2Configs));
+        }
+    }
+
+    /// <summary>
+    /// XDPoS endpoints that resolve a header from a <see cref="BlockParameter"/>, either by number or by hash.
+    /// </summary>
+    public enum BlockScopedEndpoint
+    {
+        GetSnapshot,
+        GetSnapshotAtHash,
+        GetSignersAtHash,
+        GetV2BlockByNumber,
+        GetV2BlockByHash
+    }
+
+    private IResultWrapper Invoke(BlockScopedEndpoint endpoint, BlockParameter? blockParam) => endpoint switch
+    {
+        BlockScopedEndpoint.GetSnapshot => _rpcModule.XDPoS_getSnapshot(blockParam!),
+        BlockScopedEndpoint.GetSnapshotAtHash => _rpcModule.XDPoS_getSnapshotAtHash(blockParam!),
+        BlockScopedEndpoint.GetSignersAtHash => _rpcModule.XDPoS_getSignersAtHash(blockParam!),
+        BlockScopedEndpoint.GetV2BlockByNumber => _rpcModule.XDPoS_getV2BlockByNumber(blockParam!),
+        BlockScopedEndpoint.GetV2BlockByHash => _rpcModule.XDPoS_getV2BlockByHash(blockParam!),
+        _ => throw new ArgumentOutOfRangeException(nameof(endpoint), endpoint, null)
+    };
+
+    private static bool IsHashBased(BlockScopedEndpoint endpoint) =>
+        endpoint is BlockScopedEndpoint.GetSnapshotAtHash
+            or BlockScopedEndpoint.GetSignersAtHash
+            or BlockScopedEndpoint.GetV2BlockByHash;
+
+    /// <summary>
+    /// Makes <paramref name="header"/> resolvable through the block tree and returns the parameter
+    /// that <paramref name="endpoint"/> expects for it.
+    /// </summary>
+    private BlockParameter RegisterHeader(BlockScopedEndpoint endpoint, BlockHeader header)
+    {
+        if (IsHashBased(endpoint))
+        {
+            _blockTree.FindHeader(header.Hash!).Returns(header);
+            return new BlockParameter(header.Hash!);
+        }
+
+        _blockTree.FindHeader(header.Number).Returns(header);
+        return new BlockParameter(header.Number);
+    }
+
+    private static BlockParameter UnknownBlockParameter(BlockScopedEndpoint endpoint) =>
+        IsHashBased(endpoint) ? new BlockParameter(TestItem.KeccakF) : new BlockParameter(ulong.MaxValue);
+
+    private static XdcBlockHeader BuildV2Header(ulong number, ulong round) =>
+        Build.A.XdcBlockHeader()
+            .WithNumber(number)
+            .WithExtraFieldsV2(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
+
+    private static XdcBlockHeader DecodeHeader(string encodedRlp)
+    {
+        RlpReader reader = new(Convert.FromBase64String(encodedRlp));
+        return (XdcBlockHeader)new XdcHeaderDecoder().Decode(ref reader)!;
     }
 
     private static Dictionary<string, XdcRewardLog> GetSignerSection(XdcEpochRewards rewards, string section) =>
