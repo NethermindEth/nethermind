@@ -71,6 +71,27 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
+    public void Simulate_FaultEpisodeEnds_WarnsAgainOnTheNext()
+    {
+        // Latching the warning for the whole process life would hide a later, genuinely systemic outage.
+        InterfaceLogger sink = Substitute.For<InterfaceLogger>();
+        sink.IsWarn.Returns(true);
+        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor, logSink: sink);
+
+        Fault(processor, new IOException("disk failure"));
+        simulator.Simulate(Tx());
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>()).Returns(TransactionResult.Ok);
+        simulator.Simulate(Tx());
+        Fault(processor, new IOException("disk failure"));
+        simulator.Simulate(Tx());
+
+        sink.Received(2).Warn(Arg.Any<string>());
+
+        static void Fault(ITransactionProcessor processor, Exception fault) =>
+            processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>()).Throws(fault);
+    }
+
+    [Test]
     public void Simulate_ProcessorThrowsOverAttackerBytecode_Rejects()
     {
         // Whatever the transaction's own bytecode can provoke stays a rejection.
@@ -132,7 +153,8 @@ public class FrameTxPrefixSimulatorTests
     private static FrameTxPrefixSimulator CreateSimulator(
         out IReadOnlyTxProcessorSource source,
         out ITransactionProcessor processor,
-        bool hasHead = true)
+        bool hasHead = true,
+        InterfaceLogger? logSink = null)
     {
         processor = Substitute.For<ITransactionProcessor>();
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
@@ -148,7 +170,8 @@ public class FrameTxPrefixSimulatorTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.Head.Returns(hasHead ? Build.A.Block.WithNumber(1).TestObject : null);
 
-        return new FrameTxPrefixSimulator(envFactory, blockFinder, new TestSpecProvider(Eip8141Prototype.Instance), LimboLogs.Instance);
+        ILogManager logManager = logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink));
+        return new FrameTxPrefixSimulator(envFactory, blockFinder, new TestSpecProvider(Eip8141Prototype.Instance), logManager);
     }
 
     private static Transaction Tx() => Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
