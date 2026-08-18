@@ -105,6 +105,44 @@ public class HexWriterTests
         Assert.That(actual, Is.EqualTo("\"" + expectedBody + "\""));
     }
 
+    // Lengths straddle the 32-byte block, 16-byte block, and scalar-tail boundaries of EncodeToHex;
+    // 256 covers every byte value (odd multiplier walks all residues mod 256).
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(15)]
+    [TestCase(16)]
+    [TestCase(17)]
+    [TestCase(31)]
+    [TestCase(32)]
+    [TestCase(33)]
+    [TestCase(48)]
+    [TestCase(63)]
+    [TestCase(64)]
+    [TestCase(256)]
+    public void WriteHexStringValue_MatchesReference(int length)
+    {
+        byte[] data = new byte[length];
+        for (int i = 0; i < length; i++)
+        {
+            data[i] = (byte)(i * 131 + 7);
+        }
+
+        string actual = WriteToString(w => HexWriter.WriteHexStringValue(w, data));
+        Assert.That(actual, Is.EqualTo("\"0x" + Convert.ToHexStringLower(data) + "\""));
+    }
+
+    [TestCase(0UL)]
+    [TestCase(1UL)]
+    [TestCase(0xabUL)]
+    [TestCase(0x1234567UL)]
+    [TestCase(0x0123456789abcdefUL)]
+    [TestCase(ulong.MaxValue)]
+    public void WriteUlongHexStringValue_MatchesReference(ulong value)
+    {
+        string actual = WriteToString(w => HexWriter.WriteUlongHexStringValue(w, value));
+        Assert.That(actual, Is.EqualTo($"\"0x{value:x}\""));
+    }
+
     [TestCase(0x0UL, true, true, "0x" + ZeroWord, TestName = "U256Prop_ZeroPaddedWithPrefix_Zero")]
     [TestCase(0x1UL, true, true, "0x" + "000000000000000000000000000000000000000000000000000000000000000" + "1", TestName = "U256Prop_ZeroPaddedWithPrefix_One")]
     [TestCase(0x1UL, false, true, "0x1", TestName = "U256Prop_TrimmedWithPrefix_One")]

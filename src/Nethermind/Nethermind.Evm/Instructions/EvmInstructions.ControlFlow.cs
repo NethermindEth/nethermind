@@ -197,7 +197,15 @@ public static partial class EvmInstructions
             return false;
         }
         // If the condition is non-zero (i.e., true), attempt to perform the jump.
-        return (Unsafe.As<byte, Vector256<byte>>(ref condition) != default);
+        if (Vector256.IsHardwareAccelerated)
+        {
+            return (Unsafe.As<byte, Vector256<byte>>(ref condition) != default);
+        }
+
+        // Without Vector256 acceleration (ARM64, zkVM) the vector zero test falls back to an
+        // element loop; a flat 4x ulong OR is optimal there (endianness-agnostic for a zero test).
+        ref ulong p = ref Unsafe.As<byte, ulong>(ref condition);
+        return (p | Unsafe.Add(ref p, 1) | Unsafe.Add(ref p, 2) | Unsafe.Add(ref p, 3)) != 0UL;
     }
 
     /// <summary>

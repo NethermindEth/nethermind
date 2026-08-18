@@ -202,6 +202,58 @@ public class EvmStackTests
     }
 
     [Test]
+    public void PushUInt256_writes_full_big_endian_byte_order()
+    {
+        // 32 distinct bytes: the repeated-nibble round-trip above cannot catch a missing
+        // per-limb byte reversal or a lane swap in the vectorized push paths.
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        vmState.InitializeStacks(default, out EvmStack stack);
+        byte[] bigEndian = new byte[32];
+        for (int i = 0; i < bigEndian.Length; i++) bigEndian[i] = (byte)(0xC0 + i);
+        UInt256 value = new(bigEndian, isBigEndian: true);
+
+        Assert.That(stack.PushUInt256<OffFlag>(in value), Is.EqualTo(EvmExceptionType.None));
+        Assert.That(stack.PopWord256(out Span<byte> word), Is.True);
+        Assert.That(word.ToArray(), Is.EqualTo(bigEndian));
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    public void PopUInt256_overloads_read_full_big_endian_byte_order(int count)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        vmState.InitializeStacks(default, out EvmStack stack);
+        UInt256[] expected = new UInt256[count];
+        for (int v = 0; v < count; v++)
+        {
+            byte[] bigEndian = new byte[32];
+            for (int i = 0; i < bigEndian.Length; i++) bigEndian[i] = (byte)(0x40 * v + 7 + i);
+            expected[v] = new UInt256(bigEndian, isBigEndian: true);
+            Assert.That(stack.PushBytes<OffFlag>(bigEndian), Is.EqualTo(EvmExceptionType.None));
+        }
+
+        UInt256[] popped = new UInt256[count];
+        bool ok = count switch
+        {
+            1 => stack.PopUInt256(out popped[0]),
+            2 => stack.PopUInt256(out popped[0], out popped[1]),
+            3 => stack.PopUInt256(out popped[0], out popped[1], out popped[2]),
+            _ => stack.PopUInt256(out popped[0], out popped[1], out popped[2], out popped[3]),
+        };
+
+        Assert.That(ok, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            // Overloads return top-of-stack first: popped[0] = last pushed.
+            for (int v = 0; v < count; v++)
+                Assert.That(popped[v], Is.EqualTo(expected[count - 1 - v]), $"popped[{v}]");
+            Assert.That(stack.Head, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
     public void Three_pushes_then_three_out_pop_returns_top_first()
     {
         using VmState<EthereumGasPolicy> vmState = CreateEvmState();

@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 
 namespace Nethermind.Trie
 {
@@ -81,6 +82,26 @@ namespace Nethermind.Trie
                     }
                     processed += len256;
                 }
+            }
+
+            // NEON interleaves bytes natively (zip1/zip2), so the split nibbles combine in
+            // 4 vector ops per 16 bytes instead of the widen+shuffle scheme below.
+            int neonLength = (bytes.Length - processed) / Vector128<byte>.Count;
+            if (AdvSimd.Arm64.IsSupported && neonLength > 0)
+            {
+                ReadOnlySpan<Vector128<byte>> input = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), processed)), neonLength);
+                neonLength *= Vector128<byte>.Count;
+                ref Vector128<byte> output = ref Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), processed * 2));
+
+                for (int i = 0; i < input.Length; i++)
+                {
+                    Vector128<byte> value = input[i];
+                    Vector128<byte> hi = AdvSimd.ShiftRightLogical(value, 4);
+                    Vector128<byte> lo = value & Vector128.Create((byte)0x0f);
+                    Unsafe.Add(ref output, i * 2) = AdvSimd.Arm64.ZipLow(hi, lo);
+                    Unsafe.Add(ref output, i * 2 + 1) = AdvSimd.Arm64.ZipHigh(hi, lo);
+                }
+                processed += neonLength;
             }
 
             // Calculate the length to process using SIMD operations.

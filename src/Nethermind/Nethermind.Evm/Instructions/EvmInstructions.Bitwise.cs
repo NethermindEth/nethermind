@@ -119,11 +119,16 @@ public static partial class EvmInstructions
         );
 
         // Returns a non-zero marker vector if the operands are equal.
-#if ZK_EVM
-        // The zkVM has no hardware SIMD, so Vector256<byte> == falls back to an 8-iteration element loop.
+        // Without Vector256 acceleration (zkVM, ARM64) the vector compare falls back to an element loop.
         // EQ is hot, so compare as flat 4x ulong (endianness-agnostic for an equality test).
         public static EvmWord Operation(in EvmWord a, in EvmWord b)
         {
+#if !ZK_EVM
+            if (Vector256.IsHardwareAccelerated)
+            {
+                return a == b ? One : default;
+            }
+#endif
             ref ulong pa = ref As<EvmWord, ulong>(ref AsRef(in a));
             ref ulong pb = ref As<EvmWord, ulong>(ref AsRef(in b));
             ulong diff = (pa ^ pb)
@@ -133,8 +138,5 @@ public static partial class EvmInstructions
 
             return diff == 0UL ? One : default;
         }
-#else
-        public static EvmWord Operation(in EvmWord a, in EvmWord b) => a == b ? One : default;
-#endif
     }
 }

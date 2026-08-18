@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -28,6 +29,27 @@ public static unsafe partial class Bytes
             }
         }
     }
+
+    /// <summary>Equality of two 256-bit words that avoids the software fallback of Vector256 compares.</summary>
+    /// <remarks>
+    /// On hardware without Vector256 acceleration but with Vector128 (ARM64 NEON, pre-AVX2 x64) the
+    /// Vector256 operators take a managed per-element fallback; two 128-bit halves compare in a few
+    /// NEON/SSE instructions instead. Falls back to the Vector256 operator when neither width is
+    /// accelerated (zkVM guests) since everything is emulated there anyway.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool Vector256Equals(in Vector256<byte> a, in Vector256<byte> b)
+        => Vector256.IsHardwareAccelerated || !Vector128.IsHardwareAccelerated
+            ? a == b
+            : ((a.GetLower() ^ b.GetLower()) | (a.GetUpper() ^ b.GetUpper())) == Vector128<byte>.Zero;
+
+    /// <summary>Zero test of a 256-bit word that avoids the software fallback of Vector256 compares.</summary>
+    /// <remarks><inheritdoc cref="Vector256Equals" path="/remarks"/></remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool Vector256IsZero(in Vector256<byte> v)
+        => Vector256.IsHardwareAccelerated || !Vector128.IsHardwareAccelerated
+            ? v == default
+            : (v.GetLower() | v.GetUpper()) == Vector128<byte>.Zero;
 
     // Internal method that requires AVX2 support - caller must check Avx2.IsSupported before calling
     internal static void Avx2Reverse256InPlace(Span<byte> bytes)
@@ -209,8 +231,23 @@ public static unsafe partial class Bytes
             return firstIdx * 8 + lzInByte;
         }
 
-        ref byte first = ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in v));
-        ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(ref first, Vector256<byte>.Count);
+        if (Vector128.IsHardwareAccelerated)
+        {
+            // ARM64: REV + CLZ are single scalar instructions and NEON has no cheap movemask,
+            // so a big-endian limb scan beats any vector formulation.
+            ref byte first = ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in v));
+            for (int offset = 0; offset < Vector256<byte>.Count; offset += sizeof(ulong))
+            {
+                ulong limb = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref first, offset)));
+                if (limb != 0)
+                    return offset * 8 + BitOperations.LeadingZeroCount(limb);
+            }
+
+            return 256;
+        }
+
+        ref byte firstByte = ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in v));
+        ReadOnlySpan<byte> span = MemoryMarshal.CreateReadOnlySpan(ref firstByte, Vector256<byte>.Count);
         UInt256 uint256 = new(span, true);
         return uint256.CountLeadingZeros();
     }

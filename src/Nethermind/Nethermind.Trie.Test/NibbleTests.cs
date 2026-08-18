@@ -28,6 +28,30 @@ public class NibbleTests
         [0x20, 0x0f, 0x1c, 0xb8]
     ];
 
+    // Lengths cross the 16/32/48/64-byte boundaries so every vector width and the scalar
+    // tail of BytesToNibbleBytes are exercised and cross-checked against the scalar contract.
+    [Test]
+    public void BytesToNibbleBytes_matches_scalar_reference([Range(0, 67)] int length)
+    {
+        byte[] input = new byte[length];
+        for (int i = 0; i < length; i++)
+        {
+            input[i] = (byte)(i * 131 + 89);
+        }
+
+        byte[] expected = new byte[length * 2];
+        for (int i = 0; i < length; i++)
+        {
+            expected[i * 2] = (byte)(input[i] >> 4);
+            expected[i * 2 + 1] = (byte)(input[i] & 15);
+        }
+
+        byte[] actual = new byte[length * 2];
+        Nibbles.BytesToNibbleBytes(input, actual);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
     [Test]
     public void CompactDecodingTest()
     {

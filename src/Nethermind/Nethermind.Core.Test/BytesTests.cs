@@ -1246,5 +1246,31 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(WithoutLeadingZerosCases))]
         public byte[] WithoutLeadingZeros_cases(byte[] bytes) =>
             new ReadOnlySpan<byte>(bytes).WithoutLeadingZeros().ToArray();
+
+        // Bit positions straddle every 64-bit limb boundary of the 256-bit word.
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(7)]
+        [TestCase(8)]
+        [TestCase(63)]
+        [TestCase(64)]
+        [TestCase(65)]
+        [TestCase(127)]
+        [TestCase(128)]
+        [TestCase(191)]
+        [TestCase(192)]
+        [TestCase(255)]
+        public void CountLeadingZeroBits_matches_first_set_bit_position(int leadingZeros)
+        {
+            byte[] bytes = new byte[32];
+            bytes[leadingZeros / 8] = (byte)(0x80 >> (leadingZeros % 8));
+            Vector256<byte> word = Vector256.Create(bytes);
+
+            Assert.That(word.CountLeadingZeroBits(), Is.EqualTo(leadingZeros));
+        }
+
+        [Test]
+        public void CountLeadingZeroBits_of_zero_word_is_256() =>
+            Assert.That(Vector256<byte>.Zero.CountLeadingZeroBits(), Is.EqualTo(256));
     }
 }
