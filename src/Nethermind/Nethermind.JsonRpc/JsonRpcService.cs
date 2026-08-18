@@ -80,6 +80,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         (int errorCode, string errorText, bool suppressWarning) = ex switch
         {
+            // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
+            // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
             LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests", true),
             ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout", true),
             _ => (ErrorCodes.InternalError, "Internal error", false),
@@ -529,6 +531,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, in request.IdRef, returnAction),
 
+            // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
+            // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>

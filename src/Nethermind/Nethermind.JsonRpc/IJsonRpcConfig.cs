@@ -158,8 +158,9 @@ public interface IJsonRpcConfig : IConfig
             `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
             overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Defaults
             to twice the number of logical processors for the eth module and override-path pools
-            (offered concurrency is request rate times call latency, so one-times rejects under
-            transient latency wobbles); receipt regeneration deliberately stays at one-times.
+            (offered concurrency is request rate multiplied by call latency, so a processor-count
+            cap rejects under transient latency wobbles); receipt regeneration deliberately keeps
+            a processor-count cap, as its environments are as expensive as block execution.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 

@@ -163,8 +163,10 @@ public sealed class AssociativeCache<TKey, TValue>
                 // Eviction age uses the high-resolution clock rather than a shared counter: a
                 // per-hit Interlocked on a cache-wide field is a serialized cross-core RMW under
                 // concurrent readers (and it dirtied the line _epochAndCount lives on, which
-                // every TryGet reads first). The clock read costs a few ns more single-threaded
-                // but writes only this entry's own line, so hits scale with reader count.
+                // every TryGet reads first). Single-threaded the clock read loses a few ns to the
+                // old Interlocked (and more on hosts whose clocksource is not TSC), but it writes
+                // only this entry's own line, so hits scale with reader count — the regime that
+                // motivated the change. Do not flip back to a shared counter for the ns.
                 // Ticker store without the set gate is safe: 8-byte aligned long is atomic on
                 // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
                 // not key/value correctness — the "losing" ticker value is simply slightly stale.
