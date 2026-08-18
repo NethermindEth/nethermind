@@ -321,30 +321,31 @@ public sealed partial class KeccakHash
         c4 = Avx512F.RotateLeftVariable(c4, Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL));
 
         // Pi
+        // Merge source pairs in parallel to shorten the cross-lane dependency chain.
         Vector512<ulong> c0Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(0UL, 8 + 1, 2, 3, 4, 5, 6, 7), c1);
-        c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 8 + 2, 3, 4, 5, 6, 7), c2);
-        c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 8 + 3, 4, 5, 6, 7), c3);
+        Vector512<ulong> upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 2, 8 + 3, 4, 5, 6, 7), c3);
+        c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
         c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 4, 5, 6, 7), c4);
 
-        Vector512<ulong> c1Pi = Avx512F.PermuteVar8x64x2(c1, Vector512.Create(0UL, 4UL, 8 + 0, 3, 4, 5, 6, 7), c2);
-        c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 8 + 1, 4, 5, 6, 7), c3);
+        Vector512<ulong> c1Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(3UL, 8 + 4, 2, 3, 4, 5, 6, 7), c1);
+        upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 0, 8 + 1, 4, 5, 6, 7), c3);
+        c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
         c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 2, 5, 6, 7), c4);
-        c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(8UL + 3, 1, 2, 3, 4, 5, 6, 7), c0);
 
-        Vector512<ulong> c2Pi = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 3UL, 8 + 4, 4, 5, 6, 7), c3);
+        Vector512<ulong> c2Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(1UL, 8 + 2, 2, 3, 4, 5, 6, 7), c1);
+        upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 3, 8 + 4, 4, 5, 6, 7), c3);
+        c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
         c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 0, 5, 6, 7), c4);
-        c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(8UL + 1, 1, 2, 3, 4, 5, 6, 7), c0);
-        c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 8 + 2, 2, 3, 4, 5, 6, 7), c1);
 
-        Vector512<ulong> c3Pi = Avx512F.PermuteVar8x64x2(c3, Vector512.Create(0UL, 1, 2, 2UL, 8 + 3, 5, 6, 7), c4);
-        c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(8UL + 4, 1, 2, 3, 4, 5, 6, 7), c0);
-        c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 8 + 0, 2, 3, 4, 5, 6, 7), c1);
-        c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 8 + 1, 3, 4, 5, 6, 7), c2);
+        Vector512<ulong> c3Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(4UL, 8 + 0, 2, 3, 4, 5, 6, 7), c1);
+        upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 1, 8 + 2, 4, 5, 6, 7), c3);
+        c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
+        c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 3, 5, 6, 7), c4);
 
-        Vector512<ulong> c4Pi = Avx512F.PermuteVar8x64x2(c4, Vector512.Create(8 + 2, 1, 2, 3, 1UL, 5, 6, 7), c0);
-        c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 8 + 3, 2, 3, 4, 5, 6, 7), c1);
-        c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 8 + 4, 3, 4, 5, 6, 7), c2);
-        c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 8 + 0, 4, 5, 6, 7), c3);
+        Vector512<ulong> c4Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(2UL, 8 + 3, 2, 3, 4, 5, 6, 7), c1);
+        upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 4, 8 + 0, 4, 5, 6, 7), c3);
+        c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
+        c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 1, 5, 6, 7), c4);
 
         c0 = c0Pi; c1 = c1Pi; c2 = c2Pi; c3 = c3Pi; c4 = c4Pi;
 
