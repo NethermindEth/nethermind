@@ -1189,6 +1189,8 @@ jobs:
 
       - name: Build pinned images
         shell: bash
+        env:
+          DOCKER_BUILDKIT: "1"
         run: |
           set -euo pipefail
 
