@@ -62,7 +62,7 @@ namespace Nethermind.Network.Benchmarks
                 new TxValidator(TestBlockchainIds.ChainId),
                 LimboLogs.Instance,
                 new TransactionComparerProvider(specProvider, tree).GetDefaultComparer(),
-                specChangeTxValidator: IntrinsicGasTxValidator.Instance);
+                specChangeTxValidator: SpecChangeTxValidator.Instance);
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);

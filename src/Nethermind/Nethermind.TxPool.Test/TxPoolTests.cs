@@ -344,6 +344,69 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_evict_transactions_that_exceed_the_gas_limit_cap_after_fork()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+
+            _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue }, provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction transaction = Build.A.Transaction
+                .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await AddEmptyBlock();
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task should_run_spec_change_validation_only_at_fork_boundary()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 2
+            };
+            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+
+            _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction transaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            specChangeTxValidator.DidNotReceiveWithAnyArgs().IsWellFormed(default, default);
+
+            await AddEmptyBlock();
+
+            specChangeTxValidator.DidNotReceiveWithAnyArgs().IsWellFormed(default, default);
+
+            Block nextBlock = Build.A.Block.WithNumber(head.Number + 2).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+
+            specChangeTxValidator.Received(1).IsWellFormed(transaction, Arg.Any<IReleaseSpec>());
+        }
+
+        [Test]
         public void should_not_ignore_old_scheme_signatures()
         {
             _txPool = CreatePool();
@@ -2551,7 +2614,8 @@ namespace Nethermind.TxPool.Test
             IIncomingTxFilter incomingTxFilter = null,
             IBlobTxStorage txStorage = null,
             bool thereIsPriorityContract = false,
-            IEthereumEcdsa ethereumEcdsa = null)
+            IEthereumEcdsa ethereumEcdsa = null,
+            ITxValidator specChangeTxValidator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -2574,9 +2638,8 @@ namespace Nethermind.TxPool.Test
                 transactionComparerProvider.GetDefaultComparer(),
                 ShouldGossip.Instance,
                 incomingTxFilter,
-                new HeadTxValidator(),
                 thereIsPriorityContract,
-                specChangeTxValidator: IntrinsicGasTxValidator.Instance);
+                specChangeTxValidator: specChangeTxValidator ?? SpecChangeTxValidator.Instance);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

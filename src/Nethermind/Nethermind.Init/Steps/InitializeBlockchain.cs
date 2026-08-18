@@ -65,8 +65,7 @@ namespace Nethermind.Init.Steps
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
                 null,
-                _api.HeadTxValidator,
-                specChangeTxValidator: IntrinsicGasTxValidator.Instance
+                specChangeTxValidator: SpecChangeTxValidator.Instance
             );
 
             _api.DisposeStack.Push(txPool);

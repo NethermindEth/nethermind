@@ -42,9 +42,8 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
                 new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),
-                _api.HeadTxValidator,
                 true,
-                specChangeTxValidator: IntrinsicGasTxValidator.Instance
+                specChangeTxValidator: SpecChangeTxValidator.Instance
             );
 
         _api.DisposeStack.Push(txPool);

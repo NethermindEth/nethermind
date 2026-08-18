@@ -78,7 +78,7 @@ public class PooledTransactionsRequestingTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer(),
-            specChangeTxValidator: IntrinsicGasTxValidator.Instance);
+            specChangeTxValidator: SpecChangeTxValidator.Instance);
         ISyncServer syncManager = Substitute.For<ISyncServer>();
         syncManager.Head.Returns(_genesisBlock.Header);
         syncManager.Genesis.Returns(_genesisBlock.Header);

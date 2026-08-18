@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new TxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
                 new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer(),
-                specChangeTxValidator: IntrinsicGasTxValidator.Instance);
+                specChangeTxValidator: SpecChangeTxValidator.Instance);
 
             _receiptStorage = new InMemoryReceiptStorage();
 
