@@ -117,6 +117,9 @@ public sealed class FrameTxPrefixSimulator(
             TransactionResult result = processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly);
             Metrics.FrameTxSimulations++;
 
+            // The EVM ran, so any fault episode has ended and the next one warns again.
+            _nodeFaultReported = false;
+
             if (tracer.Violated)
             {
                 return FrameTxSimulationResult.Reject(tracer.ViolationReason ?? "validation trace rule violated");
@@ -151,7 +154,7 @@ public sealed class FrameTxPrefixSimulator(
         {
             // A fault this node is answerable for, wherever it surfaced: a trie read can fail mid-execution,
             // long after the tracer exists, and blaming the transaction for it throttles honest peers.
-            // A systemic fault (state still healing after sync, say) hits every submission, so report it once.
+            // A systemic fault (state still healing after sync, say) hits every submission, so warn once per episode.
             if (!_nodeFaultReported)
             {
                 _nodeFaultReported = true;
