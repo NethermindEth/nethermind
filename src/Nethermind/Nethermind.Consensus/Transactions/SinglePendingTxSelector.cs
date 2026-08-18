@@ -14,8 +14,8 @@ namespace Nethermind.Consensus.Transactions
 
         public bool SupportsBlobs => _innerSource.SupportsBlobs;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false, BlockHeader? targetBlock = null) =>
-            _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource, targetBlock)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false) =>
+            _innerSource.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource)
                 .OrderBy(static t => t.Nonce)
                 .ThenByDescending(static t => t.Timestamp)
                 .Take(1);

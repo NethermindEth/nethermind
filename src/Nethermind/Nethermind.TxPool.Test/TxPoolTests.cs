@@ -410,6 +410,24 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_not_report_fork_state_safe_after_empty_pool_crosses_fork()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            _txPool = CreatePool(specProvider: provider);
+
+            await AddEmptyBlock();
+
+            Assert.That(_txPool.EnsureSafeForkState(_blockTree.Head.Header), Is.False);
+        }
+
+        [Test]
         public void should_not_ignore_old_scheme_signatures()
         {
             _txPool = CreatePool();

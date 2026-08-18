@@ -11,10 +11,10 @@ namespace Nethermind.Consensus.Transactions
     {
         IEnumerable<Transaction> GetTransactions(
             BlockHeader parent,
+            BlockHeader targetBlock,
             ulong gasLimit,
             PayloadAttributes? payloadAttributes = null,
-            bool filterSource = false,
-            BlockHeader? targetBlock = null);
+            bool filterSource = false);
         bool SupportsBlobs { get; }
     }
 }

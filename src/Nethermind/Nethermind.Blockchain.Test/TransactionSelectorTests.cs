@@ -583,7 +583,10 @@ namespace Nethermind.Blockchain.Test
                 parentHeader = parentHeader.WithExcessBlobGas(0);
             }
 
-            return poolTxSource.GetTransactions(parentHeader.TestObject, testCase.GasLimit).ToArray();
+            BlockHeader parent = parentHeader.TestObject;
+            BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
+            transactionPool.EnsureSafeForkState(targetBlock).Returns(true);
+            return poolTxSource.GetTransactions(parent, targetBlock, testCase.GasLimit).ToArray();
         }
 
         public class ProperTransactionsSelectedTestCase

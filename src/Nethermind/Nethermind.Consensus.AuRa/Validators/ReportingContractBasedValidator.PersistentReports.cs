@@ -35,9 +35,9 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false, BlockHeader? targetBlock = null)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
-            foreach (Transaction transaction in _contractValidator.GetTransactions(parent, gasLimit, payloadAttributes, filterSource, targetBlock))
+            foreach (Transaction transaction in _contractValidator.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource))
             {
                 yield return transaction;
             }

@@ -23,13 +23,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public bool SupportsBlobs => _innerSource.SupportsBlobs;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false, BlockHeader? targetBlock = null)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {
             _nonces.Clear();
 
             try
             {
-                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource, targetBlock).Where(tx =>
+                return _innerSource.GetTransactions(parent, targetBlock, gasLimit, payloadAttributes, filterSource).Where(tx =>
                 {
                     if (tx is not GeneratedTransaction) return true;
 

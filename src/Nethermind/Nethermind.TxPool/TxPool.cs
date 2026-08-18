@@ -1040,14 +1040,8 @@ namespace Nethermind.TxPool
         public bool EnsureSafeForkState(BlockHeader targetBlock)
         {
             IReleaseSpec targetSpec = _specProvider.GetSpec(targetBlock);
-            IReleaseSpec currentHeadSpec = _specProvider.GetCurrentHeadSpec();
-            IReleaseSpec? lastRevalidatedSpec = Volatile.Read(ref _lastRevalidatedSpec);
-            IReleaseSpec? completedRevalidatedSpec = Volatile.Read(ref _completedRevalidatedSpec);
-
-            return ReferenceEquals(currentHeadSpec, targetSpec)
-                && ((_transactions.Count == 0 && _blobTransactions.Count == 0)
-                || ReferenceEquals(lastRevalidatedSpec, targetSpec)
-                && ReferenceEquals(completedRevalidatedSpec, targetSpec));
+            return ReferenceEquals(targetSpec, _specProvider.GetCurrentHeadSpec())
+                && ReferenceEquals(targetSpec, Volatile.Read(ref _completedRevalidatedSpec));
         }
 
         // only for tests - to test sorting

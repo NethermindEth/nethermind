@@ -13,7 +13,7 @@ public class OptimismPayloadTxSource : ITxSource
 {
     public bool SupportsBlobs => false;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource, BlockHeader? targetBlock)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayloadAttributes)
         {

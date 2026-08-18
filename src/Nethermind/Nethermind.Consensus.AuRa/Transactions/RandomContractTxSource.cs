@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttribute, bool filterSources, BlockHeader? targetBlock)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
         {
             if (_contracts.TryGetForBlock(parent.Number + 1, out IRandomContract contract))
             {

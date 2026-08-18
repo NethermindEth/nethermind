@@ -63,7 +63,9 @@ public class TxPoolSourceTests
 
         TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12, BlockProductionBlobLimit = customBlobLimit });
 
-        IEnumerable<Transaction> txs = transactionSelector.GetTransactions(new BlockHeader(), long.MaxValue);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+        IEnumerable<Transaction> txs = transactionSelector.GetTransactions(parent, targetBlock, long.MaxValue);
         ulong blobsCount = txs.Aggregate(0UL, (sum, tx) => sum + (ulong)tx.GetBlobCount());
 
         Assert.That(blobsCount, Is.LessThanOrEqualTo((ulong)Cancun.Instance.MaxProductionBlobCount(customBlobLimit)));
@@ -159,9 +161,10 @@ public class TxPoolSourceTests
             txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 });
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
 
         // Act
-        Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
         Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }).UsingTransactionComparer());
@@ -197,7 +200,9 @@ public class TxPoolSourceTests
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig());
 
-        Transaction[] result = txSource.GetTransactions(new BlockHeader(), long.MaxValue).ToArray();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
         Assert.That(result, Is.Empty);
     }
@@ -260,7 +265,7 @@ public class TxPoolSourceTests
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
         txPool.EnsureSafeForkState(targetBlock).Returns(false);
 
-        Transaction[] result = txSource.GetTransactions(parent, long.MaxValue, targetBlock: targetBlock).ToArray();
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
         Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
     }
@@ -300,7 +305,7 @@ public class TxPoolSourceTests
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig());
 
-        Transaction[] result = txSource.GetTransactions(parent, long.MaxValue, targetBlock: targetBlock).ToArray();
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
         using (Assert.EnterMultipleScope())
         {
@@ -335,9 +340,9 @@ public class TxPoolSourceTests
         TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
             txFilterPipeline, new BlocksConfig());
 
-        Transaction[] result = txSource.GetTransactions(
-            Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject,
-            long.MaxValue).ToArray();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
         using (Assert.EnterMultipleScope())
         {

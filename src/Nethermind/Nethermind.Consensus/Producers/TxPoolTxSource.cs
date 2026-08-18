@@ -43,22 +43,19 @@ namespace Nethermind.Consensus.Producers
 
         public IEnumerable<Transaction> GetTransactions(
             BlockHeader parent,
+            BlockHeader targetBlock,
             ulong gasLimit,
             PayloadAttributes? payloadAttributes = null,
-            bool filterSource = false,
-            BlockHeader? targetBlock = null)
+            bool filterSource = false)
         {
-            bool validateForkSensitiveState = targetBlock is null || !_transactionPool.EnsureSafeForkState(targetBlock);
-            ulong blockNumber = targetBlock?.Number ?? (parent.Number + 1);
-            IReleaseSpec spec = targetBlock is null
-                ? NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig)
-                : _specProvider.GetSpec(targetBlock);
+            bool validateForkSensitiveState = !_transactionPool.EnsureSafeForkState(targetBlock);
+            IReleaseSpec spec = _specProvider.GetSpec(targetBlock);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
                 _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
                 _transactionPool.GetPendingTransactionsBySender();
             IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
-            IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
+            IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
