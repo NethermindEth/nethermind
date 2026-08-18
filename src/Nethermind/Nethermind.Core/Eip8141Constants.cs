@@ -20,7 +20,8 @@ public static class Eip8141Constants
     public const ulong P256VerificationGasCost = 6_700;
     public const int ExpiryDataLength = 8;
 
-    // The consensus cap, as distinct from the mempool's configurable ITxPoolConfig.FrameTxMaxVerifyGas.
+    // Bounds mempool validation work only, never block execution; ITxPoolConfig.FrameTxMaxVerifyGas is the
+    // operator-configurable mirror.
     public const ulong MaxVerifyGas = 300_000;
 
     public static readonly Address EntryPointAddress = new("0x00000000000000000000000000000000000000aa");
