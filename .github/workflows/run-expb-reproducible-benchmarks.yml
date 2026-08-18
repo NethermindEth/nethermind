@@ -774,8 +774,8 @@ jobs:
           set -euo pipefail
 
           if ! command -v uv >/dev/null 2>&1; then
-            echo "uv is required on runner but was not found in PATH."
-            exit 1
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="${HOME}/.local/bin:${PATH}"
           fi
 
           if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
@@ -1897,8 +1897,8 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v uv >/dev/null 2>&1; then
-            echo "uv is required on runner but was not found in PATH."
-            exit 1
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="${HOME}/.local/bin:${PATH}"
           fi
           if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
