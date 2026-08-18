@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -98,7 +99,7 @@ public class SnapshotBundleWarmerTests
     [Test]
     public void Promoted_warmer_miss_does_not_poison_a_later_live_read()
     {
-        TrieNodeCache cache = new(new FlatDbConfig(), LimboLogs.Instance);
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
 
         TreePath path = TreePath.FromHexString("12");
@@ -109,6 +110,7 @@ public class SnapshotBundleWarmerTests
 
         (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
         cache.Add(retired!);
+        retired!.ReleaseLease();
 
         TrieNode realNode = Leaf(0x99);
         bundle.SetStateNode(path, realNode);
@@ -116,6 +118,39 @@ public class SnapshotBundleWarmerTests
 
         TrieNode read = bundle.FindStateNodeOrUnknown(path, hash);
         Assert.That(read, Is.SameAs(realNode));
+    }
+
+    // The regression this PR fixes is a +3-5% AVG slowdown from #12793 dropping the warmer's negative cache.
+    // Pin that the cache exists: a second warmer visit to the same missing path must be served from the
+    // transient sentinel and must not re-probe the persistence-backed lookup a second time.
+    [Test]
+    public void Repeated_warmer_miss_is_served_from_the_negative_cache()
+    {
+        CountingTrieNodeCache cache = new();
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        TreePath path = TreePath.FromHexString("12");
+        Hash256 hash = TestItem.KeccakA;
+
+        bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+        bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+
+        Assert.That(cache.TryGetCount, Is.EqualTo(1));
+    }
+
+    private sealed class CountingTrieNodeCache : ITrieNodeCache
+    {
+        public int TryGetCount;
+
+        public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+        {
+            TryGetCount++;
+            node = null;
+            return false;
+        }
+
+        public void Add(TransientResource transientResource) { }
+        public void Clear() { }
     }
 
     // Dispose releases the transient back to the pool while warmer jobs may still be in flight. A read that
