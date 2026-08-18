@@ -417,8 +417,7 @@ closed on mainnet.
 - Post-`TipTrc21Fee`, gas fees are paid to the **candidate owner** of the block beneficiary rather than the
   beneficiary itself.
 - Post-`BlackListHFNumber`, transactions with a blacklisted sender or recipient are rejected during execution,
-  and also on pool admission by [`BlackListedAddressFilter`](TxPool/BlackListedAddressFilter.cs) so they are
-  never gossiped.
+  and on pool admission, so they are never gossiped.
 
 ### Block execution context
 
@@ -436,6 +435,9 @@ value, and forces blob base fee to zero, since XDC enables the `BLOBBASEFEE` opc
 
 - [`SignTransactionFilter`](TxPool/SignTransactionFilter.cs) accepts fee-exempt transactions only from current
   epoch candidates, and only when the signed block is recent.
+- [`BlackListedAddressFilter`](TxPool/BlackListedAddressFilter.cs) rejects transactions with a blacklisted
+  sender or recipient once `BlackListHFNumber` activates, so they never reach a block or a peer. The rejection
+  code is deliberately not `AcceptTxResult.Invalid`, which would disconnect the relaying peer.
 - [`XdcTxGossipPolicy`](TxPool/XdcTxGossipPolicy.cs) withholds the DEX/lending family; sign and randomize
   transactions are gossiped normally.
 - [`XdcTxFilterPipeline`](TxPool/XdcTxFilterPipeline.cs) lets the fee-exempt transactions bypass the

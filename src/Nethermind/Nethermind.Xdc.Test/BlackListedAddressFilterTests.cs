@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Blockchain;
+using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.Test.Helpers;
 using Nethermind.Xdc.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -19,10 +23,10 @@ internal class BlackListedAddressFilterTests
 {
     private static readonly Address BlackListed = TestItem.AddressA;
 
-    private static BlackListedAddressFilter CreateFilter(Block? head, bool blackListingEnabled, ISpecProvider? specProvider = null)
+    private static BlackListedAddressFilter CreateFilter(ulong headNumber, bool blackListingEnabled, ISpecProvider? specProvider = null)
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(head);
+        IChainHeadInfoProvider chainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        chainHeadInfoProvider.HeadNumber.Returns(headNumber);
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
         xdcSpec.IsBlackListingEnabled.Returns(blackListingEnabled);
@@ -32,11 +36,8 @@ internal class BlackListedAddressFilterTests
         specProvider ??= Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
 
-        return new BlackListedAddressFilter(blockTree, specProvider);
+        return new BlackListedAddressFilter(chainHeadInfoProvider, specProvider, LimboLogs.Instance);
     }
-
-    private static Block HeadBlock(ulong number = 100) =>
-        Build.A.Block.WithHeader(Build.A.XdcBlockHeader().WithNumber(number).TestObject).TestObject;
 
     private static AcceptTxResult Accept(BlackListedAddressFilter filter, Transaction tx)
     {
@@ -55,37 +56,70 @@ internal class BlackListedAddressFilterTests
     [TestCase(false, false, false, true, TestName = "Unlisted addresses accepted before activation")]
     public void Accept_ChecksSenderAndRecipient(bool blackListSender, bool blackListRecipient, bool blackListingEnabled, bool expectedAccepted)
     {
-        BlackListedAddressFilter filter = CreateFilter(HeadBlock(), blackListingEnabled);
+        BlackListedAddressFilter filter = CreateFilter(headNumber: 100, blackListingEnabled);
         Transaction tx = BuildTx(blackListSender ? BlackListed : TestItem.AddressB, blackListRecipient ? BlackListed : TestItem.AddressC);
 
         Assert.That((bool)Accept(filter, tx), Is.EqualTo(expectedAccepted));
     }
 
     [Test]
-    public void Accept_NullHead_ReturnsSyncing()
+    public void Accept_BlackListedAddress_DoesNotReturnInvalidSoPeerIsKept()
     {
-        BlackListedAddressFilter filter = CreateFilter(head: null, blackListingEnabled: true);
+        BlackListedAddressFilter filter = CreateFilter(headNumber: 100, blackListingEnabled: true);
 
-        Assert.That(Accept(filter, BuildTx(TestItem.AddressB, TestItem.AddressC)), Is.EqualTo(AcceptTxResult.Syncing));
+        AcceptTxResult result = Accept(filter, BuildTx(BlackListed, TestItem.AddressC));
+
+        Assert.That(result, Is.EqualTo(XdcAcceptTxResult.BlackListedAddress));
+        Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Invalid), "Invalid makes TxFloodController disconnect the relaying peer");
     }
 
     [Test]
     public void Accept_ContractCreation_IsAccepted()
     {
-        BlackListedAddressFilter filter = CreateFilter(HeadBlock(), blackListingEnabled: true);
+        BlackListedAddressFilter filter = CreateFilter(headNumber: 100, blackListingEnabled: true);
 
         Assert.That(Accept(filter, BuildTx(TestItem.AddressB, to: null)), Is.EqualTo(AcceptTxResult.Accepted));
     }
 
     [Test]
-    public void Accept_UsesSpecOfCurrentHead()
+    public void Accept_UsesSpecOfBlockAfterHead()
     {
         const ulong headNumber = 1234;
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlackListedAddressFilter filter = CreateFilter(HeadBlock(headNumber), blackListingEnabled: true, specProvider);
+        BlackListedAddressFilter filter = CreateFilter(headNumber, blackListingEnabled: true, specProvider);
 
         Accept(filter, BuildTx(TestItem.AddressB, TestItem.AddressC));
 
-        specProvider.Received().GetSpec(Arg.Is<ForkActivation>(f => f.BlockNumber == headNumber));
+        specProvider.Received().GetSpec(Arg.Is<ForkActivation>(f => f.BlockNumber == headNumber + 1));
+    }
+
+    [TestCase(true, true, false, TestName = "Pool rejects blacklisted sender")]
+    [TestCase(false, true, false, TestName = "Pool rejects blacklisted recipient")]
+    [TestCase(true, false, true, TestName = "Pool accepts blacklisted sender before activation")]
+    public async Task SubmitTx_BlackListedAddress_IsRejectedOnPoolAdmission(bool blackListSender, bool blackListingEnabled, bool expectedAccepted)
+    {
+        using XdcTestBlockchain chain = await XdcTestBlockchain.Create(5, false);
+        chain.ChangeReleaseSpec(spec =>
+        {
+            spec.BlackListedAddresses = [blackListSender ? TestItem.AddressB : TestItem.AddressC];
+            spec.IsBlackListingEnabled = blackListingEnabled;
+        });
+
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressB)
+            .WithTo(TestItem.AddressC)
+            .WithValue(1)
+            .WithType(TxType.Legacy)
+            .WithNonce(chain.TxPool.GetLatestPendingNonce(TestItem.AddressB))
+            .TestObject;
+        new Signer(chain.SpecProvider.ChainId, TestItem.PrivateKeyB, NullLogManager.Instance).TrySign(tx);
+        tx.Hash = tx.CalculateHash();
+
+        AcceptTxResult result = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+
+        Assert.That((bool)result, Is.EqualTo(expectedAccepted), result.ToString());
+        if (!expectedAccepted)
+            Assert.That(result, Is.EqualTo(XdcAcceptTxResult.BlackListedAddress));
+        Assert.That(chain.TxPool.GetPendingTransactions(), Has.Length.EqualTo(expectedAccepted ? 1 : 0));
     }
 }
