@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 
@@ -23,7 +24,9 @@ namespace Nethermind.JsonRpc
 
         [CounterMetric]
         [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (module pool or override-environment limit). A nonzero rate means callers receive 'Too many requests' — consider raising JsonRpc.EthModuleConcurrentInstances.")]
-        public static long JsonRpcOverloadRejections;
+        public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
+        private static long _jsonRpcOverloadRejections;
+        internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
 
         [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]

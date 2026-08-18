@@ -357,9 +357,11 @@ public class AssociativeCacheDeterministicHashTests
         static DeterministicHashKey MakeKey(int i, int shift) => new(i, (long)(i + 1) << shift);
 
         AssociativeCache<DeterministicHashKey, TestValue> cache = new(capacity);
+        AssociativeKeyCache<DeterministicHashKey> keyCache = new(capacity);
         DeterministicHashKey hot = MakeKey(0, hashShift);
         TestValue hotValue = new();
         cache.Set(in hot, hotValue);
+        keyCache.Set(in hot);
 
         for (int i = 1; i <= 200; i++)
         {
@@ -367,12 +369,21 @@ public class AssociativeCacheDeterministicHashTests
             // eviction (which removes the oldest of its sample) must never select it. This pins
             // the ticker semantics: a recency clock coarse enough to tie a refresh with the
             // surrounding churn would make this probabilistic.
-            Assert.That(cache.Get(in hot), Is.SameAs(hotValue), $"hot entry evicted after {i - 1} churn inserts");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Get(in hot), Is.SameAs(hotValue), $"hot entry evicted after {i - 1} churn inserts");
+                Assert.That(keyCache.Get(in hot), Is.True, $"hot key evicted after {i - 1} churn inserts");
+            }
             DeterministicHashKey filler = MakeKey(i, hashShift);
             cache.Set(in filler, new TestValue());
+            keyCache.Set(in filler);
         }
 
-        Assert.That(cache.Get(in hot), Is.SameAs(hotValue));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Get(in hot), Is.SameAs(hotValue));
+            Assert.That(keyCache.Get(in hot), Is.True);
+        }
     }
 
     private static DeterministicHashKey[] BuildKeys(int capacity, int count)

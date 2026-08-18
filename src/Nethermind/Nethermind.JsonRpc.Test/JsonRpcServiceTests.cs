@@ -640,7 +640,9 @@ public class JsonRpcServiceTests
     [Test]
     public void Overload_rejections_are_counted_from_both_shedding_paths()
     {
-        long before = Metrics.JsonRpcOverloadRejections;
+        // Per-path deltas so a double-count on one path cannot masquerade as both paths counted.
+        // >= rather than == on each: the counter is a global metric other parallel tests may bump.
+        long beforeInvocation = Metrics.JsonRpcOverloadRejections;
 
         // During-invocation path: the override-environment cap throws from inside the handler.
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -649,6 +651,10 @@ public class JsonRpcServiceTests
             TestRequest(ethRpcModule, "eth_getLogs", "{}"),
             ErrorCodes.LimitExceeded,
             "Too many requests");
+        Assert.That(Metrics.JsonRpcOverloadRejections, Is.GreaterThanOrEqualTo(beforeInvocation + 1),
+            "invocation-path rejection was not counted");
+
+        long beforeRental = Metrics.JsonRpcOverloadRejections;
 
         // Before-invocation path: module rental times out.
         IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
@@ -657,9 +663,8 @@ public class JsonRpcServiceTests
             TestRequestWithPool(pool, "eth_getLogs", "{}"),
             ErrorCodes.ModuleTimeout,
             "Timeout");
-
-        // >= rather than == : the counter is a global metric other parallel tests may also bump.
-        Assert.That(Metrics.JsonRpcOverloadRejections, Is.GreaterThanOrEqualTo(before + 2));
+        Assert.That(Metrics.JsonRpcOverloadRejections, Is.GreaterThanOrEqualTo(beforeRental + 1),
+            "rental-path rejection was not counted");
     }
 
     [TestCaseSource(nameof(ModuleRentalOverloadExceptions))]

@@ -12,7 +12,6 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -920,9 +919,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed
         // by design — without a counter operators cannot see that callers are being shed.
-        if (errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
+        // suppressWarning scopes the count to exactly those shedding sites: batch-size and
+        // response-body caps also produce LimitExceeded but keep their warnings.
+        if (suppressWarning && errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
         {
-            Interlocked.Increment(ref Metrics.JsonRpcOverloadRejections);
+            Metrics.IncrementJsonRpcOverloadRejections();
         }
         JsonRpcErrorResponse response = new(in id, disposableAction)
         {
