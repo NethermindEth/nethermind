@@ -119,12 +119,14 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [Test]
-    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation()
+    // SLOTNUM is the one block value guaranteed to differ between the simulated head and any including block.
+    [TestCase(Instruction.TIMESTAMP)]
+    [TestCase(Instruction.SLOTNUM)]
+    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation(Instruction banned)
     {
         // Banned outside the expiry verifier frame, even though the frame goes on to APPROVE.
         byte[] code = Prepare.EvmCode
-            .Op(Instruction.TIMESTAMP).Op(Instruction.POP)
+            .Op(banned).Op(Instruction.POP)
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());

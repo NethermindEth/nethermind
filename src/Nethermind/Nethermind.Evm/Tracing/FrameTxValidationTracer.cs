@@ -77,6 +77,7 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
             case Instruction.GASLIMIT:
             case Instruction.BASEFEE:
             case Instruction.BLOBBASEFEE:
+            case Instruction.SLOTNUM:
             case Instruction.CREATE:
             case Instruction.CREATE2:
             case Instruction.INVALID:
