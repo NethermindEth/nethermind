@@ -102,8 +102,10 @@ namespace Nethermind.Core
             {
                 if (keepExistingMetadata)
                     blockInfo.Metadata |= blockInfos[foundIndex.Value].Metadata;
-                else if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
-                    blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+                else if (blockInfo.IsBeaconInfo)
+                    // A header-only beacon re-insert (pivot update, beacon-headers backfill) must not un-record
+                    // an already stored body, or startup misreads the level as 'header < body' corruption.
+                    blockInfo.Metadata |= blockInfos[foundIndex.Value].Metadata & (BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain);
 
                 if (blockInfo.EqualsIgnoringWasProcessed(blockInfos[foundIndex.Value]))
                     blockInfo.WasProcessed |= blockInfos[foundIndex.Value].WasProcessed;

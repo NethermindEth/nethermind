@@ -36,12 +36,19 @@ public class ChainLevelInfoTests
         Assert.That(level.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.None));
     }
 
-    [Test]
-    public void Reinserting_beacon_block_info_keeps_beacon_main_chain_flag_by_default()
+    [TestCase(
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain,
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody,
+        TestName = "Keeps beacon main chain flag")]
+    [TestCase(
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody,
+        BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain,
+        TestName = "Keeps beacon body flag on header-only re-insert")]
+    public void Reinserting_beacon_block_info_keeps_sticky_beacon_flags_by_default(BlockMetadata existingMetadata, BlockMetadata newMetadata)
     {
-        ChainLevelInfo level = new(false, new BlockInfo(_hash, 0, BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
+        ChainLevelInfo level = new(false, new BlockInfo(_hash, 0, existingMetadata));
 
-        level.InsertBlockInfo(_hash, new BlockInfo(_hash, 0, BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody), setAsMain: false);
+        level.InsertBlockInfo(_hash, new BlockInfo(_hash, 0, newMetadata), setAsMain: false);
 
         Assert.That(level.BlockInfos[0].Metadata,
             Is.EqualTo(BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody | BlockMetadata.BeaconMainChain));
