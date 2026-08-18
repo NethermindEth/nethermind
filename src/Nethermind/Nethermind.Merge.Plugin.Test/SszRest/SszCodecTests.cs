@@ -208,27 +208,21 @@ public class SszCodecTests
         byte[]?[] proofs = new byte[]?[cellsPerExtBlob];
         cells[0] = ArrayPool<byte>.Shared.Rent(SszBlobCell.BlobCellLength);
         proofs[0] = ArrayPool<byte>.Shared.Rent(SszKzgCommitment.KzgCommitmentLength);
-        try
-        {
-            BlobCellsAndProofs entry = new() { Available = true, BlobCells = cells, Proofs = proofs };
-            byte[] encoded = Encode<IReadOnlyList<BlobCellsAndProofs?>>([entry], SszCodec.EncodeGetBlobsV4Response);
-            GetBlobsV4ResponseWire.Decode(Seq(encoded), out GetBlobsV4ResponseWire decoded);
+        BlobCellsAndProofs entry = new() { Available = true, BlobCells = cells, Proofs = proofs };
+        byte[] encoded = Encode<IReadOnlyList<BlobCellsAndProofs?>>([entry], SszCodec.EncodeGetBlobsV4Response);
+        GetBlobsV4ResponseWire.Decode(Seq(encoded), out GetBlobsV4ResponseWire decoded);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(encoded, Is.Not.Empty);
-                Assert.That(decoded.Entries, Has.Length.EqualTo(1));
-                Assert.That(decoded.Entries![0].Available, Is.True);
-                Assert.That(decoded.Entries[0].Contents.BlobCells, Has.Length.EqualTo(cellsPerExtBlob));
-                Assert.That(decoded.Entries[0].Contents.BlobCells![0].Cell, Has.Length.EqualTo(1));
-                Assert.That(decoded.Entries[0].Contents.BlobCells![1].Cell, Is.Empty);
-            }
-        }
-        finally
+        using (Assert.EnterMultipleScope())
         {
-            ArrayPool<byte>.Shared.Return(cells[0]!);
-            ArrayPool<byte>.Shared.Return(proofs[0]!);
+            Assert.That(encoded, Is.Not.Empty);
+            Assert.That(decoded.Entries, Has.Length.EqualTo(1));
+            Assert.That(decoded.Entries![0].Available, Is.True);
+            Assert.That(decoded.Entries[0].Contents.BlobCells, Has.Length.EqualTo(cellsPerExtBlob));
+            Assert.That(decoded.Entries[0].Contents.BlobCells![0].Cell, Has.Length.EqualTo(1));
+            Assert.That(decoded.Entries[0].Contents.BlobCells![1].Cell, Is.Empty);
         }
+        ArrayPool<byte>.Shared.Return(cells[0]!);
+        ArrayPool<byte>.Shared.Return(proofs[0]!);
     }
 
     // Container { payload(var) + block_value(32) }: 4-byte offset + 32-byte block_value.
