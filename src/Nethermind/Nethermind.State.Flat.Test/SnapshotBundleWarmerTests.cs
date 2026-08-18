@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -92,6 +93,29 @@ public class SnapshotBundleWarmerTests
             Assert.That(normalStateRead, Is.SameAs(committedNode));
             Assert.That(normalStorageRead, Is.SameAs(committedStorageNode));
         }
+    }
+
+    [Test]
+    public void Promoted_warmer_miss_does_not_poison_a_later_live_read()
+    {
+        TrieNodeCache cache = new(new FlatDbConfig(), LimboLogs.Instance);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        TreePath path = TreePath.FromHexString("12");
+        Hash256 hash = TestItem.KeccakA;
+
+        TrieNode warmed = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+        Assert.That(warmed.NodeType, Is.EqualTo(NodeType.Unknown));
+
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        cache.Add(retired!);
+
+        TrieNode realNode = Leaf(0x99);
+        bundle.SetStateNode(path, realNode);
+        bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakB), returnSnapshot: false);
+
+        TrieNode read = bundle.FindStateNodeOrUnknown(path, hash);
+        Assert.That(read, Is.SameAs(realNode));
     }
 
     // Dispose releases the transient back to the pool while warmer jobs may still be in flight. A read that

@@ -133,7 +133,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                if (shard[j].node is { } newNode && !IsWarmerMiss(newNode)) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
             }
         });
 
@@ -168,6 +168,13 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
     }
+
+    /// <summary>
+    /// Identifies the trie warmer's negative-cache sentinel: an <see cref="NodeType.Unknown"/> node with empty RLP,
+    /// recording that a path is absent from persistence. It is not an authoritative node, so it must neither enter
+    /// this shared cache nor satisfy a live read.
+    /// </summary>
+    internal static bool IsWarmerMiss(TrieNode node) => node.NodeType == NodeType.Unknown && node.FullRlp.Length == 0;
 
     /// <summary>
     /// Clears all cached trie nodes.

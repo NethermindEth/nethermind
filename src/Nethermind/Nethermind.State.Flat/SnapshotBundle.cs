@@ -166,7 +166,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node) && !IsWarmerMiss(node))
+        else if (_transientResource.TryGetStateNode(path, hash, out node) && !TrieNodeCache.IsWarmerMiss(node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -288,7 +288,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) && !IsWarmerMiss(node))
+        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) && !TrieNodeCache.IsWarmerMiss(node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -338,8 +338,6 @@ public sealed class SnapshotBundle : IDisposable
         return transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
             TryFindStorageNodeInPersistence(address, path, hash, out node) ? node : new TrieNode(NodeType.Unknown, hash));
     }
-
-    private static bool IsWarmerMiss(TrieNode node) => node.NodeType == NodeType.Unknown && node.FullRlp.Length == 0;
 
     private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
