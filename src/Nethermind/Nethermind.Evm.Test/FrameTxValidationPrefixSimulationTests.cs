@@ -134,6 +134,27 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.Violated, Is.True);
     }
 
+    [TestCase(Instruction.ORIGIN)]
+    [TestCase(Instruction.BLOBHASH)]
+    [TestCase(Instruction.TLOAD)]
+    public void Simulate_PrefixUsesRelaxedOpcode_ResolvesPayer(Instruction opcode)
+    {
+        // Each reads the frame or the transaction payload rather than the block environment, so none makes
+        // the prefix depend on state that could differ between simulation and inclusion.
+        byte[] probe = Prepare.EvmCode.PushData(0).Op(opcode).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. probe, .. ApproveCode(TxFrame.ApproveExecutionAndPayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+        }
+    }
+
     [Test]
     public void Simulate_PrefixUsesAnUndefinedOpcode_RejectedByTheBadInstructionHalt()
     {
