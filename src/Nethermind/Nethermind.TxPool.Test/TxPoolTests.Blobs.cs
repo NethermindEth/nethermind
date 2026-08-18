@@ -1578,6 +1578,39 @@ namespace Nethermind.TxPool.Test
                 "a reloaded blob-carrying frame tx must still expire out of the pool");
         }
 
+        // Restoring the pool evicts as it goes, and each eviction decrements the expiry count — so the count has to
+        // be seeded from the restored records before the removal handler is attached, or an eviction cancels out a
+        // surviving transaction's own entry and the sweep never runs again.
+        [Test]
+        public async Task Expiring_blob_carrying_frame_tx_still_expires_when_the_restart_evicts_another_one()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            // Separate senders: evicting a blob tx also evicts the rest of its own bucket, to leave no nonce gap.
+            foreach (Address sender in (Address[])[TestItem.AddressA, TestItem.AddressB])
+            {
+                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+                tx.SenderAddress = sender;
+                tx.Hash = tx.CalculateHash();
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            // AddressA's record goes stale once that account moves on, so restoring the pool evicts it.
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the restart must evict the stale record and keep the other");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
+                "the surviving transaction must still expire out of the pool");
+        }
+
         // EIP-8141: with blobs disabled the blob-pool routing has zero capacity, so a blob-carrying frame tx must be
         // rejected as an unsupported type at ingress rather than silently dropped as too-low-fee.
         [Test]
