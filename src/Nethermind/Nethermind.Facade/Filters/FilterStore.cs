@@ -146,7 +146,9 @@ namespace Nethermind.Facade.Filters
         /// <remarks>
         /// Set by <see cref="FilterManager"/>, which owns the queues. Filter results are only bounded by the
         /// inactivity timeout, so without a budget a caller installing filters it never polls can grow them
-        /// until the node runs out of memory.
+        /// until the node runs out of memory. When a budget is configured (<c>maxQueuedItems &gt; 0</c>) this
+        /// delegate must be wired for the budget to take effect; a null delegate leaves it inert. In the
+        /// standard DI graph <see cref="FilterManager"/> always wires it, so the budget is never silently off.
         /// </remarks>
         internal Func<long>? QueuedItemCount { get; set; }
 
