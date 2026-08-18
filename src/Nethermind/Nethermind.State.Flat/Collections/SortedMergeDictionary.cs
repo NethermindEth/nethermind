@@ -136,6 +136,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     {
         int count = source.Count;
         Entry[] entries = count == 0 ? [] : ArrayPool<Entry>.Shared.Rent(count);
+        // Unexpected failures abandon the shared rental; only deliberate failures below return it before throwing.
         Span<Entry> run = entries.AsSpan(0, count);
         FillResult result = Fill(run, source);
         if (result != FillResult.Success)
