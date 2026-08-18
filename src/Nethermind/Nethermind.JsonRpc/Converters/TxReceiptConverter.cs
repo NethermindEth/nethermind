@@ -30,10 +30,19 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
                 writer.WritePropertyName("type");
                 JsonSerializer.Serialize(writer, receipt.Type, options);
             }
-            writer.WritePropertyName("root");
-            ByteArrayConverter.Convert(writer, (receipt.Root ?? Keccak.Zero).Bytes);
-            writer.WritePropertyName("status");
-            JsonSerializer.Serialize(writer, receipt.Status, options);
+            // Pre-Byzantium receipts carry a post-state root; from Byzantium onwards they carry a status
+            // code. The two are mutually exclusive (EIP-658), matching the receipt schema in
+            // ethereum/execution-apis and go-ethereum's marshalReceipt.
+            if (receipt.Root is not null)
+            {
+                writer.WritePropertyName("root");
+                ByteArrayConverter.Convert(writer, receipt.Root.Bytes);
+            }
+            else
+            {
+                writer.WritePropertyName("status");
+                JsonSerializer.Serialize(writer, receipt.Status, options);
+            }
 
             writer.WritePropertyName("cumulativeGasUsed");
             JsonSerializer.Serialize(writer, receipt.CumulativeGasUsed, options);
