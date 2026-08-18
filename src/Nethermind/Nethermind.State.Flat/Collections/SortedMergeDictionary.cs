@@ -44,6 +44,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         public TValue Value;
     }
 
+    /// <summary>A non-owning view of entries sorted in ascending order with distinct keys.</summary>
     internal readonly struct Run(Entry[] entries, int count)
     {
         internal Entry[] Entries { get; } = entries;
@@ -121,8 +122,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
         EnsureEntryCapacity(count);
         FillAndSort(_entries.AsSpan(0, count), source, keyComparer);
+        BuildBuckets(count);
         _count = count;
-        BuildBuckets();
     }
 
     internal static PooledRun BuildRunFromUnsorted<TComparer>(
@@ -240,9 +241,9 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             if (pooledScratch is not null) ArrayPool<int>.Shared.Return(pooledScratch);
         }
 
-        _count = count;
-        BuildBuckets();
+        BuildBuckets(count);
         _entriesDirty = Math.Max(dirtyBefore, count);
+        _count = count;
     }
 
     private static int CopySingleRun<TKeep>(Run source, int sourceIndex, Entry[] destination, ref TKeep keep)
@@ -377,9 +378,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         return dirtyBefore;
     }
 
-    private void BuildBuckets()
+    private void BuildBuckets(int count)
     {
-        int count = _count;
         if (count == 0) return; // reads are gated on _count
 
         int size = BucketSize(count);

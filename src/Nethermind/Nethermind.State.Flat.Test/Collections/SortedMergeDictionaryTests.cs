@@ -378,9 +378,14 @@ public class SortedMergeDictionaryTests
         Assert.That(BucketMaskField.GetValue(dict), Is.EqualTo(expectedSize - 1));
     }
 
-    [TestCase(200, true)]
-    [TestCase(10, false)]
-    public void FilteredMerge_TightensDirtyMarkWithoutWeakeningAbortCleanup(int initialCount, bool clearBeforeMerge)
+    [TestCase(200, true, 3, 100)]
+    [TestCase(10, false, 3, 100)]
+    [TestCase(200, false, 200, 200)]
+    public void FilteredMerge_TightensDirtyMarkWithoutWeakeningAbortCleanup(
+        int initialCount,
+        bool clearBeforeMerge,
+        int expectedSuccessDirty,
+        int expectedAbortDirty)
     {
         using SortedMergeDictionary<string, string> target = new();
         target.BuildFromUnsorted(CreateStringSource("old", initialCount), StringComparer.Ordinal);
@@ -389,7 +394,7 @@ public class SortedMergeDictionaryTests
             SortedMergeDictionary<string, string>.FromUnsorted(CreateStringSource("new", 100), StringComparer.Ordinal);
 
         target.BuildFromMerge([source], StringComparer.Ordinal, static (_, key) => string.CompareOrdinal(key, "new003") < 0);
-        Assert.That(StringEntriesDirtyField.GetValue(target), Is.EqualTo(3));
+        Assert.That(StringEntriesDirtyField.GetValue(target), Is.EqualTo(expectedSuccessDirty));
 
         Assert.That(
             () => target.BuildFromMerge(
@@ -397,7 +402,7 @@ public class SortedMergeDictionaryTests
                 StringComparer.Ordinal,
                 static (_, key) => key != "new020" ? true : throw new InvalidOperationException()),
             Throws.InvalidOperationException);
-        Assert.That(StringEntriesDirtyField.GetValue(target), Is.EqualTo(100));
+        Assert.That(StringEntriesDirtyField.GetValue(target), Is.EqualTo(expectedAbortDirty));
 
         target.NoResizeClear();
         SortedMergeDictionary<string, string>.Entry[] entries =
