@@ -22,6 +22,10 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcInvalidRequests { get; set; }
 
         [CounterMetric]
+        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (module pool or override-environment limit). A nonzero rate means callers receive 'Too many requests' — consider raising JsonRpc.EthModuleConcurrentInstances.")]
+        public static long JsonRpcOverloadRejections { get; set; }
+
+        [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]
         public static long JsonRpcErrors { get; set; }
 

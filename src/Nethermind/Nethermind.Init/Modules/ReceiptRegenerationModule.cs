@@ -37,7 +37,7 @@ public class ReceiptRegenerationModule : Module
         // expensive as executing a block — so it is bounded by the same knob that bounds the eth module itself.
         .AddSingleton<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>>(ctx =>
             ctx.Resolve<RegeneratingReceiptsEnvSourceFactory>()
-               .Create(ctx.Resolve<IJsonRpcConfig>().EthModuleConcurrentInstances ?? Environment.ProcessorCount))
+               .Create(ctx.Resolve<IJsonRpcConfig>().EthModuleConcurrentInstances ?? 2 * Environment.ProcessorCount))
         .AddSingleton<ReceiptsRegenerator>()
         .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => new RegeneratingReceiptFinder(
             ctx.Resolve<IReceiptFinder>(),

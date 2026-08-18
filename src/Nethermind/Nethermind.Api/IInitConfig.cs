@@ -107,6 +107,11 @@ public interface IInitConfig : IConfig
         DefaultValue = "8192",
         HiddenFromDocs = true)]
     long HealCanonicalChainDepth { get; set; }
+
+    [ConfigItem(
+        Description = "The EVM instruction-stream cache size, in code entries. Each entry retains up to 512 KiB, bounding worst-case retention at size x 512 KiB. Nodes serving many concurrent eth_call-style requests benefit from a larger value (e.g. 4096): the simultaneously-hot code set grows with request parallelism, and once it conflict-evicts, execution falls back to a slower interpreter path.",
+        DefaultValue = "1024")]
+    int InstructionStreamCacheSize { get; set; }
 }
 
 public enum DiagnosticMode

@@ -25,6 +25,9 @@ namespace Nethermind.Init.Steps
     {
         public Task Execute(CancellationToken _)
         {
+            // Before any EVM execution: the cache captures this value when its static state initializes.
+            Evm.MemoryAllowance.InstructionStreamCacheSize = initConfig.InstructionStreamCacheSize;
+
             MemoryHintMan memoryHintMan = new(logManager);
             uint cpuCount = (uint)Environment.ProcessorCount;
             if (initConfig.MemoryHint.HasValue)

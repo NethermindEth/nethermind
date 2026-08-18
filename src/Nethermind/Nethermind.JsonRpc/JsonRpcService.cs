@@ -85,6 +85,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => (ErrorCodes.InternalError, "Internal error", false),
         };
 
+        // The warnings above are suppressed by design, so without a counter operators cannot see
+        // that callers are being shed at a concurrency cap.
+        if (errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
+        {
+            Metrics.JsonRpcOverloadRejections++;
+        }
+
         if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : ex.ToString(), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
