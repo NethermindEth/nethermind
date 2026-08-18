@@ -12,8 +12,9 @@ using static Nethermind.TxPool.Test.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
-// Not parallelizable: the cases assert against the shared rejection counter.
-internal class MisplacedExpiryFrameFilterTest
+// The cases assert against the shared rejection counter.
+[NonParallelizable]
+internal class FrameTxMisplacedExpiryFrameFilterTest
 {
     private static IEnumerable<TestCaseData> PlacementCases()
     {
@@ -51,7 +52,7 @@ internal class MisplacedExpiryFrameFilterTest
 
     private static AcceptTxResult Accept(Transaction tx)
     {
-        MisplacedExpiryFrameFilter filter = new(LimboLogs.Instance.GetClassLogger<MisplacedExpiryFrameFilterTest>());
+        FrameTxMisplacedExpiryFrameFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxMisplacedExpiryFrameFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
         return filter.Accept(tx, ref state, TxHandlingOptions.None);
     }

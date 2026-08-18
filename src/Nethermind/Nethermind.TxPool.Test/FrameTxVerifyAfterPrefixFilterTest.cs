@@ -12,7 +12,8 @@ using static Nethermind.TxPool.Test.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
-// Not parallelizable: the cases assert against the shared rejection counter.
+// The cases assert against the shared rejection counter.
+[NonParallelizable]
 internal class FrameTxVerifyAfterPrefixFilterTest
 {
     private static IEnumerable<TestCaseData> PrefixCases()
@@ -31,6 +32,7 @@ internal class FrameTxVerifyAfterPrefixFilterTest
             .SetName("a VERIFY frame behind a self relay prefix is rejected");
         yield return new TestCaseData(new[] { SelfVerify(), Pay() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a pay frame behind a self relay prefix is rejected");
+        // Only reachable with this filter in isolation: through the pool the placement filter claims it first.
         yield return new TestCaseData(new[] { SelfVerify(), Expiry() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a trailing expiry frame is rejected as a VERIFY frame behind the prefix");
         yield return new TestCaseData(new[] { OnlyVerify(), Pay(), Execution(), Pay() }, AcceptTxResult.FrameTxVerifyAfterPrefix)

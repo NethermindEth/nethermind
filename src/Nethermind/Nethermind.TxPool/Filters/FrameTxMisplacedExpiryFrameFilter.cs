@@ -16,7 +16,7 @@ namespace Nethermind.TxPool.Filters;
 /// Must run after <see cref="MalformedTxFilter"/>, whose expiry-frame shape rules make the leading-frame test exact,
 /// and before <see cref="ExpiredFrameTxFilter"/>, which reads that deadline.
 /// </remarks>
-internal sealed class MisplacedExpiryFrameFilter(ILogger logger) : IIncomingTxFilter
+internal sealed class FrameTxMisplacedExpiryFrameFilter(ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
