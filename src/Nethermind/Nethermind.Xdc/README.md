@@ -416,7 +416,9 @@ closed on mainnet.
 
 - Post-`TipTrc21Fee`, gas fees are paid to the **candidate owner** of the block beneficiary rather than the
   beneficiary itself.
-- Post-`BlackListHFNumber`, transactions with a blacklisted sender or recipient are rejected.
+- Post-`BlackListHFNumber`, transactions with a blacklisted sender or recipient are rejected during execution,
+  and also on pool admission by [`BlackListedAddressFilter`](TxPool/BlackListedAddressFilter.cs) so they are
+  never gossiped.
 
 ### Block execution context
 
