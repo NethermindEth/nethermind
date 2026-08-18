@@ -1,14 +1,25 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Serialization.Json;
 using Spectre.Console;
+using System.Net;
+using System.Numerics;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Nethermind.DocGen;
 
@@ -22,6 +33,38 @@ internal static class JsonRpcGenerator
         "Nethermind.JsonRpc"
     ];
     private const string _objectTypeName = "_object_";
+    private static readonly SortedSet<string> _guessedTypeNames = new(StringComparer.Ordinal);
+    private static readonly Dictionary<Type, string> _knownTypeNames = new()
+    {
+        [typeof(Address)] = "_string_ (address)",
+        [typeof(AddressAsKey)] = "_string_ (address)",
+        [typeof(BigInteger)] = "_string_ (decimal integer)",
+        [typeof(BlockParameter)] = "_string_ (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`)",
+        [typeof(Bloom)] = "_string_ (hex data)",
+        [typeof(bool)] = "_boolean_",
+        [typeof(byte)] = "_integer_",
+        [typeof(byte[])] = "_string_ (hex data)",
+        [typeof(byte[][])] = "array of _string_ (hex data)",
+        [typeof(DateTime)] = "_string_ (date-time)",
+        [typeof(DateTimeOffset)] = "_string_ (date-time)",
+        [typeof(double)] = "_number_",
+        [typeof(double[])] = "array of _number_",
+        [typeof(Hash256)] = "_string_ (hash)",
+        [typeof(Hash256[])] = "array of _string_ (hash)",
+        [typeof(HexBytes)] = "_string_ (hex data)",
+        [typeof(int)] = "_integer_",
+        [typeof(IPAddress)] = "_string_",
+        [typeof(long)] = "_string_ (hex integer)",
+        [typeof(PublicKey)] = "_string_ (hex data)",
+        [typeof(Signature)] = "_string_ (hex data)",
+        [typeof(string)] = "_string_",
+        [typeof(TimeSpan)] = "_string_ (duration)",
+        [typeof(TxType)] = "_string_ (transaction type)",
+        [typeof(uint)] = "_integer_",
+        [typeof(ulong)] = "_string_ (hex integer)",
+        [typeof(UInt256)] = "_string_ (hex integer)",
+        [typeof(ValueHash256)] = "_string_ (hash)",
+    };
 
     internal static void Generate(string path)
     {
@@ -83,6 +126,10 @@ internal static class JsonRpcGenerator
 
             WriteMarkdown(path, ns, methodMap[ns], i++);
         }
+
+        if (_guessedTypeNames.Count != 0)
+            AnsiConsole.MarkupLine(
+                $"[yellow]Documented from CLR shape, no serializer contract:[/] {string.Join(", ", _guessedTypeNames)}");
     }
 
     private static void WriteMarkdown(string path, string ns, IEnumerable<MethodInfo> methods, int sidebarIndex)
@@ -242,6 +289,8 @@ internal static class JsonRpcGenerator
 
     private static void WriteExpandedType(StreamWriter file, Type type, int indentation = 0, bool omitTypeName = false, IEnumerable<string?>? parentTypes = null)
     {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
         parentTypes ??= new List<string>();
 
         if (parentTypes.Any(a => type.FullName?.Equals(a, StringComparison.Ordinal) ?? false))
@@ -270,18 +319,19 @@ internal static class JsonRpcGenerator
         if (!omitTypeName)
             file.WriteLine(_objectTypeName);
 
-        IEnumerable<PropertyInfo> properties = GetSerializableProperties(type);
+        if (IsOpaqueJson(type))
+            return;
 
-        foreach (PropertyInfo prop in properties)
+        foreach ((string name, Type memberType) in GetSerializedMembers(type))
         {
-            string propJsonType = GetJsonTypeName(prop.PropertyType);
+            string memberJsonType = GetJsonTypeName(memberType);
 
-            file.WriteLine($"{Indent(indentation + 2)}- `{GetSerializedName(prop)}`: {propJsonType}");
+            file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {memberJsonType}");
 
-            if (propJsonType.Equals(_objectTypeName, StringComparison.Ordinal))
-                WriteExpandedType(file, prop.PropertyType, indentation + 2, true, parentTypes.Append(type.FullName));
-            else if (propJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
-                TryGetEnumerableItemType(prop.PropertyType, out Type? itemType, out bool _))
+            if (memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal))
+                WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(type.FullName));
+            else if (memberJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
+                TryGetEnumerableItemType(memberType, out Type? itemType, out bool _))
                 WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(type.FullName));
         }
     }
@@ -304,36 +354,39 @@ internal static class JsonRpcGenerator
 
     private static string GetJsonTypeName(Type type)
     {
+        if (type.IsByRef && type.GetElementType() is { } elementType)
+            type = elementType;
+
         Type? underlyingType = Nullable.GetUnderlyingType(type);
 
         if (underlyingType is not null)
             return GetJsonTypeName(underlyingType);
 
+        if (_knownTypeNames.TryGetValue(type, out string? knownName))
+            return knownName;
+
+        // An enum serializes as its numeric value unless a converter writes the member name instead
         if (type.IsEnum)
-            return "_integer_";
+            return type.GetCustomAttribute<JsonConverterAttribute>() is null ? "_integer_" : "_string_";
+
+        if (type.IsGenericType)
+        {
+            Type definition = type.GetGenericTypeDefinition();
+
+            // Buffer wrappers are written by a converter: as hex when they hold bytes, else as their items
+            if (definition == typeof(ArrayPoolList<>) || definition == typeof(CappedArray<>)
+                || definition == typeof(Memory<>) || definition == typeof(ReadOnlyMemory<>))
+            {
+                Type bufferItemType = type.GetGenericArguments()[0];
+
+                return bufferItemType == typeof(byte) ? "_string_ (hex data)" : $"array of {GetJsonTypeName(bufferItemType)}";
+            }
+        }
 
         if (TryGetEnumerableItemType(type, out Type? itemType, out bool isDictionary))
             return $"{(isDictionary ? "map" : "array")} of {GetJsonTypeName(itemType!)}";
 
-        return type.Name switch
-        {
-            "Address" => "_string_ (address)",
-            "BigInteger"
-                or "Int32"
-                or "Int64"
-                or "Int64&"
-                or "UInt64"
-                or "UInt256" => "_string_ (hex integer)",
-            "BlockParameter" => "_string_ (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`)",
-            "Bloom"
-                or "Byte"
-                or "Byte[]" => "_string_ (hex data)",
-            "Boolean" => "_boolean_",
-            "Hash256" => "_string_ (hash)",
-            "String" => "_string_",
-            "TxType" => "_string_ (transaction type)",
-            _ => _objectTypeName
-        };
+        return _objectTypeName;
     }
 
     private static Type GetReturnType(Type type)
@@ -347,70 +400,61 @@ internal static class JsonRpcGenerator
         return Nullable.GetUnderlyingType(returnType) ?? returnType;
     }
 
-    private static IEnumerable<PropertyInfo> GetSerializableProperties(Type type) =>
-        type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Where(p => p.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
-            .OrderBy(p => p.Name);
+    private static bool IsOpaqueJson(Type type) =>
+        typeof(JsonNode).IsAssignableFrom(type) || type == typeof(JsonElement) || type == typeof(JsonDocument);
 
-    private static string GetSerializedName(PropertyInfo prop) =>
-        prop.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
-            ?? JsonNamingPolicy.CamelCase.ConvertName(prop.Name);
+    private static JsonTypeInfo? GetContract(Type type)
+    {
+        try
+        {
+            return EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or NotSupportedException)
+        {
+            // Types the serializer refuses to model (by-ref, pointer, open generic, colliding member
+            // names) throw instead of reporting false; each falls back to its CLR shape
+            return null;
+        }
+    }
+
+    private static IEnumerable<(string Name, Type Type)> GetSerializedMembers(Type type)
+    {
+        JsonTypeInfo? contract = GetContract(type);
+
+        if (contract?.Kind is JsonTypeInfoKind.Object)
+            return contract.Properties
+                .Where(p => p.Get is not null)
+                .Select(p => (Name: p.Name, Type: p.PropertyType))
+                .OrderBy(m => m.Name, StringComparer.Ordinal);
+
+        // A hand-rolled converter exposes no contract members, leaving the CLR shape as the only guess
+        _guessedTypeNames.Add($"{type.Namespace}.{type.Name}");
+
+        const BindingFlags memberFlags = BindingFlags.Public | BindingFlags.Instance;
+
+        // The serializer sets IncludeFields, so public fields reach the wire alongside properties
+        return type.GetProperties(memberFlags).Select(p => (Member: (MemberInfo)p, Type: p.PropertyType))
+            .Concat(type.GetFields(memberFlags).Select(f => (Member: (MemberInfo)f, Type: f.FieldType)))
+            .Where(m => m.Member.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
+            .Select(m => (Name: GetFallbackName(m.Member), Type: m.Type))
+            .OrderBy(m => m.Name, StringComparer.Ordinal);
+    }
+
+    private static string GetFallbackName(MemberInfo member) =>
+        member.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
+            ?? JsonNamingPolicy.CamelCase.ConvertName(member.Name);
 
     private static string Indent(int depth) => string.Empty.PadLeft(depth, ' ');
 
     private static bool TryGetEnumerableItemType(Type type, out Type? itemType, out bool isDictionary)
     {
-        if (type.IsArray && type.HasElementType)
-        {
-            Type? elementType = type.GetElementType();
+        JsonTypeInfo? contract = GetContract(type);
 
-            // Ignore a byte array as it is treated as a hex string
-            if (elementType == typeof(byte))
-            {
-                itemType = null;
-                isDictionary = false;
+        isDictionary = contract?.Kind is JsonTypeInfoKind.Dictionary;
+        itemType = contract?.Kind is JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary
+            ? contract.ElementType
+            : null;
 
-                return false;
-            }
-
-            itemType = type.GetElementType();
-            isDictionary = false;
-
-            return true;
-        }
-
-        if (type.IsInterface && type.IsGenericType)
-        {
-            if (type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            {
-                itemType = type.GetGenericArguments().Last();
-                isDictionary = false;
-
-                return true;
-            }
-
-            if (type.GetGenericTypeDefinition() == typeof(IDictionary<,>))
-            {
-                itemType = type.GetGenericArguments().Last();
-                isDictionary = true;
-
-                return true;
-            }
-        }
-
-        if (type.IsGenericType && type.GetInterfaces()
-            .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
-        {
-            itemType = type.GetGenericArguments().Last();
-            isDictionary = type.GetInterfaces()
-                .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
-
-            return true;
-        }
-
-        itemType = null;
-        isDictionary = false;
-
-        return false;
+        return itemType is not null;
     }
 }
