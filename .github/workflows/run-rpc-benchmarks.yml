@@ -1189,8 +1189,6 @@ jobs:
 
       - name: Build pinned images
         shell: bash
-        env:
-          DOCKER_BUILDKIT: "1"
         run: |
           set -euo pipefail
 
@@ -1230,6 +1228,8 @@ jobs:
               --build-arg CI=true \
               --build-arg COMMIT_HASH="${actual_ref}" \
               --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
+              --build-arg BUILDPLATFORM=linux/arm64 \
+              --build-arg TARGETARCH=arm64 \
               "${source_dir}"
 
             architecture="$(docker image inspect "${image}" --format '{{.Architecture}}')"
