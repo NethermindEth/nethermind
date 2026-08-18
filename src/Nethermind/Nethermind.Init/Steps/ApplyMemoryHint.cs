@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -34,8 +35,9 @@ namespace Nethermind.Init.Steps
             const int maxInstructionStreamCacheSize = 1 << 20;
             if (initConfig.InstructionStreamCacheSize is <= 0 or > maxInstructionStreamCacheSize)
             {
-                throw new InvalidDataException(
-                    $"Init.{nameof(IInitConfig.InstructionStreamCacheSize)} must be between 1 and {maxInstructionStreamCacheSize}, got {initConfig.InstructionStreamCacheSize}.");
+                throw new InvalidConfigurationException(
+                    $"Init.{nameof(IInitConfig.InstructionStreamCacheSize)} must be between 1 and {maxInstructionStreamCacheSize}, got {initConfig.InstructionStreamCacheSize}.",
+                    ExitCodes.GeneralError);
             }
 
             // Before any EVM execution: the cache captures this value when its static state initializes.
