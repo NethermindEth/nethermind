@@ -146,12 +146,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 }
             }
 
-            return Task.FromResult(new PooledTransactionsMessage(txsToSend));
+            return Task.FromResult(CreatePooledTransactionsMessage(txsToSend));
         }
+
+        /// <summary>Builds the response to a <see cref="GetPooledTransactionsMessage"/>.</summary>
+        /// <remarks>Overridden by protocol versions that carry the response on a different message code.</remarks>
+        protected virtual PooledTransactionsMessage CreatePooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions) => new(transactions);
+
+        /// <summary>Builds a transaction hash announcement.</summary>
+        /// <inheritdoc cref="CreatePooledTransactionsMessage" path="/remarks"/>
+        protected virtual NewPooledTransactionHashesMessage CreateAnnouncementMessage(IOwnedReadOnlyList<Hash256> hashes) => new(hashes);
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
-            void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(new NewPooledTransactionHashesMessage(hashes));
+            void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(CreateAnnouncementMessage(hashes));
 
             if (sendFullTx)
             {

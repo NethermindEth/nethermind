@@ -207,16 +207,12 @@ public sealed class SnapshotBundle : IDisposable
         if (transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else
-        {
-            node = transientResource.GetOrAddStateNode(path,
-                TryFindStateNodeInPersistence(path, hash, out node)
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+            return node;
         }
 
-        return node;
+        return TryFindStateNodeInPersistence(path, hash, out node)
+            ? transientResource.GetOrAddStateNode(path, node)
+            : new TrieNode(NodeType.Unknown, hash);
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
@@ -317,7 +313,7 @@ public sealed class SnapshotBundle : IDisposable
         TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null)
         {
-            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node) && node is not null
+            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node)
                 ? node
                 : new TrieNode(NodeType.Unknown, hash);
         }
@@ -337,19 +333,15 @@ public sealed class SnapshotBundle : IDisposable
         if (transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else
-        {
-            node = transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
-                TryFindStorageNodeInPersistence(address, path, hash, out node) && node is not null
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+            return node;
         }
 
-        return node;
+        return TryFindStorageNodeInPersistence(address, path, hash, out node)
+            ? transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, node)
+            : new TrieNode(NodeType.Unknown, hash);
     }
 
-    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
+    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
