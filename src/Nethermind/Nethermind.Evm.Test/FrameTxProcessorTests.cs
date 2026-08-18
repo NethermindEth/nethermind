@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -408,10 +409,19 @@ public class FrameTxProcessorTests
         TxFrame transfer = Frame(TxFrame.ModeSender, target: Recipient, value: 12345);
         Transaction tx = FrameTx(nonce: 0, verify, transfer);
 
-        TransactionResult result = Process(tx);
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)12345));
+        // The codeless target runs empty code in the VM, which both creates it and emits the transfer log.
+        Assert.That(tracer.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
+        LogEntry expectedLog = TransferLog.CreateTransfer(Sender, Recipient, 12345);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts[1].Logs[0].Topics, Is.EqualTo(expectedLog.Topics));
+            Assert.That(tracer.FrameReceipts[1].Logs[0].Data, Is.EqualTo(expectedLog.Data));
+        }
         // Sender pays the transferred value plus the spent gas (unused gas refunded), so the
         // charge is more than the value alone but less than value + both frame gas limits.
         UInt256 balance = _stateProvider.GetBalance(Sender);
@@ -1328,6 +1338,144 @@ public class FrameTxProcessorTests
             Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.APPROVE)), "the validation prefix is traced");
             Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.SSTORE)), "the execution frame is traced");
         }
+    }
+
+    /// <summary>A codeless target of a non-<c>VERIFY</c> frame runs empty code in the VM, warming it.</summary>
+    /// <remarks>Routing it to default code instead would skip the EVM and leave it cold.</remarks>
+    [Test]
+    public void Execute_DefaultFrameTargetsCodelessAccount_WarmsIt()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Address observed = TestItem.AddressD;
+        Address unobserved = TestItem.AddressF;
+        DeployContract(Observer, Prepare.EvmCode.PushData(observed).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+        FrameReceiptTracer targeted = new();
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: observed), Frame(TxFrame.ModeSender, target: Observer)),
+            tracer: targeted).TransactionExecuted, Is.True);
+
+        FrameReceiptTracer untouched = new();
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: unobserved), Frame(TxFrame.ModeSender, target: Observer)),
+            tracer: untouched).TransactionExecuted, Is.True);
+
+        ulong observerGas = targeted.FrameReceipts![2].GasUsed;
+        ulong baselineGas = untouched.FrameReceipts![2].GasUsed;
+        using (Assert.EnterMultipleScope())
+        {
+            // Both observers must actually run the BALANCE: a halted frame reports its whole gas limit
+            // and a skipped one reports 0, either of which cancels out of the spread below.
+            Assert.That(targeted.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(untouched.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That((long)baselineGas - (long)observerGas,
+                Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+                "the earlier frame warmed its codeless target, so the observer's BALANCE pays the warm "
+                + "access where the baseline pays the cold one");
+        }
+    }
+
+    /// <summary>A frame whose resolved target is a precompile executes the precompile.</summary>
+    /// <remarks>A frame pays no entry cost on this branch, so the identity gas is the whole figure.</remarks>
+    [TestCase(TxFrame.ModeDefault, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, one byte)")]
+    [TestCase(TxFrame.ModeDefault, 64, 21UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, two words)")]
+    [TestCase(TxFrame.ModeSender, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(SENDER)")]
+    [TestCase(TxFrame.ModePostTx, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(POST_TX)")]
+    public void Execute_FrameTargetsPrecompile_RunsIt(byte mode, int dataLength, ulong expectedGas)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        byte[] data = new byte[dataLength];
+        data.AsSpan().Fill(0xab);
+
+        FrameReceiptTracer tracer = new();
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(mode, target: IdentityPrecompile.Address, data: data));
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(expectedGas), "the frame must be charged for the precompile it ran");
+        }
+    }
+
+    /// <summary>A <c>SENDER</c> frame's value reaches a precompile target, transfer log included.</summary>
+    /// <remarks><c>SENDER</c> is the only mode a frame may carry value in.</remarks>
+    [Test]
+    public void Execute_SenderFrameWithValueTargetsPrecompile_TransfersAndRunsIt()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        UInt256 value = 1_000_000;
+
+        FrameReceiptTracer tracer = new();
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: IdentityPrecompile.Address, value: value, data: new byte[32]));
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].GasUsed, Is.EqualTo(18UL), "the frame must be charged for the precompile it ran");
+            Assert.That(_stateProvider.GetBalance(IdentityPrecompile.Address), Is.EqualTo(value), "the value must reach the target");
+            Assert.That(tracer.FrameReceipts[1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
+        }
+
+        // The VM builds the log from its own caller/executing account, not the processor's.
+        LogEntry transferLog = tracer.FrameReceipts![1].Logs[0];
+        LogEntry expected = TransferLog.CreateTransfer(Sender, IdentityPrecompile.Address, in value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transferLog.Topics, Is.EqualTo(expected.Topics), "the transfer log must name the sender and the precompile, in that order");
+            Assert.That(transferLog.Data, Is.EqualTo(expected.Data), "the transfer log must carry the transferred value");
+        }
+    }
+
+    /// <summary>A precompile that rejects its input fails the frame that targeted it.</summary>
+    /// <remarks>The rejection is an exceptional halt, so the frame forfeits its whole gas limit.</remarks>
+    [Test]
+    public void Execute_FrameTargetsPrecompileThatRejectsItsInput_FailsTheFrame()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        byte[] notOnTheCurve = new byte[128];
+        notOnTheCurve.AsSpan().Fill(0xff);
+
+        FrameReceiptTracer tracer = new();
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: BN254AddPrecompile.Address, data: notOnTheCurve));
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(200_000UL), "an exceptional halt consumes the frame's gas limit");
+        }
+    }
+
+    /// <summary>A <c>VERIFY</c> frame targeting a precompile runs default code, not the precompile.</summary>
+    /// <remarks>No signature can resolve to a precompile address, so the default code reverts.</remarks>
+    [Test]
+    public void Execute_VerifyFrameTargetsPrecompile_RunsDefaultCodeAndInvalidatesTheTransaction()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0,
+            Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: IdentityPrecompile.Address));
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"),
+                "the transaction must be rejected by the default code reverting, not by an earlier check");
+        }
+    }
+
+    private sealed class FrameReceiptTracer : CallOutputTracer, IFrameTxReceiptTracer
+    {
+        public TxFrameReceipt[]? FrameReceipts { get; private set; }
+
+        public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => FrameReceipts = frameReceipts;
     }
 
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null, ulong? slotNumber = null)

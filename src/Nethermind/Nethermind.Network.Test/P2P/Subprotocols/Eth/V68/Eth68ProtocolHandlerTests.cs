@@ -253,8 +253,8 @@ public class Eth68ProtocolHandlerTests
 
     [TestCase(BlobsSupportMode.InMemory, 1, TestName = "Blob_sized_frame_tx_announcement_is_requested_when_blob_frame_txs_are_admissible")]
     [TestCase(BlobsSupportMode.Disabled, 0, TestName = "Blob_sized_frame_tx_announcement_is_not_requested_when_blobs_are_disabled")]
-    [TestCase(BlobsSupportMode.Storage, 0, TestName = "Blob_sized_frame_tx_announcement_is_not_requested_under_persistent_storage")]
-    [TestCase(BlobsSupportMode.StorageWithReorgs, 0, TestName = "Blob_sized_frame_tx_announcement_is_not_requested_under_the_default_mode")]
+    [TestCase(BlobsSupportMode.Storage, 1, TestName = "Blob_sized_frame_tx_announcement_is_requested_under_persistent_storage")]
+    [TestCase(BlobsSupportMode.StorageWithReorgs, 1, TestName = "Blob_sized_frame_tx_announcement_is_requested_under_the_default_mode")]
     public void Frame_tx_announcement_budget_follows_blob_support(BlobsSupportMode blobsSupport, int expectedRequests)
     {
         TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport };

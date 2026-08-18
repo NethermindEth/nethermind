@@ -247,6 +247,10 @@ namespace Nethermind.Core
         /// </summary>
         public Address? PayerAddress { get; set; }
 
+        /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
+        /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
+        public virtual ulong? PersistedExpiryDeadline => null;
+
         /// <summary>
         /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
         /// https://eips.ethereum.org/EIPS/eip-8250
