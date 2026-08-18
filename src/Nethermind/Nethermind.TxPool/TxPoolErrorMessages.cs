@@ -34,4 +34,5 @@ public static class TxPoolErrorMessages
     public const string FrameTxPayerExposureExceeded = "frame transaction payer exposure exceeds balance";
     public const string FrameTxNoPayer = "frame transaction never approves a payer";
     public const string FrameSimulationFailed = "frame transaction validation-prefix simulation failed";
+    public const string FrameTxMissingSidecar = "blob-carrying frame transaction is missing its blob sidecar";
 }

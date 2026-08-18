@@ -41,12 +41,19 @@ internal sealed class FrameTxSimulationFilter(
             case FrameTxSimulationOutcome.Undecided:
                 // No verdict was reached, so defer exactly as an unwired simulator does rather than return
                 // a non-accepting result the sending peer would be charged for.
+                Metrics.PendingTransactionsFrameTxSimulationUndecided++;
                 if (logger.IsDebug) logger.Debug($"Admitting frame transaction {tx.Hash} with an unresolved payer, validation-prefix simulation was unavailable: {result.Reason}.");
                 return AcceptTxResult.Accepted;
 
-            default:
+            case FrameTxSimulationOutcome.Accepted:
                 tx.PayerAddress = result.Payer;
                 if (logger.IsTrace) logger.Trace($"Simulated frame transaction {tx.Hash} validation prefix; resolved payer {result.Payer}.");
+                return AcceptTxResult.Accepted;
+
+            default:
+                // Only Accepted carries a payer, so an outcome this filter cannot price must not record one.
+                Metrics.PendingTransactionsFrameTxSimulationUndecided++;
+                if (logger.IsDebug) logger.Debug($"Admitting frame transaction {tx.Hash} with an unresolved payer, unhandled simulation outcome {result.Outcome}.");
                 return AcceptTxResult.Accepted;
         }
     }
