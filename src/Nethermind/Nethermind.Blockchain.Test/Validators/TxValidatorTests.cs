@@ -1097,6 +1097,7 @@ public class TxValidatorTests
         yield return new TestCaseData(null, true, false).SetName("IsWellFormed_FrameTxLegacyNonce_AfterEip8250_ReturnFalse");
         yield return new TestCaseData(new UInt256[] { 0 }, false, false).SetName("IsWellFormed_FrameTxKeyedNonce_BeforeEip8250_ReturnFalse");
         yield return new TestCaseData(new UInt256[] { 0 }, true, true).SetName("IsWellFormed_FrameTxKeyedNonce_AfterEip8250_ReturnTrue");
+        yield return new TestCaseData(new UInt256[] { 1, 1 }, true, false).SetName("IsWellFormed_FrameTxMalformedNonceKeys_AfterEip8250_ReturnFalse");
     }
 
     [TestCaseSource(nameof(NonceKeysEnvelopeCases))]
@@ -1107,6 +1108,29 @@ public class TxValidatorTests
 
         Assert.That(FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
     }
+
+    [Test]
+    public void IsWellFormed_FrameTxKeyedNonceAtMaxSeq_AfterEip8250_ReturnFalse()
+    {
+        Transaction tx = new() { Type = TxType.FrameTx, NonceKeys = new UInt256[] { 0 }, Nonce = Eip8250Constants.MaxNonceSeq };
+        IReleaseSpec releaseSpec = new ReleaseSpec { IsEip8250Enabled = true };
+
+        Assert.That(FrameTxNonceKeysTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.False);
+    }
+
+    private static IEnumerable<TestCaseData> HeadRevalidationNonceEnvelopeCases()
+    {
+        yield return new TestCaseData(new Transaction { Type = TxType.FrameTx })
+        { TestName = "Pre-fork scalar-nonce frame tx is evicted after EIP-8250", ExpectedResult = false };
+        yield return new TestCaseData(new Transaction { Type = TxType.FrameTx, NonceKeys = new UInt256[] { 0 } })
+        { TestName = "Keyed-nonce frame tx is retained after EIP-8250", ExpectedResult = true };
+        yield return new TestCaseData(new Transaction { Type = TxType.EIP1559 })
+        { TestName = "Non-frame tx is untouched by the frame nonce gate after EIP-8250", ExpectedResult = true };
+    }
+
+    [TestCaseSource(nameof(HeadRevalidationNonceEnvelopeCases))]
+    public bool IsWellFormed_HeadRevalidationEvictsPreForkScalarNonceFrameTx(Transaction tx) =>
+        new HeadTxValidator().IsWellFormed(tx, new ReleaseSpec { IsEip8250Enabled = true }).AsBool();
 
     private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
     {
