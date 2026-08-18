@@ -13,16 +13,16 @@ public class InclusionListBuilder(ITxPool txPool)
 {
     public InclusionListBytes GetInclusionList()
     {
-        using ArrayPoolList<Transaction> reservoir = ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions());
-        return EncodeTransactionsUpToLimit(reservoir);
+        using ArrayPoolListRef<Transaction> reservoir = ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions());
+        return EncodeTransactionsUpToLimit(in reservoir);
     }
 
     // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(MaxTxs) for any mempool size.
     // TODO: score txs and randomly sample weighted by score.
-    private static ArrayPoolList<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
+    private static ArrayPoolListRef<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
     {
         const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
-        ArrayPoolList<Transaction> reservoir = new(capacity);
+        ArrayPoolListRef<Transaction> reservoir = new(capacity);
         Random rnd = Random.Shared;
         int seen = 0;
 
@@ -55,7 +55,7 @@ public class InclusionListBuilder(ITxPool txPool)
         return reservoir;
     }
 
-    private static InclusionListBytes EncodeTransactionsUpToLimit(ArrayPoolList<Transaction> txs)
+    private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)
     {
         InclusionListBytes result = new(txs.Count);
         try
