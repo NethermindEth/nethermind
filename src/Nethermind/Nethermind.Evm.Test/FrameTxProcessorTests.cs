@@ -836,6 +836,26 @@ public class FrameTxProcessorTests
         Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
 
+    /// <remarks>
+    /// A type-6 transaction reaches the frame estimator on its type alone, so one submitted without any frames
+    /// must report the missing frames rather than a gas-limit overflow that never happened.
+    /// </remarks>
+    [Test]
+    public void EstimateGas_FrameTxWithNoFrames_ReportsTheMissingFrames()
+    {
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Recipient));
+        tx.Frames = null;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+
+        EstimateGasTracer gasTracer = new();
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
+        estimator.Estimate(tx, header, gasTracer, out string? error);
+
+        Assert.That(error, Is.EqualTo(GasEstimator.FrameTxHasNoFrames));
+    }
+
     /// <summary>A reverting POST_TX frame fails the probe's status but keeps the transaction valid and
     /// its frame budget well-defined, so the estimate is returned rather than reported as a failure.</summary>
     [Test]
