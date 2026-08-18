@@ -1680,16 +1680,19 @@ namespace Nethermind.TxPool.Test
             }
 
             Transaction first = SignedBlobFrameTx(deadline: null);
-            // Balance for exactly one such tx, so a reservation outliving the first rejects the second.
             EnsureSenderBalance(TestItem.AddressA, (UInt256)first.GasLimit * first.MaxFeePerGas
                 + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
 
+            // The gauge, not a second submission: the payer here is the sender, whose balance already covers
+            // several such reservations, so nothing it submits later can observe the leak.
+            long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
+
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressA), "no reservation is taken unless the payer resolves");
-            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore + 1), "admission must reserve against the payer");
 
-            // Same payer and same cost, told apart only by its expiry frame: only a leaked reservation rejects it.
-            Assert.That(_txPool.SubmitTx(SignedBlobFrameTx(deadline: 1_000_000), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore), "the light record's removal must release the whole reservation");
         }
 
         // EIP-8141: a blob-carrying frame tx counts against the per-sender blob limit (MaxPendingBlobTxsPerSender),
