@@ -16,7 +16,6 @@ on:
         required: true
         type: choice
         options:
-          - halfpath
           - flat
         default: flat
       payload_set:
@@ -213,7 +212,7 @@ jobs:
             payload_set="${DISPATCH_PAYLOAD_SET}"
             expb_repo="${DISPATCH_EXPB_REPO}"
             expb_branch="${DISPATCH_EXPB_BRANCH}"
-            expb_data_dir="/mnt/sda/expb-data"
+            expb_data_dir="/data/expb-data"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             if [[ -n "${DISPATCH_AMOUNT}" ]]; then
               amount="${DISPATCH_AMOUNT}"
@@ -281,7 +280,7 @@ jobs:
             payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
-            expb_data_dir="/mnt/sda/expb-data"
+            expb_data_dir="/data/expb-data"
             delay_seconds="0"
             amount=""
             additional_extra_flags=""
@@ -299,7 +298,7 @@ jobs:
             payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
-            expb_data_dir="/mnt/sda/expb-data"
+            expb_data_dir="/data/expb-data"
             delay_seconds="0"
             amount=""
             additional_extra_flags=""
@@ -561,7 +560,7 @@ jobs:
         payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
       max-parallel: 1
       fail-fast: false
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
@@ -1745,7 +1744,7 @@ jobs:
       matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}

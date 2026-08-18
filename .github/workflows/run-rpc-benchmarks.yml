@@ -1,6 +1,6 @@
 name: Run RPC Benchmarks
 
-# Benchmark a client's JSON-RPC on the self-hosted `reproducible-benchmarks` runner, reusing its DB snapshots.
+# Benchmark a client's JSON-RPC on the self-hosted `reproducible-benchmarks-arm` runner, reusing its DB snapshots.
 # Only read-only RPCs are benchmarked (eth_call/getBalance/trace/debug — none change state); each snapshot is fingerprinted before/after. Under overlay/copy the snapshot is never mounted writable, so any change FAILS the job.
 # reth's 'direct' mode mounts the snapshot read-write, where the node's DB-engine startup writes are expected — there the tripwire warns instead of failing. See scripts/rpc-bench/README.md.
 
@@ -23,8 +23,6 @@ on:
         type: choice
         options:
           - nethermind
-          - geth
-          - reth
         default: nethermind
       reference_client:
         description: Start a second client from its same-block snapshot and compare responses (flood/jsonbench only)
@@ -32,14 +30,11 @@ on:
         type: choice
         options:
           - none
-          - geth
-          - nethermind
-          - reth
         default: none
       snapshot_block:
         description: >-
-          Snapshot set tag: picks /mnt/sda/<client>-<tag> (nethermind resolves to
-          nethermind[-flat]-<tag> per state_layout). Empty = the expb snapshot for
+          Snapshot set tag: picks /data/nethermind/<client>-<tag> (nethermind resolves to
+          nethermind-flat-<tag>). Empty = the expb snapshot for
           nethermind, and 25490000 for geth/reth or whenever reference_client is set
           (a comparison needs both nodes at the same head).
         required: false
@@ -72,7 +67,6 @@ on:
         type: choice
         options:
           - flat
-          - halfpath
         default: flat
       additional_nethermind_flags:
         description: "Extra Nethermind flags appended to the node command (e.g. --Pruning.CacheMb=4000)"
@@ -96,7 +90,7 @@ on:
       node_config:
         description: >-
           Advanced node/runner overrides as JSON:
-          {"db_source":"","db_isolation":"overlay|copy|readonly-bind|direct","scratch_root":"/mnt/sda/expb-data/rpc-bench-scratch",
+          {"db_source":"","db_isolation":"overlay|copy|readonly-bind|direct","scratch_root":"/data/expb-data/rpc-bench-scratch",
           "network":"mainnet","jsonrpc_modules":"Eth,...","health_timeout_minutes":30,"cpuset":"2-7,10-15","memory":"64g",
           "reference_db_source":"","reference_image":"","reference_flags":"","reference_db_isolation":""}.
           Leave empty for defaults (db_source resolved from client/state_layout/snapshot_block; db_isolation defaults to 'direct' for reth — RW mount, no overlay copy-up — else 'overlay').
@@ -217,6 +211,10 @@ jobs:
             none|nethermind|geth|reth) ;;
             *) echo "Unknown reference_client '${reference_client}'."; exit 1;;
           esac
+          if [[ "${client}" != "nethermind" || "${reference_client}" != "none" ]]; then
+            echo "The reproducible-benchmarks-arm runner only supports a single Nethermind client."
+            exit 1
+          fi
           comparison="false"
           [[ "${reference_client}" != "none" ]] && comparison="true"
           if [[ "${comparison}" == "true" && "${benchmark_tool}" == "ethcallchaos" ]]; then
@@ -283,12 +281,12 @@ jobs:
 
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
 
-          case "${state_layout}" in
-            flat|halfpath) ;;
-            *) echo "Unknown state_layout '${state_layout}'."; exit 1;;
-          esac
+          if [[ "${state_layout}" != "flat" ]]; then
+            echo "The reproducible-benchmarks-arm runner only supports the flat state layout."
+            exit 1
+          fi
 
-          # Named snapshot sets follow /mnt/sda/<client>-<block>; without a tag nethermind falls back to the expb snapshots.
+          # Named snapshot sets follow /data/nethermind/<client>-<block>; without a tag nethermind falls back to the expb snapshots.
           # geth/reth and comparison runs need same-head sets, so they default to the standing 25490000 tag.
           DEFAULT_SNAPSHOT_BLOCK="25490000"
           if [[ -z "${snapshot_block}" ]] && { [[ "${comparison}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
@@ -301,19 +299,19 @@ jobs:
             if [[ -n "${snapshot_block}" ]]; then
               if [[ "${c}" == "nethermind" ]]; then
                 if [[ "${state_layout}" == "flat" ]]; then
-                  echo "/mnt/sda/nethermind-flat-${snapshot_block}"
+                  echo "/data/nethermind/nethermind-flat-${snapshot_block}"
                 else
-                  echo "/mnt/sda/nethermind-${snapshot_block}"
+                  echo "/data/nethermind/nethermind-${snapshot_block}"
                 fi
               else
-                echo "/mnt/sda/${c}-${snapshot_block}"
+                echo "/data/nethermind/${c}-${snapshot_block}"
               fi
             else
               # Legacy expb snapshots exist for nethermind only (guarded above).
               if [[ "${state_layout}" == "flat" ]]; then
-                echo "/mnt/sda/nethermind-flat-snapshot"
+                echo "/data/nethermind/nethermind-flat-snapshot"
               else
-                echo "/mnt/sda/nethermind-snapshot"
+                echo "/data/nethermind/nethermind-snapshot"
               fi
             fi
           }
@@ -342,7 +340,7 @@ jobs:
           if [[ -z "${db_isolation}" ]]; then
             if [[ "${client}" == "reth" ]]; then db_isolation="direct"; else db_isolation="overlay"; fi
           fi
-          scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="/mnt/sda/expb-data/rpc-bench-scratch"
+          scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="/data/expb-data/rpc-bench-scratch"
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
           jsonrpc_modules="$(nc '.jsonrpc_modules')"
           [[ -z "${jsonrpc_modules}" ]] && jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
@@ -482,7 +480,7 @@ jobs:
   benchmark:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true'
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
     timeout-minutes: 800
     env:
       # NB: the `runner` context is not available in job-level env, so OUT_DIR /

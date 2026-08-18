@@ -35,7 +35,7 @@ DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 # summaries; parity reports carry counts, never request/response bytes; node logs are scanned as
 # counts only and deleted.
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
-CORPUS_DIR="${CORPUS_DIR:-/mnt/sda/expb-data/rpc-bench}"
+CORPUS_DIR="${CORPUS_DIR:-/data/expb-data/rpc-bench}"
 # Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
 # Size a corpus cell by request count instead of wall time. CORPUS_REQUESTS is absolute;
@@ -104,9 +104,9 @@ default_image() {
 }
 snap_path() {
   if [[ "$1" == "nethermind" ]]; then
-    if [[ "$STATE_LAYOUT" == "flat" ]]; then echo "/mnt/sda/nethermind-flat-${SNAPSHOT_BLOCK}"
-    else echo "/mnt/sda/nethermind-${SNAPSHOT_BLOCK}"; fi
-  else echo "/mnt/sda/$1-${SNAPSHOT_BLOCK}"; fi
+    if [[ "$STATE_LAYOUT" == "flat" ]]; then echo "/data/nethermind/nethermind-flat-${SNAPSHOT_BLOCK}"
+    else echo "/data/nethermind/nethermind-${SNAPSHOT_BLOCK}"; fi
+  else echo "/data/nethermind/$1-${SNAPSHOT_BLOCK}"; fi
 }
 layout_flags() { [[ "$1" == "nethermind" && "$STATE_LAYOUT" == "flat" ]] && echo "--FlatDb.Enabled=true" || true; }
 # Per-client isolation used to differ (reth direct, others overlay), which made cross-client
@@ -117,7 +117,7 @@ layout_flags() { [[ "$1" == "nethermind" && "$STATE_LAYOUT" == "flat" ]] && echo
 #
 # `direct` is refused here. It bind-mounts the snapshot READ-WRITE, and a node's startup alone
 # rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column family. The
-# Nethermind snapshots under /mnt/sda are shared with expb, so one direct run silently replaces
+# Nethermind snapshots under /data/nethermind are shared with expb, so one direct run silently replaces
 # the fixture every later benchmark compares against — which happened on 2026-08-13 and cost a
 # day of measurements (eth_call p99 tripled while reth, untouched, moved 2%).
 # Override only with a snapshot nobody else consumes.
@@ -128,7 +128,7 @@ if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION"
   echo "::error::comparison, or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot."
   exit 1
 fi
-# reth's default stays `direct` without the consent flag, deliberately: /mnt/sda/reth-<block> is
+# reth's default stays `direct` without the consent flag, deliberately: /data/nethermind/reth-<block> is
 # consumed only by this harness (every expb scenario reads a nethermind-* snapshot), and reth has
 # run direct since the harness existed, so its post-first-boot state IS the steady-state fixture
 # every historical reth number was measured on. Switching it to copy would churn ~1 TB per run;

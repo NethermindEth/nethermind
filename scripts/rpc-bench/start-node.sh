@@ -10,7 +10,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rpc-bench/lib.sh
 source "$HERE/lib.sh"
 
-: "${DB_SOURCE:?path to the pristine client datadir snapshot (e.g. /mnt/sda/nethermind-flat-snapshot)}"
+: "${DB_SOURCE:?path to the pristine client datadir snapshot (e.g. /data/nethermind/nethermind-flat-25490000)}"
 : "${SCRATCH_ROOT:?writable scratch root on the same large disk as the snapshot}"
 : "${STATE_DIR:?directory to persist node state for stop-node.sh}"
 
