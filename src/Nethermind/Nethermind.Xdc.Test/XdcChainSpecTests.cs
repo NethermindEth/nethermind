@@ -13,13 +13,6 @@ namespace Nethermind.Xdc.Test;
 /// <summary>
 /// Pins what our chain specs produce for the XDCX special-transaction path on both networks.
 /// </summary>
-/// <remarks>
-/// Both halves of that path fail silently rather than loudly. A key that does not match its property name
-/// deserializes to <c>null</c>, and the contract then never matches a transaction recipient; a fork block that is not
-/// registered in <see cref="XdcChainSpecEngineParameters.AddTransitions"/> gets no release spec boundary of its own,
-/// so its flag only flips on whichever unrelated transition encloses it. Either way transactions take the wrong path
-/// and diverge from the reference client, with nothing in the logs to say so.
-/// </remarks>
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcChainSpecTests
 {
@@ -67,8 +60,6 @@ public class XdcChainSpecTests
         });
     }
 
-    // Loaded by name so it resolves to the copy Nethermind.Config embeds, which is what a released node reads, and
-    // which needs no assumption about where the test binaries sit relative to the source tree.
     private static ChainSpec LoadChainSpec(string chainSpecFile) =>
         new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(chainSpecFile);
 
