@@ -1,0 +1,72 @@
+name: ARM Runner Maintenance
+
+# Frees disk on the reproducible-benchmarks-arm runner after benchmark runs fill it
+# (docker layer churn, leftover containers/networks, runner diag/work debris).
+# Never removes tagged images - the pinned armbench-*/master-* A/B images must survive.
+
+on:
+  # push registers the workflow for dispatch on this branch (dispatch-only workflows on
+  # non-default branches never register) and doubles as the first cleanup run.
+  push:
+    branches: [feature/jsonbench-extra-eth-calls]
+    paths: [.github/workflows/arm-runner-maintenance.yml]
+  workflow_dispatch:
+    inputs:
+      prune_unused_images:
+        description: Also remove images unused by any container and older than 96h (docker image prune -a --filter until=96h). Tagged benchmark images newer than that survive.
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  clean:
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    timeout-minutes: 30
+    steps:
+      - name: Disk usage before
+        shell: bash
+        run: |
+          set -uo pipefail
+          df -h /
+          docker system df || true
+          du -xsh /root/actions-runner/_diag /root/actions-runner/_work /tmp /var/lib/docker 2>/dev/null | sort -rh || true
+
+      - name: Reap leftover benchmark containers and networks
+        shell: bash
+        run: |
+          set -uo pipefail
+          for prefix in rpcbench- nethermind-rpcbench ethcallchaos-bench jsonbench-; do
+            docker ps -aq --filter "name=${prefix}" | xargs -r docker rm -f || true
+          done
+          # Exited expb/benchmark containers of any name
+          docker container prune -f || true
+          # Orphaned expb networks block scenario re-runs with a 409 on name collision
+          docker network prune -f || true
+          docker volume prune -f || true
+
+      - name: Prune docker caches and dangling images
+        shell: bash
+        env:
+          PRUNE_UNUSED_IMAGES: ${{ inputs.prune_unused_images }}
+        run: |
+          set -uo pipefail
+          docker builder prune -af || true
+          docker image prune -f || true
+          if [[ "${PRUNE_UNUSED_IMAGES}" == "true" ]]; then
+            docker image prune -af --filter "until=96h" || true
+          fi
+
+      - name: Trim runner diag and work debris
+        shell: bash
+        run: |
+          set -uo pipefail
+          find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete || true
+          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
+          find /tmp -maxdepth 1 -user root -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+
+      - name: Disk usage after
+        shell: bash
+        run: |
+          set -uo pipefail
+          df -h /
+          docker system df || true
