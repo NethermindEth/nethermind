@@ -508,9 +508,6 @@ jobs:
           fi
           docker version
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Set up run paths
         run: |
           echo "OUT_DIR=$RUNNER_TEMP/rpcbench-out" >> "$GITHUB_ENV"
@@ -1176,6 +1173,9 @@ jobs:
             run_as_root systemctl start docker || run_as_root service docker start
           fi
           docker version
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Record ARM host details
         shell: bash
