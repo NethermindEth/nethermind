@@ -76,9 +76,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("keyed nonces are not enabled");
         }
 
-        // Pre-flight: nonce and protocol-validated signatures.
-        TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
-        if (!nonceResult) return nonceResult;
+        // Pre-flight: nonce and protocol-validated signatures. Skipped where validation is, as on the
+        // account-nonce path: eth_call overwrites the supplied nonce with the sender's account nonce.
+        if (ShouldValidate(opts))
+        {
+            TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
+            if (!nonceResult) return nonceResult;
+        }
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         // EIP-7928: resolved without recording an account access - a tx that never takes the P256
