@@ -153,6 +153,7 @@ internal static class InputExtractor
                     }
 
                     (byte[] buffer, int dataLength) = DecodeInput(inputBytes);
+
                     try
                     {
                         ReadOnlyMemory<byte> output = forZisk
