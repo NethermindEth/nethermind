@@ -38,21 +38,21 @@ internal static class JsonRpcGenerator
     {
         [typeof(Address)] = "_string_ (address)",
         [typeof(AddressAsKey)] = "_string_ (address)",
-        [typeof(BigInteger)] = "_string_ (hex integer)",
+        [typeof(BigInteger)] = "_string_ (decimal integer)",
         [typeof(BlockParameter)] = "_string_ (block number or hash or either of `earliest`, `finalized`, `latest`, `pending`, or `safe`)",
         [typeof(Bloom)] = "_string_ (hex data)",
         [typeof(bool)] = "_boolean_",
-        [typeof(byte)] = "_string_ (hex data)",
+        [typeof(byte)] = "_integer_",
         [typeof(byte[])] = "_string_ (hex data)",
         [typeof(byte[][])] = "array of _string_ (hex data)",
         [typeof(DateTime)] = "_string_ (date-time)",
+        [typeof(DateTimeOffset)] = "_string_ (date-time)",
         [typeof(double)] = "_number_",
         [typeof(double[])] = "array of _number_",
-        [typeof(DateTimeOffset)] = "_string_ (date-time)",
         [typeof(Hash256)] = "_string_ (hash)",
         [typeof(Hash256[])] = "array of _string_ (hash)",
         [typeof(HexBytes)] = "_string_ (hex data)",
-        [typeof(int)] = "_string_ (hex integer)",
+        [typeof(int)] = "_integer_",
         [typeof(IPAddress)] = "_string_",
         [typeof(long)] = "_string_ (hex integer)",
         [typeof(PublicKey)] = "_string_ (hex data)",
@@ -60,7 +60,7 @@ internal static class JsonRpcGenerator
         [typeof(string)] = "_string_",
         [typeof(TimeSpan)] = "_string_ (duration)",
         [typeof(TxType)] = "_string_ (transaction type)",
-        [typeof(uint)] = "_string_ (hex integer)",
+        [typeof(uint)] = "_integer_",
         [typeof(ulong)] = "_string_ (hex integer)",
         [typeof(UInt256)] = "_string_ (hex integer)",
         [typeof(ValueHash256)] = "_string_ (hash)",
@@ -362,8 +362,12 @@ internal static class JsonRpcGenerator
         if (underlyingType is not null)
             return GetJsonTypeName(underlyingType);
 
+        if (_knownTypeNames.TryGetValue(type, out string? knownName))
+            return knownName;
+
+        // An enum serializes as its numeric value unless a converter writes the member name instead
         if (type.IsEnum)
-            return "_integer_";
+            return type.GetCustomAttribute<JsonConverterAttribute>() is null ? "_integer_" : "_string_";
 
         if (type.IsGenericType)
         {
@@ -382,7 +386,7 @@ internal static class JsonRpcGenerator
         if (TryGetEnumerableItemType(type, out Type? itemType, out bool isDictionary))
             return $"{(isDictionary ? "map" : "array")} of {GetJsonTypeName(itemType!)}";
 
-        return _knownTypeNames.GetValueOrDefault(type, _objectTypeName);
+        return _objectTypeName;
     }
 
     private static Type GetReturnType(Type type)
@@ -405,9 +409,10 @@ internal static class JsonRpcGenerator
         {
             return EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : null;
         }
-        catch (ArgumentException)
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or NotSupportedException)
         {
-            // Never-serializable types (by-ref, pointer, open generic) throw instead of reporting false
+            // Types the serializer refuses to model (by-ref, pointer, open generic, colliding member
+            // names) throw instead of reporting false; each falls back to its CLR shape
             return null;
         }
     }
@@ -416,24 +421,28 @@ internal static class JsonRpcGenerator
     {
         JsonTypeInfo? contract = GetContract(type);
 
-        if (contract is not null && contract.Properties.Count != 0)
+        if (contract?.Kind is JsonTypeInfoKind.Object)
             return contract.Properties
                 .Where(p => p.Get is not null)
                 .Select(p => (Name: p.Name, Type: p.PropertyType))
                 .OrderBy(m => m.Name, StringComparer.Ordinal);
 
         // A hand-rolled converter exposes no contract members, leaving the CLR shape as the only guess
-        _guessedTypeNames.Add(type.Name);
+        _guessedTypeNames.Add($"{type.Namespace}.{type.Name}");
 
-        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
-            .Select(p => (Name: GetFallbackName(p), Type: p.PropertyType))
+        const BindingFlags memberFlags = BindingFlags.Public | BindingFlags.Instance;
+
+        // The serializer sets IncludeFields, so public fields reach the wire alongside properties
+        return type.GetProperties(memberFlags).Select(p => (Member: (MemberInfo)p, Type: p.PropertyType))
+            .Concat(type.GetFields(memberFlags).Select(f => (Member: (MemberInfo)f, Type: f.FieldType)))
+            .Where(m => m.Member.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
+            .Select(m => (Name: GetFallbackName(m.Member), Type: m.Type))
             .OrderBy(m => m.Name, StringComparer.Ordinal);
     }
 
-    private static string GetFallbackName(PropertyInfo prop) =>
-        prop.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
-            ?? JsonNamingPolicy.CamelCase.ConvertName(prop.Name);
+    private static string GetFallbackName(MemberInfo member) =>
+        member.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
+            ?? JsonNamingPolicy.CamelCase.ConvertName(member.Name);
 
     private static string Indent(int depth) => string.Empty.PadLeft(depth, ' ');
 
