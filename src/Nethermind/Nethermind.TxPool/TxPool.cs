@@ -861,8 +861,9 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <remarks>
         /// Covers eviction, replacement, inclusion and reorg removal (all funnel through the pool
-        /// <c>Removed</c> event) plus the paths in <see cref="AddCore"/> that never insert. Prices with
-        /// the same shared helper the reservation used so the two amounts cannot disagree.
+        /// <c>Removed</c> event) plus the paths in <see cref="AddCore"/> that never insert. Replays the amount
+        /// admission recorded on the transaction, since a pooled blob-carrying frame transaction is a light
+        /// record with no frames to re-price, and the pricing spec moves with the head besides.
         /// </remarks>
         private void ReleasePayerExposure(Transaction tx)
         {
