@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
-            private bool NoBaseFee { get; set; }
+            protected bool NoBaseFee { get; private set; }
             private BlockOverride? _blockOverride;
             protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverride, token);
+                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, GetBlockOverrideForExecution(), token);
 
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
@@ -135,6 +135,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 HexBytes outputData = result.OutputData is null ? default : new HexBytes(result.OutputData);
                 return CreateResultWrapper(result.InputError, result.Error, outputData, result.ExecutionReverted, result.OutputData);
+            }
+
+            private BlockOverride? GetBlockOverrideForExecution()
+            {
+                if (!NoBaseFee || BlockOverride?.BaseFeePerGas is null)
+                    return BlockOverride;
+
+                return new BlockOverride
+                {
+                    Number = BlockOverride.Number,
+                    PrevRandao = BlockOverride.PrevRandao,
+                    Time = BlockOverride.Time,
+                    GasLimit = BlockOverride.GasLimit,
+                    FeeRecipient = BlockOverride.FeeRecipient,
+                    BaseFeePerGas = UInt256.Zero,
+                    BlobBaseFee = BlockOverride.BlobBaseFee
+                };
             }
         }
 

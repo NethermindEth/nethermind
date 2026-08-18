@@ -107,30 +107,52 @@ public partial class DebugRpcModuleTests
         RpcTest.AssertSuccess(response);
     }
 
-    [Test]
-    public async Task Debug_traceCall_without_gas_pricing_uses_zero_base_fee()
+    [TestCase(false, false, false, TestName = "Debug_traceCall_without_gas_pricing_uses_zero_base_fee")]
+    [TestCase(false, false, true, TestName = "Debug_traceCall_without_gas_pricing_ignores_base_fee_override")]
+    [TestCase(true, true, false, TestName = "Debug_traceCall_with_max_fee_uses_live_base_fee")]
+    [TestCase(true, true, true, TestName = "Debug_traceCall_with_max_fee_uses_base_fee_override")]
+    public async Task Debug_traceCall_uses_expected_base_fee(bool includeMaxFeePerGas, bool includeMaxPriorityFeePerGas, bool overrideBaseFee)
     {
         OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
         using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec));
 
-        Assert.That(ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        UInt256 baseFee = ctx.Blockchain.BlockTree.Head!.Header.BaseFeePerGas;
+        Assert.That(baseFee, Is.Not.EqualTo(UInt256.Zero));
+
+        Address sender = Build.An.Address.TestObject;
+        Dictionary<string, object?> transaction = new()
+        {
+            ["from"] = $"{sender}",
+            ["data"] = "0x4860005260206000f3"
+        };
+        if (includeMaxFeePerGas)
+            transaction["maxFeePerGas"] = "0x100000000";
+        if (includeMaxPriorityFeePerGas)
+            transaction["maxPriorityFeePerGas"] = "0x1";
+
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            "{\"" + sender + "\":{\"balance\":\"0x56BC75E2D63100000\"}}")!;
+        object? options = overrideBaseFee
+            ? new
+            {
+                stateOverrides = stateOverride,
+                blockOverrides = new { baseFeePerGas = "0x100" }
+            }
+            : new { stateOverrides = stateOverride };
 
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { data = "0x4860005260206000f3" });
-        string overriddenResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
-            new { data = "0x4860005260206000f3" }, null, new
-            {
-                blockOverrides = new { baseFeePerGas = "0x100" }
-            });
+            transaction, null, options);
 
         JToken result = JToken.Parse(response)["result"]!;
-        JToken overriddenResult = JToken.Parse(overriddenResponse)["result"]!;
+        UInt256 expectedBaseFee = !includeMaxFeePerGas && !includeMaxPriorityFeePerGas
+            ? UInt256.Zero
+            : overrideBaseFee
+                ? (UInt256)0x100
+                : baseFee;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result["failed"]?.Value<bool>(), Is.False);
-            Assert.That(result["returnValue"]?.Value<string>(), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
-            Assert.That(overriddenResult["failed"]?.Value<bool>(), Is.False);
-            Assert.That(overriddenResult["returnValue"]?.Value<string>(), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
+            Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(expectedBaseFee));
         }
     }
 

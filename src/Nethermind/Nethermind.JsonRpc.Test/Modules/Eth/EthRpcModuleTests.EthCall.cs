@@ -902,18 +902,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_feeless_with_positive_blockOverride_baseFeePerGas_succeeds()
+    public async Task Eth_call_feeless_with_positive_blockOverride_baseFeePerGas_uses_zero_base_fee()
     {
         // Scenario: caller sends no fee fields (fee-less call) but blockOverride.baseFeePerGas > 0.
         using Context ctx = await Context.CreateWithLondonEnabled();
 
         object? transaction = JsonSerializer.Deserialize<object>(
-            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"0xc200000000000000000000000000000000000000\"}}");
+            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"{SecondaryTestAddress}\",\"data\":\"{BaseFeeReturnCode.ToHexString(true)}\"}}");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{SecondaryTestAddress}\":{{\"code\":\"{BaseFeeReturnCode.ToHexString(true)}\"}}}}");
         object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x100"}""");
 
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 
-        Assert.That(JToken.Parse(serialized)["error"], Is.Null, "fee-less call must succeed even when blockOverride.baseFeePerGas > 0");
+        Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
     }
 
     [TestCase(

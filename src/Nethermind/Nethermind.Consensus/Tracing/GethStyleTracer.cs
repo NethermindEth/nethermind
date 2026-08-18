@@ -65,8 +65,7 @@ public class GethStyleTracer(
 
         try
         {
-            return TraceImpl(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions, writer, pipeWriter,
-                zeroBaseFeeForUnpricedCall: tx.MaxFeePerGas.IsZero);
+            return TraceImpl(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions, writer, pipeWriter);
         }
         finally
         {
@@ -178,8 +177,7 @@ public class GethStyleTracer(
     }
 
     private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
-        ProcessingOptions processingOptions = ProcessingOptions.Trace, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null,
-        bool zeroBaseFeeForUnpricedCall = false)
+        ProcessingOptions processingOptions = ProcessingOptions.Trace, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -192,9 +190,9 @@ public class GethStyleTracer(
             : block.Header;
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
-        if (zeroBaseFeeForUnpricedCall)
+        if (options.NoBaseFee)
         {
-            // EIP-1559 requires the base fee to be below the fee cap; match geth for unpriced calls.
+            // Geth applies block overrides before resetting the base fee for an unpriced call.
             block.Header.BaseFeePerGas = UInt256.Zero;
         }
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
