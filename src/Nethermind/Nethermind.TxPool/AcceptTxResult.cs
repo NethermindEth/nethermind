@@ -163,6 +163,12 @@ namespace Nethermind.TxPool
         /// </remarks>
         public static readonly AcceptTxResult FrameSimulationDeferred = new(26, TxPoolErrorMessages.FrameSimulationDeferred);
 
+        /// <summary>
+        /// An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.
+        /// </summary>
+        // Equality is by id alone, so this cannot keep 24 — KeyedNonceUnmet already holds it.
+        public static readonly AcceptTxResult FrameTxMissingSidecar = new(27, TxPoolErrorMessages.FrameTxMissingSidecar);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

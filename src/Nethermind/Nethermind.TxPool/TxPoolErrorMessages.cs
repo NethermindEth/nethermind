@@ -35,4 +35,5 @@ public static class TxPoolErrorMessages
     public const string FrameTxNoPayer = "frame transaction never approves a payer";
     public const string FrameSimulationFailed = "frame transaction validation-prefix simulation failed";
     public const string FrameSimulationDeferred = "frame transaction validation-prefix simulation deferred";
+    public const string FrameTxMissingSidecar = "blob-carrying frame transaction is missing its blob sidecar";
 }

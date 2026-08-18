@@ -37,6 +37,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxExpired { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 blob-carrying frame transactions received that were ignored because they carry no blob sidecar.")]
+        public static long PendingTransactionsFrameTxMissingSidecar { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix exceeds MAX_VERIFY_GAS.")]
         public static long PendingTransactionsFrameTxVerifyGasTooHigh { get; set; }
 
@@ -79,6 +83,10 @@ namespace Nethermind.TxPool
         [CounterMetric]
         [Description("Number of EIP-8141 frame transactions rejected because the per-head validation-prefix simulation budget was exhausted.")]
         public static long FrameTxSimulationsBudgetExhausted { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions admitted with an unresolved payer because their validation prefix could not be simulated. A rising count means payer exposure is no longer being accounted for.")]
+        public static long PendingTransactionsFrameTxSimulationUndecided { get; set; }
 
         [CounterMetric]
         [Description(
