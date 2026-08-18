@@ -14,13 +14,13 @@ using Nethermind.Logging;
 namespace Nethermind.Consensus.Transactions;
 
 public class InclusionListTxSource(
-    IEthereumEcdsa? ecdsa,
-    ISpecProvider? specProvider,
-    ILogManager? logManager) : ITxSource
+    IEthereumEcdsa ecdsa,
+    ISpecProvider specProvider,
+    ILogManager logManager) : IInclusionListTxSource
 {
     // Lazy<T> defaults to ExecutionAndPublication — once-only construction even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
-    private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<InclusionListTxSource>();
+    private readonly ILogger _logger = logManager.GetClassLogger<InclusionListTxSource>();
 
     // EIP-7805 (FOCIL): scope the decoded IL to its build, keyed by the build's PayloadAttributes
     // array, so a concurrent FCU can't leak another build's IL. Weak keys collect with the build.

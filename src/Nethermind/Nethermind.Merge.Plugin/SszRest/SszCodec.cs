@@ -119,15 +119,11 @@ public static class SszCodec
     }
 
     public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
-    {
-        SszPayloadId[]? pidList = BuildPayloadIdList(resp.PayloadId);
-
-        return EncodeToWriter(new ForkchoiceUpdatedResponseWire
+        => EncodeToWriter(new ForkchoiceUpdatedResponseWire
         {
             PayloadStatus = BuildPayloadStatusWire(resp.PayloadStatus),
-            PayloadId = pidList ?? []
+            PayloadId = BuildPayloadIdList(resp.PayloadId)
         }, writer);
-    }
 
     internal static ForkchoiceStateV1 ForkchoiceStateV1FromWire(ForkchoiceStateWire w) => new(
         headBlockHash: w.HeadBlockHash,

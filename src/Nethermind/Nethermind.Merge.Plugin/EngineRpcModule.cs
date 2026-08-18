@@ -34,7 +34,7 @@ public partial class EngineRpcModule(
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
     IHandler<InclusionListBytes> getInclusionListTransactionsHandler,
-    InclusionListTxSource inclusionListTxSource,
+    IInclusionListTxSource inclusionListTxSource,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
     IEngineRequestsTracker engineRequestsTracker,

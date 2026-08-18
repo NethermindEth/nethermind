@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -29,10 +30,25 @@ public static class InclusionListValidator
         ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
         if (block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
 
-        Span<bool> included = il.Length <= Eip7805Constants.MaxTransactionsPerInclusionList
-            ? stackalloc bool[il.Length]
-            : new bool[il.Length];
+        // A flattened aggregate spans the whole committee, so exceeding the stackalloc bound is
+        // reachable with conforming input rather than merely defensive — rent instead of allocating.
+        bool[]? rented = il.Length > Eip7805Constants.MaxTransactionsPerInclusionList
+            ? ArrayPool<bool>.Shared.Rent(il.Length)
+            : null;
+        try
+        {
+            Span<bool> included = rented is null ? stackalloc bool[il.Length] : rented.AsSpan(0, il.Length);
+            included.Clear();
+            return IsSatisfied(block, il, included, state, spec, txValidator);
+        }
+        finally
+        {
+            if (rented is not null) ArrayPool<bool>.Shared.Return(rented);
+        }
+    }
 
+    private static bool IsSatisfied(Block block, Transaction[] il, Span<bool> included, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator)
+    {
         // Duplicate IL entries stay unmarked but fail the appendability check (nonce advanced).
         Dictionary<Hash256, int> ilByHash = new(il.Length);
         for (int i = 0; i < il.Length; i++)

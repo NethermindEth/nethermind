@@ -26,11 +26,15 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1()
         => getInclusionListTransactionsHandler.Handle();
 
-    public async Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-    {
-        ResultWrapper<PayloadStatusV1> result = await NewPayload(
+    public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
+        => NewPayloadWithInclusionList(
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions),
             EngineApiVersions.NewPayload.V6);
+
+    /// <summary>Runs <see cref="NewPayload"/> and maps its result onto the Bogota <see cref="PayloadStatusV2"/> shape.</summary>
+    protected async Task<ResultWrapper<PayloadStatusV2>> NewPayloadWithInclusionList(IExecutionPayloadParams executionPayloadParams, int version)
+    {
+        ResultWrapper<PayloadStatusV1> result = await NewPayload(executionPayloadParams, version);
 
         if (result.Result.ResultType != ResultType.Success)
             return ResultWrapper<PayloadStatusV2>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);

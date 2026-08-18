@@ -116,5 +116,44 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
+    // The producer offers each IL tx once, so a sender's nonces must come out ascending even when the
+    // (shuffled) list presents them in reverse — otherwise the higher nonce is skipped and never revisited.
+    [Test]
+    public void Sender_nonces_are_ordered_ascending()
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction nonce1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction nonce0 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[][] il = [Encode(nonce1), Encode(nonce0)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            Is.EqualTo([0ul, 1ul]));
+    }
+
+    // Senders must keep their first-appearance order: a plain (sender, nonce) sort would systematically
+    // favour low-address senders when the list doesn't all fit in the block.
+    [Test]
+    public void Sender_order_of_first_appearance_is_preserved()
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction b1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction a1 = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction b0 = Build.A.Transaction.WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] il = [Encode(b1), Encode(a1), Encode(b0)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => (t.SenderAddress, t.Nonce)),
+            Is.EqualTo([
+                (TestItem.AddressB, 0ul),
+                (TestItem.AddressB, 1ul),
+                (TestItem.AddressA, 1ul)
+            ]));
+    }
+
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 }

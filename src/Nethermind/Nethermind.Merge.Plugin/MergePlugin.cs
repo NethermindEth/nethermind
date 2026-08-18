@@ -198,6 +198,7 @@ public class BaseMergePluginModule : Module
                 .Bind<IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result>, NewPayloadWithWitnessHandler>()
 
                 .AddSingleton<InclusionListTxSource>()
+                .Bind<IInclusionListTxSource, InclusionListTxSource>()
                 .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
                 .AddSingleton<IHandler<InclusionListBytes>, GetInclusionListTransactionsHandler>()
 
