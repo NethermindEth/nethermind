@@ -20,14 +20,15 @@ public interface IFrameTxPrefixSimulator
 
 public enum FrameTxSimulationOutcome
 {
+    /// <summary>A node-side fault stopped the simulation before it could judge the transaction.</summary>
+    /// <remarks>The zero value, so a default-constructed result defers rather than recording a null payer.</remarks>
+    Undecided,
+
     /// <summary>The validation prefix ran to a resolved payer.</summary>
     Accepted,
 
     /// <summary>The prefix is invalid, and the failure is attributable to the transaction.</summary>
     Rejected,
-
-    /// <summary>A node-side fault stopped the simulation before it could judge the transaction.</summary>
-    Undecided,
 }
 
 public readonly struct FrameTxSimulationResult(FrameTxSimulationOutcome outcome, Address? payer, string? reason)
