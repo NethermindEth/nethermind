@@ -62,13 +62,11 @@ namespace Nethermind.Config
             {
                 throw GetInvalidEnodeException();
             }
-            else if (!ushort.TryParse(parsed.Query[DiscoveryPortQuery.Length..], out ushort discoveryPort))
-            {
-                throw GetPortException(host);
-            }
             else
             {
-                DiscoveryPort = discoveryPort;
+                DiscoveryPort = ushort.TryParse(parsed.Query[DiscoveryPortQuery.Length..], out ushort discoveryPort)
+                    ? discoveryPort
+                    : throw GetPortException(host);
             }
 
             try
