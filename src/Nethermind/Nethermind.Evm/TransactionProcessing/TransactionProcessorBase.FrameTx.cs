@@ -549,8 +549,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // create_evm_from_frame: the frame pays target access plus EIP-8037 NEW_ACCOUNT (value transfer
-        // reviving a dead target) from its own gas limit; a charge it cannot afford fails the frame.
-        // EIP-2929 seeds the accessed set with every precompile, which the tracker does not hold.
+        // reviving a dead target) from its own gas limit. Precompiles are warm but absent from the tracker.
         ulong entryExecution = spec.UseHotAndColdStorage
             ? (accessTracker.IsCold(resolvedTarget) && !spec.IsPrecompile(resolvedTarget) ? TGasPolicy.GetColdAccountAccessCost(spec) : Eip8038Constants.WarmAccess)
             : 0;
@@ -652,8 +651,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// The signature's cryptographic validity is already checked in pre-flight; only the structural
     /// conditions the spec pins are checked here. The only gas it can consume is the EIP-8250
     /// keyed-nonce first-use surcharge that the APPROVE opcode would otherwise have charged.
-    /// EIP8141-ISSUE: the signature is read from the hoisted <c>signatures</c> list as the spec
-    /// requires; some public devnet payloads carry it in the VERIFY frame's data instead.
     /// </remarks>
     private TransactionSubstate ExecuteDefaultVerify(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, ITxTracer tracer, out ulong gasUsed)
     {

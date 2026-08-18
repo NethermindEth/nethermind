@@ -677,7 +677,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (!spec.IsEip2780Enabled) return 0;
 
-        // The create charge (CREATE_ACCESS under EIP-8038) already covers the recipient balance write; a value endowment adds nothing.
         if (tx.IsContractCreation) return 0;
 
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
