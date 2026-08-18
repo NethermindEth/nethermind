@@ -108,7 +108,7 @@ permissions:
 jobs:
   # Normalize inputs and decide how the Docker image is obtained.
   resolve:
-    if: inputs.docker_image != 'build-arm-pr-comparison' && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && contains(fromJSON('["rpc-benchmark","performance is good"]'), github.event.label.name) && github.event.pull_request.head.repo.full_name == github.repository))
+    if: ${{ !startsWith(inputs.docker_image, 'build-arm-pr-') && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && contains(fromJSON('["rpc-benchmark","performance is good"]'), github.event.label.name) && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
@@ -1130,7 +1130,7 @@ jobs:
 
   # Temporary side-branch entry point for building pinned comparison images on the ARM runner.
   build-arm-pr-comparison:
-    if: github.event_name == 'workflow_dispatch' && inputs.docker_image == 'build-arm-pr-comparison'
+    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.docker_image, 'build-arm-pr-') }}
     runs-on: [self-hosted, reproducible-benchmarks-arm]
     timeout-minutes: 180
     strategy:
@@ -1148,12 +1148,14 @@ jobs:
             ref: 6a78ef9c2c03f7608c080b70ac83e5ab18720974
     steps:
       - name: Check out pinned source
+        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
         uses: actions/checkout@v6
         with:
           ref: ${{ matrix.ref }}
           persist-credentials: false
 
       - name: Ensure Docker is installed
+        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1166,11 +1168,13 @@ jobs:
           docker version
 
       - name: Set up Docker Buildx
+        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker
 
       - name: Record ARM host details
+        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1184,6 +1188,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Build pinned image
+        if: ${{ inputs.docker_image == 'build-arm-pr-comparison' || inputs.docker_image == format('build-arm-pr-image-{0}', matrix.label) }}
         shell: bash
         env:
           LABEL: ${{ matrix.label }}
