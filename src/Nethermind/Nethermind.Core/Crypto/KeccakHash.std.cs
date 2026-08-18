@@ -41,15 +41,20 @@ public sealed partial class KeccakHash
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {
+        Debug.Assert(st.Length == STATE_LANES);
+
+        ref ulong state = ref MemoryMarshal.GetReference(st);
         if (Avx512F.IsSupported)
-            KeccakF1600Avx512F(st);
+            KeccakF1600Avx512F(ref state);
         else
-            KeccakF1600Scalar(st);
+            KeccakF1600Scalar(ref state);
     }
 
-    internal static void KeccakF1600Scalar(Span<ulong> st)
+    /// <summary>Portable Keccak-f[1600] permutation.</summary>
+    /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
+    internal static void KeccakF1600Scalar(ref ulong state)
     {
-        Debug.Assert(st.Length == 25);
+        Span<ulong> st = MemoryMarshal.CreateSpan(ref state, STATE_LANES);
 
         ulong aba, abe, abi, abo, abu;
         ulong aga, age, agi, ago, agu;
@@ -259,13 +264,14 @@ public sealed partial class KeccakHash
         st[0] = aba;
     }
 
+    /// <summary>AVX-512 Keccak-f[1600] permutation.</summary>
+    /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
     [SkipLocalsInit]
-    internal static void KeccakF1600Avx512F(Span<ulong> state)
+    internal static void KeccakF1600Avx512F(ref ulong state)
     {
-        Debug.Assert(state.Length == 25);
         Debug.Assert(RoundConstantVec.Length == ROUNDS && ROUNDS % 2 == 0);
 
-        ref ulong s = ref MemoryMarshal.GetReference(state);
+        ref ulong s = ref state;
 
         // Lanes 5-7 hold over-read neighbor lanes and need no masking: Theta/Rho/Pi/Chi
         // map result lanes 0-4 only from lanes 0-4, and the stores below overwrite 5-7.

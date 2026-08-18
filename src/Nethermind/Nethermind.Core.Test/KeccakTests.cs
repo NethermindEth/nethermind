@@ -195,8 +195,8 @@ namespace Nethermind.Core.Test
 
                 actual.CopyTo(expected, 0);
 
-                KeccakHash.KeccakF1600Scalar(expected);
-                KeccakHash.KeccakF1600Avx512F(actual);
+                KeccakHash.KeccakF1600Scalar(ref expected[0]);
+                KeccakHash.KeccakF1600Avx512F(ref actual[0]);
 
                 Assert.That(actual, Is.EqualTo(expected), $"Permutation mismatch for test case {testCase}.");
             }

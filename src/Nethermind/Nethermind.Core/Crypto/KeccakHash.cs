@@ -15,6 +15,7 @@ public sealed partial class KeccakHash
 {
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;
+    private const int STATE_LANES = STATE_SIZE / sizeof(ulong);
     private const int HASH_DATA_AREA = 136;
 
     private byte[] _remainderBuffer = [];
@@ -69,6 +70,7 @@ public sealed partial class KeccakHash
 
     public KeccakHash Copy() => new(this);
 
+    [SkipLocalsInit]
     public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
     {
         if ((uint)(output.Length - 1) >= STATE_SIZE)
@@ -83,7 +85,10 @@ public sealed partial class KeccakHash
 #endif
         int roundSize = GetRoundSize(output.Length);
 
-        Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
+        // A struct local rather than stackalloc: localloc would pin this method at Tier0-FullOpts
+        // (no tiering or dynamic PGO) and add GS-cookie and stack-probe overhead per call.
+        KeccakState stateBuffer = default; // the sponge state must start all-zero
+        Span<ulong> state = stateBuffer;
         Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
 
         if (input.Length == Address.Size)
@@ -173,6 +178,7 @@ public sealed partial class KeccakHash
         return output;
     }
 
+    [SkipLocalsInit]
     public ValueHash256 GenerateValueHash()
     {
         Unsafe.SkipInit(out ValueHash256 output);
@@ -180,6 +186,7 @@ public sealed partial class KeccakHash
         return output;
     }
 
+    [SkipLocalsInit]
     public void Update(ReadOnlySpan<byte> input)
     {
         if (_hash is not null)
@@ -259,6 +266,7 @@ public sealed partial class KeccakHash
         }
     }
 
+    [SkipLocalsInit]
     public void UpdateFinalTo(Span<byte> output)
     {
         if (_hash is not null)
@@ -364,7 +372,8 @@ public sealed partial class KeccakHash
 
     private static partial void KeccakF(Span<ulong> st);
 
-    private static int GetRoundSize(int hashSize) => checked(STATE_SIZE - 2 * hashSize);
+    // Callers bound hashSize to [1, STATE_SIZE], so the arithmetic cannot overflow.
+    private static int GetRoundSize(int hashSize) => STATE_SIZE - 2 * hashSize;
 
     private byte[] GenerateHash()
     {
@@ -468,6 +477,12 @@ public sealed partial class KeccakHash
     [DoesNotReturn]
     private static void ThrowInvalidOutputSize(int length) => throw new ArgumentOutOfRangeException(
         nameof(length), length, $"Must be between 1 and {STATE_SIZE}.");
+
+    [InlineArray(STATE_LANES)]
+    private struct KeccakState
+    {
+        private ulong _lane0;
+    }
 
     private static class Pool
     {
