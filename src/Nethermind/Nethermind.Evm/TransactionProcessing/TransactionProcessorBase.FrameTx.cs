@@ -549,8 +549,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     /// <summary>Simulates a frame transaction's validation prefix against read-only head state for mempool
     /// admission, resolving the payer under the <c>MAX_VERIFY_GAS</c> bound.</summary>
-    /// <remarks>Nonce equality is deliberately not required: the prefix never reads the account nonce.
-    /// Rule numbers below are EIP-8141 § Structural Rules.</remarks>
+    /// <remarks>Nonce equality is deliberately not required: the prefix never reads the account nonce.</remarks>
     private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;
@@ -581,7 +580,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     break;
                 }
 
-                // Rule 5: no frame in the validation prefix may set the atomic-batch flag.
+                // EIP-8141 forbids the atomic-batch flag on any validation-prefix frame.
                 if (frame.IsAtomicBatch)
                 {
                     return TransactionResult.ErrorType.MalformedTransaction.WithDetail("atomic batch flag in validation prefix");
@@ -627,7 +626,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 ApplyApproval(frameContext, resolvedTarget, spec);
 
-                // Rule 7: stop as soon as the payer is set and its VERIFY frame completed.
+                // Simulation stops at the first payer, once its frame has completed successfully.
                 if (frameContext.Payer is not null)
                 {
                     if (tracer is IFrameTxReceiptTracer receiptTracer)
