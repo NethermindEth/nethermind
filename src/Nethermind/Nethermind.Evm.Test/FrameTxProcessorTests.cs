@@ -1974,6 +1974,26 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <remarks>
+    /// EIP-8141 and EIP-8272 have independent transitions. Before the reference fork the charge buys nothing —
+    /// no predeploy is installed and no key is derived — so a declared reference must leave the budget alone,
+    /// as its calldata already does.
+    /// </remarks>
+    [Test]
+    public void GasBudget_RecentRootReferencesBeforeTheReferenceFork_AreNotPriced()
+    {
+        _spec.IsEip8272Enabled = false;
+
+        Transaction plain = FrameTx(nonce: 0, SelfVerifyFrame());
+        Transaction referenced = FrameTx(nonce: 0, SelfVerifyFrame());
+        referenced.RecentRootReferences = [new RecentRootReference(default, ReferencedSlot, default)];
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(plain, _spec, out ulong plainIntrinsic, out _, out _), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(referenced, _spec, out ulong referencedIntrinsic, out _, out _), Is.True);
+
+        Assert.That(referencedIntrinsic, Is.EqualTo(plainIntrinsic).And.Not.Zero);
+    }
+
     [Test]
     public void Execute_RecentRootReference_RecordsThePredeploySlotInBal()
     {
