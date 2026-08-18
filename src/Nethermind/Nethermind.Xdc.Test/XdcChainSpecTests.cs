@@ -12,12 +12,14 @@ using NUnit.Framework;
 namespace Nethermind.Xdc.Test;
 
 /// <summary>
-/// Pins the system contract addresses our chain specs deserialize into <see cref="XdcChainSpecEngineParameters"/>.
+/// Pins what our chain specs produce for the XDCX special-transaction path on both networks.
 /// </summary>
 /// <remarks>
-/// A key that does not match its property name deserializes to <c>null</c> instead of failing, and the affected
-/// contract then never matches a transaction recipient - the DEX/lending addresses silently lose their
-/// special-transaction handling, which diverges from the reference client.
+/// Both halves of that path fail silently rather than loudly. A key that does not match its property name
+/// deserializes to <c>null</c>, and the contract then never matches a transaction recipient; a fork block that is not
+/// registered in <see cref="XdcChainSpecEngineParameters.AddTransitions"/> gets no release spec boundary of its own,
+/// so its flag only flips on whichever unrelated transition encloses it. Either way transactions take the wrong path
+/// and diverge from the reference client, with nothing in the logs to say so.
 /// </remarks>
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcChainSpecTests
@@ -26,7 +28,7 @@ public class XdcChainSpecTests
     [TestCase("xdc-testnet.json", TestName = "apothem")]
     public void System_contract_addresses_are_deserialized(string chainSpecFile)
     {
-        XdcChainSpecEngineParameters engineParameters = LoadEngineParameters(chainSpecFile);
+        XdcChainSpecEngineParameters engineParameters = EngineParameters(LoadChainSpec(chainSpecFile));
 
         Assert.Multiple(() =>
         {
@@ -40,11 +42,39 @@ public class XdcChainSpecTests
         });
     }
 
-    private static XdcChainSpecEngineParameters LoadEngineParameters(string chainSpecFile)
+    [TestCase("xdc.json", TestName = "mainnet")]
+    [TestCase("xdc-testnet.json", TestName = "apothem")]
+    public void XDCX_flags_flip_on_their_own_blocks(string chainSpecFile)
+    {
+        ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
+        XdcChainSpecEngineParameters engineParameters = EngineParameters(chainSpec);
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, engineParameters, LimboLogs.Instance);
+
+        ulong activation = engineParameters.TipXDCX!.Value;
+        ulong minerDisable = engineParameters.TIPXDCXMinerDisable!.Value;
+        ulong receiverDisable = engineParameters.TIPXDCXReceiverDisable!.Value;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(specProvider.GetXdcSpec(activation - 1).IsTIPXDCXMiner, Is.False);
+            Assert.That(specProvider.GetXdcSpec(activation).IsTIPXDCXMiner, Is.True);
+            Assert.That(specProvider.GetXdcSpec(minerDisable - 1).IsTIPXDCXMiner, Is.True);
+            Assert.That(specProvider.GetXdcSpec(minerDisable).IsTIPXDCXMiner, Is.False);
+
+            Assert.That(specProvider.GetXdcSpec(activation - 1).IsTIPXDCXReceiver, Is.False);
+            Assert.That(specProvider.GetXdcSpec(activation).IsTIPXDCXReceiver, Is.True);
+            Assert.That(specProvider.GetXdcSpec(receiverDisable - 1).IsTIPXDCXReceiver, Is.True);
+            Assert.That(specProvider.GetXdcSpec(receiverDisable).IsTIPXDCXReceiver, Is.False);
+        });
+    }
+
+    private static ChainSpec LoadChainSpec(string chainSpecFile)
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains", chainSpecFile);
-        ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(path);
 
-        return chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>();
+        return new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(path);
     }
+
+    private static XdcChainSpecEngineParameters EngineParameters(ChainSpec chainSpec) =>
+        chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>();
 }
