@@ -33,4 +33,5 @@ public static class TxPoolErrorMessages
     public const string KeyedNonceUnmet = "keyed nonce sequence not current";
     public const string FrameTxPayerExposureExceeded = "frame transaction payer exposure exceeds balance";
     public const string FrameTxNoPayer = "frame transaction never approves a payer";
+    public const string FrameTxMissingSidecar = "blob-carrying frame transaction is missing its blob sidecar";
 }

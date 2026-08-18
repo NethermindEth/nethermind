@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -23,6 +24,14 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
+    /// <summary><c>max_fee_per_blob_gas</c>, an unconditional field of the signed payload.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public UInt256? MaxFeePerBlobGas { get; set; }
+
+    /// <summary><c>blob_versioned_hashes</c>, an unconditional field of the signed payload.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public byte[][]? BlobVersionedHashes { get; set; }
+
     public RecentRootReferenceForRpc[]? RecentRootReferences { get; set; }
 
     [JsonConstructor]
@@ -34,6 +43,10 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
         RecentRootReferences = RecentRootReferenceForRpc.FromReferences(transaction.RecentRootReferences);
+
+        // Covered by the sig hash, so always reported: a consumer must be able to rebuild the payload.
+        MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
+        BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
@@ -44,6 +57,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         Transaction tx = baseResult.Data;
         tx.Frames = FrameForRpc.ToFrames(Frames);
         tx.FrameSignatures = FrameSignatureForRpc.ToSignatures(Signatures);
+        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+        tx.BlobVersionedHashes = BlobVersionedHashes;
         tx.RecentRootReferences = RecentRootReferenceForRpc.ToReferences(RecentRootReferences);
         return tx;
     }
