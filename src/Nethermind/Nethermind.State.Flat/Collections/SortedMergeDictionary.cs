@@ -10,6 +10,16 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.State.Flat.Collections;
 
+internal interface IMergeKeep<in TKey>
+{
+    bool Keep(int sourceIndex, TKey key);
+}
+
+internal readonly struct KeepAll<TKey> : IMergeKeep<TKey>
+{
+    public bool Keep(int sourceIndex, TKey key) => true;
+}
+
 /// <summary>
 /// Build-once, read-only dictionary for k-way merging compacted snapshot content: entries kept sorted by key
 /// with a BCL-dictionary-style bucket index, so lookups are O(1) and enumeration is in key order. Backing arrays
@@ -162,12 +172,29 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         BuildFromMerge(runs, keyComparer, keep);
     }
 
-    [SkipLocalsInit]
     internal void BuildFromMerge<TComparer>(
         ReadOnlySpan<Run> sources,
         TComparer keyComparer,
         Func<int, TKey, bool>? keep = null)
         where TComparer : IComparer<TKey>
+    {
+        if (keep is null)
+        {
+            BuildFromMerge(sources, keyComparer, default(KeepAll<TKey>));
+        }
+        else
+        {
+            BuildFromMerge(sources, keyComparer, new DelegateKeep(keep));
+        }
+    }
+
+    [SkipLocalsInit]
+    internal void BuildFromMerge<TComparer, TKeep>(
+        ReadOnlySpan<Run> sources,
+        TComparer keyComparer,
+        TKeep keep)
+        where TComparer : IComparer<TKey>
+        where TKeep : struct, IMergeKeep<TKey>
     {
         _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
         if (sources.Length == 0) return;
@@ -189,11 +216,11 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         int count;
         if (nonEmptyCount <= 1)
         {
-            count = nonEmptyCount == 0 ? 0 : CopySingleRun(sources[nonEmptyIndex], nonEmptyIndex, entries, keep);
+            count = nonEmptyCount == 0 ? 0 : CopySingleRun(sources[nonEmptyIndex], nonEmptyIndex, entries, ref keep);
         }
         else if (sources.Length == 2)
         {
-            count = MergeTwoRuns(sources[0], sources[1], entries, keyComparer, keep);
+            count = MergeTwoRuns(sources[0], sources[1], entries, keyComparer, ref keep);
         }
         else
         {
@@ -206,7 +233,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             LoserTree<TComparer> tree = new(
                 sources, keyComparer, scratch[..sources.Length], scratch.Slice(sources.Length, sources.Length));
             count = 0;
-            while (count < total && tree.TryNext(keep, out Entry chosen))
+            while (count < total && tree.TryNext(ref keep, out Entry chosen))
             {
                 entries[count++] = chosen;
             }
@@ -218,10 +245,11 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         _entriesDirty = Math.Max(dirtyBefore, count);
     }
 
-    private static int CopySingleRun(Run source, int sourceIndex, Entry[] destination, Func<int, TKey, bool>? keep)
+    private static int CopySingleRun<TKeep>(Run source, int sourceIndex, Entry[] destination, ref TKeep keep)
+        where TKeep : struct, IMergeKeep<TKey>
     {
         int sourceCount = source.Count;
-        if (keep is null)
+        if (typeof(TKeep) == typeof(KeepAll<TKey>))
         {
             source.Entries.AsSpan(0, sourceCount).CopyTo(destination);
             return sourceCount;
@@ -232,18 +260,19 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         for (int i = 0; i < entries.Length; i++)
         {
             ref Entry entry = ref entries[i];
-            if (keep(sourceIndex, entry.Key)) destination[written++] = entry;
+            if (keep.Keep(sourceIndex, entry.Key)) destination[written++] = entry;
         }
         return written;
     }
 
-    private static int MergeTwoRuns<TComparer>(
+    private static int MergeTwoRuns<TComparer, TKeep>(
         Run first,
         Run second,
         Entry[] destination,
         TComparer keyComparer,
-        Func<int, TKey, bool>? keep)
+        ref TKeep keep)
         where TComparer : IComparer<TKey>
+        where TKeep : struct, IMergeKeep<TKey>
     {
         int firstPosition = 0;
         int secondPosition = 0;
@@ -255,18 +284,18 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             int comparison = keyComparer.Compare(firstEntry.Key, secondEntry.Key);
             if (comparison < 0)
             {
-                if (keep is null || keep(0, firstEntry.Key)) destination[written++] = firstEntry;
+                if (keep.Keep(0, firstEntry.Key)) destination[written++] = firstEntry;
                 firstPosition++;
             }
             else if (comparison > 0)
             {
-                if (keep is null || keep(1, secondEntry.Key)) destination[written++] = secondEntry;
+                if (keep.Keep(1, secondEntry.Key)) destination[written++] = secondEntry;
                 secondPosition++;
             }
             else
             {
-                bool keepFirst = keep is null || keep(0, firstEntry.Key);
-                bool keepSecond = keep is null || keep(1, secondEntry.Key);
+                bool keepFirst = keep.Keep(0, firstEntry.Key);
+                bool keepSecond = keep.Keep(1, secondEntry.Key);
                 if (keepSecond)
                 {
                     destination[written++] = secondEntry;
@@ -283,14 +312,19 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         while (firstPosition < first.Count)
         {
             ref Entry entry = ref first.Entries[firstPosition++];
-            if (keep is null || keep(0, entry.Key)) destination[written++] = entry;
+            if (keep.Keep(0, entry.Key)) destination[written++] = entry;
         }
         while (secondPosition < second.Count)
         {
             ref Entry entry = ref second.Entries[secondPosition++];
-            if (keep is null || keep(1, entry.Key)) destination[written++] = entry;
+            if (keep.Keep(1, entry.Key)) destination[written++] = entry;
         }
         return written;
+    }
+
+    private readonly struct DelegateKeep(Func<int, TKey, bool> keep) : IMergeKeep<TKey>
+    {
+        public bool Keep(int sourceIndex, TKey key) => keep(sourceIndex, key);
     }
 
     public void NoResizeClear()
@@ -502,7 +536,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
         // Emits the next distinct key, collapsing equal-keyed heads to the highest-index kept value. Fully
         // filtered keys are skipped, so a returned entry is always a real one.
-        public bool TryNext(Func<int, TKey, bool>? keep, out Entry chosen)
+        public bool TryNext<TKeep>(ref TKeep keep, out Entry chosen)
+            where TKeep : struct, IMergeKeep<TKey>
         {
             while (true)
             {
@@ -525,7 +560,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
                     ref Entry currentHead = ref _sources[current].Entries[_position[current]];
                     if (_keyComparer.Compare(currentHead.Key, key) != 0) break;
 
-                    if (keep is null || keep(current, currentHead.Key))
+                    if (keep.Keep(current, currentHead.Key))
                     {
                         chosen = currentHead;
                         hasChosen = true;

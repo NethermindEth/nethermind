@@ -116,7 +116,6 @@ public class SortedMergeDictionaryTests
     public void Merge_RandomizedAgainstReference(int sourceCount, int keySpace, bool filter)
     {
         Random random = new(sourceCount * 31 + keySpace);
-        static bool Keep(int source, int key) => key % 5 != 0 && (source != 1 || key % 3 != 0);
 
         List<SortedMergeDictionary<int, int>> sources = new(sourceCount);
         Dictionary<int, int> reference = [];
@@ -130,13 +129,20 @@ public class SortedMergeDictionaryTests
                 int key = random.Next(keySpace);
                 int value = key * 100 + s;
                 sorted[key] = value;
-                if (!filter || Keep(s, key)) reference[key] = value;
+                if (!filter || KeepRandomized(s, key)) reference[key] = value;
             }
             sources.Add(SortedMergeDictionary<int, int>.FromUnsorted(sorted, Cmp));
         }
 
         SortedMergeDictionary<int, int> merged = SortedMergeDictionary<int, int>.Merge(
-            sources.ToArray(), Cmp, filter ? Keep : null);
+            sources.ToArray(), Cmp, filter ? KeepRandomized : null);
+
+        if (filter)
+        {
+            using SortedMergeDictionary<int, int> typed = new();
+            typed.BuildFromMerge(sources.Select(static source => source.AsRun()).ToArray(), Cmp, default(RandomizedKeep));
+            Assert.That(typed.ToArray(), Is.EqualTo(merged.ToArray()));
+        }
 
         Assert.That(merged.Count, Is.EqualTo(reference.Count));
         List<int> keys = merged.Select(static kv => kv.Key).ToList();
@@ -147,6 +153,13 @@ public class SortedMergeDictionaryTests
             Assert.That(merged.TryGetValue(kv.Key, out int value), Is.True, $"missing key {kv.Key}");
             Assert.That(value, Is.EqualTo(kv.Value), $"wrong priority for key {kv.Key}");
         }
+    }
+
+    private static bool KeepRandomized(int source, int key) => key % 5 != 0 && (source != 1 || key % 3 != 0);
+
+    private readonly struct RandomizedKeep : IMergeKeep<int>
+    {
+        public bool Keep(int sourceIndex, int key) => KeepRandomized(sourceIndex, key);
     }
 
     [Test]
