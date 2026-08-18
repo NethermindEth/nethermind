@@ -67,6 +67,19 @@ jobs:
           rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
           find /tmp -maxdepth 1 -user root -mtime +1 -exec rm -rf {} + 2>/dev/null || true
 
+      - name: Ensure host packages
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Minimal box: benchmark workflows shell out to zip (artifact archiving) and file.
+          missing=""
+          for c in zip unzip file; do command -v "$c" >/dev/null 2>&1 || missing="$missing $c"; done
+          if [[ -n "${missing}" ]]; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ${missing}
+          fi
+          echo "zip: $(command -v zip || echo MISSING)"
+
       - name: Ensure dotnet SDK on the host
         shell: bash
         run: |
