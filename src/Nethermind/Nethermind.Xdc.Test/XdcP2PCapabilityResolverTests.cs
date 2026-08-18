@@ -27,6 +27,8 @@ public class XdcP2PCapabilityResolverTests
             new Capability(Protocol.Eth, 62),
             new Capability(Protocol.Eth, 63),
             new Capability(Protocol.Eth, 100),
+            new Capability(Protocol.Eth, 164),
+            new Capability(Protocol.Eth, 165),
         }));
     }
 
@@ -52,6 +54,8 @@ public class XdcP2PCapabilityResolverTests
             new Capability(Protocol.Eth, 62),
             new Capability(Protocol.Eth, 63),
             new Capability(Protocol.Eth, 100),
+            new Capability(Protocol.Eth, 164),
+            new Capability(Protocol.Eth, 165),
         }));
     }
 }

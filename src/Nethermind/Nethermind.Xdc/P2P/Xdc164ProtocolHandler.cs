@@ -8,7 +8,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
@@ -17,9 +17,9 @@ using Nethermind.TxPool;
 namespace Nethermind.Xdc.P2P;
 
 /// <summary>
-/// XDPoS 2.0 legacy protocol: <c>eth/63</c> semantics plus the XDC-only messages, with no fork ID in the handshake.
+/// XDC's port of <c>eth/64</c> (EIP-2364): the fork ID handshake plus the XDC-only messages.
 /// </summary>
-internal class XdcProtocolHandler(
+internal class Xdc164ProtocolHandler(
     XdcConsensusMessageHandler.Factory consensusMessages,
     ISession session,
     IMessageSerializationService serializer,
@@ -28,14 +28,15 @@ internal class XdcProtocolHandler(
     IBackgroundTaskScheduler backgroundTaskScheduler,
     ITxPool txPool,
     IGossipPolicy gossipPolicy,
+    IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth63ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy), IStaticProtocolInfo, IXdcConsensusPeer
+    ITxGossipPolicy? transactionsGossipPolicy = null) : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo, IXdcConsensusPeer
 {
     private readonly XdcConsensusMessageHandler _consensusMessages = consensusMessages.ForSession(session);
 
-    public override string Name => "xdpos2";
+    public override string Name => "xdc164";
 
-    public static byte Version => XdcProtocolVersions.Legacy;
+    public static byte Version => XdcProtocolVersions.Xdc164;
     public override byte ProtocolVersion => Version;
 
     public override int MessageIdSpaceSize => XdcProtocolVersions.LegacyMessageIdSpaceSize;
