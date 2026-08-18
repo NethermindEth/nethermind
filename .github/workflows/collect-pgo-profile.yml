@@ -261,8 +261,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Pin to v10.0.5 — matches the SDK/runtime in our Docker base images
-          git clone --depth 1 --branch v10.0.5 \
+          # Pin to the runtime in our Docker base images
+          git clone --depth 1 --branch v11.0.0-preview.7.26381.103 \
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)

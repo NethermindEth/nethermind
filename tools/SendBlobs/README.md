@@ -22,7 +22,7 @@ The default fork for now is Osaka, which means blobs will be sent with V1 proofs
 ## Build
 
 ```sh
-apt install libsnappy-dev dotnet-sdk-10.0 -y
+apt install libsnappy-dev dotnet-sdk-11.0 -y
 cd ./nethermind/tools/SendBlobs
 dotnet publish --sc -o .
 ./SendBlobs

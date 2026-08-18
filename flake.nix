@@ -31,9 +31,13 @@
       });
 
       devShells = forAllSystems (pkgs: {
-        default = pkgs.mkShell {
-          packages = [ pkgs.dotnetCorePackages.sdk_10_0-bin ];
-        };
+        default =
+          let
+            dotnet = pkgs.callPackage ./nix/dotnet-11-preview7.nix { };
+          in
+          pkgs.mkShell {
+            packages = [ dotnet.sdk ];
+          };
       });
 
       checks = forAllSystems (
