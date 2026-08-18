@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -14,14 +13,17 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 public class LightTxDecoderTests
 {
-    [TestCase(ProofVersion.V0)]
-    [TestCase(ProofVersion.V1)]
-    public void Should_roundtrip_proof_version(ProofVersion version)
+    [TestCase(ProofVersion.V0, (byte)0x80)]
+    [TestCase(ProofVersion.V1, (byte)0x01)]
+    public void Should_roundtrip_proof_version(ProofVersion version, byte trailingByte)
     {
         Transaction tx = BuildBlobTx(version);
 
-        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+        byte[] encoded = LightTxDecoder.Encode(tx);
+        LightTransaction decoded = LightTxDecoder.Decode(encoded);
 
+        // Pinned so the fix stays on the read side: already-persisted records carry these exact bytes.
+        Assert.That(encoded[^1], Is.EqualTo(trailingByte));
         Assert.That(decoded.GetProofVersion(), Is.EqualTo(version));
         AssertCommonFields(decoded, tx);
     }
