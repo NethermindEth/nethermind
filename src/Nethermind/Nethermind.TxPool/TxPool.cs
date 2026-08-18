@@ -91,8 +91,8 @@ namespace Nethermind.TxPool
         private int _expiringFrameTxCount;
 
 #if DEBUG
-        // Bumped inside the pool lock on every insert and removal, so the bookkeeping check below can tell a
-        // torn reading apart from real drift.
+        // Bumped inside the pool lock before the bookkeeping either side of a mutation updates, so the check below
+        // never mistakes a half-applied mutation it read for real drift.
         private int _poolMutations;
 #endif
 
@@ -288,13 +288,14 @@ namespace Nethermind.TxPool
 
         private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
         {
+            TrackPoolMutation();
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
-            TrackPoolMutation();
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
+            TrackPoolMutation();
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value))
             {
@@ -303,7 +304,6 @@ namespace Nethermind.TxPool
             }
 
             ReleasePayerExposure(args.Value);
-            TrackPoolMutation();
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
@@ -337,7 +337,10 @@ namespace Nethermind.TxPool
         /// Run per head rather than per operation, since the walk is O(pool size) and insert and removal are hot.
         /// Admission is excluded by the head write lock held here, but <see cref="RemoveTransaction"/> and
         /// <see cref="EvictTransaction"/> are reachable from block production without it, so a mutation seen across
-        /// the walk means the reading was torn rather than the pool inconsistent, and it is retried.
+        /// the walk means the reading was torn rather than the pool inconsistent, and it is retried. The retry leans
+        /// on <see cref="SortedPool{TKey, TValue, TGroupKey}"/> invalidating its snapshot cache and raising its
+        /// events under one lock, so a snapshot rebuilt after a mutation can never disagree with the handler that
+        /// ran for it. Three torn readings in a row give up and trace, rather than reporting a pass never made.
         /// </para>
         /// </remarks>
         [Conditional("DEBUG")]
@@ -365,12 +368,17 @@ namespace Nethermind.TxPool
 
                 foreach (KeyValuePair<AddressAsKey, UInt256> reservation in recordedExposure)
                 {
-                    Debug.Assert(pooledExposure.TryGetValue(reservation.Key, out UInt256 pooled) && pooled == reservation.Value,
-                        $"Payer {reservation.Key} holds {reservation.Value} reserved, but its pooled transactions total {pooled}.");
+                    // Not Debug.Assert: its message argument is eager, and this one would format once per payer per head.
+                    if (!pooledExposure.TryGetValue(reservation.Key, out UInt256 pooled) || pooled != reservation.Value)
+                    {
+                        Debug.Fail($"Payer {reservation.Key} holds {reservation.Value} reserved, but its pooled transactions total {pooled}.");
+                    }
                 }
 
                 return;
             }
+
+            if (_logger.IsTrace) _logger.Trace("Frame transaction bookkeeping check skipped: every reading was torn by a concurrent pool mutation.");
 #endif
         }
 
