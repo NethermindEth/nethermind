@@ -866,16 +866,9 @@ namespace Nethermind.TxPool
         /// </remarks>
         private void ReleasePayerExposure(Transaction tx)
         {
-            if (!tx.SupportsFrames || tx.PayerAddress is null) return;
-
-            if (FrameTxValidation.TryCalculateMaxCost(tx, _specProvider.GetCurrentHeadSpec(), out UInt256 maxCost))
+            if (tx.PayerAddress is not null && tx.PayerExposure is { } maxCost)
             {
                 _payerExposure.Subtract(tx.PayerAddress, maxCost);
-            }
-            else if (_logger.IsWarn)
-            {
-                // Unreachable while pricing is deterministic; a phantom reservation would otherwise be silent.
-                _logger.Warn($"Could not price frame transaction {tx.Hash} to release payer {tx.PayerAddress} exposure.");
             }
         }
 

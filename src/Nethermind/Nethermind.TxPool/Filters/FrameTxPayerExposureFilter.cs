@@ -56,6 +56,8 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.FrameTxPayerExposureExceeded;
         }
 
+        // Held so the release subtracts exactly this, whatever the transaction still carries by then.
+        tx.PayerExposure = maxCost;
         return AcceptTxResult.Accepted;
     }
 
@@ -76,7 +78,7 @@ internal sealed class FrameTxPayerExposureFilter(
 
             if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)
                 && pending.PayerAddress == state.Payer
-                && FrameTxValidation.TryCalculateMaxCost(pending, state.Spec, out UInt256 cost))
+                && pending.PayerExposure is { } cost)
             {
                 state.Reserved = cost;
                 return false;
