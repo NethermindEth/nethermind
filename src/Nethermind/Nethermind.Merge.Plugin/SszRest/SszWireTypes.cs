@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin.SszRest;
 [SszContainer(isCollectionItself: true)]
 public partial struct SszTransaction
 {
-    [SszList(0x4000_0000)] public byte[]? Bytes { get; set; }
+    [SszProgressiveList] public byte[]? Bytes { get; set; }
 }
 
 [SszContainer]

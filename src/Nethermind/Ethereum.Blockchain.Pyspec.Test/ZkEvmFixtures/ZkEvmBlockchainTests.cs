@@ -108,7 +108,7 @@ public class StatelessSchemaTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(payload.ProtocolFork, Is.EqualTo(fork));
-            Assert.That(payload.ChainConfig.ChainId, Is.EqualTo(1));
+            Assert.That(payload.ChainId, Is.EqualTo(1));
             Assert.That(foundByName, Is.True);
             Assert.That(forkByName, Is.EqualTo(fork));
             Assert.That(payload.Block.Header.RequestsHash, Is.EqualTo(expectedRequestsHash));
@@ -167,24 +167,6 @@ public class StatelessSchemaTests
             Throws.TypeOf<ArgumentException>().With.Message.Contains($"0x{schemaId:x4}"));
     }
 
-    [TestCase(10UL, 20UL, true)]
-    [TestCase(9UL, 20UL, false)]
-    [TestCase(10UL, 19UL, false)]
-    public void Every_fork_activation_bound_must_be_active(ulong blockNumber, ulong timestamp, bool expected)
-    {
-        SszForkActivation activation = new() { BlockNumber = [10], Timestamp = [20] };
-
-        Assert.That(activation.IsActive(CreateHeader(blockNumber, timestamp)), Is.EqualTo(expected));
-    }
-
-    [Test]
-    public void Fork_activation_requires_at_least_one_bound()
-    {
-        SszForkActivation activation = new() { BlockNumber = [], Timestamp = [] };
-
-        Assert.That(() => activation.IsActive(CreateHeader(10, 20)), Throws.TypeOf<InvalidDataException>());
-    }
-
     [TestCase(BlockchainIds.Sepolia, false)]
     [TestCase(BlockchainIds.Gnosis, true)]
     [TestCase(BlockchainIds.Chiado, true)]
@@ -197,12 +179,7 @@ public class StatelessSchemaTests
             BlockchainIds.Chiado => ChiadoSpecProvider.Instance,
             _ => throw new AssertionException($"Unsupported test chain: {chainId}")
         };
-        ForkConfig forkConfig = new()
-        {
-            Activation = new SszForkActivation { BlockNumber = [], Timestamp = [20] }
-        };
-
-        ISpecProvider provider = StatelessSpecProvider.Create(baseProvider, chainId, forkConfig, ProtocolFork.Amsterdam);
+        ISpecProvider provider = StatelessSpecProvider.Create(baseProvider, chainId, ProtocolFork.Amsterdam);
         IReleaseSpec spec = provider.GetSpec(new ForkActivation(1, 20));
 
         using (Assert.EnterMultipleScope())
@@ -240,18 +217,7 @@ public class StatelessSchemaTests
                 Codes = [],
                 Headers = []
             },
-            ChainConfig = new()
-            {
-                ChainId = 1,
-                ActiveFork = new()
-                {
-                    Activation = new()
-                    {
-                        BlockNumber = [0],
-                        Timestamp = []
-                    }
-                }
-            },
+            ChainId = 1,
             PublicKeys = []
         };
         byte[] payload = StatelessInput<TExecutionPayload>.Encode(input);

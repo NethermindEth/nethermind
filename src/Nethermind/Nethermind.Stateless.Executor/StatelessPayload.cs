@@ -11,8 +11,10 @@ internal readonly record struct StatelessPayload
 (
     Block Block,
     ExecutionWitness Witness,
-    ChainConfig ChainConfig,
+    ulong ChainId,
     ReadOnlyMemory<SszPublicKeys> PublicKeys,
     Hash256 NewPayloadRequestRoot,
-    ProtocolFork ProtocolFork
+    ProtocolFork ProtocolFork,
+    ushort SchemaId,
+    bool VersionedHashesMatch
 );

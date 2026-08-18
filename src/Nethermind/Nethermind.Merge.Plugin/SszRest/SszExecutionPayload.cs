@@ -41,66 +41,77 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
 
     public virtual ExecutionPayload AsExecutionPayload() => Inner;
 
+    [SszField(0)]
     public Hash256 ParentHash
     {
         get => Inner.ParentHash;
         set => Inner.ParentHash = value;
     }
 
+    [SszField(1)]
     public Address FeeRecipient
     {
         get => Inner.FeeRecipient;
         set => Inner.FeeRecipient = value;
     }
 
+    [SszField(2)]
     public Hash256 StateRoot
     {
         get => Inner.StateRoot;
         set => Inner.StateRoot = value;
     }
 
+    [SszField(3)]
     public Hash256 ReceiptsRoot
     {
         get => Inner.ReceiptsRoot;
         set => Inner.ReceiptsRoot = value;
     }
 
+    [SszField(4)]
     public Bloom LogsBloom
     {
         get => Inner.LogsBloom;
         set => Inner.LogsBloom = value;
     }
 
+    [SszField(5)]
     public Hash256 PrevRandao
     {
         get => Inner.PrevRandao;
         set => Inner.PrevRandao = value;
     }
 
+    [SszField(6)]
     public ulong BlockNumber
     {
         get => Inner.BlockNumber;
         set => Inner.BlockNumber = value;
     }
 
+    [SszField(7)]
     public ulong GasLimit
     {
         get => Inner.GasLimit;
         set => Inner.GasLimit = value;
     }
 
+    [SszField(8)]
     public ulong GasUsed
     {
         get => Inner.GasUsed;
         set => Inner.GasUsed = value;
     }
 
+    [SszField(9)]
     public ulong Timestamp
     {
         get => Inner.Timestamp;
         set => Inner.Timestamp = value;
     }
 
+    [SszField(10)]
     [SszList(32)]
     public byte[] ExtraData
     {
@@ -108,19 +119,22 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
         set => Inner.ExtraData = value;
     }
 
+    [SszField(11)]
     public UInt256 BaseFeePerGas
     {
         get => Inner.BaseFeePerGas;
         set => Inner.BaseFeePerGas = value;
     }
 
+    [SszField(12)]
     public Hash256 BlockHash
     {
         get => Inner.BlockHash;
         set => Inner.BlockHash = value;
     }
 
-    [SszList(0x10_0000)]
+    [SszField(13)]
+    [SszProgressiveList]
     public SszTransaction[] Transactions
     {
         get
@@ -162,7 +176,8 @@ public partial class SszExecutionPayloadV2(ExecutionPayload payload)
     /// <inheritdoc/>
     public new static SszExecutionPayloadV2 From(Block block) => new(ExecutionPayload.Create(block));
 
-    [SszList(16)]
+    [SszField(14)]
+    [SszProgressiveList]
     public SszWithdrawal[] Withdrawals
     {
         get
@@ -232,12 +247,14 @@ public partial class SszExecutionPayloadV3(ExecutionPayload payload)
 
     public override ExecutionPayloadV3 AsExecutionPayload() => Inner;
 
+    [SszField(15)]
     public ulong BlobGasUsed
     {
         get => Inner.BlobGasUsed ?? 0;
         set => Inner.BlobGasUsed = value;
     }
 
+    [SszField(16)]
     public ulong ExcessBlobGas
     {
         get => Inner.ExcessBlobGas ?? 0;
@@ -262,13 +279,15 @@ public partial class SszExecutionPayloadV4(ExecutionPayloadV4 payload)
 
     public override ExecutionPayloadV4 AsExecutionPayload() => Inner;
 
-    [SszList(0x4000_0000)]
+    [SszField(17)]
+    [SszProgressiveList]
     public byte[] BlockAccessList
     {
         get => Inner.BlockAccessList ?? [];
         set => Inner.BlockAccessList = value.Length > 0 ? value : null;
     }
 
+    [SszField(18)]
     public ulong SlotNumber
     {
         get => Inner.SlotNumber ?? 0;

@@ -1000,16 +1000,17 @@ public class EncodingTest
             return;
         }
 
-        int rightCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
-        ReadOnlySpan<UInt256> leftChunks = chunks[rightCount..];
-        UInt256 left = UInt256.Zero;
-        if (!leftChunks.IsEmpty)
+        // The first numLeaves chunks form the left subtree; the remainder recurse into the right.
+        int baseCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
+        ReadOnlySpan<UInt256> restChunks = chunks[baseCount..];
+        UInt256 rest = UInt256.Zero;
+        if (!restChunks.IsEmpty)
         {
-            MerkleizeProgressiveSpec(leftChunks, out left, checked(numLeaves * 4));
+            MerkleizeProgressiveSpec(restChunks, out rest, checked(numLeaves * 4));
         }
 
-        Merkle.Merkleize(out UInt256 right, chunks[..rightCount], numLeaves);
-        root = HashConcat(left, right);
+        Merkle.Merkleize(out UInt256 baseSubtree, chunks[..baseCount], numLeaves);
+        root = HashConcat(baseSubtree, rest);
     }
 
     private static UInt256 HashConcat(UInt256 left, UInt256 right)

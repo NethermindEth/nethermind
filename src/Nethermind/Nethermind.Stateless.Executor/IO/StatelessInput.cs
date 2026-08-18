@@ -14,9 +14,9 @@ public partial class StatelessInput<TExecutionPayload> where TExecutionPayload
 
     public ExecutionWitness Witness { get; set; }
 
-    public ChainConfig ChainConfig { get; set; }
+    public ulong ChainId { get; set; }
 
-    [SszList(0x8000)]
+    [SszProgressiveList]
     public SszPublicKeys[] PublicKeys { get; set; } = [];
 }
 
