@@ -202,6 +202,35 @@ namespace Nethermind.Core.Test
             }
         }
 
+        [Test]
+        public void Avx512_eight_way_64_byte_hash_matches_individual_hashes()
+        {
+            if (!Avx512F.IsSupported)
+            {
+                Assert.Ignore("AVX-512F intrinsics are not supported on this machine.");
+            }
+
+            const int inputLength = 64;
+            const int hashLength = 32;
+            const int batchSize = 8;
+            byte[] input = new byte[inputLength * batchSize];
+            byte[] output = new byte[hashLength * batchSize];
+
+            Random random = new(42);
+            for (int iteration = 0; iteration < 16; iteration++)
+            {
+                random.NextBytes(input);
+                KeccakHash.ComputeHash64Bytes8Avx512(ref input[0], ref output[0]);
+
+                for (int i = 0; i < batchSize; i++)
+                {
+                    ValueHash256 expected = ValueKeccak.Compute(input.AsSpan(i * inputLength, inputLength));
+                    Assert.That(output.AsSpan(i * hashLength, hashLength).SequenceEqual(expected.Bytes), Is.True,
+                        $"Hash mismatch at iteration {iteration}, batch index {i}.");
+                }
+            }
+        }
+
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
         public void Sanity_check(string hexString, string expected)
         {

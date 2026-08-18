@@ -3,6 +3,8 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,6 +17,7 @@ namespace Nethermind.Evm.TransactionProcessing;
 public static class KeyedNonceManager
 {
     private const int SlotPreimageLength = 2 * 32;
+    private const int HashBatchSize = 8;
 
     public static StorageCell StorageSlot(Address sender, in UInt256 nonceKey)
     {
@@ -33,7 +36,12 @@ public static class KeyedNonceManager
             return state.GetNonce(sender);
         }
 
-        UInt256 stored = new(state.Get(StorageSlot(sender, nonceKey)), isBigEndian: true);
+        return CurrentNonceSeq(state, StorageSlot(sender, nonceKey));
+    }
+
+    private static ulong CurrentNonceSeq(IWorldState state, in StorageCell slot)
+    {
+        UInt256 stored = new(state.Get(slot), isBigEndian: true);
         // Clamp so a crafted high-bit slot cannot false-match a valid nonce_seq < MAX_NONCE_SEQ.
         return stored > Eip8250Constants.MaxNonceSeq ? ulong.MaxValue : (ulong)stored;
     }
@@ -52,6 +60,18 @@ public static class KeyedNonceManager
         Span<byte> buffer = stackalloc byte[32];
         ((UInt256)nonceSeq + UInt256.One).ToBigEndian(buffer);
         byte[] nextSeq = buffer.WithoutLeadingZeros().ToArray();
+
+        if (Avx512F.IsSupported && nonceKeys.Length is >= HashBatchSize and <= Eip8250Constants.MaxNonceKeys)
+        {
+            Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
+            StorageIndices(sender, nonceKeys, indices);
+            for (int i = 0; i < nonceKeys.Length; i++)
+            {
+                state.Set(new StorageCell(Eip8250Constants.NonceManagerAddress, indices[i]), nextSeq);
+            }
+            return;
+        }
+
         foreach (UInt256 nonceKey in nonceKeys)
         {
             // EIP-8250 rejects key 0 in a non-[0] set; the decode-time validity check owns that, this guards the primitive.
@@ -108,6 +128,21 @@ public static class KeyedNonceManager
             return false;
         }
 
+        if (Avx512F.IsSupported && nonceKeys.Length >= HashBatchSize)
+        {
+            Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
+            StorageIndices(sender, nonceKeys, indices);
+            for (int i = 0; i < nonceKeys.Length; i++)
+            {
+                StorageCell slot = new(Eip8250Constants.NonceManagerAddress, indices[i]);
+                if (CurrentNonceSeq(state, slot) != nonceSeq)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         foreach (ref readonly UInt256 nonceKey in nonceKeys)
         {
             if (CurrentNonceSeq(state, sender, nonceKey) != nonceSeq)
@@ -117,5 +152,46 @@ public static class KeyedNonceManager
         }
 
         return true;
+    }
+
+    [SkipLocalsInit]
+    internal static void StorageIndices(Address sender, ReadOnlySpan<UInt256> nonceKeys, Span<UInt256> indices)
+    {
+        Debug.Assert(indices.Length >= nonceKeys.Length);
+
+        int keyIndex = 0;
+        if (Avx512F.IsSupported && nonceKeys.Length >= HashBatchSize)
+        {
+            Span<byte> preimages = stackalloc byte[SlotPreimageLength * HashBatchSize];
+            Span<byte> hashes = stackalloc byte[Keccak.Size * HashBatchSize];
+
+            for (int i = 0; i < HashBatchSize; i++)
+            {
+                Span<byte> senderBlock = preimages.Slice(i * SlotPreimageLength, 32);
+                senderBlock[..(32 - Address.Size)].Clear();
+                sender.Bytes.CopyTo(senderBlock[(32 - Address.Size)..]);
+            }
+
+            do
+            {
+                for (int i = 0; i < HashBatchSize; i++)
+                {
+                    nonceKeys[keyIndex + i].ToBigEndian(preimages.Slice(i * SlotPreimageLength + 32, 32));
+                }
+
+                KeccakHash.ComputeHash64Bytes8Avx512(ref preimages[0], ref hashes[0]);
+                for (int i = 0; i < HashBatchSize; i++)
+                {
+                    indices[keyIndex + i] = new UInt256(hashes.Slice(i * Keccak.Size, Keccak.Size), isBigEndian: true);
+                }
+
+                keyIndex += HashBatchSize;
+            } while (keyIndex <= nonceKeys.Length - HashBatchSize);
+        }
+
+        for (; keyIndex < nonceKeys.Length; keyIndex++)
+        {
+            indices[keyIndex] = StorageSlot(sender, nonceKeys[keyIndex]).Index;
+        }
     }
 }
