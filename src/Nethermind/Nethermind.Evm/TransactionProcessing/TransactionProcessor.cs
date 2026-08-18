@@ -463,6 +463,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
             }
 
+            if (isTracingActions && !newAccountOutOfGas)
+            {
+                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
+            }
+
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && hasValueTransfer && !senderIsRecipient && !newAccountOutOfGas)
             {
@@ -490,7 +495,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
                     tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
                 }
             }
