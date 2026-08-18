@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Validators;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
@@ -184,8 +183,6 @@ public class TxPoolSourceTests
             .WithGasLimit(UnderGassedTransactionGasLimit)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-        IntrinsicGasTxValidator.Instance.IsWellFormed(underGassedTransaction, Amsterdam.Instance);
-
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
         {

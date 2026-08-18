@@ -53,17 +53,12 @@ namespace Nethermind.Consensus.Producers
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
+            Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
+            Func<Transaction, bool> intrinsicFilter = tx => filter(tx) && IsIntrinsicallyValid(tx, spec);
+
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(
-                pendingTransactions,
-                comparer,
-                tx => IsValidTransactionForNextBlock(tx, parent, spec),
-                gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
-                pendingBlobTransactionsEquivalences,
-                comparer,
-                tx => IsBlobProofVersionValidForNextBlock(tx, spec),
-                maxBlobCount);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, intrinsicFilter, gasLimit);
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -379,18 +374,11 @@ namespace Nethermind.Consensus.Producers
             return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
         }
 
-        private bool IsValidTransactionForNextBlock(Transaction tx, BlockHeader parent, IReleaseSpec spec) =>
-            _txFilterPipeline.Execute(tx, parent, spec)
-            && (tx.IntrinsicGasMemo is null || IsIntrinsicallyValid(tx, spec));
-
-        private static bool IsBlobProofVersionValidForNextBlock(Transaction blobTx, IReleaseSpec spec) =>
-            blobTx.GetProofVersion() == spec.BlobProofVersion;
-
         private bool IsValidBlobForNextBlock(Transaction blobTx, BlockHeader parent, IReleaseSpec spec)
         {
-            if (blobTx.GetProofVersion() != spec.BlobProofVersion
-                || !TryGetFullBlobTx(blobTx, out Transaction? fullBlobTx)
+            if (!TryGetFullBlobTx(blobTx, out Transaction? fullBlobTx)
                 || fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
+                || wrapper.Version != spec.BlobProofVersion
                 || wrapper.Blobs.Length != blobTx.BlobVersionedHashes?.Length)
             {
                 return false;
