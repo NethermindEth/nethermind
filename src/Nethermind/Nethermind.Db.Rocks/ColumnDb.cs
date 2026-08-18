@@ -42,6 +42,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _iteratorManager?.Dispose();
         _seekIteratorManager.Dispose();
     }
+
     public string Name { get; }
 
     byte[]? IReadOnlyKeyValueStore.Get(ReadOnlySpan<byte> key, ReadFlags flags) => _reader.Get(key, flags);

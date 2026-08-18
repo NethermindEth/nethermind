@@ -70,18 +70,6 @@ public static class DisposableExtensions
         if (item.Item2 is IDisposable d2) d2.Dispose();
     }
 
-    /// <summary>
-    /// Disposes the value only when <paramref name="lazy"/> was initialized.
-    /// </summary>
-    /// <remarks>
-    /// Unsafe if <paramref name="lazy"/> can still be used after this call starts.
-    /// </remarks>
-    public static void DisposeIfCreated<T>(this Lazy<T> lazy) where T : IDisposable
-    {
-        if (lazy.IsValueCreated)
-            lazy.Value.Dispose();
-    }
-
     public static void DisposeItems<T>(this IEnumerable<T> items) where T : IDisposable
     {
         foreach (T disposable in items)

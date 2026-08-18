@@ -63,9 +63,11 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     /// Destroys a native ReadOptions handle and suppresses its finalizer to prevent
     /// finalizer queue buildup from short-lived ReadOptions instances.
     /// </summary>
-    internal static void DestroyReadOptions(ReadOptions options)
+    internal static void DestroyReadOptions(ReadOptions? options)
     {
-        RocksDbSharp.Native.Instance.rocksdb_readoptions_destroy(options.Handle);
+        if (options is null) return;
+
+        Native.Instance.rocksdb_readoptions_destroy(options.Handle);
         GC.SuppressFinalize(options);
     }
 

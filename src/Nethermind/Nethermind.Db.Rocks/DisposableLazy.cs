@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks;
 
@@ -11,8 +10,8 @@ namespace Nethermind.Db.Rocks;
 /// A <see cref="Lazy{T}"/> for an <see cref="IDisposable"/> type that never leaks an undisposed value.
 /// </summary>
 /// <remarks>
-/// Reading an already created value skips the lock, so a value created before disposal is still handed out after it.
-/// Callers that must reject use after disposal need their own check.
+/// Reading an already or newly created value skips the lock, so a value which creation started before disposal is still handed out after it.
+/// Callers that must reject using object after disposal need their own check.
 /// </remarks>
 public sealed class DisposableLazy<T>(Func<T> factory) : IDisposable where T : class, IDisposable
 {
@@ -41,7 +40,8 @@ public sealed class DisposableLazy<T>(Func<T> factory) : IDisposable where T : c
         {
             if (_disposed) return;
             _disposed = true;
-            _lazy.DisposeIfCreated();
+
+            if (_lazy.IsValueCreated) _lazy.Value.Dispose();
         }
     }
 }
