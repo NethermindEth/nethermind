@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -23,7 +23,7 @@ namespace Nethermind.State.Flat.History.Test.Archive;
 /// <summary>
 /// A <see cref="TestRpcBlockchain"/> whose databases are RocksDB on a fixed path, with the flat backend and history capture on.
 /// </summary>
-public sealed class ArchiveRpcBlockchain: TestRpcBlockchain
+public sealed class ArchiveRpcBlockchain : TestRpcBlockchain
 {
     // Shrinks the history write buffers and level targets so the generated rows reach the same level count
     // production reaches with hundreds of GB. Level count is what drives the number of child iterators each seek
