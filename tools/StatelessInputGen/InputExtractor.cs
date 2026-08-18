@@ -132,6 +132,7 @@ internal static class InputExtractor
             foreach (JsonElement block in blocks.EnumerateArray())
             {
                 blockIndex++;
+                byte[]? buffer = null;
 
                 if (block.ValueKind != JsonValueKind.Object ||
                     !block.TryGetProperty(InputBytesProperty, out JsonElement inputBytes) ||
@@ -152,19 +153,21 @@ internal static class InputExtractor
                         continue;
                     }
 
-                    (byte[] buffer, int dataLength) = DecodeInput(inputBytes);
+                    (buffer, int dataLength) = DecodeInput(inputBytes);
                     ReadOnlyMemory<byte> output = forZisk
                         ? buffer.AsMemory(0, ZiskFrame.FrameInPlace(buffer, dataLength))
                         : buffer.AsMemory(ZiskFrame.HeaderLength, dataLength);
 
                     await File.WriteAllBytesAsync(Path.Join(outputPath, fileName), output, cancellationToken);
                     ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = null;
 
                     writtenFiles.Add(fileName);
                     extracted++;
                 }
                 catch (Exception ex) when (ex is IOException or FormatException or UnauthorizedAccessException)
                 {
+                    if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
                     failed++;
                     AnsiConsole.MarkupLine($"[red]✗[/] `{test.Name.EscapeMarkup()}`, block {blockIndex}: {ex.Message.EscapeMarkup()}");
                 }

@@ -40,11 +40,19 @@ public class ChannelDecoder
         int bytesRead = 0;
         int totalRead = 0;
 
-        while (totalRead <= MaxRlpBytesPerChannel &&
-               (bytesRead = input.Read(buffer, 0, Math.Min(buffer.Length, MaxRlpBytesPerChannel - totalRead))) > 0)
+        try
         {
-            totalRead += bytesRead;
-            output.Write(buffer, 0, bytesRead);
+            while (totalRead <= MaxRlpBytesPerChannel &&
+                   (bytesRead = input.Read(buffer, 0, Math.Min(buffer.Length, MaxRlpBytesPerChannel - totalRead))) > 0)
+            {
+                totalRead += bytesRead;
+                output.Write(buffer, 0, bytesRead);
+            }
+        }
+        catch (InvalidDataException)
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+            throw;
         }
         ArrayPool<byte>.Shared.Return(buffer);
     }

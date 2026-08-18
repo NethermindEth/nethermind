@@ -20,16 +20,24 @@ public sealed class CappedArrayJsonConverter<T> : JsonConverter<CappedArray<T>> 
 
         T[] buffer = ArrayPool<T>.Shared.Rent(16);
         int count = 0;
-        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        try
         {
-            if (count == buffer.Length)
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
             {
-                T[] grown = ArrayPool<T>.Shared.Rent(buffer.Length * 2);
-                buffer.AsSpan(0, count).CopyTo(grown);
-                ArrayPool<T>.Shared.Return(buffer);
-                buffer = grown;
+                if (count == buffer.Length)
+                {
+                    T[] grown = ArrayPool<T>.Shared.Rent(buffer.Length * 2);
+                    buffer.AsSpan(0, count).CopyTo(grown);
+                    ArrayPool<T>.Shared.Return(buffer);
+                    buffer = grown;
+                }
+                buffer[count++] = elementConverter.Read(ref reader, typeof(T), options);
             }
-            buffer[count++] = elementConverter.Read(ref reader, typeof(T), options);
+        }
+        catch (JsonException)
+        {
+            ArrayPool<T>.Shared.Return(buffer);
+            throw;
         }
 
         CappedArray<T> cappedArray;

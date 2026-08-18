@@ -617,8 +617,16 @@ internal static class SszCodecHelpers
         }}
         int len = (int)data.Length;
         byte[] rented = System.Buffers.ArrayPool<byte>.Shared.Rent(len);
-        System.Buffers.BuffersExtensions.CopyTo(data, rented.AsSpan(0, len));
-        Decode(rented.AsSpan(0, len), out container);
+        try
+        {{
+            System.Buffers.BuffersExtensions.CopyTo(data, rented.AsSpan(0, len));
+            Decode(rented.AsSpan(0, len), out container);
+        }}
+        catch (System.IO.InvalidDataException)
+        {{
+            System.Buffers.ArrayPool<byte>.Shared.Return(rented);
+            throw;
+        }}
         System.Buffers.ArrayPool<byte>.Shared.Return(rented);
     }}";
 

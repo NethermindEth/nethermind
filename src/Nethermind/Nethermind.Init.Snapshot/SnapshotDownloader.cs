@@ -102,12 +102,20 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
     private static async Task SkipBytesAsync(Stream stream, long bytesToSkip, CancellationToken cancellationToken)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        long remaining = bytesToSkip;
-        while (remaining > 0)
+        try
         {
-            int chunk = (int)Math.Min(buffer.Length, remaining);
-            await stream.ReadAtLeastAsync(buffer.AsMemory(0, chunk), chunk, throwOnEndOfStream: true, cancellationToken).ConfigureAwait(false);
-            remaining -= chunk;
+            long remaining = bytesToSkip;
+            while (remaining > 0)
+            {
+                int chunk = (int)Math.Min(buffer.Length, remaining);
+                await stream.ReadAtLeastAsync(buffer.AsMemory(0, chunk), chunk, throwOnEndOfStream: true, cancellationToken).ConfigureAwait(false);
+                remaining -= chunk;
+            }
+        }
+        catch (Exception e) when (e is IOException or HttpRequestException)
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+            throw;
         }
         ArrayPool<byte>.Shared.Return(buffer);
     }
@@ -156,13 +164,21 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         Stream source, FileStream destination, ProgressReporter progress, CancellationToken cancellationToken)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        ulong downloaded = progress.Logger.CurrentValue;
-        int bytesRead;
-        while ((bytesRead = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+        try
         {
-            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
-            downloaded += (ulong)bytesRead;
-            progress.Update(downloaded);
+            ulong downloaded = progress.Logger.CurrentValue;
+            int bytesRead;
+            while ((bytesRead = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                downloaded += (ulong)bytesRead;
+                progress.Update(downloaded);
+            }
+        }
+        catch (Exception e) when (e is IOException or HttpRequestException)
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+            throw;
         }
         ArrayPool<byte>.Shared.Return(buffer);
     }
