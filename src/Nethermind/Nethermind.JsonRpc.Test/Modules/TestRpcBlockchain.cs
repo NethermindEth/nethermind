@@ -32,7 +32,6 @@ using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Container;
 using Nethermind.Db.LogIndex;
