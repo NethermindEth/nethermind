@@ -381,16 +381,13 @@ namespace Nethermind.TxPool
             {
                 if (HasExpiryDeadline(tx)) expiring++;
 
-                // Mirrors what admission reserves: a zero cost is never recorded, so it must not be expected back.
-                if (!tx.SupportsFrames
-                    || tx.PayerAddress is null
-                    || tx.IsOverflowInTxCostAndValue(out UInt256 maxCost)
-                    || maxCost.IsZero)
+                // A zero cost is never recorded by admission, so it must not be expected back either.
+                if (!TryGetPayerReservation(tx, out Address? payer, out UInt256 maxCost) || maxCost.IsZero)
                 {
                     continue;
                 }
 
-                exposure[tx.PayerAddress] = exposure.TryGetValue(tx.PayerAddress, out UInt256 running) ? running + maxCost : maxCost;
+                exposure[payer] = exposure.TryGetValue(payer, out UInt256 running) ? running + maxCost : maxCost;
             }
         }
 #endif
@@ -952,10 +949,25 @@ namespace Nethermind.TxPool
         /// <summary>Releases the exposure a frame-tx payer reserved at admission, once the transaction leaves the pool.</summary>
         private void ReleasePayerExposure(Transaction tx)
         {
-            if (tx.SupportsFrames && tx.PayerAddress is not null && !tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
+            if (TryGetPayerReservation(tx, out Address? payer, out UInt256 maxCost))
             {
-                _payerExposure.Subtract(tx.PayerAddress, maxCost);
+                _payerExposure.Subtract(payer, maxCost);
             }
+        }
+
+        /// <summary>The exposure <paramref name="tx"/> holds against its payer for as long as it stays pending.</summary>
+        /// <remarks>The one pricing site on the release side, read by <see cref="AssertFrameTxBookkeeping"/> too so
+        /// the check cannot drift away from what the pool actually releases.</remarks>
+        private static bool TryGetPayerReservation(Transaction tx, [NotNullWhen(true)] out Address? payer, out UInt256 maxCost)
+        {
+            payer = tx.SupportsFrames ? tx.PayerAddress : null;
+            if (payer is null || tx.IsOverflowInTxCostAndValue(out maxCost))
+            {
+                maxCost = UInt256.Zero;
+                return false;
+            }
+
+            return true;
         }
 
         private void UpdateBucketWithAddedTransaction(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
