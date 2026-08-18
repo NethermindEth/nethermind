@@ -1637,6 +1637,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         RocksDbReader.DestroyReadOptions(_defaultReadOptions);
         RocksDbReader.DestroyReadOptions(_hintCacheMissOptions);
         RocksDbReader.DestroyReadOptions(_readAheadReadOptions);
+        RocksDbReader.DestroyReadOptions(_seekReadOptions);
 
         if (_rowCache.HasValue)
         {
