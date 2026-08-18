@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -58,7 +59,18 @@ public class LightTxDecoderTests
         Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).ProofVersion, Is.EqualTo(version));
     }
 
-    private static Transaction BlobCarryingTx(TxType type)
+    // Zero is a deadline, not an absent field: the trailing fields are positional, so the two must decode apart.
+    [TestCase(null)]
+    [TestCase(0ul)]
+    [TestCase(1_000ul)]
+    public void Round_trip_preserves_the_expiry_deadline(ulong? deadline)
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, deadline);
+
+        Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).PersistedExpiryDeadline, Is.EqualTo(deadline));
+    }
+
+    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null)
     {
         byte[][] versionedHashes = [new byte[32]];
         Transaction tx = new()
@@ -82,6 +94,13 @@ public class LightTxDecoderTests
         {
             tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)];
             tx.FrameSignatures = [];
+        }
+
+        if (deadline is not null)
+        {
+            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+            BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
+            tx.Frames = [.. tx.Frames!, new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData)];
         }
 
         tx.Hash = tx.CalculateHash();

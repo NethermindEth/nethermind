@@ -468,7 +468,8 @@ public static class FrameTxValidation
     }
 
     /// <summary>
-    /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.
+    /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, or from
+    /// <see cref="Transaction.PersistedExpiryDeadline"/> for a transaction reloaded without its frames.
     /// </summary>
     /// <remarks>
     /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; a tx whose deadline has passed can
@@ -476,8 +477,8 @@ public static class FrameTxValidation
     /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
-    /// <param name="deadline">The expiry deadline in Unix seconds when an expiry-verifier frame is present.</param>
-    /// <returns><c>true</c> if an expiry-verifier frame is present and its deadline was read; otherwise <c>false</c>.</returns>
+    /// <param name="deadline">The expiry deadline in Unix seconds when the transaction carries one.</param>
+    /// <returns><c>true</c> if a deadline was read; otherwise <c>false</c>.</returns>
     public static bool TryGetExpiryDeadline(Transaction transaction, out ulong deadline)
     {
         deadline = 0;

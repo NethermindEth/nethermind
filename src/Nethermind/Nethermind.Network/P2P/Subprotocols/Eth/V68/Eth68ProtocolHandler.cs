@@ -289,7 +289,8 @@ public class Eth68ProtocolHandler(ISession session,
                 (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
                 if (!CanRequestPooledTransaction(txShape.Type, ref frameTxsEnabled)
                     || txShape.Size <= 0
-                    // Blob-sized only where a blob-carrying frame tx is admissible: tracks NotSupportedTxFilter.
+                    // Blob-sized for every type-6 while blobs are enabled: tracks NotSupportedTxFilter, since an
+                    // announcement cannot tell a blob carrier from a blobless one that SizeTxFilter caps lower.
                     || txShape.Size > (txShape.Type is TxType.Blob || (txShape.Type is TxType.FrameTx && _blobSupportEnabled)
                         ? _configuredMaxBlobTxSize
                         : _configuredMaxTxSize))

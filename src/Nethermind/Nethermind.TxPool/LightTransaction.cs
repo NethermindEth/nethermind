@@ -54,27 +54,6 @@ public class LightTransaction : Transaction
     {
     }
 
-    /// <summary>Signature without the persisted expiry deadline, kept for out-of-tree callers.</summary>
-    public LightTransaction(
-        UInt256 timestamp,
-        Address sender,
-        ulong nonce,
-        Hash256 hash,
-        UInt256 value,
-        ulong gasLimit,
-        UInt256 gasPrice,
-        UInt256 maxFeePerGas,
-        UInt256 maxFeePerBlobGas,
-        byte[][] blobVersionHashes,
-        ulong poolIndex,
-        int size,
-        ProofVersion proofVersion,
-        TxType type)
-        : this(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas, maxFeePerBlobGas,
-            blobVersionHashes, poolIndex, size, proofVersion, type, null)
-    {
-    }
-
     // Declared in the order LightTxDecoder reads them: the optional trailing fields come last.
     public LightTransaction(
         UInt256 timestamp,
@@ -91,7 +70,7 @@ public class LightTransaction : Transaction
         int size,
         ProofVersion proofVersion,
         TxType type,
-        ulong? expiryDeadline)
+        ulong? expiryDeadline = null)
     {
         Type = type;
         Hash = hash;
