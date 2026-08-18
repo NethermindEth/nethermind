@@ -183,7 +183,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             nonEmptyCount++;
             nonEmptyIndex = i;
         }
-        EnsureEntryCapacity(total);
+        int dirtyBefore = EnsureEntryCapacity(total);
 
         Entry[] entries = _entries;
         int count;
@@ -215,6 +215,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 
         _count = count;
         BuildBuckets();
+        _entriesDirty = Math.Max(dirtyBefore, count);
     }
 
     private static int CopySingleRun(Run source, int sourceIndex, Entry[] destination, Func<int, TKey, bool>? keep)
@@ -319,9 +320,10 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         _bucketsCleared = 0;
     }
 
-    private void EnsureEntryCapacity(int count)
+    private int EnsureEntryCapacity(int count)
     {
         Entry[] entries = _entries;
+        int dirtyBefore = _entriesDirty;
         if (entries.Length < count)
         {
             _entries = ArrayPool<Entry>.Shared.Rent(count);
@@ -330,6 +332,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
                 if (_entriesDirty > 0) Array.Clear(entries, 0, _entriesDirty);
                 ArrayPool<Entry>.Shared.Return(entries);
             }
+            dirtyBefore = 0;
             _entriesDirty = count;
         }
         else if (count > _entriesDirty)
@@ -337,6 +340,7 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
             // Raised before any write so an aborted build is still fully cleared on reset/return.
             _entriesDirty = count;
         }
+        return dirtyBefore;
     }
 
     private void BuildBuckets()

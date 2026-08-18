@@ -20,6 +20,10 @@ public class SortedMergeDictionaryTests
         .GetField("_bucketSalt", BindingFlags.Instance | BindingFlags.NonPublic)!;
     private static readonly FieldInfo BucketMaskField = typeof(SortedMergeDictionary<int, int>)
         .GetField("_bucketMask", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo StringEntriesDirtyField = typeof(SortedMergeDictionary<string, string>)
+        .GetField("_entriesDirty", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static readonly FieldInfo StringEntriesField = typeof(SortedMergeDictionary<string, string>)
+        .GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     [Test]
     public void FromUnsorted_LooksUpEveryKey_AndIteratesSorted()
@@ -361,6 +365,33 @@ public class SortedMergeDictionaryTests
         Assert.That(BucketMaskField.GetValue(dict), Is.EqualTo(expectedSize - 1));
     }
 
+    [TestCase(200, true)]
+    [TestCase(10, false)]
+    public void FilteredMerge_TightensDirtyMarkWithoutWeakeningAbortCleanup(int initialCount, bool clearBeforeMerge)
+    {
+        using SortedMergeDictionary<string, string> target = new();
+        target.BuildFromUnsorted(CreateStringSource("old", initialCount), StringComparer.Ordinal);
+        if (clearBeforeMerge) target.NoResizeClear();
+        using SortedMergeDictionary<string, string> source =
+            SortedMergeDictionary<string, string>.FromUnsorted(CreateStringSource("new", 100), StringComparer.Ordinal);
+
+        target.BuildFromMerge([source], StringComparer.Ordinal, static (_, key) => string.CompareOrdinal(key, "new003") < 0);
+        Assert.That(StringEntriesDirtyField.GetValue(target), Is.EqualTo(3));
+
+        Assert.That(
+            () => target.BuildFromMerge(
+                [source],
+                StringComparer.Ordinal,
+                static (_, key) => key != "new020" ? true : throw new InvalidOperationException()),
+            Throws.InvalidOperationException);
+        Assert.That(StringEntriesDirtyField.GetValue(target), Is.EqualTo(100));
+
+        target.NoResizeClear();
+        SortedMergeDictionary<string, string>.Entry[] entries =
+            (SortedMergeDictionary<string, string>.Entry[])StringEntriesField.GetValue(target)!;
+        Assert.That(entries.All(static entry => entry.Key is null && entry.Value is null), Is.True);
+    }
+
     [TestCase(40, 60)]
     [TestCase(60, 40)]
     public void CountEnumerationMismatch_ThrowsAndLeavesDictionaryEmptyAndReusable(int reportedCount, int actualCount)
@@ -449,6 +480,13 @@ public class SortedMergeDictionaryTests
         Dictionary<int, int> source = [];
         foreach ((int key, int value) in pairs) source[key] = value;
         return SortedMergeDictionary<int, int>.FromUnsorted(source, Cmp);
+    }
+
+    private static Dictionary<string, string> CreateStringSource(string prefix, int count)
+    {
+        Dictionary<string, string> source = new(count);
+        for (int i = 0; i < count; i++) source[$"{prefix}{i:D3}"] = i.ToString();
+        return source;
     }
 
     private static void AssertValue(SortedMergeDictionary<int, int> dict, int key, int expected)
