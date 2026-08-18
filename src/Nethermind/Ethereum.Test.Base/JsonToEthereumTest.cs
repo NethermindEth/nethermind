@@ -417,21 +417,49 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
-        // The shape fallback deliberately wraps deserialization only: letting it span conversion
-        // made an unmapped fork name resurface as an unrelated error against the trimmed shape.
+        private const string NeitherShapeMessage = "Fixture matches neither the standard nor the trimmed blockchain test shape.";
+
+        /// <remarks>Only deserialization falls back between shapes, so a conversion failure surfaces as itself.</remarks>
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
         {
             Dictionary<string, BlockchainTestJson> tests;
-            try { tests = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json); }
-            catch (Exception) { tests = CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json)); }
+            try
+            {
+                tests = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
+            }
+            catch (Exception standardShapeException)
+            {
+                try
+                {
+                    tests = CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json));
+                }
+                catch (Exception trimmedShapeException)
+                {
+                    throw new AggregateException(NeitherShapeMessage, standardShapeException, trimmedShapeException);
+                }
+            }
             return ConvertToBlockchainTests(tests);
         }
 
+        /// <remarks>Only deserialization falls back between shapes, so a conversion failure surfaces as itself.</remarks>
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(ReadOnlySpan<byte> json)
         {
             Dictionary<string, BlockchainTestJson> tests;
-            try { tests = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json); }
-            catch (Exception) { tests = CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json)); }
+            try
+            {
+                tests = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
+            }
+            catch (Exception standardShapeException)
+            {
+                try
+                {
+                    tests = CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json));
+                }
+                catch (Exception trimmedShapeException)
+                {
+                    throw new AggregateException(NeitherShapeMessage, standardShapeException, trimmedShapeException);
+                }
+            }
             return ConvertToBlockchainTests(tests);
         }
 
