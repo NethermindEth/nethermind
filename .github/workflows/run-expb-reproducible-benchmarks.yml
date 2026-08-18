@@ -730,6 +730,9 @@ jobs:
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
+            -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-snapshot#/data/nethermind/nethermind-flat-25490000#g" \
+            -e "s#/mnt/sda/nethermind-flat-25490000#/data/nethermind/nethermind-flat-25490000#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
@@ -1870,6 +1873,9 @@ jobs:
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
+            -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-snapshot#/data/nethermind/nethermind-flat-25490000#g" \
+            -e "s#/mnt/sda/nethermind-flat-25490000#/data/nethermind/nethermind-flat-25490000#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
