@@ -282,6 +282,12 @@ internal static class JsonRpcGenerator
 
         WriteExpandedType(file, GetReturnType(method.ReturnType));
 
+        if (attr.ResultCanBeNull)
+            file.WriteLine("""
+
+                `result` may be `null` in a successful response.
+                """);
+
         file.WriteLine("""
             
             </TabItem>
