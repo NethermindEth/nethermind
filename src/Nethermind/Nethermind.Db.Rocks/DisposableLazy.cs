@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks;
 
@@ -41,7 +40,8 @@ public sealed class DisposableLazy<T>(Func<T> factory) : IDisposable where T : c
         {
             if (_disposed) return;
             _disposed = true;
-            _lazy.DisposeIfCreated();
+
+            if (_lazy.IsValueCreated) _lazy.Value.Dispose();
         }
     }
 }

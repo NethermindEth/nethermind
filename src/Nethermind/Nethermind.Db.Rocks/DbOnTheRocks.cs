@@ -771,10 +771,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return null;
     }
 
-    /// <summary>
-    /// Pool for calls with <see cref="ReadFlags.HintReadAhead"/> - tailing iterators with large read steps.
-    /// Null when read-ahead is turned off.
-    /// </summary>
+    /// <summary> Pool for calls with <see cref="ReadFlags.HintReadAhead"/> - tailing iterators with large read steps. </summary>
     internal DisposableLazy<IteratorManager>? CreateLazyReadAheadIteratorManager(ColumnFamilyHandle? cf) =>
         _readAheadReadOptions is null ? null : CreateLazyIteratorManager(cf, _readAheadReadOptions);
 
@@ -1161,6 +1158,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllValuesCore(ordered);
     }
 
+    // `_isDisposing` check/update is not atomic and concurrent readers may still hit,
+    // yet adding any thread synchronization may affect all readers performance
     internal void ThrowIfDisposing() => ObjectDisposedException.ThrowIf(_isDisposing, this);
 
     private void IteratorSeekToFirstWithErrorHandling(Iterator iterator)
