@@ -5,6 +5,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -201,7 +202,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Should_process_huge_transaction()
     {
-        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * MemorySizes.MiB])
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[(int)2.MiB])
             .WithHash(TestItem.KeccakA).TestObject;
 
         using NewPooledTransactionHashesMessage68 msg = new(new ArrayPoolList<byte>(1) { (byte)tx.Type },
@@ -433,7 +434,7 @@ public class Eth68ProtocolHandlerTests
     {
         const int transactionSize = 200_000;
         const int transactionCount = 12;
-        int transactionsInFirstRequest = 2 * MemorySizes.MiB / transactionSize;
+        int transactionsInFirstRequest = (int)(2.MiB / transactionSize);
 
         using ArrayPoolList<byte> types = new(transactionCount);
         using ArrayPoolList<int> sizes = new(transactionCount);
@@ -475,7 +476,7 @@ public class Eth68ProtocolHandlerTests
     {
         const int transactionCount = 12;
         Transaction tx = Build.A.Transaction.WithData(new byte[200_000]).SignedAndResolved().TestObject;
-        int transactionsInResponse = 2 * MemorySizes.MiB / tx.GetLength();
+        int transactionsInResponse = (int)(2.MiB / tx.GetLength());
         _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
             .Returns(x =>
             {
@@ -498,7 +499,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public async Task Should_serve_a_single_transaction_larger_than_the_soft_limit()
     {
-        Transaction tx = Build.A.Transaction.WithData(new byte[2 * MemorySizes.MiB]).SignedAndResolved().TestObject;
+        Transaction tx = Build.A.Transaction.WithData(new byte[(int)2.MiB]).SignedAndResolved().TestObject;
         _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
             .Returns(x =>
             {
