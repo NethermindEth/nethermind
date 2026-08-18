@@ -30,6 +30,7 @@ public sealed class FrameTxPrefixSimulator(
     private readonly object _lock = new();
     private IReadOnlyTxProcessorSource? _source;
     private bool _disposed;
+    private bool _nodeFaultReported;
 
     public FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default)
     {
@@ -85,7 +86,17 @@ public sealed class FrameTxPrefixSimulator(
             {
                 // Blaming the transaction for our own fault would feed the peer flood counter and
                 // eventually disconnect honest peers, so leave the transaction unjudged instead.
-                if (_logger.IsWarn) _logger.Warn($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. {e}");
+                // A systemic fault (state still healing after sync, say) hits every submission, so report it once.
+                if (!_nodeFaultReported)
+                {
+                    _nodeFaultReported = true;
+                    if (_logger.IsWarn) _logger.Warn($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. Further occurrences log at debug. {e}");
+                }
+                else if (_logger.IsDebug)
+                {
+                    _logger.Debug($"Frame transaction {tx.Hash} validation-prefix simulation hit a node-side fault; leaving it unjudged. {e.Message}");
+                }
+
                 return FrameTxSimulationResult.Undecided("validation-prefix simulation unavailable");
             }
             catch (Exception e) when (e is not OutOfMemoryException)
