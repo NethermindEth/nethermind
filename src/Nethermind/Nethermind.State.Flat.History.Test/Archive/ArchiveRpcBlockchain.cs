@@ -25,14 +25,22 @@ namespace Nethermind.State.Flat.History.Test.Archive;
 /// </summary>
 public sealed class ArchiveRpcBlockchain: TestRpcBlockchain
 {
-    // Shrinks the history write buffers and level targets so a few hundred MB of generated rows reaches the
-    // same level count production reaches with hundreds of GB. Level count is what drives the number
-    // of child iterators each seek builds, so the A/B ratio transfers even though the absolute numbers do not.
+    // Shrinks the history write buffers and level targets so the generated rows reach the same level count
+    // production reaches with hundreds of GB. Level count is what drives the number of child iterators each seek
+    // builds, so the A/B ratio transfers even though the absolute numbers do not.
+    //
+    // The targets are this small because the rows compress far harder than their raw size suggests: the keys are
+    // sorted and nearly identical, so a million of them land in ~8 MB. With a level base of any ordinary size the
+    // whole index fits in L1 and no deeper level ever forms. Sizing is static here
+    // (level_compaction_dynamic_level_bytes is false), so the targets are exactly base * multiplier^(n-1):
+    // L1 0.3 MB, L2 0.6, L3 1.2, L4 2.4, L5 4.8 — 9.3 MB of capacity through L5, which puts ~8 MB of index across
+    // five levels. A multiplier of 3 reaches L4 and stops, which is not enough seek depth to measure.
     private const string SmallBufferShapeOptions =
-        "write_buffer_size=4000000;" +
+        "write_buffer_size=1000000;" +
         "max_write_buffer_number=2;" +
-        "target_file_size_base=4000000;" +
-        "max_bytes_for_level_base=16000000;" +
+        "target_file_size_base=300000;" +
+        "max_bytes_for_level_base=300000;" +
+        "max_bytes_for_level_multiplier=2;" +
         "level0_file_num_compaction_trigger=4;";
 
     private string _dbPath = null!;
