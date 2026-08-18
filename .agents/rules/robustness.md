@@ -12,6 +12,7 @@ Patterns that cause silent failures, resource leaks, or deadlocks in production.
 ## Resource management
 
 - `IDisposable` / `IAsyncDisposable` objects (especially `IDb`, streams, channels) must be wrapped in `using` — otherwise they leak.
+- Do not add a `try`/`finally` solely to guarantee `ArrayPool<T>.Shared.Return(array)` after an exception. If this exact shared-pool return is skipped, the abandoned array remains GC-reclaimable, and any replacement allocation is dwarfed by the cost of throwing the exception. Return it on the normal path. Do not generalize this exception to custom pools or other `Return`, `Release`, or `Dispose` contracts, which may track ownership, use reference counting, or hold non-GC resources.
 - `ReadBytes(n)` allocates a new ref-counted `IByteBuffer`. The method that allocates the buffer owns it; if ownership transfers (e.g. passing to a handler or message), the receiver becomes responsible for calling `Release()` / `SafeRelease()`. Forgetting to release, or releasing after ownership has transferred, are the two most common leak/corruption sources in the networking layer.
 - Never swallow exceptions in an empty `catch` block — at minimum log the exception. Silent failures are the hardest to diagnose on a running node.
 
