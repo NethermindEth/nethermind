@@ -239,18 +239,18 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_send_BlockRangeUpdate()
     {
-        (ulong earliest, BlockHeader latest) = (0ul, Build.A.BlockHeader.WithNumber(42).TestObject);
+        (BlockHeader earliest, BlockHeader latest) = (Build.A.BlockHeader.WithNumber(0).TestObject, Build.A.BlockHeader.WithNumber(42).TestObject);
         _handler.NotifyOfNewRange(earliest, latest);
 
         _session.Received(1).DeliverMessage(Arg.Is<BlockRangeUpdateMessage>(m =>
-            m.EarliestBlock == earliest && m.LatestBlock == latest.Number && m.LatestBlockHash == latest.Hash)
+            m.EarliestBlock == earliest.Number && m.LatestBlock == latest.Number && m.LatestBlockHash == latest.Hash)
         );
     }
 
     [Test]
     public void Should_not_send_invalid_BlockRangeUpdate()
     {
-        (ulong earliest, BlockHeader latest) = (42ul, Build.A.BlockHeader.WithNumber(0).TestObject);
+        (BlockHeader earliest, BlockHeader latest) = (Build.A.BlockHeader.WithNumber(42).TestObject, Build.A.BlockHeader.WithNumber(0).TestObject);
 
         Assert.Catch<Exception>(() => _handler.NotifyOfNewRange(earliest, latest));
 

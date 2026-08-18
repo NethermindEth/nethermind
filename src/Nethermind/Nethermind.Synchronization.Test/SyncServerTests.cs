@@ -580,10 +580,10 @@ public class SyncServerTests
         {
             int idx = i;
             peers[i].SyncPeer
-                .When(p => p.NotifyOfNewRange(Arg.Any<ulong>(), Arg.Any<BlockHeader>()))
+                .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
                 .Do(call =>
                 {
-                    if (call.ArgAt<ulong>(0) == earliestNumber &&
+                    if (call.ArgAt<BlockHeader>(0).Number == earliestNumber &&
                         call.ArgAt<BlockHeader>(1).Number == finalLatest)
                         perPeerFinalRange[idx].Set();
                 });
@@ -610,18 +610,19 @@ public class SyncServerTests
         ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
         ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
         ctx.BlockTree.GetLowestBlock().Returns(100UL);
+        ctx.BlockTree.FindHeader(100UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
         ctx.HistoryPruner.OldestBlockHeader.Returns((BlockHeader?)null);
 
         PeerInfo peer = new(Substitute.For<ISyncPeer>());
         ConfigurePeers(ctx, [peer]);
 
-        ManualResetEventSlim notified = new(false);
+        using ManualResetEventSlim notified = new(false);
         ulong notifiedEarliest = ulong.MaxValue;
         peer.SyncPeer
-            .When(p => p.NotifyOfNewRange(Arg.Any<ulong>(), Arg.Any<BlockHeader>()))
+            .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
             .Do(call =>
             {
-                notifiedEarliest = call.ArgAt<ulong>(0);
+                notifiedEarliest = call.ArgAt<BlockHeader>(0).Number;
                 notified.Set();
             });
 
@@ -629,6 +630,37 @@ public class SyncServerTests
 
         Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
         Assert.That(notifiedEarliest, Is.EqualTo(100UL));
+    }
+
+    [Test]
+    [Parallelizable(ParallelScope.None)]
+    public void Broadcast_BlockRangeUpdate_clamps_earliest_to_the_announced_block()
+    {
+        Context ctx = new();
+        ctx.BlockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).TestObject);
+        ctx.BlockTree.Head.Returns(Build.A.Block.WithNumber(200).TestObject);
+        ctx.BlockTree.GetLowestBlock().Returns(100UL);
+        ctx.BlockTree.FindHeader(64UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(64).TestObject);
+        ctx.BlockTree.FindHeader(100UL, BlockTreeLookupOptions.None).Returns(Build.A.BlockHeader.WithNumber(100).TestObject);
+        ctx.HistoryPruner.OldestBlockHeader.Returns((BlockHeader?)null);
+
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        ConfigurePeers(ctx, [peer]);
+
+        using ManualResetEventSlim notified = new(false);
+        ulong notifiedEarliest = ulong.MaxValue;
+        peer.SyncPeer
+            .When(p => p.NotifyOfNewRange(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()))
+            .Do(call =>
+            {
+                notifiedEarliest = call.ArgAt<BlockHeader>(0).Number;
+                notified.Set();
+            });
+
+        ctx.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(64).TestObject));
+
+        Assert.That(notified.Wait(TimeSpan.FromSeconds(30)), Is.True, "Peer was not notified of the block range");
+        Assert.That(notifiedEarliest, Is.EqualTo(64UL));
     }
 
     [Test]

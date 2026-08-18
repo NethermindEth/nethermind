@@ -475,7 +475,7 @@ namespace Nethermind.Synchronization
                 return;
             }
 
-            OnNewRange(onNewOldestBlockArgs.OldestBlockHeader.Number, _blockTree.Head.Header);
+            OnNewRange(onNewOldestBlockArgs.OldestBlockHeader, _blockTree.Head.Header);
         }
 
         private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
@@ -486,10 +486,17 @@ namespace Nethermind.Synchronization
             if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
-            OnNewRange(_historyPruner.OldestBlockHeader?.Number ?? LowestBlock, latestBlock.Header);
+            BlockHeader? earliest = _historyPruner.OldestBlockHeader;
+            if (earliest is null || earliest.Number > latestBlock.Number)
+            {
+                ulong floor = ulong.Min(_blockTree.GetLowestBlock(), latestBlock.Number);
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
+            }
+
+            OnNewRange(earliest, latestBlock.Header);
         }
 
-        private void OnNewRange(ulong earliest, BlockHeader latest)
+        private void OnNewRange(BlockHeader earliest, BlockHeader latest)
         {
             if (_pool.PeerCount == 0)
                 return;
@@ -509,7 +516,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void RangeBroadcast(ulong earliest, BlockHeader latest, CancellationTokenSource cts)
+        private void RangeBroadcast(BlockHeader earliest, BlockHeader latest, CancellationTokenSource cts)
         {
             if (cts.IsCancellationRequested)
             {
@@ -528,7 +535,7 @@ namespace Nethermind.Synchronization
                         return;
                     }
                     PeerInfo peerInfo = allPeers[i];
-                    if (peerInfo.ShouldNotifyNewRange(earliest, latest.Number))
+                    if (peerInfo.ShouldNotifyNewRange(earliest.Number, latest.Number))
                     {
                         NotifyOfNewRange(peerInfo, earliest, latest);
                         Interlocked.Increment(ref counter);
@@ -536,7 +543,7 @@ namespace Nethermind.Synchronization
                 });
 
             if (counter > 0 && _logger.IsDebug)
-                _logger.Debug($"Broadcasting range update {earliest}-{latest.Number} to {counter} peers.");
+                _logger.Debug($"Broadcasting range update {earliest.Number}-{latest.Number} to {counter} peers.");
         }
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
@@ -553,7 +560,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void NotifyOfNewRange(PeerInfo peerInfo, ulong earliest, BlockHeader latest)
+        private void NotifyOfNewRange(PeerInfo peerInfo, BlockHeader earliest, BlockHeader latest)
         {
             try
             {
@@ -561,7 +568,7 @@ namespace Nethermind.Synchronization
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Error while broadcasting block range update: [{earliest}, {latest.Number}, {latest.Hash}] to peer {peerInfo.SyncPeer}.", e);
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block range update: [{earliest.Number}, {latest.Number}, {latest.Hash}] to peer {peerInfo.SyncPeer}.", e);
             }
         }
 

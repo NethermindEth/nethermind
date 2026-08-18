@@ -160,10 +160,10 @@ public class Eth69ProtocolHandler(
         Send(statusMessage);
     }
 
-    public void NotifyOfNewRange(ulong earliest, BlockHeader latest)
+    public void NotifyOfNewRange(BlockHeader earliest, BlockHeader latest)
     {
-        if (earliest > latest.Number)
-            throw new ArgumentException($"Earliest block ({earliest}) greater than latest ({latest.Number}) in BlockRangeUpdate.");
+        if (earliest.Number > latest.Number)
+            throw new ArgumentException($"Earliest block ({earliest.Number}) greater than latest ({latest.Number}) in BlockRangeUpdate.");
 
         if (latest.Hash is null || latest.Hash.IsZero)
             throw new ArgumentException($"Latest block ({latest.Number}) hash is not provided.");
@@ -173,7 +173,7 @@ public class Eth69ProtocolHandler(
 
         BlockRangeUpdateMessage msg = new()
         {
-            EarliestBlock = earliest,
+            EarliestBlock = earliest.Number,
             LatestBlock = latest.Number,
             LatestBlockHash = latest.Hash
         };
