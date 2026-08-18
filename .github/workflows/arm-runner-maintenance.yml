@@ -64,6 +64,21 @@ jobs:
           rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
           find /tmp -maxdepth 1 -user root -mtime +1 -exec rm -rf {} + 2>/dev/null || true
 
+      - name: Ensure dotnet SDK on the host
+        shell: bash
+        run: |
+          set -uo pipefail
+          # expb's dotTrace/dotnet-trace integration drives host-side dotnet global tools;
+          # this box was provisioned without the SDK (the x64 twin has it). Idempotent.
+          if command -v dotnet >/dev/null 2>&1; then
+            echo "dotnet present: $(dotnet --version)"
+            exit 0
+          fi
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/local/share/dotnet
+          ln -sf /usr/local/share/dotnet/dotnet /usr/local/bin/dotnet
+          dotnet --version
+
       - name: Disk usage after
         shell: bash
         run: |
