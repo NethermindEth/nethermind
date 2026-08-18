@@ -108,7 +108,7 @@ permissions:
 jobs:
   # Normalize inputs and decide how the Docker image is obtained.
   resolve:
-    if: github.event_name != 'pull_request' || (github.event.action == 'labeled' && contains(fromJSON('["rpc-benchmark","performance is good"]'), github.event.label.name) && github.event.pull_request.head.repo.full_name == github.repository)
+    if: inputs.docker_image != 'build-arm-pr-comparison' && (github.event_name != 'pull_request' || (github.event.action == 'labeled' && contains(fromJSON('["rpc-benchmark","performance is good"]'), github.event.label.name) && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
@@ -1127,3 +1127,116 @@ jobs:
               echo ""
             } >> "${GITHUB_STEP_SUMMARY}"
           done
+
+  # Temporary side-branch entry point for building pinned comparison images on the ARM runner.
+  build-arm-pr-comparison:
+    if: github.event_name == 'workflow_dispatch' && inputs.docker_image == 'build-arm-pr-comparison'
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    timeout-minutes: 180
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v6
+        with:
+          ref: d1342e127f238db332c133dad2b28f02b21934cb
+          path: sources/master
+          persist-credentials: false
+
+      - name: Check out PR 12798
+        uses: actions/checkout@v6
+        with:
+          ref: 19264d4c8de120974f3cc371a833b5773a4253c4
+          path: sources/pr12798
+          persist-credentials: false
+
+      - name: Check out PR 12801
+        uses: actions/checkout@v6
+        with:
+          ref: 4ce1e0a91e2240fd6db489de68205bab74396ed3
+          path: sources/pr12801
+          persist-credentials: false
+
+      - name: Check out PR 12843
+        uses: actions/checkout@v6
+        with:
+          ref: 429c9a6d41fdb1e75c98694ee192aa6d6d007008
+          path: sources/pr12843
+          persist-credentials: false
+
+      - name: Ensure Docker is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+            run_as_root apt-get update
+            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+            run_as_root systemctl start docker || run_as_root service docker start
+          fi
+          docker version
+
+      - name: Record ARM host details
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## ARM benchmark image build"
+            echo
+            echo '```text'
+            uname -a
+            lscpu
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Build pinned images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          labels=(master pr12798 pr12801 pr12843)
+          refs=(
+            d1342e127f238db332c133dad2b28f02b21934cb
+            19264d4c8de120974f3cc371a833b5773a4253c4
+            4ce1e0a91e2240fd6db489de68205bab74396ed3
+            429c9a6d41fdb1e75c98694ee192aa6d6d007008
+          )
+
+          echo '| Variant | Commit | Local image | Architecture |' >> "${GITHUB_STEP_SUMMARY}"
+          echo '|---|---|---|---|' >> "${GITHUB_STEP_SUMMARY}"
+
+          for i in "${!labels[@]}"; do
+            label="${labels[$i]}"
+            expected_ref="${refs[$i]}"
+            source_dir="sources/${label}"
+            actual_ref="$(git -C "${source_dir}" rev-parse HEAD)"
+            if [[ "${actual_ref}" != "${expected_ref}" ]]; then
+              echo "Expected ${expected_ref} for ${label}, got ${actual_ref}."
+              exit 1
+            fi
+
+            short_ref="${actual_ref:0:12}"
+            image="nethermindeth/nethermind:armbench-${label}-${short_ref}"
+            source_date_epoch="$(git -C "${source_dir}" log -1 --format=%ct)"
+            pull_arg=()
+            if [[ "${label}" == "master" ]]; then
+              pull_arg=(--pull)
+            fi
+
+            docker build "${pull_arg[@]}" \
+              --file "${source_dir}/Dockerfile" \
+              --tag "${image}" \
+              --build-arg BUILD_CONFIG=release \
+              --build-arg CI=true \
+              --build-arg COMMIT_HASH="${actual_ref}" \
+              --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
+              "${source_dir}"
+
+            architecture="$(docker image inspect "${image}" --format '{{.Architecture}}')"
+            if [[ "${architecture}" != "arm64" ]]; then
+              echo "Image ${image} has unexpected architecture ${architecture}."
+              exit 1
+            fi
+            echo "| ${label} | \`${actual_ref}\` | \`${image}\` | ${architecture} |" >> "${GITHUB_STEP_SUMMARY}"
+          done
+
+          docker image ls 'nethermindeth/nethermind' --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}' \
+            | grep -E 'REPOSITORY|armbench-(master|pr12798|pr12801|pr12843)-'
