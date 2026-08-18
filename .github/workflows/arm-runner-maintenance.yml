@@ -70,13 +70,16 @@ jobs:
           set -uo pipefail
           # expb's dotTrace/dotnet-trace integration drives host-side dotnet global tools;
           # this box was provisioned without the SDK (the x64 twin has it). Idempotent.
-          if command -v dotnet >/dev/null 2>&1; then
-            echo "dotnet present: $(dotnet --version)"
+          # Guard on a working CLI, not its mere presence — a bare symlink into the install
+          # dir breaks hostfxr resolution (exit 145, aka.ms/dotnet/sdk-not-found).
+          if dotnet --version >/dev/null 2>&1; then
+            echo "dotnet working: $(dotnet --version)"
             exit 0
           fi
           curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
           bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/local/share/dotnet
-          ln -sf /usr/local/share/dotnet/dotnet /usr/local/bin/dotnet
+          printf '#!/bin/sh\nexport DOTNET_ROOT=/usr/local/share/dotnet\nexec /usr/local/share/dotnet/dotnet "$@"\n' > /usr/local/bin/dotnet
+          chmod +x /usr/local/bin/dotnet
           dotnet --version
 
       - name: Disk usage after
