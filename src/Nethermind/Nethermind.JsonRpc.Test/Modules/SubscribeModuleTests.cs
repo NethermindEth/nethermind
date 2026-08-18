@@ -1169,6 +1169,28 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task Eth_unsubscribe_unknown_subscription_returns_not_found_error()
+        {
+            string serializedUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", "0xdeadbeef");
+            string expectedUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
+
+            Assert.That(serializedUnsub, Is.EqualTo(expectedUnsub));
+        }
+
+        [Test]
+        public async Task Eth_unsubscribe_already_removed_subscription_returns_not_found_error()
+        {
+            string serializedSub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads");
+            string subscriptionId = serializedSub.Substring(serializedSub.Length - 44, 34);
+
+            string serializedFirstUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
+            Assert.That(serializedFirstUnsub, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+
+            string serializedSecondUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
+            Assert.That(serializedSecondUnsub, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}"));
+        }
+
+        [Test]
         public async Task Subscriptions_remove_after_closing_websockets_client()
         {
             string serializedLogs = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs");
@@ -1186,16 +1208,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             _jsonRpcDuplexClient.Closed += Raise.Event();
 
             string serializedLogsUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", logsId);
-            string expectedLogsUnsub =
-                string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    logsId, ".\"},\"id\":67}");
-            Assert.That(expectedLogsUnsub, Is.EqualTo(serializedLogsUnsub));
+            string expectedLogsUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
+            Assert.That(serializedLogsUnsub, Is.EqualTo(expectedLogsUnsub));
 
             string serializedNewPendingTxUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", newPendingTxId);
-            string expectedNewPendingTxUnsub =
-                string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    newPendingTxId, ".\"},\"id\":67}");
-            Assert.That(expectedNewPendingTxUnsub, Is.EqualTo(serializedNewPendingTxUnsub));
+            string expectedNewPendingTxUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
+            Assert.That(serializedNewPendingTxUnsub, Is.EqualTo(expectedNewPendingTxUnsub));
         }
 
         [Test]
