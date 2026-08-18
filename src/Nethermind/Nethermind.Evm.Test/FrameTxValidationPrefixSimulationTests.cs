@@ -122,21 +122,6 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [Test]
-    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation()
-    {
-        // Banned outside the expiry verifier frame, even though the frame goes on to APPROVE.
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.TIMESTAMP).Op(Instruction.POP)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
-        DeployContract(Sender, code, 1.Ether);
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-
-        (_, FrameTxValidationTracer tracer) = Simulate(tx);
-
-        Assert.That(tracer.Violated, Is.True);
-    }
-
     [TestCase(Instruction.ORIGIN)]
     [TestCase(Instruction.BLOBHASH)]
     [TestCase(Instruction.TLOAD)]
@@ -238,7 +223,8 @@ public class FrameTxValidationPrefixSimulationTests
                  {
                      Instruction.GASPRICE, Instruction.BLOCKHASH, Instruction.COINBASE,
                      Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO, Instruction.GASLIMIT,
-                     Instruction.BASEFEE, Instruction.BLOBBASEFEE, Instruction.SELFBALANCE, Instruction.INVALID,
+                     Instruction.BASEFEE, Instruction.BLOBBASEFEE, Instruction.SLOTNUM, Instruction.SELFBALANCE,
+                     Instruction.INVALID,
                  })
         {
             yield return new TestCaseData((byte)op, 0).SetName($"banned {op}");

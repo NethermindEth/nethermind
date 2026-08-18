@@ -25,4 +25,20 @@ public class TransactionSizeCacheTests
 
         Assert.That(tx.GetLength(), Is.Not.EqualTo(sizeBeforeTranslation));
     }
+
+    // Assigning NetworkWrapper clears the size, so CopyTo has to copy it after the wrapper. Priming the
+    // cache and then growing a field that does not clear it makes a recomputed value differ from a copied one.
+    [Test]
+    public void CopyTo_preserves_the_cached_size_despite_the_wrapper_clearing_it()
+    {
+        Transaction source = Build.A.Transaction.WithShardBlobTxTypeAndFields(1).SignedAndResolved().TestObject;
+        int cached = source.GetLength();
+        source.BlobVersionedHashes = [source.BlobVersionedHashes![0], new byte[32], new byte[32]];
+        Assert.That(source.GetLength(), Is.EqualTo(cached), "precondition: the cache is not cleared by this field");
+
+        Transaction copy = new();
+        source.CopyTo(copy);
+
+        Assert.That(copy.GetLength(), Is.EqualTo(cached));
+    }
 }

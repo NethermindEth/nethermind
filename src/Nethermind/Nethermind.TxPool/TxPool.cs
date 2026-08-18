@@ -162,12 +162,25 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
+            // Records restored inside the pool's constructor predate the handlers below, so the count is seeded
+            // before subscribing: UpdatePool evicts during startup, and a removal must decrement a count that
+            // already covers what it removes.
+            if (_blobTransactions.Count > 0)
+            {
+                foreach (Transaction restored in _blobTransactions.GetSnapshot())
+                {
+                    if (HasExpiryDeadline(restored)) _expiringFrameTxCount++;
+                }
+            }
+
             // EIP-8141: blob-carrying frame txs live in the blob pool, so it wires the same insert/removal
             // bookkeeping (delegations, frame expiry) as the normal pool.
             _blobTransactions.Inserted += OnInsertedTx;
             _blobTransactions.Removed += OnRemovedTx;
             if (_blobTransactions.Count > 0)
+            {
                 _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            }
 
             _headInfo.HeadChanged += OnHeadChange;
 

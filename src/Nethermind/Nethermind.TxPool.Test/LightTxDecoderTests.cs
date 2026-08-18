@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -47,7 +48,29 @@ public class LightTxDecoderTests
         Assert.That(decoded.ProofVersion, Is.EqualTo(expectedProofVersion));
     }
 
-    private static Transaction BlobCarryingTx(TxType type)
+    // ProofVersion.V0 encodes as the RLP empty string, which a raw byte read returns as 128.
+    [TestCase(ProofVersion.V0)]
+    [TestCase(ProofVersion.V1)]
+    public void Round_trip_preserves_the_proof_version(ProofVersion version)
+    {
+        Transaction tx = BlobCarryingTx(TxType.Blob);
+        tx.NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], version);
+
+        Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).ProofVersion, Is.EqualTo(version));
+    }
+
+    // Zero is a deadline, not an absent field: the trailing fields are positional, so the two must decode apart.
+    [TestCase(null)]
+    [TestCase(0ul)]
+    [TestCase(1_000ul)]
+    public void Round_trip_preserves_the_expiry_deadline(ulong? deadline)
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, deadline);
+
+        Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).PersistedExpiryDeadline, Is.EqualTo(deadline));
+    }
+
+    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null)
     {
         byte[][] versionedHashes = [new byte[32]];
         Transaction tx = new()
@@ -71,6 +94,13 @@ public class LightTxDecoderTests
         {
             tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)];
             tx.FrameSignatures = [];
+        }
+
+        if (deadline is not null)
+        {
+            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+            BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
+            tx.Frames = [.. tx.Frames!, new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData)];
         }
 
         tx.Hash = tx.CalculateHash();

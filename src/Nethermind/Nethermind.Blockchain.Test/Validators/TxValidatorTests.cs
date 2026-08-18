@@ -510,6 +510,23 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
     }
 
+    [TestCase(0ul, ExpectedResult = true, TestName = "IsWellFormed_BloblessFrameTxWithZeroMaxFeePerBlobGas_ReturnsTrue")]
+    [TestCase(1ul, ExpectedResult = false, TestName = "IsWellFormed_BloblessFrameTxWithNonZeroMaxFeePerBlobGas_ReturnsFalse")]
+    public bool IsWellFormed_BloblessFrameTxMaxFeePerBlobGas(ulong maxFeePerBlobGas)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            MaxFeePerBlobGas = maxFeePerBlobGas,
+        };
+
+        return new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, Bogota.Instance).AsBool();
+    }
+
     private static Transaction BuildBlobCarryingFrameTx(ProofVersion version)
     {
         if (!KzgPolynomialCommitments.IsInitialized)
