@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -518,11 +519,23 @@ public class RpcModuleTests
         string json = new EthereumJsonSerializer().Serialize(poolStatus);
 
         // Assert
-        string expected = "{\"vote\":{\"" + poolKey + "\":{\"currentNumber\":2"
-            + ",\"currentSigners\":[\"" + TestItem.AddressA + "\",\"" + TestItem.AddressB + "\"]"
-            + ",\"missingSigners\":[\"" + TestItem.AddressC + "\"]}}"
-            + ",\"timeout\":{}}";
-        Assert.That(json, Is.EqualTo(expected));
+        //Serializing at all is the regression: a ValueTuple key threw and truncated the response mid-write
+        Assert.That(json, Does.Contain($"\"{poolKey}\":"));
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        List<string> members = [];
+        foreach (JsonProperty member in document.RootElement.EnumerateObject())
+        {
+            members.Add(member.Name);
+        }
+        Assert.That(members, Is.EquivalentTo(new[] { "vote", "timeout" }));
+
+        Assert.That(poolStatus.Vote!.Keys, Is.EquivalentTo(new[] { poolKey }));
+        SignerTypes bucket = poolStatus.Vote[poolKey];
+        Assert.That(bucket.CurrentNumber, Is.EqualTo(2));
+        Assert.That(bucket.CurrentSigners, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        Assert.That(bucket.MissingSigners, Is.EquivalentTo(new[] { TestItem.AddressC }));
+        Assert.That(poolStatus.Timeout, Is.Empty);
     }
 
     [Test]
