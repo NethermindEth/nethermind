@@ -72,7 +72,8 @@ public class FlatSnapTrieFactoryTests
     [Test]
     public void RangePhase_NeverCarriesIntoTheNextRun()
     {
-        (FlatSnapTrieFactory factory, _) = Build();
+        (FlatSnapTrieFactory flatFactory, _) = Build();
+        ISnapTrieFactory factory = flatFactory;
 
         factory.MarkRangePhaseFinished();
 
