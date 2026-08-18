@@ -35,6 +35,9 @@ public class FrameTxBlockReceiptsTests
     private static readonly Address Observer = TestItem.AddressB;
     private static readonly Address Payer = TestItem.AddressC;
     private static readonly Address Asserter = TestItem.AddressD;
+    private static readonly Address Body = TestItem.AddressE;
+
+    private static byte[] EmitLog => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.LOG0).Op(Instruction.STOP).Done;
 
     [Test]
     public void Execute_FrameTxUnderBlockReceiptsTracer_BuildsFrameAwareReceipt()
@@ -178,6 +181,33 @@ public class FrameTxBlockReceiptsTests
     [Test]
     public void Execute_PostTxReverts_FailedReceiptKeepsThePrefixLogs()
     {
+        TxReceipt receipt = RunPostTxFrameTx(EmitLog, postTxReverts: true);
+
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the prefix frame keeps its log");
+        Assert.That(receipt.FrameReceipts[3].Logs, Is.Empty, "the body's log goes with the state that produced it");
+        Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must stay the union of frame logs");
+    }
+
+    // EIP-8037: the discarded body commits no state, so its state gas must leave the block's state
+    // dimension — otherwise the header over-reports gasUsed = max(execution, state).
+    [TestCase(true, false, TestName = "PostTx reverts: the body's state gas leaves the state dimension")]
+    [TestCase(false, true, TestName = "PostTx succeeds: the body's state gas stays charged")]
+    public void Execute_PostTxOutcome_DecidesWhetherBodyStateGasIsCharged(bool postTxReverts, bool expectStateGas)
+    {
+        byte[] coldStore = Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+
+        TxReceipt receipt = RunPostTxFrameTx(coldStore, postTxReverts);
+
+        Assert.That(receipt.StorageGasUsed > 0, Is.EqualTo(expectStateGas));
+    }
+
+    /// <summary>
+    /// Runs a five-frame EIP-7906 transaction — verify, prefix body, payment verify, a body frame
+    /// running <paramref name="bodyCode"/>, then a POST_TX assertion — through the receipts tracer.
+    /// </summary>
+    private static TxReceipt RunPostTxFrameTx(byte[] bodyCode, bool postTxReverts)
+    {
         ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
@@ -188,8 +218,11 @@ public class FrameTxBlockReceiptsTests
 
         Deploy(stateProvider, spec, Sender, Approve(TxFrame.ApproveExecution), 1.Ether);
         Deploy(stateProvider, spec, Payer, Approve(TxFrame.ApprovePayment), 1.Ether);
-        Deploy(stateProvider, spec, Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.LOG0).Op(Instruction.STOP).Done);
-        Deploy(stateProvider, spec, Asserter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        Deploy(stateProvider, spec, Observer, EmitLog);
+        Deploy(stateProvider, spec, Body, bodyCode);
+        Deploy(stateProvider, spec, Asserter, postTxReverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
         stateProvider.Commit(spec);
         stateProvider.CommitTree(0);
 
@@ -204,7 +237,7 @@ public class FrameTxBlockReceiptsTests
                 new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 200_000, UInt256.Zero, default),
                 new TxFrame(TxFrame.ModeSender, 0, Observer, 200_000, UInt256.Zero, default),
                 new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModeSender, 0, Observer, 200_000, UInt256.Zero, default),
+                new TxFrame(TxFrame.ModeSender, 0, Body, 200_000, UInt256.Zero, default),
                 new TxFrame(TxFrame.ModePostTx, 0, Asserter, 200_000, UInt256.Zero, default),
             ],
             FrameSignatures = [],
@@ -225,11 +258,7 @@ public class FrameTxBlockReceiptsTests
         receiptsTracer.EndBlockTrace();
 
         Assert.That(result.TransactionExecuted, Is.True);
-        TxReceipt receipt = receiptsTracer.TxReceipts[0];
-        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the prefix frame keeps its log");
-        Assert.That(receipt.FrameReceipts[3].Logs, Is.Empty, "the body's log goes with the state that produced it");
-        Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must stay the union of frame logs");
+        return receiptsTracer.TxReceipts[0];
     }
 
     private static byte[] Approve(byte scope) =>

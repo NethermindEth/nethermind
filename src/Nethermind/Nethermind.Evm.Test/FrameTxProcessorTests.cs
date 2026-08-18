@@ -324,6 +324,27 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_FrameTargetingPrecompile_PaysWarmEntryAccess()
+    {
+        // EIP-2929 seeds the accessed set with every precompile, so a frame entering one is warm.
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Address identityPrecompile = Address.FromNumber(4);
+        Assert.That(Spec.IsPrecompile(identityPrecompile), Is.True);
+
+        CallOutputTracer precompileTracer = new();
+        Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: identityPrecompile)),
+            tracer: precompileTracer).TransactionExecuted, Is.True);
+
+        CallOutputTracer coldTracer = new();
+        Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient)),
+            tracer: coldTracer).TransactionExecuted, Is.True);
+
+        Assert.That(coldTracer.GasSpent - precompileTracer.GasSpent,
+            Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+            "a precompile target must pay warm entry access where a cold account pays cold");
+    }
+
+    [Test]
     public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
     {
         // max_fee = max_priority = 2^255 with an even tx gas limit (415_950 here) wraps maxCost to
@@ -1777,11 +1798,9 @@ public class FrameTxProcessorTests
     /// <remarks>
     /// An empty reference list is a different envelope from an absent one and still occupies the single
     /// byte <c>0xc0</c> on the wire, so it is priced: EIP-8272 short-circuits the per-reference term at
-    /// zero references, not the calldata term over <c>rlp(recent_root_references)</c>, which enters the
-    /// EIP-7623/7976 floor at the same per-byte rate as frame and signature data. The absent baseline is
-    /// standard-bound, so it spends its frame execution above its floor; the empty envelope is floor-bound,
-    /// so that headroom is subsumed. The extra gas is therefore the floor charge for the added byte less
-    /// the baseline's headroom over its own floor.
+    /// zero references, not the calldata term over <c>rlp(recent_root_references)</c>. The frame entry
+    /// charge lifts both transactions clear of their EIP-7623/7976 floor, so the added byte costs the
+    /// standard per-token calldata rate rather than the floor rate.
     /// </remarks>
     [Test]
     public void Execute_EmptyRecentRootReferenceList_IsPricedAsTheBytesItAdds()
@@ -1797,12 +1816,12 @@ public class FrameTxProcessorTests
         Assert.That(Process(empty, tracer: emptyTracer).TransactionExecuted, Is.True);
         Assert.That(Process(absent, tracer: absentTracer).TransactionExecuted, Is.True);
 
+        FrameTxValidation.TryCalculateGasBudget(empty, Spec, out _, out ulong emptyFloor, out _);
+        Assert.That(emptyTracer.GasSpent, Is.GreaterThan(emptyFloor), "expected the standard cost to bind, not the floor");
+
         (int zeroBytes, int nonZeroBytes) = empty.ReferenceCalldataStats;
-        ulong referenceFloorCharge = ((ulong)zeroBytes + (ulong)nonZeroBytes * Spec.GasCosts.TxDataNonZeroMultiplier)
-            * Spec.GasCosts.TotalCostFloorPerToken;
-        FrameTxValidation.TryCalculateGasBudget(absent, Spec, out _, out ulong absentFloor, out _);
-        ulong baselineHeadroom = absentTracer.GasSpent - absentFloor;
-        Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent, Is.EqualTo(referenceFloorCharge - baselineHeadroom));
+        ulong referenceTokens = (ulong)zeroBytes + (ulong)nonZeroBytes * Spec.GasCosts.TxDataNonZeroMultiplier;
+        Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent, Is.EqualTo(referenceTokens * GasCostOf.TxDataZero));
     }
 
     [Test]

@@ -66,7 +66,6 @@ public static class IntrinsicGasCalculator
         }
 
         (int addressesCount, int storageKeysCount) = accessList.Count;
-        // EIP-8038 realigns access-list entry costs with the cold-access costs they pre-warm.
         (ulong addressCost, ulong storageKeyCost) = Eip8038Constants.AccessListEntryCosts(spec);
         return (ulong)addressesCount * addressCost
             + (ulong)storageKeysCount * storageKeyCost
