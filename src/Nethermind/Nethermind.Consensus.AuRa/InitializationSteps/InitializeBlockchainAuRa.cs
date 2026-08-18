@@ -102,8 +102,8 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
             _txGossipPolicy,
             new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider),
-            txPriorityContract is not null || localDataSource is not null,
-            specChangeTxValidator: SpecChangeTxValidator.Instance);
+            SpecChangeTxValidator.Instance,
+            txPriorityContract is not null || localDataSource is not null);
     }
 
     private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

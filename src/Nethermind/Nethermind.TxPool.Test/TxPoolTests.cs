@@ -2638,8 +2638,8 @@ namespace Nethermind.TxPool.Test
                 transactionComparerProvider.GetDefaultComparer(),
                 ShouldGossip.Instance,
                 incomingTxFilter,
-                thereIsPriorityContract,
-                specChangeTxValidator: specChangeTxValidator ?? SpecChangeTxValidator.Instance);
+                specChangeTxValidator ?? SpecChangeTxValidator.Instance,
+                thereIsPriorityContract);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

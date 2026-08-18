@@ -64,7 +64,6 @@ namespace Nethermind.TxPool
         private readonly ReaderWriterLockSlim _newHeadLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private readonly UpdateGroupDelegate _updateBucket;
-        private readonly UpdateGroupDelegate _updateBucketAtStartup;
         private readonly UpdateGroupDelegate _updateBucketAtSpecChange;
         private readonly UpdateGroupDelegate _updateBlobBucketAtSpecChange;
         private readonly UpdateGroupDelegate _updateBucketAdded;
@@ -101,8 +100,8 @@ namespace Nethermind.TxPool
         /// <param name="comparer"></param>
         /// <param name="transactionsGossipPolicy"></param>
         /// <param name="incomingTxFilter"></param>
-        /// <param name="thereIsPriorityContract"></param>
         /// <param name="specChangeTxValidator">Validates transactions against the new fork rules, including light blob transactions.</param>
+        /// <param name="thereIsPriorityContract"></param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -112,8 +111,8 @@ namespace Nethermind.TxPool
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
-            bool thereIsPriorityContract = false,
-            [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator? specChangeTxValidator = null)
+            [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator? specChangeTxValidator = null,
+            bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -138,7 +137,6 @@ namespace Nethermind.TxPool
 
             // Capture closures once rather than per invocation
             _updateBucket = UpdateBucket;
-            _updateBucketAtStartup = UpdateBucketAtStartup;
             _updateBucketAtSpecChange = UpdateBucketAtSpecChange;
             _updateBlobBucketAtSpecChange = UpdateBlobBucketAtSpecChange;
             _updateBucketAdded = UpdateBucketWithAddedTransaction;
@@ -156,7 +154,15 @@ namespace Nethermind.TxPool
             if (_blobTransactions.Count > 0)
             {
                 _lastRevalidatedSpec = _specProvider.GetCurrentHeadSpec();
-                _blobTransactions.UpdatePool(_accounts, _updateBucketAtStartup);
+                try
+                {
+                    _blobTransactionsToRevalidate = LoadBlobTransactionsForRevalidation();
+                    _blobTransactions.UpdatePool(_accounts, _updateBlobBucketAtSpecChange);
+                }
+                finally
+                {
+                    _blobTransactionsToRevalidate = null;
+                }
             }
 
             _headInfo.HeadChanged += OnHeadChange;
@@ -735,8 +741,7 @@ namespace Nethermind.TxPool
             Transaction? lastElement,
             UpdateTransactionDelegate updateTx,
             IReleaseSpec? revalidationSpec = null,
-            bool resolveFullBlobTransaction = false,
-            bool validateTransactions = false)
+            bool resolveFullBlobTransaction = false)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -756,16 +761,6 @@ namespace Nethermind.TxPool
                 try
                 {
                     UInt256 gasBottleneck = 0;
-
-                    if (validateTransactions)
-                    {
-                        ValidationResult validation = _specChangeTxValidator.IsWellFormed(tx, headSpec);
-                        if (!validation)
-                        {
-                            MarkForEviction(tx, validation.Error == TxErrorMessages.InvalidProofVersion);
-                            continue;
-                        }
-                    }
 
                     if (revalidationSpec is not null)
                     {
@@ -850,7 +845,7 @@ namespace Nethermind.TxPool
             try
             {
                 // These fields are scoped to the single-reader head-processing loop and its serial bucket updates.
-                _blobTransactionsToRevalidate = isSpecChange ? LoadBlobTransactionsForRevalidation(headSpec) : null;
+                _blobTransactionsToRevalidate = isSpecChange ? LoadBlobTransactionsForRevalidation() : null;
                 _transactions.UpdatePool(_accounts, isSpecChange ? _updateBucketAtSpecChange : _updateBucket);
                 _blobTransactions.UpdatePool(_accounts, isSpecChange ? _updateBlobBucketAtSpecChange : _updateBucket);
             }
@@ -875,20 +870,12 @@ namespace Nethermind.TxPool
         private void UpdateBlobBucketAtSpecChange(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
             => UpdateBucketWithRevalidation(account, transactions, ref lastElement, updateTx, _lastRevalidatedSpec, resolveFullBlobTransaction: true);
 
-        private void UpdateBucketAtStartup(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
-            => UpdateBucketWithRevalidation(account, transactions, ref lastElement, updateTx, validateTransactions: true);
-
-        private Dictionary<Hash256, Transaction> LoadBlobTransactionsForRevalidation(IReleaseSpec headSpec)
+        private Dictionary<Hash256, Transaction> LoadBlobTransactionsForRevalidation()
         {
             Dictionary<Hash256, Transaction> fullTransactions = [];
             foreach (Transaction transaction in _blobTransactions.GetSnapshot())
             {
                 if (transaction is not LightTransaction lightTransaction || lightTransaction.Hash is not Hash256 hash)
-                {
-                    continue;
-                }
-
-                if (!_specChangeTxValidator.IsWellFormed(lightTransaction, headSpec))
                 {
                     continue;
                 }
@@ -918,8 +905,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    ValidationResult lightValidation = _specChangeTxValidator.IsWellFormed(lightTransaction, headSpec);
-                    return lightValidation ? TxErrorMessages.InvalidTransactionForm : lightValidation;
+                    return TxErrorMessages.InvalidTransactionForm;
                 }
             }
 
@@ -939,8 +925,7 @@ namespace Nethermind.TxPool
             ref Transaction? lastElement,
             UpdateTransactionDelegate updateTx,
             IReleaseSpec? revalidationSpec = null,
-            bool resolveFullBlobTransaction = false,
-            bool validateTransactions = false)
+            bool resolveFullBlobTransaction = false)
         {
             if (transactions.Count != 0)
             {
@@ -1004,7 +989,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidationSpec, resolveFullBlobTransaction, validateTransactions);
+                    UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidationSpec, resolveFullBlobTransaction);
                 }
             }
         }
