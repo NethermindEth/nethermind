@@ -18,17 +18,19 @@ namespace Nethermind.Consensus.Processing;
 /// entry rather than another installer. The install is idempotent: a non-empty predeploy re-installs only
 /// when the account's code differs from the canonical bytecode or its nonce is below the predeploy nonce;
 /// an empty-canonical predeploy (a protocol-managed storage namespace such as EIP-8272's) is gated on the
-/// nonce alone, since it writes no code to compare against. The predeploy nonce is 1, matching the
-/// EIP-2935/4788/7002/7251 convention. <c>max(existing_nonce, 1)</c> is applied only where a predeploy
-/// sets <see cref="Predeploy.PreservesHigherNonce"/> (EIP-8272).
+/// nonce alone, since it writes no code to compare against. A predeploy nonce of 1 matches the
+/// EIP-2935/4788/7002/7251 convention; a null nonce installs the code alone and leaves the account's
+/// nonce as it stands. <c>max(existing_nonce, 1)</c> is applied only where a predeploy sets
+/// <see cref="Predeploy.PreservesHigherNonce"/> (EIP-8272).
 /// </remarks>
 public static class PredeployInstaller
 {
-    private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false);
+    private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong? Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false);
 
     private static readonly Predeploy[] Predeploys =
     [
-        new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 1, static spec => spec.IsEip8141Enabled),
+        // EIP-8141 mandates the runtime code only; the account's other fields survive activation untouched.
+        new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, null, static spec => spec.IsEip8141Enabled),
         new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
         new(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, 1, static spec => spec.IsEip8272Enabled, PreservesHigherNonce: true),
     ];
@@ -74,7 +76,7 @@ public static class PredeployInstaller
             ReadOnlyMemory<byte> code = predeploy.Code;
             ulong nonce = readState.GetNonce(predeploy.Address);
             bool codeSatisfied = code.IsEmpty || readState.GetCode(predeploy.Address).AsSpan().SequenceEqual(code.Span);
-            if (codeSatisfied && nonce >= predeploy.Nonce)
+            if (codeSatisfied && nonce >= (predeploy.Nonce ?? 0))
             {
                 continue;
             }
@@ -85,7 +87,10 @@ public static class PredeployInstaller
                 writeState.InsertCode(predeploy.Address, code, spec);
             }
 
-            writeState.SetNonce(predeploy.Address, predeploy.PreservesHigherNonce ? Math.Max(nonce, predeploy.Nonce) : predeploy.Nonce);
+            if (predeploy.Nonce is ulong predeployNonce)
+            {
+                writeState.SetNonce(predeploy.Address, predeploy.PreservesHigherNonce ? Math.Max(nonce, predeployNonce) : predeployNonce);
+            }
         }
     }
 }
