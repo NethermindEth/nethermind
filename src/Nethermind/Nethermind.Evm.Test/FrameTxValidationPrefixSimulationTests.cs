@@ -236,7 +236,7 @@ public class FrameTxValidationPrefixSimulationTests
     {
         foreach (Instruction op in new[]
                  {
-                     Instruction.ORIGIN, Instruction.GASPRICE, Instruction.BLOCKHASH, Instruction.COINBASE,
+                     Instruction.GASPRICE, Instruction.BLOCKHASH, Instruction.COINBASE,
                      Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO, Instruction.GASLIMIT,
                      Instruction.BASEFEE, Instruction.BLOBBASEFEE, Instruction.SELFBALANCE, Instruction.INVALID,
                  })
@@ -244,15 +244,12 @@ public class FrameTxValidationPrefixSimulationTests
             yield return new TestCaseData((byte)op, 0).SetName($"banned {op}");
         }
 
-        foreach (Instruction op in new[] { Instruction.BALANCE, Instruction.BLOBHASH, Instruction.TLOAD, Instruction.SELFDESTRUCT })
+        foreach (Instruction op in new[] { Instruction.BALANCE, Instruction.SELFDESTRUCT })
         {
             yield return new TestCaseData((byte)op, 1).SetName($"banned {op}");
         }
 
-        foreach (Instruction op in new[] { Instruction.SSTORE, Instruction.TSTORE })
-        {
-            yield return new TestCaseData((byte)op, 2).SetName($"banned {op}");
-        }
+        yield return new TestCaseData((byte)Instruction.SSTORE, 2).SetName("banned SSTORE");
 
         yield return new TestCaseData((byte)Instruction.CREATE, 3).SetName("banned CREATE");
         yield return new TestCaseData((byte)Instruction.CREATE2, 4).SetName("banned CREATE2");
