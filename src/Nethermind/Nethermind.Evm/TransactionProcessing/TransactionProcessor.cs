@@ -442,6 +442,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool hasValueTransfer = !value.IsZero;
             bool senderIsRecipient = tx.SenderAddress == recipient;
             bool isTracingActions = tracer.IsTracingActions;
+            TGasPolicy actionGasBeforeNewAccountCharge = gasAvailable;
 
             // EIP-8037: a value transfer materialising a new (dead) recipient — including an empty
             // precompile — pays NEW_ACCOUNT state gas; if uncovered, no value moves and all gas is forfeit.
@@ -460,11 +461,6 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (hasValueTransfer) PayValue(tx, spec, opts);
                 WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
-            }
-
-            if (isTracingActions)
-            {
-                TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
             }
 
             JournalCollection<LogEntry>? logs = null;
@@ -489,10 +485,12 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (newAccountOutOfGas)
                 {
+                    TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in actionGasBeforeNewAccountCharge);
                     tracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 else
                 {
+                    TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
                     tracer.ReportActionEnd(TGasPolicy.GetRemainingGas(in gasAvailable), default);
                 }
             }
@@ -528,6 +526,23 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 tracer.ReportByteCode(default);
             }
+        }
+
+        private static void TraceHaltedTopFrameAction(Transaction tx, ExecutionEnvironment env, ITxTracer tracer, in TGasPolicy gasAvailable)
+        {
+            if (!tracer.IsTracingActions) return;
+
+            bool isContractCreation = tx.IsContractCreation;
+            tracer.ReportAction(
+                TGasPolicy.GetRemainingGas(in gasAvailable),
+                env.Value,
+                env.Caller,
+                env.CodeSource ?? env.ExecutingAccount,
+                isContractCreation ? env.CodeInfo.Code : env.InputData,
+                isContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION);
+
+            if (tracer.IsTracingCode) tracer.ReportByteCode(env.CodeInfo.Code);
+            tracer.ReportActionError(EvmExceptionType.OutOfGas);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1305,6 +1320,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (topFrameOutOfGas)
             {
+                TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
                 substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
@@ -1353,6 +1369,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.ConsumeCreateStateGas(ref state.Gas))
                 {
+                    TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
                     substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                     gasAvailable = state.Gas;
                     TGasPolicy.SetOutOfGas(ref gasAvailable);

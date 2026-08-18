@@ -238,8 +238,9 @@ public partial class TransactionProcessorTests
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, spec);
         transaction.GasLimit = intrinsicGas.Standard + (ulong)GasCostOf.NewAccountState - 1;
+        SimpleTransferActionTracer tracer = new();
 
-        TransactionResult result = transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header, spec), NullTxTracer.Instance);
+        TransactionResult result = transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
 
         using (Assert.EnterMultipleScope())
         {
@@ -247,6 +248,10 @@ public partial class TransactionProcessorTests
             Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
             Assert.That(virtualMachine.ExecuteTransactionCalls, Is.EqualTo(0));
             Assert.That(_stateProvider.GetBalance(deadRecipient), Is.EqualTo(UInt256.Zero));
+            Assert.That(tracer.ActionCalls, Is.EqualTo(1));
+            Assert.That(tracer.ActionGas, Is.EqualTo((ulong)GasCostOf.NewAccountState - 1));
+            Assert.That(tracer.ActionErrorCalls, Is.EqualTo(1));
+            Assert.That(tracer.ActionErrorType, Is.EqualTo(EvmExceptionType.OutOfGas));
         }
     }
 
