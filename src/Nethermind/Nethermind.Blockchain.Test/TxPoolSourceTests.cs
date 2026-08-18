@@ -263,7 +263,7 @@ public class TxPoolSourceTests
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
-        txPool.EnsureSafeForkState(targetBlock).Returns(false);
+        txPool.IsRevalidatedFor(targetBlock).Returns(false);
 
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
@@ -301,7 +301,7 @@ public class TxPoolSourceTests
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
-        txPool.EnsureSafeForkState(targetBlock).Returns(true);
+        txPool.IsRevalidatedFor(targetBlock).Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
@@ -316,7 +316,7 @@ public class TxPoolSourceTests
             Assert.That(result, Is.EqualTo(new[] { blobTx }).UsingTransactionComparer());
         }
 
-        txPool.Received(1).EnsureSafeForkState(targetBlock);
+        txPool.Received(1).IsRevalidatedFor(targetBlock);
         txFilterPipeline.DidNotReceive().Execute(blobTx, parent, Arg.Any<IReleaseSpec>());
     }
 

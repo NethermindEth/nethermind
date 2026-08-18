@@ -56,8 +56,10 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// Reports whether specification-dependent pool revalidation has completed for the target block.
+        /// Returns <see langword="false"/> unless the pool is known to be revalidated, so callers must validate
+        /// specification-dependent rules themselves in that case.
         /// </summary>
-        bool EnsureSafeForkState(BlockHeader targetBlock);
+        bool IsRevalidatedFor(BlockHeader targetBlock) => false;
 
         bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,

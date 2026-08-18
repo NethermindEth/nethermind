@@ -180,8 +180,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 if (_receiptFinderOverride is not null) builder.AddSingleton(_receiptFinderOverride);
                 if (_blockchainBridgeOverride is not null) builder.AddSingleton(_blockchainBridgeOverride);
                 if (_blocksConfigOverride is not null) builder.AddSingleton(_blocksConfigOverride);
-
-                builder.AddKeyedSingleton<ITxValidator>(ITxValidator.HeadTxValidatorKey, new HeadTxValidator());
             });
         }
 

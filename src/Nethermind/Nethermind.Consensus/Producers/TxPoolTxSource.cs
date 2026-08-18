@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Producers
             PayloadAttributes? payloadAttributes = null,
             bool filterSource = false)
         {
-            bool validateForkSensitiveState = !_transactionPool.EnsureSafeForkState(targetBlock);
+            bool isRevalidatedForTarget = _transactionPool.IsRevalidatedFor(targetBlock);
             IReleaseSpec spec = _specProvider.GetSpec(targetBlock);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Producers
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
-            Func<Transaction, bool> intrinsicFilter = tx => filter(tx) && (!validateForkSensitiveState || IsIntrinsicallyValid(tx, spec));
+            Func<Transaction, bool> intrinsicFilter = tx => filter(tx) && (isRevalidatedForTarget || IsIntrinsicallyValid(tx, spec));
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, intrinsicFilter, gasLimit);
@@ -72,7 +72,7 @@ namespace Nethermind.Consensus.Producers
 
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)maxBlobCount);
 
-            Dictionary<Hash256, Transaction>? fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, validateForkSensitiveState);
+            Dictionary<Hash256, Transaction>? fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, !isRevalidatedForTarget);
 
             foreach (Transaction tx in transactions)
             {

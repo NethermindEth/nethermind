@@ -67,7 +67,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool EnsureSafeForkState(BlockHeader targetBlock) => true;
+        public bool IsRevalidatedFor(BlockHeader targetBlock) => true;
 
         public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,

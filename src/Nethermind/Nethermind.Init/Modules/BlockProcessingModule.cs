@@ -42,7 +42,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // Validators
             .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
             .Bind<ITxValidator, TxValidator>()
-            .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey, SpecChangeTxValidator.Instance)
             .AddSingleton<IBlockValidator, BlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()

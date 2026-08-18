@@ -585,7 +585,7 @@ namespace Nethermind.Blockchain.Test
 
             BlockHeader parent = parentHeader.TestObject;
             BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
-            transactionPool.EnsureSafeForkState(targetBlock).Returns(true);
+            transactionPool.IsRevalidatedFor(targetBlock).Returns(true);
             return poolTxSource.GetTransactions(parent, targetBlock, testCase.GasLimit).ToArray();
         }
 
