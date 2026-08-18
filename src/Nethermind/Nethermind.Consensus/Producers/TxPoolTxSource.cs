@@ -13,6 +13,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -71,7 +72,7 @@ namespace Nethermind.Consensus.Producers
 
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)maxBlobCount);
 
-            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, validateForkSensitiveState);
+            Dictionary<Hash256, Transaction>? fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, validateForkSensitiveState);
 
             foreach (Transaction tx in transactions)
             {
@@ -86,7 +87,7 @@ namespace Nethermind.Consensus.Producers
 
                 foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
                 {
-                    if (ResolveBlob(blobTx, out Transaction fullBlobTx))
+                    if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                     {
                         yield return fullBlobTx;
                     }
@@ -102,7 +103,7 @@ namespace Nethermind.Consensus.Producers
             {
                 foreach (Transaction blobTx in selectedBlobTxs)
                 {
-                    if (ResolveBlob(blobTx, out Transaction fullBlobTx))
+                    if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                     {
                         yield return fullBlobTx;
                     }
@@ -111,33 +112,16 @@ namespace Nethermind.Consensus.Producers
 
             if (_logger.IsTrace) _logger.Trace($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
 
-            bool ResolveBlob(Transaction blobTx, out Transaction fullBlobTx)
+            bool TryResolveSelectedBlob(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
             {
-                if (!TryGetFullBlobTx(blobTx, out fullBlobTx))
+                if (fullBlobTxs is not null
+                    && blobTx.Hash is Hash256 hash
+                    && fullBlobTxs.TryGetValue(hash, out fullBlobTx))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
-                    return false;
+                    return true;
                 }
 
-                if (fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, missing blob data.");
-                    return false;
-                }
-
-                if (spec.BlobProofVersion != wrapper.Version)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {wrapper.Version}.");
-                    return false;
-                }
-
-                if (wrapper.Blobs.Length != blobTx.BlobVersionedHashes.Length)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
-                    return false;
-                }
-
-                return true;
+                return TryResolveBlob(blobTx, spec, out fullBlobTx);
             }
         }
 
@@ -158,7 +142,7 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(
+        private Dictionary<Hash256, Transaction>? SelectBlobTransactions(
             IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions,
             BlockHeader parent,
             IReleaseSpec spec,
@@ -170,11 +154,12 @@ namespace Nethermind.Consensus.Producers
             ulong maxBlobsToConsider = maxBlobs * 5ul;
             ulong countOfRemainingBlobs = 0UL;
             ulong consideredBlobCount = 0UL;
+            Dictionary<Hash256, Transaction>? fullBlobTxs = null;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining blobs, failed to calculate gas price.");
-                return;
+                return null;
             }
 
             ArrayPoolList<(Transaction tx, ulong blobChain)>? candidates = null;
@@ -195,14 +180,24 @@ namespace Nethermind.Consensus.Producers
 
                 consideredBlobCount += txBlobCount;
                 bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
-                if (validateForkSensitiveState && !IsValidBlobForNextBlock(blobTx, parent, spec))
+                if (validateForkSensitiveState)
                 {
-                    if (reachedConsiderationLimit)
+                    if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
+                        || !_txFilterPipeline.Execute(fullBlobTx, parent, spec)
+                        || !IsIntrinsicallyValid(fullBlobTx, spec))
                     {
-                        break;
+                        if (reachedConsiderationLimit)
+                        {
+                            break;
+                        }
+
+                        continue;
                     }
 
-                    continue;
+                    if (blobTx.Hash is Hash256 hash)
+                    {
+                        (fullBlobTxs ??= [])[hash] = fullBlobTx;
+                    }
                 }
 
                 if (txBlobCount == 1UL && candidates is null)
@@ -212,7 +207,7 @@ namespace Nethermind.Consensus.Producers
                     {
                         // Early exit, have complete set of 1 blob txs with maximal priority fees
                         // No need to consider other tx.
-                        return;
+                        return fullBlobTxs;
                     }
                 }
                 else
@@ -231,7 +226,7 @@ namespace Nethermind.Consensus.Producers
             }
 
             // No leftover candidates
-            if (candidates is null) return;
+            if (candidates is null) return fullBlobTxs;
 
             using (candidates)
             {
@@ -249,6 +244,8 @@ namespace Nethermind.Consensus.Producers
                     ChooseBestBlobTransactions(candidates, (int)leftoverCapacity, baseFee, selectedBlobTxs);
                 }
             }
+
+            return fullBlobTxs;
         }
 
         /// <summary>
@@ -374,31 +371,35 @@ namespace Nethermind.Consensus.Producers
             selectedBlobTxs.AsSpan()[start..].Reverse();
         }
 
-        private bool TryGetFullBlobTx(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
+        private bool TryResolveBlob(Transaction blobTx, IReleaseSpec spec, [NotNullWhen(true)] out Transaction? fullBlobTx)
         {
-            if (blobTx.NetworkWrapper is not null)
+            fullBlobTx = blobTx;
+            if (blobTx.NetworkWrapper is null
+                && (blobTx.Hash is null || !_transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx)))
             {
-                fullBlobTx = blobTx;
-                return true;
-            }
-
-            fullBlobTx = null;
-            return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
-        }
-
-        private bool IsValidBlobForNextBlock(Transaction blobTx, BlockHeader parent, IReleaseSpec spec)
-        {
-            if (!TryGetFullBlobTx(blobTx, out Transaction? fullBlobTx)
-                || fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
-                || wrapper.Version != spec.BlobProofVersion
-                || wrapper.Blobs.Length != blobTx.BlobVersionedHashes?.Length)
-            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                 return false;
             }
 
-            // Light transactions do not carry the intrinsic-gas memo, so the full blob transaction must be checked here.
-            return _txFilterPipeline.Execute(fullBlobTx, parent, spec)
-                && IsIntrinsicallyValid(fullBlobTx, spec);
+            if (fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, missing blob data.");
+                return false;
+            }
+
+            if (wrapper.Version != spec.BlobProofVersion)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {wrapper.Version}.");
+                return false;
+            }
+
+            if (wrapper.Blobs.Length != blobTx.BlobVersionedHashes?.Length)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
+                return false;
+            }
+
+            return true;
         }
 
         private static bool IsIntrinsicallyValid(Transaction tx, IReleaseSpec spec) =>

@@ -267,7 +267,11 @@ public class TxPoolSourceTests
 
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
-        Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new[] { validBlob }).UsingTransactionComparer());
+            txPool.Received(1).TryGetPendingBlobTransaction(validBlob.Hash!, out Arg.Any<Transaction?>());
+        }
     }
 
     [Test]
