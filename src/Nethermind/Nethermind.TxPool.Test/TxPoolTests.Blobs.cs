@@ -1609,6 +1609,36 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // The persistent pool holds a light record, and it is that record's removal which releases the payer's
+        // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
+        [Test]
+        public void Blob_carrying_frame_tx_releases_its_payer_exposure_when_it_leaves_the_persistent_pool()
+        {
+            // The prefix ceiling has to clear the verify frame plus its signature, or no payer resolves natively.
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+
+            Transaction SignedBlobFrameTx(ulong? deadline)
+            {
+                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
+                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                tx.Hash = tx.CalculateHash();
+                return tx;
+            }
+
+            Transaction first = SignedBlobFrameTx(deadline: null);
+            // Balance for exactly one such tx, so a reservation outliving the first rejects the second.
+            EnsureSenderBalance(TestItem.AddressA, (UInt256)first.GasLimit * first.MaxFeePerGas
+                + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressA), "no reservation is taken unless the payer resolves");
+            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+
+            // Same payer and same cost, told apart only by its expiry frame: only a leaked reservation rejects it.
+            Assert.That(_txPool.SubmitTx(SignedBlobFrameTx(deadline: 1_000_000), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
         // EIP-8141: a blob-carrying frame tx counts against the per-sender blob limit (MaxPendingBlobTxsPerSender),
         // not the unlimited normal-pool default, so a nonce beyond that window is rejected as too far in the future.
         [Test]

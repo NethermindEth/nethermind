@@ -30,6 +30,8 @@ public class LightTransaction : Transaction
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
         ProofVersion = fullTx.GetProofVersion();
+        // The pool holds this record, not the full tx, so its Removed event is what releases the payer's reservation.
+        PayerAddress = fullTx.PayerAddress;
         PersistedExpiryDeadline = FrameTxValidation.TryGetExpiryDeadline(fullTx, out ulong deadline) ? deadline : null;
         _size = fullTx.GetLength();
     }
