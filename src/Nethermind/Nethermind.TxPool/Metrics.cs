@@ -66,11 +66,11 @@ namespace Nethermind.TxPool
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because simulating their validation prefix rejected it.")]
-        public static long PendingTransactionsFrameTxSimulationFailed { get; set; }
+        public static long PendingTransactionsFrameTxSimulationFailed;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions admitted with an unresolved payer because their validation prefix could not be simulated. A rising count means payer exposure is no longer being accounted for.")]
-        public static long PendingTransactionsFrameTxSimulationUndecided { get; set; }
+        public static long PendingTransactionsFrameTxSimulationUndecided;
 
         [CounterMetric]
         [Description(
