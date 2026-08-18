@@ -34,18 +34,18 @@ internal sealed class BlackListedAddressFilter(
             return AcceptTxResult.Accepted;
 
         if (IsBlackListed(spec, tx.SenderAddress))
-            return Reject(tx, "sender");
+            return Reject(tx, XdcAcceptTxResult.BlackListedSender);
 
         if (IsBlackListed(spec, tx.To))
-            return Reject(tx, "recipient");
+            return Reject(tx, XdcAcceptTxResult.BlackListedRecipient);
 
         return AcceptTxResult.Accepted;
     }
 
-    private AcceptTxResult Reject(Transaction tx, string role)
+    private AcceptTxResult Reject(Transaction tx, AcceptTxResult result)
     {
-        if (_logger.IsDebug) _logger.Debug($"Skipped adding transaction {tx.ToString("  ")}, blacklisted {role}.");
-        return XdcAcceptTxResult.BlackListedAddress.WithMessage($"Transaction {role} is blacklisted");
+        if (_logger.IsDebug) _logger.Debug($"Skipped adding transaction {tx.ToString("  ")}, {result}.");
+        return result;
     }
 
     private static bool IsBlackListed(IXdcReleaseSpec spec, Address? address) =>

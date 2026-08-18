@@ -62,14 +62,17 @@ internal class BlackListedAddressFilterTests
         Assert.That((bool)Accept(filter, tx), Is.EqualTo(expectedAccepted));
     }
 
-    [Test]
-    public void Accept_BlackListedAddress_DoesNotReturnInvalidSoPeerIsKept()
+    [TestCase(true, "sender")]
+    [TestCase(false, "recipient")]
+    public void Accept_BlackListedAddress_ReportsRoleWithoutDisconnectingPeer(bool blackListSender, string expectedRole)
     {
         BlackListedAddressFilter filter = CreateFilter(headNumber: 100, blackListingEnabled: true);
+        Transaction tx = blackListSender ? BuildTx(BlackListed, TestItem.AddressC) : BuildTx(TestItem.AddressB, BlackListed);
 
-        AcceptTxResult result = Accept(filter, BuildTx(BlackListed, TestItem.AddressC));
+        AcceptTxResult result = Accept(filter, tx);
 
-        Assert.That(result, Is.EqualTo(XdcAcceptTxResult.BlackListedAddress));
+        Assert.That(result, Is.EqualTo(XdcAcceptTxResult.BlackListedSender));
+        Assert.That(result.ToString(), Does.Contain(expectedRole));
         Assert.That(result, Is.Not.EqualTo(AcceptTxResult.Invalid), "Invalid makes TxFloodController disconnect the relaying peer");
     }
 
@@ -119,7 +122,7 @@ internal class BlackListedAddressFilterTests
 
         Assert.That((bool)result, Is.EqualTo(expectedAccepted), result.ToString());
         if (!expectedAccepted)
-            Assert.That(result, Is.EqualTo(XdcAcceptTxResult.BlackListedAddress));
+            Assert.That(result, Is.EqualTo(blackListSender ? XdcAcceptTxResult.BlackListedSender : XdcAcceptTxResult.BlackListedRecipient));
         Assert.That(chain.TxPool.GetPendingTransactions(), Has.Length.EqualTo(expectedAccepted ? 1 : 0));
     }
 }
