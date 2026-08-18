@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -34,7 +35,8 @@ internal sealed class FrameTxSimulationFilter(
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
-                Metrics.PendingTransactionsFrameTxSimulationFailed++;
+                // Atomic: this filter runs under the pool's head read lock, so submissions land concurrently.
+                Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
                 if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
                 // Deferred only for a bound this node spent on itself: a timeout is chargeable here, because
                 // the prefix's own wall clock is what tripped it.
@@ -44,7 +46,7 @@ internal sealed class FrameTxSimulationFilter(
             case FrameTxSimulationOutcome.Undecided:
                 // No verdict was reached, so defer exactly as an unwired simulator does rather than return
                 // a non-accepting result the sending peer would be charged for.
-                Metrics.PendingTransactionsFrameTxSimulationUndecided++;
+                Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationUndecided);
                 if (logger.IsDebug) logger.Debug($"Admitting frame transaction {tx.Hash} with an unresolved payer, validation-prefix simulation was unavailable: {result.Reason}.");
                 return AcceptTxResult.Accepted;
 
@@ -55,7 +57,7 @@ internal sealed class FrameTxSimulationFilter(
 
             default:
                 // Only Accepted carries a payer, so an outcome this filter cannot price must not record one.
-                Metrics.PendingTransactionsFrameTxSimulationUndecided++;
+                Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationUndecided);
                 if (logger.IsDebug) logger.Debug($"Admitting frame transaction {tx.Hash} with an unresolved payer, unhandled simulation outcome {result.Outcome}.");
                 return AcceptTxResult.Accepted;
         }

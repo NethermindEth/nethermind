@@ -121,6 +121,11 @@ public class FrameTxSimulationFilterTests
         }
     }
 
+    // An unset result carries no payer, so it must not read as Accepted and have that null recorded.
+    [Test]
+    public void DefaultSimulationResult_IsUndecided() =>
+        Assert.That(default(FrameTxSimulationResult).Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
+
     private static TestReadOnlyStateProvider DeployedCodeSenderState()
     {
         TestReadOnlyStateProvider state = new();
