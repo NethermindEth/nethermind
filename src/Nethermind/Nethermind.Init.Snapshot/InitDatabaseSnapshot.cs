@@ -220,7 +220,7 @@ public class InitDatabaseSnapshot(
         long fileSize = new FileInfo(filePath).Length;
         using IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(ChecksumBufferSize);
-        try
+        byte[] checksum;
         {
             await using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read,
                 FileShare.None, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
@@ -239,12 +239,9 @@ public class InitDatabaseSnapshot(
                     nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
                 }
             }
-
-            return hasher.GetHashAndReset();
+            checksum = hasher.GetHashAndReset();
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        ArrayPool<byte>.Shared.Return(buffer);
+        return checksum;
     }
 }

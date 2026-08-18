@@ -153,19 +153,12 @@ internal static class InputExtractor
                     }
 
                     (byte[] buffer, int dataLength) = DecodeInput(inputBytes);
+                    ReadOnlyMemory<byte> output = forZisk
+                        ? buffer.AsMemory(0, ZiskFrame.FrameInPlace(buffer, dataLength))
+                        : buffer.AsMemory(ZiskFrame.HeaderLength, dataLength);
 
-                    try
-                    {
-                        ReadOnlyMemory<byte> output = forZisk
-                            ? buffer.AsMemory(0, ZiskFrame.FrameInPlace(buffer, dataLength))
-                            : buffer.AsMemory(ZiskFrame.HeaderLength, dataLength);
-
-                        await File.WriteAllBytesAsync(Path.Join(outputPath, fileName), output, cancellationToken);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(buffer);
-                    }
+                    await File.WriteAllBytesAsync(Path.Join(outputPath, fileName), output, cancellationToken);
+                    ArrayPool<byte>.Shared.Return(buffer);
 
                     writtenFiles.Add(fileName);
                     extracted++;
@@ -211,11 +204,6 @@ internal static class InputExtractor
         {
             ArrayPool<byte>.Shared.Return(buffer);
             throw new FormatException($"{InputBytesProperty} is not valid hex");
-        }
-        catch
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-            throw;
         }
 
         return (buffer, dataLength);

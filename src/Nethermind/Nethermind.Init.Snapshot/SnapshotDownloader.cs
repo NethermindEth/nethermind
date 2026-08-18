@@ -102,20 +102,14 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
     private static async Task SkipBytesAsync(Stream stream, long bytesToSkip, CancellationToken cancellationToken)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        try
+        long remaining = bytesToSkip;
+        while (remaining > 0)
         {
-            long remaining = bytesToSkip;
-            while (remaining > 0)
-            {
-                int chunk = (int)Math.Min(buffer.Length, remaining);
-                await stream.ReadAtLeastAsync(buffer.AsMemory(0, chunk), chunk, throwOnEndOfStream: true, cancellationToken).ConfigureAwait(false);
-                remaining -= chunk;
-            }
+            int chunk = (int)Math.Min(buffer.Length, remaining);
+            await stream.ReadAtLeastAsync(buffer.AsMemory(0, chunk), chunk, throwOnEndOfStream: true, cancellationToken).ConfigureAwait(false);
+            remaining -= chunk;
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
     private static async Task<HttpResponseMessage> SendWithRangeAsync(
@@ -162,21 +156,15 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         Stream source, FileStream destination, ProgressReporter progress, CancellationToken cancellationToken)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        try
+        ulong downloaded = progress.Logger.CurrentValue;
+        int bytesRead;
+        while ((bytesRead = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
         {
-            ulong downloaded = progress.Logger.CurrentValue;
-            int bytesRead;
-            while ((bytesRead = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
-            {
-                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
-                downloaded += (ulong)bytesRead;
-                progress.Update(downloaded);
-            }
+            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+            downloaded += (ulong)bytesRead;
+            progress.Update(downloaded);
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
     private static Func<ProgressLogger, string> FormatBytes(long? totalBytes) =>

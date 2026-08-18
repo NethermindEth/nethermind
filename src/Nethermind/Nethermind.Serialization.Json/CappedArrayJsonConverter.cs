@@ -20,29 +20,31 @@ public sealed class CappedArrayJsonConverter<T> : JsonConverter<CappedArray<T>> 
 
         T[] buffer = ArrayPool<T>.Shared.Rent(16);
         int count = 0;
-        try
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
         {
-            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+            if (count == buffer.Length)
             {
-                if (count == buffer.Length)
-                {
-                    T[] grown = ArrayPool<T>.Shared.Rent(buffer.Length * 2);
-                    buffer.AsSpan(0, count).CopyTo(grown);
-                    ArrayPool<T>.Shared.Return(buffer);
-                    buffer = grown;
-                }
-                buffer[count++] = elementConverter.Read(ref reader, typeof(T), options);
+                T[] grown = ArrayPool<T>.Shared.Rent(buffer.Length * 2);
+                buffer.AsSpan(0, count).CopyTo(grown);
+                ArrayPool<T>.Shared.Return(buffer);
+                buffer = grown;
             }
+            buffer[count++] = elementConverter.Read(ref reader, typeof(T), options);
+        }
 
-            if (count == 0) return CappedArray<T>.Empty;
+        CappedArray<T> cappedArray;
+        if (count == 0)
+        {
+            cappedArray = CappedArray<T>.Empty;
+        }
+        else
+        {
             T[] result = new T[count];
             buffer.AsSpan(0, count).CopyTo(result);
-            return new CappedArray<T>(result, count);
+            cappedArray = new CappedArray<T>(result, count);
         }
-        finally
-        {
-            ArrayPool<T>.Shared.Return(buffer);
-        }
+        ArrayPool<T>.Shared.Return(buffer);
+        return cappedArray;
     }
 
     public override void Write(Utf8JsonWriter writer, CappedArray<T> value, JsonSerializerOptions options)

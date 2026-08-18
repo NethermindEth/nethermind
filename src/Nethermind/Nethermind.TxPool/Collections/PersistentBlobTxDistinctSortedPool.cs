@@ -109,110 +109,98 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         TxLookupKey[] dbKeys = ArrayPool<TxLookupKey>.Shared.Rent(maxMisses);
         int[] missOutputIndex = ArrayPool<int>.Shared.Rent(maxMisses);
         int[] missBlobIndex = ArrayPool<int>.Shared.Rent(maxMisses);
-        try
+        // Phase 1: Under lock — in-memory lookups only
+        using (McsLock.Disposable lockRelease = Lock.Acquire())
         {
-            // Phase 1: Under lock — in-memory lookups only
-            using (McsLock.Disposable lockRelease = Lock.Acquire())
+            for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
             {
-                for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+                byte[] requestedBlobVersionedHash = requestedBlobVersionedHashes[i];
+                if (!BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
+                    continue;
+
+                foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
                 {
-                    byte[] requestedBlobVersionedHash = requestedBlobVersionedHashes[i];
-                    if (!BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
+                    if (!base.TryGetValueNonLocked(hash, out Transaction? lightTx)
+                        || lightTx is not LightTransaction lt
+                        || lt.ProofVersion != ProofVersion.V1
+                        || lightTx.BlobVersionedHashes is not { Length: > 0 })
                         continue;
 
-                    foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
+                    int indexOfBlob = -1;
+                    for (int b = 0; b < lightTx.BlobVersionedHashes.Length; b++)
                     {
-                        if (!base.TryGetValueNonLocked(hash, out Transaction? lightTx)
-                            || lightTx is not LightTransaction lt
-                            || lt.ProofVersion != ProofVersion.V1
-                            || lightTx.BlobVersionedHashes is not { Length: > 0 })
-                            continue;
-
-                        int indexOfBlob = -1;
-                        for (int b = 0; b < lightTx.BlobVersionedHashes.Length; b++)
+                        if (Bytes.AreEqual(lightTx.BlobVersionedHashes[b], requestedBlobVersionedHash))
                         {
-                            if (Bytes.AreEqual(lightTx.BlobVersionedHashes[b], requestedBlobVersionedHash))
-                            {
-                                indexOfBlob = b;
-                                break;
-                            }
-                        }
-                        if (indexOfBlob < 0)
-                            continue;
-
-                        // Try cache first — on hit, populate and stop searching for this blob hash
-                        if (_blobTxCache.TryGet(hash, out Transaction? cachedTx)
-                            && cachedTx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } cachedWrapper)
-                        {
-                            blobs[i] = cachedWrapper.Blobs[indexOfBlob];
-                            proofs[i] = new ReadOnlyMemory<byte[]>(
-                                cachedWrapper.Proofs,
-                                Ckzg.CellsPerExtBlob * indexOfBlob,
-                                Ckzg.CellsPerExtBlob);
-                            found++;
+                            indexOfBlob = b;
                             break;
                         }
-
-                        // Cache miss — record for Phase 2 DB lookup and continue to try
-                        // remaining tx hashes so that if this candidate is missing from DB,
-                        // later candidates can still satisfy the request.
-                        if (missCount < maxMisses)
-                        {
-                            dbKeys[missCount] = new TxLookupKey(hash, lightTx.SenderAddress!, lightTx.Timestamp);
-                            missOutputIndex[missCount] = i;
-                            missBlobIndex[missCount] = indexOfBlob;
-                            missCount++;
-                        }
                     }
-                }
-            }
+                    if (indexOfBlob < 0)
+                        continue;
 
-            // Phase 2: Outside lock — single RocksDB MultiGet for all misses
-            if (missCount > 0)
-            {
-                Transaction?[] dbResults = ArrayPool<Transaction?>.Shared.Rent(missCount);
-                try
-                {
-                    Array.Clear(dbResults, 0, missCount);
-                    _blobTxStorage.TryGetMany(dbKeys, missCount, dbResults);
-
-                    for (int m = 0; m < missCount; m++)
+                    // Try cache first — on hit, populate and stop searching for this blob hash
+                    if (_blobTxCache.TryGet(hash, out Transaction? cachedTx)
+                        && cachedTx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } cachedWrapper)
                     {
-                        int outIdx = missOutputIndex[m];
+                        blobs[i] = cachedWrapper.Blobs[indexOfBlob];
+                        proofs[i] = new ReadOnlyMemory<byte[]>(
+                            cachedWrapper.Proofs,
+                            Ckzg.CellsPerExtBlob * indexOfBlob,
+                            Ckzg.CellsPerExtBlob);
+                        found++;
+                        break;
+                    }
 
-                        // Skip if this output slot was already filled by a cache hit or earlier candidate
-                        if (blobs[outIdx] is not null)
-                            continue;
-
-                        Transaction? fullTx = dbResults[m];
-                        if (fullTx?.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
-                        {
-                            int blobIdx = missBlobIndex[m];
-                            blobs[outIdx] = wrapper.Blobs[blobIdx];
-                            proofs[outIdx] = new ReadOnlyMemory<byte[]>(
-                                wrapper.Proofs,
-                                Ckzg.CellsPerExtBlob * blobIdx,
-                                Ckzg.CellsPerExtBlob);
-                            found++;
-
-                            _blobTxCache.Set(dbKeys[m].Hash, fullTx);
-                        }
+                    // Cache miss — record for Phase 2 DB lookup and continue to try
+                    // remaining tx hashes so that if this candidate is missing from DB,
+                    // later candidates can still satisfy the request.
+                    if (missCount < maxMisses)
+                    {
+                        dbKeys[missCount] = new TxLookupKey(hash, lightTx.SenderAddress!, lightTx.Timestamp);
+                        missOutputIndex[missCount] = i;
+                        missBlobIndex[missCount] = indexOfBlob;
+                        missCount++;
                     }
                 }
-                finally
+            }
+        }
+
+        // Phase 2: Outside lock — single RocksDB MultiGet for all misses
+        if (missCount > 0)
+        {
+            Transaction?[] dbResults = ArrayPool<Transaction?>.Shared.Rent(missCount);
+            Array.Clear(dbResults, 0, missCount);
+            _blobTxStorage.TryGetMany(dbKeys, missCount, dbResults);
+
+            for (int m = 0; m < missCount; m++)
+            {
+                int outIdx = missOutputIndex[m];
+
+                // Skip if this output slot was already filled by a cache hit or earlier candidate
+                if (blobs[outIdx] is not null)
+                    continue;
+
+                Transaction? fullTx = dbResults[m];
+                if (fullTx?.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
                 {
-                    ArrayPool<Transaction?>.Shared.Return(dbResults, clearArray: true);
+                    int blobIdx = missBlobIndex[m];
+                    blobs[outIdx] = wrapper.Blobs[blobIdx];
+                    proofs[outIdx] = new ReadOnlyMemory<byte[]>(
+                        wrapper.Proofs,
+                        Ckzg.CellsPerExtBlob * blobIdx,
+                        Ckzg.CellsPerExtBlob);
+                    found++;
+
+                    _blobTxCache.Set(dbKeys[m].Hash, fullTx);
                 }
             }
+            ArrayPool<Transaction?>.Shared.Return(dbResults, clearArray: true);
+        }
 
-            return found;
-        }
-        finally
-        {
-            ArrayPool<TxLookupKey>.Shared.Return(dbKeys, clearArray: true);
-            ArrayPool<int>.Shared.Return(missOutputIndex);
-            ArrayPool<int>.Shared.Return(missBlobIndex);
-        }
+        ArrayPool<TxLookupKey>.Shared.Return(dbKeys, clearArray: true);
+        ArrayPool<int>.Shared.Return(missOutputIndex);
+        ArrayPool<int>.Shared.Return(missBlobIndex);
+        return found;
     }
 
     protected override bool Remove(ValueHash256 hash, out Transaction? tx)

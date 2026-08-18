@@ -51,22 +51,18 @@ internal static class EthStatsMessageParser
             ? stackalloc byte[StackBufferThreshold]
             : (rented = ArrayPool<byte>.Shared.Rent(maxByteCount));
 
+        bool parsed;
         try
         {
             int written = Encoding.UTF8.GetBytes(message, buffer);
-            return TryParseCore(buffer[..written], out incomingMessage);
+            parsed = TryParseCore(buffer[..written], out incomingMessage);
         }
         catch (JsonException)
         {
-            return false;
+            parsed = false;
         }
-        finally
-        {
-            if (rented is not null)
-            {
-                ArrayPool<byte>.Shared.Return(rented);
-            }
-        }
+        if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+        return parsed;
     }
 
     private static bool TryParseCore(ReadOnlySpan<byte> utf8Bytes, out EthStatsIncomingMessage incomingMessage)

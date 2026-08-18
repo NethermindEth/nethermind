@@ -77,6 +77,7 @@ public class PayloadByNumberProtocol(
         }
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxResponseSizeBytes);
+        ExecutionPayloadV3? payload = null;
         try
         {
             int bytesRead = decompressor.Read(buffer, 0, buffer.Length);
@@ -85,24 +86,24 @@ public class PayloadByNumberProtocol(
             {
                 if (totalRead > MaxResponseSizeBytes)
                 {
-                    return null;
+                    break;
                 }
 
                 bytesRead = decompressor.Read(buffer, totalRead, buffer.Length - totalRead);
                 totalRead += bytesRead;
             }
 
-            return _payloadDecoder.DecodePayload(buffer.AsSpan(0, totalRead));
+            if (totalRead <= MaxResponseSizeBytes)
+            {
+                payload = _payloadDecoder.DecodePayload(buffer.AsSpan(0, totalRead));
+            }
         }
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(PayloadByNumberProtocol)}: Exception during payload decoding {e}");
-            return null;
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        ArrayPool<byte>.Shared.Return(buffer);
+        return payload;
     }
 
     private async Task<Stream?> ReadPayloadData(IReader reader)

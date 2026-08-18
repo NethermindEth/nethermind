@@ -67,14 +67,8 @@ namespace Nethermind.Stats.Model
             else
             {
                 byte[] rented = ArrayPool<byte>.Shared.Rent(totalLength);
-                try
-                {
-                    WriteToBuffer(writer, capability, rented.AsSpan(), protocolByteCount);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(rented);
-                }
+                WriteToBuffer(writer, capability, rented.AsSpan(), protocolByteCount);
+                ArrayPool<byte>.Shared.Return(rented);
             }
         }
 
