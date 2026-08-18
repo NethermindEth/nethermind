@@ -26,25 +26,25 @@ public class WorldStateDbDeciderModuleTests
     public enum Flags
     {
         None = 0,
-        Enabled = 1,
+        Disabled = 1,
         FlatHasData = 2,
         ImportFromPruningTrieState = 4,
         PatriciaHasData = 8
     }
 
     // Mirrors the 5 branches in FlatStateActivationPolicy at the full DI container level.
-    [TestCase(Flags.None, false, Description = "Flat disabled → patricia")]
-    [TestCase(Flags.Enabled | Flags.FlatHasData, true, Description = "Flat has committed state → flat")]
-    [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState → flat")]
-    [TestCase(Flags.Enabled | Flags.PatriciaHasData, false, Description = "Patricia has data → patricia")]
-    [TestCase(Flags.Enabled, true, Description = "Fresh node, flat enabled → flat")]
+    [TestCase(Flags.Disabled, false, Description = "Flat disabled → patricia")]
+    [TestCase(Flags.FlatHasData, true, Description = "Flat has committed state → flat")]
+    [TestCase(Flags.ImportFromPruningTrieState, true, Description = "ImportFromPruningTrieState → flat")]
+    [TestCase(Flags.PatriciaHasData, false, Description = "Patricia has data → patricia")]
+    [TestCase(Flags.None, true, Description = "Fresh node, flat enabled by default → flat")]
     public void IWorldStateManager_ResolvesToCorrectBackend(Flags flags, bool expectFlat)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .Intercept<IFlatDbConfig>((cfg) =>
             {
-                cfg.Enabled = flags.HasFlag(Flags.Enabled);
+                if (flags.HasFlag(Flags.Disabled)) cfg.Enabled = false;
                 cfg.ImportFromPruningTrieState = flags.HasFlag(Flags.ImportFromPruningTrieState);
             })
             .Build();
@@ -72,18 +72,18 @@ public class WorldStateDbDeciderModuleTests
         BlockInfosEntry = 1,
     }
 
-    [TestCase(Flags.None, PointerSeed.None, null, Description = "Patricia, nothing stored → null")]
-    [TestCase(Flags.None, PointerSeed.BlockInfosEntry, 936ul, Description = "Patricia reads the BlockInfos pointer")]
-    [TestCase(Flags.Enabled | Flags.FlatHasData, PointerSeed.None, 1ul, Description = "Flat reads its persisted CurrentState")]
-    [TestCase(Flags.Enabled, PointerSeed.BlockInfosEntry, null, Description = "Flat ignores the BlockInfos entry (PreGenesis → null)")]
-    [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, PointerSeed.BlockInfosEntry, 936ul, Description = "Import mode falls back to the trie pointer while flat is empty")]
+    [TestCase(Flags.Disabled, PointerSeed.None, null, Description = "Patricia, nothing stored → null")]
+    [TestCase(Flags.Disabled, PointerSeed.BlockInfosEntry, 936ul, Description = "Patricia reads the BlockInfos pointer")]
+    [TestCase(Flags.FlatHasData, PointerSeed.None, 1ul, Description = "Flat reads its persisted CurrentState")]
+    [TestCase(Flags.None, PointerSeed.BlockInfosEntry, null, Description = "Flat ignores the BlockInfos entry (PreGenesis → null)")]
+    [TestCase(Flags.ImportFromPruningTrieState, PointerSeed.BlockInfosEntry, 936ul, Description = "Import mode falls back to the trie pointer while flat is empty")]
     public void IStateBoundary_ReadsBackendPointer(Flags flags, PointerSeed seed, ulong? expected)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .Intercept<IFlatDbConfig>((cfg) =>
             {
-                cfg.Enabled = flags.HasFlag(Flags.Enabled);
+                if (flags.HasFlag(Flags.Disabled)) cfg.Enabled = false;
                 cfg.ImportFromPruningTrieState = flags.HasFlag(Flags.ImportFromPruningTrieState);
             })
             .Build();
