@@ -17,7 +17,7 @@ source "$here/lib.sh"
 : "${JB_REF:?json-bench ref}"
 : "${JB_BENCHMARK_CONFIG:?mixed (all-scenario) benchmark config, repo-relative}"
 
-CLIENTS="${CLIENTS:-nethermind geth reth}"
+CLIENTS="${CLIENTS:-nethermind}"
 # `-` not `:-`: an explicitly empty RPS_LIST means "no k6 cells" (parity/timings only), and
 # `:-` would substitute the default over it, which is exactly the case the caller wants.
 RPS_LIST="${RPS_LIST-100 250 500}"
@@ -93,34 +93,35 @@ if [[ ! "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]]; then
 fi
 WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
 
+# The benchmark runner carries ONE snapshot set — Nethermind, flat layout, at SNAPSHOT_BLOCK — so
+# nothing else can produce a result there. Refuse the rest up front: a geth/reth entry otherwise
+# reaches start-node.sh with a DB_SOURCE that does not exist, which is only a per-client
+# `::warning::`, so the sweep would report a two-thirds-empty matrix as success — and in corpus mode
+# a baseline with no candidate, i.e. no parity verdict at all. The single-node workflow rejects the
+# same two axes, but it reads the top-level inputs that sweep mode supersedes, so the sweep has to
+# check its own. Re-enabling a client or layout means provisioning its snapshot and widening this.
+for entry in $CLIENTS; do
+  if [[ "${entry%%@*}" != "nethermind" ]]; then
+    echo "::error::client '${entry%%@*}' has no snapshot on this runner — only nethermind is supported"; exit 1
+  fi
+done
+if [[ "$STATE_LAYOUT" != "flat" ]]; then
+  echo "::error::state_layout '${STATE_LAYOUT}' has no snapshot on this runner — only flat is supported"; exit 1
+fi
 
-default_image() {
-  case "$1" in
-    geth) echo "ethereum/client-go:stable" ;;
-    reth) echo "ghcr.io/paradigmxyz/reth:latest" ;;
-    nethermind) echo "$NM_IMAGE" ;;
-    *) echo "unknown client '$1'" >&2; return 1 ;;
-  esac
-}
-snap_path() {
-  if [[ "$1" == "nethermind" ]]; then
-    if [[ "$STATE_LAYOUT" == "flat" ]]; then echo "/data/nethermind/nethermind-flat-${SNAPSHOT_BLOCK}"
-    else echo "/data/nethermind/nethermind-${SNAPSHOT_BLOCK}"; fi
-  else echo "/data/nethermind/$1-${SNAPSHOT_BLOCK}"; fi
-}
-layout_flags() { [[ "$1" == "nethermind" && "$STATE_LAYOUT" == "flat" ]] && echo "--FlatDb.Enabled=true" || true; }
-# Per-client isolation used to differ (reth direct, others overlay), which made cross-client
-# storage numbers incomparable: overlayfs adds a layer and changes readahead and page-cache
-# behaviour, so disk-read-per-request measured a harness difference as much as a client one.
-# DB_ISOLATION_ALL forces one mode for every client. Use `copy`: it is overlay-free (so the
-# comparison is fair) and leaves the snapshot intact.
+# `ctype@image` variants share the one snapshot set, so the image is the only thing that varies.
+SNAPSHOT_PATH="/data/nethermind/nethermind-flat-${SNAPSHOT_BLOCK}"
+NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
+# One isolation mode for every node, so storage counters stay comparable: overlayfs adds a layer and
+# changes readahead and page-cache behaviour, so disk-read-per-request would otherwise measure a
+# harness difference as much as a code one. DB_ISOLATION_ALL forces a specific mode; `copy` is the
+# overlay-free choice that still leaves the snapshot intact.
 #
-# `direct` is refused here. It bind-mounts the snapshot READ-WRITE, and a node's startup alone
-# rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column family. The
-# Nethermind snapshots under /data/nethermind are shared with expb, so one direct run silently replaces
-# the fixture every later benchmark compares against — which happened on 2026-08-13 and cost a
-# day of measurements (eth_call p99 tripled while reth, untouched, moved 2%).
-# Override only with a snapshot nobody else consumes.
+# `direct` is refused without explicit consent. It bind-mounts the snapshot READ-WRITE, and a node's
+# startup alone rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column
+# family. The Nethermind snapshots under /data/nethermind are shared with expb, so one direct run
+# silently replaces the fixture every later benchmark compares against — which happened on
+# 2026-08-13 and cost a day of measurements (eth_call p99 tripled while an untouched client moved 2%).
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
 DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
 if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION" != "true" ]]; then
@@ -128,16 +129,7 @@ if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION"
   echo "::error::comparison, or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot."
   exit 1
 fi
-# reth's default stays `direct` without the consent flag, deliberately: /data/nethermind/reth-<block> is
-# consumed only by this harness (every expb scenario reads a nethermind-* snapshot), and reth has
-# run direct since the harness existed, so its post-first-boot state IS the steady-state fixture
-# every historical reth number was measured on. Switching it to copy would churn ~1 TB per run;
-# switching to overlay would change readahead behaviour and break comparability with history.
-# The guard above protects the snapshots that other consumers share.
-isolation() {
-  if [[ -n "$DB_ISOLATION_ALL" ]]; then echo "$DB_ISOLATION_ALL"; return; fi
-  [[ "$1" == "reth" ]] && echo "direct" || echo "overlay"
-}
+DB_ISOLATION="${DB_ISOLATION_ALL:-overlay}"
 
 # One json-bench cell: $1=config (repo-relative) $2=rps $3=duration $4=out dir $5=client
 # $6=label $7=corpus file (empty = normal cell; set = private corpus cell, aggregate-only output)
@@ -277,18 +269,18 @@ for entry in $CLIENTS; do
   if [[ "$entry" == *@* ]]; then
     img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
   else
-    img="$(default_image "$ctype")" || { echo "skip $entry: no image"; continue; }; label="$ctype"
+    img="$NM_IMAGE"; label="$ctype"
   fi
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
-  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=$(snap_path "$ctype"), head=${SNAPSHOT_BLOCK})"
+  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${SNAPSHOT_PATH}, head=${SNAPSHOT_BLOCK})"
   if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" \
-       DB_SOURCE="$(snap_path "$ctype")" DB_ISOLATION="$(isolation "$ctype")" \
+       DB_SOURCE="$SNAPSHOT_PATH" DB_ISOLATION="$DB_ISOLATION" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
-       JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$(layout_flags "$ctype")" \
+       JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
        ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \

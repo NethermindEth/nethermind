@@ -149,7 +149,7 @@ if [[ "$JB_MODE" == "benchmark" && -z "$JB_BENCHMARK_CONFIG" ]]; then
   # they only make k6 emit a per-method http_req_duration sub-metric into summary.json.
   {
     echo "test_name: \"RPC read benchmark ($LABEL${REFERENCE_RPC_URL:+ vs $REFERENCE_LABEL})\""
-    echo "description: \"Snapshot-backed read-path benchmark on the reproducible-benchmarks runner\""
+    echo "description: \"Snapshot-backed read-path benchmark on the self-hosted benchmark runner\""
     echo "clients:"
     echo "  - $LABEL"
     [[ -n "$REFERENCE_RPC_URL" ]] && echo "  - $REFERENCE_LABEL"
