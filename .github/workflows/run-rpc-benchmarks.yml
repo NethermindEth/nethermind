@@ -1133,33 +1133,24 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.docker_image == 'build-arm-pr-comparison'
     runs-on: [self-hosted, reproducible-benchmarks-arm]
     timeout-minutes: 180
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - label: master
+            ref: d1342e127f238db332c133dad2b28f02b21934cb
+          - label: pr12798
+            ref: 2d0a843c35d5e6ed11a1bc1a386bfdf64d4d7f7b
+          - label: pr12801
+            ref: e39ececb4b7a5221e68a65e7f5458a841b26d245
+          - label: pr12843
+            ref: 6a78ef9c2c03f7608c080b70ac83e5ab18720974
     steps:
-      - name: Check out master
+      - name: Check out pinned source
         uses: actions/checkout@v6
         with:
-          ref: d1342e127f238db332c133dad2b28f02b21934cb
-          path: sources/master
-          persist-credentials: false
-
-      - name: Check out PR 12798
-        uses: actions/checkout@v6
-        with:
-          ref: 19264d4c8de120974f3cc371a833b5773a4253c4
-          path: sources/pr12798
-          persist-credentials: false
-
-      - name: Check out PR 12801
-        uses: actions/checkout@v6
-        with:
-          ref: 4ce1e0a91e2240fd6db489de68205bab74396ed3
-          path: sources/pr12801
-          persist-credentials: false
-
-      - name: Check out PR 12843
-        uses: actions/checkout@v6
-        with:
-          ref: 429c9a6d41fdb1e75c98694ee192aa6d6d007008
-          path: sources/pr12843
+          ref: ${{ matrix.ref }}
           persist-credentials: false
 
       - name: Ensure Docker is installed
@@ -1176,6 +1167,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
 
       - name: Record ARM host details
         shell: bash
@@ -1190,58 +1183,47 @@ jobs:
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Build pinned images
+      - name: Build pinned image
         shell: bash
+        env:
+          LABEL: ${{ matrix.label }}
+          EXPECTED_REF: ${{ matrix.ref }}
         run: |
           set -euo pipefail
-
-          labels=(master pr12798 pr12801 pr12843)
-          refs=(
-            d1342e127f238db332c133dad2b28f02b21934cb
-            19264d4c8de120974f3cc371a833b5773a4253c4
-            4ce1e0a91e2240fd6db489de68205bab74396ed3
-            429c9a6d41fdb1e75c98694ee192aa6d6d007008
-          )
 
           echo '| Variant | Commit | Local image | Architecture |' >> "${GITHUB_STEP_SUMMARY}"
           echo '|---|---|---|---|' >> "${GITHUB_STEP_SUMMARY}"
 
-          for i in "${!labels[@]}"; do
-            label="${labels[$i]}"
-            expected_ref="${refs[$i]}"
-            source_dir="sources/${label}"
-            actual_ref="$(git -C "${source_dir}" rev-parse HEAD)"
-            if [[ "${actual_ref}" != "${expected_ref}" ]]; then
-              echo "Expected ${expected_ref} for ${label}, got ${actual_ref}."
-              exit 1
-            fi
+          actual_ref="$(git rev-parse HEAD)"
+          if [[ "${actual_ref}" != "${EXPECTED_REF}" ]]; then
+            echo "Expected ${EXPECTED_REF} for ${LABEL}, got ${actual_ref}."
+            exit 1
+          fi
 
-            short_ref="${actual_ref:0:12}"
-            image="nethermindeth/nethermind:armbench-${label}-${short_ref}"
-            source_date_epoch="$(git -C "${source_dir}" log -1 --format=%ct)"
-            pull_arg=()
-            if [[ "${label}" == "master" ]]; then
-              pull_arg=(--pull)
-            fi
+          short_ref="${actual_ref:0:12}"
+          image="nethermindeth/nethermind:armbench-${LABEL}-${short_ref}"
+          source_date_epoch="$(git log -1 --format=%ct)"
+          pull_arg=()
+          if [[ "${LABEL}" == "master" ]]; then
+            pull_arg=(--pull)
+          fi
 
-            docker buildx build "${pull_arg[@]}" \
-              --load \
-              --platform linux/arm64 \
-              --file "${source_dir}/Dockerfile" \
-              --tag "${image}" \
-              --build-arg BUILD_CONFIG=release \
-              --build-arg CI=true \
-              --build-arg COMMIT_HASH="${actual_ref}" \
-              --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
-              "${source_dir}"
+          docker buildx build "${pull_arg[@]}" \
+            --load \
+            --progress plain \
+            --platform linux/arm64 \
+            --file Dockerfile \
+            --tag "${image}" \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=true \
+            --build-arg COMMIT_HASH="${actual_ref}" \
+            --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
+            .
 
-            architecture="$(docker image inspect "${image}" --format '{{.Architecture}}')"
-            if [[ "${architecture}" != "arm64" ]]; then
-              echo "Image ${image} has unexpected architecture ${architecture}."
-              exit 1
-            fi
-            echo "| ${label} | \`${actual_ref}\` | \`${image}\` | ${architecture} |" >> "${GITHUB_STEP_SUMMARY}"
-          done
-
-          docker image ls 'nethermindeth/nethermind' --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}' \
-            | grep -E 'REPOSITORY|armbench-(master|pr12798|pr12801|pr12843)-'
+          architecture="$(docker image inspect "${image}" --format '{{.Architecture}}')"
+          if [[ "${architecture}" != "arm64" ]]; then
+            echo "Image ${image} has unexpected architecture ${architecture}."
+            exit 1
+          fi
+          echo "| ${LABEL} | \`${actual_ref}\` | \`${image}\` | ${architecture} |" >> "${GITHUB_STEP_SUMMARY}"
+          docker image inspect "${image}" --format '{{.RepoTags}} {{.Id}} {{.Architecture}} {{.Size}}'
