@@ -54,10 +54,13 @@ public sealed class SlotFile : IDisposable
         if (size == 0 || size > 64 * MemorySizes.MiB) return false;
 
         byte[] rented = ArrayPool<byte>.Shared.Rent((int)size);
-        RandomAccess.Read(_handle, rented.AsSpan(0, (int)size), offset);
-        action(new ReadOnlySpan<byte>(rented, 0, (int)size), arg);
-        ArrayPool<byte>.Shared.Return(rented);
-        return true;
+        try
+        {
+            RandomAccess.Read(_handle, rented.AsSpan(0, (int)size), offset);
+            action(new ReadOnlySpan<byte>(rented, 0, (int)size), arg);
+            return true;
+        }
+        finally { ArrayPool<byte>.Shared.Return(rented); }
     }
 
     public bool TryWrite(int slot, ReadOnlySpan<byte> data)
