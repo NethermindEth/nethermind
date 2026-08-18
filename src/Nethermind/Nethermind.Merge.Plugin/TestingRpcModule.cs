@@ -130,7 +130,7 @@ public class TestingRpcModule(
         try
         {
             IEnumerable<Transaction> txs = txRlps is null
-                ? env.TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true)
+                ? env.TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true, targetBlock: header)
                 : DecodeTransactions(txRlps);
 
             transactions = txs.ToArray();

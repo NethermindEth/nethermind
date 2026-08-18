@@ -484,7 +484,7 @@ public class CliqueBlockProducer : IBlockProducer
         header.MixHash = Keccak.Zero;
         header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
-        IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit, null, filterSource: true);
+        IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentHeader, header.GasLimit, null, filterSource: true, targetBlock: header);
         Block block = new BlockToProduce(
             header,
             selectedTxs,

@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource, BlockHeader? targetBlock)
         {
             if (ForSealing)
             {

@@ -53,6 +53,12 @@ namespace Nethermind.TxPool
         bool IsKnown(Hash256 hash);
         bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
+
+        /// <summary>
+        /// Reports whether specification-dependent pool revalidation has completed for the target block.
+        /// </summary>
+        bool EnsureSafeForkState(BlockHeader targetBlock);
+
         bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof);

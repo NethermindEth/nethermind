@@ -81,6 +81,7 @@ namespace Nethermind.TxPool
         private ulong _lastBlockNumber = ulong.MaxValue;
         private Hash256? _lastBlockHash;
         private IReleaseSpec? _lastRevalidatedSpec;
+        private IReleaseSpec? _completedRevalidatedSpec;
         private IReadOnlyDictionary<Hash256, Transaction>? _blobTransactionsToRevalidate;
 
         private bool _isDisposed;
@@ -158,6 +159,7 @@ namespace Nethermind.TxPool
                 {
                     _blobTransactionsToRevalidate = LoadBlobTransactionsForRevalidation();
                     _blobTransactions.UpdatePool(_accounts, _updateBlobBucketAtSpecChange);
+                    _completedRevalidatedSpec = _lastRevalidatedSpec;
                 }
                 finally
                 {
@@ -639,6 +641,7 @@ namespace Nethermind.TxPool
         {
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
             Interlocked.CompareExchange(ref _lastRevalidatedSpec, headSpec, null);
+            Interlocked.CompareExchange(ref _completedRevalidatedSpec, headSpec, null);
             bool eip1559Enabled = headSpec.IsEip1559Enabled;
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
             TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
@@ -848,6 +851,10 @@ namespace Nethermind.TxPool
                 _blobTransactionsToRevalidate = isSpecChange ? LoadBlobTransactionsForRevalidation() : null;
                 _transactions.UpdatePool(_accounts, isSpecChange ? _updateBucketAtSpecChange : _updateBucket);
                 _blobTransactions.UpdatePool(_accounts, isSpecChange ? _updateBlobBucketAtSpecChange : _updateBucket);
+                if (isSpecChange)
+                {
+                    Volatile.Write(ref _completedRevalidatedSpec, headSpec);
+                }
             }
             finally
             {
@@ -1029,6 +1036,19 @@ namespace Nethermind.TxPool
 
         public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
             _blobTransactions.TryGetValue(hash, out blobTransaction);
+
+        public bool EnsureSafeForkState(BlockHeader targetBlock)
+        {
+            IReleaseSpec targetSpec = _specProvider.GetSpec(targetBlock);
+            IReleaseSpec currentHeadSpec = _specProvider.GetCurrentHeadSpec();
+            IReleaseSpec? lastRevalidatedSpec = Volatile.Read(ref _lastRevalidatedSpec);
+            IReleaseSpec? completedRevalidatedSpec = Volatile.Read(ref _completedRevalidatedSpec);
+
+            return ReferenceEquals(currentHeadSpec, targetSpec)
+                && ((_transactions.Count == 0 && _blobTransactions.Count == 0)
+                || ReferenceEquals(lastRevalidatedSpec, targetSpec)
+                && ReferenceEquals(completedRevalidatedSpec, targetSpec));
+        }
 
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)

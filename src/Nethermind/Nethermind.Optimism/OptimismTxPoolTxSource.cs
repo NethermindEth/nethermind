@@ -15,8 +15,8 @@ public class OptimismTxPoolTxSource(ITxSource baseTxSource) : ITxSource
 
     public bool SupportsBlobs => _baseTxSource.SupportsBlobs;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource) =>
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource, BlockHeader? targetBlock) =>
         payloadAttributes is OptimismPayloadAttributes { NoTxPool: true }
             ? []
-            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource);
+            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource, targetBlock);
 }

@@ -18,11 +18,13 @@ public class FilteredTxSource<T>(ITxSource innerSource, ITxFilter txFilter, ILog
 
     public bool SupportsBlobs => innerSource.SupportsBlobs;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource, BlockHeader? targetBlock)
     {
-        IReleaseSpec currentSpec = NextBlockSpecHelper.GetSpec(specProvider, parentHeader, payloadAttributes, blocksConfig);
+        IReleaseSpec currentSpec = targetBlock is null
+            ? NextBlockSpecHelper.GetSpec(specProvider, parentHeader, payloadAttributes, blocksConfig)
+            : specProvider.GetSpec(targetBlock);
 
-        foreach (Transaction tx in innerSource.GetTransactions(parentHeader, gasLimit, payloadAttributes, filterSource))
+        foreach (Transaction tx in innerSource.GetTransactions(parentHeader, gasLimit, payloadAttributes, filterSource, targetBlock))
         {
             if (tx is T)
             {

@@ -9,7 +9,12 @@ namespace Nethermind.Consensus.Transactions
 {
     public interface ITxSource
     {
-        IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false);
+        IEnumerable<Transaction> GetTransactions(
+            BlockHeader parent,
+            ulong gasLimit,
+            PayloadAttributes? payloadAttributes = null,
+            bool filterSource = false,
+            BlockHeader? targetBlock = null);
         bool SupportsBlobs { get; }
     }
 }

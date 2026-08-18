@@ -25,11 +25,11 @@ namespace Nethermind.Consensus.Transactions
 
         public void First(ITxSource txSource) => _transactionSources.Insert(0, txSource);
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false, BlockHeader? targetBlock = null)
         {
             for (int i = 0; i < _transactionSources.Count; i++)
             {
-                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit, payloadAttributes, filterSource);
+                IEnumerable<Transaction> transactions = _transactionSources[i].GetTransactions(parent, gasLimit, payloadAttributes, filterSource, targetBlock);
                 foreach (Transaction tx in transactions)
                 {
                     yield return tx;

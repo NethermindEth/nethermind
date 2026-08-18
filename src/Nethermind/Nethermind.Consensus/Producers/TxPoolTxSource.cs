@@ -41,10 +41,18 @@ namespace Nethermind.Consensus.Producers
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         protected readonly ILogger _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(
+            BlockHeader parent,
+            ulong gasLimit,
+            PayloadAttributes? payloadAttributes = null,
+            bool filterSource = false,
+            BlockHeader? targetBlock = null)
         {
-            ulong blockNumber = parent.Number + 1;
-            IReleaseSpec spec = NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig);
+            bool validateForkSensitiveState = targetBlock is null || !_transactionPool.EnsureSafeForkState(targetBlock);
+            ulong blockNumber = targetBlock?.Number ?? (parent.Number + 1);
+            IReleaseSpec spec = targetBlock is null
+                ? NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig)
+                : _specProvider.GetSpec(targetBlock);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
                 _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
@@ -54,7 +62,7 @@ namespace Nethermind.Consensus.Producers
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
-            Func<Transaction, bool> intrinsicFilter = tx => filter(tx) && IsIntrinsicallyValid(tx, spec);
+            Func<Transaction, bool> intrinsicFilter = tx => filter(tx) && (!validateForkSensitiveState || IsIntrinsicallyValid(tx, spec));
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
             IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, intrinsicFilter, gasLimit);
@@ -66,7 +74,7 @@ namespace Nethermind.Consensus.Producers
 
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)maxBlobCount);
 
-            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount);
+            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, validateForkSensitiveState);
 
             foreach (Transaction tx in transactions)
             {
@@ -153,7 +161,14 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions, BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs, ulong maxBlobs)
+        private void SelectBlobTransactions(
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions,
+            BlockHeader parent,
+            IReleaseSpec spec,
+            in UInt256 baseFee,
+            ArrayPoolList<Transaction> selectedBlobTxs,
+            ulong maxBlobs,
+            bool validateForkSensitiveState)
         {
             ulong maxBlobsToConsider = maxBlobs * 5ul;
             ulong countOfRemainingBlobs = 0UL;
@@ -183,7 +198,7 @@ namespace Nethermind.Consensus.Producers
 
                 consideredBlobCount += txBlobCount;
                 bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
-                if (!IsValidBlobForNextBlock(blobTx, parent, spec))
+                if (validateForkSensitiveState && !IsValidBlobForNextBlock(blobTx, parent, spec))
                 {
                     if (reachedConsiderationLimit)
                     {

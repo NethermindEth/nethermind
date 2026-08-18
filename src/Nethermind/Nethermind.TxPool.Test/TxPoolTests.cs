@@ -394,6 +394,7 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             specChangeTxValidator.DidNotReceiveWithAnyArgs().IsWellFormed(default, default);
+            Assert.That(_txPool.EnsureSafeForkState(Build.A.BlockHeader.WithNumber(head.Number + 1).TestObject), Is.True);
 
             await AddEmptyBlock();
 
@@ -401,9 +402,11 @@ namespace Nethermind.TxPool.Test
 
             Block nextBlock = Build.A.Block.WithNumber(head.Number + 2).TestObject;
             _blockTree.BestSuggestedHeader = nextBlock.Header;
+            Assert.That(_txPool.EnsureSafeForkState(nextBlock.Header), Is.False);
             await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
 
             specChangeTxValidator.Received(1).IsWellFormed(transaction, Arg.Any<IReleaseSpec>());
+            Assert.That(_txPool.EnsureSafeForkState(nextBlock.Header), Is.True);
         }
 
         [Test]
