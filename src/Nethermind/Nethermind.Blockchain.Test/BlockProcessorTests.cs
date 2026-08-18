@@ -305,18 +305,19 @@ public class BlockProcessorTests
 
     private static IEnumerable<TestCaseData> PredeployInstallCases()
     {
-        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode)
+        // EIP-8141 mandates the runtime code alone, so its account keeps the nonce it already had.
+        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 0ul)
             .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
-        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray())
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray(), 1ul)
             .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
         // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
         // code-only idempotency probe would never fire it.
-        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray())
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray(), 1ul)
             .SetName("Installs_eip8272_recent_root_predeploy_once_and_captures_it_in_bal");
     }
 
     [TestCaseSource(nameof(PredeployInstallCases)), MaxTime(Timeout.MaxTestTime)]
-    public void Installs_predeploy_once_and_captures_it_in_bal(IReleaseSpec releaseSpec, Address predeploy, byte[] code)
+    public void Installs_predeploy_once_and_captures_it_in_bal(IReleaseSpec releaseSpec, Address predeploy, byte[] code, ulong expectedNonce)
     {
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
         (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch(specProvider: specProvider);
@@ -327,12 +328,12 @@ public class BlockProcessorTests
         stateProvider.Commit(spec);
         stateProvider.CommitTree(0);
 
-        // First post-activation block installs the predeploy: code + nonce == 1.
+        // First post-activation block installs the predeploy: its code, and its nonce where the EIP mandates one.
         Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
-        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(1ul));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         if (!spec.IsEip8250Enabled)
         {
             // In the EIP-8141 case, the independent NONCE_MANAGER must stay absent, proving unrelated predeploys are not installed.
@@ -350,8 +351,13 @@ public class BlockProcessorTests
                 Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
             }
 
-            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(1));
-            Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(1ul));
+            // No nonce entry at all where the EIP mandates none: an unmandated one moves the BAL hash and the
+            // block is rejected before execution.
+            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(expectedNonce == 0 ? 0 : 1));
+            if (expectedNonce != 0)
+            {
+                Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(expectedNonce));
+            }
         }
 
         // Second block is a no-op: state unchanged and no BAL entry for the predeploy.
@@ -359,7 +365,7 @@ public class BlockProcessorTests
         (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
-        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(1ul));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");
     }

@@ -125,13 +125,14 @@ env:
   FRAMES_VERSION: ${{ inputs.frames_version || 'tests-frames-devnet@v0.0.0' }}
   # Frame cases this branch is known to fail. Each is a client defect with a fix in flight rather
   # than a fixture mismatch, so an entry goes away as its fix lands and the suite must reach 159.
-  #   test_precompile_target (6 cases) and test_precompile_target_rejecting_its_input: a precompile
-  #     frame target carries no code, so the codeless short-circuit returns before the VM runs and
-  #     the precompile's own gas is never charged.
+  # Alternatives match anywhere in the case name, and the runner anchors the whole filter itself.
+  #   test_precompile_target, covering both the 6 cases of that name and, by prefix,
+  #     test_precompile_target_rejecting_its_input: a precompile frame target carries no code, so the
+  #     codeless short-circuit returns before the VM runs and the precompile's own gas is never charged.
   #   test_delegated_target_entry_charge (2 cases), test_delegated_to_precompile_target,
   #     test_verify_frame_delegated_to_precompile_target and test_bal_unaffordable_designation_absent:
   #     a frame does not pay for resolving its target's delegation (PR #12786).
-  FRAME_SKIP: ^(?!.*(test_precompile_target|test_delegated_target_entry_charge|test_delegated_to_precompile_target|test_verify_frame_delegated_to_precompile_target|test_bal_unaffordable_designation_absent))
+  FRAME_SKIP: (?!.*(test_precompile_target|test_delegated_target_entry_charge|test_delegated_to_precompile_target|test_verify_frame_delegated_to_precompile_target|test_bal_unaffordable_designation_absent))
   # Cases the frame suite must still run once FRAME_SKIP is applied; a scope that silently resolved
   # to nothing would otherwise pass by running nothing at all.
   FRAME_MIN_CASES: '147'
@@ -830,7 +831,9 @@ jobs:
               rc=1
             fi
 
-            if [ "$TEST_TYPE" = "frameTest" ] && [ $rc -eq 0 ]; then
+            # Only the unfiltered, FRAME_SKIP-scoped run has a known case count; a narrowing dispatch
+            # filter legitimately runs fewer.
+            if [ "$TEST_TYPE" = "frameTest" ] && [ -z "$FILTER" ] && [ $rc -eq 0 ]; then
               RAN=$(jq 'length' "$RESULTS_FILE" 2>/dev/null || echo 0)
               if [ "$RAN" -lt "$FRAME_MIN_CASES" ]; then
                 echo "::error::frameTest ran $RAN cases, fewer than the $FRAME_MIN_CASES expected; the fixture scope or the release pin has moved"
