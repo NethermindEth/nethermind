@@ -335,7 +335,6 @@ public class FrameTxValidationTests
         Assert.That(deadline, Is.EqualTo(0UL));
     }
 
-    // EIP-8141 "Expiry Verifier Frame": an expiry verifier frame may appear only as the first frame.
     [TestCase(0, false, TestName = "a leading expiry frame is correctly placed")]
     [TestCase(1, true, TestName = "an expiry frame behind the leading frame is misplaced")]
     [TestCase(2, true, TestName = "an expiry frame at the tail is misplaced")]

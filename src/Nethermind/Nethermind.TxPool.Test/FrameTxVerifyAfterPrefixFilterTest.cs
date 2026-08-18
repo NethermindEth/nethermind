@@ -4,80 +4,68 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.TxPool.Test.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
-[Parallelizable(ParallelScope.All)]
+// Not parallelizable: the cases assert against the shared rejection counter.
 internal class FrameTxVerifyAfterPrefixFilterTest
 {
-    private static Transaction FrameTx(params TxFrame[] frames) => new()
+    private static IEnumerable<TestCaseData> PrefixCases()
     {
-        Type = TxType.FrameTx,
-        SenderAddress = TestItem.AddressA,
-        Frames = frames,
-        FrameSignatures = [],
-    };
-
-    private static TxFrame SelfVerify() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, 1_000, UInt256.Zero, default);
-
-    private static TxFrame OnlyVerify() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, 1_000, UInt256.Zero, default);
-
-    private static TxFrame Pay() =>
-        new(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressC, 1_000, UInt256.Zero, default);
-
-    private static TxFrame Deploy() =>
-        new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressD, 1_000, UInt256.Zero, default);
-
-    private static TxFrame UserOp() =>
-        new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, 1_000, UInt256.Zero, default);
-
-    private static TxFrame PostOp() =>
-        new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressB, 1_000, UInt256.Zero, default);
-
-    // EIP-8141 "Structural Rules" rule 8: no VERIFY frame may follow the validation prefix, because its
-    // revert would invalidate a pooled transaction on state the pool never validated.
-    private static IEnumerable<TestCaseData> Rule8Cases()
-    {
-        yield return new TestCaseData(new[] { SelfVerify(), UserOp() }, AcceptTxResult.Accepted)
+        yield return new TestCaseData(new[] { SelfVerify(), Execution() }, AcceptTxResult.Accepted)
             .SetName("a self relay prefix followed by a user op is admissible");
-        yield return new TestCaseData(new[] { Deploy(), OnlyVerify(), Pay(), UserOp(), PostOp() }, AcceptTxResult.Accepted)
+        yield return new TestCaseData(new[] { Deploy(), OnlyVerify(), Pay(), Execution(), PostTx() }, AcceptTxResult.Accepted)
             .SetName("the longest recognized prefix followed by a body is admissible");
-        yield return new TestCaseData(new[] { SelfVerify(), UserOp(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+        yield return new TestCaseData(new[] { SelfVerify(), Execution(), PostTx() }, AcceptTxResult.Accepted)
+            .SetName("a POST_TX frame behind the prefix is admissible");
+        yield return new TestCaseData(new[] { Expiry(), SelfVerify(), Execution() }, AcceptTxResult.Accepted)
+            .SetName("a leading expiry frame joins the prefix rather than ending it");
+        yield return new TestCaseData(new[] { Expiry(), Deploy(), OnlyVerify(), Pay(), Execution() }, AcceptTxResult.Accepted)
+            .SetName("a leading expiry frame ahead of the longest prefix is admissible");
+        yield return new TestCaseData(new[] { SelfVerify(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a VERIFY frame behind a self relay prefix is rejected");
         yield return new TestCaseData(new[] { SelfVerify(), Pay() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a pay frame behind a self relay prefix is rejected");
-        yield return new TestCaseData(new[] { OnlyVerify(), Pay(), UserOp(), Pay() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+        yield return new TestCaseData(new[] { SelfVerify(), Expiry() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+            .SetName("a trailing expiry frame is rejected as a VERIFY frame behind the prefix");
+        yield return new TestCaseData(new[] { OnlyVerify(), Pay(), Execution(), Pay() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a VERIFY frame behind a paymaster prefix is rejected");
-        // A layout matching none of the four recognized prefixes has no boundary for rule 8 to apply to;
-        // the rules that reject it do so on their own terms.
-        yield return new TestCaseData(new[] { UserOp(), SelfVerify() }, AcceptTxResult.Accepted)
+        // A layout matching none of the recognized prefixes has no boundary to sit behind; the rules
+        // that reject it do so on their own terms.
+        yield return new TestCaseData(new[] { Execution(), SelfVerify() }, AcceptTxResult.Accepted)
             .SetName("an unrecognized layout is left to the other rules");
     }
 
-    [TestCaseSource(nameof(Rule8Cases))]
+    [TestCaseSource(nameof(PrefixCases))]
     public void Accept_RejectsAVerifyFrameAfterTheValidationPrefix(TxFrame[] frames, AcceptTxResult expected)
     {
-        Transaction tx = FrameTx(frames);
-        FrameTxVerifyAfterPrefixFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxVerifyAfterPrefixFilterTest>());
-        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
+        long before = Metrics.PendingTransactionsFrameTxVerifyAfterPrefix;
 
-        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Accept(FrameTx(frames)), Is.EqualTo(expected));
+            Assert.That(Metrics.PendingTransactionsFrameTxVerifyAfterPrefix,
+                Is.EqualTo(expected == AcceptTxResult.Accepted ? before : before + 1));
+        }
     }
 
     [Test]
     public void Accept_LeavesANonFrameTransactionAlone()
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithSenderAddress(TestItem.AddressA).TestObject;
+
+        Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    private static AcceptTxResult Accept(Transaction tx)
+    {
         FrameTxVerifyAfterPrefixFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxVerifyAfterPrefixFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
-
-        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        return filter.Accept(tx, ref state, TxHandlingOptions.None);
     }
 }

@@ -281,15 +281,15 @@ public static class FrameTxValidation
 
     /// <summary>
     /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame behind its recognized
-    /// validation prefix, which EIP-8141 "Structural Rules" rule 8 bars from the public mempool.
+    /// validation prefix, which EIP-8141 bars from the public mempool.
     /// </summary>
     /// <remarks>
-    /// A public-mempool rule, not a validity rule: such a transaction stays consensus-valid, and the
-    /// reference implementation's static checks do not reject it. The bar exists because a VERIFY frame
-    /// reverting invalidates the whole transaction, and one sitting past the prefix does so on state the
-    /// pool never validated. Judged against the same prefix grammar <see cref="ValidationWorkGas"/>
-    /// prices admission with; a layout matching none of the recognized prefixes has no boundary for the
-    /// rule to apply to and is left to the rules that reject it on their own terms.
+    /// A public-mempool rule, not a validity rule: such a transaction stays consensus-valid. A VERIFY frame
+    /// that reverts invalidates the whole transaction, so one sitting past the prefix does so on state the
+    /// pool never validated. Judged against the same prefix grammar <see cref="ValidationWorkGas"/> prices
+    /// admission with, so a layout matching none of the recognized prefixes has no boundary to sit behind
+    /// and is left to the rules that reject it on their own terms. That leaves the equivalent hole open for
+    /// unrecognized layouts until the prefix structure itself is enforced.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
     public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
@@ -313,14 +313,13 @@ public static class FrameTxValidation
 
     /// <summary>
     /// True if <paramref name="transaction"/> carries an expiry-verifier frame anywhere but at the head of
-    /// its frame list, the only placement EIP-8141 "Expiry Verifier Frame" permits.
+    /// its frame list, the only placement EIP-8141 permits.
     /// </summary>
     /// <remarks>
-    /// A public-mempool rule, not a validity rule: the reference implementation validates an expiry frame's
-    /// shape and uniqueness but never its position, so such a transaction stays consensus-valid. The pool
-    /// needs the placement because it reads the deadline from the leading frame alone
-    /// (<see cref="TryGetExpiryDeadline"/>); a misplaced frame would otherwise carry a deadline the expiry
-    /// sweep can never see.
+    /// A public-mempool rule, not a validity rule: an expiry frame's shape and uniqueness are validated but
+    /// never its position, so such a transaction stays consensus-valid. The pool needs the placement because
+    /// it reads the deadline from the leading frame alone (<see cref="TryGetExpiryDeadline"/>); a misplaced
+    /// frame would otherwise carry a deadline the expiry sweep can never see.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
     public static bool HasMisplacedExpiryFrame(Transaction transaction)
@@ -534,10 +533,8 @@ public static class FrameTxValidation
     /// <remarks>
     /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; a tx whose deadline has passed can
     /// never be included and is dropped from the mempool (ethereum/EIPs#12007, "Revalidation"). Total on any input:
-    /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences.
-    /// Only the leading frame is read, the sole placement EIP-8141 permits and the one
-    /// <see cref="HasMisplacedExpiryFrame"/> keeps the pool to, so this accessor and that rule cannot disagree
-    /// on where the deadline lives.
+    /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences. Only the leading frame is read —
+    /// the sole placement EIP-8141 permits, and the one <see cref="HasMisplacedExpiryFrame"/> keeps the pool to.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
     /// <param name="deadline">The expiry deadline in Unix seconds when the transaction carries one.</param>

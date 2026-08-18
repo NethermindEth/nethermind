@@ -12,9 +12,9 @@ namespace Nethermind.TxPool.Filters;
 /// <remarks>
 /// A public-mempool rule, not a validity rule: a block carrying such a transaction stays valid. A VERIFY frame that
 /// reverts invalidates the whole transaction, so one placed past the prefix lets state the pool never validated
-/// invalidate a pooled transaction. Purely structural, so it runs before <see cref="FrameTxSignatureFilter"/> spends
-/// any elliptic-curve work. Must run after <see cref="MalformedTxFilter"/>, which resolves the sender the prefix
-/// grammar is matched against and guarantees the frame list is well-formed.
+/// invalidate a pooled transaction. Must run after <see cref="MalformedTxFilter"/>, which resolves the sender the
+/// prefix grammar is matched against, and before <see cref="FrameTxSignatureFilter"/>, since a structural verdict
+/// needs no elliptic-curve work.
 /// </remarks>
 internal sealed class FrameTxVerifyAfterPrefixFilter(ILogger logger) : IIncomingTxFilter
 {

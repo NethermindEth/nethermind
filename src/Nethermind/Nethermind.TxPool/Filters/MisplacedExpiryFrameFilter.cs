@@ -10,11 +10,11 @@ namespace Nethermind.TxPool.Filters;
 /// Rejects an EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list.
 /// </summary>
 /// <remarks>
-/// A public-mempool rule, not a validity rule: the reference implementation validates an expiry frame's shape and
-/// uniqueness but never its position, so a block carrying one stays valid. The pool reads the deadline from the
-/// leading frame alone, so a misplaced frame would carry a deadline the expiry sweep can never see and the
-/// transaction would outlive it. Must run after <see cref="MalformedTxFilter"/>, whose expiry-frame shape rules make
-/// the leading-frame test exact, and before <see cref="ExpiredFrameTxFilter"/>, which reads that deadline.
+/// A public-mempool rule, not a validity rule: an expiry frame's shape and uniqueness are validated but never its
+/// position, so a block carrying one stays valid. The pool reads the deadline from the leading frame alone, so a
+/// misplaced frame would carry a deadline the expiry sweep can never see and the transaction would outlive it.
+/// Must run after <see cref="MalformedTxFilter"/>, whose expiry-frame shape rules make the leading-frame test exact,
+/// and before <see cref="ExpiredFrameTxFilter"/>, which reads that deadline.
 /// </remarks>
 internal sealed class MisplacedExpiryFrameFilter(ILogger logger) : IIncomingTxFilter
 {
