@@ -120,7 +120,8 @@ on:
       client_env:
         description: >-
           Extra environment variables for the Nethermind client container (KEY=VALUE, comma-separated),
-          injected into the scenario extra_env. Example: DOTNET_GCgen0size=0x20000000. Single-image runs only.
+          injected into the scenario extra_env. Example: DOTNET_GCgen0size=0x20000000. Applied to every
+          scenario, including each image of a multi-image run.
         required: false
         default: ""
   pull_request:
@@ -1815,6 +1816,7 @@ jobs:
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
+          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
@@ -1891,6 +1893,22 @@ jobs:
             SK="${scenario_key}" V="${TRACE_BLOCKS}" \
               "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
             echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
+
+          # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
+          # Keys/values go through strenv so quotes and yq metacharacters in values stay literal.
+          if [[ -n "${CLIENT_ENV:-}" ]]; then
+            IFS=',' read -ra client_env_entries <<< "${CLIENT_ENV}"
+            for entry in "${client_env_entries[@]}"; do
+              entry="${entry#"${entry%%[![:space:]]*}"}"
+              entry="${entry%"${entry##*[![:space:]]}"}"
+              [[ -z "${entry}" || "${entry}" != *"="* ]] && continue
+              env_key="${entry%%=*}"
+              env_value="${entry#*=}"
+              SK="${scenario_key}" K="${env_key}" V="${env_value}" \
+                "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
+              echo "Set client env ${env_key}=${env_value}."
+            done
           fi
 
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
