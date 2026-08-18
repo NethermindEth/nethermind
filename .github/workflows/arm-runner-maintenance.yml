@@ -70,21 +70,21 @@ jobs:
           set -uo pipefail
           # expb's dotTrace/dotnet-trace integration drives host-side dotnet global tools;
           # this box was provisioned without the SDK (the x64 twin has it). Idempotent.
-          # Every probe is time-bounded: a broken wrapper/symlink pair can exec-loop or a
-          # stale first-run lock can block forever, and an unbounded probe wedges the job.
-          echo "--- current state ---"
-          ls -la /usr/local/bin/dotnet /usr/local/share/dotnet/dotnet 2>&1 || true
-          file /usr/local/bin/dotnet /usr/local/share/dotnet/dotnet 2>&1 || true
-          head -c 200 /usr/local/bin/dotnet 2>/dev/null | cat -v || true; echo
-          pgrep -af dotnet || echo "no stray dotnet processes"
-          if timeout 20 dotnet --version >/dev/null 2>&1; then
-            echo "dotnet working: $(timeout 20 dotnet --version)"
+          # Probe from a neutral cwd with --list-sdks: the runner's leftover repo checkout
+          # carries a global.json pinning an SDK we don't ship, which fails 'dotnet --version'
+          # (exit 145) regardless of install health. Probes are time-bounded because a broken
+          # wrapper/symlink pair can exec-loop forever.
+          cd /tmp
+          if timeout 20 dotnet --list-sdks 2>/dev/null | grep -q .; then
+            echo "dotnet SDKs present:"; timeout 20 dotnet --list-sdks
             exit 0
           fi
           echo "--- healing ---"
           pkill -9 -f '/usr/local/share/dotnet' 2>/dev/null || true
+          # Remove any old symlink BEFORE writing the wrapper: a redirect through a symlink
+          # into the install dir overwrites the real muxer.
           rm -f /usr/local/bin/dotnet
-          if ! file /usr/local/share/dotnet/dotnet 2>/dev/null | grep -q ELF; then
+          if ! head -c4 /usr/local/share/dotnet/dotnet 2>/dev/null | grep -q ELF; then
             echo "muxer missing or not ELF - reinstalling SDK"
             rm -rf /usr/local/share/dotnet
             curl -sSL --max-time 120 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
@@ -92,7 +92,7 @@ jobs:
           fi
           printf '#!/bin/sh\nexport DOTNET_ROOT=/usr/local/share/dotnet\nexec /usr/local/share/dotnet/dotnet "$@"\n' > /usr/local/bin/dotnet
           chmod +x /usr/local/bin/dotnet
-          timeout 120 dotnet --version
+          timeout 60 dotnet --list-sdks
 
       - name: Disk usage after
         shell: bash
