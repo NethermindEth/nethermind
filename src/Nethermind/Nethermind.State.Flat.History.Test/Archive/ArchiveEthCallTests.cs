@@ -16,6 +16,7 @@ namespace Nethermind.State.Flat.History.Test.Archive;
 /// <c>eth_call</c> reaches the history index rather than the head state.
 /// </summary>
 [TestFixture]
+[Explicit("Benchmark harness: generates a real chain on disk. Run when touching the archive-index benchmark.")]
 public class ArchiveEthCallTests
 {
     private static readonly ArchiveChainShape Shape = ArchiveChainShape.Tiny;
