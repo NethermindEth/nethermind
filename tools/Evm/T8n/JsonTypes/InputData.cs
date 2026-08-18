@@ -40,7 +40,7 @@ public class InputData
                 if (transaction.Type.SupportsFrames())
                 {
                     FrameTransactionForRpc frameTransactionForRpc = (FrameTransactionForRpc)Txs[i];
-                    transaction.SenderAddress = frameTransactionForRpc.From;
+                    transaction.SenderAddress = frameTransactionForRpc.Sender ?? frameTransactionForRpc.From;
                     transaction.ChainId ??= chainId;
                     // There is no RLP round-trip on this path, so the gas limit the decoder would have
                     // derived from the frames has to be derived here too. Otherwise the JSON `gas` field

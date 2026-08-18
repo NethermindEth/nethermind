@@ -116,6 +116,14 @@ public class FrameTransactionSigningTests
     }
 
     [Test]
+    public void Resolves_sender_from_the_payload_sender_field_without_a_secret_key()
+    {
+        Transaction transaction = Fill(BuildInput(key: null, sender: null, [Entry()], payloadSender: TestItem.AddressB));
+
+        Assert.That(transaction.SenderAddress, Is.EqualTo(TestItem.AddressB));
+    }
+
+    [Test]
     public void Rejects_frame_transaction_without_sender_and_secret_key()
     {
         InputData input = BuildInput(key: null, sender: null, signatures: [Entry()]);
@@ -164,12 +172,13 @@ public class FrameTransactionSigningTests
         new() { Scheme = scheme, Signer = signer, Msg = msg ?? [], Signature = signature ?? [] };
 
     private static InputData BuildInput(PrivateKey? key, Address? sender, FrameSignatureForRpc[]? signatures,
-        ulong? gas = 100_000)
+        ulong? gas = 100_000, Address? payloadSender = null)
     {
         FrameTransactionForRpc transaction = new()
         {
             ChainId = ChainId,
             From = sender,
+            Sender = payloadSender,
             Nonce = 0,
             Gas = gas,
             MaxFeePerGas = UInt256.One,
