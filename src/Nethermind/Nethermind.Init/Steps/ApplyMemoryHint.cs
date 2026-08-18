@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -25,6 +26,20 @@ namespace Nethermind.Init.Steps
     {
         public Task Execute(CancellationToken _)
         {
+            // Zero would silently disable the cache (every lookup misses — the exact pathology the
+            // size exists to avoid) and a negative value would surface later as an opaque
+            // TypeInitializationException at the first EVM execution, so reject both here.
+            if (initConfig.InstructionStreamCacheSize <= 0)
+            {
+                throw new InvalidDataException(
+                    $"{nameof(IInitConfig)}.{nameof(IInitConfig.InstructionStreamCacheSize)} must be positive, got {initConfig.InstructionStreamCacheSize}.");
+            }
+
+            // Before any EVM execution: the cache captures this value when its static state initializes.
+            Evm.MemoryAllowance.InstructionStreamCacheSize = initConfig.InstructionStreamCacheSize;
+            ILogger logger = logManager.GetClassLogger<ApplyMemoryHint>();
+            if (logger.IsDebug) logger.Debug($"Instruction stream cache size: {initConfig.InstructionStreamCacheSize} entries");
+
             MemoryHintMan memoryHintMan = new(logManager);
             uint cpuCount = (uint)Environment.ProcessorCount;
             if (initConfig.MemoryHint.HasValue)

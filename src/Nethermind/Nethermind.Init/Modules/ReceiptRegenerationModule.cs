@@ -35,6 +35,8 @@ public class ReceiptRegenerationModule : Module
         .AddSingleton<RegeneratingReceiptsEnvSourceFactory>()
         // Each retained environment holds a world state and a full processing chain, and a regenerating query is as
         // expensive as executing a block — so it is bounded by the same knob that bounds the eth module itself.
+        // Deliberately 1x core count while the eth module defaults to 2x: a regeneration env is as
+        // expensive as block execution, and this path has no measured need for the extra headroom.
         .AddSingleton<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>>(ctx =>
             ctx.Resolve<RegeneratingReceiptsEnvSourceFactory>()
                .Create(ctx.Resolve<IJsonRpcConfig>().EthModuleConcurrentInstances ?? Environment.ProcessorCount))

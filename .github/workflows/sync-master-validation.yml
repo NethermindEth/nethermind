@@ -34,10 +34,6 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
-concurrency:
-  group: sync-master-validation-${{ github.event_name }}
-  cancel-in-progress: true
-
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest
@@ -50,9 +46,15 @@ jobs:
         id: set-image
         env:
           IMAGE_INPUT: ${{ github.event.inputs.nethermind_image }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
         run: |
           if [ -n "$IMAGE_INPUT" ]; then
             echo "docker_image=$IMAGE_INPUT" >> "$GITHUB_OUTPUT"
+          elif [ "$TRIGGER_EVENT" = "push" ] && [ -n "$HEAD_SHA" ]; then
+            # Pin to the per-commit tag so concurrent runs each validate their own
+            # commit; the nightly schedule publish creates no master-<sha> tag
+            echo "docker_image=nethermindeth/nethermind:master-${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           else
             echo "docker_image=nethermindeth/nethermind:master" >> "$GITHUB_OUTPUT"
           fi
@@ -386,8 +388,8 @@ jobs:
           repo_name: "nethermind"
 
   notify-on-failure:
-    needs: [sync-chain]
-    if: ${{ contains(needs.*.result, 'failure') }}
+    needs: [create_a_runner, sync-chain]
+    if: ${{ always() && contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - name: Collect failed jobs
@@ -409,7 +411,7 @@ jobs:
         uses: slackapi/slack-github-action@v2
         env:
           FAILED_JOBS: ${{ steps.failures.outputs.failed_jobs }}
-          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           webhook: ${{ secrets.SLACK_SYNC_WEBHOOK_URL }}

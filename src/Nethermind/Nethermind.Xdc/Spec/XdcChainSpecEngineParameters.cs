@@ -56,6 +56,16 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? TipTrc21Fee { get; set; }
     public ulong TIP2019Block { get; set; }
+
+    // These fork blocks are only required for fork ID calculation, and are not actually supported
+    public ulong? TipSigningBlock { get; set; }
+    public ulong? TipRandomizeBlock { get; set; }
+    public ulong? TipIncreaseMasternodesBlock { get; set; }
+    public ulong? TipNoHalvingMNRewardBlock { get; set; }
+    public ulong? TipXDCXLendingBlock { get; set; }
+    public ulong? TipXDCXCancellationFeeBlock { get; set; }
+    public ulong? Gas50xBlock { get; set; }
+
     public ulong? TipUpgradePenalty { get; set; }
     public ulong? TipUpgradeReward { get; set; }
     public UInt256 MasternodeReward { get; set; }
@@ -96,6 +106,9 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             blockNumbers.Add(TipUpgradePenalty.Value);
         if (TipUpgradeReward is not null)
             blockNumbers.Add(TipUpgradeReward.Value);
+        // Without its own release spec boundary the flag would only flip on whichever transition encloses it.
+        if (DynamicGasLimitBlock is not null)
+            blockNumbers.Add(DynamicGasLimitBlock.Value);
     }
 }
 
