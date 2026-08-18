@@ -13,5 +13,8 @@ public partial struct StatelessValidationResult
 
     public bool IsSuccess { get; set; }
 
-    public ChainConfig ChainConfig { get; set; }
+    public ulong ChainId { get; set; }
+
+    /// <summary>The schema id of the input this result answers, echoed back to identify the fork and revision.</summary>
+    public ushort SchemaId { get; set; }
 }

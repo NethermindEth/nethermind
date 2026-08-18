@@ -17,7 +17,7 @@ public partial class NewPayloadRequest<TExecutionPayload>
 {
     public TExecutionPayload ExecutionPayload { get; set; } = default!;
 
-    [SszList(0x1000)]
+    [SszProgressiveList]
     public Hash256[] VersionedHashes { get; set; } = [];
 
     public Hash256 ParentBeaconBlockRoot { get; set; } = null!;
@@ -100,6 +100,34 @@ public partial class NewPayloadRequest<TExecutionPayload>
         }
 
         return request;
+    }
+
+    /// <summary>
+    /// Returns whether the declared versioned hashes match, in order, the blob versioned hashes
+    /// carried by the block's transactions.
+    /// </summary>
+    public bool VersionedHashesMatch(Block block)
+    {
+        int index = 0;
+
+        foreach (Transaction tx in block.Transactions)
+        {
+            if (tx.BlobVersionedHashes is null)
+                continue;
+
+            foreach (byte[]? hash in tx.BlobVersionedHashes)
+            {
+                if (hash is null)
+                    continue;
+
+                if (index >= VersionedHashes.Length || !VersionedHashes[index].Bytes.SequenceEqual(hash))
+                    return false;
+
+                index++;
+            }
+        }
+
+        return index == VersionedHashes.Length;
     }
 
     public Block? ToBlock(bool requestsEnabled)

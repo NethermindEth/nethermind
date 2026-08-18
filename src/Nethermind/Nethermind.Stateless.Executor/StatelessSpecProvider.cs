@@ -11,9 +11,8 @@ using Nethermind.Stateless.Execution.IO;
 namespace Nethermind.Stateless.Execution;
 
 /// <remarks>
-/// Stateless fixtures can pin a named fork independently of the base chain's transition schedule.
-/// For activations at or after the supplied active fork, <see cref="GetSpec(ForkActivation)"/> returns
-/// the pinned release spec; earlier activations continue to use the base provider.
+/// Stateless input names exactly one fork in its schema id, so <see cref="GetSpec(ForkActivation)"/>
+/// returns that pinned release spec regardless of the base chain's transition schedule.
 /// Chain id is supplied externally, so any compatible base schedule (e.g. Mainnet rules) can serve
 /// as a devnet's fork catalog without misreporting the chain id to EIP-155 validation.
 /// Merge transition metadata (<see cref="MergeBlockNumber"/>, <see cref="TerminalTotalDifficulty"/>)
@@ -22,7 +21,6 @@ namespace Nethermind.Stateless.Execution;
 internal sealed class StatelessSpecProvider(
     ISpecProvider baseProvider,
     ulong chainId,
-    ForkActivation activeForkActivation,
     IReleaseSpec activeForkSpec)
     : ISpecProvider
 {
@@ -46,8 +44,7 @@ internal sealed class StatelessSpecProvider(
 
     public ForkActivation[] TransitionActivations => baseProvider.TransitionActivations;
 
-    public IReleaseSpec GetSpec(ForkActivation activation) =>
-        activation >= activeForkActivation ? activeForkSpec : baseProvider.GetSpec(activation);
+    public IReleaseSpec GetSpec(ForkActivation activation) => activeForkSpec;
 
     public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null) =>
         baseProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
@@ -55,7 +52,6 @@ internal sealed class StatelessSpecProvider(
     public static StatelessSpecProvider Create(
         IForkAwareSpecProvider baseProvider,
         ulong chainId,
-        ForkConfig forkConfig,
         ProtocolFork protocolFork)
     {
         string forkName = protocolFork.GetName();
@@ -75,6 +71,6 @@ internal sealed class StatelessSpecProvider(
             spec = configuredSpec;
         }
 
-        return new(baseProvider, chainId, forkConfig.Activation.ToForkActivation(), spec);
+        return new(baseProvider, chainId, spec);
     }
 }

@@ -30,7 +30,7 @@ on:
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.6.2
+        default: tests-zkevm@v0.8.2
         type: string
       frames_version:
         description: EIP-8141 frame fixtures release tag (frameTest only), or latest / latest-<keyword>
@@ -81,7 +81,7 @@ on:
       zkevm_version:
         description: zkEVM fixtures release tag (zkevmTest only), or latest / latest-<keyword>
         required: false
-        default: tests-zkevm@v0.6.2
+        default: tests-zkevm@v0.8.2
         type: string
       frames_version:
         description: EIP-8141 frame fixtures release tag (frameTest only), or latest / latest-<keyword>
@@ -116,9 +116,9 @@ env:
   EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v8.1.0' }}
   EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
   # zkEVM stateless-preview fixtures ship in their own release line of the same repo;
-  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.6.2, which this
-  # branch's witness roots match (dispatch with zkevm_version to test other releases).
-  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.6.2' }}
+  # zkevmTest jobs resolve this instead of EEST_VERSION. Pinned to v0.8.2, whose stateless
+  # schema this branch implements (dispatch with zkevm_version to test other releases).
+  ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v0.8.2' }}
   # EIP-8141 frame-transaction fixtures. execution-specs merged them to the eips/amsterdam
   # branch, not master, so they ship in their own release line rather than the devnet archive
   # this branch otherwise pins; frameTest jobs resolve this instead of EEST_VERSION.

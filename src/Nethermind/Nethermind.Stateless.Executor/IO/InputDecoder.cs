@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.SszRest;
@@ -23,25 +24,29 @@ internal static class InputDecoder
 
         return (fork, revision) switch
         {
-            (ProtocolFork.Amsterdam, Revision1) => DecodeRevision1<SszExecutionPayloadV4>(payload, fork),
-            ( >= ProtocolFork.Cancun and < ProtocolFork.Amsterdam, Revision1) => DecodeRevision1<SszExecutionPayloadV3>(payload, fork),
+            (ProtocolFork.Amsterdam, Revision1) => DecodeRevision1<SszExecutionPayloadV4>(payload, fork, schemaId),
+            ( >= ProtocolFork.Cancun and < ProtocolFork.Amsterdam, Revision1) => DecodeRevision1<SszExecutionPayloadV3>(payload, fork, schemaId),
             _ => throw new ArgumentException($"Unsupported schema id: 0x{schemaId:x4}", nameof(data))
         };
     }
 
-    private static StatelessPayload DecodeRevision1<TExecutionPayload>(ReadOnlySpan<byte> data, ProtocolFork protocolFork)
+    private static StatelessPayload DecodeRevision1<TExecutionPayload>(ReadOnlySpan<byte> data, ProtocolFork protocolFork, ushort schemaId)
         where TExecutionPayload : SszExecutionPayloadV1, ISszExecutionPayloadFactory<TExecutionPayload>, ISszCodec<TExecutionPayload>, new()
     {
         StatelessInput<TExecutionPayload>.Decode(data, out StatelessInput<TExecutionPayload> input);
         NewPayloadRequest<TExecutionPayload>.Merkleize(input.NewPayloadRequest, out UInt256 root);
 
+        Block block = input.NewPayloadRequest.ToBlock(requestsEnabled: protocolFork >= ProtocolFork.Prague)!;
+
         return new(
-            Block: input.NewPayloadRequest.ToBlock(requestsEnabled: protocolFork >= ProtocolFork.Prague)!,
+            Block: block,
             Witness: input.Witness,
-            ChainConfig: input.ChainConfig,
+            ChainId: input.ChainId,
             PublicKeys: input.PublicKeys,
             NewPayloadRequestRoot: new Hash256(root.ToLittleEndian()),
-            ProtocolFork: protocolFork
+            ProtocolFork: protocolFork,
+            SchemaId: schemaId,
+            VersionedHashesMatch: input.NewPayloadRequest.VersionedHashesMatch(block)
         );
     }
 }

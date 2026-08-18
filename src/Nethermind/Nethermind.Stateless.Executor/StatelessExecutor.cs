@@ -42,18 +42,19 @@ public static class StatelessExecutor
         {
             NewPayloadRequestRoot = payload.NewPayloadRequestRoot,
             IsSuccess = false,
-            ChainConfig = payload.ChainConfig
+            ChainId = payload.ChainId,
+            SchemaId = payload.SchemaId
         };
         output = StatelessValidationResult.Encode(result);
         bool success = false;
 
         FailureOutput = output;
 
-        if (transactions.Length == publicKeys.Length)
+        if (transactions.Length == publicKeys.Length && payload.VersionedHashesMatch)
         {
             try
             {
-                ISpecProvider specProvider = GetSpecProvider(payload.ChainConfig, payload.ProtocolFork, payload.Block.Header);
+                ISpecProvider specProvider = GetSpecProvider(payload.ChainId, payload.ProtocolFork);
                 IReleaseSpec spec = specProvider.GetSpec(payload.Block.Header);
 #if !ZK_EVM
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
@@ -157,26 +158,17 @@ public static class StatelessExecutor
     {
         NewPayloadRequestRoot = Hash256.Zero,
         IsSuccess = false,
-        ChainConfig = new ChainConfig
-        {
-            ChainId = 0,
-            ActiveFork = new ForkConfig
-            {
-                Activation = new() { BlockNumber = [], Timestamp = [] }
-            }
-        }
+        ChainId = 0,
+        SchemaId = 0
     };
 
-    private static ISpecProvider GetSpecProvider(ChainConfig chainConfig, ProtocolFork protocolFork, BlockHeader header)
+    private static ISpecProvider GetSpecProvider(ulong chainId, ProtocolFork protocolFork)
     {
-        if (!chainConfig.ActiveFork.Activation.IsActive(header))
-            throw new ArgumentException("ChainConfig active fork is not active for the payload.", nameof(chainConfig));
+        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? baseProvider);
 
-        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainConfig.ChainId, out IForkAwareSpecProvider? baseProvider);
-
-        // ActiveFork pins the spec by name on any compatible schedule; unknown chains (e.g. devnets) use Mainnet rules.
+        // The schema id names the fork, so unknown chains (e.g. devnets) can borrow Mainnet's fork catalog.
         baseProvider ??= MainnetSpecProvider.Instance;
 
-        return StatelessSpecProvider.Create(baseProvider, chainConfig.ChainId, chainConfig.ActiveFork, protocolFork);
+        return StatelessSpecProvider.Create(baseProvider, chainId, protocolFork);
     }
 }
