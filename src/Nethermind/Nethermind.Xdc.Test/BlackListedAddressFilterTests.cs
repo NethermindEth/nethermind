@@ -26,7 +26,8 @@ internal class BlackListedAddressFilterTests
 
         IXdcReleaseSpec xdcSpec = Substitute.For<IXdcReleaseSpec>();
         xdcSpec.IsBlackListingEnabled.Returns(blackListingEnabled);
-        xdcSpec.BlackListedAddresses.Returns(new HashSet<Address> { BlackListed });
+        HashSet<Address> blackList = [BlackListed];
+        xdcSpec.BlackListedAddresses.Returns(blackList);
 
         specProvider ??= Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
