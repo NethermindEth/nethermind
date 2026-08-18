@@ -142,6 +142,11 @@ namespace Nethermind.TxPool
         /// <remarks>Unincludable rather than malformed, so it must not disconnect the peer that relayed it.</remarks>
         public static readonly AcceptTxResult FrameTxNoPayer = new(23, TxPoolErrorMessages.FrameTxNoPayer);
 
+        /// <summary>
+        /// An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxMissingSidecar = new(24, TxPoolErrorMessages.FrameTxMissingSidecar);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

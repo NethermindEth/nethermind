@@ -1462,7 +1462,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1);
+            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
 
             AcceptTxResult result = _txPool.SubmitTx(frameBlobTx, TxHandlingOptions.None);
 
@@ -1508,7 +1508,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(config: txPoolConfig, specProvider: specProvider, chainHeadInfoProvider: chainHeadInfoProvider);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, maxFeePerBlobGas: 99);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, maxFeePerBlobGas: 99, withSidecar: true);
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FeeTooLow));
         }
@@ -1545,7 +1545,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
@@ -1609,6 +1609,26 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
                 "the surviving transaction must still expire out of the pool");
+        }
+
+        // The mempool form of a blob-carrying frame tx is the sidecar wrapper, so a record without one cannot be read
+        // back — the RLP decoder rejects it. Everything off the wire passes that decoder, but an eth_sendTransaction
+        // request builds its transaction field by field and skips it.
+        [Test]
+        public void Blob_carrying_frame_tx_without_a_sidecar_is_rejected_rather_than_stored_unreadable()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(BuildBlobFrameTx(nonce: 0, blobCount: 1), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameTxMissingSidecar));
+                Assert.That(blobTxStorage.GetAll(), Is.Empty, "a record the decoder cannot read must never reach storage");
+            }
         }
 
         // EIP-8141: with blobs disabled the blob-pool routing has zero capacity, so a blob-carrying frame tx must be
@@ -1684,10 +1704,10 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 // Consecutive nonces within the window [current, current + 2] are admitted; the first beyond it is not.
-                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 0, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 1, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 2, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 3, blobCount: 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceTooFarInFuture));
+                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 1, blobCount: 1, withSidecar: true), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 2, blobCount: 1, withSidecar: true), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(BuildBlobFrameTx(nonce: 3, blobCount: 1, withSidecar: true), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceTooFarInFuture));
             }
         }
 
@@ -1699,7 +1719,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             Block blockA = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
