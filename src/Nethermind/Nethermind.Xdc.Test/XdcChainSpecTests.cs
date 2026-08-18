@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -68,12 +67,10 @@ public class XdcChainSpecTests
         });
     }
 
-    private static ChainSpec LoadChainSpec(string chainSpecFile)
-    {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains", chainSpecFile);
-
-        return new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(path);
-    }
+    // Loaded by name so it resolves to the copy Nethermind.Config embeds, which is what a released node reads, and
+    // which needs no assumption about where the test binaries sit relative to the source tree.
+    private static ChainSpec LoadChainSpec(string chainSpecFile) =>
+        new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(chainSpecFile);
 
     private static XdcChainSpecEngineParameters EngineParameters(ChainSpec chainSpec) =>
         chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>();
