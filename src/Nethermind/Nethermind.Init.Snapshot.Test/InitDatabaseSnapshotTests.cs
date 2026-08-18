@@ -169,6 +169,43 @@ public class InitDatabaseSnapshotTests
             "a stale completed checkpoint with a missing or empty database must reinitialize instead of skipping and leaving the node to sync from genesis");
     }
 
+    [Test]
+    public void Execute_ArchiveNotMatchingStripComponents_Throws()
+    {
+        using (FileStream fileStream = File.Create(_snapshotPath))
+        using (TarWriter tarWriter = new(fileStream))
+        {
+            PaxTarEntry fileEntry = new(TarEntryType.RegularFile, "state.bin")
+            {
+                DataStream = new MemoryStream(new byte[1000])
+            };
+            tarWriter.WriteEntry(fileEntry);
+        }
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        IOException exception = Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None))!;
+
+        Assert.That(exception.Message, Does.Contain("StripComponents"),
+            "an extraction that produced no files must point the operator at the strip configuration");
+    }
+
+    [Test]
+    public async Task Execute_ExtractedCheckpointWithArchivePresentButNoDatabase_ReusesArchive()
+    {
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Extracted);
+        _snapshotConfig.Streaming = true;
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+            "a complete archive left by a crash between extraction and completion must be reused instead of re-downloaded");
+        Assert.That(File.Exists(_snapshotPath), Is.False,
+            "the archive must be deleted after the successful extraction");
+    }
+
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(

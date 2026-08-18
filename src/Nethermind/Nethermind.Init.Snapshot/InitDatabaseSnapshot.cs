@@ -62,6 +62,7 @@ public class InitDatabaseSnapshot(
             throw new InvalidOperationException($"Snapshot.StreamingConnections must be between 1 and {MaxStreamingConnections}, got {snapshotConfig.StreamingConnections}.");
 
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
+        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
         if (DatabaseExists(dbPath))
         {
@@ -83,10 +84,8 @@ public class InitDatabaseSnapshot(
         {
             if (_logger.IsWarn)
                 _logger.Warn($"The snapshot checkpoint indicates a completed extraction, but the database at {dbPath} is missing or empty. Reinitializing from the snapshot.");
-            checkpoint.Advance(SnapshotStage.Started);
+            checkpoint.Advance(File.Exists(snapshotPath) ? SnapshotStage.Downloaded : SnapshotStage.Started);
         }
-
-        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
         if (snapshotConfig.Streaming)
         {
@@ -169,17 +168,24 @@ public class InitDatabaseSnapshot(
         checkpoint.Advance(SnapshotStage.Downloaded);
     }
 
-    private static bool DatabaseExists(string dbPath)
+    internal static bool DatabaseExists(string dbPath)
     {
         if (File.Exists(dbPath))
             return true;
         if (!Directory.Exists(dbPath))
             return false;
 
-        foreach (string entry in Directory.EnumerateFileSystemEntries(dbPath))
+        try
         {
-            if (Path.GetFileName(entry) != "lost+found")
-                return true;
+            foreach (string entry in Directory.EnumerateFileSystemEntries(dbPath))
+            {
+                if (Path.GetFileName(entry) != "lost+found")
+                    return true;
+            }
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException)
+        {
+            return true;
         }
 
         return false;

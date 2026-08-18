@@ -39,6 +39,8 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
                 if (!ReferenceEquals(decompressedStream, archiveStream))
                     decompressedStream.Dispose();
             }
+
+            EnsureNotEmpty(destinationPath);
         }, cancellationToken);
 
     private void Extract(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken)
@@ -55,6 +57,15 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
             ExtractTar(archivePath, destinationPath, extension, stripComponents, cancellationToken);
         else
             throw new NotSupportedException($"Unsupported snapshot archive format: {archivePath}");
+
+        EnsureNotEmpty(destinationPath);
+    }
+
+    private static void EnsureNotEmpty(string destinationPath)
+    {
+        if (!InitDatabaseSnapshot.DatabaseExists(destinationPath))
+            throw new IOException(
+                $"The archive produced no files under '{destinationPath}'. Check Snapshot.StripComponents against the archive layout.");
     }
 
     private static bool IsZip(string extension) =>
@@ -85,7 +96,6 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         using TarReader tarReader = new(decompressedStream, leaveOpen: true);
 
         string destinationRoot = destinationPath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        int extractedFiles = 0;
 
         TarEntry? entry;
         while ((entry = tarReader.GetNextEntry()) is not null)
@@ -105,23 +115,12 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
                 throw new IOException($"Tar entry '{entry.Name}' would extract outside the destination directory.");
 
             if (entry.EntryType is TarEntryType.Directory)
-            {
                 Directory.CreateDirectory(destinationEntryPath);
-            }
             else if (entry.EntryType is TarEntryType.RegularFile or TarEntryType.V7RegularFile)
-            {
                 entry.ExtractToFile(destinationEntryPath, overwrite: true);
-                extractedFiles++;
-            }
             else
-            {
                 throw new IOException($"Tar entry '{entry.Name}' has unsupported type {entry.EntryType}.");
-            }
         }
-
-        if (extractedFiles == 0)
-            throw new IOException(
-                $"The archive produced no files under '{destinationPath}'. Check Snapshot.StripComponents against the archive layout.");
     }
 
     private static Stream OpenDecompressedStream(Stream archiveStream, string extension, bool leaveOpen) =>
