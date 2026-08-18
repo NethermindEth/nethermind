@@ -1665,6 +1665,9 @@ namespace Nethermind.TxPool.Test
         // The persistent pool holds a light record, and it is that record's removal which releases the payer's
         // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
         [Test]
+        // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
+        // transaction admitted alongside would move it.
+        [NonParallelizable]
         public void Blob_carrying_frame_tx_releases_its_payer_exposure_when_it_leaves_the_persistent_pool()
         {
             // The prefix ceiling has to clear the verify frame plus its signature, or no payer resolves natively.
@@ -1684,7 +1687,8 @@ namespace Nethermind.TxPool.Test
                 + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
 
             // The gauge, not a second submission: the payer here is the sender, whose balance already covers
-            // several such reservations, so nothing it submits later can observe the leak.
+            // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
+            // residue from earlier tests, whose pools are never disposed.
             long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
 
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
