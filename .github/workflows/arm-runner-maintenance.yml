@@ -70,17 +70,29 @@ jobs:
           set -uo pipefail
           # expb's dotTrace/dotnet-trace integration drives host-side dotnet global tools;
           # this box was provisioned without the SDK (the x64 twin has it). Idempotent.
-          # Guard on a working CLI, not its mere presence — a bare symlink into the install
-          # dir breaks hostfxr resolution (exit 145, aka.ms/dotnet/sdk-not-found).
-          if dotnet --version >/dev/null 2>&1; then
-            echo "dotnet working: $(dotnet --version)"
+          # Every probe is time-bounded: a broken wrapper/symlink pair can exec-loop or a
+          # stale first-run lock can block forever, and an unbounded probe wedges the job.
+          echo "--- current state ---"
+          ls -la /usr/local/bin/dotnet /usr/local/share/dotnet/dotnet 2>&1 || true
+          file /usr/local/bin/dotnet /usr/local/share/dotnet/dotnet 2>&1 || true
+          head -c 200 /usr/local/bin/dotnet 2>/dev/null | cat -v || true; echo
+          pgrep -af dotnet || echo "no stray dotnet processes"
+          if timeout 20 dotnet --version >/dev/null 2>&1; then
+            echo "dotnet working: $(timeout 20 dotnet --version)"
             exit 0
           fi
-          curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
-          bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/local/share/dotnet
+          echo "--- healing ---"
+          pkill -9 -f '/usr/local/share/dotnet' 2>/dev/null || true
+          rm -f /usr/local/bin/dotnet
+          if ! file /usr/local/share/dotnet/dotnet 2>/dev/null | grep -q ELF; then
+            echo "muxer missing or not ELF - reinstalling SDK"
+            rm -rf /usr/local/share/dotnet
+            curl -sSL --max-time 120 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+            timeout 600 bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/local/share/dotnet
+          fi
           printf '#!/bin/sh\nexport DOTNET_ROOT=/usr/local/share/dotnet\nexec /usr/local/share/dotnet/dotnet "$@"\n' > /usr/local/bin/dotnet
           chmod +x /usr/local/bin/dotnet
-          dotnet --version
+          timeout 120 dotnet --version
 
       - name: Disk usage after
         shell: bash
