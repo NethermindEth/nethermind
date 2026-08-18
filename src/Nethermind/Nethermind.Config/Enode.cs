@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 
@@ -64,7 +65,11 @@ namespace Nethermind.Config
             }
             else
             {
-                DiscoveryPort = ushort.TryParse(parsed.Query[DiscoveryPortQuery.Length..], out ushort discoveryPort)
+                DiscoveryPort = ushort.TryParse(
+                    parsed.Query[DiscoveryPortQuery.Length..],
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out ushort discoveryPort)
                     ? discoveryPort
                     : throw GetPortException(host);
             }

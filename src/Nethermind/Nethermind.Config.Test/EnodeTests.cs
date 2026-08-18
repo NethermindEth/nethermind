@@ -121,6 +121,16 @@ namespace Nethermind.Config.Test
                 Throws.ArgumentException);
         }
 
+        [TestCase("+30304")]
+        public void rejects_discovery_port_with_non_decimal_format(string discoveryPort)
+        {
+            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+
+            Assert.That(
+                () => new Enode($"enode://{publicKey.ToString(false)}@127.0.0.1:30303?discport={discoveryPort}"),
+                Throws.ArgumentException);
+        }
+
         public static IEnumerable Ipv4vs6TestCases
         {
             get
