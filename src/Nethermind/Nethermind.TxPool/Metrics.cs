@@ -37,6 +37,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxExpired { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 blob-carrying frame transactions received that were ignored because they carry no blob sidecar.")]
+        public static long PendingTransactionsFrameTxMissingSidecar { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix exceeds MAX_VERIFY_GAS.")]
         public static long PendingTransactionsFrameTxVerifyGasTooHigh { get; set; }
 

@@ -141,6 +141,69 @@ public class FrameTransactionForRpcTests
     }
 
     [Test]
+    public void FrameTransactionForRpc_SerializesBlobFields_ForBlobCarryingFrameTx()
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        tx.MaxFeePerBlobGas = 123;
+        tx.BlobVersionedHashes = [new byte[32]];
+
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.RootElement.GetProperty("maxFeePerBlobGas").GetString(), Is.EqualTo("0x7b"));
+            Assert.That(doc.RootElement.GetProperty("blobVersionedHashes").GetArrayLength(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ReportsBlobFields_ForBloblessFrameTx()
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.RootElement.GetProperty("maxFeePerBlobGas").GetString(), Is.EqualTo("0x0"));
+            Assert.That(doc.RootElement.GetProperty("blobVersionedHashes").GetArrayLength(), Is.EqualTo(0));
+        }
+    }
+
+    // Must be 0 for a blobless tx, but the value still has to reach TXPARAM 0x05 in a simulation.
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_KeepsMaxFeePerBlobGas_WithoutBlobHashes()
+    {
+        FrameTransactionForRpc rpc = new() { MaxFeePerBlobGas = 123 };
+
+        Transaction tx = rpc.ToTransaction().Data!;
+
+        Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo((UInt256)123));
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_RoundTripsBlobFields()
+    {
+        Transaction original = BuildMinimalFrameTx();
+        original.MaxFeePerBlobGas = 456;
+        original.BlobVersionedHashes = [new byte[32]];
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(original);
+
+        Transaction roundTripped = ((FrameTransactionForRpc)rpc).ToTransaction().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.MaxFeePerBlobGas, Is.EqualTo((UInt256)456));
+            Assert.That(roundTripped.BlobVersionedHashes, Has.Length.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void ReceiptForRpc_FrameTx_ExposesPayer()
     {
         TxReceipt receipt = new()

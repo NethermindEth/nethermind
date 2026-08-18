@@ -149,6 +149,11 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameTxNoPayer = new(23, TxPoolErrorMessages.FrameTxNoPayer);
 
         /// <summary>
+        /// An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxMissingSidecar = new(27, TxPoolErrorMessages.FrameTxMissingSidecar);
+
+        /// <summary>
         /// An EIP-8141 frame transaction carrying a <c>VERIFY</c> frame behind its validation prefix, whose revert
         /// would invalidate the transaction on state the pool never validated. It stays consensus-valid; only public
         /// mempool propagation is refused.
