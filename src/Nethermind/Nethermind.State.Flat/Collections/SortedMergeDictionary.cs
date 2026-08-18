@@ -121,7 +121,10 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         int count = source.Count;
         _count = 0; // a build that throws must leave the dictionary empty, not mixing entries of two builds
         EnsureEntryCapacity(count);
-        FillAndSort(_entries.AsSpan(0, count), source, keyComparer);
+        Span<Entry> entries = _entries.AsSpan(0, count);
+        FillResult result = Fill(entries, source);
+        if (result != FillResult.Success) ThrowSourceCountMismatch(result);
+        entries.Sort(new EntryKeyComparer<TComparer>(keyComparer));
         BuildBuckets(count);
         _count = count;
     }
@@ -133,20 +136,20 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     {
         int count = source.Count;
         Entry[] entries = count == 0 ? [] : ArrayPool<Entry>.Shared.Rent(count);
-        try
+        Span<Entry> run = entries.AsSpan(0, count);
+        FillResult result = Fill(run, source);
+        if (result != FillResult.Success)
         {
-            FillAndSort(entries.AsSpan(0, count), source, keyComparer);
-            return new PooledRun(entries, count);
-        }
-        catch
-        {
-            if (entries.Length > 0)
+            if (count != 0)
             {
-                if (count > 0) Array.Clear(entries, 0, count);
+                Array.Clear(entries, 0, count);
                 ArrayPool<Entry>.Shared.Return(entries);
             }
-            throw;
+            ThrowSourceCountMismatch(result);
         }
+
+        run.Sort(new EntryKeyComparer<TComparer>(keyComparer));
+        return new PooledRun(entries, count);
     }
 
     internal Run AsRun() => new(_entries, _count);
@@ -483,28 +486,32 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
         public int Compare(Entry x, Entry y) => keyComparer.Compare(x.Key, y.Key);
     }
 
-    private static void FillAndSort<TComparer>(
+    private static FillResult Fill(
         Span<Entry> entries,
-        IReadOnlyCollection<KeyValuePair<TKey, TValue>> source,
-        TComparer keyComparer)
-        where TComparer : IComparer<TKey>
+        IReadOnlyCollection<KeyValuePair<TKey, TValue>> source)
     {
         int i = 0;
         foreach (KeyValuePair<TKey, TValue> kv in source)
         {
-            if (i == entries.Length) ThrowSourceOverYielded();
+            if (i == entries.Length) return FillResult.OverYielded;
             entries[i++] = new Entry { HashCode = (uint)kv.Key.GetHashCode(), Key = kv.Key, Value = kv.Value };
         }
 
-        if (i != entries.Length) ThrowSourceUnderYielded();
-        entries.Sort(new EntryKeyComparer<TComparer>(keyComparer));
+        return i == entries.Length ? FillResult.Success : FillResult.UnderYielded;
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowSourceOverYielded() => throw new InvalidOperationException("Source yielded more entries than Count.");
+    private static void ThrowSourceCountMismatch(FillResult result) =>
+        throw new InvalidOperationException(result == FillResult.OverYielded
+            ? "Source yielded more entries than Count."
+            : "Source yielded fewer entries than Count.");
 
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowSourceUnderYielded() => throw new InvalidOperationException("Source yielded fewer entries than Count.");
+    private enum FillResult : byte
+    {
+        Success,
+        OverYielded,
+        UnderYielded,
+    }
 
     /// <summary>
     /// Tournament (loser) tree over the k sorted runs. Each internal node holds the loser of a match; the overall
