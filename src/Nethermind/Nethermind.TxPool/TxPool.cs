@@ -18,6 +18,7 @@ using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -88,6 +89,12 @@ namespace Nethermind.TxPool
         // pass skip the pool walk entirely when there is nothing to expire (the case on every network
         // where the fork is inactive). Maintained under the pool lock via the Inserted/Removed events.
         private int _expiringFrameTxCount;
+
+#if DEBUG
+        // Bumped inside the pool lock on every insert and removal, so the bookkeeping check below can tell a
+        // torn reading apart from real drift.
+        private int _poolMutations;
+#endif
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -283,16 +290,110 @@ namespace Nethermind.TxPool
         {
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            TrackPoolMutation();
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             RemovePendingDelegations(args.Value);
-            if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
+            if (HasExpiryDeadline(args.Value))
+            {
+                Interlocked.Decrement(ref _expiringFrameTxCount);
+                AssertExpiringFrameTxCountNotNegative();
+            }
+
             ReleasePayerExposure(args.Value);
+            TrackPoolMutation();
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
+        [Conditional("DEBUG")]
+        private void TrackPoolMutation()
+        {
+#if DEBUG
+            Interlocked.Increment(ref _poolMutations);
+#endif
+        }
+
+        /// <summary>Asserts that the expiring-frame-transaction count never drops below zero.</summary>
+        /// <remarks>
+        /// Checked at the decrement rather than only in <see cref="AssertFrameTxBookkeeping"/> because a negative
+        /// count arms the expiry sweep's zero-count fast path for good, long after the unbalanced removal.
+        /// </remarks>
+        [Conditional("DEBUG")]
+        private void AssertExpiringFrameTxCountNotNegative() =>
+            Debug.Assert(Volatile.Read(ref _expiringFrameTxCount) >= 0, "Expiring frame transaction count went negative.");
+
+        /// <summary>
+        /// Verifies the frame-transaction bookkeeping the pool maintains incrementally — the payer-exposure ledger
+        /// and the expiring-transaction count — against a full walk of both pools.
+        /// </summary>
+        /// <remarks>
+        /// Both are only ever updated on insert and removal, so one missed release or decrement persists for the
+        /// life of the pool: a leaked reservation rejects the payer's later transactions, and a count below the
+        /// truth arms the expiry sweep's fast path so nothing expires again.
+        /// <para>
+        /// Run per head rather than per operation, since the walk is O(pool size) and insert and removal are hot.
+        /// Admission is excluded by the head write lock held here, but <see cref="RemoveTransaction"/> and
+        /// <see cref="EvictTransaction"/> are reachable from block production without it, so a mutation seen across
+        /// the walk means the reading was torn rather than the pool inconsistent, and it is retried.
+        /// </para>
+        /// </remarks>
+        [Conditional("DEBUG")]
+        private void AssertFrameTxBookkeeping()
+        {
+#if DEBUG
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                int mutations = Volatile.Read(ref _poolMutations);
+
+                Dictionary<AddressAsKey, UInt256> pooledExposure = [];
+                int pooledExpiring = 0;
+                AccumulateFrameTxBookkeeping(_transactions.GetSnapshot(), pooledExposure, ref pooledExpiring);
+                AccumulateFrameTxBookkeeping(_blobTransactions.GetSnapshot(), pooledExposure, ref pooledExpiring);
+
+                int recordedExpiring = Volatile.Read(ref _expiringFrameTxCount);
+                List<KeyValuePair<AddressAsKey, UInt256>> recordedExposure = [.. _payerExposure.Reservations];
+
+                if (Volatile.Read(ref _poolMutations) != mutations) continue;
+
+                Debug.Assert(recordedExpiring == pooledExpiring,
+                    $"Expiring frame transaction count is {recordedExpiring}, but {pooledExpiring} pooled transactions carry a deadline.");
+                Debug.Assert(recordedExposure.Count == pooledExposure.Count,
+                    $"Payer exposure ledger holds {recordedExposure.Count} payers, but {pooledExposure.Count} are pooled.");
+
+                foreach (KeyValuePair<AddressAsKey, UInt256> reservation in recordedExposure)
+                {
+                    Debug.Assert(pooledExposure.TryGetValue(reservation.Key, out UInt256 pooled) && pooled == reservation.Value,
+                        $"Payer {reservation.Key} holds {reservation.Value} reserved, but its pooled transactions total {pooled}.");
+                }
+
+                return;
+            }
+#endif
+        }
+
+#if DEBUG
+        private static void AccumulateFrameTxBookkeeping(Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, ref int expiring)
+        {
+            foreach (Transaction tx in snapshot)
+            {
+                if (HasExpiryDeadline(tx)) expiring++;
+
+                // Mirrors what admission reserves: a zero cost is never recorded, so it must not be expected back.
+                if (!tx.SupportsFrames
+                    || tx.PayerAddress is null
+                    || tx.IsOverflowInTxCostAndValue(out UInt256 maxCost)
+                    || maxCost.IsZero)
+                {
+                    continue;
+                }
+
+                exposure[tx.PayerAddress] = exposure.TryGetValue(tx.PayerAddress, out UInt256 running) ? running + maxCost : maxCost;
+            }
+        }
+#endif
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
@@ -363,6 +464,7 @@ namespace Nethermind.TxPool
                         }
 
                         UpdateBuckets();
+                        AssertFrameTxBookkeeping();
                         TxPoolHeadChanged?.Invoke(this, args.Block);
                         Metrics.TransactionCount = _transactions.Count;
                         Metrics.BlobTransactionCount = _blobTransactions.Count;

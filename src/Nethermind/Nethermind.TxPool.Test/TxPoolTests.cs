@@ -2184,6 +2184,35 @@ namespace Nethermind.TxPool.Test
                 "expired frame transactions must be evicted on the new head, unexpired ones retained");
         }
 
+        // The on-head expiry sweep is a removal path like any other, so it must hand the payer its reservation
+        // back; one that outlives the transaction locks the payer out of the pool until restart.
+        [Test]
+        public async Task Expired_frame_transaction_releases_its_payer_exposure_on_eviction()
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 200_000 }, new TestSpecProvider(Bogota.Instance));
+
+            Transaction SignedFrameTx(ulong deadline)
+            {
+                Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline);
+                tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+                tx.Hash = tx.CalculateHash();
+                return tx;
+            }
+
+            Transaction first = SignedFrameTx(deadline: 1_000);
+            // Balance for exactly one such transaction, so a reservation outliving the first rejects the second.
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)first.GasLimit * first.MaxFeePerGas);
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(first.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address), "no reservation is taken unless the payer resolves");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "the expired frame transaction must be evicted");
+
+            // Same payer and same cost, told apart only by its deadline: only a leaked reservation rejects it.
+            Assert.That(_txPool.SubmitTx(SignedFrameTx(deadline: 2_000), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
         // No expiry frame means no deadline, so the expiry pass (and the count guard that gates it) must never
         // evict it, whatever the head timestamp.
         [Test]

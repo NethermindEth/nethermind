@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+#if DEBUG
+using System.Diagnostics;
+using System.Reflection;
+#endif
 using Nethermind.Core.Messages;
 
 namespace Nethermind.TxPool
@@ -151,7 +155,31 @@ namespace Nethermind.TxPool
         /// <summary>
         /// An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.
         /// </summary>
-        public static readonly AcceptTxResult FrameTxMissingSidecar = new(24, TxPoolErrorMessages.FrameTxMissingSidecar);
+        public static readonly AcceptTxResult FrameTxMissingSidecar = new(27, TxPoolErrorMessages.FrameTxMissingSidecar);
+
+#if DEBUG
+        /// <summary>Asserts on first use that no two verdicts share an id.</summary>
+        /// <remarks>
+        /// Equality is by id alone, so a duplicate makes two verdicts indistinguishable to callers and to any test
+        /// asserting on either of them. Found by reflection so a verdict added later is covered without upkeep.
+        /// </remarks>
+        static AcceptTxResult()
+        {
+            FieldInfo[] verdicts = typeof(AcceptTxResult).GetFields(BindingFlags.Public | BindingFlags.Static);
+            for (int i = 0; i < verdicts.Length; i++)
+            {
+                if (verdicts[i].GetValue(null) is not AcceptTxResult first) continue;
+
+                for (int j = i + 1; j < verdicts.Length; j++)
+                {
+                    if (verdicts[j].GetValue(null) is AcceptTxResult second && first.Equals(second))
+                    {
+                        Debug.Fail($"{nameof(AcceptTxResult)}.{verdicts[i].Name} and {nameof(AcceptTxResult)}.{verdicts[j].Name} share an id.");
+                    }
+                }
+            }
+        }
+#endif
 
         private int Id { get; } = id;
         private string Code { get; } = code;
