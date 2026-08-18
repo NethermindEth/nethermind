@@ -221,9 +221,9 @@ public class InitDatabaseSnapshot(
         using IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(ChecksumBufferSize);
         byte[] checksum;
+        await using (FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read,
+            FileShare.None, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan))
         {
-            await using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read,
-                FileShare.None, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
             long bytesHashed = 0;
             DateTime nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
 

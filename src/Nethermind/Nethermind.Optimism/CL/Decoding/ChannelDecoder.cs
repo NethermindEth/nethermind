@@ -49,12 +49,10 @@ public class ChannelDecoder
                 output.Write(buffer, 0, bytesRead);
             }
         }
-        catch (InvalidDataException)
+        finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
-            throw;
         }
-        ArrayPool<byte>.Shared.Return(buffer);
     }
 }
 

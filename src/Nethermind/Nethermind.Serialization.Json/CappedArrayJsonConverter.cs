@@ -33,26 +33,16 @@ public sealed class CappedArrayJsonConverter<T> : JsonConverter<CappedArray<T>> 
                 }
                 buffer[count++] = elementConverter.Read(ref reader, typeof(T), options);
             }
-        }
-        catch (JsonException)
-        {
-            ArrayPool<T>.Shared.Return(buffer);
-            throw;
-        }
 
-        CappedArray<T> cappedArray;
-        if (count == 0)
-        {
-            cappedArray = CappedArray<T>.Empty;
-        }
-        else
-        {
+            if (count == 0) return CappedArray<T>.Empty;
             T[] result = new T[count];
             buffer.AsSpan(0, count).CopyTo(result);
-            cappedArray = new CappedArray<T>(result, count);
+            return new CappedArray<T>(result, count);
         }
-        ArrayPool<T>.Shared.Return(buffer);
-        return cappedArray;
+        finally
+        {
+            ArrayPool<T>.Shared.Return(buffer);
+        }
     }
 
     public override void Write(Utf8JsonWriter writer, CappedArray<T> value, JsonSerializerOptions options)

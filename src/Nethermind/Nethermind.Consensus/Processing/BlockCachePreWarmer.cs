@@ -373,7 +373,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         int cellCount = discoveredCells.Count;
         StorageCell[] cells = ArrayPool<StorageCell>.Shared.Rent(cellCount);
-        bool warmed;
         try
         {
             discoveredCells.CopyTo(cells, 0);
@@ -417,19 +416,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     _envPool.Return(env);
                 }
             });
-            warmed = true;
+            return true;
         }
         catch (OperationCanceledException)
         {
-            warmed = false;
+            return false;
         }
         catch (Exception ex)
         {
             _logger.DebugError("Error warming discovered storage reads", ex);
-            warmed = false;
+            return false;
         }
-        ArrayPool<StorageCell>.Shared.Return(cells, clearArray: true);
-        return warmed;
+        finally
+        {
+            ArrayPool<StorageCell>.Shared.Return(cells, clearArray: true);
+        }
     }
 
     private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)

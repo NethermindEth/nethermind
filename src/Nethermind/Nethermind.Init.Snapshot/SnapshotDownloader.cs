@@ -112,12 +112,10 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
                 remaining -= chunk;
             }
         }
-        catch (Exception e) when (e is IOException or HttpRequestException)
+        finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
-            throw;
         }
-        ArrayPool<byte>.Shared.Return(buffer);
     }
 
     private static async Task<HttpResponseMessage> SendWithRangeAsync(
@@ -175,12 +173,10 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
                 progress.Update(downloaded);
             }
         }
-        catch (Exception e) when (e is IOException or HttpRequestException)
+        finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
-            throw;
         }
-        ArrayPool<byte>.Shared.Return(buffer);
     }
 
     private static Func<ProgressLogger, string> FormatBytes(long? totalBytes) =>
