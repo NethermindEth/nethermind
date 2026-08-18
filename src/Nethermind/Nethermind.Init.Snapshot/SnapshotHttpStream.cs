@@ -160,6 +160,9 @@ internal sealed class SnapshotHttpStream : Stream
         _hasher.Dispose();
         _cts.Dispose();
         _window.Dispose();
+        _buffers.Clear();
+        _current = default;
+        _pending.Clear();
     }
 
     private bool TryTakeNextChunk()
