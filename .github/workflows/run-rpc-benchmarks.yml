@@ -1216,19 +1216,21 @@ jobs:
             short_ref="${actual_ref:0:12}"
             image="nethermindeth/nethermind:armbench-${label}-${short_ref}"
             source_date_epoch="$(git -C "${source_dir}" log -1 --format=%ct)"
+            dockerfile="${RUNNER_TEMP}/Dockerfile-${label}"
+            sed 's#--platform=\$BUILDPLATFORM#--platform=linux/arm64#' "${source_dir}/Dockerfile" > "${dockerfile}"
+            grep -q '^FROM --platform=linux/arm64 ' "${dockerfile}"
             pull_arg=()
             if [[ "${label}" == "master" ]]; then
               pull_arg=(--pull)
             fi
 
             docker build "${pull_arg[@]}" \
-              --file "${source_dir}/Dockerfile" \
+              --file "${dockerfile}" \
               --tag "${image}" \
               --build-arg BUILD_CONFIG=release \
               --build-arg CI=true \
               --build-arg COMMIT_HASH="${actual_ref}" \
               --build-arg SOURCE_DATE_EPOCH="${source_date_epoch}" \
-              --build-arg BUILDPLATFORM=linux/arm64 \
               --build-arg TARGETARCH=arm64 \
               "${source_dir}"
 
