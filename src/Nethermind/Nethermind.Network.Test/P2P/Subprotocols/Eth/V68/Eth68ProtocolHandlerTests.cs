@@ -572,10 +572,10 @@ public class Eth68ProtocolHandlerTests
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
-    [Test]
-    public void Should_preserve_first_valid_shape_for_conservative_batched_retry()
+    [TestCase(TransactionsMessage.MaxPacketSize / 2 + 1)]
+    [TestCase(TransactionsMessage.MaxPacketSize + 1)]
+    public void Should_preserve_first_valid_shape_for_conservative_batched_retry(int largeSize)
     {
-        int largeSize = TransactionsMessage.MaxPacketSize + 1;
         _transactionPool.NotifyAboutTx(
                 Arg.Any<Hash256>(),
                 Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())

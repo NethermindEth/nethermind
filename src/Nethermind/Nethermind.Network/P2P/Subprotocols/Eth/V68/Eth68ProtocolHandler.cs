@@ -308,13 +308,14 @@ public class Eth68ProtocolHandler(ISession session,
                 }
 
                 // Delivered transactions must match their first decodable announcement even when that announcement was not requestable.
-                if (!TxShapeAnnouncements.TryGet(hash, out _))
+                if (!TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) retainedShape))
                 {
                     TxShapeAnnouncements.Set(hash, txShape);
+                    retainedShape = txShape;
                 }
 
-                if (!CanRequestPooledTransaction(txShape.Type)
-                    || txShape.Size > (txShape.Type.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
+                if (!CanRequestPooledTransaction(retainedShape.Type)
+                    || retainedShape.Size > (retainedShape.Type.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize))
                 {
                     // Keep the valid shape for delivery validation, but make shaped retries a no-op for transactions this node cannot process.
                     continue;
