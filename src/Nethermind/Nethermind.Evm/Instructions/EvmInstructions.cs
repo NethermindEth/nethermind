@@ -136,6 +136,7 @@ public static unsafe partial class EvmInstructions
             lookup[(int)Instruction.FRAMEDATACOPY] = &InstructionFrameDataCopy<TGasPolicy, TTracingInst>;
             lookup[(int)Instruction.FRAMEPARAM] = &InstructionFrameParam<TGasPolicy, TTracingInst>;
             lookup[(int)Instruction.SIGPARAM] = &InstructionSigParam<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.SIGDATACOPY] = &InstructionSigDataCopy<TGasPolicy, TTracingInst>;
         }
         if (spec.BlobBaseFeeEnabled)
         {

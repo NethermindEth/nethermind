@@ -11,7 +11,7 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// EIP-8141 frame transaction introspection and approval opcodes. All six are registered only when
+/// EIP-8141 frame transaction introspection and approval opcodes. All seven are registered only when
 /// <c>IsEip8141Enabled</c>; each exceptional-halts when executed outside a frame transaction (i.e.
 /// when the transaction-scoped <see cref="FrameTxContext"/> is absent).
 /// https://eips.ethereum.org/EIPS/eip-8141
@@ -196,7 +196,7 @@ public static unsafe partial class EvmInstructions
         return stack.PushUInt32<TTracingInst>(status);
     }
 
-    /// <summary>SIGPARAM (0xb4): read a signature-scoped field, or copy ARBITRARY signature bytes.</summary>
+    /// <summary>SIGPARAM (0xb4): read a signature-scoped field.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSigParam<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -208,18 +208,10 @@ public static unsafe partial class EvmInstructions
         // Spec stack order: signatureIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 signatureIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
-        if (param > 0x04) return EvmExceptionType.BadInstruction;
+        if (param > 0x03) return EvmExceptionType.BadInstruction;
 
         int index = (int)signatureIndex.u0;
         TxFrameSignature signature = ctx.Signatures[index];
-
-        if (param.u0 == 0x04)
-        {
-            if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
-            if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length))
-                return EvmExceptionType.StackUnderflow;
-            return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
-        }
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
         return param.u0 switch
@@ -231,8 +223,30 @@ public static unsafe partial class EvmInstructions
             0x02 => signature.Msg.IsEmpty
                 ? stack.PushZero<TTracingInst>()
                 : stack.PushBytes<TTracingInst>(signature.Msg.Span),
-            0x03 => stack.PushUInt256<TTracingInst>((UInt256)signature.Signature.Length),
+            0x03 => signature.Scheme == TxFrameSignature.SchemeArbitrary
+                ? stack.PushUInt256<TTracingInst>((UInt256)signature.Signature.Length)
+                : EvmExceptionType.BadInstruction,
             _ => EvmExceptionType.BadInstruction,
         };
+    }
+
+    /// <summary>SIGDATACOPY (0xb5): copy an ARBITRARY signature's raw bytes into memory (CALLDATACOPY semantics).</summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSigDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
+        if (ctx is null) return EvmExceptionType.BadInstruction;
+
+        // Spec stack order: memOffset, dataOffset, length, signatureIndex (top to bottom, matching CALLDATACOPY).
+        if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length, out UInt256 signatureIndex))
+            return EvmExceptionType.StackUnderflow;
+        if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
+
+        TxFrameSignature signature = ctx.Signatures[(int)signatureIndex.u0];
+        if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
+
+        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
     }
 }
