@@ -8,6 +8,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using System.Text.Json;
 using Nethermind.Core;
@@ -47,6 +48,36 @@ public static class HexWriter
         Vector128<byte> lo = input & mask;
         Ssse3.Shuffle(hexLookup, Sse2.UnpackLow(hi, lo)).StoreUnsafe(ref dest);
         Ssse3.Shuffle(hexLookup, Sse2.UnpackHigh(hi, lo)).StoreUnsafe(ref Unsafe.Add(ref dest, 16));
+    }
+
+    // NEON: byte-lane USHR needs no 16-bit shift/mask trick, ZIP1/ZIP2 mirror UnpackLow/High, TBL mirrors PSHUFB (indices are 0-15).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void AdvSimdEncode8Bytes(ref byte dest, Vector128<byte> input)
+    {
+        Vector128<byte> hexLookup = Vector128.Create(
+            (byte)'0', (byte)'1', (byte)'2', (byte)'3',
+            (byte)'4', (byte)'5', (byte)'6', (byte)'7',
+            (byte)'8', (byte)'9', (byte)'a', (byte)'b',
+            (byte)'c', (byte)'d', (byte)'e', (byte)'f');
+
+        Vector128<byte> hi = AdvSimd.ShiftRightLogical(input, 4);
+        Vector128<byte> lo = input & Vector128.Create((byte)0x0F);
+        AdvSimd.Arm64.VectorTableLookup(hexLookup, AdvSimd.Arm64.ZipLow(hi, lo)).StoreUnsafe(ref dest);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void AdvSimdEncode16Bytes(ref byte dest, Vector128<byte> input)
+    {
+        Vector128<byte> hexLookup = Vector128.Create(
+            (byte)'0', (byte)'1', (byte)'2', (byte)'3',
+            (byte)'4', (byte)'5', (byte)'6', (byte)'7',
+            (byte)'8', (byte)'9', (byte)'a', (byte)'b',
+            (byte)'c', (byte)'d', (byte)'e', (byte)'f');
+
+        Vector128<byte> hi = AdvSimd.ShiftRightLogical(input, 4);
+        Vector128<byte> lo = input & Vector128.Create((byte)0x0F);
+        AdvSimd.Arm64.VectorTableLookup(hexLookup, AdvSimd.Arm64.ZipLow(hi, lo)).StoreUnsafe(ref dest);
+        AdvSimd.Arm64.VectorTableLookup(hexLookup, AdvSimd.Arm64.ZipHigh(hi, lo)).StoreUnsafe(ref Unsafe.Add(ref dest, 16));
     }
 
     // vpermi2b interleaves high/low nibbles across the full 256-bit register, avoiding SSSE3/AVX2 lane-crossing overhead.
@@ -138,6 +169,11 @@ public static class HexWriter
             ulong be = BinaryPrimitives.ReverseEndianness(value);
             Ssse3Encode8Bytes(ref dest, Vector128.CreateScalarUnsafe(be).AsByte());
         }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            ulong be = BinaryPrimitives.ReverseEndianness(value);
+            AdvSimdEncode8Bytes(ref dest, Vector128.CreateScalarUnsafe(be).AsByte());
+        }
         else
         {
             EncodeUlongScalar(ref dest, value);
@@ -156,6 +192,12 @@ public static class HexWriter
             ref byte srcRef = ref MemoryMarshal.GetReference(src);
             Ssse3Encode16Bytes(ref dest, Vector128.LoadUnsafe(ref srcRef));
             Ssse3Encode16Bytes(ref Unsafe.Add(ref dest, 32), Vector128.LoadUnsafe(ref srcRef, 16));
+        }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            ref byte srcRef = ref MemoryMarshal.GetReference(src);
+            AdvSimdEncode16Bytes(ref dest, Vector128.LoadUnsafe(ref srcRef));
+            AdvSimdEncode16Bytes(ref Unsafe.Add(ref dest, 32), Vector128.LoadUnsafe(ref srcRef, 16));
         }
         else
         {
@@ -353,6 +395,18 @@ public static class HexWriter
                     BinaryPrimitives.ReverseEndianness(value.u1),
                     BinaryPrimitives.ReverseEndianness(value.u0)).AsByte());
         }
+        else if (AdvSimd.Arm64.IsSupported)
+        {
+            AdvSimdEncode16Bytes(ref dest,
+                Vector128.Create(
+                    BinaryPrimitives.ReverseEndianness(value.u3),
+                    BinaryPrimitives.ReverseEndianness(value.u2)).AsByte());
+
+            AdvSimdEncode16Bytes(ref Unsafe.Add(ref dest, 32),
+                Vector128.Create(
+                    BinaryPrimitives.ReverseEndianness(value.u1),
+                    BinaryPrimitives.ReverseEndianness(value.u0)).AsByte());
+        }
         else
         {
             EncodeUlongScalar(ref dest, value.u3);
@@ -456,17 +510,23 @@ public static class HexWriter
     {
         int offset = 0;
 
-        // 32-byte blocks: AVX-512 VBMI or 2x SSSE3 or scalar
+        // 32-byte blocks: AVX-512 VBMI, 2x SSSE3, 2x NEON, or scalar
         while (offset + 32 <= src.Length)
         {
             Encode32Bytes(ref Unsafe.Add(ref dest, offset * 2), src.Slice(offset, 32));
             offset += 32;
         }
 
-        // 16-byte block via SSSE3
+        // 16-byte block via SSSE3 or NEON
         if (Ssse3.IsSupported && offset + 16 <= src.Length)
         {
             Ssse3Encode16Bytes(ref Unsafe.Add(ref dest, offset * 2),
+                Vector128.LoadUnsafe(ref Unsafe.Add(ref MemoryMarshal.GetReference(src), offset)));
+            offset += 16;
+        }
+        else if (AdvSimd.Arm64.IsSupported && offset + 16 <= src.Length)
+        {
+            AdvSimdEncode16Bytes(ref Unsafe.Add(ref dest, offset * 2),
                 Vector128.LoadUnsafe(ref Unsafe.Add(ref MemoryMarshal.GetReference(src), offset)));
             offset += 16;
         }
