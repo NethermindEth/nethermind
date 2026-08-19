@@ -43,6 +43,17 @@ public class TxPoolSourceTests
         return accessListBuilder.Build();
     }
 
+    private static void SetPendingForProduction(
+        ITxPool txPool,
+        IDictionary<AddressAsKey, Transaction[]>? transactions = null,
+        IDictionary<AddressAsKey, Transaction[]>? blobTransactions = null,
+        bool isRevalidated = false) =>
+        txPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
+            .Returns(new PendingTransactionsView(
+                transactions ?? new Dictionary<AddressAsKey, Transaction[]>(),
+                blobTransactions ?? new Dictionary<AddressAsKey, Transaction[]>(),
+                isRevalidated));
+
     [TestCaseSource(nameof(BlobTransactionsWithBlobGasLimitPerBlockCombinations))]
     public void GetTransactions_should_respect_customizable_blob_gas_limit(int[] blobCountPerTx, ulong customMaxBlobGasPerBlock, int? customBlobLimit)
     {
@@ -56,7 +67,7 @@ public class TxPoolSourceTests
                 pair => new AddressAsKey(new Address(new byte[19].Concat(new[] { (byte)pair.index }).ToArray())),
                 pair => new[] { Build.A.Transaction.WithShardBlobTxTypeAndFields(pair.blobCount).TestObject });
         txPool.GetPendingTransactions().Returns([]);
-        txPool.GetPendingLightBlobTransactionsBySender().Returns(transactionsWithBlobs);
+        SetPendingForProduction(txPool, blobTransactions: transactionsWithBlobs);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
@@ -142,10 +153,9 @@ public class TxPoolSourceTests
 
         // Setup mocks
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>())
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressB, [lowerPriorityRegularTx] } });
-        txPool.GetPendingLightBlobTransactionsBySender()
-            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressA, [highPriorityBlobTx] } });
+        SetPendingForProduction(txPool,
+            new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressB, [lowerPriorityRegularTx] } },
+            new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressA, [highPriorityBlobTx] } });
         txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == highPriorityBlobTx.Hash), out Arg.Any<Transaction?>())
             .Returns(x =>
             {
@@ -187,11 +197,10 @@ public class TxPoolSourceTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
         {
             { new AddressAsKey(underGassedTransaction.SenderAddress!), [underGassedTransaction] }
         });
-        txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
 
         ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
             .WithHeadTxFilter()
@@ -234,12 +243,11 @@ public class TxPoolSourceTests
             .SignedAndResolved(TestItem.PrivateKeyB)
             .TestObject;
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
         {
             { new AddressAsKey(invalidBlob.SenderAddress!), [new LightTransaction(invalidBlob)] },
             { new AddressAsKey(validBlob.SenderAddress!), [new LightTransaction(validBlob)] }
         });
-        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
         txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == invalidBlob.Hash), out Arg.Any<Transaction?>())
             .Returns(x =>
             {
@@ -263,7 +271,6 @@ public class TxPoolSourceTests
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
-        txPool.IsRevalidatedFor(targetBlock).Returns(false);
 
         Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
 
@@ -286,11 +293,10 @@ public class TxPoolSourceTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
-        txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
         {
             { new AddressAsKey(blobTx.SenderAddress!), [new LightTransaction(blobTx)] }
-        });
+        }, isRevalidated: true);
         txPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash), out Arg.Any<Transaction?>())
             .Returns(x =>
             {
@@ -301,7 +307,6 @@ public class TxPoolSourceTests
 
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
-        txPool.IsRevalidatedFor(targetBlock).Returns(true);
 
         ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
         txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
@@ -316,7 +321,7 @@ public class TxPoolSourceTests
             Assert.That(result, Is.EqualTo(new[] { blobTx }).UsingTransactionComparer());
         }
 
-        txPool.Received(1).IsRevalidatedFor(targetBlock);
+        txPool.Received(1).GetPendingForProduction(targetBlock, Arg.Any<bool>(), Arg.Any<UInt256>());
         txFilterPipeline.DidNotReceive().Execute(blobTx, parent, Arg.Any<IReleaseSpec>());
     }
 
@@ -332,8 +337,7 @@ public class TxPoolSourceTests
             .TestObject;
 
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
-        txPool.GetPendingLightBlobTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
         {
             { new AddressAsKey(blobTx.SenderAddress!), [new LightTransaction(blobTx)] }
         });

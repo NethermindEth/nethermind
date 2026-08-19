@@ -49,21 +49,23 @@ namespace Nethermind.Consensus.Producers
             PayloadAttributes? payloadAttributes = null,
             bool filterSource = false)
         {
-            bool isRevalidatedForTarget = _transactionPool.IsRevalidatedFor(targetBlock);
             IReleaseSpec spec = _specProvider.GetSpec(targetBlock);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
-                _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
-                _transactionPool.GetPendingTransactionsBySender();
-            IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = _transactionPool.GetPendingLightBlobTransactionsBySender();
+            PendingTransactionsView pending = _transactionPool.GetPendingForProduction(targetBlock, filterSource, baseFee);
+            bool isRevalidatedForTarget = pending.IsRevalidated;
+            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = pending.Transactions;
+            IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = pending.BlobTransactions;
             IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
-            Func<Transaction, bool> intrinsicFilter = tx => filter(tx) && (isRevalidatedForTarget || IsIntrinsicallyValid(tx, spec));
+            // A revalidated pool has already rejected everything the target spec makes intrinsically invalid.
+            Func<Transaction, bool> pendingTxFilter = isRevalidatedForTarget
+                ? filter
+                : tx => filter(tx) && IsIntrinsicallyValid(tx, spec);
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, intrinsicFilter, gasLimit);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, pendingTxFilter, gasLimit);
             IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, filter, maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 

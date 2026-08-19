@@ -69,7 +69,7 @@ internal class DelegatedAccountFilterTest
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
         DelegatedAccountFilter filter = CreateFilter(Prague.Instance, standardPool, blobPool);
         Transaction transaction = Build.A.Transaction.SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new(transaction, Substitute.For<IAccountStateProvider>());
+        TxFilteringState state = new(transaction, Substitute.For<IAccountStateProvider>(), Prague.Instance);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
@@ -83,7 +83,7 @@ internal class DelegatedAccountFilterTest
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
         DelegatedAccountFilter filter = CreateFilter(Prague.Instance, standardPool, blobPool, stateProvider);
         Transaction transaction = Build.A.Transaction.SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new(transaction, stateProvider);
+        TxFilteringState state = new(transaction, stateProvider, Prague.Instance);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
@@ -105,7 +105,7 @@ internal class DelegatedAccountFilterTest
         TestReadOnlyStateProvider stateProvider = CreateDelegatedStateProvider();
         DelegatedAccountFilter filter = CreateFilter(Prague.Instance, standardPool, blobPool, stateProvider);
         Transaction transaction = Build.A.Transaction.WithNonce(txNonce).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new(transaction, stateProvider);
+        TxFilteringState state = new(transaction, stateProvider, Prague.Instance);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
@@ -128,7 +128,7 @@ internal class DelegatedAccountFilterTest
         TestReadOnlyStateProvider stateProvider = CreateDelegatedStateProvider();
         DelegatedAccountFilter filter = CreateFilter(spec, standardPool, blobPool, stateProvider);
         Transaction transaction = Build.A.Transaction.WithNonce(1).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
-        TxFilteringState state = new(transaction, stateProvider);
+        TxFilteringState state = new(transaction, stateProvider, Prague.Instance);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 
@@ -152,7 +152,7 @@ internal class DelegatedAccountFilterTest
         Transaction transaction = Build.A.Transaction.WithNonce(nonce).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
         TestReadOnlyStateProvider stateProvider = new();
         stateProvider.CreateAccount(TestItem.AddressA, 0, 1);
-        TxFilteringState state = new(transaction, stateProvider);
+        TxFilteringState state = new(transaction, stateProvider, Prague.Instance);
 
         AcceptTxResult result = filter.Accept(transaction, ref state, TxHandlingOptions.None);
 

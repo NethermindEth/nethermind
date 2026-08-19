@@ -406,7 +406,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.False);
             await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
 
-            specChangeTxValidator.Received(1).IsWellFormed(transaction, Arg.Any<IReleaseSpec>());
+            specChangeTxValidator.Received(1).IsWellFormed(transaction, Osaka.Instance);
             Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.True);
         }
 
@@ -426,6 +426,38 @@ namespace Nethermind.TxPool.Test
             await AddEmptyBlock();
 
             Assert.That(_txPool.IsRevalidatedFor(_blockTree.Head.Header), Is.False);
+        }
+
+        [Test]
+        public async Task should_drop_revalidated_state_when_transaction_is_accepted_under_another_spec()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            _txPool = CreatePool(specProvider: provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject,
+                TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await AddEmptyBlock();
+            BlockHeader forkHeader = _blockTree.BestSuggestedHeader;
+            Assert.That(_txPool.IsRevalidatedFor(forkHeader), Is.True);
+
+            // A reorg back below the fork makes the pool accept transactions under the previous rules again,
+            // which stops the mark left by the walk for the fork spec from covering the pool.
+            _blockTree.BestSuggestedHeader = head.Header;
+            Assert.That(_txPool.SubmitTx(Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject,
+                TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _blockTree.BestSuggestedHeader = forkHeader;
+            Assert.That(_txPool.IsRevalidatedFor(forkHeader), Is.False);
         }
 
         [Test]
@@ -496,6 +528,7 @@ namespace Nethermind.TxPool.Test
 
             _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
             Transaction transaction = Build.A.Transaction
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
@@ -507,17 +540,23 @@ namespace Nethermind.TxPool.Test
                 .GetField("_newHeadLock", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(_txPool)!;
             Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
+            Transaction forkSpecTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
             Task finalHeadProcessed = Wait.ForEventCondition<Block>(
                 CancellationToken.None,
                 handler => _txPool.TxPoolHeadChanged += handler,
                 handler => _txPool.TxPoolHeadChanged -= handler,
                 block => block.Hash == head.Hash);
 
+            // Holding the read lock keeps both head changes queued, so the pool accepts a transaction under the
+            // fork rules and then falls back below the fork without ever being walked in between.
             newHeadLock.EnterReadLock();
             try
             {
                 _blockTree.BestSuggestedHeader = forkBlock.Header;
                 _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
+                Assert.That(_txPool.SubmitTx(forkSpecTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
                 _blockTree.BestSuggestedHeader = head.Header;
                 _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(head, forkBlock));
@@ -534,6 +573,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 specChangeTxValidator.Received(1).IsWellFormed(transaction, Prague.Instance);
+                specChangeTxValidator.Received(1).IsWellFormed(forkSpecTransaction, Prague.Instance);
                 Assert.That(_txPool.IsRevalidatedFor(head.Header), Is.True);
             }
         }
