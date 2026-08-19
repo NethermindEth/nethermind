@@ -31,5 +31,4 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
 
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
         baseBlockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out error);
-
 }

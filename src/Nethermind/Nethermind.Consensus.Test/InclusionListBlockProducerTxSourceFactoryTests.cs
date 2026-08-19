@@ -60,7 +60,6 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             Assert.That(selectedTxs[0].Nonce, Is.EqualTo(3UL), "the IL transaction must be selected before the mempool source");
             Assert.That(selectedTxs.Any(t => t.Nonce == 7UL), Is.True, "the mempool transaction must still appear after the IL");
         }
-
     }
 
     [Test]

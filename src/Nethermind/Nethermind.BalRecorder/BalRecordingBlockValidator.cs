@@ -28,7 +28,6 @@ public class BalRecordingBlockValidator(IBlockValidator inner, BalRecorderSpecSw
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
         inner.ValidateBodyAgainstHeader(header, toBeValidated, out error);
 
-
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {
         if (balSwitch.Enabled && suggestedBlock.Header.BlockAccessListHash is null)

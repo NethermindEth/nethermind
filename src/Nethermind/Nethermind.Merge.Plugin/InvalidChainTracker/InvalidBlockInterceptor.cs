@@ -18,7 +18,6 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
-
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         bool result = blockValidator.Validate(header, parent, isUncle, out error);
