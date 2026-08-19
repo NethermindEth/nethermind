@@ -104,6 +104,38 @@ public class FrameTxPayerExposureFilterTests
     }
 
     [Test]
+    public void Accept_DiscountsALightRecordIncumbent()
+    {
+        // At the shipped blob mode the incumbent is a frameless light record, which cannot be priced, so
+        // the discount has to read the reservation the record carries or a fee bump is refused exposure
+        // it no longer owes.
+        const int incumbentCost = TestCost;
+        const int bumpCost = TestCost + TestCost / 2;
+        const int balance = 2 * TestCost;
+
+        // The two summed exceed the balance, so only discounting the displaced record admits the bump.
+        Transaction incumbent = BlobFrameTxCosting(incumbentCost);
+        incumbent.Hash = TestItem.KeccakA;
+        incumbent.PayerAddress = Payer;
+        incumbent.PayerExposure = incumbentCost;
+        Transaction record = new LightTransaction(incumbent);
+
+        Transaction bump = BlobFrameTxCosting(bumpCost);
+        bump.Hash = TestItem.KeccakB;
+
+        PayerExposureCache cache = new();
+        cache.TryReserve(Payer, incumbentCost, balance: balance, out _);
+
+        AcceptTxResult result = Accept(StateWithPayerBalance(balance), cache, bump, pending: Pool(blobs: true, record));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(record.Frames, Is.Null, "the incumbent must be frameless, or this pins nothing");
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        }
+    }
+
+    [Test]
     public void Accept_ReservesOnAdmission_SoASecondTxFromOnePayerSeesIt()
     {
         TestReadOnlyStateProvider state = StateWithPayerBalance(TestCost + TestCost / 2);
@@ -284,6 +316,16 @@ public class FrameTxPayerExposureFilterTests
     }
 
     /// <summary>The same frame tx as <see cref="FrameTxCostingExactly"/>, carrying <paramref name="blobCount"/> blobs.</summary>
+    /// <summary>A blob-carrying frame tx whose max cost is exactly <paramref name="cost"/>: the blob leg is
+    /// priced at zero, so the gas leg alone decides it.</summary>
+    private static Transaction BlobFrameTxCosting(int cost)
+    {
+        Transaction tx = FrameTxCostingExactly(cost);
+        tx.BlobVersionedHashes = [new byte[32]];
+        tx.MaxFeePerBlobGas = UInt256.Zero;
+        return tx;
+    }
+
     private static Transaction BlobFrameTx(int blobCount, int maxFeePerBlobGas)
     {
         Transaction tx = FrameTxCostingExactly(TestCost);
