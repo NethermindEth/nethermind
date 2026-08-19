@@ -215,6 +215,44 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Resolves_full_branch_children_to_their_individual_hashes()
+    {
+        if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
+        {
+            Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+        }
+
+        const int branchCount = 8;
+        TrieNode root = new(NodeType.Branch);
+        TrieNode[] branches = new TrieNode[branchCount];
+
+        for (int i = 0; i < branchCount; i++)
+        {
+            TrieNode branch = branches[i] = new TrieNode(NodeType.Branch);
+            root.SetChild(i, branch);
+            for (int childIndex = 0; childIndex < TrieNode.BranchesCount; childIndex++)
+            {
+                Hash256 childHash = Keccak.Compute([(byte)i, (byte)childIndex]);
+                branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, childHash));
+            }
+        }
+
+        TreePath path = TreePath.Empty;
+        root.ResolveKey(NullTrieNodeResolver.Instance, ref path, canBeParallel: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < branchCount; i++)
+            {
+                Assert.That(branches[i].FullRlp.Length, Is.EqualTo(532), $"RLP length at branch {i}");
+                Assert.That(branches[i].Keccak, Is.EqualTo(Keccak.Compute(branches[i].FullRlp.AsSpan())), $"hash at branch {i}");
+            }
+
+            Assert.That(root.Keccak, Is.EqualTo(Keccak.Compute(root.FullRlp.AsSpan())), "root hash");
+        }
+    }
+
+    [Test]
     public void Can_encode_decode_tiny_extension()
     {
         Context ctx = new();

@@ -231,6 +231,35 @@ namespace Nethermind.Core.Test
             }
         }
 
+        [Test]
+        public void Avx512vl_two_way_532_byte_hash_matches_individual_hashes()
+        {
+            if (!Avx512F.VL.IsSupported)
+            {
+                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+            }
+
+            byte[] input0 = new byte[532];
+            byte[] input1 = new byte[532];
+            byte[][] inputs = [input0, input1];
+            byte[] output = new byte[2 * Hash256.Size];
+            Random random = new(42);
+
+            for (int iteration = 0; iteration < 16; iteration++)
+            {
+                random.NextBytes(input0);
+                random.NextBytes(input1);
+                KeccakHash.ComputeHash532Bytes2Avx512VL(ref input0[0], ref input1[0], ref output[0]);
+
+                for (int i = 0; i < inputs.Length; i++)
+                {
+                    ValueHash256 expected = ValueKeccak.Compute(inputs[i]);
+                    Assert.That(output.AsSpan(i * Hash256.Size, Hash256.Size).SequenceEqual(expected.Bytes), Is.True,
+                        $"Hash mismatch at iteration {iteration}, batch index {i}.");
+                }
+            }
+        }
+
         // Expected hashes were generated with PyCryptodome's independent Keccak-256 implementation.
         [TestCase(20, "50c02dbeee2be79b9595060fe30efbd78f06acedf7a1fe8cb05df7ddd76f2b1b")]
         [TestCase(32, "d064c972ea7cbd9f1237bbd922fd5f08ca57895c13bc9ea2b91913f7099809a1")]

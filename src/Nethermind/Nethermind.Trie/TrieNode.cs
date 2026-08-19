@@ -536,6 +536,22 @@ namespace Nethermind.Trie
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             bool isRoot = path.Length == 0;
+            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel);
+
+            // Descendant nodes with RLP shorter than a hash are embedded in their parent.
+            if (rlp.Length >= 32 || isRoot)
+            {
+                Metrics.IncrementTreeNodeHashCalculations();
+                return Nethermind.Core.Crypto.Keccak.Compute(rlp.AsSpan());
+            }
+
+            return null;
+        }
+
+        internal CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
+            ICappedArrayPool? bufferPool, bool canBeParallel)
+        {
+            bool isRoot = path.Length == 0;
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNull || IsDirty)
             {
@@ -553,16 +569,23 @@ namespace Nethermind.Trie
                 WriteRlp(rlp = fullRlp);
             }
 
-            /* nodes that are descendants of other nodes are stored inline
-             * if their serialized length is less than Keccak length
-             * */
-            if (rlp.Length >= 32 || isRoot)
+            return rlp;
+        }
+
+        internal void ResolvePreparedKey()
+        {
+            CappedArray<byte> rlp = ReadRlp();
+            if (rlp.Length >= 32)
             {
                 Metrics.IncrementTreeNodeHashCalculations();
-                return Nethermind.Core.Crypto.Keccak.Compute(rlp.AsSpan());
+                Keccak = Nethermind.Core.Crypto.Keccak.Compute(rlp.AsSpan());
             }
+        }
 
-            return null;
+        internal void SetPreparedKey(in ValueHash256 hash)
+        {
+            Metrics.IncrementTreeNodeHashCalculations();
+            Keccak = new Hash256(in hash);
         }
 
         internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null, bool canBeParallel = false)

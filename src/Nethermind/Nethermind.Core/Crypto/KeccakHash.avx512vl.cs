@@ -11,6 +11,14 @@ namespace Nethermind.Core.Crypto;
 
 public sealed partial class KeccakHash
 {
+    // A struct local preserves tiering and dynamic PGO. Stackalloc would pin the hashing method at
+    // Tier0 FullOpts and add per-call GS-cookie and stack-probe checks.
+    [InlineArray(STATE_LANES)]
+    private struct KeccakStateX2
+    {
+        private Vector128<ulong> _lane0;
+    }
+
     // vpternlog immediates: bit n of the immediate is the output for input bits (a, b, c) = binary n.
     private const byte Xor3 = 0x96; // a ^ b ^ c
     private const byte Chi = 0xD2; // a ^ (~b & c)
@@ -161,6 +169,128 @@ public sealed partial class KeccakHash
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref output, 8), a1.GetElement(0));
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref output, 16), a2.GetElement(0));
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref output, 24), a3.GetElement(0));
+    }
+
+    /// <summary>Hashes two 532-byte inputs into two consecutive 32-byte outputs.</summary>
+    /// <remarks>The caller must ensure that AVX-512VL is supported and both inputs have the required fixed size.</remarks>
+    [SkipLocalsInit]
+    internal static void ComputeHash532Bytes2Avx512VL(ref byte input0, ref byte input1, ref byte output)
+    {
+        Debug.Assert(Avx512F.VL.IsSupported);
+
+        KeccakStateX2 stateBuffer = default;
+        ref Vector128<ulong> state = ref stateBuffer[0];
+        for (int blockOffset = 0; blockOffset < 3 * HASH_DATA_AREA; blockOffset += HASH_DATA_AREA)
+        {
+            for (int lane = 0; lane < HASH_DATA_AREA / sizeof(ulong); lane++)
+            {
+                int offset = blockOffset + lane * sizeof(ulong);
+                Unsafe.Add(ref state, lane) ^= LoadPair(ref input0, ref input1, offset);
+            }
+
+            KeccakF1600x2Avx512VL(ref state);
+        }
+
+        const int finalBlockOffset = 3 * HASH_DATA_AREA;
+        for (int lane = 0; lane < 15; lane++)
+        {
+            int offset = finalBlockOffset + lane * sizeof(ulong);
+            Unsafe.Add(ref state, lane) ^= LoadPair(ref input0, ref input1, offset);
+        }
+
+        Unsafe.Add(ref state, 15) ^= Vector128.Create(
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref input0, finalBlockOffset + 120)) | (1UL << 32),
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref input1, finalBlockOffset + 120)) | (1UL << 32));
+        Unsafe.Add(ref state, 16) ^= Vector128.Create(0x8000000000000000UL);
+        KeccakF1600x2Avx512VL(ref state);
+
+        StoreHashPair(ref output, 0, state, Unsafe.Add(ref state, 1), Unsafe.Add(ref state, 2), Unsafe.Add(ref state, 3));
+        StoreHashPair(ref output, 1, state, Unsafe.Add(ref state, 1), Unsafe.Add(ref state, 2), Unsafe.Add(ref state, 3));
+    }
+
+    [SkipLocalsInit]
+    private static void KeccakF1600x2Avx512VL(ref Vector128<ulong> state)
+    {
+        Vector128<ulong> a0 = state;
+        Vector128<ulong> a1 = Unsafe.Add(ref state, 1);
+        Vector128<ulong> a2 = Unsafe.Add(ref state, 2);
+        Vector128<ulong> a3 = Unsafe.Add(ref state, 3);
+        Vector128<ulong> a4 = Unsafe.Add(ref state, 4);
+        Vector128<ulong> a5 = Unsafe.Add(ref state, 5);
+        Vector128<ulong> a6 = Unsafe.Add(ref state, 6);
+        Vector128<ulong> a7 = Unsafe.Add(ref state, 7);
+        Vector128<ulong> a8 = Unsafe.Add(ref state, 8);
+        Vector128<ulong> a9 = Unsafe.Add(ref state, 9);
+        Vector128<ulong> a10 = Unsafe.Add(ref state, 10);
+        Vector128<ulong> a11 = Unsafe.Add(ref state, 11);
+        Vector128<ulong> a12 = Unsafe.Add(ref state, 12);
+        Vector128<ulong> a13 = Unsafe.Add(ref state, 13);
+        Vector128<ulong> a14 = Unsafe.Add(ref state, 14);
+        Vector128<ulong> a15 = Unsafe.Add(ref state, 15);
+        Vector128<ulong> a16 = Unsafe.Add(ref state, 16);
+        Vector128<ulong> a17 = Unsafe.Add(ref state, 17);
+        Vector128<ulong> a18 = Unsafe.Add(ref state, 18);
+        Vector128<ulong> a19 = Unsafe.Add(ref state, 19);
+        Vector128<ulong> a20 = Unsafe.Add(ref state, 20);
+        Vector128<ulong> a21 = Unsafe.Add(ref state, 21);
+        Vector128<ulong> a22 = Unsafe.Add(ref state, 22);
+        Vector128<ulong> a23 = Unsafe.Add(ref state, 23);
+        Vector128<ulong> a24 = Unsafe.Add(ref state, 24);
+
+        ref ulong roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
+        for (int round = 0; round < ROUNDS; round++)
+        {
+            RoundX1(
+                ref a0, ref a1, ref a2, ref a3, ref a4,
+                ref a5, ref a6, ref a7, ref a8, ref a9,
+                ref a10, ref a11, ref a12, ref a13, ref a14,
+                ref a15, ref a16, ref a17, ref a18, ref a19,
+                ref a20, ref a21, ref a22, ref a23, ref a24,
+                Vector128.Create(Unsafe.Add(ref roundConstants, round)));
+        }
+
+        state = a0;
+        Unsafe.Add(ref state, 1) = a1;
+        Unsafe.Add(ref state, 2) = a2;
+        Unsafe.Add(ref state, 3) = a3;
+        Unsafe.Add(ref state, 4) = a4;
+        Unsafe.Add(ref state, 5) = a5;
+        Unsafe.Add(ref state, 6) = a6;
+        Unsafe.Add(ref state, 7) = a7;
+        Unsafe.Add(ref state, 8) = a8;
+        Unsafe.Add(ref state, 9) = a9;
+        Unsafe.Add(ref state, 10) = a10;
+        Unsafe.Add(ref state, 11) = a11;
+        Unsafe.Add(ref state, 12) = a12;
+        Unsafe.Add(ref state, 13) = a13;
+        Unsafe.Add(ref state, 14) = a14;
+        Unsafe.Add(ref state, 15) = a15;
+        Unsafe.Add(ref state, 16) = a16;
+        Unsafe.Add(ref state, 17) = a17;
+        Unsafe.Add(ref state, 18) = a18;
+        Unsafe.Add(ref state, 19) = a19;
+        Unsafe.Add(ref state, 20) = a20;
+        Unsafe.Add(ref state, 21) = a21;
+        Unsafe.Add(ref state, 22) = a22;
+        Unsafe.Add(ref state, 23) = a23;
+        Unsafe.Add(ref state, 24) = a24;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector128<ulong> LoadPair(ref byte input0, ref byte input1, int offset) =>
+        Vector128.Create(
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input0, offset)),
+            Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref input1, offset)));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreHashPair(ref byte output, int hashIndex,
+        Vector128<ulong> a0, Vector128<ulong> a1, Vector128<ulong> a2, Vector128<ulong> a3)
+    {
+        ref byte destination = ref Unsafe.Add(ref output, hashIndex * Hash256.Size);
+        Unsafe.WriteUnaligned(ref destination, a0.GetElement(hashIndex));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), a1.GetElement(hashIndex));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16), a2.GetElement(hashIndex));
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24), a3.GetElement(hashIndex));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
