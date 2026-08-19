@@ -677,11 +677,11 @@ What that file has to get right:
   subnet should run with to `0` and drop the rest. Nethermind chainspecs use parity-style `eip…Transition`
   keys, and geth genesis-config names (`homesteadBlock`, `eip150Block`, `byzantiumBlock`, …) are silently
   ignored, which leaves the chain on Frontier rules.
-- **Epoch geometry** — `gap` must be non-zero and smaller than `epoch`; both degenerate cases silently stop
-  snapshots from ever being taken. The snapshot for an epoch is taken at `epochStart - gap`.
-  `CertificateThreshold` is a fraction of the epoch's committee size, so `0.5` with three masternodes means
-  two votes per certificate. Block spacing is `v2Configs[].MinePeriod` — the top-level `period` is carried
-  for parity with the Go client and is not read.
+- **Epoch geometry** — `gap` must be non-zero and smaller than `epoch`; in both degenerate cases the switch
+  block is the only block that ever gets a snapshot, silently. The snapshot for an epoch is taken at
+  `epochStart - gap`. `CertificateThreshold` is a fraction of the epoch's committee size, so `0.5` with three
+  masternodes means two votes per certificate. Block spacing is `v2Configs[].MinePeriod` — the top-level
+  `period` is carried for parity with the Go client and is not read.
 
 Each node then needs a config pointing at the chainspec:
 
