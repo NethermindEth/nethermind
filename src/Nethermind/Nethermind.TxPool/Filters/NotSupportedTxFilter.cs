@@ -28,8 +28,8 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
         // Still missing before any public activation: validation-prefix simulation, paymaster reservation, the
         // failed-APPROVE replay bound, dependency-set revalidation/eviction ordering, and payer-exposure
-        // accounting beyond natively-resolved payers (under-reserved until the shared max_cost helper) and for
-        // blob-pool records restored from disk, whose payer is not persisted so they hold no reservation.
+        // accounting for blob-pool records restored from disk, whose payer is not persisted so they hold no
+        // reservation.
         // MalformedTxFilter still enforces static well-formedness downstream.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {

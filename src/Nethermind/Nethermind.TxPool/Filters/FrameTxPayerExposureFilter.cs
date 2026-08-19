@@ -77,16 +77,16 @@ internal sealed class FrameTxPayerExposureFilter(
             if (pending.Nonce < state.Nonce) return true;
             if (pending.Nonce > state.Nonce) return false;
 
-            if (CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)
-                && pending.PayerAddress == state.Payer
-                && pending.PayerExposure is { } cost)
+            // Same nonce, another domain: only one entry can compete, so keep looking for it.
+            if (!CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)) return true;
+
+            // The competing entry, and there is only one, so stop whether or not it discounts this payer.
+            if (pending.PayerAddress == state.Payer && pending.PayerExposure is { } cost)
             {
                 state.Reserved = cost;
-                return false;
             }
 
-            // Same nonce, another domain: only one entry can compete, so keep looking for it.
-            return true;
+            return false;
         });
 
         return search.Reserved;
