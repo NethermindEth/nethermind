@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -57,7 +58,7 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx).Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+        simulator.Simulate(tx, Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -65,7 +66,8 @@ public class FrameTxSimulationFilterTests
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressB));
-            simulator.Received(1).Simulate(tx);
+            // Asserted, not defaulted: FrameTxSignatureFilter has already verified this transaction's entries.
+            simulator.Received(1).Simulate(tx, Arg.Any<CancellationToken>(), signaturesPreValidated: true);
         }
     }
 
@@ -75,7 +77,7 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx).Returns(FrameTxSimulationResult.Reject("banned opcode"));
+        simulator.Simulate(tx, Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("banned opcode"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -94,7 +96,7 @@ public class FrameTxSimulationFilterTests
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx).Returns(FrameTxSimulationResult.Undecided("simulation unavailable"));
+        simulator.Simulate(tx, Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulation unavailable"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 

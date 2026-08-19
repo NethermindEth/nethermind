@@ -15,7 +15,9 @@ namespace Nethermind.TxPool;
 public interface IFrameTxPrefixSimulator
 {
     /// <param name="token">Honored at entry only; a started simulation runs to its <c>MAX_VERIFY_GAS</c> bound.</param>
-    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
+    /// <param name="signaturesPreValidated">Assert only if this exact transaction has already passed
+    /// <c>validate_signature</c> against the head spec; the simulation then trusts its signatures.</param>
+    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool signaturesPreValidated = false);
 }
 
 public enum FrameTxSimulationOutcome

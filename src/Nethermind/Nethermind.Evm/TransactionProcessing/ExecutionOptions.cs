@@ -44,6 +44,12 @@ public enum ExecutionOptions
     FrameValidationPrefixOnly = 32,
 
     /// <summary>
+    /// Asserts the caller has already verified this transaction's frame signatures against the same spec.
+    /// Only <see cref="FrameValidationPrefixOnly"/> reads it; every other path verifies unconditionally.
+    /// </summary>
+    FrameSignaturesPreValidated = 64,
+
+    /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>
     SkipValidationAndCommit = Commit | SkipValidation,

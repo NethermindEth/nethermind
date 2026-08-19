@@ -150,6 +150,17 @@ public class FrameTxPrefixSimulatorTests
         Assert.Throws<OperationCanceledException>(() => simulator.Simulate(Tx(), cts.Token));
     }
 
+    [TestCase(false, ExecutionOptions.FrameValidationPrefixOnly)]
+    [TestCase(true, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FrameSignaturesPreValidated)]
+    public void Simulate_ForwardsTheCallersSignaturePrecondition(bool preValidated, ExecutionOptions expected)
+    {
+        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor);
+
+        simulator.Simulate(Tx(), signaturesPreValidated: preValidated);
+
+        processor.Received(1).Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), expected);
+    }
+
     private static FrameTxPrefixSimulator CreateSimulator(
         out IReadOnlyTxProcessorSource source,
         out ITransactionProcessor processor,
