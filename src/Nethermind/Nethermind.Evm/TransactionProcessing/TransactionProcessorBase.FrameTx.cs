@@ -805,9 +805,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// SECP256K1 signature signed by the target, then APPROVE. No gas beyond the EIP-8250 surcharge.
     /// The signature's cryptographic validity is already checked in pre-flight; default code checks
     /// only the structural conditions the spec pins.
-    /// EIP8141-ISSUE: the spec reads the signature from the hoisted <c>signatures</c> list at index
-    /// 0; the ethrex public devnet carries it in the VERIFY frame's data instead — an open
-    /// cross-client divergence to raise upstream. This follows the spec (hoisted list).
     /// </summary>
     private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, ITxTracer tracer, out ulong gasUsed)
     {
