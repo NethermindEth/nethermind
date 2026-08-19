@@ -3,12 +3,31 @@
 
 using System;
 using System.Collections;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
+
+/// <summary>
+/// Extensions over the raw wire byte-strings carried by the SSZ containers in this file.
+/// </summary>
+/// <remarks>
+/// Lives beside the wire types rather than in <c>WireConversionExtensions</c> because the
+/// wire types are also compiled into assemblies that do not link that file.
+/// </remarks>
+internal static class SszWireBytesExtensions
+{
+    /// <summary>The wire bytes as an array, avoiding a copy when the memory already spans a whole array.</summary>
+    /// <remarks>The SSZ decoder materialises each field into its own exact-fit array, so the fast path is the norm.</remarks>
+    public static byte[] ToByteArray(this ReadOnlyMemory<byte> bytes) =>
+        MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> segment)
+        && segment.Offset == 0 && segment.Count == segment.Array!.Length
+            ? segment.Array
+            : bytes.ToArray();
+}
 
 /// <summary>
 /// SSZ representation of a single variable-length transaction byte-string.

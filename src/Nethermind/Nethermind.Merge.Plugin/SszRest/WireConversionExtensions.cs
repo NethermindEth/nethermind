@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.InteropServices;
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,14 +16,6 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// </summary>
 internal static class WireConversionExtensions
 {
-    /// <summary>The wire bytes as an array, avoiding a copy when the memory already spans a whole array.</summary>
-    /// <remarks>The SSZ decoder materialises each field into its own exact-fit array, so the fast path is the norm.</remarks>
-    public static byte[] ToByteArray(this ReadOnlyMemory<byte> bytes) =>
-        MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> segment)
-        && segment.Offset == 0 && segment.Count == segment.Array!.Length
-            ? segment.Array
-            : bytes.ToArray();
-
     public static SszTransaction[] ToTxsWire(this byte[][] txs)
     {
         if (txs.Length == 0) return [];
