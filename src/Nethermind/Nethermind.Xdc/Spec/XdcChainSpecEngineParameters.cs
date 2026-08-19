@@ -109,6 +109,12 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         // Without its own release spec boundary the flag would only flip on whichever transition encloses it.
         if (DynamicGasLimitBlock is not null)
             blockNumbers.Add(DynamicGasLimitBlock.Value);
+        if (TipXDCX is not null)
+            blockNumbers.Add(TipXDCX.Value);
+        if (TIPXDCXMinerDisable is not null)
+            blockNumbers.Add(TIPXDCXMinerDisable.Value);
+        if (TIPXDCXReceiverDisable is not null)
+            blockNumbers.Add(TIPXDCXReceiverDisable.Value);
     }
 }
 
