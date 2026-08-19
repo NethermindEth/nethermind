@@ -75,8 +75,41 @@ public class GethGenesisLoaderTests
         return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
     }
 
+    private static ChainSpec LoadAutoDetectingNonSeekable(string json)
+    {
+        using NonSeekableStream stream = new(Encoding.UTF8.GetBytes(json));
+        return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+    }
+
     private static ChainSpec LoadHoodiChainSpec() => LoadChainSpec(
         Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json"));
+
+    private sealed class NonSeekableStream(byte[] data) : Stream
+    {
+        private readonly MemoryStream _inner = new(data, writable: false);
+
+        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+        public override int Read(Span<byte> buffer) => _inner.Read(buffer);
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+    }
 
     /// <summary>
     /// Builds a standard geth genesis JSON with homesteadBlock/eip150Block/eip155Block/eip158Block all set to 0.
@@ -425,11 +458,123 @@ public class GethGenesisLoaderTests
         }
     }
 
-    [Test]
-    public void AutoDetectingLoader_detects_geth_format()
+    public static IEnumerable<TestCaseData> GethGenesisDetectionCases
     {
-        ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(chainId: 12345));
+        get
+        {
+            yield return new TestCaseData(BuildStandardGethGenesisJson(chainId: 12345))
+                .SetName("Geth_config_is_first");
+
+            yield return new TestCaseData("""
+                {
+                  "nonce": "0x0",
+                  "config": {
+                    "chainId": 12345,
+                    "homesteadBlock": 0,
+                    "eip150Block": 0,
+                    "eip155Block": 0,
+                    "eip158Block": 0
+                  },
+                  "difficulty": "0x1",
+                  "gasLimit": "0x8000000",
+                  "alloc": {}
+                }
+                """)
+                .SetName("Geth_config_follows_nonce");
+
+            string padding = new('a', 8192);
+            yield return new TestCaseData($$"""
+                {
+                  "nonce": "0x0",
+                  "padding": "{{padding}}",
+                  "config": {
+                    "chainId": 12345,
+                    "homesteadBlock": 0,
+                    "eip150Block": 0,
+                    "eip155Block": 0,
+                    "eip158Block": 0
+                  },
+                  "difficulty": "0x1",
+                  "gasLimit": "0x8000000",
+                  "alloc": {}
+                }
+                """)
+                .SetName("Geth_config_follows_large_value");
+        }
+    }
+
+    [TestCaseSource(nameof(GethGenesisDetectionCases))]
+    public void AutoDetectingLoader_detects_geth_format_regardless_of_config_position(string gethGenesis)
+    {
+        ChainSpec chainSpec = LoadAutoDetecting(gethGenesis);
         Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
+    }
+
+    [Test]
+    public void AutoDetectingLoader_loads_geth_format_from_non_seekable_stream()
+    {
+        ChainSpec chainSpec = LoadAutoDetectingNonSeekable(BuildStandardGethGenesisJson(chainId: 12345));
+
+        Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
+    }
+
+    [Test]
+    public void AutoDetectingLoader_uses_serializer_maximum_json_depth()
+    {
+        StringBuilder nestedValue = new();
+        nestedValue.Append('[', 70);
+        nestedValue.Append('0');
+        nestedValue.Append(']', 70);
+
+        string gethGenesis = $$"""
+            {
+              "config": {
+                "chainId": 12345,
+                "homesteadBlock": 0,
+                "eip150Block": 0,
+                "eip155Block": 0,
+                "eip158Block": 0
+              },
+              "nested": {{nestedValue}},
+              "difficulty": "0x1",
+              "gasLimit": "0x8000000",
+              "alloc": {}
+            }
+            """;
+
+        ChainSpec chainSpec = LoadAutoDetecting(gethGenesis);
+
+        Assert.That(chainSpec.ChainId, Is.EqualTo(12345));
+    }
+
+    [Test]
+    public void AutoDetectingLoader_preserves_parity_format_with_top_level_config()
+    {
+        const string parityChainspec = """
+        {
+          "config": { "chainId": 12345 },
+          "engine": { "Ethash": {} },
+          "params": {
+            "chainID": "0x1",
+            "terminalPoWBlockNumber": "0x64",
+            "terminalTotalDifficulty": "0xA"
+          },
+          "genesis": {
+            "difficulty": "0x1",
+            "gasLimit": "0x1388"
+          },
+          "accounts": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadAutoDetecting(parityChainspec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.ChainId, Is.EqualTo(1));
+            Assert.That(chainSpec.TerminalPoWBlockNumber, Is.EqualTo(100));
+            Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo((UInt256)10));
+        }
     }
 
     [Test]
