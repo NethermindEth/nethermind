@@ -62,7 +62,7 @@ public static class SszCodec
         int count = inclusionList.Count;
         SszTransaction[] txs = new SszTransaction[count];
         for (int i = 0; i < count; i++)
-            txs[i] = new SszTransaction { Bytes = inclusionList[i].AsSpan().ToArray() };
+            txs[i] = new SszTransaction { Bytes = inclusionList[i].AsReadOnlyMemory() };
         return EncodeToWriter(new InclusionListResponseWire { Transactions = txs }, writer);
     }
 

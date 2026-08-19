@@ -1019,8 +1019,8 @@ public class SszCodecTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.Transactions, Is.Not.Null.And.Length.EqualTo(2));
-            Assert.That(decoded.Transactions![0].Bytes, Is.EqualTo(tx1));
-            Assert.That(decoded.Transactions[1].Bytes, Is.EqualTo(tx2));
+            Assert.That(decoded.Transactions![0].Bytes.ToArray(), Is.EqualTo(tx1));
+            Assert.That(decoded.Transactions[1].Bytes.ToArray(), Is.EqualTo(tx2));
         }
     }
 }

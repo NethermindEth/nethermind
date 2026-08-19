@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,7 +18,7 @@ namespace Nethermind.Merge.Plugin.SszRest;
 [SszContainer(isCollectionItself: true)]
 public partial struct SszTransaction
 {
-    [SszList(0x4000_0000)] public byte[]? Bytes { get; set; }
+    [SszList(0x4000_0000)] public ReadOnlyMemory<byte> Bytes { get; set; }
 }
 
 [SszContainer]

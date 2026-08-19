@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -1264,7 +1265,7 @@ public class SszMiddlewareTests
         {
             PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }
         };
-        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<byte[]?>())
+        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
 
         byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(new ForkchoiceUpdatedV5RequestWire
@@ -1284,7 +1285,7 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         await _engineModule.Received(1).engine_forkchoiceUpdatedV5(
-            Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<byte[]?>());
+            Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>());
     }
 
     [Test]
