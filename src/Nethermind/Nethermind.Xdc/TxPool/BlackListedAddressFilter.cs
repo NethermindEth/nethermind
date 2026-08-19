@@ -44,7 +44,7 @@ internal sealed class BlackListedAddressFilter(
 
     private AcceptTxResult Reject(Transaction tx, AcceptTxResult result)
     {
-        if (_logger.IsDebug) _logger.Debug($"Skipped adding transaction {tx.ToString("  ")}, {result}.");
+        if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, {result}.");
         return result;
     }
 
