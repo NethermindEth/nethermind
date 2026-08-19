@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -29,7 +30,6 @@ public sealed class AssociativeKeyCache<TKey>
     private readonly int _hashShift;
     private readonly int[] _setGates;
     private long _epochAndCount;
-    private long _ticker;
 
     public int Count => ReadCount(ref _epochAndCount);
 
@@ -95,11 +95,18 @@ public sealed class AssociativeKeyCache<TKey>
             if (h1 == h2 && storedKey.Equals(in key))
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
+                // Eviction age uses the high-resolution clock rather than a shared counter: a
+                // per-hit Interlocked on a cache-wide field is a serialized cross-core RMW under
+                // concurrent readers (and it dirtied the line _epochAndCount lives on, which
+                // every Get reads first). Single-threaded the clock read loses a few ns to the
+                // old Interlocked (and more on hosts whose clocksource is not TSC), but it writes
+                // only this entry's own line, so hits scale with reader count — the regime that
+                // motivated the change. Do not flip back to a shared counter for the ns.
                 // Ticker store without the set gate is safe: 8-byte aligned long is atomic on
                 // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
                 // not key/value correctness — the "losing" ticker value is simply slightly stale.
                 if (TRefreshTicker.IsActive)
-                    e.Ticker = Interlocked.Increment(ref _ticker);
+                    e.Ticker = Stopwatch.GetTimestamp();
                 return true;
             }
         }
@@ -158,7 +165,7 @@ public sealed class AssociativeKeyCache<TKey>
                         // Unlike AssociativeCache.SetCore (which calls WriteEntry to update the value),
                         // the key-only variant has nothing to write, so a bare ticker store suffices.
                         // The seqlock header is unchanged, which is correct: readers see a stable entry.
-                        e.Ticker = Interlocked.Increment(ref _ticker);
+                        e.Ticker = Stopwatch.GetTimestamp();
                         return false;
                     }
                 }
@@ -174,7 +181,7 @@ public sealed class AssociativeKeyCache<TKey>
 
             if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
 
-            long timestamp = Interlocked.Increment(ref _ticker);
+            long timestamp = Stopwatch.GetTimestamp();
             int target = bestEmpty >= 0
                 ? bestEmpty
                 : bestStale >= 0

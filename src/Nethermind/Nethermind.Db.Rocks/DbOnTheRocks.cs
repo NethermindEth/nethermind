@@ -92,8 +92,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
-    internal CacheLinePaddedLong _allocatedSpan;
-    private CacheLinePaddedLong _totalReads;
+    // Striped: every concurrent reader (RPC workers, prewarm workers) updates these per Get, and
+    // a single shared word per DB serializes them under load.
+    internal readonly StripedLong _allocatedSpan = new();
+    private readonly StripedLong _totalReads = new();
     private CacheLinePaddedLong _totalWrites;
 
     private readonly DisposableLazy<IteratorManager>? _iteratorManager;
@@ -358,7 +360,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem.File.Delete(corruptMarker);
     }
 
-    protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads.Value);
+    protected internal void UpdateReadMetrics() => _totalReads.Increment();
 
     protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
 
@@ -377,7 +379,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 CacheSize = 0,
                 IndexSize = 0,
                 MemtableSize = 0,
-                TotalReads = _totalReads.Value,
+                TotalReads = _totalReads.Sum,
                 TotalWrites = _totalWrites.Value,
             };
         }
@@ -387,7 +389,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CacheSize = GetCacheSize(),
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
-            TotalReads = _totalReads.Value,
+            TotalReads = _totalReads.Sum,
             TotalWrites = _totalWrites.Value,
         };
     }
@@ -951,8 +953,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             if (!span.IsNullOrEmpty())
             {
-                Interlocked.Increment(ref _allocatedSpan.Value);
-                GC.AddMemoryPressure(span.Length);
+                _allocatedSpan.Increment();
+                // Pressure hints exist so the GC accounts for sizeable native memory held alive by
+                // managed wrappers. Sub-threshold spans are transient (released within the request)
+                // and each Add/Remove pair mutates GC-global accounting — a contended cost per DB
+                // read under concurrent load. The threshold must match DangerousReleaseMemory.
+                if (span.Length >= GcPressureSpanThreshold) GC.AddMemoryPressure(span.Length);
             }
             return span;
         }
@@ -1047,12 +1053,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    private const int GcPressureSpanThreshold = 16 * 1024;
+
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         if (!span.IsNullOrEmpty())
         {
-            Interlocked.Decrement(ref _allocatedSpan.Value);
-            GC.RemoveMemoryPressure(span.Length);
+            _allocatedSpan.Add(-1);
+            if (span.Length >= GcPressureSpanThreshold) GC.RemoveMemoryPressure(span.Length);
         }
         _db.DangerousReleaseMemory(span);
     }
