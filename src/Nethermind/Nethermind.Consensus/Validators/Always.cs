@@ -3,10 +3,8 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;

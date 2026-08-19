@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Validators;
 
