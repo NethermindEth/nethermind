@@ -10,6 +10,9 @@ on:
   push:
     branches: [feature/jsonbench-extra-eth-calls]
     paths: [.github/workflows/arm-runner-maintenance.yml]
+  # No `schedule:` here on purpose — cron only fires for workflows on the default branch, so it would be
+  # dead config until this file reaches master. Until then the benchmark job reclaims per run, and the
+  # tagged-image backlog is cleared by dispatching this with prune_unused_images=true.
   workflow_dispatch:
     inputs:
       prune_unused_images:
