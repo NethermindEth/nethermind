@@ -226,7 +226,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (!_stateReader.HasStateForBlock(parentHeader))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored, inclusion list not re-checkable (parent state pruned). Block {block.ToString(Block.Format.Short)} found in main chain.");
-                return NewPayloadV1Result.Valid(block.Hash);
+                return NewPayloadV1Result.InclusionListNotEvaluated(block.Hash);
             }
         }
 

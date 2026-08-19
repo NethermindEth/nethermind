@@ -43,7 +43,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         // execution-apis#609: report IL compliance via inclusionListSatisfied and keep status VALID.
         // The internal pipeline flags a censoring payload with the INCLUSION_LIST_UNSATISFIED status.
         PayloadStatusV1 status = result.Data;
-        bool unsatisfied = status.Status == PayloadStatus.InclusionListUnsatisfied;
+        // Both IL statuses are pipeline-internal: the block is VALID on the wire and the compliance
+        // answer moves into inclusionListSatisfied, where null means "never evaluated".
+        bool internalIlStatus = status.Status is PayloadStatus.InclusionListUnsatisfied or PayloadStatus.InclusionListNotEvaluated;
         bool? inclusionListSatisfied = status.Status switch
         {
             PayloadStatus.InclusionListUnsatisfied => false,
@@ -57,7 +59,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         return ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
         {
-            Status = unsatisfied ? PayloadStatus.Valid : status.Status,
+            Status = internalIlStatus ? PayloadStatus.Valid : status.Status,
             LatestValidHash = status.LatestValidHash,
             ValidationError = status.ValidationError,
             InclusionListSatisfied = inclusionListSatisfied
@@ -69,9 +71,10 @@ public partial class EngineRpcModule : IEngineRpcModule
         PayloadAttributes? payloadAttributes = null,
         BitArray? custodyColumns = null)
     {
-        if (payloadAttributes?.InclusionListTransactions is { } ilTxs)
+        // Out of fork the attributes are rejected below with -38005, so don't pay the decode first.
+        if (payloadAttributes?.InclusionListTransactions is { } ilTxs
+            && _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)) is { IsEip7805Enabled: true } spec)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp));
             // Bound the aggregate before the (expensive) RLP decode + sender recovery, matching the
             // newPayloadV6 input cap. An oversized or unparsable IL is a no-op, not a protocol error.
             if (ExceedsAggregateInclusionListBound(ilTxs))

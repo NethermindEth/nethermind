@@ -24,5 +24,7 @@ public static class NewPayloadV1Result
 
     public static ResultWrapper<PayloadStatusV1> InclusionListUnsatisfied(Hash256? latestValidHash) => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.InclusionListUnsatisfied, LatestValidHash = latestValidHash });
 
+    public static ResultWrapper<PayloadStatusV1> InclusionListNotEvaluated(Hash256? latestValidHash) => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.InclusionListNotEvaluated, LatestValidHash = latestValidHash });
+
     public static ResultWrapper<PayloadStatusV1> Valid(Hash256? latestValidHash) => ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.Valid, LatestValidHash = latestValidHash });
 }

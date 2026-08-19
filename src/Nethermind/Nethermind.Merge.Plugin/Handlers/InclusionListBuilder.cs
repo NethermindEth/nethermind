@@ -30,7 +30,7 @@ public class InclusionListBuilder(ITxPool txPool)
         {
             Transaction tx = mempool[i];
             // Blob txs MUST NOT appear in an IL.
-            if (tx.Type == TxType.Blob) continue;
+            if (tx.SupportsBlobs) continue;
 
             if (reservoir.Count < capacity)
             {

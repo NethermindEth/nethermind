@@ -30,5 +30,12 @@ namespace Nethermind.Merge.Plugin.Data
         /// not satisfied — an appendable IL transaction was omitted from the payload.
         /// </summary>
         public const string InclusionListUnsatisfied = "INCLUSION_LIST_UNSATISFIED";
+
+        /// <summary>
+        /// EIP-7805 (FOCIL): the block is accepted but its inclusion-list compliance could not be
+        /// derived. Internal only — reported on the wire as <see cref="Valid"/> with a null
+        /// <c>inclusionListSatisfied</c>, since claiming compliance that was never checked would be wrong.
+        /// </summary>
+        public const string InclusionListNotEvaluated = "INCLUSION_LIST_NOT_EVALUATED";
     }
 }
