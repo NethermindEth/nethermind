@@ -7,9 +7,6 @@ interval="${INTERVAL}"
 name_filter="${NAME_FILTER}"
 counter=0
 
-# Get the current time in ISO 8601 format
-current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
 # Check if REF has the prefix "refs/heads/" and append it if not
 if [[ ! "$REF" =~ ^refs/heads/ ]]; then
   REF="refs/heads/$REF"
@@ -43,9 +40,13 @@ else
       echo "❌ Invalid input provided (organization, repository, or workflow ID). Please check your inputs."
       exit 1
     fi
+    # Match queued runs too, not just in_progress: a run dispatched moments ago is usually still
+    # queued, and skipping it makes this pick up an OLDER concurrent run of the same workflow and
+    # branch instead — reporting success for a build that was never requested. Highest id = newest.
+    # Callers that know their run id should pass RUN_ID and skip this discovery entirely.
     run_id=$(echo "$response" | \
-      jq -r --arg ref "$(echo "$REF" | sed 's/refs\/heads\///')" --arg current_time "$current_time" --arg expected_name "$name_filter" \
-      '.workflow_runs[] | select(.head_branch == $ref and .status == "in_progress" and (if $expected_name == "" then true else .name | test($expected_name) end)) | .id' | sort -r | head -n 1)
+      jq -r --arg ref "$(echo "$REF" | sed 's/refs\/heads\///')" --arg expected_name "$name_filter" \
+      '.workflow_runs[] | select(.head_branch == $ref and (.status == "queued" or .status == "in_progress") and (if $expected_name == "" then true else .name | test($expected_name) end)) | .id' | sort -rn | head -n 1)
     if [ -n "$run_id" ]; then
       echo "🎉 Workflow triggered! Run ID: $run_id"
       break

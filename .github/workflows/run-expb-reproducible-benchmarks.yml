@@ -443,6 +443,7 @@ jobs:
 
       - name: Trigger publish-docker.yml
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        id: trigger-publish-docker
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: publish-docker.yml
@@ -465,6 +466,10 @@ jobs:
           TIMEOUT: "120"
           ORG_NAME: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
+          # Wait on the run we actually dispatched. Without this the script falls back to discovering a
+          # run by workflow name + branch, which silently latches onto any other concurrent build of the
+          # same branch and reports success for an image that was never produced.
+          RUN_ID: ${{ steps.trigger-publish-docker.outputs.runId }}
           NAME_FILTER: Publish Docker image
           REF: ${{ needs.resolve.outputs.branch }}
         run: |
