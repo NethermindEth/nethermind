@@ -534,6 +534,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         stateGasUsed = 0;
         gasUsed = 0;
         // As with an ordinary CALL, a caller unable to fund the value transfer reverts the frame.
+        // execute_frame tests funding before building the EVM, so the frame pays no entry charge.
         UInt256 value = frame.Value;
         if (!value.IsZero && WorldState.GetBalance(caller) < value)
         {
@@ -585,7 +586,30 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return DefaultCodeSuccess();
         }
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, followDelegation: false, spec, out Address? delegation);
+        if (delegation is not null)
+        {
+            // resolve_delegated_code_address: the target counts as accessed by now, so a self-designation is warm.
+            if (spec.UseHotAndColdStorage)
+            {
+                entryCharge += delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
+                    ? TGasPolicy.GetColdAccountAccessCost(spec)
+                    : Eip8038Constants.WarmAccess;
+                if (entryCharge > frame.GasLimit)
+                {
+                    gasUsed = frame.GasLimit;
+                    return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                }
+            }
+
+            // create_evm_from_frame reads the designated code only after its access is paid for.
+            // EIP-7702: a precompile must not execute via delegation.
+            WorldState.AddAccountRead(delegation);
+            codeInfo = spec.IsPrecompile(delegation)
+                ? CodeInfo.Empty
+                : _codeInfoRepository.GetCachedCodeInfoNoDelegation(delegation, spec);
+        }
+
         ReadOnlyMemory<byte> inputData = frame.Data;
 
         ExecutionEnvironment env = ExecutionEnvironment.Rent(
@@ -612,6 +636,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (spec.UseHotAndColdStorage)
         {
             frameTracker.WarmUp(resolvedTarget);
+            if (delegation is not null) frameTracker.WarmUp(delegation);
         }
 
         // The reservoir starts empty, so the VM cannot draw the entry state gas back out of it.
