@@ -32,6 +32,9 @@ jobs:
               || grep -m1 "model name" /proc/cpuinfo
             echo "governor:        $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo n/a)"
             echo "max_freq_khz:    $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo n/a)"
+            echo "clocksource:     $(cat /sys/devices/system/clocksource/clocksource0/current_clocksource 2>/dev/null || echo n/a)"
+            echo "available cs:    $(cat /sys/devices/system/clocksource/clocksource0/available_clocksource 2>/dev/null || echo n/a)"
+            echo "invariant tsc:   $(grep -m1 -c constant_tsc /proc/cpuinfo) (constant_tsc), $(grep -m1 -c nonstop_tsc /proc/cpuinfo) (nonstop_tsc)"
             echo "avx512 in flags: $(grep -m1 -o 'avx512[a-z0-9_]*' /proc/cpuinfo | head -1 || echo none)"
             echo "avx512 variants: $(grep -m1 flags /proc/cpuinfo | tr ' ' '\n' | grep -c '^avx512')"
             echo
