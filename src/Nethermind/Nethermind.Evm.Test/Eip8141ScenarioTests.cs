@@ -70,7 +70,7 @@ public class Eip8141ScenarioTests
 
         Transaction tx = FrameTx(Sender, nonce: 0,
             SelfVerifyFrame(),
-            SenderFrame(Recipient, value: transferred));
+            SenderFrame(Recipient, value: transferred, stateGasLimit: (ulong)GasCostOf.NewAccountState));
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
@@ -96,7 +96,7 @@ public class Eip8141ScenarioTests
 
         Transaction tx = FrameTx(Sender, nonce: 0,
             SelfVerifyFrame(),
-            SenderFrame(Recipient, value: transferred));
+            SenderFrame(Recipient, value: transferred, stateGasLimit: (ulong)GasCostOf.NewAccountState));
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
@@ -557,7 +557,7 @@ public class Eip8141ScenarioTests
         Transaction tx = FrameTx(Sender, nonce: 0,
             new TxFrame(TxFrame.ModeVerify, 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 100_000, UInt256.Zero, expiryData),
             SelfVerifyFrame(),
-            SenderFrame(Recipient, value: 1_000));
+            SenderFrame(Recipient, value: 1_000, stateGasLimit: (ulong)GasCostOf.NewAccountState));
 
         if (expired)
         {
@@ -712,6 +712,30 @@ public class Eip8141ScenarioTests
         AssertStorage(slotOwner, 0, 1, "the inner-call reversal is rolled back");
     }
 
+    // EIP-8141 Gas Accounting: a frame-entry state charge is metered inside limits.state; exhausting it fails the frame with no spill into execution.
+    [Test]
+    public void EntryStateCostAboveStateLimit_FailsTheFrame_WithoutSpillingIntoExecution()
+    {
+        Address freshTarget = TestItem.AddressD;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, freshTarget,
+                (ulong)GasCostOf.NewAccountState * 4, (ulong)GasCostOf.NewAccountState - 1, (UInt256)1_000, default));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        {
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
+        }));
+        Assert.That(_stateProvider.GetBalance(freshTarget), Is.EqualTo(UInt256.Zero),
+            "the underfunded entry charge must fail the frame before the value transfer creates the account");
+        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.Zero,
+            "a frame that halts on its entry charge owes no state gas");
+    }
+
     // Sets slot 0 to the complement of its current value: creates the slot from clean on the first
     // frame, reverses it back to zero on the next.
     private static byte[] ToggleSlotZeroCode() =>
@@ -759,7 +783,7 @@ public class Eip8141ScenarioTests
     {
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
 
-        Transaction first = FrameTx(Sender, nonce: 0, SelfVerifyFrame(), SenderFrame(Recipient, value: 100));
+        Transaction first = FrameTx(Sender, nonce: 0, SelfVerifyFrame(), SenderFrame(Recipient, value: 100, stateGasLimit: (ulong)GasCostOf.NewAccountState));
         Transaction second = FrameTx(Sender, nonce: 1, SelfVerifyFrame(), SenderFrame(Recipient, value: 200));
 
         TxReceipt[] receipts = ProcessBlock(first, second);
@@ -839,8 +863,8 @@ public class Eip8141ScenarioTests
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
-    private static TxFrame SenderFrame(Address target, byte flags = 0, UInt256 value = default) =>
-        new(TxFrame.ModeSender, flags, target, gasLimit: 200_000, value, default);
+    private static TxFrame SenderFrame(Address target, byte flags = 0, UInt256 value = default, ulong stateGasLimit = 0) =>
+        new(TxFrame.ModeSender, flags, target, 200_000, stateGasLimit, value, default);
 
     private static Transaction FrameTx(Address sender, ulong nonce, params TxFrame[] frames) =>
         new()

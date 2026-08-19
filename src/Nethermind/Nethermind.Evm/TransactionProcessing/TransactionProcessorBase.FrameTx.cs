@@ -439,9 +439,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? TGasPolicy.GetNewAccountStateCost()
             : 0;
         ulong entryCharge = entryExecution + (ulong)entryState;
-        // EIP-8141 (ethereum/EIPs#12062): the new-account cost draws limits.state first, spilling into limits.execution; cold access draws limits.execution. The frame halts if execution cannot cover its share.
-        ulong entryStateSpill = (ulong)entryState > frame.StateGasLimit ? (ulong)entryState - frame.StateGasLimit : 0;
-        if (entryExecution > frame.ExecutionGasLimit || entryStateSpill > frame.ExecutionGasLimit - entryExecution)
+        // EIP-8141 (ethereum/EIPs#12062): a frame-entry state charge is metered inside limits.state; exhausting it fails the frame, with no spill into execution gas.
+        TGasPolicy frameGas = TGasPolicy.FromFrameLimits(frame.ExecutionGasLimit, frame.StateGasLimit);
+        if (!TGasPolicy.TryConsumeStateAndExecutionGas(ref frameGas, entryState, entryExecution))
         {
             gasUsed = frame.ExecutionGasLimit;
             return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
@@ -498,17 +498,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             frameTracker.WarmUp(resolvedTarget);
         }
 
-        // EIP-8141 (ethereum/EIPs#12062): seed both pools from the full limits, then charge the frame's entry gas through the same policy that runs its opcodes.
+        // EIP-8141 (ethereum/EIPs#12062): the entry charge above was drawn through the same policy that runs the frame's opcodes.
         using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(
-            TGasPolicy.FromFrameLimits(frame.ExecutionGasLimit, frame.StateGasLimit),
+            frameGas,
             isStatic ? ExecutionType.STATICCALL : ExecutionType.TRANSACTION,
             env,
             in frameTracker,
             in snapshot,
             isStatic: isStatic);
-
-        // Cold access draws limits.execution; the new-account cost draws limits.state, spilling into execution. The guard above proved this affordable.
-        TGasPolicy.TryConsumeStateAndExecutionGas(ref state.Gas, entryState, entryExecution);
 
         // Select the instruction-tracing specialisation explicitly: the parameterless ExecuteTransaction
         // overload hard-codes OffFlag and would drop per-instruction tracing for a frame.
