@@ -2337,6 +2337,119 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Shedding_reads_the_pressure_left_after_the_head_s_own_bucket_cleanup()
+        {
+            // The slot UpdateBuckets is about to free is not pressure, so nothing should be shed for it.
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            Transaction nearlyExpired = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_005);
+            // No deadline, so it is never itself a shed candidate: it is only here to fill the pool.
+            Transaction staleNonce = BuildFrameTx(nonce: 0, TestItem.PrivateKeyB.Address, deadline: null);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(nearlyExpired, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(staleNonce, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2), "the pool must be full, or nothing would be shed either way");
+            }
+
+            // The new head consumes B's nonce, so UpdateBuckets drops that transaction and the pool is
+            // no longer full by the time shedding runs.
+            _stateProvider.IncrementNonce(TestItem.PrivateKeyB.Address);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(nearlyExpired.Hash!, out _), Is.True,
+                    "nothing needed the slot, so the near-expiry frame transaction keeps it");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the stale-nonce transaction still leaves");
+            }
+        }
+
+        [Test]
+        public async Task Shedding_breaks_an_equal_deadline_on_the_lower_priority_fee()
+        {
+            // The spec's second key: among equal deadlines the lowest effective priority fee yields first.
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            _txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_005,
+                maxPriorityFeePerGas: 1.GWei, maxFeePerGas: 1.GWei), TxHandlingOptions.None);
+            Transaction richer = BuildFrameTx(nonce: 0, TestItem.PrivateKeyB.Address, deadline: 1_005,
+                maxPriorityFeePerGas: 5.GWei, maxFeePerGas: 5.GWei);
+            _txPool.SubmitTx(richer, TxHandlingOptions.None);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.TryGetPendingTransaction(richer.Hash!, out _), Is.True, "the higher priority fee keeps its slot");
+            }
+        }
+
+        [Test]
+        public async Task Shedding_takes_the_nearest_deadline_first_and_stops_at_the_freed_slot()
+        {
+            // Only as many as the pressure needs, in the spec's order: the later deadline keeps its place.
+            _txPool = CreatePool(new TxPoolConfig { Size = 2 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            _txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_005), TxHandlingOptions.None);
+            Transaction later = BuildFrameTx(nonce: 0, TestItem.PrivateKeyB.Address, deadline: 1_015);
+            _txPool.SubmitTx(later, TxHandlingOptions.None);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.TryGetPendingTransaction(later.Hash!, out _), Is.True, "the later deadline keeps its slot");
+            }
+        }
+
+        [TestCase(1, true, TestName = "a full pool sheds the frame tx closest to expiry")]
+        [TestCase(4, false, TestName = "a pool with room keeps it")]
+        public async Task Nearly_expired_frame_transaction_is_shed_only_under_capacity_pressure(int poolSize, bool shed)
+        {
+            // The spec's second eviction tier: a frame tx with almost no life left yields its slot first.
+            _txPool = CreatePool(new TxPoolConfig { Size = poolSize }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            Assert.That(_txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_010), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shed ? 0 : 1));
+        }
+
+        [Test]
+        public async Task Shedding_leaves_the_transaction_resubmittable()
+        {
+            // Capacity pressure decided the shed, not expiry, so the transaction is still includable.
+            _txPool = CreatePool(new TxPoolConfig { Size = 1 }, new TestSpecProvider(Bogota.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_000).TestObject);
+            _txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_010), TxHandlingOptions.None);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_000).TestObject);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "the transaction must have been shed");
+
+            Assert.That(_txPool.SubmitTx(BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: 1_010), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
         public void Frame_transaction_from_a_contract_sender_is_not_rejected_by_eip3607()
         {
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
@@ -2600,6 +2713,160 @@ namespace Nethermind.TxPool.Test
                 Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted), "first sponsored frame tx is within the sponsor's balance");
                 Assert.That(secondResult, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the summed exposure of both txs exceeds the sponsor's balance");
                 Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx released the reservation");
+            }
+        }
+
+        [Test]
+        public async Task Frame_transaction_is_evicted_when_its_prefix_stops_validating_against_the_new_head()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task Frame_transaction_survives_a_simulation_that_failed_on_a_resource_bound()
+        {
+            // An exhausted budget says nothing about validity, so it must not turn into a mass eviction.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task Revalidation_eviction_releases_the_payer_reservation()
+        {
+            // A leaked reservation would be permanent: the sponsor could never fund another frame tx.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted), "the evicted transaction must have released its sponsor reservation");
+        }
+
+        [Test]
+        public async Task Revalidation_eviction_leaves_the_transaction_resubmittable()
+        {
+            // Unlike expiry, invalidity against a head reverses, so the hash must not stay in the cache.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("payer over its exposure"));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted), "the same transaction must be admissible once its payer is solvent again");
+        }
+
+        [Test]
+        public async Task Revalidation_tracks_a_delegation_installed_after_admission()
+        {
+            // The delegate is a head-state snapshot, so a sender that delegates after admission must be
+            // re-indexed or the account whose code its prefix runs stops being watched.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
+            _stateProvider.InsertCode(TestItem.PrivateKeyA.Address, delegation, Bogota.Instance);
+            Block delegating = Build.A.Block.WithNumber(1).TestObject;
+            delegating.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.PrivateKeyA.Address };
+            await RaiseBlockAddedToMainAndWaitForNewHead(delegating);
+            simulator.ClearReceivedCalls();
+
+            // Only the delegate moves now: without the re-index the transaction would not be revalidated.
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("delegate code changed"));
+            Block delegateChanged = Build.A.Block.WithNumber(2).WithParent(delegating).TestObject;
+            delegateChanged.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressC };
+            await RaiseBlockAddedToMainAndWaitForNewHead(delegateChanged);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task Reorg_revalidates_frame_transactions_its_change_list_does_not_mention()
+        {
+            // A reorg reports the new branch's changes but not what the abandoned one reverted.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task Frame_transaction_is_not_revalidated_when_the_block_touched_no_tracked_dependency()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            // A change list is trusted to describe everything that moved only after a sequential baseline.
+            Block parent = Build.A.Block.WithNumber(1).TestObject;
+            parent.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+            await RaiseBlockAddedToMainAndWaitForNewHead(parent);
+            simulator.ClearReceivedCalls();
+
+            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
             }
         }
 
