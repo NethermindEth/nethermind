@@ -1474,6 +1474,37 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8141: at the shipped blob mode the pool stores a frameless light record, so this is the only
+        // shape that exercises the cap's counting path end to end.
+        [Test]
+        public void Blob_carrying_frame_txs_sharing_a_paymaster_are_bound_by_the_pending_cap()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction first = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressD, sender: TestItem.PrivateKeyA);
+            Transaction second = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressD, sender: TestItem.PrivateKeyB);
+            Transaction third = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressD, sender: TestItem.PrivateKeyC);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.None);
+
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult afterRemoval = _txPool.SubmitTx(third, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the light record still counts against its sponsor");
+                Assert.That(afterRemoval, Is.EqualTo(AcceptTxResult.Accepted), "removing the record frees the sponsor's slot");
+            }
+        }
+
         [Test]
         public void non_blob_frame_tx_is_routed_to_normal_pool()
         {
@@ -1801,7 +1832,7 @@ namespace Nethermind.TxPool.Test
                 "a new head must not evict a reloaded keyed transaction whose sequence is current");
         }
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null)
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null)
         {
             ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
@@ -1849,13 +1880,21 @@ namespace Nethermind.TxPool.Test
 
             // Sized to leave the prefix headroom under the verify-gas ceiling once an expiry frame and
             // signature verification gas join it.
-            frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 40_000, UInt256.Zero, default));
+            if (paymaster is null)
+            {
+                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 40_000, UInt256.Zero, default));
+            }
+            else
+            {
+                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 40_000, UInt256.Zero, default));
+                frames.Add(new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, paymaster, gasLimit: 40_000, UInt256.Zero, default));
+            }
 
             Transaction tx = new()
             {
                 Type = TxType.FrameTx,
                 ChainId = _specProvider.ChainId,
-                SenderAddress = TestItem.AddressA,
+                SenderAddress = (sender ?? TestItem.PrivateKeyA).Address,
                 Nonce = nonce,
                 GasLimit = 1_000_000,
                 GasPrice = 1,

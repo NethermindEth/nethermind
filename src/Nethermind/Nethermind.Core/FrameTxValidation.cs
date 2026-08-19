@@ -346,7 +346,8 @@ public static class FrameTxValidation
     /// or a target-less <c>pay</c> frame yield <c>null</c>. A <c>pay</c> frame naming the sender is returned
     /// like any other target — the spec's carve-out is the empty code hash, not self-payment. A record the
     /// pool holds without its frames answers from <see cref="Transaction.PersistedPaymaster"/> instead, which
-    /// froze this same derivation when the record was built.
+    /// froze this same derivation when the record was built — except for one reloaded from storage, which
+    /// carries no frozen value, so its <c>null</c> means unknown rather than unsponsored.
     /// </remarks>
     public static Address? GetPrefixPaymaster(Transaction transaction)
     {
