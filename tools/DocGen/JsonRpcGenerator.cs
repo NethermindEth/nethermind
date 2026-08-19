@@ -367,20 +367,15 @@ internal static class JsonRpcGenerator
 
         type = Nullable.GetUnderlyingType(type) ?? type;
 
-        // A member can pin its own converter, and the CLR type alone cannot tell a hex-quantity string
-        // from a raw JSON number (e.g. two `ulong` fields, one with a raw-number converter). Probing that
-        // converter's actual output is the only reliable signal, and it works for any converter, not a
-        // hard-coded list. This is scoped to explicit member converters: probing a type's default
-        // serialization is unsound for value-dependent unions (e.g. `eth_syncing` returns `false` or an
-        // object), so those keep the editorial mapping below.
-        if (converterType is not null && TryProbeScalarKind(type, converterType, out JsonTokenType token))
+        // Only explicit member converters: probing a type's default serialization is unsound for
+        // value-dependent unions (e.g. `eth_syncing` returns `false` or an object).
+        if (converterType is not null && TryProbeScalarKind(converterType, out JsonTokenType token))
         {
             if (token is JsonTokenType.Number)
                 return IsFloatingPoint(type) ? "_number_" : "_integer_";
             if (token is JsonTokenType.True or JsonTokenType.False)
                 return "_boolean_";
-
-            // A string result keeps its flavour (hex data, hash, ...) from the editorial mapping below
+            // a string falls through to keep its flavour from the editorial mapping below
         }
 
         if (_knownTypeNames.TryGetValue(type, out string? knownName))
@@ -413,15 +408,23 @@ internal static class JsonRpcGenerator
     private static bool IsFloatingPoint(Type type) =>
         type == typeof(double) || type == typeof(float) || type == typeof(decimal);
 
-    // Serializes a sample value through the member's converter and reports the JSON token it produces,
-    // so number-vs-string-vs-boolean is read from the serializer rather than guessed from the CLR type.
-    private static bool TryProbeScalarKind(Type type, Type converterType, out JsonTokenType token)
+    // Reads the JSON token the converter actually emits, so number/string/boolean comes from the
+    // serializer rather than the CLR type.
+    private static bool TryProbeScalarKind(Type converterType, out JsonTokenType token)
     {
         token = JsonTokenType.None;
 
+        // Value type from the converter's own JsonConverter<T> base: nullable converters declare Write
+        // against `T?`, and a JsonConverterFactory declares none (null here).
+        Type? valueType = ConverterValueType(converterType);
+
+        if (valueType is null)
+            return false;
+
         try
         {
-            object? sample = Activator.CreateInstance(type);
+            // Non-null underlying value, else a nullable converter writes null
+            object? sample = Activator.CreateInstance(Nullable.GetUnderlyingType(valueType) ?? valueType);
 
             if (sample is null)
                 return false;
@@ -429,7 +432,7 @@ internal static class JsonRpcGenerator
             ArrayBufferWriter<byte> buffer = new();
 
             using (Utf8JsonWriter writer = new(buffer))
-                InvokeConverterWrite(converterType, type, sample, writer);
+                InvokeConverterWrite(converterType, valueType, sample, writer);
 
             Utf8JsonReader reader = new(buffer.WrittenSpan);
             reader.Read();
@@ -437,12 +440,20 @@ internal static class JsonRpcGenerator
 
             return token is JsonTokenType.Number or JsonTokenType.String or JsonTokenType.True or JsonTokenType.False;
         }
-        // A converter that cannot serialize the sample (no default value, rejects zero, complex output)
-        // yields no usable token; the caller falls back to the editorial mapping.
+        // Not a documentable scalar (uninstantiable, converter rejects the sample); fall back to the mapping
         catch (Exception)
         {
             return false;
         }
+    }
+
+    private static Type? ConverterValueType(Type converterType)
+    {
+        for (Type? t = converterType; t is not null; t = t.BaseType)
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(JsonConverter<>))
+                return t.GetGenericArguments()[0];
+
+        return null;
     }
 
     private static void InvokeConverterWrite(Type converterType, Type valueType, object sample, Utf8JsonWriter writer)
@@ -506,9 +517,7 @@ internal static class JsonRpcGenerator
             .OrderBy(m => m.Name, StringComparer.Ordinal);
     }
 
-    // A member may pin its own converter via [JsonConverter], overriding the serialization its CLR type
-    // would otherwise get (e.g. a raw-number converter on a block number). Probing through that converter
-    // is what lets two fields of the same type document different wire forms.
+    // The member's [JsonConverter], if any: lets two fields of the same type document different wire forms
     private static Type? MemberConverter(ICustomAttributeProvider? member) =>
         member?.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false) is [JsonConverterAttribute { ConverterType: { } converterType }]
             ? converterType
