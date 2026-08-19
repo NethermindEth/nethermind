@@ -86,11 +86,11 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // request rate x call latency, and at 1x an 8-core node serving override-carrying
             // eth_calls starts rejecting with "Too many requests" the moment average latency
             // crosses ~(cores / rate) — a cliff a transient latency wobble is enough to trip.
-            .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? 2 * Environment.ProcessorCount, jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
                         new BlockchainBridgeFactory(simEnvFactory, overridableEnvFactory, lifetimeScope,
-                            jsonRpcConfig.EthModuleConcurrentInstances ?? 2 * Environment.ProcessorCount))
+                            jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount))
                 .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
                     .AddSingleton<IEthCapabilitiesProvider, EthCapabilitiesProvider>()
