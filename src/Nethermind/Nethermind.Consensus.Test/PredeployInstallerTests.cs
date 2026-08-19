@@ -39,7 +39,7 @@ public class PredeployInstallerTests
         (IReleaseSpec spec, _, IWorldState writeState) =
             Install(static spec => spec.IsEip8141Enabled.Returns(true), Eip8141Constants.ExpiryVerifierAddress, nonce: 0, code: Eip8141Constants.ExpiryVerifierCode);
 
-        writeState.DidNotReceive().InsertCode(Eip8141Constants.ExpiryVerifierAddress, Arg.Any<ReadOnlyMemory<byte>>(), spec);
+        writeState.DidNotReceiveWithAnyArgs().InsertCode(default!, default, default!);
         writeState.DidNotReceive().SetNonce(Eip8141Constants.ExpiryVerifierAddress, Arg.Any<ulong>());
         // Re-creating the account each block would land back in the BAL, which is the failure this predeploy's
         // null nonce exists to avoid.
