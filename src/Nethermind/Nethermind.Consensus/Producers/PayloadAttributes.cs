@@ -156,15 +156,25 @@ public class PayloadAttributes
         return position;
     }
 
-    private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
+    /// <summary>Largest buffer any inclusion list within the EIP-7805 aggregate bounds can need.</summary>
+    private const long MaxPooledInclusionListDigestBuffer =
+        Eip7805Constants.MaxAggregateInclusionListBytes
+        + (long)Eip7805Constants.MaxAggregateInclusionListTransactions * sizeof(uint);
+
+    internal static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
     {
         // Length-prefix each entry so [empty, tx1] and [tx1] don't collide on the same payload-id.
-        int totalLength = 0;
+        long totalLength = 0;
         for (int i = 0; i < inclusionListTransactions.Length; i++)
-            totalLength += sizeof(uint) + (inclusionListTransactions[i]?.Length ?? 0);
+            totalLength += sizeof(uint) + (long)(inclusionListTransactions[i]?.Length ?? 0);
 
-        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(totalLength, out byte[] buffer);
-        Span<byte> span = buffer.AsSpan(0, totalLength);
+        // forkchoiceUpdated keeps an oversized list rather than rejecting it, so here the size is bounded
+        // only by the engine body cap — stream those instead of renting a buffer that big in one piece.
+        if (totalLength > MaxPooledInclusionListDigestBuffer)
+            return ComputeInclusionListDigestStreaming(inclusionListTransactions);
+
+        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent((int)totalLength, out byte[] buffer);
+        Span<byte> span = buffer.AsSpan(0, (int)totalLength);
         int position = 0;
         for (int i = 0; i < inclusionListTransactions.Length; i++)
         {
@@ -176,6 +186,22 @@ public class PayloadAttributes
         }
 
         return ValueKeccak.Compute(span);
+    }
+
+    /// <summary>Same byte sequence and digest as the pooled path, assembled incrementally.</summary>
+    internal static ValueHash256 ComputeInclusionListDigestStreaming(byte[][] inclusionListTransactions)
+    {
+        Span<byte> lengthPrefix = stackalloc byte[sizeof(uint)];
+        KeccakHash hash = KeccakHash.Create();
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+        {
+            byte[] entry = inclusionListTransactions[i] ?? [];
+            BinaryPrimitives.WriteUInt32BigEndian(lengthPrefix, (uint)entry.Length);
+            hash.Update(lengthPrefix);
+            if (entry.Length > 0) hash.Update(entry);
+        }
+
+        return hash.GenerateValueHash();
     }
 
     /// <summary>

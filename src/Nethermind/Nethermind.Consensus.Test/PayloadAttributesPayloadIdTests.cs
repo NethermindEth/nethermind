@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -63,6 +64,42 @@ public class PayloadAttributesPayloadIdTests
         string id2 = BaseAttrs([[0x01, 0x02, 0x03]]).GetPayloadId(parent);
 
         Assert.That(id1, Is.EqualTo(id2));
+    }
+
+    // forkchoiceUpdated keeps an oversized list, so the digest has a streaming path for inputs too
+    // large to assemble in one buffer. It must agree with the pooled path byte for byte.
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(7)]
+    [TestCase(64)]
+    public void Streaming_and_pooled_inclusion_list_digests_agree(int entryCount)
+    {
+        byte[][] il = new byte[entryCount][];
+        for (int i = 0; i < entryCount; i++)
+            il[i] = i % 3 == 0 ? [] : [.. Enumerable.Repeat((byte)i, i)];
+
+        Assert.That(
+            PayloadAttributes.ComputeInclusionListDigestStreaming(il),
+            Is.EqualTo(PayloadAttributes.ComputeInclusionListDigest(il)));
+    }
+
+    [Test]
+    public void Oversized_inclusion_list_still_yields_a_stable_distinct_payload_id()
+    {
+        // Well past the aggregate bound, so the streaming path runs — forkchoiceUpdated accepts such a
+        // list rather than rejecting it, so it must still hash.
+        byte[] oversized = new byte[Eip7805Constants.MaxAggregateInclusionListBytes * 2];
+
+        string id1 = BaseAttrs([oversized]).GetPayloadId(Parent());
+        string id2 = BaseAttrs([oversized]).GetPayloadId(Parent());
+        oversized[0] = 0xff;
+        string idChanged = BaseAttrs([oversized]).GetPayloadId(Parent());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(id1, Is.EqualTo(id2));
+            Assert.That(idChanged, Is.Not.EqualTo(id1));
+        }
     }
 
     [Test]
