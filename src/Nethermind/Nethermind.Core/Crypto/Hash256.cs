@@ -57,10 +57,10 @@ namespace Nethermind.Core.Crypto
 
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
-        public bool Equals(ValueHash256 other) => Extensions.Bytes.Vector256Equals(in _bytes, in other._bytes);
-        public bool Equals(in ValueHash256 other) => Extensions.Bytes.Vector256Equals(in _bytes, in other._bytes);
+        public bool Equals(ValueHash256 other) => _bytes.Equals(other._bytes);
+        public bool Equals(in ValueHash256 other) => _bytes.Equals(other._bytes);
 
-        public bool Equals(Hash256? other) => Extensions.Bytes.Vector256Equals(in _bytes, other?.ValueHash256._bytes ?? default);
+        public bool Equals(Hash256? other) => _bytes.Equals(other?.ValueHash256._bytes ?? default);
 
         public override int GetHashCode() => GetChainedHashCode(SpanExtensions.InstanceRandom);
 
@@ -97,14 +97,14 @@ namespace Nethermind.Core.Crypto
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
         public static explicit operator Hash256(in ValueHash256 keccak) => new(keccak);
-        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : Extensions.Bytes.Vector256Equals(a.ValueHash256._bytes, in b._bytes);
+        public static bool operator ==(Hash256? a, in ValueHash256 b) => a is null ? b.IsZero : a.ValueHash256._bytes == b._bytes;
         public static bool operator ==(in ValueHash256 a, Hash256? b) => b == a;
         public static bool operator !=(Hash256? a, in ValueHash256 b) => !(a == b);
         public static bool operator !=(in ValueHash256 a, Hash256? b) => !(a == b);
 
         public UInt256 ToUInt256(bool isBigEndian = true) => new(Bytes, isBigEndian: isBigEndian);
         public Hash256 ToHash256() => new(this);
-        private bool IsZero => Extensions.Bytes.Vector256IsZero(in _bytes);
+        private bool IsZero => _bytes == default;
     }
 
     public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>, IHash64bit<Hash256AsKey>
