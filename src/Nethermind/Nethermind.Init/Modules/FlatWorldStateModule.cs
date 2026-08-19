@@ -110,8 +110,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             {
                 if (flatDbConfig.BaseStore != FlatBaseStore.Rocks && flatDbConfig.Layout != FlatLayout.Flat)
                     throw new NotSupportedException($"FlatDb.BaseStore '{flatDbConfig.BaseStore}' is only supported with the '{FlatLayout.Flat}' layout");
-                // Fails loudly when the DB on disk belongs to the other base store, for every layout.
-                ArenaBasePersistence.ValidateBaseStoreKind(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), flatDbConfig.BaseStore);
+                // Fails loudly when the DB on disk belongs to the other base store, for every layout;
+                // ConvertBaseStore admits a Rocks-owned DB so the startup conversion step can migrate it.
+                ArenaBasePersistence.ValidateBaseStoreKind(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), flatDbConfig.BaseStore, flatDbConfig.ConvertBaseStore);
 
                 IPersistence persistence = flatDbConfig.Layout switch
                 {
@@ -141,6 +142,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<ISnapshotCatalog>(NullSnapshotCatalog.Instance)
                 .AddSingleton<IPersistedSnapshotLoader>(NullPersistedSnapshotLoader.Instance)
                 .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
+        }
+
+        if (flatDbConfig.BaseStore == FlatBaseStore.Arena && flatDbConfig.ConvertBaseStore)
+        {
+            builder
+                .AddSingleton<FlatBaseStoreConverter>()
+                .AddStep(typeof(ConvertFlatBaseStore));
         }
 
         if (flatDbConfig.ImportFromPruningTrieState)

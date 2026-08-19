@@ -43,6 +43,10 @@ public static class Metrics
     [Description("Importer entries count flat")]
     public static long ImporterEntriesCountFlat { get; set; }
 
+    [CounterMetric]
+    [Description("Folds of the flat overlay into the arena base store's shard tables. Benchmark runs can assert this stays 0 during measurement.")]
+    public static long BaseStoreFolds { get; set; }
+
     [GaugeMetric]
     [Description("Active snapshot bundles")]
     public static long ActiveSnapshotBundle { get; set; }

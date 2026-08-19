@@ -155,6 +155,9 @@ internal sealed class BaseTableStore : IDisposable
 
     private void FoldLocked()
     {
+        // Counted at entry (not per shard changed) so a benchmark can assert that no fold work at all
+        // overlapped its measurement window.
+        Metrics.BaseStoreFolds++;
         List<ShardChange> changes = [];
         IColumnDbSnapshot<FlatDbColumns> snapshot = _db.CreateSnapshot();
         try
@@ -447,6 +450,30 @@ internal sealed class BaseTableStore : IDisposable
                 if (shards[shard] is null) continue;
                 EncodeRegistryKey(key, entity, shard);
                 metadataBatch.Remove(key);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Advise the OS to drop the page-cache/mmap-resident pages of every live shard table
+    /// (<c>madvise(MADV_DONTNEED)</c> + <c>posix_fadvise(POSIX_FADV_DONTNEED)</c>; no-ops outside Linux).
+    /// Used after a Rocks→Arena conversion so its sequential writes don't leave the arena read path
+    /// unfairly warm compared to a cold-booted RocksDB baseline.
+    /// </summary>
+    internal void EvictPageCache()
+    {
+        using Lock.Scope scope = _lock.EnterScope();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        EvictAll(_accountShards);
+        EvictAll(_storageShards);
+
+        static void EvictAll(BaseTableView.ShardTable?[] shards)
+        {
+            foreach (BaseTableView.ShardTable? shard in shards)
+            {
+                if (shard is null) continue;
+                shard.File.AdviseDontNeed(0, shard.File.MappedSize);
+                shard.File.FadviseDontNeed(0, shard.File.MappedSize);
             }
         }
     }

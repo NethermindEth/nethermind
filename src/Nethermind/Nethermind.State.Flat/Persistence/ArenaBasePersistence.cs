@@ -51,7 +51,7 @@ public class ArenaBasePersistence : IPersistence, IDisposable
     {
         _db = db;
         _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
-        ValidateBaseStoreKind(db, FlatBaseStore.Arena);
+        ValidateBaseStoreKind(db, FlatBaseStore.Arena, config.ConvertBaseStore);
         if (!BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<ArenaBasePersistence>()))
             throw new InvalidConfigurationException(
                 "The Arena base store requires the RLP slot encoding, but this flat DB uses the legacy raw encoding. Wipe the flat DB and re-sync.", -1);
@@ -65,28 +65,40 @@ public class ArenaBasePersistence : IPersistence, IDisposable
     /// a kind marker into the Metadata column on its first batch; a marker-less DB that already carries
     /// state was necessarily written by the (marker-less) <see cref="FlatBaseStore.Rocks"/> store.
     /// </summary>
+    /// <param name="allowConversion">When <see cref="IFlatDbConfig.ConvertBaseStore"/> is set, a
+    /// Rocks-owned DB is accepted for an Arena configuration — the startup conversion
+    /// (<see cref="FlatBaseStoreConverter"/>) will migrate it. Never relaxes the reverse direction.</param>
     /// <exception cref="InvalidConfigurationException">The DB belongs to the other base store.</exception>
-    public static void ValidateBaseStoreKind(IColumnsDb<FlatDbColumns> db, FlatBaseStore configured)
+    public static void ValidateBaseStoreKind(IColumnsDb<FlatDbColumns> db, FlatBaseStore configured, bool allowConversion = false)
     {
-        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
-        byte[]? stored = metadata.Get(BaseStoreKindKey);
-        if (stored is { Length: > 0 })
+        bool rocksAcceptedAsArena = allowConversion && configured == FlatBaseStore.Arena;
+        FlatBaseStore? stored = ReadBaseStoreKind(db);
+        if (stored is { } kind)
         {
-            FlatBaseStore kind = (FlatBaseStore)stored[0];
-            if (!Enum.IsDefined(kind))
-                throw new InvalidConfigurationException(
-                    $"Flat DB metadata contains an unrecognized base store kind byte '{stored[0]}'. The DB may be corrupt or was written by a newer version.", -1);
-            if (kind != configured)
+            if (kind != configured && !(kind == FlatBaseStore.Rocks && rocksAcceptedAsArena))
                 throw new InvalidConfigurationException(
                     $"Flat DB was previously written with base store '{kind}', but 'FlatDb.BaseStore' is '{configured}'. " +
                     $"Either set it back to '{kind}', or wipe the flat DB and re-sync.", -1);
             return;
         }
 
-        if (configured != FlatBaseStore.Rocks && BasePersistence.HasCurrentState(metadata))
+        if (configured != FlatBaseStore.Rocks && !rocksAcceptedAsArena && BasePersistence.HasCurrentState(db.GetColumnDb(FlatDbColumns.Metadata)))
             throw new InvalidConfigurationException(
                 $"Flat DB holds state written by the '{FlatBaseStore.Rocks}' base store, but 'FlatDb.BaseStore' is '{configured}'. " +
-                $"Either set it back to '{FlatBaseStore.Rocks}', or wipe the flat DB and re-sync.", -1);
+                $"Either set it back to '{FlatBaseStore.Rocks}', enable 'FlatDb.ConvertBaseStore', or wipe the flat DB and re-sync.", -1);
+    }
+
+    /// <summary>The base store recorded in the Metadata column, or <c>null</c> when no marker was ever
+    /// stamped (a fresh DB, or one only the marker-less Rocks store has written).</summary>
+    internal static FlatBaseStore? ReadBaseStoreKind(IColumnsDb<FlatDbColumns> db)
+    {
+        byte[]? stored = db.GetColumnDb(FlatDbColumns.Metadata).Get(BaseStoreKindKey);
+        if (stored is not { Length: > 0 }) return null;
+        FlatBaseStore kind = (FlatBaseStore)stored[0];
+        if (!Enum.IsDefined(kind))
+            throw new InvalidConfigurationException(
+                $"Flat DB metadata contains an unrecognized base store kind byte '{stored[0]}'. The DB may be corrupt or was written by a newer version.", -1);
+        return kind;
     }
 
     public void Flush() => _db.Flush();
@@ -110,11 +122,27 @@ public class ArenaBasePersistence : IPersistence, IDisposable
         IEnumerable<KeyValuePair<byte[], byte[]>> storage)
     {
         _store.BulkLoad(accounts, storage);
-        // A bulk-loaded DB may never see a write batch; stamp the format markers eagerly.
-        IDb metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
-        RecordKindOnFirstBatch(metadata);
-        BasePersistence.RecordLayoutOnFirstBatch(metadata, ref _layoutPersisted, FlatLayout.Flat);
+        // The layout marker may be stamped here (a bulk-loaded DB may never see a write batch), but the
+        // base-store kind marker is not: writing it is the caller's commit point — see
+        // FlatBaseStoreConverter for why its position is load-bearing for crash safety.
+        BasePersistence.RecordLayoutOnFirstBatch(_db.GetColumnDb(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
     }
+
+    /// <summary>Stamp the Arena base-store kind marker and make it durable. This is the Rocks→Arena
+    /// conversion's commit point: before it, a restart re-converts from the intact overlay; after it, the
+    /// DB boots as Arena and any not-yet-cleaned overlay rows merely shadow identical base values.</summary>
+    internal void WriteBaseStoreKindMarker()
+    {
+        _db.GetColumnDb(FlatDbColumns.Metadata).PutSpan(BaseStoreKindKey, [(byte)FlatBaseStore.Arena]);
+        Interlocked.Exchange(ref _kindPersisted, 1);
+        _db.Flush(onlyWal: true);
+    }
+
+    /// <inheritdoc cref="BaseTableStore.Clear"/>
+    internal void ClearShardTables() => _store.Clear();
+
+    /// <inheritdoc cref="BaseTableStore.EvictPageCache"/>
+    internal void EvictShardTablePageCache() => _store.EvictPageCache();
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
