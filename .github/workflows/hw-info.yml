@@ -1,0 +1,31 @@
+name: Runner HW Info
+
+# Read-only hardware inventory of both benchmark runners.
+# push registers the workflow for this branch (dispatch-only workflows on
+# non-default branches never register) and doubles as the first run.
+on:
+  push:
+    branches: [bench/hw-info]
+  workflow_dispatch:
+
+jobs:
+  hw:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [reproducible-benchmarks, reproducible-benchmarks-arm]
+    runs-on: [self-hosted, "${{ matrix.runner }}"]
+    timeout-minutes: 5
+    steps:
+      - name: Inventory
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "=== HOSTNAME ==="; hostname
+          echo "=== UNAME ==="; uname -a
+          echo "=== LSCPU ==="; lscpu || cat /proc/cpuinfo | head -40
+          echo "=== MEMORY ==="; free -h; grep -E "MemTotal" /proc/meminfo
+          echo "=== DISKS ==="; lsblk -d -o NAME,SIZE,ROTA,MODEL 2>/dev/null || df -h /
+          echo "=== DF DATA ==="; df -h / /data 2>/dev/null || true
+          echo "=== GOVERNOR ==="; cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "n/a"
+          echo "=== KERNEL CMDLINE ==="; cat /proc/cmdline
