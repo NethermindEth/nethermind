@@ -244,6 +244,13 @@ public class FrameTxDecoderTests
             Frame(),
         ])).SetName("Roundtrip_AllModesFlagsTargetsAndData");
 
+        yield return new TestCaseData(CreateFrameTx(frames:
+        [
+            Frame(gasLimit: 500_000, stateGasLimit: 183_600),
+            Frame(mode: TxFrame.ModeVerify, gasLimit: 90_000, stateGasLimit: 0),
+            Frame(mode: TxFrame.ModeSender, gasLimit: ulong.MaxValue - 1, stateGasLimit: 1),
+        ])).SetName("Roundtrip_TwoDimensionalGasLimits");
+
         yield return new TestCaseData(CreateFrameTx(signatures:
         [
             new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, FilledBytes(11, 0x77)),
@@ -307,7 +314,8 @@ public class FrameTxDecoderTests
             Assert.That(actual[i].Mode, Is.EqualTo(expected[i].Mode), $"frame {i} mode");
             Assert.That(actual[i].Flags, Is.EqualTo(expected[i].Flags), $"frame {i} flags");
             Assert.That(actual[i].Target, Is.EqualTo(expected[i].Target), $"frame {i} target");
-            Assert.That(actual[i].GasLimit, Is.EqualTo(expected[i].GasLimit), $"frame {i} gas limit");
+            Assert.That(actual[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit), $"frame {i} execution gas limit");
+            Assert.That(actual[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit), $"frame {i} state gas limit");
             Assert.That(actual[i].Value, Is.EqualTo(expected[i].Value), $"frame {i} value");
             Assert.That(actual[i].Data.ToArray(), Is.EqualTo(expected[i].Data.ToArray()), $"frame {i} data");
         }
@@ -338,8 +346,8 @@ public class FrameTxDecoderTests
             DecodedMaxFeePerGas = 30.GWei,
         };
 
-    private static TxFrame Frame(byte mode = TxFrame.ModeDefault, byte flags = 0, Address? target = null, ulong gasLimit = 100_000, UInt256 value = default, byte[]? data = null) =>
-        new(mode, flags, target, gasLimit, value, data ?? Array.Empty<byte>());
+    private static TxFrame Frame(byte mode = TxFrame.ModeDefault, byte flags = 0, Address? target = null, ulong gasLimit = 100_000, ulong stateGasLimit = 0, UInt256 value = default, byte[]? data = null) =>
+        new(mode, flags, target, gasLimit, stateGasLimit, value, data ?? Array.Empty<byte>());
 
     private static byte[] FilledBytes(int length, byte fill)
     {
