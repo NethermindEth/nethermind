@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.RequestSizer;
@@ -12,11 +11,13 @@ public class LatencyBasedRequestSizer(
     int maxRequestLimit,
     TimeSpan lowerWatermark,
     TimeSpan upperWatermark,
-    double adjustmentFactor = 1.5
+    double adjustmentFactor = 1.5,
+    TimeProvider? timeProvider = null
     )
 {
     private readonly TimeSpan _upperWatermark = upperWatermark;
     private readonly TimeSpan _lowerWatermark = lowerWatermark;
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly AdaptiveRequestSizer _requestSizer = new(minRequestLimit, maxRequestLimit, adjustmentFactor: adjustmentFactor);
     public int RequestSize => _requestSizer.RequestSize;
 
@@ -28,9 +29,9 @@ public class LatencyBasedRequestSizer(
     /// <returns></returns>
     public Task<TResponse> MeasureLatency<TResponse>(Func<int, Task<TResponse>> func) => _requestSizer.Run(async (requestSize) =>
     {
-        long startTime = Stopwatch.GetTimestamp();
+        long startTime = _timeProvider.GetTimestamp();
         TResponse result = await func(requestSize);
-        TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
+        TimeSpan duration = _timeProvider.GetElapsedTime(startTime);
         if (duration < _lowerWatermark)
         {
             return (result, AdaptiveRequestSizer.Direction.Increase);
