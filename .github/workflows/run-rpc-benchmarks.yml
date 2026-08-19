@@ -1,6 +1,6 @@
 name: Run RPC Benchmarks
 
-# Benchmark a client's JSON-RPC on the self-hosted `reproducible-benchmarks-arm` runner, reusing its DB snapshots.
+# Benchmark a client's JSON-RPC on the self-hosted `reproducible-benchmarks` runner, reusing its DB snapshots.
 # Only read-only RPCs are benchmarked (eth_call/getBalance/trace/debug — none change state); each snapshot is fingerprinted before/after. Under overlay/copy the snapshot is never mounted writable, so any change FAILS the job.
 # reth's 'direct' mode mounts the snapshot read-write, where the node's DB-engine startup writes are expected — there the tripwire warns instead of failing. See scripts/rpc-bench/README.md.
 
@@ -211,10 +211,6 @@ jobs:
             none|nethermind|geth|reth) ;;
             *) echo "Unknown reference_client '${reference_client}'."; exit 1;;
           esac
-          if [[ "${client}" != "nethermind" || "${reference_client}" != "none" ]]; then
-            echo "The reproducible-benchmarks-arm runner only supports a single Nethermind client."
-            exit 1
-          fi
           comparison="false"
           [[ "${reference_client}" != "none" ]] && comparison="true"
           if [[ "${comparison}" == "true" && "${benchmark_tool}" == "ethcallchaos" ]]; then
@@ -280,11 +276,6 @@ jobs:
           fi
 
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
-
-          if [[ "${state_layout}" != "flat" ]]; then
-            echo "The reproducible-benchmarks-arm runner only supports the flat state layout."
-            exit 1
-          fi
 
           # Named snapshot sets follow /mnt/sda/<client>-<block>; without a tag nethermind falls back to the expb snapshots.
           # geth/reth and comparison runs need same-head sets, so they default to the standing 25490000 tag.

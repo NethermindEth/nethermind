@@ -105,9 +105,6 @@ snap_path() {
   else echo "/mnt/sda/$1-${SNAPSHOT_BLOCK}"; fi
 }
 layout_flags() { [[ "$1" == "nethermind" && "$STATE_LAYOUT" == "flat" ]] && echo "--FlatDb.Enabled=true" || true; }
-if [[ "$STATE_LAYOUT" != "flat" ]]; then
-  echo "::error::state_layout '${STATE_LAYOUT}' has no snapshot on this runner — only flat is supported"; exit 1
-fi
 for entry in $CLIENTS; do
   ctype="${entry%%@*}"
   case "$ctype" in
@@ -125,7 +122,7 @@ done
 #
 # `direct` is refused without explicit consent. It bind-mounts the snapshot READ-WRITE, and a node's
 # startup alone rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column
-# family. The Nethermind snapshots under /data/nethermind are shared with expb, so one direct run
+# family. The Nethermind snapshots under /mnt/sda are shared with expb, so one direct run
 # silently replaces the fixture every later benchmark compares against — which happened on
 # 2026-08-13 and cost a day of measurements (eth_call p99 tripled while an untouched client moved 2%).
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
