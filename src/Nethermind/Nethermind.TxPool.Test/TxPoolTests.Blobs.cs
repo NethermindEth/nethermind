@@ -16,6 +16,7 @@ using Nethermind.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -1697,6 +1698,170 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
             Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore), "the light record's removal must release the whole reservation");
+        }
+
+        // The bound is summed over the pending set, and the persistent blob pool is exactly what carries that set
+        // across a restart — so a restored record whose payer and reservation were not persisted silently drops
+        // out of its payer's bound, loosening the cap until it happens to be re-admitted.
+        [Test]
+        public void Restored_blob_carrying_frame_tx_still_counts_against_its_payer()
+        {
+            BlobTxStorage blobTxStorage = new();
+            TxPoolConfig txPoolConfig = SponsoredBlobPoolConfig();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+
+            Transaction first = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            FundSponsorForWholeMultiplesOf(first, count: 1);
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressD), "no reservation is taken unless the payer resolves");
+
+            // A fresh pool over the same storage stands in for a node restart.
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the transaction must survive the restart");
+
+            Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded),
+                "the restored record must still count against its payer's bound");
+        }
+
+        // The restored reservation has to be releasable by the record that holds it: seeded under a payer or an
+        // amount the record no longer carries, it would never be subtracted and would lock the payer out for good.
+        [Test]
+        public void Restored_blob_carrying_frame_tx_releases_its_payer_exposure_when_it_leaves_the_pool()
+        {
+            BlobTxStorage blobTxStorage = new();
+            TxPoolConfig txPoolConfig = SponsoredBlobPoolConfig();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+
+            Transaction first = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            FundSponsorForWholeMultiplesOf(first, count: 1);
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+
+            Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "removing the restored record must release the whole reservation it was seeded with");
+        }
+
+        // Restoring the pool evicts as it goes, and each eviction releases its record's reservation — so the ledger
+        // has to be seeded from the restored records before the removal handler is attached, or the evicted record's
+        // reservation is released against an empty ledger, stays held, and locks its payer out. This one guards that
+        // ordering rather than the persistence itself, which the two above pin.
+        [Test]
+        public void Blob_carrying_frame_tx_evicted_by_the_restart_releases_its_payer_exposure()
+        {
+            BlobTxStorage blobTxStorage = new();
+            TxPoolConfig txPoolConfig = SponsoredBlobPoolConfig();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+
+            Transaction evicted = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction survivor = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            Transaction afterRestart = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+            FundSponsorForWholeMultiplesOf(evicted, count: 2);
+
+            Assert.That(_txPool.SubmitTx(evicted, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(survivor, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // That account moving on makes its record stale, so restoring the pool evicts exactly that one.
+            _stateProvider.IncrementNonce(TestItem.PrivateKeyA.Address);
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the restart must evict the stale record and keep the other");
+
+            Assert.That(_txPool.SubmitTx(afterRestart, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "the evicted record must not leave its reservation held against the payer");
+        }
+
+        // A restored record now carries the reservation a replacement is meant to displace, so the bump has to be
+        // discounted against it. Priced so only the discount makes room: without it the incumbent's reservation and
+        // the bump's are summed, and a fee bump after a restart would be newly rejected.
+        [Test]
+        public void Restored_blob_carrying_frame_tx_can_still_be_fee_bumped()
+        {
+            BlobTxStorage blobTxStorage = new();
+            TxPoolConfig txPoolConfig = SponsoredBlobPoolConfig();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+
+            Transaction incumbent = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction bumped = BuildSponsoredBlobFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, feeMultiplier: 10);
+            // Exactly the bump's own cost: room for it only once the incumbent's reservation is discounted.
+            FundSponsorForWholeMultiplesOf(bumped, count: 1);
+
+            Assert.That(_txPool.SubmitTx(incumbent, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+
+            Assert.That(_txPool.SubmitTx(bumped, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted),
+                "the bump must be discounted against the reservation the restored record it displaces holds");
+        }
+
+        // The exposure gate is what has to bind here, so the verify-gas bound is disabled and the pool made
+        // persistent — a restart only carries the pending set through the persistent blob db.
+        private static TxPoolConfig SponsoredBlobPoolConfig() => new()
+        {
+            BlobsSupport = BlobsSupportMode.StorageWithReorgs,
+            PersistentBlobStorageSize = 10,
+            BlobCacheSize = 10,
+            FrameTxMaxVerifyGas = 0,
+        };
+
+        private static IFrameTxPrefixSimulator SponsorNamingSimulator()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            return simulator;
+        }
+
+        /// <summary>Funds the sponsor for exactly <paramref name="count"/> transactions priced like
+        /// <paramref name="like"/>, so the next one over that is what the exposure gate rejects.</summary>
+        private void FundSponsorForWholeMultiplesOf(Transaction like, int count)
+        {
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(like, Bogota.Instance, out UInt256 maxCost), Is.True);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, maxCost * (UInt256)count);
+        }
+
+        // An only_verify|pay prefix naming a sponsor is opaque to native resolution, which only ever resolves to
+        // the sender — so this is the one blob-carrying shape whose payer is a third party, and therefore the only
+        // one whose bound is not already gated more tightly by the sender's own balance.
+        private Transaction BuildSponsoredBlobFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, int feeMultiplier = 1)
+        {
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            tx.SenderAddress = senderKey.Address;
+            // The blob pool's replacement rule bounds the priority fee too, so every fee leg scales together.
+            tx.GasPrice *= (UInt256)feeMultiplier;
+            tx.DecodedMaxFeePerGas *= (UInt256)feeMultiplier;
+            tx.MaxFeePerBlobGas *= (UInt256)feeMultiplier;
+            tx.Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+            ];
+            // compute_sig_hash covers each entry's scheme/signer/msg and elides only the raw bytes, so the entries
+            // are installed before signing and only their bytes filled in afterwards.
+            tx.FrameSignatures =
+            [
+                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, default),
+                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, default),
+            ];
+            ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+            tx.FrameSignatures =
+            [
+                Secp256k1FrameSignature(senderKey, in sigHash, signer: null),
+                Secp256k1FrameSignature(sponsorKey, in sigHash, signer: sponsorKey.Address),
+            ];
+            tx.Hash = tx.CalculateHash();
+            return tx;
         }
 
         // EIP-8141: a blob-carrying frame tx counts against the per-sender blob limit (MaxPendingBlobTxsPerSender),

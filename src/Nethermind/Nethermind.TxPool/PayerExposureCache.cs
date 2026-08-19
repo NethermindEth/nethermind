@@ -65,6 +65,13 @@ internal sealed class PayerExposureCache
         }
     }
 
+    /// <summary>Re-takes a reservation a restored pending transaction already holds, without re-gating it against its payer's balance.</summary>
+    /// <remarks>The bound was enforced when that transaction was first admitted, and rejecting it here would leave a
+    /// pending record whose removal releases a reservation this ledger never took. An unbounded balance is what
+    /// makes it a restore rather than a fresh admission; everything else — the zero case, the overflow guard,
+    /// the payer gauge — is the reservation path's.</remarks>
+    public void Restore(AddressAsKey key, in UInt256 cost) => TryReserve(key, cost, UInt256.MaxValue, out _);
+
     /// <summary>Releases a reserved <paramref name="cost"/>, clamping at zero so a double release cannot re-open the gate.</summary>
     public void Subtract(AddressAsKey key, in UInt256 cost)
     {

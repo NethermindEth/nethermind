@@ -73,7 +73,9 @@ public class LightTransaction : Transaction
         int size,
         ProofVersion proofVersion,
         TxType type,
-        ulong? expiryDeadline = null)
+        ulong? expiryDeadline = null,
+        Address? payerAddress = null,
+        UInt256? payerExposure = null)
     {
         Type = type;
         Hash = hash;
@@ -89,6 +91,10 @@ public class LightTransaction : Transaction
         PoolIndex = poolIndex;
         ProofVersion = proofVersion;
         PersistedExpiryDeadline = expiryDeadline;
+        // The reservation this record already holds in the pool's ledger, so its removal releases what
+        // admission took rather than nothing.
+        PayerAddress = payerAddress;
+        PayerExposure = payerExposure;
         _size = size;
     }
 
