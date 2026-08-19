@@ -366,7 +366,7 @@ internal static class JsonRpcGenerator
         // hard-coded list. This is scoped to explicit member converters: probing a type's default
         // serialization is unsound for value-dependent unions (e.g. `eth_syncing` returns `false` or an
         // object), so those keep the editorial mapping below.
-        if (converterType is not null && TryProbeScalarKind(type, converterType, out JsonTokenType token))
+        if (converterType is not null && TryProbeScalarKind(converterType, out JsonTokenType token))
         {
             if (token is JsonTokenType.Number)
                 return IsFloatingPoint(type) ? "_number_" : "_integer_";
@@ -406,15 +406,24 @@ internal static class JsonRpcGenerator
     private static bool IsFloatingPoint(Type type) =>
         type == typeof(double) || type == typeof(float) || type == typeof(decimal);
 
-    // Serializes a sample value through the member's converter and reports the JSON token it produces,
-    // so number-vs-string-vs-boolean is read from the serializer rather than guessed from the CLR type.
-    private static bool TryProbeScalarKind(Type type, Type converterType, out JsonTokenType token)
+    // Serializes a sample value through the converter and reports the JSON token it produces, so
+    // number-vs-string-vs-boolean is read from the serializer rather than guessed from the CLR type.
+    private static bool TryProbeScalarKind(Type converterType, out JsonTokenType token)
     {
         token = JsonTokenType.None;
 
+        // The converter's own JsonConverter<T> base is the source of truth for its value type: a
+        // nullable-aware converter declares Write against `T?`, and a JsonConverterFactory declares
+        // no Write at all (null here), so both are handled without relying on member-type coincidence.
+        Type? valueType = ConverterValueType(converterType);
+
+        if (valueType is null)
+            return false;
+
         try
         {
-            object? sample = Activator.CreateInstance(type);
+            // A non-null sample of the underlying value so a nullable converter writes its value, not null
+            object? sample = Activator.CreateInstance(Nullable.GetUnderlyingType(valueType) ?? valueType);
 
             if (sample is null)
                 return false;
@@ -422,7 +431,7 @@ internal static class JsonRpcGenerator
             ArrayBufferWriter<byte> buffer = new();
 
             using (Utf8JsonWriter writer = new(buffer))
-                InvokeConverterWrite(converterType, type, sample, writer);
+                InvokeConverterWrite(converterType, valueType, sample, writer);
 
             Utf8JsonReader reader = new(buffer.WrittenSpan);
             reader.Read();
@@ -436,6 +445,15 @@ internal static class JsonRpcGenerator
         {
             return false;
         }
+    }
+
+    private static Type? ConverterValueType(Type converterType)
+    {
+        for (Type? t = converterType; t is not null; t = t.BaseType)
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(JsonConverter<>))
+                return t.GetGenericArguments()[0];
+
+        return null;
     }
 
     private static void InvokeConverterWrite(Type converterType, Type valueType, object sample, Utf8JsonWriter writer)
