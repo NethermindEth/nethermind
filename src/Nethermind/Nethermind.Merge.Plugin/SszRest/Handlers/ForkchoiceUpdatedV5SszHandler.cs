@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System;
 using System.Buffers;
 using System.Threading.Tasks;
@@ -37,7 +38,7 @@ public sealed class ForkchoiceUpdatedV5SszHandler(IEngineRpcModule engineModule,
 
         ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(wire.ForkchoiceState);
         PayloadAttributes? attrs = wire.PayloadAttributes is { Length: > 0 } a ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
-        byte[]? custody = ForkchoiceUpdatedHelpers.CustodyColumnsToBytes(wire.CustodyColumns);
+        BitArray? custody = wire.CustodyColumns is { Length: > 0 } c ? c[0].Bits : null;
 
         ResultWrapper<ForkchoiceUpdatedV2Result> result = await engineModule.engine_forkchoiceUpdatedV5(state, attrs, custody);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeForkchoiceUpdatedResponseV2);

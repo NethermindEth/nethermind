@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
@@ -66,7 +67,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     public async Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(
         ForkchoiceStateV1 forkchoiceState,
         PayloadAttributes? payloadAttributes = null,
-        byte[]? custodyColumns = null)
+        BitArray? custodyColumns = null)
     {
         if (payloadAttributes?.InclusionListTransactions is { } ilTxs)
         {
