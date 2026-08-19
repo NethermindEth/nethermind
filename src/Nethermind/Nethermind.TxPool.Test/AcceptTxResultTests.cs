@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable
-
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 
@@ -11,28 +10,28 @@ namespace Nethermind.TxPool.Test;
 
 public class AcceptTxResultTests
 {
-    // Equality is by id alone, so two verdicts sharing one are indistinguishable to callers, and any test
-    // asserting on either passes for both.
+    /// <remarks>
+    /// Equality is by id alone, so two results sharing an id are indistinguishable and a filter test can
+    /// pass while comparing against the wrong one. Reflection keeps the guard current as results are added.
+    /// </remarks>
     [Test]
-    public void Every_result_has_a_unique_id()
+    public void Every_result_is_distinguishable_from_every_other()
     {
-        Dictionary<AcceptTxResult, string> byId = [];
-        List<string> collisions = [];
+        (string Name, AcceptTxResult Value)[] results = typeof(AcceptTxResult)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(static f => f.FieldType == typeof(AcceptTxResult))
+            .Select(static f => (f.Name, (AcceptTxResult)f.GetValue(null)!))
+            .ToArray();
 
-        foreach (FieldInfo field in typeof(AcceptTxResult).GetFields(BindingFlags.Public | BindingFlags.Static))
+        IEnumerable<string> collisions = results
+            .GroupBy(static r => r.Value)
+            .Where(static g => g.Count() > 1)
+            .Select(static g => string.Join(" == ", g.Select(static r => r.Name)));
+
+        using (Assert.EnterMultipleScope())
         {
-            if (field.GetValue(null) is not AcceptTxResult result) continue;
-
-            if (byId.TryGetValue(result, out string? owner))
-            {
-                collisions.Add($"{owner} and {field.Name}");
-            }
-            else
-            {
-                byId[result] = field.Name;
-            }
+            Assert.That(results, Is.Not.Empty, "reflection must actually find the results");
+            Assert.That(collisions, Is.Empty);
         }
-
-        Assert.That(collisions, Is.Empty, "these results share an id");
     }
 }
