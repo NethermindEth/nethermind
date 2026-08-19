@@ -306,10 +306,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // receipts stay gross; only this transaction total is netted. The EIP-7623 floor then bounds
         // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
-        ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
-        // EIP-8037: state gas is clamped (later-frame refills can drive the running total negative); the execution dimension carries the EIP-7623 floor.
+        ulong gasAfterRefund = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec);
+        // EIP-8141 (ethereum/EIPs#12062): the calldata floor bounds the execution dimension alone, and state gas is added on top rather than absorbed. State gas is clamped since later-frame refills can drive the running total negative.
         ulong blockStateGas = (ulong)Math.Max(0, totalStateGas);
-        ulong blockExecutionGas = Math.Max(grossGas - blockStateGas, floorGas);
+        ulong executionAfterState = gasAfterRefund > blockStateGas ? gasAfterRefund - blockStateGas : 0;
+        ulong blockExecutionGas = Math.Max(executionAfterState, floorGas);
+        ulong spentGas = blockExecutionGas + blockStateGas;
         tx.BlockGasUsed = blockExecutionGas;
         Address payer = frameContext.Payer;
 

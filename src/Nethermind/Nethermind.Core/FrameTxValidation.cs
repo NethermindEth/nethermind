@@ -372,6 +372,7 @@ public static class FrameTxValidation
         ulong tokens = 0;
         ulong dataLength = 0;
         ulong totalFrameGas = 0;
+        ulong totalStateGas = 0;
         foreach (TxFrame frame in frames)
         {
             tokens += CountCalldataTokens(frame.Data.Span, spec);
@@ -385,6 +386,7 @@ public static class FrameTxValidation
             }
 
             totalFrameGas = accumulated;
+            totalStateGas += frame.StateGasLimit;
         }
 
         ulong signatureVerificationCost = 0;
@@ -422,7 +424,14 @@ public static class FrameTxValidation
             return false;
         }
 
-        maxGas = Math.Max(standardGas, floorGas);
+        // EIP-8141 (ethereum/EIPs#12062): state gas is reserved on top of the calldata floor, never absorbed into it.
+        ulong floorReservation = floorGas + totalStateGas;
+        if (floorReservation < floorGas)
+        {
+            return false;
+        }
+
+        maxGas = Math.Max(standardGas, floorReservation);
         return true;
     }
 

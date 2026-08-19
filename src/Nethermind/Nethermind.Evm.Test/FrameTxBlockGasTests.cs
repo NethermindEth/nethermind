@@ -230,6 +230,38 @@ public class FrameTxBlockGasTests
             "the batch was rolled back, so the slot its first frame wrote never grew the state");
     }
 
+    /// <summary>
+    /// When the calldata floor exceeds the execution component, the floor binds on the execution dimension
+    /// alone and the frame's state gas is charged on top, so gas_used is the floor plus the state gas rather
+    /// than the floor absorbing it.
+    /// </summary>
+    [Test]
+    public void Execute_CalldataFloorBindsWithStateGas_ChargesTheStateGasOnTopOfTheFloor()
+    {
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        byte[] calldata = new byte[8192];
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Writer, executionGasLimit: 200_000, stateGasLimit: 150_000, UInt256.Zero, calldata));
+
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        const ulong stateCharge = (ulong)GasCostOf.SSetState;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+                "the write committed from the state reservoir");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
+                "the fresh slot's state charge lands in the state dimension");
+            Assert.That(tracer.GasConsumedResult.SpentGas,
+                Is.EqualTo(tracer.GasConsumedResult.EffectiveBlockGas + stateCharge),
+                "gas_used is the execution floor plus the state gas; the floor never absorbs the state charge");
+        }
+    }
+
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
 
