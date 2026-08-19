@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -201,6 +202,66 @@ public class FrameTransactionForRpcTests
             Assert.That(roundTripped.MaxFeePerBlobGas, Is.EqualTo((UInt256)456));
             Assert.That(roundTripped.BlobVersionedHashes, Has.Length.EqualTo(1));
         }
+    }
+
+    /// <remarks>
+    /// A JSON <c>null</c> in any of the EIP-8141 lists deserializes to a null element that the mapping used to
+    /// dereference, so <c>eth_call</c> answered these requests with a <see cref="NullReferenceException"/>.
+    /// </remarks>
+    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","frames":[null]}""", "frames", TestName = "ToTransaction_NullFrame_IsRejected")]
+    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","signatures":[null]}""", "signatures", TestName = "ToTransaction_NullSignature_IsRejected")]
+    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[null]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReference_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_RejectsANullListEntry(string json, string field)
+    {
+        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.NullEntryIn(field)));
+        }
+    }
+
+    private const ulong GasCap = 100_000;
+
+    /// <summary>The RPC gas cap bounds a frame transaction by its frame gas limits.</summary>
+    /// <remarks>
+    /// The base mapping caps <see cref="Transaction.GasLimit"/>, which carries the request's <c>gas</c> field;
+    /// the frame path never reads it and prices the transaction from the frames instead, so before this an
+    /// <c>eth_call</c> could ask a node for arbitrarily more gas than its cap by putting it in a frame.
+    /// </remarks>
+    [TestCase(GasCap, false, TestName = "ToTransaction_FrameGasAtTheCap_IsAccepted")]
+    [TestCase(GasCap + 1, true, TestName = "ToTransaction_FrameGasAboveTheCap_IsRejected")]
+    [TestCase(ulong.MaxValue, true, TestName = "ToTransaction_FrameGasOverflowingTheSum_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_CapsTheFrameGasLimits(ulong frameGasLimit, bool expectedError)
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames =
+            [
+                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, GasLimit = frameGasLimit },
+                new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC },
+            ],
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        Assert.That(result.IsError, Is.EqualTo(expectedError), result.Error);
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_LeavesTheFrameGasUncappedWithoutAGasCap()
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, GasLimit = ulong.MaxValue }],
+        };
+
+        Assert.That(rpc.ToTransaction(validateUserInput: true).IsError, Is.False);
     }
 
     [Test]

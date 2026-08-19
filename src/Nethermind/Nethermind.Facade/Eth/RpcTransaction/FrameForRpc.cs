@@ -36,6 +36,24 @@ public class FrameForRpc
     public static FrameForRpc[]? FromFrames(TxFrame[]? frames) =>
         frames?.Select(static f => new FrameForRpc(f)).ToArray();
 
-    public static TxFrame[]? ToFrames(FrameForRpc[]? frames) =>
-        frames?.Select(static f => f.ToFrame()).ToArray();
+    /// <inheritdoc cref="RpcListConverter.TryConvert{TView,TValue}"/>
+    public static bool TryToFrames(FrameForRpc[]? frames, out TxFrame[]? converted) =>
+        RpcListConverter.TryConvert(frames, static f => f.ToFrame(), out converted);
+
+    /// <summary>The gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
+    /// <remarks>
+    /// This is what an EIP-8141 transaction reserves and spends; <see cref="Transaction.GasLimit"/> carries the
+    /// request's <c>gas</c> field, which the frame path never reads.
+    /// </remarks>
+    public static ulong TotalGasLimit(FrameForRpc[]? frames)
+    {
+        ulong total = 0;
+        foreach (FrameForRpc frame in frames ?? [])
+        {
+            if (frame.GasLimit > ulong.MaxValue - total) return ulong.MaxValue;
+            total += frame.GasLimit;
+        }
+
+        return total;
+    }
 }
