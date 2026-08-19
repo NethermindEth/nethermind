@@ -1,0 +1,43 @@
+name: RPC Bench Host Info
+
+# Records the reproducible-benchmarks host's CPU topology and clock state. The RPC harness logs
+# kernel, governor and max_freq per run (lib.sh log_system_provenance) but never the core count,
+# so the width a benchmarked node actually sees — which sets Nethermind's default concurrency caps
+# and therefore where a rate ladder starts queueing — had to be inferred. Dispatch-only, seconds long.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  host-info:
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 10
+    steps:
+      - name: CPU topology and clocks
+        shell: bash
+        run: |
+          set -uo pipefail
+          {
+            echo "## RPC bench host"
+            echo '```'
+            echo "hostname:        $(hostname)"
+            echo "nproc:           $(nproc)"
+            echo "online cpus:     $(cat /sys/devices/system/cpu/online 2>/dev/null)"
+            lscpu 2>/dev/null | grep -iE "^(model name|architecture|cpu\(s\)|thread\(s\) per core|core\(s\) per socket|socket\(s\)|cpu max mhz|cpu min mhz|numa node0)" \
+              || grep -m1 "model name" /proc/cpuinfo
+            echo "governor:        $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo n/a)"
+            echo "max_freq_khz:    $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo n/a)"
+            echo "avx512 in flags: $(grep -m1 -o 'avx512[a-z0-9_]*' /proc/cpuinfo | head -1 || echo none)"
+            echo "avx512 variants: $(grep -m1 flags /proc/cpuinfo | tr ' ' '\n' | grep -c '^avx512')"
+            echo
+            echo "-- HT sibling map (cpu:siblings), explains whether a 2-7,10-15 style pin is sibling-paired --"
+            for c in /sys/devices/system/cpu/cpu[0-9]*; do
+              n="${c##*/cpu}"
+              echo "cpu${n}: $(cat "$c/topology/thread_siblings_list" 2>/dev/null || echo n/a)"
+            done | sort -V | head -32
+            echo
+            echo "-- what a container sees (same image family the benchmarks run) --"
+            docker run --rm --entrypoint sh alpine:3 -c 'echo "container nproc: $(nproc)"' 2>/dev/null || echo "docker probe skipped"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          cat "${GITHUB_STEP_SUMMARY}"
