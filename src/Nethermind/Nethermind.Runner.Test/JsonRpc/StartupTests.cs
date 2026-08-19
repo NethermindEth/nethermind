@@ -429,6 +429,18 @@ public class StartupTests
     }
 
     [Test]
+    public void TrustedHttpFastLane_SkippedWhenOriginHeaderPresent()
+    {
+        JsonRpcUrl jsonRpcUrl = CreateUrl();
+        DefaultHttpContext ctx = CreateFastLaneContext(jsonRpcUrl.Port);
+        ctx.Request.Headers.Origin = "http://example.com";
+
+        bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(jsonRpcUrl), [], out _);
+
+        Assert.That(usesFastLane, Is.False);
+    }
+
+    [Test]
     public async Task JsonRpcHttpMiddleware_PassesThroughSelectedEndpoint()
     {
         JsonRpcUrl jsonRpcUrl = CreateUrl();
