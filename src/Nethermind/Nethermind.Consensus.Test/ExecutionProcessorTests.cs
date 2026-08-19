@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -42,12 +43,9 @@ public class ExecutionProcessorTests
     private static readonly AbiSignature _depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private static readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
     private const int AbiWordSize = 32;
-    private const int DepositEventDataLength = 576;
-    private const int DepositEventPubkeyOffset = 160;
-    private const int DepositEventWithdrawalCredentialsOffset = 256;
-    private const int DepositEventAmountOffset = 320;
-    private const int DepositEventSignatureOffset = 384;
-    private const int DepositEventIndexOffset = 512;
+    private const int DepositEventFieldCount = 5;
+    private const int PubkeyHeadWord = 0;
+    private const int AmountHeadWord = 2;
 
     private static readonly TestExecutionRequest[] _executionDepositRequests = [TestItem.ExecutionRequestA, TestItem.ExecutionRequestB, TestItem.ExecutionRequestC];
     private static readonly TestExecutionRequest[] _executionWithdrawalRequests = [TestItem.ExecutionRequestD, TestItem.ExecutionRequestE, TestItem.ExecutionRequestF];
@@ -181,43 +179,7 @@ public class ExecutionProcessorTests
     }
 
     private static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
-        Build.A.LogEntry
-            .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
-            .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
-            .WithAddress(DepositContractAddress).TestObject;
-
-    [Test]
-    public void ShouldRejectDepositLogWithNonCanonicalAbiOffsets()
-    {
-        TxReceipt[] txReceipts = [
-            Build.A.Receipt.WithLogs(
-                CreateLogEntryWithSwappedAmountAndSignatureSlots(TestItem.ExecutionRequestA.RequestDataParts)
-            ).TestObject
-        ];
-
-        // EIP-6110 mandates the exact canonical ABI layout, so any deviation in the offset words
-        // invalidates the block even when every field still decodes to a correctly-sized byte array.
-        Assert.Throws<InvalidBlockException>(() => ProcessBlockAndGetRequestsHash(1, txReceipts));
-    }
-
-    [TestCase(DepositEventLayoutMutation.ExtraTrailingWord)]
-    [TestCase(DepositEventLayoutMutation.WrongAmountSize)]
-    [TestCase(DepositEventLayoutMutation.NonZeroHighByteInOffset)]
-    public void ShouldRejectDepositLogWithInvalidCanonicalAbiLayout(DepositEventLayoutMutation mutation)
-    {
-        byte[] data = BuildCanonicalDepositEventData(TestItem.ExecutionRequestA.RequestDataParts);
-        ApplyDepositEventLayoutMutation(data, mutation, out byte[] mutatedData);
-        TxReceipt[] txReceipts = [
-            Build.A.Receipt.WithLogs(
-                CreateDepositLogEntry(mutatedData)
-            ).TestObject
-        ];
-
-        Assert.Throws<InvalidBlockException>(() => ProcessBlockAndGetRequestsHash(1, txReceipts));
-    }
-
-    private static LogEntry CreateLogEntryWithSwappedAmountAndSignatureSlots(byte[][] requestDataParts) =>
-        CreateDepositLogEntry(BuildDepositEventDataWithSwappedAmountAndSignatureSlots(requestDataParts!));
+        CreateDepositLogEntry(EncodeDepositEventData(requestDataParts));
 
     private static LogEntry CreateDepositLogEntry(byte[] data) =>
         Build.A.LogEntry
@@ -225,82 +187,182 @@ public class ExecutionProcessorTests
             .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
             .WithAddress(DepositContractAddress).TestObject;
 
-    private static byte[] BuildCanonicalDepositEventData(byte[][] requestDataParts)
+    private static byte[] EncodeDepositEventData(byte[][] requestDataParts) =>
+        _abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts);
+
+    [TestCase(DepositEventLayoutMutation.SwappedPubkeyAndCredentialsBlocks)]
+    [TestCase(DepositEventLayoutMutation.SwappedAmountAndSignatureBlocks)]
+    [TestCase(DepositEventLayoutMutation.BlocksShiftedByOneWord)]
+    [TestCase(DepositEventLayoutMutation.OffsetBeyondData)]
+    [TestCase(DepositEventLayoutMutation.OffsetHighBitsSet)]
+    [TestCase(DepositEventLayoutMutation.ExtraTrailingWord)]
+    [TestCase(DepositEventLayoutMutation.TruncatedData)]
+    public void ShouldRejectDepositLogWithNonCanonicalAbiLayout(DepositEventLayoutMutation mutation) =>
+        AssertDepositLogRejected(ApplyDepositEventLayoutMutation(CanonicalDepositEventData(), mutation));
+
+    /// <summary>
+    /// Every word the canonical layout pins — the five head offsets followed by the five field length words
+    /// they point at — has to match exactly, so incrementing any one of them must invalidate the block.
+    /// </summary>
+    [Test]
+    public void ShouldRejectDepositLogWithAlteredLayoutWord([Range(0, 2 * DepositEventFieldCount - 1)] int wordIndex)
     {
-        byte[] data = new byte[DepositEventDataLength];
+        byte[] data = CanonicalDepositEventData();
+        int wordOffset = wordIndex < DepositEventFieldCount
+            ? wordIndex * AbiWordSize
+            : ReadDepositEventOffset(data, wordIndex - DepositEventFieldCount);
+        WriteDepositEventWord(data, wordOffset, ReadDepositEventWord(data, wordOffset) + 1);
 
-        WriteDepositEventOffset(data, 0, DepositEventPubkeyOffset);
-        WriteDepositEventOffset(data, 1, DepositEventWithdrawalCredentialsOffset);
-        WriteDepositEventOffset(data, 2, DepositEventAmountOffset);
-        WriteDepositEventOffset(data, 3, DepositEventSignatureOffset);
-        WriteDepositEventOffset(data, 4, DepositEventIndexOffset);
-
-        WriteDepositEventField(data, DepositEventPubkeyOffset, requestDataParts[0]);
-        WriteDepositEventField(data, DepositEventWithdrawalCredentialsOffset, requestDataParts[1]);
-        WriteDepositEventField(data, DepositEventAmountOffset, requestDataParts[2]);
-        WriteDepositEventField(data, DepositEventSignatureOffset, requestDataParts[3]);
-        WriteDepositEventField(data, DepositEventIndexOffset, requestDataParts[4]);
-
-        return data;
+        AssertDepositLogRejected(data);
     }
 
-    private static byte[] BuildDepositEventDataWithSwappedAmountAndSignatureSlots(byte[][] requestDataParts)
+    /// <summary>
+    /// The bytes padding each field out to a whole word carry no meaning, and neither EIP-6110 nor EELS
+    /// requires them to be zero, so the deposit must still decode to exactly the same request.
+    /// </summary>
+    [Test]
+    public void ShouldAcceptDepositLogWithNonZeroFieldPadding()
     {
-        byte[] data = new byte[DepositEventDataLength];
+        byte[] data = CanonicalDepositEventData();
+        FillDepositEventFieldPadding(data);
+        TxReceipt[] txReceipts = [
+            Build.A.Receipt.WithLogs(
+                CreateDepositLogEntry(data)
+            ).TestObject
+        ];
 
-        WriteDepositEventOffset(data, 0, DepositEventPubkeyOffset);
-        WriteDepositEventOffset(data, 1, DepositEventWithdrawalCredentialsOffset);
-        WriteDepositEventOffset(data, 2, 448); // amount offset: canonical is 320
-        WriteDepositEventOffset(data, 3, 320); // signature offset: canonical is 384
-        WriteDepositEventOffset(data, 4, DepositEventIndexOffset);
-
-        WriteDepositEventField(data, DepositEventPubkeyOffset, requestDataParts[0]);
-        WriteDepositEventField(data, DepositEventWithdrawalCredentialsOffset, requestDataParts[1]);
-        WriteDepositEventField(data, DepositEventAmountOffset, requestDataParts[3]);
-        WriteDepositEventField(data, 448, requestDataParts[2]);
-        WriteDepositEventField(data, DepositEventIndexOffset, requestDataParts[4]);
-
-        return data;
+        Assert.That(ProcessBlockAndGetRequestsHash(1, txReceipts), Is.EqualTo(
+            CalculateHash([TestItem.ExecutionRequestA], _executionWithdrawalRequests, _executionConsolidationRequests)
+        ));
     }
 
-    private static void WriteDepositEventOffset(byte[] data, int wordIndex, int offset) =>
-        WriteDepositEventWord(data, wordIndex * AbiWordSize, offset);
+    /// <summary>
+    /// The payload every layout case starts from: the encoder output that <see cref="ShouldProcessExecutionRequests"/>
+    /// proves is accepted, so each case differs from a valid deposit log only by its own mutation.
+    /// </summary>
+    private static byte[] CanonicalDepositEventData() =>
+        EncodeDepositEventData(TestItem.ExecutionRequestA.RequestDataParts);
 
-    private static void WriteDepositEventField(byte[] data, int offset, byte[] field)
+    private void AssertDepositLogRejected(byte[] data)
     {
-        WriteDepositEventWord(data, offset, field.Length);
-        field.CopyTo(data.AsSpan(offset + AbiWordSize));
+        TxReceipt[] txReceipts = [
+            Build.A.Receipt.WithLogs(
+                CreateDepositLogEntry(data)
+            ).TestObject
+        ];
+
+        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(() => ProcessBlockAndGetRequestsHash(1, txReceipts))!;
+        Assert.That(exception.Message, Does.StartWith(BlockErrorMessages.InvalidDepositEventLayout(string.Empty)));
     }
 
-    private static void WriteDepositEventWord(byte[] data, int offset, int value) =>
-        BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(offset + AbiWordSize - sizeof(int), sizeof(int)), value);
-
-    private static void ApplyDepositEventLayoutMutation(byte[] data, DepositEventLayoutMutation mutation, out byte[] mutatedData)
+    /// <summary>
+    /// Rewrites canonically encoded deposit event data into a layout EIP-6110 does not allow, returning the
+    /// payload to use. The argument may be mutated in place, so pass a freshly encoded array.
+    /// </summary>
+    private static byte[] ApplyDepositEventLayoutMutation(byte[] data, DepositEventLayoutMutation mutation)
     {
-        mutatedData = data;
         switch (mutation)
         {
+            case DepositEventLayoutMutation.SwappedPubkeyAndCredentialsBlocks:
+                return SwapDepositEventBlockWithNext(data, PubkeyHeadWord);
+            case DepositEventLayoutMutation.SwappedAmountAndSignatureBlocks:
+                return SwapDepositEventBlockWithNext(data, AmountHeadWord);
+            case DepositEventLayoutMutation.BlocksShiftedByOneWord:
+                return ShiftDepositEventBlocksByOneWord(data);
+            case DepositEventLayoutMutation.OffsetBeyondData:
+                WriteDepositEventOffset(data, PubkeyHeadWord, int.MaxValue);
+                return data;
+            case DepositEventLayoutMutation.OffsetHighBitsSet:
+                data[0] = 1;
+                return data;
             case DepositEventLayoutMutation.ExtraTrailingWord:
-                Array.Resize(ref mutatedData, DepositEventDataLength + AbiWordSize);
-                break;
-            case DepositEventLayoutMutation.WrongAmountSize:
-                WriteDepositEventWord(mutatedData, DepositEventAmountOffset, ExecutionRequestExtensions.AmountSize + 1);
-                break;
-            case DepositEventLayoutMutation.NonZeroHighByteInOffset:
-                mutatedData[0] = 1;
-                break;
+                Array.Resize(ref data, data.Length + AbiWordSize);
+                return data;
+            case DepositEventLayoutMutation.TruncatedData:
+                return data[..^AbiWordSize];
             default:
-                throw new ArgumentOutOfRangeException(nameof(mutation), mutation, null);
+                throw new ArgumentOutOfRangeException(nameof(mutation));
         }
+    }
+
+    /// <summary>
+    /// Repacks the block at <paramref name="headWord"/> and the one after it in the opposite order. Every
+    /// field still decodes to the right size and the data length is unchanged, so only the two head offsets
+    /// stop being canonical — the shape a generic ABI decoder accepts and the spec rejects.
+    /// </summary>
+    private static byte[] SwapDepositEventBlockWithNext(byte[] data, int headWord)
+    {
+        int firstOffset = ReadDepositEventOffset(data, headWord);
+        int secondOffset = ReadDepositEventOffset(data, headWord + 1);
+        byte[] firstBlock = data[firstOffset..secondOffset];
+        byte[] secondBlock = data[secondOffset..DepositEventBlockEnd(data, headWord + 1)];
+
+        secondBlock.CopyTo(data.AsSpan(firstOffset));
+        firstBlock.CopyTo(data.AsSpan(firstOffset + secondBlock.Length));
+        WriteDepositEventOffset(data, headWord, firstOffset + secondBlock.Length);
+        WriteDepositEventOffset(data, headWord + 1, firstOffset);
+
+        return data;
+    }
+
+    /// <summary>
+    /// Inserts a word of padding between the head and the field blocks, the shape an encoder that does not
+    /// pack tightly would emit. Every field still decodes to the right size, but the data grows by a word.
+    /// </summary>
+    private static byte[] ShiftDepositEventBlocksByOneWord(byte[] data)
+    {
+        const int headLength = DepositEventFieldCount * AbiWordSize;
+        byte[] shifted = new byte[data.Length + AbiWordSize];
+        data.AsSpan(0, headLength).CopyTo(shifted);
+        data.AsSpan(headLength).CopyTo(shifted.AsSpan(headLength + AbiWordSize));
+
+        for (int headWord = 0; headWord < DepositEventFieldCount; headWord++)
+        {
+            WriteDepositEventOffset(shifted, headWord, ReadDepositEventOffset(shifted, headWord) + AbiWordSize);
+        }
+
+        return shifted;
+    }
+
+    private static void FillDepositEventFieldPadding(byte[] data)
+    {
+        for (int headWord = 0; headWord < DepositEventFieldCount; headWord++)
+        {
+            int offset = ReadDepositEventOffset(data, headWord);
+            int paddingStart = offset + AbiWordSize + ReadDepositEventWord(data, offset);
+            data.AsSpan(paddingStart, DepositEventBlockEnd(data, headWord) - paddingStart).Fill(0xFF);
+        }
+    }
+
+    private static int DepositEventBlockEnd(byte[] data, int headWord) =>
+        headWord + 1 < DepositEventFieldCount ? ReadDepositEventOffset(data, headWord + 1) : data.Length;
+
+    private static int ReadDepositEventOffset(byte[] data, int headWord) =>
+        ReadDepositEventWord(data, headWord * AbiWordSize);
+
+    private static void WriteDepositEventOffset(byte[] data, int headWord, int offset) =>
+        WriteDepositEventWord(data, headWord * AbiWordSize, offset);
+
+    private static int ReadDepositEventWord(byte[] data, int wordOffset) =>
+        BinaryPrimitives.ReadInt32BigEndian(WordTail(data, wordOffset));
+
+    private static void WriteDepositEventWord(byte[] data, int wordOffset, int value) =>
+        BinaryPrimitives.WriteInt32BigEndian(WordTail(data, wordOffset), value);
+
+    private static Span<byte> WordTail(byte[] data, int wordOffset) =>
+        data.AsSpan(wordOffset + AbiWordSize - sizeof(int), sizeof(int));
+
+    public enum DepositEventLayoutMutation
+    {
+        SwappedPubkeyAndCredentialsBlocks,
+        SwappedAmountAndSignatureBlocks,
+        BlocksShiftedByOneWord,
+        OffsetBeyondData,
+        OffsetHighBitsSet,
+        ExtraTrailingWord,
+        TruncatedData
     }
 
     [Test]
     public void ShouldUseCorrectDepositTopic() => Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
-
-    public enum DepositEventLayoutMutation
-    {
-        ExtraTrailingWord,
-        WrongAmountSize,
-        NonZeroHighByteInOffset
-    }
 }

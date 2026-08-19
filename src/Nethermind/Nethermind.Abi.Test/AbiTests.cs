@@ -689,14 +689,13 @@ public class AbiTests
     }
 
     [Test]
-    public void Should_wrap_out_of_bounds_dynamic_bytes_length_one_decode()
+    public void Should_reject_dynamic_bytes_length_one_exceeding_data()
     {
-        AbiSignature abi = new("Test", AbiType.DynamicBytes);
-        byte[] data = new byte[64];
-        data[31] = 32;
-        data[63] = 1;
+        // Length 1 is the case that would reach `ByteArrayExtensions.Slice`'s one-byte fast path and
+        // surface as `IndexOutOfRangeException` if the bounds check were ever dropped.
+        AbiSignature signature = new("f", AbiType.DynamicBytes);
 
-        Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, abi, data));
+        Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, signature, DynamicValueWithMissingPayload(1)));
     }
 
     private static byte[] DynamicValueWithMissingPayload(UInt256 declaredLength, int trailingDataLength = 0)

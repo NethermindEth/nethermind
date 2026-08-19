@@ -14,6 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
 using Nethermind.Core.Messages;
@@ -25,6 +26,11 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
 
     private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
+
+    // Canonical ABI layout of the EIP-6110 `DepositEvent(bytes,bytes,bytes,bytes,bytes)` log data: five head
+    // words holding the offsets below, each pointing at a length word followed by the right-padded field.
+    // These are the values EIP-6110 `is_valid_deposit_event_data` and EELS `extract_deposit_data` require;
+    // the bytes between fields are deliberately not checked, as neither reference implementation checks them.
     private const int AbiWordSize = 32;
     private const int DepositEventDataLength = 576;
     private const int DepositEventPubkeyOffset = 160;
@@ -209,14 +215,10 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     private static void ValidateDepositEventWord(Block block, byte[] data, int dataOffset, int expectedValue, string name)
     {
         ReadOnlySpan<byte> word = data.AsSpan(dataOffset, AbiWordSize);
-        if (!word.Slice(0, AbiWordSize - sizeof(uint)).IsZero())
+        if (!word.Slice(0, AbiWordSize - sizeof(uint)).IsZero()
+            || BinaryPrimitives.ReadUInt32BigEndian(word.Slice(AbiWordSize - sizeof(uint), sizeof(uint))) != (uint)expectedValue)
         {
-            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Deposit event {name} does not match, expected {expectedValue}."));
-        }
-
-        if (BinaryPrimitives.ReadUInt32BigEndian(word.Slice(AbiWordSize - sizeof(uint), sizeof(uint))) != (uint)expectedValue)
-        {
-            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Deposit event {name} does not match, expected {expectedValue}."));
+            throw new InvalidBlockException(block, BlockErrorMessages.InvalidDepositEventLayout($"Deposit event {name} does not match, expected {expectedValue}, got {new UInt256(word, isBigEndian: true)}."));
         }
     }
 
