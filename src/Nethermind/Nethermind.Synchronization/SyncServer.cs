@@ -480,17 +480,20 @@ namespace Nethermind.Synchronization
 
         private void OnNewRange(object? sender, BlockEventArgs latestBlockEventArgs)
         {
-            if (Genesis is null)
-                return;
-
             Block latestBlock = latestBlockEventArgs.Block;
 
             // Notify every 32 blocks
             if (latestBlock.Number % NewHeadBlockRangeUpdateFrequency != 0)
                 return;
 
-            BlockHeader oldestBlockHeader = _historyPruner.OldestBlockHeader ?? Genesis;
-            OnNewRange(oldestBlockHeader, latestBlock.Header);
+            BlockHeader? earliest = _historyPruner.OldestBlockHeader;
+            if (earliest is null || earliest.Number > latestBlock.Number)
+            {
+                ulong floor = ulong.Min(_blockTree.GetLowestBlock(), latestBlock.Number);
+                earliest = _blockTree.FindHeader(floor, BlockTreeLookupOptions.None) ?? latestBlock.Header;
+            }
+
+            OnNewRange(earliest, latestBlock.Header);
         }
 
         private void OnNewRange(BlockHeader earliest, BlockHeader latest)
