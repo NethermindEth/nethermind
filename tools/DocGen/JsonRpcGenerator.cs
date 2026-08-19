@@ -12,6 +12,7 @@ using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Serialization.Json;
+using Nethermind.Stats.Model;
 using Spectre.Console;
 using System.Net;
 using System.Numerics;
@@ -46,6 +47,7 @@ internal static class JsonRpcGenerator
         [typeof(byte)] = "_integer_",
         [typeof(byte[])] = "_string_ (hex data)",
         [typeof(byte[][])] = "array of _string_ (hex data)",
+        [typeof(Capability)] = "_string_ (protocol/version)",
         [typeof(DateTime)] = "_string_ (date-time)",
         [typeof(DateTimeOffset)] = "_string_ (date-time)",
         [typeof(double)] = "_number_",
