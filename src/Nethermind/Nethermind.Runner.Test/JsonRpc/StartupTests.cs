@@ -413,31 +413,25 @@ public class StartupTests
     [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Ws, false)]
     [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Http, true)]
     [TestCase("POST", "application/json; charset=utf-8", "127.0.0.1", RpcEndpoint.Http, true)]
+    [TestCase("POST", "application/json", "127.0.0.1", RpcEndpoint.Http, false, "http://example.com")]
     public void TrustedHttpFastLane_RequiresTrustedJsonHttpPost(
         string method,
         string contentType,
         string remoteIp,
         RpcEndpoint endpoint,
-        bool expected)
+        bool expected,
+        string? origin = null)
     {
         JsonRpcUrl jsonRpcUrl = CreateUrl(endpoint: endpoint);
         DefaultHttpContext ctx = CreateFastLaneContext(jsonRpcUrl.Port, method, contentType, IPAddress.Parse(remoteIp));
+        if (origin is not null)
+        {
+            ctx.Request.Headers.Origin = origin;
+        }
 
         bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(jsonRpcUrl), [], out _);
 
         Assert.That(usesFastLane, Is.EqualTo(expected));
-    }
-
-    [Test]
-    public void TrustedHttpFastLane_SkippedWhenOriginHeaderPresent()
-    {
-        JsonRpcUrl jsonRpcUrl = CreateUrl();
-        DefaultHttpContext ctx = CreateFastLaneContext(jsonRpcUrl.Port);
-        ctx.Request.Headers.Origin = "http://example.com";
-
-        bool usesFastLane = Startup.TryGetTrustedHttpJsonRpcUrl(ctx, new TestJsonRpcUrlCollection(jsonRpcUrl), [], out _);
-
-        Assert.That(usesFastLane, Is.False);
     }
 
     [Test]
