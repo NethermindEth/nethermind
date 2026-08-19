@@ -120,6 +120,8 @@ jobs:
       matrix:
         config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
     runs-on: ubuntu-latest
+    # Normally ~3 min; caps apt mirror hangs that otherwise burn the 6h default (see run 32068506752)
+    timeout-minutes: 15
     steps:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass

@@ -28,6 +28,7 @@ internal static class JsonRpcGenerator
     private static readonly string[] _assemblies = [
         "Nethermind.Consensus.Clique",
         "Nethermind.Era1",
+        "Nethermind.EraE",
         "Nethermind.Flashbots",
         "Nethermind.HealthChecks",
         "Nethermind.JsonRpc"
