@@ -1641,6 +1641,30 @@ public class FrameTxProcessorTests
         Assert.That(CallAndRestore(simulated).TransactionExecuted, Is.True);
     }
 
+    /// <remarks>
+    /// Only the state half of the nonce check may follow <c>SkipValidation</c>. The RPC view caps nothing and
+    /// <c>eth_call</c> reaches the processor without a validator, so an oversized set would otherwise arrive at
+    /// the fixed-size buffers downstream, which take a well-formed set as their precondition.
+    /// </remarks>
+    [Test]
+    public void CallAndRestore_KeyedNonceSetOverTheLimit_IsMalformedNotThrown()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Full-width and strictly increasing, so the length is the only thing that is wrong with the set.
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = UInt256.MaxValue - (UInt256)(keys.Length - 1 - i);
+        }
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.NonceKeys = keys;
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+    }
+
     // The property the set semantics exist for: one advanced key makes the whole set unusable.
     [Test]
     public void Execute_KeyedNonce_PartiallyAdvancedSetIsNotReplayable()
