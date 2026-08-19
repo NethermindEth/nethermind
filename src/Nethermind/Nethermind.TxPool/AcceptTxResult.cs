@@ -151,7 +151,20 @@ namespace Nethermind.TxPool
         /// <summary>
         /// An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.
         /// </summary>
-        public static readonly AcceptTxResult FrameTxMissingSidecar = new(24, TxPoolErrorMessages.FrameTxMissingSidecar);
+        public static readonly AcceptTxResult FrameTxMissingSidecar = new(27, TxPoolErrorMessages.FrameTxMissingSidecar);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction carrying a <c>VERIFY</c> frame behind its validation prefix, whose revert
+        /// would invalidate the transaction on state the pool never validated. It stays consensus-valid; only public
+        /// mempool propagation is refused.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxVerifyAfterPrefix = new(25, TxPoolErrorMessages.FrameTxVerifyAfterPrefix);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list, the only placement
+        /// the spec permits. It stays consensus-valid; only public mempool propagation is refused.
+        /// </summary>
+        public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(26, TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
 
         private int Id { get; } = id;
         private string Code { get; } = code;
