@@ -14,6 +14,15 @@ namespace Nethermind.Db
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
         IColumnsWriteBatch<TKey> StartWriteBatch();
         IColumnDbSnapshot<TKey> CreateSnapshot();
+
+        /// <summary>
+        /// Creates a snapshot whose readers may be tuned for sequential full scans.
+        /// </summary>
+        /// <param name="sequentialReadAhead">
+        /// Hint that the snapshot will serve <see cref="ReadFlags.HintReadAhead"/> reads over path-ordered keys
+        /// as part of a sequential full scan. Implementations may ignore it.
+        /// </param>
+        IColumnDbSnapshot<TKey> CreateSnapshot(bool sequentialReadAhead) => CreateSnapshot();
     }
 
     public interface IColumnsWriteBatch<in TKey> : IDisposable
