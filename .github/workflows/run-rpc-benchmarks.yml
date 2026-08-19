@@ -480,7 +480,7 @@ jobs:
   benchmark:
     needs: [resolve]
     if: needs.resolve.outputs.should_run == 'true'
-    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 800
     env:
       # NB: the `runner` context is not available in job-level env, so OUT_DIR /
@@ -1134,7 +1134,7 @@ jobs:
   # Temporary side-branch entry point for building pinned comparison images on the ARM runner.
   build-arm-pr-comparison:
     if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.docker_image, 'build-arm-pr-') }}
-    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 180
     strategy:
       max-parallel: 1
