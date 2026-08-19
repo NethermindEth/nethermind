@@ -10,28 +10,75 @@ namespace Nethermind.TxPool.Test;
 
 public class AcceptTxResultTests
 {
+    private static (string Name, AcceptTxResult Value)[] DeclaredResults { get; } = typeof(AcceptTxResult)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(static f => f.FieldType == typeof(AcceptTxResult))
+        .Select(static f => (f.Name, (AcceptTxResult)f.GetValue(null)!))
+        .ToArray();
+
     /// <remarks>
-    /// Equality is by id alone, so two results sharing an id are indistinguishable and a filter test can
-    /// pass while comparing against the wrong one. Reflection keeps the guard current as results are added.
+    /// Ids are now handed out in declaration order, so a freshly declared result cannot collide. What stays
+    /// hand-written, and so still worth guarding, is a declaration that aliases another result — most easily
+    /// one built with <see cref="AcceptTxResult.WithMessage"/>, which keeps its origin's id by design.
     /// </remarks>
     [Test]
     public void Every_result_is_distinguishable_from_every_other()
     {
-        (string Name, AcceptTxResult Value)[] results = typeof(AcceptTxResult)
-            .GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Where(static f => f.FieldType == typeof(AcceptTxResult))
-            .Select(static f => (f.Name, (AcceptTxResult)f.GetValue(null)!))
-            .ToArray();
-
-        IEnumerable<string> collisions = results
+        IEnumerable<string> collisions = DeclaredResults
             .GroupBy(static r => r.Value)
             .Where(static g => g.Count() > 1)
             .Select(static g => string.Join(" == ", g.Select(static r => r.Name)));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(results, Is.Not.Empty, "reflection must actually find the results");
+            Assert.That(DeclaredResults, Is.Not.Empty, "reflection must actually find the results");
             Assert.That(collisions, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Separately_declared_results_are_distinct_even_when_they_share_a_code()
+    {
+        AcceptTxResult first = new("same code");
+        AcceptTxResult second = new("same code");
+
+        Assert.That(first, Is.Not.EqualTo(second));
+    }
+
+    [Test]
+    public void WithMessage_keeps_the_result_equal_to_the_one_it_came_from()
+    {
+        foreach ((string name, AcceptTxResult result) in DeclaredResults)
+        {
+            AcceptTxResult detailed = result.WithMessage("some detail");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(detailed, Is.EqualTo(result), name);
+                Assert.That(detailed.GetHashCode(), Is.EqualTo(result.GetHashCode()), name);
+                Assert.That(detailed.ToString(), Does.EndWith("some detail"), name);
+            }
+        }
+    }
+
+    [Test]
+    public void Only_accepted_converts_to_true()
+    {
+        foreach ((string name, AcceptTxResult result) in DeclaredResults)
+        {
+            bool isAccepted = result;
+
+            Assert.That(isAccepted, Is.EqualTo(result == AcceptTxResult.Accepted), name);
+        }
+    }
+
+    [Test]
+    public void Bool_converts_to_accepted_or_invalid()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((AcceptTxResult)true, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That((AcceptTxResult)false, Is.EqualTo(AcceptTxResult.Invalid));
         }
     }
 }
