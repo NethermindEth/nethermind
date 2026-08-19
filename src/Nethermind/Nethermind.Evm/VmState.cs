@@ -24,7 +24,7 @@ public class VmState<TGasPolicy> : IDisposable
 #if ZK_EVM
         ZkEvmQueue<VmState<TGasPolicy>>
 #else
-        System.Collections.Concurrent.ConcurrentQueue<VmState<TGasPolicy>>
+        EvmObjectPool<VmState<TGasPolicy>>
 #endif
         _statePool = new();
 

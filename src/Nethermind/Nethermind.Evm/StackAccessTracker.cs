@@ -91,7 +91,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 #if ZK_EVM
             ZkEvmQueue<TrackingState>
 #else
-            System.Collections.Concurrent.ConcurrentQueue<TrackingState>
+            EvmObjectPool<TrackingState>
 #endif
             _trackerPool = new();
 
