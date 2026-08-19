@@ -33,10 +33,7 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
         int limitsCheck = limitsLength + decoderContext.Position;
         ulong executionGasLimit = decoderContext.DecodeULong();
         ulong stateGasLimit = decoderContext.DecodeULong();
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            decoderContext.Check(limitsCheck);
-        }
+        decoderContext.Check(limitsCheck);
 
         UInt256 value = decoderContext.DecodeUInt256();
         ReadOnlyMemory<byte> data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
