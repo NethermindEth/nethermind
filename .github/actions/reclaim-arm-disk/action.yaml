@@ -1,0 +1,55 @@
+name: Reclaim ARM runner disk
+description: >-
+  Frees reclaimable Docker and runner debris on the reproducible-benchmarks-arm runner, whose ~19G root
+  disk kills the Docker daemon (and the runner with it) when it fills. Optionally refuses to continue
+  below a free-space floor. Never touches tagged images - pinned A/B images must survive between runs.
+
+inputs:
+  min_free_gb:
+    description: >-
+      Fail the step if less than this many GB remain free after reclaiming. Empty (default) reclaims
+      without enforcing a floor, for use after a run.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        MIN_FREE_GB: ${{ inputs.min_free_gb }}
+      run: |
+        set -uo pipefail
+
+        # Docker's data-root is what actually matters; it is only '/' by default.
+        docker_root="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || echo /)"
+        [[ -n "${docker_root}" ]] || docker_root=/
+        # df -BG rounds UP, which would report 5.01G as 6G and let a floor check pass on the very
+        # margin it exists to protect. Take bytes and floor the division ourselves.
+        avail_gb() { echo $(( $(df -B1 --output=avail "${docker_root}" | tail -1 | tr -dc '0-9') / 1000000000 )); }
+
+        echo "Docker root: ${docker_root}"
+        df -h "${docker_root}" || true
+        echo "Free before reclaim: $(avail_gb)G"
+
+        docker container prune -f || true
+        docker network prune -f || true
+        # -f not -af: dangling cache only. The build-arm-pr-comparison job builds on this runner and
+        # a full cache wipe would make every one of its rebuilds a cold build on 4 cores.
+        docker builder prune -f || true
+        docker image prune -f || true
+        # Named expb-* volumes survive 'docker volume prune' and keep pointing at deleted per-run
+        # output dirs, failing later mounts with a 500. They come from the expb tool, not this repo.
+        docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
+
+        free="$(avail_gb)"
+        echo "Free after reclaim: ${free}G"
+        docker system df -v 2>/dev/null | head -40 || docker system df || true
+
+        if [[ -n "${MIN_FREE_GB}" ]] && (( free < MIN_FREE_GB )); then
+          echo "::error::Only ${free}G free on ${docker_root} (need ${MIN_FREE_GB}G) - refusing to start rather than risk killing the runner daemon."
+          echo "Reclaimable garbage is already gone; what remains is tagged images."
+          echo "Dispatch 'ARM Runner Maintenance' with prune_unused_images=true to drop those OLDER THAN 96h."
+          echo "Images newer than that are spared by design and need an explicit 'docker rmi' over SSH."
+          exit 1
+        fi

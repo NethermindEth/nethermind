@@ -436,11 +436,18 @@ jobs:
           fi
 
           # Building Nethermind on this box fills its ~19G root disk, which kills the runner daemon and
-          # takes the runner offline until someone restarts it over SSH (2026-08-18, 2026-08-19 twice).
-          # Fail in seconds instead: images belong on Docker Hub, built by publish-docker.
-          if [[ "${image_mode}" == "build" ]]; then
-            echo "The reproducible-benchmarks-arm runner does not support building images (branch '${branch}' has no prebuilt image)."
-            echo "Build one first, then pass it explicitly:"
+          # takes it offline until someone restarts it over SSH (2026-08-18, 2026-08-19 twice). Every
+          # occurrence was a manual dispatch that left docker_image empty, so refuse that case in
+          # seconds rather than discovering it by losing the runner.
+          #
+          # Only workflow_dispatch: the 'rpc-benchmark' and 'performance is good' label paths above set
+          # docker_image="" by design and have no input to thread one through, so failing here would
+          # disable PR-triggered benchmarking outright. Those keep relying on the free-space floor in
+          # the benchmark job. (build-arm-pr-comparison also builds on this runner, so "no builds here"
+          # would be untrue as a blanket statement.)
+          if [[ "${image_mode}" == "build" && "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "Dispatching this workflow without docker_image would build Nethermind on the ARM runner, which has ~19G of root disk."
+            echo "Branch '${branch}' has no prebuilt image, so build one first and pass it explicitly:"
             echo "  gh workflow run publish-docker.yml --ref ${branch} -f image-name=nethermind -f tag=<tag> -f dockerfile=Dockerfile -f build-config=release"
             echo "  gh workflow run run-rpc-benchmarks.yml --ref ${branch} -f docker_image=nethermindeth/nethermind:<tag> ..."
             echo "Note: tool_config 'clients' @image entries do NOT cover this — the top-level docker_image is prepared regardless."
@@ -548,32 +555,9 @@ jobs:
         run: chmod +x scripts/rpc-bench/*.sh
 
       - name: Reclaim root disk before pulling
-        shell: bash
-        # The box has a ~19G root disk. A pull that runs it out of space kills the docker daemon and the
-        # runner with it, so reclaim what is safely reclaimable first and refuse to start if still tight.
-        # Tagged benchmark images are never touched — pinned A/B images must survive between runs.
-        run: |
-          set -uo pipefail
-          MIN_FREE_GB=6
-          df -h / || true
-          avail_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
-          echo "Free before reclaim: $(avail_gb)G"
-          docker container prune -f || true
-          docker network prune -f || true
-          docker builder prune -af || true
-          docker image prune -f || true
-          docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
-          find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
-          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
-          free="$(avail_gb)"
-          echo "Free after reclaim: ${free}G (need ${MIN_FREE_GB}G)"
-          docker system df || true
-          if (( free < MIN_FREE_GB )); then
-            echo "::error::Only ${free}G free on / — refusing to start rather than risk killing the runner daemon."
-            echo "Dispatch 'ARM Runner Maintenance' with prune_unused_images=true to drop stale tagged images."
-            docker images --format '{{.Size}}\t{{.Repository}}:{{.Tag}}' | sort -rh | head -20 || true
-            exit 1
-          fi
+        uses: ./.github/actions/reclaim-arm-disk
+        with:
+          min_free_gb: "6"
 
       - name: Prepare Docker image
         env:
@@ -1020,19 +1004,7 @@ jobs:
 
       - name: Reclaim root disk after the run
         if: always()
-        shell: bash
-        # Leave / no fuller than we found it, so disk pressure cannot accumulate run over run into the
-        # daemon death this workflow used to cause. Tagged images survive; only garbage is dropped.
-        run: |
-          set -uo pipefail
-          docker container prune -f || true
-          docker network prune -f || true
-          docker builder prune -af || true
-          docker image prune -f || true
-          docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
-          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
-          df -h / || true
-          docker system df || true
+        uses: ./.github/actions/reclaim-arm-disk
 
       - name: Enforce quality gates
         if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
