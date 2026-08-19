@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Collections;
@@ -77,6 +78,9 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true)]
     ResultWrapper<object> debug_getConfigValue(string category, string name);
+
+    [JsonRpcMethod(Description = "Returns the complete fork configuration and application version (Nethermind specific).", IsImplemented = true, IsSharable = true)]
+    ResultWrapper<JsonNode> debug_config();
 
     [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null);

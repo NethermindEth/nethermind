@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -24,6 +25,12 @@ public interface IForkInfo
     bool IsForkIdCompatible(ForkId peerId);
 
     ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head);
+
+    /// <summary>
+    /// Retrieves all configured forks in activation order.
+    /// </summary>
+    /// <returns>A read-only span containing the complete fork schedule.</returns>
+    ReadOnlySpan<Fork> GetAllForks();
 }
 
 public readonly record struct Fork(ForkActivation Activation, ForkId Id);
