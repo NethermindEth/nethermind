@@ -168,7 +168,7 @@ public class FrameTransactionForRpcTests
             BlockHash = Keccak.Zero,
             FrameReceipts =
             [
-                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: []),
+                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, executionGasUsed: 21_000, stateGasUsed: 0, logs: []),
             ],
         };
 

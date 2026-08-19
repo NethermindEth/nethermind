@@ -227,7 +227,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
             frameReceipts[i] = new TxFrameReceipt(
                 frameSucceeded ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure,
-                frameGasUsed,
+                frameGasUsed - (ulong)frameStateGas,
+                (ulong)frameStateGas,
                 frameLogs);
 
             if (frame.Mode == TxFrame.ModeVerify && !frameSucceeded)
@@ -259,14 +260,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     batchTracker.Restore();
 
                     // Discard the logs of frames that ran before the failure, along with their state
-                    // (ethereum/EIPs#12008), keeping status and gas_used. The tx log set is derived
-                    // from these receipts after the loop, so cleared frames drop out of the bloom too.
+                    // (ethereum/EIPs#12008), keeping status and execution gas but zeroing state gas
+                    // (ethereum/EIPs#12062 unroll_atomic_batch). The tx log set is derived from these
+                    // receipts after the loop, so cleared frames drop out of the bloom too.
                     for (int s = batchStartIndex; s < i; s++)
                     {
                         TxFrameReceipt earlier = frameReceipts[s];
-                        if (earlier.Logs.Length > 0)
+                        if (earlier.Logs.Length > 0 || earlier.StateGasUsed > 0)
                         {
-                            frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.GasUsed, []);
+                            frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.ExecutionGasUsed, 0, []);
                         }
                     }
                     // Refunds from the reverted batch are discarded with its state, so roll the counter back.
@@ -280,7 +282,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
                     for (int s = i + 1; s <= terminal && s < frames.Length; s++)
                     {
-                        frameReceipts[s] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []);
+                        frameReceipts[s] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []);
                         frameContext.MarkFrameSkipped(s);
                     }
 
