@@ -780,6 +780,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return null;
     }
 
+    // Uses a pool of tailing seek iterators: each one reads a live sequence,
+    // so write-batch atomicity is not guaranteed - dirty or phantom reads are possible
     internal static bool TryGetCeilingWithIterator(
         scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, IteratorManager iteratorManager,
         Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
