@@ -57,7 +57,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
-    internal ReadOptions? _readAheadReadOptions = null;
+    private ReadOptions? _readAheadReadOptions;
 
     internal DbOptions? DbOptions { get; private set; }
     private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
@@ -94,7 +94,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private CacheLinePaddedLong _totalReads;
     private CacheLinePaddedLong _totalWrites;
 
-    private readonly IteratorManager _iteratorManager;
+    private readonly DisposableLazy<IteratorManager>? _iteratorManager;
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
@@ -118,7 +118,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _rocksDbConfigFactory = rocksDbConfigFactory;
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
-        _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
+        _iteratorManager = CreateLazyReadAheadIteratorManager(null);
 
         _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
 
@@ -734,8 +734,10 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _reader.DangerousReleaseMemory(span);
 
-    internal static byte[]? GetWithIterator(ReadOnlySpan<byte> key, IteratorManager iteratorManager, ReadFlags flags, out bool success)
+    internal byte[]? GetWithIterator(ReadOnlySpan<byte> key, IteratorManager iteratorManager, ReadFlags flags, out bool success)
     {
+        ThrowIfDisposing();
+
         success = true;
 
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
@@ -755,6 +757,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         success = false;
         return null;
     }
+
+    /// <summary> Pool for calls with <see cref="ReadFlags.HintReadAhead"/> - tailing iterators with large read steps. </summary>
+    internal DisposableLazy<IteratorManager>? CreateLazyReadAheadIteratorManager(IColumnFamilyHandle? cf) =>
+        _readAheadReadOptions is null ? null : CreateLazyIteratorManager(cf, _readAheadReadOptions);
+
+    private DisposableLazy<IteratorManager> CreateLazyIteratorManager(IColumnFamilyHandle? cf, ReadOptions readOptions) =>
+        new(() => new IteratorManager(_db, cf, readOptions));
 
     internal byte[]? Get(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions) =>
         _db.Get(key, cf, readOptions);
@@ -1027,6 +1036,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllValuesCore(ordered);
     }
 
+    // `_isDisposing` check/update is not atomic and concurrent dispose/read calls may still hit a disposed native DB,
+    // yet adding any thread synchronization may affect all readers performance
     internal void ThrowIfDisposing() => ObjectDisposedException.ThrowIf(_isDisposing, this);
 
     private void IteratorSeekToFirstWithErrorHandling(Iterator iterator)
@@ -1436,7 +1447,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    private void ReleaseUnmanagedResources()
+    protected virtual void ReleaseUnmanagedResources()
     {
         // ReSharper disable once ConstantConditionalAccessQualifier
         // running in finalizer, potentially not fully constructed
@@ -1445,8 +1456,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             batch.Dispose();
         }
 
-        _iteratorManager.Dispose();
+        _iteratorManager?.Dispose();
         _db.Dispose();
+
+        _defaultReadOptions.Dispose();
+        _hintCacheMissOptions.Dispose();
+        _readAheadReadOptions?.Dispose();
 
         _rowCache?.Dispose();
     }
@@ -1718,14 +1733,17 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         private readonly ManagedIterators _readaheadIterators3 = new();
         private readonly RocksDb _rocksDb;
         private readonly IColumnFamilyHandle? _cf;
-        private readonly ReadOptions? _readOptions;
+        private readonly ReadOptions _readOptions;
         private readonly Timer _timer;
+
+        // used to guarantee iterators in timer are not accessed after DB disposal
+        private readonly Lock _disposeLock = new();
         private bool _isDisposed;
 
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
 
-        public IteratorManager(RocksDb rocksDb, IColumnFamilyHandle? cf, ReadOptions? readOptions)
+        public IteratorManager(RocksDb rocksDb, IColumnFamilyHandle? cf, ReadOptions readOptions)
         {
             _rocksDb = rocksDb;
             _cf = cf;
@@ -1736,20 +1754,35 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         private void OnTimer(object? state)
         {
-            if (_isDisposed) return;
-            _readaheadIterators.ClearIterators();
-            _readaheadIterators2.ClearIterators();
-            _readaheadIterators3.ClearIterators();
+            // Skip the tick instead of stacking up callbacks
+            if (!_disposeLock.TryEnter()) return;
+
+            try
+            {
+                if (_isDisposed) return;
+
+                _readaheadIterators.ClearIterators();
+                _readaheadIterators2.ClearIterators();
+                _readaheadIterators3.ClearIterators();
+            }
+            finally
+            {
+                _disposeLock.Exit();
+            }
         }
 
         public void Dispose()
         {
-            if (_isDisposed) return;
-            _isDisposed = true;
-            _timer.Dispose();
-            _readaheadIterators.DisposeAll();
-            _readaheadIterators2.DisposeAll();
-            _readaheadIterators3.DisposeAll();
+            lock (_disposeLock)
+            {
+                if (_isDisposed) return;
+                _isDisposed = true;
+
+                _timer.Dispose();
+                _readaheadIterators.DisposeAll();
+                _readaheadIterators2.DisposeAll();
+                _readaheadIterators3.DisposeAll();
+            }
         }
 
         public RentWrapper Rent(ReadFlags flags)
