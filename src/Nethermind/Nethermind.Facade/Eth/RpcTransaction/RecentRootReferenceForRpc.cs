@@ -33,6 +33,7 @@ public class RecentRootReferenceForRpc
     public static RecentRootReferenceForRpc[]? FromReferences(RecentRootReference[]? references) =>
         references?.Select(static r => new RecentRootReferenceForRpc(r)).ToArray();
 
-    public static RecentRootReference[]? ToReferences(RecentRootReferenceForRpc[]? references) =>
-        references?.Select(static r => r.ToReference()).ToArray();
+    /// <inheritdoc cref="RpcListConverter.TryConvert{TView,TValue}"/>
+    public static bool TryToReferences(RecentRootReferenceForRpc[]? references, out RecentRootReference[]? converted) =>
+        RpcListConverter.TryConvert(references, static r => r.ToReference(), out converted);
 }

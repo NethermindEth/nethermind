@@ -35,6 +35,7 @@ public class FrameSignatureForRpc
     public static FrameSignatureForRpc[]? FromSignatures(TxFrameSignature[]? signatures) =>
         signatures?.Select(static s => new FrameSignatureForRpc(s)).ToArray();
 
-    public static TxFrameSignature[]? ToSignatures(FrameSignatureForRpc[]? signatures) =>
-        signatures?.Select(static s => s.ToSignature()).ToArray();
+    /// <inheritdoc cref="RpcListConverter.TryConvert{TView,TValue}"/>
+    public static bool TryToSignatures(FrameSignatureForRpc[]? signatures, out TxFrameSignature[]? converted) =>
+        RpcListConverter.TryConvert(signatures, static s => s.ToSignature(), out converted);
 }
