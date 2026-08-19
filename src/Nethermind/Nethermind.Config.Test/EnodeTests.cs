@@ -64,21 +64,23 @@ namespace Nethermind.Config.Test
             Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse("192.168.2.54")));
         }
 
-        [Test]
-        public void info_brackets_native_ipv6_host()
+        [TestCase("fd00:beef:cafe::11", 30304, "@[fd00:beef:cafe::11]:30303?discport=30304")]
+        [TestCase("fd00:beef:cafe::11", 30303, "@[fd00:beef:cafe::11]:30303")]
+        [TestCase("::ffff:172.217.12.36", 30303, "@172.217.12.36:30303")]
+        public void info_formats_host_for_reparsing(string host, int discoveryPort, string expectedTail)
         {
             PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-            IPAddress ipv6 = IPAddress.Parse("fd00:beef:cafe::11");
-            Enode enode = new(publicKey, ipv6, 30303, 30304);
+            IPAddress hostIp = IPAddress.Parse(host);
+            Enode enode = new(publicKey, hostIp, 30303, discoveryPort);
 
-            Assert.That(enode.Info, Does.Contain("@[fd00:beef:cafe::11]:30303"));
+            Assert.That(enode.Info, Does.EndWith(expectedTail));
             Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
             Enode reparsed = new(enode.Info);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reparsed.HostIp, Is.EqualTo(ipv6));
+                Assert.That(reparsed.HostIp, Is.EqualTo(hostIp.IsIPv4MappedToIPv6 ? hostIp.MapToIPv4() : hostIp));
                 Assert.That(reparsed.Port, Is.EqualTo(30303));
-                Assert.That(reparsed.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(reparsed.DiscoveryPort, Is.EqualTo(discoveryPort));
             }
         }
 
@@ -101,33 +103,15 @@ namespace Nethermind.Config.Test
 
         [TestCase("/junk")]
         [TestCase("#?discport=30304")]
-        public void rejects_enode_with_unexpected_path_or_fragment(string suffix)
+        [TestCase("?discport=-1")]
+        [TestCase("?discport=65536")]
+        [TestCase("?discport=+30304")]
+        public void rejects_malformed_enode_suffix(string suffix)
         {
             PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 
             Assert.That(
                 () => new Enode($"enode://{publicKey.ToString(false)}@127.0.0.1:30303{suffix}"),
-                Throws.ArgumentException);
-        }
-
-        [TestCase(-1)]
-        [TestCase(65536)]
-        public void rejects_discovery_port_out_of_range(int discoveryPort)
-        {
-            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-
-            Assert.That(
-                () => new Enode($"enode://{publicKey.ToString(false)}@127.0.0.1:30303?discport={discoveryPort}"),
-                Throws.ArgumentException);
-        }
-
-        [TestCase("+30304")]
-        public void rejects_discovery_port_with_non_decimal_format(string discoveryPort)
-        {
-            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-
-            Assert.That(
-                () => new Enode($"enode://{publicKey.ToString(false)}@127.0.0.1:30303?discport={discoveryPort}"),
                 Throws.ArgumentException);
         }
 

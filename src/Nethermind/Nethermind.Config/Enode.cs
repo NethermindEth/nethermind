@@ -16,6 +16,7 @@ namespace Nethermind.Config
     {
         private const string DiscoveryPortQuery = "?discport=";
         private readonly PublicKey _nodeKey;
+        private string? _info;
 
         public Enode(PublicKey nodeKey, IPAddress hostIp, int port, int? discoveryPort = null)
         {
@@ -51,7 +52,7 @@ namespace Nethermind.Config
 
             if (parsed.AbsolutePath is not "/" || parsed.Fragment.Length > 0)
             {
-                throw GetInvalidEnodeException();
+                throw new ArgumentException($"Unexpected path or fragment in enode value '{enodeString}'.");
             }
 
             Port = parsed.Port;
@@ -111,20 +112,22 @@ namespace Nethermind.Config
         public IPAddress HostIp { get; }
         public int Port { get; }
         public int DiscoveryPort { get; }
-        public string Info => DiscoveryPort == Port
+        public string Info => _info ??= DiscoveryPort == Port
             ? $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}"
             : $"enode://{_nodeKey.ToString(false)}@{FormattedHost}:{Port}{DiscoveryPortQuery}{DiscoveryPort}";
 
         public override string ToString() => Info;
 
-        private string FormattedHost
+        /// <summary>
+        /// Formats an IP address as an enode host: native IPv6 is bracketed and IPv4-mapped IPv6 is normalized to plain IPv4.
+        /// </summary>
+        public static string FormatEnodeHost(IPAddress hostIp)
         {
-            get
-            {
-                IPAddress hostIp = HostIp.IsIPv4MappedToIPv6 ? HostIp.MapToIPv4() : HostIp;
-                return hostIp.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{hostIp}]" : hostIp.ToString();
-            }
+            IPAddress normalized = hostIp.IsIPv4MappedToIPv6 ? hostIp.MapToIPv4() : hostIp;
+            return normalized.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{normalized}]" : normalized.ToString();
         }
+
+        private string FormattedHost => FormatEnodeHost(HostIp);
 
         public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
             Uri.TryCreate(enodeString, new UriCreationOptions(), out parsed) && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase);

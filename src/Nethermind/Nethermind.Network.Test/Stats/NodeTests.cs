@@ -204,19 +204,20 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.ToString(format), Is.EqualTo(expectedFormat));
         }
 
-        [Test]
-        public void To_string_brackets_native_ipv6_enode_host()
+        [TestCase("fd00:beef:cafe::11", "@[fd00:beef:cafe::11]:30303", "fd00:beef:cafe::11")]
+        [TestCase("::ffff:172.217.12.36", "@172.217.12.36:30303", "172.217.12.36")]
+        public void To_string_brackets_native_ipv6_enode_host(string host, string expectedTail, string expectedReparsedHost)
         {
-            Node node = new(TestItem.PublicKeyA, "fd00:beef:cafe::11", 30303);
+            Node node = new(TestItem.PublicKeyA, host, 30303);
 
             string enode = node.ToString(Node.Format.ENode);
 
-            Assert.That(enode, Does.Contain("@[fd00:beef:cafe::11]:30303"));
+            Assert.That(enode, Does.Contain(expectedTail));
             Assert.That(Enode.IsEnode(enode, out _), Is.True);
             Enode reparsed = new(enode);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse("fd00:beef:cafe::11")));
+                Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse(expectedReparsedHost)));
                 Assert.That(reparsed.Port, Is.EqualTo(30303));
             }
         }

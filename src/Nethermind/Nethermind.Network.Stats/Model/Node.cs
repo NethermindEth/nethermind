@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
-using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.Threading;
 using FastEnumUtility;
@@ -198,6 +197,10 @@ namespace Nethermind.Stats.Model
                     ClearDiscoveryEndpoint();
                 }
             }
+            else if (networkNode.DiscoveryPort == 0)
+            {
+                ClearDiscoveryEndpoint();
+            }
             else if (networkNode.DiscoveryPort != networkNode.Port)
             {
                 DiscoveryPort = networkNode.DiscoveryPort;
@@ -356,9 +359,7 @@ namespace Nethermind.Stats.Model
 
         // xxx.xxx.xxx.xxx = 15
         private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');
-        private string EnodeHost => _enodeHost ??= Address.Address.AddressFamily == AddressFamily.InterNetworkV6 && !Address.Address.IsIPv4MappedToIPv6
-            ? $"[{Host}]"
-            : Host;
+        private string EnodeHost => _enodeHost ??= Enode.FormatEnodeHost(Address.Address);
 
         private string PaddedPort
         {
