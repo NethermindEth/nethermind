@@ -676,8 +676,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         bool hasValue = !tx.Value.IsZero;
 
-        if (tx.IsContractCreation)
-            return hasValue ? GasCostOf.TransferLogEip2780 : 0;
+        // The deployment target's balance write is already priced into CREATE_ACCESS.
+        if (tx.IsContractCreation) return 0;
 
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
         if (tx.SenderAddress == tx.To) return 0;

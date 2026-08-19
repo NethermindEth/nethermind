@@ -8,18 +8,23 @@ namespace Nethermind.Stateless.Execution.IO;
 [SszContainer]
 public partial struct SszExecutionRequests
 {
-    [SszList(0x2000)]
+    [SszField(0)]
+    [SszProgressiveList]
     public DepositRequest[] Deposits { get; set; }
 
-    [SszList(0x10)]
+    [SszField(1)]
+    [SszProgressiveList]
     public WithdrawalRequest[] Withdrawals { get; set; }
 
-    [SszList(0x2)]
+    [SszField(2)]
+    [SszProgressiveList]
     public ConsolidationRequest[] Consolidations { get; set; }
 
-    [SszList(0x40)]
+    [SszField(3)]
+    [SszProgressiveList]
     public BuilderDepositRequest[] BuilderDeposits { get; set; }
 
-    [SszList(0x10)]
+    [SszField(4)]
+    [SszProgressiveList]
     public BuilderExitRequest[] BuilderExits { get; set; }
 }

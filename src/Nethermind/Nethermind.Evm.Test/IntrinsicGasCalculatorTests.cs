@@ -248,8 +248,8 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            // Create execution = CREATE_ACCESS + TRANSFER_LOG (value endowment); NEW_ACCOUNT is top-frame state gas.
-            ulong expectedExecution = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
+            // Create execution = CREATE_ACCESS, which already prices the endowment; NEW_ACCOUNT is top-frame state gas.
+            ulong expectedExecution = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess;
             Assert.That(gas.Standard, Is.EqualTo(expectedExecution));
             Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
         }
@@ -276,7 +276,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            ulong execution = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess + GasCostOf.TransferLogEip2780;
+            ulong execution = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess;
             Assert.That(gas.MinimalGas, Is.GreaterThanOrEqualTo(execution));
         }
 
@@ -318,7 +318,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Eip2780_intrinsic_gas_for_create_charges_transfer_log_only_when_value_positive()
+        public void Eip2780_intrinsic_gas_for_create_is_the_same_with_and_without_value()
         {
             OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
 
@@ -327,11 +327,11 @@ namespace Nethermind.Evm.Test
             Transaction createValue = Build.A.Transaction.WithValue(1).WithCode(Array.Empty<byte>())
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
+            // CREATE_ACCESS already prices the deployment target's balance write.
             Assert.That(IntrinsicGasCalculator.Calculate(createZero, spec).Standard,
                 Is.EqualTo(TxBaseEip2780 + GasCostOf.TxCreate));
-            // CREATE endows a fresh, sender-distinct address, so value > 0 pays the transfer log.
             Assert.That(IntrinsicGasCalculator.Calculate(createValue, spec).Standard,
-                Is.EqualTo(TxBaseEip2780 + GasCostOf.TxCreate + TransferLogEip2780));
+                Is.EqualTo(TxBaseEip2780 + GasCostOf.TxCreate));
         }
 
         [TestCase(false, GasCostOf.ColdAccountAccess)]
