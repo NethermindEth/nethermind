@@ -3,9 +3,7 @@
 
 using System;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
 using static System.Numerics.BitOperations;
@@ -29,23 +27,14 @@ public sealed partial class KeccakHash
         0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
     ];
 
-    // Shared lane-index vectors (Theta's [1,2,3,4,0] == Chi's permute1)
-    private static readonly Vector512<ulong> LaneShift1 = Vector512.Create(1UL, 2UL, 3UL, 4UL, 0UL, 5UL, 6UL, 7UL);
-    private static readonly Vector512<ulong> LaneShift2 = Vector512.Create(2UL, 3UL, 4UL, 0UL, 1UL, 5UL, 6UL, 7UL);
-    private static readonly Vector512<ulong> ThetaRot4 = Vector512.Create(4UL, 0UL, 1UL, 2UL, 3UL, 5UL, 6UL, 7UL);
-
-    // Pre-broadcast round constants (kills the per-round vmovq)
-    private static readonly Vector512<ulong>[] RoundConstantVec =
-        Array.ConvertAll(RoundConstants, rc => Vector512.CreateScalar(rc));
-
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {
         Debug.Assert(st.Length == STATE_LANES);
 
         ref ulong state = ref MemoryMarshal.GetReference(st);
-        if (Avx512F.IsSupported)
-            KeccakF1600Avx512F(ref state);
+        if (Avx512F.VL.IsSupported)
+            KeccakF1600Avx512VL(ref state);
         else
             KeccakF1600Scalar(ref state);
     }
@@ -262,101 +251,5 @@ public sealed partial class KeccakHash
         st[2] = abi;
         st[1] = abe;
         st[0] = aba;
-    }
-
-    /// <summary>AVX-512 Keccak-f[1600] permutation.</summary>
-    /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
-    [SkipLocalsInit]
-    internal static void KeccakF1600Avx512F(ref ulong state)
-    {
-        Debug.Assert(RoundConstantVec.Length == ROUNDS && ROUNDS % 2 == 0);
-
-        ref ulong s = ref state;
-
-        // Lanes 5-7 hold over-read neighbor lanes and need no masking: Theta/Rho/Pi/Chi
-        // map result lanes 0-4 only from lanes 0-4, and the stores below overwrite 5-7.
-        Vector512<ulong> c0 = Unsafe.As<ulong, Vector512<ulong>>(ref s);
-        Vector512<ulong> c1 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5));
-        Vector512<ulong> c2 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10));
-        Vector512<ulong> c3 = Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15));
-        Vector512<ulong> c4 = Vector512.Create(
-            Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20)),
-            Vector256.CreateScalar(Unsafe.Add(ref s, 24)));
-
-        // The const bound lets the JIT hoist the vector constants out of the loop;
-        // bounding by RoundConstantVec.Length makes it re-load all of them every iteration.
-        ref Vector512<ulong> roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstantVec);
-        for (int round = 0; round < ROUNDS; round += 2)
-        {
-            Round(ref c0, ref c1, ref c2, ref c3, ref c4, Unsafe.Add(ref roundConstants, round));
-            Round(ref c0, ref c1, ref c2, ref c3, ref c4, Unsafe.Add(ref roundConstants, round + 1));
-        }
-
-        Unsafe.As<ulong, Vector512<ulong>>(ref s) = c0;
-        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 5)) = c1;
-        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 10)) = c2;
-        Unsafe.As<ulong, Vector512<ulong>>(ref Unsafe.Add(ref s, 15)) = c3;
-        Unsafe.As<ulong, Vector256<ulong>>(ref Unsafe.Add(ref s, 20)) = c4.GetLower();
-        Unsafe.Add(ref s, 24) = c4.GetElement(4);
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Round(ref Vector512<ulong> c0, ref Vector512<ulong> c1,
-        ref Vector512<ulong> c2, ref Vector512<ulong> c3, ref Vector512<ulong> c4, Vector512<ulong> roundConstant)
-    {
-        // Theta
-        Vector512<ulong> parity = Avx512F.TernaryLogic(Avx512F.TernaryLogic(c0, c1, c2, 0x96), c3, c4, 0x96);
-        Vector512<ulong> theta = Avx512F.Xor(
-            Avx512F.PermuteVar8x64(parity, ThetaRot4),
-            Avx512F.RotateLeft(Avx512F.PermuteVar8x64(parity, LaneShift1), 1));
-        c0 = Avx512F.Xor(c0, theta); c1 = Avx512F.Xor(c1, theta);
-        c2 = Avx512F.Xor(c2, theta); c3 = Avx512F.Xor(c3, theta); c4 = Avx512F.Xor(c4, theta);
-
-        // Rho
-        c0 = Avx512F.RotateLeftVariable(c0, Vector512.Create(0UL, 1UL, 62UL, 28UL, 27UL, 0UL, 0UL, 0UL));
-        c1 = Avx512F.RotateLeftVariable(c1, Vector512.Create(36UL, 44UL, 6UL, 55UL, 20UL, 0UL, 0UL, 0UL));
-        c2 = Avx512F.RotateLeftVariable(c2, Vector512.Create(3UL, 10UL, 43UL, 25UL, 39UL, 0UL, 0UL, 0UL));
-        c3 = Avx512F.RotateLeftVariable(c3, Vector512.Create(41UL, 45UL, 15UL, 21UL, 8UL, 0UL, 0UL, 0UL));
-        c4 = Avx512F.RotateLeftVariable(c4, Vector512.Create(18UL, 2UL, 61UL, 56UL, 14UL, 0UL, 0UL, 0UL));
-
-        // Pi
-        // Merge source pairs in parallel to shorten the cross-lane dependency chain.
-        Vector512<ulong> c0Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(0UL, 8 + 1, 2, 3, 4, 5, 6, 7), c1);
-        Vector512<ulong> upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 2, 8 + 3, 4, 5, 6, 7), c3);
-        c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
-        c0Pi = Avx512F.PermuteVar8x64x2(c0Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 4, 5, 6, 7), c4);
-
-        Vector512<ulong> c1Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(3UL, 8 + 4, 2, 3, 4, 5, 6, 7), c1);
-        upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 0, 8 + 1, 4, 5, 6, 7), c3);
-        c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
-        c1Pi = Avx512F.PermuteVar8x64x2(c1Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 2, 5, 6, 7), c4);
-
-        Vector512<ulong> c2Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(1UL, 8 + 2, 2, 3, 4, 5, 6, 7), c1);
-        upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 3, 8 + 4, 4, 5, 6, 7), c3);
-        c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
-        c2Pi = Avx512F.PermuteVar8x64x2(c2Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 0, 5, 6, 7), c4);
-
-        Vector512<ulong> c3Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(4UL, 8 + 0, 2, 3, 4, 5, 6, 7), c1);
-        upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 1, 8 + 2, 4, 5, 6, 7), c3);
-        c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
-        c3Pi = Avx512F.PermuteVar8x64x2(c3Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 3, 5, 6, 7), c4);
-
-        Vector512<ulong> c4Pi = Avx512F.PermuteVar8x64x2(c0, Vector512.Create(2UL, 8 + 3, 2, 3, 4, 5, 6, 7), c1);
-        upper = Avx512F.PermuteVar8x64x2(c2, Vector512.Create(0UL, 1, 4, 8 + 0, 4, 5, 6, 7), c3);
-        c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 8 + 2, 8 + 3, 4, 5, 6, 7), upper);
-        c4Pi = Avx512F.PermuteVar8x64x2(c4Pi, Vector512.Create(0UL, 1, 2, 3, 8 + 1, 5, 6, 7), c4);
-
-        c0 = c0Pi; c1 = c1Pi; c2 = c2Pi; c3 = c3Pi; c4 = c4Pi;
-
-        // Chi
-        c0 = Avx512F.TernaryLogic(c0, Avx512F.PermuteVar8x64(c0, LaneShift1), Avx512F.PermuteVar8x64(c0, LaneShift2), 0xD2);
-        c1 = Avx512F.TernaryLogic(c1, Avx512F.PermuteVar8x64(c1, LaneShift1), Avx512F.PermuteVar8x64(c1, LaneShift2), 0xD2);
-        c2 = Avx512F.TernaryLogic(c2, Avx512F.PermuteVar8x64(c2, LaneShift1), Avx512F.PermuteVar8x64(c2, LaneShift2), 0xD2);
-        c3 = Avx512F.TernaryLogic(c3, Avx512F.PermuteVar8x64(c3, LaneShift1), Avx512F.PermuteVar8x64(c3, LaneShift2), 0xD2);
-        c4 = Avx512F.TernaryLogic(c4, Avx512F.PermuteVar8x64(c4, LaneShift1), Avx512F.PermuteVar8x64(c4, LaneShift2), 0xD2);
-
-        // Iota
-        c0 = Vector512.Xor(c0, roundConstant);
     }
 }

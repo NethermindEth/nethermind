@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
 
 namespace Nethermind.Core.Crypto;
@@ -83,6 +84,15 @@ public sealed partial class KeccakHash
             return;
         }
 #endif
+        int inputLength = input.Length;
+        if (Avx512F.VL.IsSupported && output.Length == HASH_SIZE &&
+            (inputLength == Address.Size || inputLength == Vector256<byte>.Count || inputLength == Vector512<byte>.Count))
+        {
+            ComputeHash256Avx512VL(
+                ref MemoryMarshal.GetReference(input), inputLength, ref MemoryMarshal.GetReference(output));
+            return;
+        }
+
         int roundSize = GetRoundSize(output.Length);
 
         // A struct local rather than stackalloc: localloc would pin this method at Tier0-FullOpts

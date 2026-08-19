@@ -170,11 +170,11 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Avx512_permutation_matches_scalar()
+        public void Avx512VL_permutation_matches_scalar()
         {
-            if (!Avx512F.IsSupported)
+            if (!Avx512F.VL.IsSupported)
             {
-                Assert.Ignore("AVX-512F intrinsics are not supported on this machine.");
+                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
             }
 
             const int stateLength = 25;
@@ -196,7 +196,7 @@ namespace Nethermind.Core.Test
                 actual.CopyTo(expected, 0);
 
                 KeccakHash.KeccakF1600Scalar(ref expected[0]);
-                KeccakHash.KeccakF1600Avx512F(ref actual[0]);
+                KeccakHash.KeccakF1600Avx512VL(ref actual[0]);
 
                 Assert.That(actual, Is.EqualTo(expected), $"Permutation mismatch for test case {testCase}.");
             }
@@ -229,6 +229,29 @@ namespace Nethermind.Core.Test
                         $"Hash mismatch at iteration {iteration}, batch index {i}.");
                 }
             }
+        }
+
+        // Expected hashes were generated with PyCryptodome's independent Keccak-256 implementation.
+        [TestCase(20, "50c02dbeee2be79b9595060fe30efbd78f06acedf7a1fe8cb05df7ddd76f2b1b")]
+        [TestCase(32, "d064c972ea7cbd9f1237bbd922fd5f08ca57895c13bc9ea2b91913f7099809a1")]
+        [TestCase(64, "52c1f4616862f9d5011ed6a2a77d89a2102e51ee7db2db045bb5fb267fba98d1")]
+        public void Avx512VL_common_input_lengths_match_known_hash(int inputLength, string expected)
+        {
+            if (!Avx512F.VL.IsSupported)
+            {
+                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+            }
+
+            byte[] input = new byte[inputLength];
+            byte[] output = new byte[32];
+            for (int i = 0; i < input.Length; i++)
+            {
+                input[i] = (byte)(i * 37 + 11);
+            }
+
+            KeccakHash.ComputeHash(input, output);
+
+            Assert.That(output.ToHexString(), Is.EqualTo(expected));
         }
 
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
