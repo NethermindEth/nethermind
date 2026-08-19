@@ -14,6 +14,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -323,10 +324,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private static ValueHash256 ComputeInclusionListDigest(Block block)
     {
         if (block.InclusionListTransactions is not { Length: > 0 } il) return default;
-        KeccakHash hash = KeccakHash.Create();
-        foreach (Transaction tx in il)
-            hash.Update((tx.Hash ?? Keccak.Zero).Bytes);
-        return hash.GenerateValueHash();
+
+        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(il.Length * Keccak.Size, out byte[] buffer);
+        Span<byte> span = buffer.AsSpan(0, il.Length * Keccak.Size);
+        for (int i = 0; i < il.Length; i++)
+            (il[i].Hash ?? Keccak.Zero).Bytes.CopyTo(span.Slice(i * Keccak.Size, Keccak.Size));
+
+        return ValueKeccak.Compute(span);
     }
 
     // Cached result for this exact (block, IL), or false. Only a "valid block" outcome short-circuits a

@@ -6,6 +6,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -158,16 +159,23 @@ public class PayloadAttributes
     private static ValueHash256 ComputeInclusionListDigest(byte[][] inclusionListTransactions)
     {
         // Length-prefix each entry so [empty, tx1] and [tx1] don't collide on the same payload-id.
-        Span<byte> lengthPrefix = stackalloc byte[sizeof(uint)];
-        KeccakHash hash = KeccakHash.Create();
+        int totalLength = 0;
+        for (int i = 0; i < inclusionListTransactions.Length; i++)
+            totalLength += sizeof(uint) + (inclusionListTransactions[i]?.Length ?? 0);
+
+        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(totalLength, out byte[] buffer);
+        Span<byte> span = buffer.AsSpan(0, totalLength);
+        int position = 0;
         for (int i = 0; i < inclusionListTransactions.Length; i++)
         {
             byte[] entry = inclusionListTransactions[i] ?? [];
-            BinaryPrimitives.WriteUInt32BigEndian(lengthPrefix, (uint)entry.Length);
-            hash.Update(lengthPrefix);
-            if (entry.Length > 0) hash.Update(entry);
+            BinaryPrimitives.WriteUInt32BigEndian(span.Slice(position, sizeof(uint)), (uint)entry.Length);
+            position += sizeof(uint);
+            entry.CopyTo(span[position..]);
+            position += entry.Length;
         }
-        return hash.GenerateValueHash();
+
+        return ValueKeccak.Compute(span);
     }
 
     /// <summary>
