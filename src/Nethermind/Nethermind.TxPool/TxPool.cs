@@ -91,8 +91,7 @@ namespace Nethermind.TxPool
         private int _expiringFrameTxCount;
 
 #if DEBUG
-        // Bumped inside the pool lock before the bookkeeping either side of a mutation updates, so the check below
-        // never mistakes a half-applied mutation it read for real drift.
+        // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
         private int _poolMutations;
 #endif
 
@@ -226,6 +225,7 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
+            AssertNoFilterRegisteredTwice();
 
             int? reportMinutes = txPoolConfig.ReportMinutes;
             if (_logger.IsInfo && reportMinutes.HasValue)
@@ -318,33 +318,27 @@ namespace Nethermind.TxPool
 #endif
         }
 
-        /// <summary>Asserts that the expiring-frame-transaction count never drops below zero.</summary>
-        /// <remarks>
-        /// Checked at the decrement rather than only in <see cref="AssertFrameTxBookkeeping"/> because a negative
-        /// count arms the expiry sweep's zero-count fast path for good, long after the unbalanced removal.
-        /// </remarks>
+        // A filter listed twice runs twice, and one with a side effect — reserving payer exposure, bumping a
+        // rejection counter — applies it twice, which no filter fixture can see.
+        [Conditional("DEBUG")]
+        private void AssertNoFilterRegisteredTwice()
+        {
+#if DEBUG
+            HashSet<Type> seen = [];
+            foreach (IIncomingTxFilter filter in _preHashFilters.Concat(_postHashFilters))
+            {
+                if (!seen.Add(filter.GetType())) Debug.Fail($"{filter.GetType().Name} is registered more than once in the incoming filter pipeline.");
+            }
+#endif
+        }
+
+        // A negative count arms the expiry sweep's zero-count fast path for good, so catch it at the decrement.
         [Conditional("DEBUG")]
         private void AssertExpiringFrameTxCountNotNegative() =>
             Debug.Assert(Volatile.Read(ref _expiringFrameTxCount) >= 0, "Expiring frame transaction count went negative.");
 
-        /// <summary>
-        /// Verifies the frame-transaction bookkeeping the pool maintains incrementally — the payer-exposure ledger
-        /// and the expiring-transaction count — against a full walk of both pools.
-        /// </summary>
-        /// <remarks>
-        /// Both are only ever updated on insert and removal, so one missed release or decrement persists for the
-        /// life of the pool: a leaked reservation rejects the payer's later transactions, and a count below the
-        /// truth arms the expiry sweep's fast path so nothing expires again.
-        /// <para>
-        /// Run per head rather than per operation, since the walk is O(pool size) and insert and removal are hot.
-        /// Admission is excluded by the head write lock held here, but <see cref="RemoveTransaction"/> and
-        /// <see cref="EvictTransaction"/> are reachable from block production without it, so a mutation seen across
-        /// the walk means the reading was torn rather than the pool inconsistent, and it is retried. The retry leans
-        /// on <see cref="SortedPool{TKey, TValue, TGroupKey}"/> invalidating its snapshot cache and raising its
-        /// events under one lock, so a snapshot rebuilt after a mutation can never disagree with the handler that
-        /// ran for it. Three torn readings in a row give up and trace, rather than reporting a pass never made.
-        /// </para>
-        /// </remarks>
+        // A missed release or decrement persists for the life of the pool, locking the payer out or disarming the
+        // expiry sweep. Per head rather than per operation: the walk is O(pool size) and insert and removal are hot.
         [Conditional("DEBUG")]
         private void AssertFrameTxBookkeeping()
         {
@@ -361,6 +355,8 @@ namespace Nethermind.TxPool
                 int recordedExpiring = Volatile.Read(ref _expiringFrameTxCount);
                 List<KeyValuePair<AddressAsKey, UInt256>> recordedExposure = [.. _payerExposure.Reservations];
 
+                // RemoveTransaction and EvictTransaction run outside the head lock held here, so a mutation across
+                // the reading means it was torn rather than the pool inconsistent.
                 if (Volatile.Read(ref _poolMutations) != mutations) continue;
 
                 Debug.Assert(recordedExpiring == pooledExpiring,
@@ -966,8 +962,7 @@ namespace Nethermind.TxPool
         }
 
         /// <summary>The exposure <paramref name="tx"/> holds against its payer for as long as it stays pending.</summary>
-        /// <remarks>The one pricing site on the release side, read by <see cref="AssertFrameTxBookkeeping"/> too so
-        /// the check cannot drift away from what the pool actually releases.</remarks>
+        /// <remarks>Shared with the bookkeeping check so it cannot drift from what the pool actually releases.</remarks>
         private static bool TryGetPayerReservation(Transaction tx, [NotNullWhen(true)] out Address? payer, out UInt256 maxCost)
         {
             payer = tx.SupportsFrames ? tx.PayerAddress : null;

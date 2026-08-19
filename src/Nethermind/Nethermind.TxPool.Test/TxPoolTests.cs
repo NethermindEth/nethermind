@@ -2236,8 +2236,8 @@ namespace Nethermind.TxPool.Test
                 "expired frame transactions must be evicted on the new head, unexpired ones retained");
         }
 
-        // The on-head expiry sweep is a removal path like any other, so it must hand the payer its reservation
-        // back; one that outlives the transaction locks the payer out of the pool until restart.
+        // The on-head expiry sweep is a removal path like any other: a reservation outliving the transaction
+        // locks the payer out of the pool until restart.
         [Test]
         public async Task Expired_frame_transaction_releases_its_payer_exposure_on_eviction()
         {
@@ -2258,8 +2258,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address), "no reservation is taken unless the payer resolves");
 
-            // A head the transaction survives first, so the DEBUG bookkeeping check meets a live reservation
-            // rather than an already-empty ledger.
+            // A head it survives first, so the DEBUG bookkeeping check meets a live reservation, not an empty ledger.
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(500).TestObject);
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "a deadline ahead of the head must not be swept");
 
