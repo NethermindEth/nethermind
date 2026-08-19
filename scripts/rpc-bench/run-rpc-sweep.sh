@@ -35,7 +35,7 @@ DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 # summaries; parity reports carry counts, never request/response bytes; node logs are scanned as
 # counts only and deleted.
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
-CORPUS_DIR="${CORPUS_DIR:-/data/expb-data/rpc-bench}"
+CORPUS_DIR="${CORPUS_DIR:-/mnt/sda/expb-data/rpc-bench}"
 # Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
 # Size a corpus cell by request count instead of wall time. CORPUS_REQUESTS is absolute;
@@ -110,7 +110,7 @@ if [[ "$STATE_LAYOUT" != "flat" ]]; then
 fi
 
 # `ctype@image` variants share the one snapshot set, so the image is the only thing that varies.
-SNAPSHOT_PATH="/data/nethermind/nethermind-flat-${SNAPSHOT_BLOCK}"
+SNAPSHOT_PATH="/mnt/sda/nethermind-flat-${SNAPSHOT_BLOCK}"
 NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
 # One isolation mode for every node, so storage counters stay comparable: overlayfs adds a layer and
 # changes readahead and page-cache behaviour, so disk-read-per-request would otherwise measure a

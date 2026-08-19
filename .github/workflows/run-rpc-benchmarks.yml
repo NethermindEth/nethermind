@@ -33,7 +33,7 @@ on:
         default: none
       snapshot_block:
         description: >-
-          Snapshot set tag: picks /data/nethermind/<client>-<tag> (nethermind resolves to
+          Snapshot set tag: picks /mnt/sda/<client>-<tag> (nethermind resolves to
           nethermind-flat-<tag>). Empty = the expb snapshot for
           nethermind, and 25490000 for geth/reth or whenever reference_client is set
           (a comparison needs both nodes at the same head).
@@ -90,7 +90,7 @@ on:
       node_config:
         description: >-
           Advanced node/runner overrides as JSON:
-          {"db_source":"","db_isolation":"overlay|copy|readonly-bind|direct","scratch_root":"/data/expb-data/rpc-bench-scratch",
+          {"db_source":"","db_isolation":"overlay|copy|readonly-bind|direct","scratch_root":"/mnt/sda/expb-data/rpc-bench-scratch",
           "network":"mainnet","jsonrpc_modules":"Eth,...","health_timeout_minutes":30,"cpuset":"2-7,10-15","memory":"64g",
           "reference_db_source":"","reference_image":"","reference_flags":"","reference_db_isolation":""}.
           Leave empty for defaults (db_source resolved from client/state_layout/snapshot_block; db_isolation defaults to 'direct' for reth — RW mount, no overlay copy-up — else 'overlay').
@@ -286,7 +286,7 @@ jobs:
             exit 1
           fi
 
-          # Named snapshot sets follow /data/nethermind/<client>-<block>; without a tag nethermind falls back to the expb snapshots.
+          # Named snapshot sets follow /mnt/sda/<client>-<block>; without a tag nethermind falls back to the expb snapshots.
           # geth/reth and comparison runs need same-head sets, so they default to the standing 25490000 tag.
           DEFAULT_SNAPSHOT_BLOCK="25490000"
           if [[ -z "${snapshot_block}" ]] && { [[ "${comparison}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
@@ -299,19 +299,19 @@ jobs:
             if [[ -n "${snapshot_block}" ]]; then
               if [[ "${c}" == "nethermind" ]]; then
                 if [[ "${state_layout}" == "flat" ]]; then
-                  echo "/data/nethermind/nethermind-flat-${snapshot_block}"
+                  echo "/mnt/sda/nethermind-flat-${snapshot_block}"
                 else
-                  echo "/data/nethermind/nethermind-${snapshot_block}"
+                  echo "/mnt/sda/nethermind-${snapshot_block}"
                 fi
               else
-                echo "/data/nethermind/${c}-${snapshot_block}"
+                echo "/mnt/sda/${c}-${snapshot_block}"
               fi
             else
               # Legacy expb snapshots exist for nethermind only (guarded above).
               if [[ "${state_layout}" == "flat" ]]; then
-                echo "/data/nethermind/nethermind-flat-snapshot"
+                echo "/mnt/sda/nethermind-flat-snapshot"
               else
-                echo "/data/nethermind/nethermind-snapshot"
+                echo "/mnt/sda/nethermind-snapshot"
               fi
             fi
           }
@@ -340,7 +340,7 @@ jobs:
           if [[ -z "${db_isolation}" ]]; then
             if [[ "${client}" == "reth" ]]; then db_isolation="direct"; else db_isolation="overlay"; fi
           fi
-          scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="/data/expb-data/rpc-bench-scratch"
+          scratch_root="$(nc '.scratch_root')";     [[ -z "${scratch_root}" ]] && scratch_root="/mnt/sda/expb-data/rpc-bench-scratch"
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
           jsonrpc_modules="$(nc '.jsonrpc_modules')"
           [[ -z "${jsonrpc_modules}" ]] && jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
