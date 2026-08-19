@@ -147,12 +147,20 @@ public class EvmObjectPoolTests
         ConcurrentDictionary<ChurnItem, byte> rented = new();
         int duplicates = 0;
         int allocated = 0;
+        int allocatedAfterWarmup = -1;
 
         Parallel.For(0, threads, _ =>
         {
             ChurnItem[] held = new ChurnItem[itemsPerThread];
             for (int round = 0; round < rounds; round++)
             {
+                // Round 0 necessarily allocates the whole concurrent working set against an empty pool,
+                // so measure recycling from round 1 on rather than against a cumulative budget.
+                if (round == 1)
+                {
+                    Interlocked.CompareExchange(ref allocatedAfterWarmup, Volatile.Read(ref allocated), -1);
+                }
+
                 for (int i = 0; i < itemsPerThread; i++)
                 {
                     if (!pool.TryDequeue(out ChurnItem? item))
@@ -190,10 +198,14 @@ public class EvmObjectPoolTests
 
         Assert.That(drained, Is.LessThanOrEqualTo(maxShared + localCapacity));
 
-        // Without recycling this workload would allocate threads * itemsPerThread * rounds instances;
-        // a warm per-thread free list keeps it near the concurrent working set.
-        Assert.That(allocated, Is.LessThan(2 * threads * itemsPerThread),
-            "the pool kept allocating instead of recycling");
+        // Without recycling this workload would allocate threads * itemsPerThread * rounds instances.
+        // Assert on the steady state rather than the cumulative total: the warm-up round alone is
+        // entitled to the full working set, so a cumulative bound would really be measuring how often
+        // TryDequeueShared loses the publish race - a rate, not the invariant under test.
+        int steadyStateAllocations = Volatile.Read(ref allocated) - Volatile.Read(ref allocatedAfterWarmup);
+        Assert.That(allocatedAfterWarmup, Is.GreaterThanOrEqualTo(0), "warm-up snapshot was never taken");
+        Assert.That(steadyStateAllocations, Is.LessThan(threads * itemsPerThread / 4),
+            "the pool kept allocating after warm-up instead of recycling");
     }
 
     private static void RunOnNewThread(ThreadStart body)

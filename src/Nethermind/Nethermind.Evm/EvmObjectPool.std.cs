@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -44,8 +45,8 @@ internal sealed class EvmObjectPool<T>
     /// </summary>
     /// <remarks>
     /// Only ever incremented before an enqueue and decremented after a successful dequeue, so it can
-    /// read high but never low: zero therefore proves the queue is empty, letting a warm thread skip
-    /// the shared queue entirely.
+    /// read high but never low: zero therefore proves the queue is empty, so a thread whose local free
+    /// list is empty can skip the shared queue instead of a TryDequeue that would fail anyway.
     /// </remarks>
     private int _sharedCount;
 
@@ -60,10 +61,13 @@ internal sealed class EvmObjectPool<T>
     /// <param name="maxShared">Items the shared queue may retain; further returns are dropped.</param>
     public EvmObjectPool(int localCapacity = DefaultLocalCapacity, int maxShared = int.MaxValue)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(localCapacity);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxShared);
         _localCapacity = localCapacity;
         _maxShared = maxShared;
 #if DEBUG
-        Debug.Assert(Interlocked.Increment(ref _instanceCount) == 1,
+        int instances = Interlocked.Increment(ref _instanceCount);
+        Debug.Assert(instances == 1,
             $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<T>)}; they would share one " +
             "per-thread free list and hand each other's items out. Hoist the pool to a single instance.");
 #endif
@@ -71,7 +75,7 @@ internal sealed class EvmObjectPool<T>
 
     /// <summary>Takes a pooled item, preferring the calling thread's free list.</summary>
     /// <returns><see langword="true"/> if an item was available; otherwise <see langword="false"/>.</returns>
-    public bool TryDequeue(out T item)
+    public bool TryDequeue([MaybeNullWhen(false)] out T item)
     {
         int count = _localCount - 1;
         if (count >= 0)
@@ -103,7 +107,7 @@ internal sealed class EvmObjectPool<T>
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private bool TryDequeueShared(out T item)
+    private bool TryDequeueShared([MaybeNullWhen(false)] out T item)
     {
         if (Volatile.Read(ref _sharedCount) > 0 && _shared.TryDequeue(out item))
         {
