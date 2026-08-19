@@ -66,7 +66,7 @@
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.6.0" />
-    <PackageVersion Include="Nethermind.RocksDbBindings" Version="11.8.1-preview.73" />
+    <PackageVersion Include="Nethermind.RocksDbBindings" Version="11.8.1-preview.75" />
     <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.0.0" />
     <PackageVersion Include="Nethermind.Zkvm.Abstractions" Version="1.0.0-preview.2" />
     <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="1.0.0-preview.4" />
