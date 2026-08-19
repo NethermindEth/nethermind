@@ -16,23 +16,13 @@ namespace Nethermind.JsonRpc.Benchmark
     /// state scope and the EVM.
     /// </summary>
     /// <remarks>
-    /// This benchmark cannot compare the two implementations by itself: <c>ISortedKeyValueStore.TryGetCeiling</c> is
-    /// a default interface method that <c>ColumnDb</c> only overrides on the branch under test. Run it on one branch,
-    /// keep the artifact, switch branch and run it again against the <em>same</em> generated directory. Quote the
-    /// ratio, never the absolute microseconds: the generated database is a small-buffer proxy for a production LSM,
-    /// so its level count transfers and its timings do not.
-    /// <para>
     /// The first run generates the chain, which takes minutes. Later runs — including the separate process
     /// BenchmarkDotNet starts per parameter combination — reuse the directory. Delete it to rebuild.
-    /// </para>
     /// </remarks>
     [MemoryDiagnoser]
     public class ArchiveEthCallBenchmarks
     {
-        /// <summary>
-        /// Moves the read window far between invocations. Without it the pooled seek iterator would still be sitting
-        /// on the answer from the previous call and the win would be inflated several times over.
-        /// </summary>
+        // moves the read window far between invocations
         private const int WindowStride = 7919;
 
         private ArchiveChainFixture _fixture = null!;
