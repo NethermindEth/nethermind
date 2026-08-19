@@ -12,20 +12,8 @@ namespace Nethermind.Core.Crypto;
 
 public sealed partial class KeccakHash
 {
-    private const int ROUNDS = 24;
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
-    private static readonly ulong[] RoundConstants =
-    [
-        0x0000000000000001UL, 0x0000000000008082UL, 0x800000000000808aUL,
-        0x8000000080008000UL, 0x000000000000808bUL, 0x0000000080000001UL,
-        0x8000000080008081UL, 0x8000000000008009UL, 0x000000000000008aUL,
-        0x0000000000000088UL, 0x0000000080008009UL, 0x000000008000000aUL,
-        0x000000008000808bUL, 0x800000000000008bUL, 0x8000000000008089UL,
-        0x8000000000008003UL, 0x8000000000008002UL, 0x8000000000000080UL,
-        0x000000000000800aUL, 0x800000008000000aUL, 0x8000000080008081UL,
-        0x8000000000008080UL, 0x0000000080000001UL, 0x8000000080008008UL
-    ];
 
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
