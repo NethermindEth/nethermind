@@ -87,6 +87,8 @@ public class FrameTxPayerExposureFilterTests
 
         Transaction incumbent = FrameTxCostingExactly(incumbentCost, payer: incumbentPaidByAnother ? TestItem.AddressC : null);
         incumbent.Hash = TestItem.KeccakA;
+        // Already pending, so it carries the reservation admission recorded on it; that is what a bump discounts.
+        incumbent.PayerExposure = incumbentCost;
         Transaction bump = FrameTxCostingExactly(bumpCost);
         bump.Nonce = bumpNonce;
         bump.Hash = TestItem.KeccakB;
@@ -107,14 +109,19 @@ public class FrameTxPayerExposureFilterTests
         TestReadOnlyStateProvider state = StateWithPayerBalance(TestCost + TestCost / 2);
         PayerExposureCache cache = new();
 
-        AcceptTxResult first = Accept(state, cache, FrameTxCostingExactly(TestCost));
-        AcceptTxResult second = Accept(state, cache, FrameTxCostingExactly(TestCost));
+        Transaction admitted = FrameTxCostingExactly(TestCost);
+        Transaction turnedAway = FrameTxCostingExactly(TestCost);
+
+        AcceptTxResult first = Accept(state, cache, admitted);
+        AcceptTxResult second = Accept(state, cache, turnedAway);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(second, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
             Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)TestCost), "only the admitted tx is reserved");
+            Assert.That(admitted.PayerExposure, Is.EqualTo((UInt256)TestCost), "the admitted tx carries what it reserved, so its removal releases the same");
+            Assert.That(turnedAway.PayerExposure, Is.Null, "a rejected tx must not claim a reservation it never took");
         }
     }
 
