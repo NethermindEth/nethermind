@@ -252,6 +252,37 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
+    // The witness wrapper delegates to a newPayload version, so the Bogota rejection of V5 would leave
+    // the witness flow with no working entry point unless it gains its own V6.
+    [Test]
+    public async Task NewPayloadWithWitnessV6_supersedes_V5_at_Bogota()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 executionPayload = payloadResult.Data!.ExecutionPayload;
+        byte[][]? executionRequests = payloadResult.Data!.ExecutionRequests;
+
+        using ResultWrapper<NewPayloadWithWitnessV1Result> v5 = await rpc.engine_newPayloadWithWitnessV5(
+            executionPayload, [], Keccak.Zero, executionRequests);
+        using ResultWrapper<NewPayloadWithWitnessV1Result> v6 = await rpc.engine_newPayloadWithWitnessV6(
+            executionPayload, [], Keccak.Zero, executionRequests, []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(v5.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(v5.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+            Assert.That(v6.Result.ResultType, Is.EqualTo(ResultType.Success), v6.Result.Error);
+            Assert.That(v6.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(v6.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
+        }
+    }
+
     [Test]
     public async Task NewPayloadV6_is_unsupported_before_Bogota()
     {

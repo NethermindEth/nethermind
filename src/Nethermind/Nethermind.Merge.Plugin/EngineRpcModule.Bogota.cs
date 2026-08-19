@@ -24,6 +24,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     // during this call"). Bounded; a null entry means "not computed", which FCU reports as null.
     private readonly LruCache<Hash256, bool> _inclusionListSatisfiedByBlock = new(64, "inclusionListSatisfied");
 
+    private readonly IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> _newPayloadWithWitnessHandlerV6 = newPayloadWithWitnessHandlerV6;
+
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1()
         => getInclusionListTransactionsHandler.Handle();
 
@@ -31,6 +33,15 @@ public partial class EngineRpcModule : IEngineRpcModule
         => NewPayloadWithInclusionList(
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions),
             EngineApiVersions.NewPayload.V6);
+
+    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(
+        ExecutionPayloadV4 executionPayload,
+        Hash256?[] blobVersionedHashes,
+        Hash256? parentBeaconBlockRoot,
+        byte[][]? executionRequests,
+        byte[][]? inclusionListTransactions)
+        => _newPayloadWithWitnessHandlerV6.HandleAsync(
+            new InclusionListExecutionPayloadParams(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
 
     /// <summary>Runs <see cref="NewPayload"/> and maps its result onto the Bogota <see cref="PayloadStatusV2"/> shape.</summary>
     protected async Task<ResultWrapper<PayloadStatusV2>> NewPayloadWithInclusionList(IExecutionPayloadParams executionPayloadParams, int version)

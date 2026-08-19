@@ -267,3 +267,17 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         return expectedIndex == expected.Length;
     }
 }
+
+/// <summary>
+/// A Bogota (EIP-7805) newPayload request, distinguished from its Amsterdam counterpart so that
+/// handlers shared by both forks can tell which engine API version they are serving — the payload
+/// type alone no longer does, since <see cref="ExecutionPayloadV4"/> spans the two.
+/// </summary>
+public sealed class InclusionListExecutionPayloadParams(
+    ExecutionPayloadV4 executionPayload,
+    Hash256?[]? blobVersionedHashes,
+    Hash256? parentBeaconBlockRoot,
+    byte[][]? executionRequests,
+    byte[][]? inclusionListTransactions)
+    : ExecutionPayloadParams<ExecutionPayloadV4>(
+        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions);
