@@ -162,10 +162,10 @@ public class FrameTxPaymasterFilterTests
     }
 
     [Test]
-    public void Accept_SponsoredTxHeldAsALightRecord_StillCountsAgainstTheCap()
+    public void Accept_ResolvesThePaymasterOfAPendingLightRecord()
     {
-        // The shipped blob mode holds a frameless LightTransaction, and that record is what the pool
-        // raises Inserted/Removed with, so the cap has to key off it rather than the full transaction.
+        // The shipped blob mode holds a frameless LightTransaction, and the pool walks those records, so
+        // the cap has to key off the record rather than a frame list it no longer has.
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(Sender, Unit.Ether);
         state.InsertCode([0x60, 0x00], Paymaster);

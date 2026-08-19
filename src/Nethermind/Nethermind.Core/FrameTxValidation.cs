@@ -337,13 +337,16 @@ public static class FrameTxValidation
     }
 
     /// <summary>
-    /// The paymaster a frame transaction pays through: the explicit target of the <c>pay</c> frame ending
-    /// its recognized validation prefix, or <c>null</c> when it pays without one.
+    /// The paymaster <paramref name="transaction"/> pays through: the explicit target of the <c>pay</c> frame
+    /// ending its recognized validation prefix, or <c>null</c> when it pays without one, carries no frames to
+    /// read and none recorded, or is not a frame transaction at all.
     /// </summary>
     /// <remarks>
-    /// Derived from the frame layout alone, so no state is read: a self-relay prefix, an unrecognized
-    /// layout, or a target-less <c>pay</c> frame yield <c>null</c>. A <c>pay</c> frame naming the sender is
-    /// returned like any other target — the spec's carve-out is the empty code hash, not self-payment.
+    /// Derived from the frame layout alone, so no state is read: a self-relay prefix, an unrecognized layout,
+    /// or a target-less <c>pay</c> frame yield <c>null</c>. A <c>pay</c> frame naming the sender is returned
+    /// like any other target — the spec's carve-out is the empty code hash, not self-payment. A record the
+    /// pool holds without its frames answers from <see cref="Transaction.PersistedPaymaster"/> instead, which
+    /// froze this same derivation when the record was built.
     /// </remarks>
     public static Address? GetPrefixPaymaster(Transaction transaction)
     {

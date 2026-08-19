@@ -253,8 +253,8 @@ namespace Nethermind.Core
 
         /// <summary>The EIP-8141 prefix paymaster carried by a pool record held without its frames. Null for
         /// every in-memory transaction, which derives the paymaster from its frames.</summary>
-        /// <remarks>Not encoded, so a record reloaded from storage has none and its sponsor goes uncounted
-        /// until the payer fields are persisted.</remarks>
+        /// <remarks>Set when the record is built, not encoded with it, so a record reloaded from storage has
+        /// none and its sponsor goes uncounted.</remarks>
         public virtual Address? PersistedPaymaster => null;
 
         /// <summary>
