@@ -28,8 +28,6 @@ public class VmState<TGasPolicy> : IDisposable
 #endif
         _statePool = new();
 
-    private static readonly StackPool _stackPool = new();
-
     public byte[]? DataStack;
     public TGasPolicy Gas;
     public long InitialStateGasUsed;
@@ -216,7 +214,7 @@ public class VmState<TGasPolicy> : IDisposable
         if (DataStack is not null)
         {
             // Only return if initialized
-            _stackPool.ReturnStacks(DataStack);
+            StackPool.Shared.ReturnStacks(DataStack);
             DataStack = null;
         }
 
@@ -278,7 +276,7 @@ public class VmState<TGasPolicy> : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[] AllocateStacks() => _stackPool.RentStacks();
+    private static byte[] AllocateStacks() => StackPool.Shared.RentStacks();
 
     private static ref byte As32AlignedRef(byte[] array)
     {

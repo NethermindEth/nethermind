@@ -8,8 +8,11 @@ namespace Nethermind.Evm;
 
 internal sealed partial class StackPool
 {
-    // Stacks are ~32KB and pinned, so a thread keeps only enough for shallow frames; deeper
-    // frames overflow to the shared tier, which stays bounded by MaxStacksPooled as before.
+    // Stacks are ~32KB and pinned, so a thread keeps only enough for the shallow frames that carry
+    // the contention; deeper frames overflow to the shared tier. MaxStacksPooled bounds that shared
+    // tier only, so the pinned ceiling is MaxStacksPooled + LocalStacksPooled per thread that has run
+    // an EVM frame - a thread holds its slots until it dies, and the RPC path raises the thread-pool
+    // minimum by ProcessorCount (RegisterRpcModules), whose threads are never retired.
     private const int LocalStacksPooled = 8;
 
     private readonly EvmObjectPool<StackItem> _stackPool = new(LocalStacksPooled, MaxStacksPooled);
