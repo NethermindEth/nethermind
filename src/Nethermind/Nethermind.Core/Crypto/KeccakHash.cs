@@ -85,8 +85,9 @@ public sealed partial class KeccakHash
         }
 #endif
         int inputLength = input.Length;
+        // One-block fast path for the dominant EVM input sizes: address (20), word or hash (32), two words (64).
         if (Avx512F.VL.IsSupported && output.Length == HASH_SIZE &&
-            (inputLength == Address.Size || inputLength == Vector256<byte>.Count || inputLength == Vector512<byte>.Count))
+            inputLength is Address.Size or 32 or 64)
         {
             ComputeHash256Avx512VL(
                 ref MemoryMarshal.GetReference(input), inputLength, ref MemoryMarshal.GetReference(output));

@@ -17,6 +17,7 @@ namespace Nethermind.Evm.TransactionProcessing;
 public static class KeyedNonceManager
 {
     private const int SlotPreimageLength = 2 * 32;
+    /// <summary>Batch width of <see cref="KeccakHash.ComputeHash64Bytes8Avx512"/>.</summary>
     private const int HashBatchSize = 8;
 
     public static StorageCell StorageSlot(Address sender, in UInt256 nonceKey)
@@ -67,6 +68,7 @@ public static class KeyedNonceManager
             StorageIndices(sender, nonceKeys, indices);
             for (int i = 0; i < nonceKeys.Length; i++)
             {
+                Debug.Assert(!nonceKeys[i].IsZero, "key 0 must not appear in a non-[0] nonce_keys set");
                 state.Set(new StorageCell(Eip8250Constants.NonceManagerAddress, indices[i]), nextSeq);
             }
             return;
@@ -128,6 +130,7 @@ public static class KeyedNonceManager
             return false;
         }
 
+        // Well-formedness above bounds Length to MaxNonceKeys, so the stackalloc below always fits.
         if (Avx512F.IsSupported && nonceKeys.Length >= HashBatchSize)
         {
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
@@ -154,6 +157,7 @@ public static class KeyedNonceManager
         return true;
     }
 
+    /// <summary>Computes the NONCE_MANAGER storage index for each key in <paramref name="nonceKeys"/>, batching the Keccak hashes with AVX-512 where possible.</summary>
     [SkipLocalsInit]
     internal static void StorageIndices(Address sender, ReadOnlySpan<UInt256> nonceKeys, Span<UInt256> indices)
     {

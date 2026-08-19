@@ -11,6 +11,10 @@ namespace Nethermind.Core.Crypto;
 
 public sealed partial class KeccakHash
 {
+    // vpternlog immediates: bit n of the immediate is the output for input bits (a, b, c) = binary n.
+    private const byte Xor3 = 0x96; // a ^ b ^ c
+    private const byte Chi = 0xD2; // a ^ (~b & c)
+
     /// <summary>AVX-512VL Keccak-f[1600] permutation.</summary>
     /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
     [SkipLocalsInit]
@@ -106,6 +110,8 @@ public sealed partial class KeccakHash
         Vector128<ulong> a13 = Vector128<ulong>.Zero;
         Vector128<ulong> a14 = Vector128<ulong>.Zero;
         Vector128<ulong> a15 = Vector128<ulong>.Zero;
+        // Multi-rate padding (FIPS 202 sec. 5.1): 0x80 at byte 135, the last byte of the
+        // 136-byte rate, is the top bit of lane 16; 0x01 goes right after the message below.
         Vector128<ulong> a16 = Vector128.CreateScalarUnsafe(0x8000000000000000UL);
         Vector128<ulong> a17 = Vector128<ulong>.Zero;
         Vector128<ulong> a18 = Vector128<ulong>.Zero;
@@ -119,13 +125,14 @@ public sealed partial class KeccakHash
         switch (inputLength)
         {
             case Address.Size:
+                // Lane 2 holds the final 4 address bytes with the 0x01 pad in the byte above them (input offset 20).
                 a2 = Vector128.CreateScalarUnsafe(
                     Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref input, 16)) | (1UL << 32));
                 break;
             case 32:
                 a2 = LoadScalar128(ref input, 16);
                 a3 = LoadScalar128(ref input, 24);
-                a4 = Vector128.CreateScalarUnsafe(1UL);
+                a4 = Vector128.CreateScalarUnsafe(1UL); // 0x01 pad at input offset 32
                 break;
             case 64:
                 a2 = LoadScalar128(ref input, 16);
@@ -134,7 +141,7 @@ public sealed partial class KeccakHash
                 a5 = LoadScalar128(ref input, 40);
                 a6 = LoadScalar128(ref input, 48);
                 a7 = LoadScalar128(ref input, 56);
-                a8 = Vector128.CreateScalarUnsafe(1UL);
+                a8 = Vector128.CreateScalarUnsafe(1UL); // 0x01 pad at input offset 64
                 break;
         }
 
@@ -170,91 +177,147 @@ public sealed partial class KeccakHash
         ref Vector128<ulong> a20, ref Vector128<ulong> a21, ref Vector128<ulong> a22, ref Vector128<ulong> a23, ref Vector128<ulong> a24,
         Vector128<ulong> roundConstant)
     {
-        Vector128<ulong> c0 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a0, a5, a10, 0x96), a15, a20, 0x96);
-        Vector128<ulong> c1 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a1, a6, a11, 0x96), a16, a21, 0x96);
-        Vector128<ulong> c2 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a2, a7, a12, 0x96), a17, a22, 0x96);
-        Vector128<ulong> c3 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a3, a8, a13, 0x96), a18, a23, 0x96);
-        Vector128<ulong> c4 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a4, a9, a14, 0x96), a19, a24, 0x96);
+        // Theta: column parities C[x] = A[x,0] ^ A[x,1] ^ A[x,2] ^ A[x,3] ^ A[x,4].
+        Vector128<ulong> c0 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a0, a5, a10, Xor3), a15, a20, Xor3);
+        Vector128<ulong> c1 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a1, a6, a11, Xor3), a16, a21, Xor3);
+        Vector128<ulong> c2 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a2, a7, a12, Xor3), a17, a22, Xor3);
+        Vector128<ulong> c3 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a3, a8, a13, Xor3), a18, a23, Xor3);
+        Vector128<ulong> c4 = Avx512F.VL.TernaryLogic(Avx512F.VL.TernaryLogic(a4, a9, a14, Xor3), a19, a24, Xor3);
 
-        Vector128<ulong> next = Avx512F.VL.RotateLeft(c1, 1);
-        a0 = Avx512F.VL.TernaryLogic(a0, c4, next, 0x96);
-        a5 = Avx512F.VL.TernaryLogic(a5, c4, next, 0x96);
-        a10 = Avx512F.VL.TernaryLogic(a10, c4, next, 0x96);
-        a15 = Avx512F.VL.TernaryLogic(a15, c4, next, 0x96);
-        a20 = Avx512F.VL.TernaryLogic(a20, c4, next, 0x96);
+        // Theta: A[x,y] ^= C[x-1] ^ ROL(C[x+1], 1); both XORs fuse into one ternary op per lane.
+        Vector128<ulong> rolC1 = Avx512F.VL.RotateLeft(c1, 1);
+        a0 = Avx512F.VL.TernaryLogic(a0, c4, rolC1, Xor3);
+        a5 = Avx512F.VL.TernaryLogic(a5, c4, rolC1, Xor3);
+        a10 = Avx512F.VL.TernaryLogic(a10, c4, rolC1, Xor3);
+        a15 = Avx512F.VL.TernaryLogic(a15, c4, rolC1, Xor3);
+        a20 = Avx512F.VL.TernaryLogic(a20, c4, rolC1, Xor3);
 
-        next = Avx512F.VL.RotateLeft(c2, 1);
-        a1 = Avx512F.VL.TernaryLogic(a1, c0, next, 0x96);
-        a6 = Avx512F.VL.TernaryLogic(a6, c0, next, 0x96);
-        a11 = Avx512F.VL.TernaryLogic(a11, c0, next, 0x96);
-        a16 = Avx512F.VL.TernaryLogic(a16, c0, next, 0x96);
-        a21 = Avx512F.VL.TernaryLogic(a21, c0, next, 0x96);
+        Vector128<ulong> rolC2 = Avx512F.VL.RotateLeft(c2, 1);
+        a1 = Avx512F.VL.TernaryLogic(a1, c0, rolC2, Xor3);
+        a6 = Avx512F.VL.TernaryLogic(a6, c0, rolC2, Xor3);
+        a11 = Avx512F.VL.TernaryLogic(a11, c0, rolC2, Xor3);
+        a16 = Avx512F.VL.TernaryLogic(a16, c0, rolC2, Xor3);
+        a21 = Avx512F.VL.TernaryLogic(a21, c0, rolC2, Xor3);
 
-        next = Avx512F.VL.RotateLeft(c3, 1);
-        a2 = Avx512F.VL.TernaryLogic(a2, c1, next, 0x96);
-        a7 = Avx512F.VL.TernaryLogic(a7, c1, next, 0x96);
-        a12 = Avx512F.VL.TernaryLogic(a12, c1, next, 0x96);
-        a17 = Avx512F.VL.TernaryLogic(a17, c1, next, 0x96);
-        a22 = Avx512F.VL.TernaryLogic(a22, c1, next, 0x96);
+        Vector128<ulong> rolC3 = Avx512F.VL.RotateLeft(c3, 1);
+        a2 = Avx512F.VL.TernaryLogic(a2, c1, rolC3, Xor3);
+        a7 = Avx512F.VL.TernaryLogic(a7, c1, rolC3, Xor3);
+        a12 = Avx512F.VL.TernaryLogic(a12, c1, rolC3, Xor3);
+        a17 = Avx512F.VL.TernaryLogic(a17, c1, rolC3, Xor3);
+        a22 = Avx512F.VL.TernaryLogic(a22, c1, rolC3, Xor3);
 
-        next = Avx512F.VL.RotateLeft(c4, 1);
-        a3 = Avx512F.VL.TernaryLogic(a3, c2, next, 0x96);
-        a8 = Avx512F.VL.TernaryLogic(a8, c2, next, 0x96);
-        a13 = Avx512F.VL.TernaryLogic(a13, c2, next, 0x96);
-        a18 = Avx512F.VL.TernaryLogic(a18, c2, next, 0x96);
-        a23 = Avx512F.VL.TernaryLogic(a23, c2, next, 0x96);
+        Vector128<ulong> rolC4 = Avx512F.VL.RotateLeft(c4, 1);
+        a3 = Avx512F.VL.TernaryLogic(a3, c2, rolC4, Xor3);
+        a8 = Avx512F.VL.TernaryLogic(a8, c2, rolC4, Xor3);
+        a13 = Avx512F.VL.TernaryLogic(a13, c2, rolC4, Xor3);
+        a18 = Avx512F.VL.TernaryLogic(a18, c2, rolC4, Xor3);
+        a23 = Avx512F.VL.TernaryLogic(a23, c2, rolC4, Xor3);
 
-        next = Avx512F.VL.RotateLeft(c0, 1);
-        a4 = Avx512F.VL.TernaryLogic(a4, c3, next, 0x96);
-        a9 = Avx512F.VL.TernaryLogic(a9, c3, next, 0x96);
-        a14 = Avx512F.VL.TernaryLogic(a14, c3, next, 0x96);
-        a19 = Avx512F.VL.TernaryLogic(a19, c3, next, 0x96);
-        a24 = Avx512F.VL.TernaryLogic(a24, c3, next, 0x96);
+        Vector128<ulong> rolC0 = Avx512F.VL.RotateLeft(c0, 1);
+        a4 = Avx512F.VL.TernaryLogic(a4, c3, rolC0, Xor3);
+        a9 = Avx512F.VL.TernaryLogic(a9, c3, rolC0, Xor3);
+        a14 = Avx512F.VL.TernaryLogic(a14, c3, rolC0, Xor3);
+        a19 = Avx512F.VL.TernaryLogic(a19, c3, rolC0, Xor3);
+        a24 = Avx512F.VL.TernaryLogic(a24, c3, rolC0, Xor3);
 
-        Vector128<ulong> current = a1;
-        Vector128<ulong> temp = a10; a10 = Avx512F.VL.RotateLeft(current, 1); current = temp;
-        temp = a7; a7 = Avx512F.VL.RotateLeft(current, 3); current = temp;
-        temp = a11; a11 = Avx512F.VL.RotateLeft(current, 6); current = temp;
-        temp = a17; a17 = Avx512F.VL.RotateLeft(current, 10); current = temp;
-        temp = a18; a18 = Avx512F.VL.RotateLeft(current, 15); current = temp;
-        temp = a3; a3 = Avx512F.VL.RotateLeft(current, 21); current = temp;
-        temp = a5; a5 = Avx512F.VL.RotateLeft(current, 28); current = temp;
-        temp = a16; a16 = Avx512F.VL.RotateLeft(current, 36); current = temp;
-        temp = a8; a8 = Avx512F.VL.RotateLeft(current, 45); current = temp;
-        temp = a21; a21 = Avx512F.VL.RotateLeft(current, 55); current = temp;
-        temp = a24; a24 = Avx512F.VL.RotateLeft(current, 2); current = temp;
-        temp = a4; a4 = Avx512F.VL.RotateLeft(current, 14); current = temp;
-        temp = a15; a15 = Avx512F.VL.RotateLeft(current, 27); current = temp;
-        temp = a23; a23 = Avx512F.VL.RotateLeft(current, 41); current = temp;
-        temp = a19; a19 = Avx512F.VL.RotateLeft(current, 56); current = temp;
-        temp = a13; a13 = Avx512F.VL.RotateLeft(current, 8); current = temp;
-        temp = a12; a12 = Avx512F.VL.RotateLeft(current, 25); current = temp;
-        temp = a2; a2 = Avx512F.VL.RotateLeft(current, 43); current = temp;
-        temp = a20; a20 = Avx512F.VL.RotateLeft(current, 62); current = temp;
-        temp = a14; a14 = Avx512F.VL.RotateLeft(current, 18); current = temp;
-        temp = a22; a22 = Avx512F.VL.RotateLeft(current, 39); current = temp;
-        temp = a9; a9 = Avx512F.VL.RotateLeft(current, 61); current = temp;
-        temp = a6; a6 = Avx512F.VL.RotateLeft(current, 20); current = temp;
-        a1 = Avx512F.VL.RotateLeft(current, 44);
+        // Rho + Pi: walk the single 24-lane Pi cycle, rotating each lane into its permuted
+        // position; lane 0 is the cycle's fixed point. The two temporaries update the lanes
+        // in place, which keeps all 25 lanes enregistered; a fresh local per lane instead
+        // makes the JIT spill (measured ~2.6x slower).
+        Vector128<ulong> source = a1;
+        Vector128<ulong> displaced;
+        displaced = a10;
+        a10 = Avx512F.VL.RotateLeft(source, 1);
+        source = displaced;
+        displaced = a7;
+        a7 = Avx512F.VL.RotateLeft(source, 3);
+        source = displaced;
+        displaced = a11;
+        a11 = Avx512F.VL.RotateLeft(source, 6);
+        source = displaced;
+        displaced = a17;
+        a17 = Avx512F.VL.RotateLeft(source, 10);
+        source = displaced;
+        displaced = a18;
+        a18 = Avx512F.VL.RotateLeft(source, 15);
+        source = displaced;
+        displaced = a3;
+        a3 = Avx512F.VL.RotateLeft(source, 21);
+        source = displaced;
+        displaced = a5;
+        a5 = Avx512F.VL.RotateLeft(source, 28);
+        source = displaced;
+        displaced = a16;
+        a16 = Avx512F.VL.RotateLeft(source, 36);
+        source = displaced;
+        displaced = a8;
+        a8 = Avx512F.VL.RotateLeft(source, 45);
+        source = displaced;
+        displaced = a21;
+        a21 = Avx512F.VL.RotateLeft(source, 55);
+        source = displaced;
+        displaced = a24;
+        a24 = Avx512F.VL.RotateLeft(source, 2);
+        source = displaced;
+        displaced = a4;
+        a4 = Avx512F.VL.RotateLeft(source, 14);
+        source = displaced;
+        displaced = a15;
+        a15 = Avx512F.VL.RotateLeft(source, 27);
+        source = displaced;
+        displaced = a23;
+        a23 = Avx512F.VL.RotateLeft(source, 41);
+        source = displaced;
+        displaced = a19;
+        a19 = Avx512F.VL.RotateLeft(source, 56);
+        source = displaced;
+        displaced = a13;
+        a13 = Avx512F.VL.RotateLeft(source, 8);
+        source = displaced;
+        displaced = a12;
+        a12 = Avx512F.VL.RotateLeft(source, 25);
+        source = displaced;
+        displaced = a2;
+        a2 = Avx512F.VL.RotateLeft(source, 43);
+        source = displaced;
+        displaced = a20;
+        a20 = Avx512F.VL.RotateLeft(source, 62);
+        source = displaced;
+        displaced = a14;
+        a14 = Avx512F.VL.RotateLeft(source, 18);
+        source = displaced;
+        displaced = a22;
+        a22 = Avx512F.VL.RotateLeft(source, 39);
+        source = displaced;
+        displaced = a9;
+        a9 = Avx512F.VL.RotateLeft(source, 61);
+        source = displaced;
+        displaced = a6;
+        a6 = Avx512F.VL.RotateLeft(source, 20);
+        source = displaced;
+        a1 = Avx512F.VL.RotateLeft(source, 44);
 
+        // Chi: A[x,y] = B[x,y] ^ (~B[x+1,y] & B[x+2,y]), applied in place one row at a time.
         ChiRowX1(ref a0, ref a1, ref a2, ref a3, ref a4);
         ChiRowX1(ref a5, ref a6, ref a7, ref a8, ref a9);
         ChiRowX1(ref a10, ref a11, ref a12, ref a13, ref a14);
         ChiRowX1(ref a15, ref a16, ref a17, ref a18, ref a19);
         ChiRowX1(ref a20, ref a21, ref a22, ref a23, ref a24);
+        // Iota: fold the round constant into lane 0.
         a0 = Vector128.Xor(a0, roundConstant);
     }
 
+    /// <summary>Applies the Keccak chi mapping to one row of five lanes in place.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ChiRowX1(ref Vector128<ulong> a0, ref Vector128<ulong> a1, ref Vector128<ulong> a2,
         ref Vector128<ulong> a3, ref Vector128<ulong> a4)
     {
         Vector128<ulong> b0 = a0;
         Vector128<ulong> b1 = a1;
-        a0 = Avx512F.VL.TernaryLogic(a0, a1, a2, 0xD2);
-        a1 = Avx512F.VL.TernaryLogic(a1, a2, a3, 0xD2);
-        a2 = Avx512F.VL.TernaryLogic(a2, a3, a4, 0xD2);
-        a3 = Avx512F.VL.TernaryLogic(a3, a4, b0, 0xD2);
-        a4 = Avx512F.VL.TernaryLogic(a4, b0, b1, 0xD2);
+        a0 = Avx512F.VL.TernaryLogic(a0, a1, a2, Chi);
+        a1 = Avx512F.VL.TernaryLogic(a1, a2, a3, Chi);
+        a2 = Avx512F.VL.TernaryLogic(a2, a3, a4, Chi);
+        a3 = Avx512F.VL.TernaryLogic(a3, a4, b0, Chi);
+        a4 = Avx512F.VL.TernaryLogic(a4, b0, b1, Chi);
     }
 }
