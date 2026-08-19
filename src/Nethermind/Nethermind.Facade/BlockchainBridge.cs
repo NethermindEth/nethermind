@@ -604,7 +604,6 @@ namespace Nethermind.Facade
         }
 
         public record BlockProcessingComponents(
-            IStateReader StateReader,
             ITransactionProcessor TransactionProcessor,
             IWorldState WorldState,
             SingleCallRequestState RequestState
@@ -672,11 +671,13 @@ namespace Nethermind.Facade
         {
             /// <inheritdoc/>
             /// <remarks>
-            /// The state override is applied to the scope's world state but left unmerkleized: everything the
-            /// bridge runs in this scope executes against that world state and never resolves state through a
-            /// root, so the trie path load and rehash per overridden account is pure cost. Consequently the
-            /// header keeps its original state root, and nonces on these paths are read from the world state
-            /// rather than through an <see cref="IStateReader"/>.
+            /// Deviates from <see cref="IOverridableEnv.BuildAndOverride"/>: the state override is applied to
+            /// the scope's world state but left unmerkleized, because everything the bridge runs in this scope
+            /// executes against that world state and never resolves state through a root, so the trie path load
+            /// and rehash per overridden account is pure cost. The header therefore does not receive a
+            /// post-state-override root (a <paramref name="blockOverride"/> is still applied and committed by the
+            /// inner env), and nonces on these paths must be read from the world state rather than through an
+            /// <see cref="IStateReader"/>.
             /// </remarks>
             public Scope<BlockchainBridge.BlockProcessingComponents> BuildAndOverride(
                 BlockHeader? header,

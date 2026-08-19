@@ -524,10 +524,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             get
             {
-                // Uncommitted writes must be tested before the clear marker: a "state" override clears
-                // the storage and then writes into it, leaving the marker set alongside non-zero entries.
-                // Only writes can hide from the committed root (see Commit(commitRoots: false)); a non-zero
-                // read implies a non-empty root, which the check below already reports.
+                // Block-level writes that have not been merkleized yet are invisible to the storage root
+                // (state overrides, and every tx before the block's single root computation), so consult
+                // them first: a "state" override clears the storage before writing, leaving the clear
+                // marker set alongside non-zero entries, and testing the marker first would report empty.
+                // Gated on _wasWritten because only writes can hide from the root - a non-zero read implies
+                // a non-empty root, which the check below already reports.
+                // Writes made by the currently executing transaction still live in the journal and are not
+                // seen here; this reports block-level state, which is what EIP-7610 needs.
                 if (_wasWritten && BlockChange.HasNonZeroValue) return false;
 
                 // _backend.RootHash is not reflected until after commit, but this need to be reflected before commit
