@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -40,7 +41,8 @@ internal sealed class FrameTxPaymasterFilter(
         int pending = paymasters.GetPendingCount(paymaster) - (ReplacesPendingTxOfSamePaymaster(tx, paymaster) ? 1 : 0);
         if (pending >= Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster)
         {
-            Metrics.PendingTransactionsFrameTxPaymasterLimitReached++;
+            // Atomic: this filter runs under the pool's head read lock, so paymasters reject concurrently.
+            Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterLimitReached);
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, non-canonical paymaster {paymaster} already sponsors {paymasters.GetPendingCount(paymaster)} pending transactions.");
             return AcceptTxResult.NonCanonicalPaymasterLimitReached;

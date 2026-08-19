@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -43,11 +45,68 @@ public class LightTxDecoderTests
 
         LightTransaction decoded = LightTxDecoder.Decode(full[..^droppedTrailingFields]);
 
-        Assert.That(decoded.Type, Is.EqualTo(TxType.Blob));
-        Assert.That(decoded.ProofVersion, Is.EqualTo(expectedProofVersion));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Type, Is.EqualTo(TxType.Blob));
+            Assert.That(decoded.ProofVersion, Is.EqualTo(expectedProofVersion));
+            Assert.That(decoded.NonceKeys, Is.Null);
+        }
     }
 
-    private static Transaction BlobCarryingTx(TxType type)
+    // ProofVersion.V0 encodes as the RLP empty string, which a raw byte read returns as 128.
+    [TestCase(ProofVersion.V0)]
+    [TestCase(ProofVersion.V1)]
+    public void Round_trip_preserves_the_proof_version(ProofVersion version)
+    {
+        Transaction tx = BlobCarryingTx(TxType.Blob);
+        tx.NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], version);
+
+        Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).ProofVersion, Is.EqualTo(version));
+    }
+
+    // Both trailing fields are optional and positional, so every combination has to decode back to what was
+    // written - in particular a zero deadline is a deadline, not an absent field.
+    [TestCaseSource(nameof(TrailingFieldCases))]
+    public void Round_trip_preserves_the_optional_trailing_fields(UInt256[] nonceKeys, ulong? deadline)
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, deadline, nonceKeys);
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.EqualTo(nonceKeys));
+            Assert.That(decoded.PersistedExpiryDeadline, Is.EqualTo(deadline));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> TrailingFieldCases()
+    {
+        // [0] aliases the account nonce, so it must survive as itself rather than collapse to an absent field.
+        UInt256[][] nonceKeySets = [null, [UInt256.Zero], [0xbeef], [1, UInt256.MaxValue], FullWidthKeys()];
+        foreach (ulong? deadline in (ulong?[])[null, 0ul, 1_000ul])
+        {
+            foreach (UInt256[] nonceKeys in nonceKeySets)
+            {
+                yield return new TestCaseData(nonceKeys, deadline);
+            }
+        }
+    }
+
+    // A full set of 32-byte keys is the only case that reaches the long-form sequence header and fills the
+    // decoder's stack buffer exactly.
+    private static UInt256[] FullWidthKeys()
+    {
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = UInt256.MaxValue - (UInt256)(keys.Length - 1 - i);
+        }
+
+        return keys;
+    }
+
+    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)
     {
         byte[][] versionedHashes = [new byte[32]];
         Transaction tx = new()
@@ -65,12 +124,21 @@ public class LightTxDecoderTests
             PoolIndex = 11,
             Timestamp = 42,
             NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], ProofVersion.V1),
+            NonceKeys = nonceKeys,
         };
 
         if (type == TxType.FrameTx)
         {
             tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)];
             tx.FrameSignatures = [];
+        }
+
+        if (deadline is not null)
+        {
+            // An expiry verifier frame carries a deadline only where the spec permits it: at the head.
+            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
+            BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
+            tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData), .. tx.Frames!];
         }
 
         tx.Hash = tx.CalculateHash();

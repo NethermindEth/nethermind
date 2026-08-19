@@ -119,12 +119,14 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
-    [Test]
-    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation()
+    // SLOTNUM is the one block value guaranteed to differ between the simulated head and any including block.
+    [TestCase(Instruction.TIMESTAMP)]
+    [TestCase(Instruction.SLOTNUM)]
+    public void Simulate_PrefixUsesBannedOpcode_RecordsViolation(Instruction banned)
     {
         // Banned outside the expiry verifier frame, even though the frame goes on to APPROVE.
         byte[] code = Prepare.EvmCode
-            .Op(Instruction.TIMESTAMP).Op(Instruction.POP)
+            .Op(banned).Op(Instruction.POP)
             .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         DeployContract(Sender, code, 1.Ether);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
@@ -132,6 +134,45 @@ public class FrameTxValidationPrefixSimulationTests
         (_, FrameTxValidationTracer tracer) = Simulate(tx);
 
         Assert.That(tracer.Violated, Is.True);
+    }
+
+    [TestCase(Instruction.ORIGIN)]
+    [TestCase(Instruction.BLOBHASH)]
+    [TestCase(Instruction.TLOAD)]
+    public void Simulate_PrefixUsesRelaxedOpcode_ResolvesPayer(Instruction opcode)
+    {
+        // Each reads the frame or the transaction payload rather than the block environment, so none makes
+        // the prefix depend on state that could differ between simulation and inclusion.
+        byte[] probe = Prepare.EvmCode.PushData(0).Op(opcode).Op(Instruction.POP).Done;
+        DeployContract(Sender, [.. probe, .. ApproveCode(TxFrame.ApproveExecutionAndPayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+        }
+    }
+
+    [Test]
+    public void Simulate_PrefixUsesAnUndefinedOpcode_RejectedByTheBadInstructionHalt()
+    {
+        // 0xF6 has no Instruction member on any fork we ship, so the EVM's undefined-opcode halt fails the
+        // prefix on its own and the tracer needs no rule of its own for it.
+        byte[] code = [0xf6, .. ApproveCode(TxFrame.ApproveExecutionAndPayment)];
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(tracer.Payer, Is.Null);
+        }
     }
 
     [Test]

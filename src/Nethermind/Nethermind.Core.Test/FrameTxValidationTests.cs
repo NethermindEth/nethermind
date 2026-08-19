@@ -308,8 +308,8 @@ public class FrameTxValidationTests
         byte[] data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
         Transaction tx = CreateValidFrameTx(t => t.Frames =
         [
-            SelfVerifyFrame(),
             new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
+            SelfVerifyFrame(),
         ]);
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
@@ -317,6 +317,40 @@ public class FrameTxValidationTests
         Assert.That(found, Is.True);
         Assert.That(deadline, Is.EqualTo(expected));
     }
+
+    // The deadline is read from the leading frame alone, so a frame the placement rule bars carries none.
+    [Test]
+    public void TryGetExpiryDeadline_ExpiryFrameBehindTheLeadingFrame_ReturnsFalse()
+    {
+        byte[] data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        Transaction tx = CreateValidFrameTx(t => t.Frames =
+        [
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
+        ]);
+
+        bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);
+
+        Assert.That(found, Is.False);
+        Assert.That(deadline, Is.EqualTo(0UL));
+    }
+
+    [TestCase(0, false, TestName = "a leading expiry frame is correctly placed")]
+    [TestCase(1, true, TestName = "an expiry frame behind the leading frame is misplaced")]
+    [TestCase(2, true, TestName = "an expiry frame at the tail is misplaced")]
+    public void HasMisplacedExpiryFrame_TracksTheExpiryFramePosition(int expiryIndex, bool expected)
+    {
+        List<TxFrame> frames = [SelfVerifyFrame(), DefaultModeFrame()];
+        frames.Insert(expiryIndex, ExpiryFrame());
+
+        Transaction tx = CreateValidFrameTx(t => t.Frames = [.. frames]);
+
+        Assert.That(FrameTxValidation.HasMisplacedExpiryFrame(tx), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void HasMisplacedExpiryFrame_WithoutAnExpiryFrame_IsFalse() =>
+        Assert.That(FrameTxValidation.HasMisplacedExpiryFrame(CreateValidFrameTx(static _ => { })), Is.False);
 
     [Test]
     public void TryGetExpiryDeadline_WithoutExpiryFrame_ReturnsFalse()

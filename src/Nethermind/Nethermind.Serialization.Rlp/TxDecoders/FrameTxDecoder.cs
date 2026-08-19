@@ -32,7 +32,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private static readonly RlpLimit FramesCountLimit = RlpLimit.For<Transaction>(Eip8141Constants.MaxFrames, nameof(Transaction.Frames));
     private static readonly RlpLimit SignaturesCountLimit = RlpLimit.For<Transaction>(SignaturesDecodeCap, nameof(Transaction.FrameSignatures));
-    private static readonly RlpLimit NonceKeysCountLimit = RlpLimit.For<Transaction>(Eip8250Constants.MaxNonceKeys, nameof(Transaction.NonceKeys));
     // EIP8141-GAP: the spec does not bound blob_versioned_hashes; mirrors the blob tx decode cap.
     private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(ShardBlobNetworkWrapperRlp.BlobCountLimit, nameof(Transaction.BlobVersionedHashes));
 
@@ -128,7 +127,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64 like every other
         // Nethermind transaction type (codebase-wide ChainId width).
         transaction.ChainId = decoderContext.DecodeULong();
-        transaction.NonceKeys = decoderContext.IsSequenceNext() ? DecodeNonceKeys(ref decoderContext) : null;
+        transaction.NonceKeys = decoderContext.IsSequenceNext() ? FrameTxNonceCalldata.DecodeKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();
         transaction.Frames = decoderContext.DecodeArray(TxFrameDecoder.Instance, limit: FramesCountLimit);
@@ -254,30 +253,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrailingSignature() => throw new RlpException("frame transaction must not carry a trailing signature");
 
-    /// <summary>Reads <c>nonce_keys</c> as a list of integers.</summary>
-    /// <remarks>
-    /// Not <c>DecodeArray</c>: it substitutes the default for an empty-list element, turning the wire
-    /// bytes <c>c1 c0</c> into the key set <c>[0]</c> instead of rejecting them.
-    /// </remarks>
-    private static UInt256[] DecodeNonceKeys(ref RlpReader decoderContext)
-    {
-        int contentLength = decoderContext.ReadSequenceLength();
-        int end = decoderContext.Position + contentLength;
-        Span<UInt256> buffer = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
-        int count = 0;
-        while (decoderContext.Position < end)
-        {
-            if (count == buffer.Length)
-            {
-                throw new RlpLimitException($"Exceeded {NonceKeysCountLimit.CollectionExpression}");
-            }
-
-            buffer[count++] = decoderContext.DecodeUInt256();
-        }
-
-        return buffer[..count].ToArray();
-    }
-
     [DoesNotReturn, StackTraceHidden]
     private static Address ThrowMissingSender() => throw new RlpException("frame transaction sender must be a 20-byte address");
 }
@@ -292,27 +267,63 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 /// </remarks>
 public static class FrameTxNonceCalldata
 {
+    private static readonly RlpLimit KeysCountLimit = RlpLimit.For<Transaction>(Eip8250Constants.MaxNonceKeys, nameof(Transaction.NonceKeys));
+
     public static void Encode<TWriter>(Transaction transaction, ref TWriter writer)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         if (transaction.NonceKeys is { } nonceKeys)
         {
-            writer.StartSequence(KeysContentLength(nonceKeys));
-            foreach (UInt256 nonceKey in nonceKeys)
-            {
-                writer.Encode(nonceKey);
-            }
+            EncodeKeys(nonceKeys, ref writer);
         }
 
         writer.Encode(transaction.Nonce);
     }
 
+    /// <summary>Writes <c>nonce_keys</c> as a list of integers.</summary>
+    public static void EncodeKeys<TWriter>(UInt256[] nonceKeys, ref TWriter writer)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    {
+        writer.StartSequence(KeysContentLength(nonceKeys));
+        foreach (UInt256 nonceKey in nonceKeys)
+        {
+            writer.Encode(nonceKey);
+        }
+    }
+
+    /// <summary>Reads <c>nonce_keys</c> as a list of integers.</summary>
+    /// <remarks>
+    /// Not <c>DecodeArray</c>: it substitutes the default for an empty-list element, turning the wire
+    /// bytes <c>c1 c0</c> into the key set <c>[0]</c> instead of rejecting them.
+    /// </remarks>
+    public static UInt256[] DecodeKeys(ref RlpReader decoderContext)
+    {
+        int contentLength = decoderContext.ReadSequenceLength();
+        int end = decoderContext.Position + contentLength;
+        Span<UInt256> buffer = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
+        int count = 0;
+        while (decoderContext.Position < end)
+        {
+            if (count == buffer.Length)
+            {
+                throw new RlpLimitException($"Exceeded {KeysCountLimit.CollectionExpression}");
+            }
+
+            buffer[count++] = decoderContext.DecodeUInt256();
+        }
+
+        return buffer[..count].ToArray();
+    }
+
     /// <summary>Length in bytes of what <see cref="Encode{TWriter}"/> writes for <paramref name="transaction"/>.</summary>
     public static int Length(Transaction transaction) =>
-        (transaction.NonceKeys is { } nonceKeys ? Rlp.LengthOfSequence(KeysContentLength(nonceKeys)) : 0)
+        (transaction.NonceKeys is { } nonceKeys ? KeysLength(nonceKeys) : 0)
         + Rlp.LengthOf(transaction.Nonce);
 
-    internal static int KeysContentLength(UInt256[] nonceKeys)
+    /// <summary>Length in bytes of what <see cref="EncodeKeys{TWriter}"/> writes for <paramref name="nonceKeys"/>.</summary>
+    public static int KeysLength(UInt256[] nonceKeys) => Rlp.LengthOfSequence(KeysContentLength(nonceKeys));
+
+    private static int KeysContentLength(UInt256[] nonceKeys)
     {
         int contentLength = 0;
         foreach (UInt256 nonceKey in nonceKeys)

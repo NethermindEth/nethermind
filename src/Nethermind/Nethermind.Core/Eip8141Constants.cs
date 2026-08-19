@@ -20,8 +20,9 @@ public static class Eip8141Constants
     public const ulong P256VerificationGasCost = 6_700;
     public const int ExpiryDataLength = 8;
 
-    // EIP-8141: consensus cap on validation-prefix gas, used by the prefix execution/simulation path.
-    public const ulong MaxVerifyGas = 100_000;
+    // Bounds mempool validation work only, never block execution; ITxPoolConfig.FrameTxMaxVerifyGas is the
+    // operator-configurable mirror.
+    public const ulong MaxVerifyGas = 300_000;
 
     /// <summary>
     /// Public-mempool cap on the pending frame transactions one non-canonical paymaster may sponsor.
@@ -37,9 +38,5 @@ public static class Eip8141Constants
     /// </summary>
     public static readonly byte[] ExpiryVerifierCode = Bytes.FromHexString("0x60083614600a575f5ffd5b5f3560c01c4211601657005b5f5ffd");
 
-    /// <summary>
-    /// Keccak of <see cref="ExpiryVerifierCode"/>. The <c>TIMESTAMP</c> validation-prefix exemption
-    /// applies only to a frame whose <see cref="ExpiryVerifierAddress"/> code hash matches this value.
-    /// </summary>
     public static readonly ValueHash256 ExpiryVerifierCodeHash = ValueKeccak.Compute(ExpiryVerifierCode);
 }

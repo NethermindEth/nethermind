@@ -18,8 +18,6 @@ namespace Nethermind.Evm.Tracing;
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
     : TxTracer, IFrameTxReceiptTracer
 {
-    private const byte SetDelegateOpcode = 0xf6; // EIP-7819; not modelled as an Instruction on all forks.
-
     // Stack slot holding the current CALL*/EXTCODE* target, or -1. Set in StartOperation and consumed in
     // SetOperationStack for the same instruction, as the stack operands aren't available any earlier.
     private int _targetStackIndex = -1;
@@ -29,13 +27,11 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
     public override bool IsTracingStack => true;
     public override bool IsTracingReceipt => true;
 
-    /// <summary>True once a trace/opcode rule was violated; the transaction must then be rejected.</summary>
     public bool Violated { get; private set; }
 
-    /// <summary>Human-readable reason for the first recorded violation.</summary>
+    /// <summary>The first violation recorded; later ones do not overwrite it.</summary>
     public string? ViolationReason { get; private set; }
 
-    /// <summary>The payer resolved by the simulated prefix, or <c>null</c> if it never set one.</summary>
     public Address? Payer { get; private set; }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
@@ -43,17 +39,11 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
         _targetStackIndex = -1;
         if (Violated) return;
 
-        if ((byte)opcode == SetDelegateOpcode)
-        {
-            Violate("banned opcode SETDELEGATE in validation prefix");
-            return;
-        }
-
         switch (opcode)
         {
             case Instruction.GAS:
-                // Permitted only in the gas-forwarding idiom, immediately followed by a *CALL (L836). GAS
-                // takes no immediate operand, so the next opcode is the byte at pc + 1.
+                // Permitted only in the gas-forwarding idiom, immediately followed by a *CALL. GAS takes no
+                // immediate operand, so the next opcode is the byte at pc + 1.
                 ReadOnlySpan<byte> code = env.CodeInfo.CodeSpan;
                 int next = pc + 1;
                 if (next >= code.Length || !IsCall((Instruction)code[next]))
@@ -62,7 +52,7 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
                 }
                 break;
             case Instruction.TIMESTAMP:
-                // Permitted only inside the canonical expiry verifier: address and code hash must match (L788).
+                // Permitted only inside the canonical expiry verifier: address and code hash must match.
                 if (env.ExecutingAccount != expiryVerifier || state.GetCodeHash(expiryVerifier) != Eip8141Constants.ExpiryVerifierCodeHash)
                 {
                     Violate("banned opcode TIMESTAMP in validation prefix");
@@ -79,7 +69,6 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
             case Instruction.EXTCODECOPY:
                 _targetStackIndex = 0; // [address, ...]
                 break;
-            case Instruction.ORIGIN:
             case Instruction.GASPRICE:
             case Instruction.BLOCKHASH:
             case Instruction.COINBASE:
@@ -87,8 +76,8 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
             case Instruction.PREVRANDAO:
             case Instruction.GASLIMIT:
             case Instruction.BASEFEE:
-            case Instruction.BLOBHASH:
             case Instruction.BLOBBASEFEE:
+            case Instruction.SLOTNUM:
             case Instruction.CREATE:
             case Instruction.CREATE2:
             case Instruction.INVALID:
@@ -96,8 +85,6 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
             case Instruction.BALANCE:
             case Instruction.SELFBALANCE:
             case Instruction.SSTORE:
-            case Instruction.TLOAD:
-            case Instruction.TSTORE:
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
         }
@@ -121,7 +108,7 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
 
     public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        // SLOAD may read only tx.sender storage, including transitively via CALL*/DELEGATECALL (L851).
+        // SLOAD may read only tx.sender storage, including transitively via CALL*/DELEGATECALL.
         if (!Violated && address != sender) Violate("SLOAD outside tx.sender storage");
     }
 
@@ -135,7 +122,7 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
     }
 
     /// <summary>
-    /// A CALL*/EXTCODE* target is disallowed unless it is an undelegated existing contract (spec L816);
+    /// A CALL*/EXTCODE* target is disallowed unless it is an undelegated existing contract or a precompile;
     /// tx.sender is exempt because its code hash and nonce are already tracked dependencies.
     /// </summary>
     private bool IsForbiddenCallTarget(Address target)

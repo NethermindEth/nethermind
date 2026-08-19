@@ -30,6 +30,11 @@ public class LightTransaction : Transaction
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
         ProofVersion = fullTx.GetProofVersion();
+        // The pool holds this record, not the full tx, so its Removed event is what releases the payer's reservation.
+        PayerAddress = fullTx.PayerAddress;
+        // Without the keys the pool reads Nonce as an account nonce, and EIP-8250 nonce_seq is not one.
+        NonceKeys = fullTx.NonceKeys;
+        PersistedExpiryDeadline = FrameTxValidation.TryGetExpiryDeadline(fullTx, out ulong deadline) ? deadline : null;
         _size = fullTx.GetLength();
     }
 
@@ -53,7 +58,7 @@ public class LightTransaction : Transaction
     {
     }
 
-    // Declared in the order LightTxDecoder reads them: the two optional trailing fields come last.
+    // Declared in the order LightTxDecoder reads them: the optional trailing fields come last.
     public LightTransaction(
         UInt256 timestamp,
         Address sender,
@@ -68,7 +73,9 @@ public class LightTransaction : Transaction
         ulong poolIndex,
         int size,
         ProofVersion proofVersion,
-        TxType type)
+        TxType type,
+        ulong? expiryDeadline = null,
+        UInt256[]? nonceKeys = null)
     {
         Type = type;
         Hash = hash;
@@ -83,10 +90,15 @@ public class LightTransaction : Transaction
         Timestamp = timestamp;
         PoolIndex = poolIndex;
         ProofVersion = proofVersion;
+        PersistedExpiryDeadline = expiryDeadline;
+        NonceKeys = nonceKeys;
         _size = size;
     }
 
     public ProofVersion? ProofVersion { get; set; }
+
+    /// <inheritdoc/>
+    public override ulong? PersistedExpiryDeadline { get; }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
 }

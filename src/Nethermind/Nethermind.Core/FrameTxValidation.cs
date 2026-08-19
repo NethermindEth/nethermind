@@ -280,6 +280,63 @@ public static class FrameTxValidation
     }
 
     /// <summary>
+    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame behind its recognized
+    /// validation prefix, which EIP-8141 bars from the public mempool.
+    /// </summary>
+    /// <remarks>
+    /// A public-mempool rule, not a validity rule: such a transaction stays consensus-valid. A VERIFY frame
+    /// that reverts invalidates the whole transaction, so one sitting past the prefix does so on state the
+    /// pool never validated. Judged against the same prefix grammar <see cref="ValidationWorkGas"/> prices
+    /// admission with, so a layout matching none of the recognized prefixes has no boundary to sit behind
+    /// and is left to the rules that reject it on their own terms. That leaves the equivalent hole open for
+    /// unrecognized layouts until the prefix structure itself is enforced.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to inspect.</param>
+    public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        if (RecognizedPrefixLength(frames, transaction.SenderAddress) is not int prefixLength)
+        {
+            return false;
+        }
+
+        for (int i = prefixLength; i < frames.Length; i++)
+        {
+            if (frames[i].Mode == TxFrame.ModeVerify)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// True if <paramref name="transaction"/> carries an expiry-verifier frame anywhere but at the head of
+    /// its frame list, the only placement EIP-8141 permits.
+    /// </summary>
+    /// <remarks>
+    /// A public-mempool rule, not a validity rule: an expiry frame's shape and uniqueness are validated but
+    /// never its position, so such a transaction stays consensus-valid. The pool needs the placement because
+    /// it reads the deadline from the leading frame alone (<see cref="TryGetExpiryDeadline"/>); a misplaced
+    /// frame would otherwise carry a deadline the expiry sweep can never see.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to inspect.</param>
+    public static bool HasMisplacedExpiryFrame(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        for (int i = 1; i < frames.Length; i++)
+        {
+            if (IsExpiryVerifyFrame(frames[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// The paymaster a frame transaction pays through: the explicit target of the <c>pay</c> frame ending
     /// its recognized validation prefix, or <c>null</c> when it pays without one.
     /// </summary>
@@ -487,16 +544,18 @@ public static class FrameTxValidation
     }
 
     /// <summary>
-    /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, if present.
+    /// Reads the EIP-8141 expiry deadline (Unix seconds) from the expiry-verifier VERIFY frame, or from
+    /// <see cref="Transaction.PersistedExpiryDeadline"/> for a transaction reloaded without its frames.
     /// </summary>
     /// <remarks>
     /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; a tx whose deadline has passed can
     /// never be included and is dropped from the mempool (ethereum/EIPs#12007, "Revalidation"). Total on any input:
-    /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences.
+    /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences. Only the leading frame is read —
+    /// the sole placement EIP-8141 permits, and the one <see cref="HasMisplacedExpiryFrame"/> keeps the pool to.
     /// </remarks>
     /// <param name="transaction">The frame transaction to inspect.</param>
-    /// <param name="deadline">The expiry deadline in Unix seconds when an expiry-verifier frame is present.</param>
-    /// <returns><c>true</c> if an expiry-verifier frame is present and its deadline was read; otherwise <c>false</c>.</returns>
+    /// <param name="deadline">The expiry deadline in Unix seconds when the transaction carries one.</param>
+    /// <returns><c>true</c> if a deadline was read; otherwise <c>false</c>.</returns>
     public static bool TryGetExpiryDeadline(Transaction transaction, out ulong deadline)
     {
         deadline = 0;
@@ -504,18 +563,17 @@ public static class FrameTxValidation
         TxFrame[]? frames = transaction.Frames;
         if (frames is null)
         {
+            // A reloaded light record has no frames; its deadline comes back from storage instead.
+            deadline = transaction.PersistedExpiryDeadline.GetValueOrDefault();
+            return transaction.PersistedExpiryDeadline is not null;
+        }
+
+        if (frames.Length == 0 || !IsExpiryVerifyFrame(frames[0]))
+        {
             return false;
         }
 
-        for (int i = 0; i < frames.Length; i++)
-        {
-            if (IsExpiryVerifyFrame(frames[i]))
-            {
-                deadline = BinaryPrimitives.ReadUInt64BigEndian(frames[i].Data.Span);
-                return true;
-            }
-        }
-
-        return false;
+        deadline = BinaryPrimitives.ReadUInt64BigEndian(frames[0].Data.Span);
+        return true;
     }
 }

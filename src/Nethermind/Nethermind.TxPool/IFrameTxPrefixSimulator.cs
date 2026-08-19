@@ -10,29 +10,39 @@ namespace Nethermind.TxPool;
 /// Runs the validation prefix of an EIP-8141 frame transaction whose payer the native resolver could not
 /// decide (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>) in a bounded, read-only EVM at chain head.
 /// </summary>
-/// <remarks>
-/// Optional in the pool: with no simulator wired, such transactions are admitted with an unresolved payer
-/// and therefore without an exposure reservation. https://eips.ethereum.org/EIPS/eip-8141
-/// </remarks>
+/// <remarks>Optional in the pool: with no simulator wired, such transactions are admitted with an
+/// unresolved payer and therefore without an exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
-    /// <summary>Simulates <paramref name="tx"/>'s validation prefix against the current head.</summary>
     /// <param name="token">Honored at entry only; a started simulation runs to its <c>MAX_VERIFY_GAS</c> bound.</param>
     FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
 }
 
-/// <summary>Outcome of <see cref="IFrameTxPrefixSimulator.Simulate"/>.</summary>
-public readonly struct FrameTxSimulationResult(bool accepted, Address? payer, string? rejectionReason)
+public enum FrameTxSimulationOutcome
 {
-    /// <summary>True when the prefix validated and set a payer within the gas bound.</summary>
-    public bool Accepted { get; } = accepted;
+    /// <summary>A node-side fault stopped the simulation before it could judge the transaction.</summary>
+    /// <remarks>The zero value, so a default-constructed result defers rather than recording a null payer.</remarks>
+    Undecided,
 
-    /// <summary>The resolved fee-payer; non-null only when <see cref="Accepted"/> is true.</summary>
+    /// <summary>The validation prefix ran to a resolved payer.</summary>
+    Accepted,
+
+    /// <summary>The prefix is invalid, and the failure is attributable to the transaction.</summary>
+    Rejected,
+}
+
+public readonly struct FrameTxSimulationResult(FrameTxSimulationOutcome outcome, Address? payer, string? reason)
+{
+    public FrameTxSimulationOutcome Outcome { get; } = outcome;
+
+    /// <summary>Non-null only when <see cref="Outcome"/> is <see cref="FrameTxSimulationOutcome.Accepted"/>.</summary>
     public Address? Payer { get; } = payer;
 
-    /// <summary>Human-readable rejection reason; null when accepted.</summary>
-    public string? RejectionReason { get; } = rejectionReason;
+    public string? Reason { get; } = reason;
 
-    public static FrameTxSimulationResult Accept(Address payer) => new(true, payer, null);
-    public static FrameTxSimulationResult Reject(string reason) => new(false, null, reason);
+    public static FrameTxSimulationResult Accept(Address payer) => new(FrameTxSimulationOutcome.Accepted, payer, null);
+    public static FrameTxSimulationResult Reject(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason);
+
+    /// <summary>The node, not the transaction, is at fault, so the caller must not turn this into a rejection.</summary>
+    public static FrameTxSimulationResult Undecided(string reason) => new(FrameTxSimulationOutcome.Undecided, null, reason);
 }

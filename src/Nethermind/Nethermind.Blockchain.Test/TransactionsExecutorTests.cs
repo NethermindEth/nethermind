@@ -494,12 +494,9 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void CanAddTransaction_skips_blob_carrying_frame_transaction()
+        public void CanAddTransaction_admits_blob_carrying_frame_transaction()
         {
-            // EIP8141: blob-carrying frame txs are routed to the blob pool and metered against the block
-            // blob budget by the blob-selection path, so they do not reach this normal-pool picker in the
-            // standard flow. The picker still excludes any that arrive here (defense in depth): without a
-            // resolvable EIP-7594 sidecar they cannot be produced with a complete blobs bundle.
+            // The picker no longer skips blob carriers; the sidecar guard is ResolveBlob, upstream of it.
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
@@ -513,6 +510,9 @@ namespace Nethermind.Blockchain.Test
                 .WithNonce(0)
                 .WithGasLimit(GasCostOf.Transaction)
                 .TestObject;
+            // The picker prices a frame tx through its frames, so it needs at least one to be priceable.
+            frameBlobTx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: GasCostOf.Transaction, UInt256.Zero, default)];
+            frameBlobTx.FrameSignatures = [];
 
             Block block = Build.A.Block
                 .WithNumber(1)
@@ -524,8 +524,7 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor.AddingTxEventArgs args =
                 picker.CanAddTransaction(block, frameBlobTx, new HashSet<Transaction>(), stateProvider);
 
-            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
-            Assert.That(args.Reason, Does.Contain("frame"));
+            Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
         }
 
         public enum FramePrefix { Approves, NeverApproves, BelowBaseFee }
