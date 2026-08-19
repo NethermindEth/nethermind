@@ -245,14 +245,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
         {
-            true => UpdateGas(ref gas, ColdAccountAccessCost(spec)),
+            true => UpdateGas(ref gas, GetColdAccountAccessCost(spec)),
             false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
             false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
         };
     }
 
+    /// <inheritdoc cref="IGasPolicy{TSelf}.GetColdAccountAccessCost"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ColdAccountAccessCost(IReleaseSpec spec) =>
+    public static ulong GetColdAccountAccessCost(IReleaseSpec spec) =>
         spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
@@ -682,7 +683,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
         if (tx.SenderAddress == tx.To) return 0;
 
-        ulong cost = ColdAccountAccessCost(spec);
+        ulong cost = GetColdAccountAccessCost(spec);
         if (hasValue)
             cost += GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
 
