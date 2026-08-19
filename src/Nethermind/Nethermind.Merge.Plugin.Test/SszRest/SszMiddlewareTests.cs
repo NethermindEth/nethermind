@@ -78,7 +78,16 @@ public class SszMiddlewareTests
     {
         RequestDelegate passthrough = next ?? (_ => Task.CompletedTask);
 
-        ISszEndpointHandler[] handlers =
+        return new SszMiddleware(
+            passthrough,
+            _urlCollection,
+            _auth,
+            BuildHandlers(),
+            _processExitSource,
+            LimboLogs.Instance);
+    }
+
+    private ISszEndpointHandler[] BuildHandlers() =>
         [
             new NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>(_engineModule),
             new NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>(_engineModule),
@@ -117,15 +126,40 @@ public class SszMiddlewareTests
             new CapabilitiesSszHandler(_specProvider),
 
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
+            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
         ];
 
-        return new SszMiddleware(
-            passthrough,
-            _urlCollection,
-            _auth,
-            handlers,
-            _processExitSource,
-            LimboLogs.Instance);
+    // A fork whose spec maps a resource to a method version with no handler registered at that version
+    // routes to nothing — the endpoint is advertised and recognised, but unservable. Nothing else here
+    // catches that, since the handler set is assembled by hand.
+    [Test]
+    public void Every_route_a_fork_resolves_has_a_handler()
+    {
+        ISszEndpointHandler[] handlers = BuildHandlers();
+        (string HttpMethod, string Resource)[] endpoints =
+        [
+            ("POST", SszRestPaths.Payloads),
+            ("POST", SszRestPaths.Forkchoice),
+            ("POST", SszRestPaths.PayloadBodiesByHash),
+            ("POST", SszRestPaths.PayloadWithWitness),
+            ("GET", SszRestPaths.Payloads),
+            ("GET", SszRestPaths.PayloadBodiesByRange),
+            ("GET", SszRestPaths.InclusionList),
+        ];
+
+        List<string> missing = [];
+        foreach (string fork in SszRestPaths.SupportedForksOrdered)
+        {
+            foreach ((string httpMethod, string resource) in endpoints)
+            {
+                int? version = SszRestPaths.MapForkToVersion(fork, resource, httpMethod, out _);
+                if (version is null) continue;
+                if (!handlers.Any(h => h.HttpMethod == httpMethod && h.Resource == resource && h.Version == version))
+                    missing.Add($"{fork}: {httpMethod} {resource} -> v{version}");
+            }
+        }
+
+        Assert.That(missing, Is.Empty);
     }
 
     private static DefaultHttpContext MakeBaseContext(string method, string path, int port)
