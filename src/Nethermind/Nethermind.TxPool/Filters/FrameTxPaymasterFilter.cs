@@ -37,10 +37,13 @@ internal sealed class FrameTxPaymasterFilter(
         }
 
         // A replacement takes over the slot of the tx it displaces, so the pending set does not grow
-        // (EIP-8141 decrements on "eviction, replacement, inclusion, or reorg removal"). No slot is held
-        // at zero, so skip the bucket walk and its pool lock there.
+        // (EIP-8141 decrements on "eviction, replacement, inclusion, or reorg removal"). Below the cap the
+        // discount cannot change the verdict, so skip the bucket walk and its pool lock there.
         int held = paymasters.GetPendingCount(paymaster);
-        int pending = held == 0 || !ReplacesPendingTxOfSamePaymaster(tx, paymaster) ? held : held - 1;
+        int pending = held < Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
+            || !ReplacesPendingTxOfSamePaymaster(tx, paymaster)
+            ? held
+            : held - 1;
         if (pending >= Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster)
         {
             // Atomic: this filter runs under the pool's head read lock, so paymasters reject concurrently.

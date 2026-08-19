@@ -171,18 +171,23 @@ public class FrameTxPaymasterFilterTests
         state.InsertCode([0x60, 0x00], Paymaster);
 
         Transaction record = new LightTransaction(FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], carriesBlobs: true));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(record.Frames, Is.Null, "the record must be frameless, or this pins nothing");
-            Assert.That(FrameTxValidation.GetPrefixPaymaster(record), Is.EqualTo(Paymaster));
-        }
+        Assert.That(record.Frames, Is.Null, "the record must be frameless, or this pins nothing");
 
         PendingPaymasterCache cache = new();
         cache.Increment(Paymaster);
 
-        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], carriesBlobs: true));
+        // The bump displaces the record, so the discount has to resolve the record's paymaster; a later
+        // nonce displaces nothing and must still be capped.
+        Transaction bump = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], gasPrice: 2, carriesBlobs: true);
+        AcceptTxResult replacement = Accept(state, cache, bump, Pool(blobs: true, record));
+        AcceptTxResult second = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], nonce: 1, carriesBlobs: true), Pool(blobs: true, record));
 
-        Assert.That(result, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameTxValidation.GetPrefixPaymaster(record), Is.EqualTo(Paymaster));
+            Assert.That(replacement, Is.EqualTo(AcceptTxResult.Accepted), "the displaced record frees its sponsor's slot");
+            Assert.That(second, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+        }
     }
 
     private static IEnumerable<TestCaseData> ReplacementCases()
