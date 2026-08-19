@@ -7,6 +7,13 @@ interval="${INTERVAL}"
 name_filter="${NAME_FILTER}"
 counter=0
 
+# Lower bound for run discovery: a run older than this cannot be the one the caller just dispatched.
+# One minute of slack covers clock skew against GitHub and the gap between the dispatch step and this
+# one; every caller waits immediately after dispatching. created_at is ISO 8601, so string comparison
+# orders correctly.
+discover_since=$(date -u -d '-1 minute' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+  || date -u -v-1M +"%Y-%m-%dT%H:%M:%SZ")
+
 # Check if REF has the prefix "refs/heads/" and append it if not
 if [[ ! "$REF" =~ ^refs/heads/ ]]; then
   REF="refs/heads/$REF"
@@ -40,13 +47,20 @@ else
       echo "❌ Invalid input provided (organization, repository, or workflow ID). Please check your inputs."
       exit 1
     fi
-    # Match queued runs too, not just in_progress: a run dispatched moments ago is usually still
-    # queued, and skipping it makes this pick up an OLDER concurrent run of the same workflow and
-    # branch instead — reporting success for a build that was never requested. Highest id = newest.
+    # Two things kept this from finding the run the caller had just dispatched, and made it select an
+    # OLDER concurrent run of the same workflow and branch instead — reporting success for a build that
+    # was never requested:
+    #   1. only `in_progress` matched, but a fresh run is still requested/pending/queued (and `waiting`
+    #      when the target workflow hits an environment protection rule), so `!= "completed"` is used
+    #      rather than enumerating the non-terminal set;
+    #   2. a run is not listed the instant it is dispatched, so on the first poll the newest entry can
+    #      still be somebody else's older run.
+    # Matching every non-terminal status fixes (1). The created_at floor fixes (2): an older run cannot
+    # match at all, so the loop keeps polling until the intended one appears instead of latching on.
     # Callers that know their run id should pass RUN_ID and skip this discovery entirely.
     run_id=$(echo "$response" | \
-      jq -r --arg ref "$(echo "$REF" | sed 's/refs\/heads\///')" --arg expected_name "$name_filter" \
-      '.workflow_runs[] | select(.head_branch == $ref and (.status == "queued" or .status == "in_progress") and (if $expected_name == "" then true else .name | test($expected_name) end)) | .id' | sort -rn | head -n 1)
+      jq -r --arg ref "$(echo "$REF" | sed 's/refs\/heads\///')" --arg expected_name "$name_filter" --arg since "$discover_since" \
+      '.workflow_runs[] | select(.head_branch == $ref and .status != "completed" and .created_at >= $since and (if $expected_name == "" then true else .name | test($expected_name) end)) | .id' | sort -rn | head -n 1)
     if [ -n "$run_id" ]; then
       echo "🎉 Workflow triggered! Run ID: $run_id"
       break

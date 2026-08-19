@@ -473,6 +473,14 @@ jobs:
           NAME_FILTER: Publish Docker image
           REF: ${{ needs.resolve.outputs.branch }}
         run: |
+          # An empty runId would silently fall back to run discovery - the exact false green this
+          # guards against. benc-uk/workflow-dispatch returns without setting outputs (and without
+          # failing) when the target workflow is disabled, and @v1 is a moving tag that could drop the
+          # output, so make the bypass impossible rather than unlikely.
+          if [ -z "${RUN_ID}" ]; then
+            echo "::error::The dispatch step produced no runId; refusing to fall back to run discovery."
+            exit 1
+          fi
           chmod +x scripts/wait-for-workflow.sh
           ./scripts/wait-for-workflow.sh
 
