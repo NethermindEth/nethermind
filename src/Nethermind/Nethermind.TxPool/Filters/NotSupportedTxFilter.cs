@@ -29,9 +29,9 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
         // Still missing before any public activation: canonical-paymaster reservation, the failed-APPROVE
         // replay bound, dependency-set revalidation/eviction ordering, payer-exposure accounting beyond
         // natively-resolved payers (under-reserved until the shared max_cost helper) and for blob-pool
-        // records restored from disk, which carry neither payer nor paymaster because LightTxDecoder cannot
-        // tell a second optional trailing scalar from the expiry deadline, re-counting the cap when a pay
-        // target gains code, and reorg re-admission beyond one tx per sponsor.
+        // records restored from disk, which carry neither payer nor paymaster until LightTxDecoder encodes
+        // them as lists, the way NonceKeys already is; re-counting the cap when a pay target gains code;
+        // and reorg re-admission beyond one tx per sponsor.
         // MalformedTxFilter still enforces static well-formedness downstream.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
