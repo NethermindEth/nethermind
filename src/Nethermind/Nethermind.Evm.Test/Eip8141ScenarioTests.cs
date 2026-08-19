@@ -629,6 +629,96 @@ public class Eip8141ScenarioTests
             "the first probe must pay cold access — the reverted frame's touch was rolled back");
     }
 
+    // Spec State-gas attribution and refills: a later frame that reverses a slot created by an
+    // earlier frame reduces that earlier frame's gas_used.state, not the reversing frame's.
+    [Test]
+    public void CrossFrameReversal_ReducesTheCreatingFramesStateGas_NotTheReversingFrames()
+    {
+        Address slotOwner = TestItem.AddressD;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(slotOwner, ToggleSlotZeroCode());
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, slotOwner, 200_000, 200_000, UInt256.Zero, default),
+            SenderFrame(slotOwner));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.Zero,
+            "the creating frame's state gas is refunded to it once the later frame reverses the slot");
+        Assert.That(receipt.FrameReceipts![2].StateGasUsed, Is.Zero,
+            "the reversing frame is not credited state gas it never charged");
+        AssertStorage(slotOwner, 0, 0, "the reversing frame clears the slot");
+    }
+
+    // Spec State-gas attribution and refills, frame revert/halt: a reverted frame's refill to an
+    // earlier frame's receipt is undone with its state.
+    [Test]
+    public void CrossFrameReversal_InAFrameThatReverts_LeavesTheCreatingFramesStateGasIntact()
+    {
+        Address slotOwner = TestItem.AddressD;
+        Address reverter = TestItem.AddressE;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(slotOwner, ToggleSlotZeroCode());
+        DeployContract(reverter, Prepare.EvmCode
+            .Call(slotOwner, 200_000)
+            .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, slotOwner, 200_000, 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, reverter, 400_000, 0, UInt256.Zero, default));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
+        {
+            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
+        }));
+        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
+            "a reverted frame's refill to the creating frame is undone");
+        AssertStorage(slotOwner, 0, 1, "the reverted frame's clear is rolled back");
+    }
+
+    // Spec State-gas attribution and refills, journaled at call boundaries: a reversal made inside an
+    // inner call that then reverts must not reduce the creating frame's receipt, even when the
+    // enclosing frame succeeds.
+    [Test]
+    public void CrossFrameReversal_InAnInnerCallThatReverts_LeavesTheCreatingFramesStateGasIntact()
+    {
+        Address slotOwner = TestItem.AddressD;
+        Address innerReverter = TestItem.AddressE;
+        Address outerCaller = TestItem.AddressF;
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(slotOwner, ToggleSlotZeroCode());
+        DeployContract(innerReverter, Prepare.EvmCode
+            .Call(slotOwner, 200_000)
+            .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(outerCaller, Prepare.EvmCode
+            .Call(innerReverter, 300_000).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeSender, 0, slotOwner, 200_000, 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, outerCaller, 500_000, 0, UInt256.Zero, default));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+        Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
+            "an inner-call reversal that is itself reverted must not reduce the creating frame's state gas");
+        AssertStorage(slotOwner, 0, 1, "the inner-call reversal is rolled back");
+    }
+
+    // Sets slot 0 to the complement of its current value: creates the slot from clean on the first
+    // frame, reverses it back to zero on the next.
+    private static byte[] ToggleSlotZeroCode() =>
+        Prepare.EvmCode
+            .PushData(0).Op(Instruction.SLOAD).Op(Instruction.ISZERO)
+            .PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+
     // A block mixing a regular transaction with a frame transaction: cumulative gas chains across
     // the type boundary and the frame-aware receipts root computes.
     // The regular transfer targets a fresh account, so under the EIP-8037/8038 state-gas repricing
