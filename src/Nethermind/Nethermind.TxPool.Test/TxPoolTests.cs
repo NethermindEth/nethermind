@@ -2568,6 +2568,41 @@ namespace Nethermind.TxPool.Test
         private const ulong AccountNonceUnrelatedToKeyedSequences = 7;
 
         [Test]
+        public void SubmitTx_FrameTransactions_SharingSimulatedPayer_BoundByPayerBalance_ReleasedOnRemoval()
+        {
+            // Distinct senders share one opaque-prefix sponsor, so the exposure gate bounds its summed
+            // pending cost to its balance, and removing a tx releases the reservation.
+            Address sponsor = TestItem.AddressD;
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(sponsor));
+            // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+
+            UInt256 maxCost = (UInt256)1.GWei * 1_000_000;
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult thirdResult = _txPool.SubmitTx(third, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted), "first sponsored frame tx is within the sponsor's balance");
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded), "the summed exposure of both txs exceeds the sponsor's balance");
+                Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx released the reservation");
+            }
+        }
+
+        [Test]
         public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
         {
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
@@ -2598,11 +2633,35 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void Frame_transaction_payer_exposure_counts_pending_nonces_above_the_replaced_one()
+        {
+            // The gate's teeth beyond BalanceTooLowFilter, which sums only nonces below tx.Nonce: here it
+            // admits the bump on its own count while the payer's summed pending cost exceeds the balance.
+            _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
+
+            // Sized off the reservation itself, so a repricing of max_cost moves the balance with it:
+            // 3 pending at fee 3 fit within 10, the bump's 3 undiscounted plus its own 7 do not.
+            SelfPayingFrameTx(nonce: 0, feePerGas: 1).IsOverflowInTxCostAndValue(out UInt256 unitCost);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)10 * unitCost);
+
+            for (ulong nonce = 0; nonce < 3; nonce++)
+            {
+                Assert.That(_txPool.SubmitTx(SelfPayingFrameTx(nonce, feePerGas: 3), TxHandlingOptions.None),
+                    Is.EqualTo(AcceptTxResult.Accepted), $"pending nonce {nonce} is within the payer's balance");
+            }
+
+            // Displacing the nonce-0 tx frees only its 3 of the 9 pending, so the bump is priced at 6 + 7.
+            AcceptTxResult overBound = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 7), TxHandlingOptions.None);
+
+            Assert.That(overBound, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
         /// <summary>A self_verify frame tx the payer resolver settles natively, so the exposure gate sees a payer.</summary>
-        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, bool distinctHash = false)
+        private Transaction SelfPayingFrameTx(ulong nonce, uint feePerGas, bool distinctHash = false, UInt256[] nonceKeys = null)
         {
             Transaction tx = BuildFrameTx(nonce, TestItem.PrivateKeyA.Address, deadline: null,
-                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas);
+                maxPriorityFeePerGas: feePerGas, maxFeePerGas: feePerGas, nonceKeys: nonceKeys);
             // Naming the sender explicitly is still a self_verify frame and prices identically, so this
             // varies the hash without touching any input the reservation is computed from.
             if (distinctHash)
@@ -2648,6 +2707,63 @@ namespace Nethermind.TxPool.Test
             return tx;
         }
 
+        [Test]
+        public void Frame_transaction_payer_exposure_does_not_discount_a_different_keyed_nonce_domain()
+        {
+            // EIP-8250: a same-nonce transaction in another nonce-key domain does not compete, so both stay
+            // pending and the payer owes both. Discounting it would admit exposure beyond the balance.
+            _txPool = CreatePool(null, KeyedNonceSpecProvider());
+
+            SelfPayingFrameTx(nonce: 0, feePerGas: 1).IsOverflowInTxCostAndValue(out UInt256 unitCost);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)4 * unitCost); // fits one at fee 3, not two
+
+            AcceptTxResult first = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 3), TxHandlingOptions.None);
+            AcceptTxResult second = _txPool.SubmitTx(
+                SelfPayingFrameTx(nonce: 0, feePerGas: 3, nonceKeys: [(UInt256)0xbeef]), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(second, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded),
+                    "the keyed transaction joins the pending set rather than displacing the account-domain one");
+            }
+        }
+
+        // An only_verify|pay prefix naming the sponsor: opaque to native resolution, so it is simulated.
+        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey)
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                ChainId = _specProvider.ChainId,
+                Nonce = 0,
+                SenderAddress = senderKey.Address,
+                Frames =
+                [
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+                ],
+                FrameSignatures =
+                [
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: null, default, default),
+                    new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer: sponsorKey.Address, default, default),
+                ],
+                GasLimit = 1_000_000,
+                GasPrice = 1.GWei,
+                DecodedMaxFeePerGas = 1.GWei,
+            };
+            // compute_sig_hash covers each entry's scheme/signer/msg and elides only the raw bytes, so the
+            // signatures are taken with the entries already installed, then their bytes are filled in.
+            ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+            tx.FrameSignatures =
+            [
+                Secp256k1FrameSignature(senderKey, in sigHash, signer: null),
+                Secp256k1FrameSignature(sponsorKey, in sigHash, signer: sponsorKey.Address),
+            ];
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+
         private const ulong KeyedFrameTxGasLimit = 1_000_000;
 
         private static ISpecProvider KeyedNonceSpecProvider() =>
@@ -2671,6 +2787,15 @@ namespace Nethermind.TxPool.Test
             };
             tx.Hash = tx.CalculateHash();
             return tx;
+        }
+
+        private static TxFrameSignature Secp256k1FrameSignature(PrivateKey key, in ValueHash256 sigHash, Address signer)
+        {
+            Signature signature = new Ecdsa().Sign(key, sigHash);
+            byte[] bytes = new byte[TxFrameSignature.Secp256k1SignatureLength];
+            bytes[0] = signature.RecoveryId;
+            signature.Bytes.CopyTo(bytes.AsSpan(1));
+            return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, bytes);
         }
 
         [Test]
@@ -3182,7 +3307,8 @@ namespace Nethermind.TxPool.Test
             IIncomingTxFilter incomingTxFilter = null,
             IBlobTxStorage txStorage = null,
             bool thereIsPriorityContract = false,
-            IEthereumEcdsa ethereumEcdsa = null)
+            IEthereumEcdsa ethereumEcdsa = null,
+            IFrameTxPrefixSimulator frameTxPrefixSimulator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -3206,7 +3332,8 @@ namespace Nethermind.TxPool.Test
                 ShouldGossip.Instance,
                 incomingTxFilter,
                 new HeadTxValidator(),
-                thereIsPriorityContract);
+                thereIsPriorityContract,
+                frameTxPrefixSimulator);
         }
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)

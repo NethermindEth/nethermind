@@ -104,6 +104,7 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="headTxValidator"></param>
+        /// <param name="frameTxPrefixSimulator">Optional EIP-8141 opaque-prefix simulator; unwired on chains without frame transactions.</param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -114,7 +115,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
             [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -213,9 +215,15 @@ namespace Nethermind.TxPool
 
             postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
 
-            // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved, and gate on the
-            // payer straight after, since the gate reads what the resolver recorded.
+            // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved.
             postHashFilters.Add(new FrameTxPayerFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _logger));
+
+            // EIP-8141: runs after FrameTxPayerFilter so the natively-resolved fast path bypasses it.
+            // Optional: when unwired, opaque frame txs stay deferred as in Phase 1.
+            postHashFilters.Add(new FrameTxSimulationFilter(chainHeadInfoProvider.ReadOnlyStateProvider, frameTxPrefixSimulator, _logger));
+
+            // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
+            // second registration would reserve every frame tx's cost twice.
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();

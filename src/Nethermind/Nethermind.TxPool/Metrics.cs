@@ -73,6 +73,14 @@ namespace Nethermind.TxPool
         public static long FrameTxPayersWithReservedExposure;
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because simulating their validation prefix rejected it.")]
+        public static long PendingTransactionsFrameTxSimulationFailed;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions admitted with an unresolved payer because their validation prefix could not be simulated. A rising count means payer exposure is no longer being accounted for.")]
+        public static long PendingTransactionsFrameTxSimulationUndecided;
+
+        [CounterMetric]
         [Description(
             "Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
         public static long PendingTransactionsNonceGap { get; set; }

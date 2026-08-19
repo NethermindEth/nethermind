@@ -68,6 +68,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
+        if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
+        {
+            return SimulateFrameValidationPrefix(tx, tracer, header, spec);
+        }
+
         Address sender = tx.SenderAddress!;
         Snapshot txSnapshot = WorldState.TakeSnapshot();
 
@@ -541,6 +546,197 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         return logs;
     }
+
+    /// <summary>Simulates a frame transaction's validation prefix against read-only head state for mempool
+    /// admission, resolving the payer under the <c>MAX_VERIFY_GAS</c> bound.</summary>
+    /// <remarks>Nonce equality is deliberately not required: the prefix never reads the account nonce.</remarks>
+    private TransactionResult SimulateFrameValidationPrefix(Transaction tx, ITxTracer tracer, BlockHeader header, IReleaseSpec spec)
+    {
+        Address sender = tx.SenderAddress!;
+        Snapshot txSnapshot = WorldState.TakeSnapshot();
+        try
+        {
+            using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
+            TransactionResult prepared = PrepareValidationPrefixSimulation(
+                tx, header, spec, in accessTracker,
+                out FrameTxContext frameContext, out UInt256 effectiveGasPrice, out ulong verifyGasUsed);
+            if (!prepared)
+            {
+                return prepared;
+            }
+
+            TxFrame[] frames = tx.Frames!;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                TxFrame frame = frames[i];
+
+                // EIP8141-GAP: deploy-frame carve-outs are unimplemented, so such a prefix is declined.
+                if (OpensDeployPrefix(frames, i))
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("deploy frame in validation prefix is not simulated");
+                }
+
+                // EIP-8141 § Validation Prefix: the prefix is the shortest one that sets a payer, so a
+                // non-VERIFY frame ends it — here without one.
+                if (frame.Mode != TxFrame.ModeVerify)
+                {
+                    break;
+                }
+
+                // EIP-8141 forbids the atomic-batch flag on any validation-prefix frame.
+                if (frame.IsAtomicBatch)
+                {
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("atomic batch flag in validation prefix");
+                }
+
+                frameContext.CurrentFrameIndex = i;
+                WorldState.ResetTransient();
+
+                TxFrame boundedFrame = CapFrameGas(frame, Eip8141Constants.MaxVerifyGas - verifyGasUsed, out bool capped);
+
+                Address resolvedTarget = frame.Target ?? sender;
+                Address caller = Eip8141Constants.EntryPointAddress;
+
+                VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
+                    caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext));
+
+                TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: true, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out _);
+
+                verifyGasUsed += frameGasUsed;
+
+                if (substate.ShouldRevert || substate.IsError)
+                {
+                    // Only a capped frame that ran out of gas (rather than explicitly reverting) proves the
+                    // prefix exceeds MAX_VERIFY_GAS; an explicit revert is a within-budget rejection.
+                    return capped && !substate.ShouldRevert
+                        ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS")
+                        : TransactionResult.ErrorType.MalformedTransaction.WithDetail("validation prefix frame reverted");
+                }
+
+                frameContext.MarkFrameSucceeded(i);
+                ApplyApproval(frameContext, resolvedTarget, spec);
+
+                // Simulation stops at the first payer, once its frame has completed successfully.
+                if (frameContext.Payer is not null)
+                {
+                    if (tracer is IFrameTxReceiptTracer receiptTracer)
+                    {
+                        receiptTracer.ReportFrameTxReceipt(frameContext.Payer, []);
+                    }
+
+                    return TransactionResult.Ok;
+                }
+            }
+
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix never set a payer");
+        }
+        finally
+        {
+            WorldState.Restore(txSnapshot);
+        }
+    }
+
+    /// <summary>Validates the transaction-level preconditions of a prefix simulation and builds the context
+    /// its frames execute against.</summary>
+    private TransactionResult PrepareValidationPrefixSimulation(
+        Transaction tx,
+        BlockHeader header,
+        IReleaseSpec spec,
+        in StackAccessTracker accessTracker,
+        out FrameTxContext frameContext,
+        out UInt256 effectiveGasPrice,
+        out ulong verifyGasUsed)
+    {
+        frameContext = null!;
+        effectiveGasPrice = default;
+        verifyGasUsed = 0;
+
+        Address sender = tx.SenderAddress!;
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        // As the main path does, so an unused P256 branch records no account access (EIP-7928).
+        IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
+        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
+        }
+
+        // Signature-verification work counts against MAX_VERIFY_GAS.
+        foreach (TxFrameSignature signature in tx.FrameSignatures ?? [])
+        {
+            verifyGasUsed += FrameTxValidation.SignatureVerificationGas(signature.Scheme);
+        }
+        if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
+        }
+
+        TransactionResult costed = CalculateSimulatedMaxCost(tx, spec, out UInt256 maxCost);
+        if (!costed)
+        {
+            return costed;
+        }
+
+        effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
+        frameContext = new FrameTxContext(
+            sender, tx.Nonce, tx.Frames!, tx.FrameSignatures ?? [], sigHash,
+            in maxCost, in tx.MaxPriorityFeePerGas, tx.DecodedMaxFeePerGas, tx.MaxFeePerBlobGas.GetValueOrDefault(),
+            WorldState.GetNonce(sender),
+            tx.RecentRootReferences,
+            tx.NonceKeys);
+
+        if (spec.UseHotAndColdStorage)
+        {
+            if (spec.AddCoinbaseToTxAccessList) accessTracker.WarmUp(header.GasBeneficiary!);
+            accessTracker.WarmUp(sender);
+        }
+
+        // RECENTROOTREFLOAD is legal in a VERIFY frame and reads the envelope on the strength of this
+        // check, so the prefix must not run before it. Anchored to the earliest slot the transaction
+        // could execute in, since a reference to the head slot is referenceable only from the next one.
+        ulong? executionSlot = header.SlotNumber is { } headSlot ? headSlot + 1 : null;
+        return RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker)
+            ? TransactionResult.Ok
+            : TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
+    }
+
+    /// <summary>The <c>max_cost</c> (TXPARAM 0x06) the simulated prefix's APPROVE gate reads.</summary>
+    /// <remarks>Taken from the same helper the main path escrows on, so the two cannot decide against
+    /// different numbers, except that the blob leg is priced at <c>max_fee_per_blob_gas</c> rather than the
+    /// blob base fee execution uses: the fee at inclusion is unknowable here, and over-reserving can only
+    /// make admission stricter.</remarks>
+    private static TransactionResult CalculateSimulatedMaxCost(Transaction tx, IReleaseSpec spec, out UInt256 maxCost)
+    {
+        maxCost = default;
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong txGasLimit))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas budget overflows");
+        }
+
+        ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
+        return UInt256.MultiplyOverflow((UInt256)txGasLimit, tx.DecodedMaxFeePerGas, out maxCost)
+            || UInt256.AddOverflow(maxCost, (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault(), out maxCost)
+            ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction max cost overflows")
+            : TransactionResult.Ok;
+    }
+
+    /// <summary>Bounds a prefix frame's gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
+    /// <remarks>An opaque prefix's declared gas_limits are not structurally bounded, so this cap is what
+    /// keeps cumulative validation work under the budget.</remarks>
+    private static TxFrame CapFrameGas(TxFrame frame, ulong remainingVerifyGas, out bool capped)
+    {
+        capped = frame.GasLimit > remainingVerifyGas;
+        return capped
+            ? new TxFrame(frame.Mode, frame.Flags, frame.Target, remainingVerifyGas, frame.Value, frame.Data)
+            : frame;
+    }
+
+    /// <summary>Whether frame <paramref name="i"/> is a <c>deploy</c> frame opening the validation prefix.</summary>
+    /// <remarks>Positional, as RecognizedPrefixLength reaches index 1 only past an expiry-verify frame at index 0.</remarks>
+    private static bool OpensDeployPrefix(TxFrame[] frames, int i) =>
+        (i == 0 || (i == 1 && FrameTxValidation.IsExpiryVerifyFrame(frames[0])))
+        && i + 1 < frames.Length
+        && FrameTxValidation.IsDeployFrame(frames[i])
+        && frames[i + 1].Mode == TxFrame.ModeVerify;
 
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
