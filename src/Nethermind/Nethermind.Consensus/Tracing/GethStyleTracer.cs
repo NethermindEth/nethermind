@@ -185,7 +185,6 @@ public class GethStyleTracer(
         // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
         // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
         // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
-        // Most callers pass a block owned by the block tree, so clone before mutating its header below.
         if (options.BlockOverrides is not null || options.NoBaseFee)
         {
             block = block.WithReplacedBodyCloned(block.Body);
@@ -198,7 +197,6 @@ public class GethStyleTracer(
         options.BlockOverrides?.ApplyOverrides(block.Header);
         if (options.NoBaseFee)
         {
-            // Geth applies block overrides before resetting the base fee for an unpriced call.
             block.Header.BaseFeePerGas = UInt256.Zero;
         }
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);

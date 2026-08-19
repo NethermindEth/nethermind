@@ -221,9 +221,6 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Estimate_gas_feeless_with_positive_blockOverride_baseFeePerGas_uses_zero_base_fee()
     {
-        // Scenario: caller sends no fee fields (fee-less call) but blockOverride.baseFeePerGas > 0.
-        // The code reverts when BASEFEE is non-zero, so a successful estimate proves the base fee
-        // override was dropped — matching eth_call's behaviour for the same request body.
         using Context ctx = await Context.CreateWithLondonEnabled();
 
         const string revertOnNonZeroBaseFee = "0x4860095760006000f35b60006000fd";

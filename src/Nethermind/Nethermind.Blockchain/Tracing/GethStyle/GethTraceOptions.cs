@@ -37,9 +37,6 @@ public record GethTraceOptions
 
     public BlockOverride? BlockOverrides { get; set; }
 
-    /// <summary>
-    /// Uses a zero base fee when tracing a call without gas pricing.
-    /// </summary>
     [JsonIgnore]
     public bool NoBaseFee { get; init; }
 

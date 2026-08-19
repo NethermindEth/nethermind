@@ -45,8 +45,7 @@ public class BlockOverride
         // (and for simulate via IBlobBaseFeeOverrideProvider) instead.
     }
 
-    /// <summary>Returns a shallow copy with the base fee replaced by <paramref name="baseFee"/>.</summary>
-    public BlockOverride WithBaseFee(in UInt256 baseFee)
+    public BlockOverride WithBaseFee(UInt256 baseFee)
     {
         BlockOverride copy = (BlockOverride)MemberwiseClone();
         copy.BaseFeePerGas = baseFee;
