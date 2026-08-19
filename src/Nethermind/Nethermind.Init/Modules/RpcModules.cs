@@ -82,11 +82,11 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Eth and its dependencies
             .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
-            .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? 2 * Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
                         new BlockchainBridgeFactory(simEnvFactory, overridableEnvFactory, lifetimeScope,
-                            jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount))
+                            jsonRpcConfig.EthModuleConcurrentInstances ?? 2 * Environment.ProcessorCount))
                 .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
                     .AddSingleton<IEthCapabilitiesProvider, EthCapabilitiesProvider>()
