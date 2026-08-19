@@ -661,16 +661,27 @@ What that file has to get right:
 - **No V1 era** — keep `switchBlock` and `switchEpoch` at `0`. The genesis committee then comes from the
   genesis `extraData`, laid out as 32 bytes of vanity, one 20-byte masternode address each, and 65 bytes of
   (zero) seal — 157 bytes for three masternodes. `genesisMasternodes` is only read when `switchBlock > 0`.
+- **Genesis fields** — only the members of
+  [`ChainSpecGenesisJson`](../Nethermind.Specs/ChainSpecStyle/Json/ChainSpecGenesisJson.cs) are bound, and
+  unmapped JSON members are dropped without a warning: the beneficiary key is `author`, not `coinbase`, and a
+  Go-client genesis' `validators`, `nextValidators`, `penalties`, `number`, `nonce`, `mixHash` and `gasUsed`
+  have no effect — the subnet genesis header ends up with empty validator and penalty fields. Compare the
+  resulting genesis hash against the Go client before peering the two implementations.
 - **Voting contract** — `extraData` seeds the genesis committee only; every later epoch takes its candidates
   from `masternodeVotingContract`, so that contract must be pre-deployed under `accounts` with its storage
   seeded (candidate list, stakes, owners). Without it the committee is empty from the first gap block on.
 - **`params`** — the block above is trimmed to `chainId`. Copy the rest of the `params` block from
-  [`Chains/xdc.json`](../Chains/xdc.json) and change the chain id: Nethermind chainspecs use parity-style
-  `eip…Transition` keys, and geth genesis-config names (`homesteadBlock`, `eip150Block`, `byzantiumBlock`, …)
-  are silently ignored, which leaves the chain on Frontier rules.
-- **Epoch geometry** — `gap` must be smaller than `epoch`; the snapshot for an epoch is taken at
-  `epochStart - gap`. `CertificateThreshold` is a fraction of the epoch's committee size, so `0.5` with three
-  masternodes means two votes per certificate.
+  [`Chains/xdc.json`](../Chains/xdc.json), change the chain id, and then rewrite the `eip…Transition` values:
+  the ones in that file are mainnet activation heights (`eip1559Transition` is block 98,800,200,
+  `eip1153Transition` 98,802,000), which a chain starting at block 0 never reaches, so set every fork the
+  subnet should run with to `0` and drop the rest. Nethermind chainspecs use parity-style `eip…Transition`
+  keys, and geth genesis-config names (`homesteadBlock`, `eip150Block`, `byzantiumBlock`, …) are silently
+  ignored, which leaves the chain on Frontier rules.
+- **Epoch geometry** — `gap` must be non-zero and smaller than `epoch`; both degenerate cases silently stop
+  snapshots from ever being taken. The snapshot for an epoch is taken at `epochStart - gap`.
+  `CertificateThreshold` is a fraction of the epoch's committee size, so `0.5` with three masternodes means
+  two votes per certificate. Block spacing is `v2Configs[].MinePeriod` — the top-level `period` is carried
+  for parity with the Go client and is not read.
 
 Each node then needs a config pointing at the chainspec:
 
@@ -696,8 +707,10 @@ dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./x
 ```
 
 - A relative `ChainSpecPath` resolves against the executable's directory, so either drop the chainspec into
-  the build output's `chainspec/` folder or give an absolute path. `--config` needs a path (`./file.json`);
-  a bare name is looked up among the built-in configs.
+  the build output's `chainspec/` folder or give an absolute path. Embedded chainspecs are probed before the
+  filesystem — even for an absolute path — so give the file a name that doesn't collide with a shipped one
+  (`xdc.json`, `xdc-testnet.json`, …), or the embedded copy is loaded instead. `--config` needs a path
+  (`./file.json`); a bare name is looked up among the built-in configs.
 - `Mining.Enabled` gates both block production and the signer — without it the node follows the chain but
   never proposes or votes. The signing key is `KeyStore.BlockAuthorAccount` from the keystore, falling back to
   the node key, which `KeyStore.TestNodeKey` overrides with a plaintext key (dev only; it doubles as the
