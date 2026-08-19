@@ -20,8 +20,12 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// </remarks>
 internal static class SszWireBytesExtensions
 {
-    /// <summary>The wire bytes as an array, avoiding a copy when the memory already spans a whole array.</summary>
-    /// <remarks>The SSZ decoder materialises each field into its own exact-fit array, so the fast path is the norm.</remarks>
+    /// <summary>The wire bytes as an array, unwrapped without a copy when the memory exclusively owns one.</summary>
+    /// <remarks>
+    /// The result outlives the wire struct — domain objects retain it — so decoding must keep materialising
+    /// each field into its own exact-fit array. Spanning a whole array is only a proxy for that ownership:
+    /// a pooled buffer can also span exactly, and must be copied instead of aliased.
+    /// </remarks>
     public static byte[] ToByteArray(this ReadOnlyMemory<byte> bytes) =>
         MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> segment)
         && segment.Offset == 0 && segment.Count == segment.Array!.Length
