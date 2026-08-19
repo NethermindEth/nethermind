@@ -19,11 +19,14 @@ internal sealed class PendingPaymasterCache
     /// <summary>Pending frame transactions currently paying through <paramref name="key"/>.</summary>
     public int GetPendingCount(AddressAsKey key) => _pending.TryGetValue(key, out int count) ? count : 0;
 
+    /// <summary>Counts one more pending frame transaction paying through <paramref name="key"/>.</summary>
     public void Increment(AddressAsKey key) => _pending.AddOrUpdate(key, 1, static (_, count) => count + 1);
 
+    /// <summary>Releases one pending frame transaction paying through <paramref name="key"/>.</summary>
+    /// <remarks>Clamped at zero, so a double release cannot drive the count negative and permanently
+    /// disable the cap for that paymaster.</remarks>
     public void Decrement(AddressAsKey key)
     {
-        // Clamped at zero: a double release must not permanently disable the cap for a paymaster.
         int updated = _pending.AddOrUpdate(key, 0, static (_, count) => count > 0 ? count - 1 : 0);
         if (updated == 0)
         {

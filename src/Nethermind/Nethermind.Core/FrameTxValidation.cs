@@ -347,7 +347,13 @@ public static class FrameTxValidation
     /// </remarks>
     public static Address? GetPrefixPaymaster(Transaction transaction)
     {
-        TxFrame[] frames = transaction.Frames ?? [];
+        TxFrame[]? frames = transaction.Frames;
+        if (frames is null)
+        {
+            // A reloaded or light pool record has no frames; its paymaster travels on the record instead.
+            return transaction.PersistedPaymaster;
+        }
+
         return RecognizedPrefixLength(frames, transaction.SenderAddress) is int length && IsPayFrame(frames[length - 1])
             ? frames[length - 1].Target
             : null;

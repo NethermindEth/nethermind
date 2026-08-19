@@ -251,6 +251,12 @@ namespace Nethermind.Core
         /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
         public virtual ulong? PersistedExpiryDeadline => null;
 
+        /// <summary>The EIP-8141 prefix paymaster carried by a pool record held without its frames. Null for
+        /// every in-memory transaction, which derives the paymaster from its frames.</summary>
+        /// <remarks>Not encoded, so a record reloaded from storage has none and its sponsor goes uncounted
+        /// until the payer fields are persisted.</remarks>
+        public virtual Address? PersistedPaymaster => null;
+
         /// <summary>
         /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
         /// https://eips.ethereum.org/EIPS/eip-8250

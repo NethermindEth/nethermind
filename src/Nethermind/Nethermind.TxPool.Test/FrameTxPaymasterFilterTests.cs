@@ -161,6 +161,30 @@ public class FrameTxPaymasterFilterTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
+    [Test]
+    public void Accept_SponsoredTxHeldAsALightRecord_StillCountsAgainstTheCap()
+    {
+        // The shipped blob mode holds a frameless LightTransaction, and that record is what the pool
+        // raises Inserted/Removed with, so the cap has to key off it rather than the full transaction.
+        TestReadOnlyStateProvider state = new();
+        state.CreateAccount(Sender, Unit.Ether);
+        state.InsertCode([0x60, 0x00], Paymaster);
+
+        Transaction record = new LightTransaction(FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], carriesBlobs: true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(record.Frames, Is.Null, "the record must be frameless, or this pins nothing");
+            Assert.That(FrameTxValidation.GetPrefixPaymaster(record), Is.EqualTo(Paymaster));
+        }
+
+        PendingPaymasterCache cache = new();
+        cache.Increment(Paymaster);
+
+        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], carriesBlobs: true));
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+    }
+
     private static IEnumerable<TestCaseData> ReplacementCases()
     {
         yield return new TestCaseData(0ul, Paymaster, 0ul, false)
