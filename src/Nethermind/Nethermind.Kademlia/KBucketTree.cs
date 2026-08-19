@@ -183,17 +183,12 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Getting all nodes at distance {distance}");
             using PooledList<TNode> result = new(_k);
             (TKadKey Hash, TNode Node)[] bucketEntries = ArrayPool<(TKadKey Hash, TNode Node)>.Shared.Rent(_k);
-            try
-            {
-                GetAllAtDistanceRecursive(_root, 0, distance, result, bucketEntries);
-                if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Found {result.Count} nodes at distance {distance}");
+            GetAllAtDistanceRecursive(_root, 0, distance, result, bucketEntries);
+            if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Found {result.Count} nodes at distance {distance}");
 
-                return result.Span.ToArray();
-            }
-            finally
-            {
-                ArrayPool<(TKadKey Hash, TNode Node)>.Shared.Return(bucketEntries, RuntimeHelpers.IsReferenceOrContainsReferences<(TKadKey Hash, TNode Node)>());
-            }
+            TNode[] nodes = result.Span.ToArray();
+            ArrayPool<(TKadKey Hash, TNode Node)>.Shared.Return(bucketEntries, RuntimeHelpers.IsReferenceOrContainsReferences<(TKadKey Hash, TNode Node)>());
+            return nodes;
         }
     }
 
