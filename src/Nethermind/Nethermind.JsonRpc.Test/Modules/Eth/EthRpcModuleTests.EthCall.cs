@@ -688,6 +688,95 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Eth_call_contract_creation_reports_code_deposit_out_of_gas()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        byte[] code = Prepare.EvmCode
+            .PushData(32) // size
+            .PushData(0) // offset
+            .Op(Instruction.RETURN) // returns 32 zero bytes; deposit costs 32 * GasCostOf.CodeDeposit
+            .Done;
+        Transaction tx = Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        tx.To = null;
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, Cancun.Instance);
+        // Covers intrinsic and initcode execution but not the 6,400 gas code deposit.
+        tx.GasLimit = intrinsicGas.Standard + 1_000;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        JToken response = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("out of gas"));
+        }
+    }
+
+    [Test]
+    public async Task Eth_call_contract_creation_reports_ef_prefix_invalid_code()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        byte[] code = Prepare.EvmCode
+            .PushData(new byte[] { 0xEF, 0x00 })
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(2)
+            .PushData(30)
+            .Op(Instruction.RETURN) // returns 0xEF00, rejected by EIP-3541
+            .Done;
+        Transaction tx = Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.To = null;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        JToken response = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("invalid code: must not begin with 0xef"));
+        }
+    }
+
+    [Test]
+    public async Task Eth_call_contract_creation_reports_address_collision()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        Transaction tx = Build.A.Transaction
+            .WithData(code)
+            .WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.To = null;
+
+        Address collisionAddress = ContractAddress.From(TestItem.AddressA, 0);
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{TestItem.AddressA}\":{{\"nonce\":\"0x0\"}},\"{collisionAddress}\":{{\"code\":\"0x6000\"}}}}")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        JToken response = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+            Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo("contract address collision"));
+        }
+    }
+
     [TestCase(null)]
     [TestCase(new byte[0])]
     public async Task Eth_call_to_is_null_and_not_contract_creation(byte[]? data)

@@ -442,7 +442,6 @@ namespace Nethermind.Evm.TransactionProcessing
             bool hasValueTransfer = !value.IsZero;
             bool senderIsRecipient = tx.SenderAddress == recipient;
             bool isTracingActions = tracer.IsTracingActions;
-            TGasPolicy actionGasBeforeNewAccountCharge = gasAvailable;
 
             // EIP-8037: a value transfer materialising a new (dead) recipient — including an empty
             // precompile — pays NEW_ACCOUNT state gas; if uncovered, no value moves and all gas is forfeit.
@@ -451,8 +450,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 && WorldState.IsDeadAccount(recipient))
             {
                 newAccountOutOfGas = !TGasPolicy.ConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
-                if (newAccountOutOfGas)
-                    TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
             }
 
             // Self-send: sender account is already touched/warmed by gas charging and any
@@ -463,10 +460,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.AddToBalanceAndCreateIfNotExists(recipient, in hasValueTransfer ? ref value : ref UInt256.Zero, spec);
             }
 
-            if (isTracingActions && !newAccountOutOfGas)
+            if (isTracingActions)
             {
                 TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in gasAvailable);
             }
+
+            // Forfeit after the action start is traced: a halted frame reports the gas it would have received.
+            if (newAccountOutOfGas)
+                TGasPolicy.Consume(ref gasAvailable, TGasPolicy.GetRemainingGas(in gasAvailable));
 
             JournalCollection<LogEntry>? logs = null;
             if (spec.IsEip7708Enabled && hasValueTransfer && !senderIsRecipient && !newAccountOutOfGas)
@@ -481,8 +482,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 refund: 0,
                 destroyList: null,
                 logs: logs,
+                // shouldRevert: false keeps IsError false — Refund and CalculateSpentGasAndRefund branch on
+                // IsError, so this halt must surface via EvmExceptionType only, or gas accounting changes.
                 shouldRevert: false,
-                isTracerConnected: false, // Keep IsError false: this is a valid transaction-level halt; EvmExceptionType is surfaced separately.
+                isTracerConnected: false, // safe: the ctor reads this only when shouldRevert is true
                 evmExceptionType: newAccountOutOfGas ? EvmExceptionType.OutOfGas : EvmExceptionType.None,
                 logger: Logger);
 
@@ -490,7 +493,6 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (newAccountOutOfGas)
                 {
-                    TraceSimpleTransferActionStart(tx, recipient, tracer, in value, in actionGasBeforeNewAccountCharge);
                     tracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 else
@@ -532,6 +534,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private static void TraceHaltedTopFrameAction(Transaction tx, ExecutionEnvironment env, ITxTracer tracer, in TGasPolicy gasAvailable)
         {
             if (!tracer.IsTracingActions) return;
@@ -1343,6 +1346,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
                         WorldState.Restore(snapshot);
+                        substate = new TransactionSubstate(EvmExceptionType.TransactionCollision, tracer.IsTracing);
                         TGasPolicy collisionIntrinsicGasStandard = gas.Standard;
                         gasConsumed = RefundOnContractCollision(
                             tx,
@@ -1451,6 +1455,13 @@ namespace Nethermind.Evm.TransactionProcessing
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+            // Surface the deployment failure to RPC while keeping Error null — IsError must stay
+            // false because Refund and CalculateSpentGasAndRefund branch on it for gas accounting.
+            EvmExceptionType deployException = CodeDepositHandler.CodeIsInvalid(spec, substate.Output)
+                ? EvmExceptionType.InvalidCode
+                : EvmExceptionType.OutOfGas;
+            substate = new(substate.Output, substate.Refund, substate.DestroyList, substate.Logs,
+                shouldRevert: false, isTracerConnected: false, evmExceptionType: deployException, logger: Logger);
             if (spec.ChargeForTopLevelCreate)
             {
                 TGasPolicy.SetOutOfGas(ref gasAvailable);
