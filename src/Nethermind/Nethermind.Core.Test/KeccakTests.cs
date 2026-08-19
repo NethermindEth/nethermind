@@ -264,13 +264,8 @@ namespace Nethermind.Core.Test
         [TestCase(20, "50c02dbeee2be79b9595060fe30efbd78f06acedf7a1fe8cb05df7ddd76f2b1b")]
         [TestCase(32, "d064c972ea7cbd9f1237bbd922fd5f08ca57895c13bc9ea2b91913f7099809a1")]
         [TestCase(64, "52c1f4616862f9d5011ed6a2a77d89a2102e51ee7db2db045bb5fb267fba98d1")]
-        public void Avx512VL_common_input_lengths_match_known_hash(int inputLength, string expected)
+        public void Common_input_lengths_match_known_hash(int inputLength, string expected)
         {
-            if (!Avx512F.VL.IsSupported)
-            {
-                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
-            }
-
             byte[] input = new byte[inputLength];
             byte[] output = new byte[32];
             for (int i = 0; i < input.Length; i++)

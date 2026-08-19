@@ -575,6 +575,11 @@ namespace Nethermind.Trie
         internal void ResolvePreparedKey()
         {
             CappedArray<byte> rlp = ReadRlp();
+            ResolvePreparedKey(in rlp);
+        }
+
+        private void ResolvePreparedKey(in CappedArray<byte> rlp)
+        {
             if (rlp.Length >= 32)
             {
                 Metrics.IncrementTreeNodeHashCalculations();

@@ -130,9 +130,10 @@ public static class KeyedNonceManager
             return false;
         }
 
-        // Well-formedness above bounds Length to MaxNonceKeys, so the stackalloc below always fits.
+        // A well-formed multi-key set is bounded and cannot contain key 0, so every key uses a storage slot.
         if (Avx512F.IsSupported && nonceKeys.Length >= HashBatchSize)
         {
+            Debug.Assert(!nonceKeys[0].IsZero, "key 0 cannot appear in a well-formed multi-key set");
             Span<UInt256> indices = stackalloc UInt256[Eip8250Constants.MaxNonceKeys];
             StorageIndices(sender, nonceKeys, indices);
             for (int i = 0; i < nonceKeys.Length; i++)

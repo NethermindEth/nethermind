@@ -286,7 +286,7 @@ public sealed partial class KeccakHash
     private static void StoreHashPair(ref byte output, int hashIndex,
         Vector128<ulong> a0, Vector128<ulong> a1, Vector128<ulong> a2, Vector128<ulong> a3)
     {
-        ref byte destination = ref Unsafe.Add(ref output, hashIndex * Hash256.Size);
+        ref byte destination = ref Unsafe.Add(ref output, hashIndex * HASH_SIZE);
         Unsafe.WriteUnaligned(ref destination, a0.GetElement(hashIndex));
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), a1.GetElement(hashIndex));
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16), a2.GetElement(hashIndex));

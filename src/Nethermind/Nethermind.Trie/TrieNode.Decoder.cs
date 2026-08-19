@@ -30,7 +30,7 @@ namespace Nethermind.Trie
         private class TrieNodeDecoder
         {
             private const int FullBranchRlpLength = 532;
-            private const int MinHashBatchSize = 2;
+            private const int HashPairSize = 2;
 
             [SkipLocalsInit]
             public static CappedArray<byte> EncodeExtension(TrieNode item, ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool, bool canBeParallel)
@@ -197,7 +197,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             private static void HashPreparedBranchPairs(TrieNode item, int firstIndex, ushort candidateMask)
             {
-                Span<byte> hashes = stackalloc byte[MinHashBatchSize * Hash256.Size];
+                Span<byte> hashes = stackalloc byte[HashPairSize * Hash256.Size];
 
                 while (true)
                 {
@@ -205,8 +205,15 @@ namespace Nethermind.Trie
                     candidateMask ^= (ushort)(1 << secondIndex);
                     TrieNode first = Unsafe.As<TrieNode>(item._nodeData[firstIndex]);
                     TrieNode second = Unsafe.As<TrieNode>(item._nodeData[secondIndex]);
-                    Span<byte> rlp0 = first.FullRlp.AsSpan();
-                    Span<byte> rlp1 = second.FullRlp.AsSpan();
+                    CappedArray<byte> firstRlp = first.FullRlp;
+                    CappedArray<byte> secondRlp = second.FullRlp;
+                    if (firstRlp.Length != FullBranchRlpLength || secondRlp.Length != FullBranchRlpLength)
+                    {
+                        ThrowUnexpectedPreparedBranchLength();
+                    }
+
+                    Span<byte> rlp0 = firstRlp.AsSpan();
+                    Span<byte> rlp1 = secondRlp.AsSpan();
                     KeccakHash.ComputeHash532Bytes2Avx512VL(ref rlp0[0], ref rlp1[0], ref hashes[0]);
                     ValueHash256 firstHash = new(hashes[..Hash256.Size]);
                     ValueHash256 secondHash = new(hashes[Hash256.Size..]);
@@ -226,6 +233,10 @@ namespace Nethermind.Trie
                         return;
                     }
                 }
+
+                [DoesNotReturn, StackTraceHidden]
+                static void ThrowUnexpectedPreparedBranchLength() =>
+                    throw new TrieException("A prepared full branch changed before batched hashing.");
             }
 
             private static int GetChildrenRlpLengthForBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool, bool canBeParallel) =>
@@ -304,8 +315,8 @@ namespace Nethermind.Trie
                             }
                             else
                             {
-                                childNode.ResolvePreparedKey();
-                                totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                                childNode.ResolvePreparedKey(in rlp);
+                                totalLength += childNode.Keccak is null ? rlp.Length : Rlp.LengthOfKeccakRlp;
                             }
                         }
                         else
@@ -407,8 +418,8 @@ namespace Nethermind.Trie
                                 }
                                 else
                                 {
-                                    childNode.ResolvePreparedKey();
-                                    totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                                    childNode.ResolvePreparedKey(in rlp);
+                                    totalLength += childNode.Keccak is null ? rlp.Length : Rlp.LengthOfKeccakRlp;
                                 }
                             }
                             else

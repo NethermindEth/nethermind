@@ -12,11 +12,12 @@ namespace Nethermind.Core.Crypto;
 public sealed partial class KeccakHash
 {
     /// <summary>Hashes eight consecutive 64-byte inputs into eight consecutive 32-byte outputs.</summary>
-    /// <remarks>The caller must ensure that AVX-512F is supported and that both buffers have the required fixed size.</remarks>
+    /// <remarks>The caller must ensure that AVX-512F is supported and provide 512 input bytes and 256 output bytes.</remarks>
     [SkipLocalsInit]
     internal static unsafe void ComputeHash64Bytes8Avx512(ref byte input, ref byte output)
     {
         Debug.Assert(Avx512F.IsSupported);
+        Debug.Assert(Avx2.IsSupported);
 
         Vector512<ulong> a0;
         Vector512<ulong> a1;
@@ -26,6 +27,7 @@ public sealed partial class KeccakHash
         Vector512<ulong> a5;
         Vector512<ulong> a6;
         Vector512<ulong> a7;
+        // Each gather reads one lane from all eight 64-byte inputs; lane 7 reaches the final input byte.
         fixed (byte* inputPtr = &input)
         {
             a0 = GatherLane(inputPtr, 0);
@@ -94,7 +96,7 @@ public sealed partial class KeccakHash
     private static void StoreHash(ref byte output, int hashIndex,
         Vector512<ulong> a0, Vector512<ulong> a1, Vector512<ulong> a2, Vector512<ulong> a3)
     {
-        ref byte destination = ref Unsafe.Add(ref output, hashIndex * 32);
+        ref byte destination = ref Unsafe.Add(ref output, hashIndex * HASH_SIZE);
         Unsafe.WriteUnaligned(ref destination, a0.GetElement(hashIndex));
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), a1.GetElement(hashIndex));
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16), a2.GetElement(hashIndex));
