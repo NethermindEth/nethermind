@@ -6,6 +6,11 @@ name: RPC Bench Host Info
 # and therefore where a rate ladder starts queueing — had to be inferred. Dispatch-only, seconds long.
 
 on:
+  # push registers the workflow for dispatch on this branch (a dispatch-only workflow on a
+  # non-default branch never registers) and doubles as the first recording.
+  push:
+    branches: [bench/rpcbench-x64-corpus]
+    paths: [.github/workflows/rpc-bench-host-info.yml]
   workflow_dispatch:
 
 jobs:
