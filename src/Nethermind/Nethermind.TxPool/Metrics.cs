@@ -53,6 +53,14 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxNoPayer { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because they carry a VERIFY frame after their validation prefix.")]
+        public static long PendingTransactionsFrameTxVerifyAfterPrefix { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their expiry verifier frame does not lead the frame list.")]
+        public static long PendingTransactionsFrameTxMisplacedExpiryFrame { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8250 transactions received that were ignored because a selected nonce key is not at the declared sequence.")]
         public static long PendingTransactionsKeyedNonceUnmet { get; set; }
 
