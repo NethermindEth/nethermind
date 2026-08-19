@@ -7,6 +7,12 @@ namespace Nethermind.Db;
 
 public interface IFlatDbConfig : IConfig
 {
+    [ConfigItem(Description = "Overlay size threshold, in bytes, above which the Arena base store folds the RocksDB Account/Storage overlay into its shard tables. Approximate — tracked as bytes written since the last fold and reset on restart. 0 disables automatic folding. Ignored unless BaseStore is 'Arena'.", DefaultValue = "268435456")]
+    long BaseFoldThresholdBytes { get; set; }
+
+    [ConfigItem(Description = "Backend for the base tier of the 'Flat' layout's Account/Storage data: 'Rocks' keeps base rows in the RocksDB columns; 'Arena' keeps them in prefix-sharded immutable sorted tables in mmap arena files, with the RocksDB columns acting as a small delta overlay. Experimental; only valid with Layout 'Flat'.", DefaultValue = "Rocks")]
+    FlatBaseStore BaseStore { get; set; }
+
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     ulong BlockCacheSizeBudget { get; set; }
 

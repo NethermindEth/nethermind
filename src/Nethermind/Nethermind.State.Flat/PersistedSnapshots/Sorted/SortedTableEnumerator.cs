@@ -84,6 +84,48 @@ internal struct SortedTableEnumerator<TReader, TPin> : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Reposition the cursor at the start of the data block containing the first key ≥
+    /// <paramref name="startKey"/>, so subsequent <see cref="MoveNext"/> calls resume the ascending walk
+    /// from within that block and then continue across the remaining blocks as usual.
+    /// </summary>
+    /// <remarks>
+    /// The seek is block-granular: records earlier in the located block (keys still &lt;
+    /// <paramref name="startKey"/>) are returned by <see cref="MoveNext"/> and must be filtered by the
+    /// caller. <paramref name="table"/> must be the same bound the enumerator was constructed over.
+    /// Returns <c>false</c> — leaving the cursor exhausted — when every key in the table is &lt;
+    /// <paramref name="startKey"/>, or the table is empty or unreadable.
+    /// </remarks>
+    internal bool TrySeekBlockOf(scoped in TReader reader, Bound table, scoped ReadOnlySpan<byte> startKey)
+    {
+        _pos = _blockEnd = 0;
+        _keyLength = 0;
+        _indexPos = _indexEnd;
+        if (!SortedTable.TryReadFooter<TReader, TPin>(in reader, table, out SortedTable.Footer footer)) return false;
+
+        Span<byte> sepBuf = stackalloc byte[256];
+        long indexStart = SortedTable.IndexBlockStart(table, footer);
+        if (!IndexBlockReader.SeekCeiling<TReader, TPin>(in reader, indexStart, startKey, sepBuf, out _, out long byteOffset, out long ceilingRecordEnd))
+            return false;
+
+        // Resume the index walk just past the ceiling record; its reconstructed value carries the
+        // high bytes the following changed-prefix records build on.
+        _indexPos = ceilingRecordEnd;
+        _indexRunningValue = byteOffset;
+
+        long blockStart = SortedTable.DataBlockStart(table, byteOffset);
+        if (!DataBlockReader.TryReadRecordRange<TReader, TPin>(in reader, blockStart, out long recordsStart, out long recordsEnd))
+        {
+            // Keep the "false ⇒ exhausted" contract: an unreadable ceiling block must not let MoveNext
+            // resume from the following index record and silently skip it.
+            _indexPos = _indexEnd;
+            return false;
+        }
+        _pos = blockStart + recordsStart;
+        _blockEnd = blockStart + recordsEnd;
+        return true;
+    }
+
     /// <summary>Read the next index record's data-block byte offset (reconstructing the changed-prefix value)
     /// and position the data cursor at that block's first record. Returns <c>false</c> when the index is
     /// exhausted or a record/header cannot be read.</summary>

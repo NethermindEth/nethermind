@@ -118,6 +118,48 @@ public static class BaseFlatPersistence
         return Rlp.Encode(withoutLeadingZeros, buffer);
     }
 
+    /// <summary>
+    /// Decodes a stored flat Storage column value (as produced by <see cref="EncodeSlotValue"/>) into a
+    /// left-zero-padded 32-byte <see cref="SlotValue"/>. Shared so every backend reading the column
+    /// (RocksDB base and arena base tables) decodes byte-identically.
+    /// </summary>
+    internal static void DecodeSlotValue(scoped ReadOnlySpan<byte> stored, bool rlpWrapSlots, ref SlotValue outValue)
+    {
+        ReadOnlySpan<byte> value = stored;
+        if (rlpWrapSlots)
+        {
+            RlpReader ctx = new(value);
+            value = ctx.DecodeByteArraySpan();
+        }
+
+        // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
+        // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
+        // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
+        int len = value.Length;
+        if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
+
+        // len is now guaranteed <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
+        // This writes the variable-length DB value into the end of the 32-byte struct.
+        if (len == SlotValue.ByteCount)
+        {
+            outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
+        }
+        else
+        {
+            ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
+
+            // Zero-initialize the leading bytes before copying the value
+            Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
+
+            ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+
+            Unsafe.CopyBlockUnaligned(
+                ref destPtr,
+                ref MemoryMarshal.GetReference(value),
+                (uint)len);
+        }
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
         throw new InvalidConfigurationException(
@@ -150,40 +192,7 @@ public static class BaseFlatPersistence
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
-            ReadOnlySpan<byte> value = buffer[..resultSize];
-            if (rlpWrapSlots)
-            {
-                RlpReader ctx = new(value);
-                value = ctx.DecodeByteArraySpan();
-            }
-
-            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
-            // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
-            // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
-            int len = value.Length;
-            if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
-
-            // len is now guaranteed <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
-            // This writes the variable-length DB value into the end of the 32-byte struct.
-            if (len == SlotValue.ByteCount)
-            {
-                outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
-            }
-            else
-            {
-                ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
-
-                // Zero-initialize the leading bytes before copying the value
-                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
-
-                ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
-
-                Unsafe.CopyBlockUnaligned(
-                    ref destPtr,
-                    ref MemoryMarshal.GetReference(value),
-                    (uint)len);
-            }
-
+            DecodeSlotValue(buffer[..resultSize], rlpWrapSlots, ref outValue);
             return true;
         }
 

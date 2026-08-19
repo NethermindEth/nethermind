@@ -15,6 +15,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
+    public FlatBaseStore BaseStore { get; set; } = FlatBaseStore.Rocks;
+    public long BaseFoldThresholdBytes { get; set; } = 256.MiB;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
     public ulong MaxReorgDepth { get; set; } = 256;

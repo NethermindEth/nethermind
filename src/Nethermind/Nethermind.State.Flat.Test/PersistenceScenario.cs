@@ -58,6 +58,22 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
                 Layout = layout
             }, layout.ToString());
         }
+
+        // Arena base store: overlay-only (threshold never reached) and fold-per-batch (threshold 1),
+        // so every scenario also runs with its data served from the base shard tables.
+        yield return new TestConfiguration(new FlatDbConfig()
+        {
+            Enabled = true,
+            Layout = FlatLayout.Flat,
+            BaseStore = FlatBaseStore.Arena
+        }, "FlatArenaBase");
+        yield return new TestConfiguration(new FlatDbConfig()
+        {
+            Enabled = true,
+            Layout = FlatLayout.Flat,
+            BaseStore = FlatBaseStore.Arena,
+            BaseFoldThresholdBytes = 1
+        }, "FlatArenaBaseFolded");
     }
 
     private static bool IsPreimage(FlatLayout layout) => layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat;

@@ -99,6 +99,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<RocksDbPersistence>()
+            .AddSingleton<ArenaBasePersistence, IColumnsDb<FlatDbColumns>, IInitConfig, IFlatDbConfig, ILogManager>((db, initConfig, cfg, logManager) =>
+                new ArenaBasePersistence(db, Path.Combine(initConfig.BaseDbPath, "flatBase"), cfg, logManager))
             .AddSingleton<FlatInTriePersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
@@ -106,9 +108,16 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
             {
+                if (flatDbConfig.BaseStore != FlatBaseStore.Rocks && flatDbConfig.Layout != FlatLayout.Flat)
+                    throw new NotSupportedException($"FlatDb.BaseStore '{flatDbConfig.BaseStore}' is only supported with the '{FlatLayout.Flat}' layout");
+                // Fails loudly when the DB on disk belongs to the other base store, for every layout.
+                ArenaBasePersistence.ValidateBaseStoreKind(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), flatDbConfig.BaseStore);
+
                 IPersistence persistence = flatDbConfig.Layout switch
                 {
-                    FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
+                    FlatLayout.Flat => flatDbConfig.BaseStore == FlatBaseStore.Arena
+                        ? ctx.Resolve<ArenaBasePersistence>()
+                        : ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
                         new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),

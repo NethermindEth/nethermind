@@ -45,6 +45,10 @@ public static class BasePersistence
     private const string RawSlotDeprecationMessage =
         "Flat DB uses the legacy raw storage slot encoding, which is deprecated and will be removed in a future release. Please resync to adopt the RLP slot encoding.";
 
+    /// <summary>Whether the metadata column carries a persisted current state — i.e. the flat DB has ever
+    /// committed a (non-sync) write batch. Used to tell a fresh DB from one another backend owns.</summary>
+    internal static bool HasCurrentState(IReadOnlyKeyValueStore kv) => kv.Get(CurrentStateKey) is not null;
+
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
