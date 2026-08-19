@@ -14,8 +14,12 @@ namespace Nethermind.TxPool;
 /// unresolved payer and therefore without an exposure reservation.</remarks>
 public interface IFrameTxPrefixSimulator
 {
-    /// <param name="token">Honored at entry only; a started simulation runs to its <c>MAX_VERIFY_GAS</c> bound.</param>
-    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default);
+    /// <param name="token">Honored at entry and polled cooperatively during execution. It does not bound the
+    /// wait for the serialized processing env; the implementation's own timeout does, as a rejection.</param>
+    /// <param name="local">Exempt from the per-head budget that rations simulation between gossiping peers;
+    /// the per-simulation timeout and <c>MAX_VERIFY_GAS</c> still apply. Assumes a trusted RPC: publicly
+    /// exposed, it is the one admission path with no cumulative bound.</param>
+    FrameTxSimulationResult Simulate(Transaction tx, CancellationToken token = default, bool local = false);
 }
 
 public enum FrameTxSimulationOutcome
@@ -31,7 +35,12 @@ public enum FrameTxSimulationOutcome
     Rejected,
 }
 
-public readonly struct FrameTxSimulationResult(FrameTxSimulationOutcome outcome, Address? payer, string? reason)
+public readonly struct FrameTxSimulationResult(
+    FrameTxSimulationOutcome outcome,
+    Address? payer,
+    string? reason,
+    bool indeterminate = false,
+    bool nodeBound = false)
 {
     public FrameTxSimulationOutcome Outcome { get; } = outcome;
 
@@ -40,9 +49,31 @@ public readonly struct FrameTxSimulationResult(FrameTxSimulationOutcome outcome,
 
     public string? Reason { get; } = reason;
 
+    /// <summary>
+    /// True when the outcome reflects an admission bound or a node fault rather than the prefix, so it
+    /// says nothing about validity.
+    /// </summary>
+    /// <remarks>Retention is meant to consult this; today only <see cref="NodeBound"/> and
+    /// <see cref="Outcome"/> drive admission.</remarks>
+    public bool Indeterminate { get; } = indeterminate;
+
+    /// <summary>
+    /// True when the bound was one this node imposed on itself, so the sending peer did not choose it.
+    /// A timeout is indeterminate but <em>not</em> node-bound: the prefix's own wall clock trips it.
+    /// </summary>
+    public bool NodeBound { get; } = nodeBound;
+
     public static FrameTxSimulationResult Accept(Address payer) => new(FrameTxSimulationOutcome.Accepted, payer, null);
     public static FrameTxSimulationResult Reject(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason);
 
-    /// <summary>The node, not the transaction, is at fault, so the caller must not turn this into a rejection.</summary>
-    public static FrameTxSimulationResult Undecided(string reason) => new(FrameTxSimulationOutcome.Undecided, null, reason);
+    /// <summary>A rejection caused by a bound this node spent on itself, not by the prefix. Still charged to
+    /// the peer as load, because shedding is what the throttle is for.</summary>
+    public static FrameTxSimulationResult RejectIndeterminate(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason, indeterminate: true, nodeBound: true);
+
+    /// <summary>A rejection the prefix's own wall-clock consumption caused; retained, but chargeable to the sender.</summary>
+    public static FrameTxSimulationResult RejectTimedOut(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason, indeterminate: true);
+
+    /// <summary>The node malfunctioned rather than shed load, so the caller must not turn this into a
+    /// rejection at all.</summary>
+    public static FrameTxSimulationResult Undecided(string reason) => new(FrameTxSimulationOutcome.Undecided, null, reason, indeterminate: true, nodeBound: true);
 }

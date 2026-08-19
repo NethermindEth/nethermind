@@ -19,6 +19,8 @@ public class TxPoolConfig : ITxPoolConfig
     public int InMemoryBlobPoolSize { get; set; } = 512; // it is used when persistent pool is disabled
     public int MaxPendingTxsPerSender { get; set; } = 0;
     public ulong FrameTxMaxVerifyGas { get; set; } = 300_000;
+    public int FrameTxSimulationTimeoutMs { get; set; } = 250;
+    public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
     public int MaxPendingBlobTxsPerSender { get; set; } = 16;
     public int HashCacheSize { get; set; } = 512 * 1024;
     public ulong? GasLimit { get; set; } = null;

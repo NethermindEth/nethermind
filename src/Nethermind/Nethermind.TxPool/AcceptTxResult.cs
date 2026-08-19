@@ -172,6 +172,16 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult FrameSimulationFailed = new(28, TxPoolErrorMessages.FrameSimulationFailed);
 
+        /// <summary>
+        /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were
+        /// spent, so the transaction was never judged.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from <see cref="FrameSimulationFailed"/> so peer scoring can tell load shedding apart from
+        /// a peer sending transactions this node rejects.
+        /// </remarks>
+        public static readonly AcceptTxResult FrameSimulationDeferred = new(29, TxPoolErrorMessages.FrameSimulationDeferred);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

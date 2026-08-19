@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -146,6 +147,35 @@ public class FrameTxSimulationFilterTests
         FrameTxPayerFilter filter = new(state, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
         TxFilteringState filteringState = new(tx, state);
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
+    }
+
+    [Test]
+    public void Accept_SimulationDeferredByAdmissionBound_IsDistinctFromRejection()
+    {
+        // Peer scoring must be able to tell this node's load shedding from a peer sending bad transactions.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+    }
+
+    [Test]
+    public void Accept_SimulationTimedOut_IsChargedToTheSender()
+    {
+        // The prefix's own wall clock trips the timeout, so the peer chose it: retained by revalidation,
+        // but it must still count against the sender rather than reading as this node shedding load.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
     }
 
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx)

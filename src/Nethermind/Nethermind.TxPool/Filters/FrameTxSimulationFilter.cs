@@ -31,14 +31,17 @@ internal sealed class FrameTxSimulationFilter(
             return AcceptTxResult.Accepted;
         }
 
-        FrameTxSimulationResult result = simulator.Simulate(tx);
+        FrameTxSimulationResult result = simulator.Simulate(tx, local: (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
                 // Atomic: this filter runs under the pool's head read lock, so submissions land concurrently.
                 Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
                 if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
-                return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
+                // Deferred only for a bound this node spent on itself: a timeout is chargeable here, because
+                // the prefix's own wall clock is what tripped it.
+                return (result.NodeBound ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.FrameSimulationFailed)
+                    .WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
 
             case FrameTxSimulationOutcome.Undecided:
                 // No verdict was reached, so defer exactly as an unwired simulator does rather than return

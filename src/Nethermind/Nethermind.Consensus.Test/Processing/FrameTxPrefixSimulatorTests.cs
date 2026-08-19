@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -28,12 +29,95 @@ using NUnit.Framework;
 namespace Nethermind.Consensus.Test.Processing;
 
 /// <summary>
-/// A non-accepting verdict from <see cref="FrameTxPrefixSimulator"/> is charged to the sending peer's flood
-/// counter, so the simulator must only reject for reasons the transaction is actually answerable for.
+/// The admission bounds <see cref="FrameTxPrefixSimulator"/> applies before any EVM work — the frame-tx
+/// boundary guard and the per-head simulation time budget — and how it attributes failures.
 /// </summary>
-[TestFixture]
+/// <remarks>Attribution matters because a non-accepting verdict is charged to the sending peer's flood
+/// counter, so the simulator must only reject for reasons the transaction is answerable for.</remarks>
 public class FrameTxPrefixSimulatorTests
 {
+    [Test]
+    public void Simulate_NonFrameTransaction_RejectedWithoutBuildingAnEnv()
+    {
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _);
+
+        FrameTxSimulationResult result = simulator.Simulate(Build.A.Transaction.TestObject);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Indeterminate, Is.False, "a wrong transaction type is a definite rejection");
+            envFactory.DidNotReceive().Create();
+        }
+    }
+
+    [Test]
+    public void Simulate_WithoutAChainHead_LeavesTheTransactionUndecided()
+    {
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out IBlockFinder blockFinder);
+        blockFinder.Head.Returns((Block?)null);
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
+            Assert.That(result.Indeterminate, Is.True, "nothing was learned about the prefix");
+        }
+    }
+
+    [Test]
+    public void Simulate_ExhaustedHeadBudget_IsIndeterminateAndSpendsNoFurtherWork()
+    {
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _, budgetPerHeadMs: 1);
+        // The first simulation overruns the 1 ms budget, so the second finds none left for this head.
+        simulator.Simulate(FrameTx());
+        envFactory.ClearReceivedCalls();
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Shed load stays a rejection: the throttle exists precisely to slow the sending peer down.
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.Indeterminate, Is.True);
+            Assert.That(result.Reason, Does.Contain("budget"));
+            envFactory.DidNotReceive().Create();
+        }
+    }
+
+    [Test]
+    public void Simulate_LocalSubmission_IsExemptFromTheExhaustedHeadBudget()
+    {
+        // The budget rations simulation between gossiping peers, so a peer that spends it must not also
+        // shut the operator out of their own node until the next head.
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _, budgetPerHeadMs: 1);
+        simulator.Simulate(FrameTx());
+        envFactory.ClearReceivedCalls();
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx(), local: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Reason, Does.Not.Contain("budget"));
+            envFactory.Received().Create();
+        }
+    }
+
+    [Test]
+    public void Simulate_CancelledBeforeEntry_Throws()
+    {
+        using FrameTxPrefixSimulator simulator = Create(Substitute.For<IReadOnlyTxProcessingEnvFactory>(), out _);
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => simulator.Simulate(FrameTx(), cts.Token));
+    }
+
     private static IEnumerable<TestCaseData> NodeFaults()
     {
         yield return new TestCaseData(new MissingTrieNodeException("missing", null, default, TestItem.KeccakA)).SetName("missing trie node");
@@ -47,10 +131,10 @@ public class FrameTxPrefixSimulatorTests
     [TestCaseSource(nameof(NodeFaults))]
     public void Simulate_ScopeBuildHitsNodeFault_LeavesTheTransactionUndecided(Exception fault)
     {
-        FrameTxPrefixSimulator simulator = CreateSimulator(out IReadOnlyTxProcessorSource source, out _);
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out IReadOnlyTxProcessorSource source, out _);
         source.Build(Arg.Any<BlockHeader?>()).Throws(fault);
 
-        FrameTxSimulationResult result = simulator.Simulate(Tx());
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
 
         using (Assert.EnterMultipleScope())
         {
@@ -62,10 +146,12 @@ public class FrameTxPrefixSimulatorTests
     [TestCaseSource(nameof(NodeFaults))]
     public void Simulate_ProcessorHitsNodeFault_LeavesTheTransactionUndecided(Exception fault)
     {
-        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor);
+        // The fault surfaces once the tracer exists, where attributing by position would read it as the
+        // transaction's fault.
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor);
         processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>()).Throws(fault);
 
-        FrameTxSimulationResult result = simulator.Simulate(Tx());
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
 
         Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
     }
@@ -76,14 +162,14 @@ public class FrameTxPrefixSimulatorTests
         // Latching the warning for the whole process life would hide a later, genuinely systemic outage.
         InterfaceLogger sink = Substitute.For<InterfaceLogger>();
         sink.IsWarn.Returns(true);
-        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor, logSink: sink);
+        FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, sink);
 
         Fault(processor, new IOException("disk failure"));
-        simulator.Simulate(Tx());
+        simulator.Simulate(FrameTx());
         processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>()).Returns(TransactionResult.Ok);
-        simulator.Simulate(Tx());
+        simulator.Simulate(FrameTx());
         Fault(processor, new IOException("disk failure"));
-        simulator.Simulate(Tx());
+        simulator.Simulate(FrameTx());
 
         sink.Received(2).Warn(Arg.Any<string>());
 
@@ -95,11 +181,11 @@ public class FrameTxPrefixSimulatorTests
     public void Simulate_ProcessorThrowsOverAttackerBytecode_Rejects()
     {
         // Whatever the transaction's own bytecode can provoke stays a rejection.
-        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out ITransactionProcessor processor);
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor);
         processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
             .Throws(new InvalidOperationException("bad bytecode"));
 
-        FrameTxSimulationResult result = simulator.Simulate(Tx());
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
 
         using (Assert.EnterMultipleScope())
         {
@@ -109,51 +195,35 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
-    public void Simulate_NoChainHead_LeavesTheTransactionUndecided()
-    {
-        // Having no head is the node's condition, not a defect in the transaction.
-        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out _, hasHead: false);
-
-        FrameTxSimulationResult result = simulator.Simulate(Tx());
-
-        Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
-    }
-
-    [Test]
     public void Simulate_AfterDispose_LeavesTheTransactionUndecided()
     {
-        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out _);
+        FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out _);
         simulator.Dispose();
 
-        FrameTxSimulationResult result = simulator.Simulate(Tx());
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx());
 
         Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Undecided));
     }
 
-    [Test]
-    public void Simulate_SenderNotRecovered_Rejects()
+    private static FrameTxPrefixSimulator Create(
+        IReadOnlyTxProcessingEnvFactory envFactory,
+        out IBlockFinder blockFinder,
+        int budgetPerHeadMs = 1000)
     {
-        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out _);
-
-        FrameTxSimulationResult result = simulator.Simulate(new Transaction { Type = TxType.FrameTx });
-
-        Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+        blockFinder = BlockFinderAtHead();
+        // Stands in for a simulation past the bounds: observable, and slow enough to drive the budget.
+        envFactory.Create().Returns(_ =>
+        {
+            Thread.Sleep(5);
+            throw new TestEnvUnavailableException();
+        });
+        return CreateSimulator(envFactory, blockFinder, budgetPerHeadMs);
     }
 
-    [Test]
-    public void Simulate_Cancelled_ThrowsRatherThanJudgingTheTransaction()
-    {
-        FrameTxPrefixSimulator simulator = CreateSimulator(out _, out _);
-        using CancellationTokenSource cts = new();
-        cts.Cancel();
-
-        Assert.Throws<OperationCanceledException>(() => simulator.Simulate(Tx(), cts.Token));
-    }
-
-    private static FrameTxPrefixSimulator CreateSimulator(
+    /// <summary>A simulator over an env that builds, so a test can choose where inside it the failure lands.</summary>
+    private static FrameTxPrefixSimulator CreateOverBuiltEnv(
         out IReadOnlyTxProcessorSource source,
         out ITransactionProcessor processor,
-        bool hasHead = true,
         InterfaceLogger? logSink = null)
     {
         processor = Substitute.For<ITransactionProcessor>();
@@ -167,12 +237,35 @@ public class FrameTxPrefixSimulatorTests
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         envFactory.Create().Returns(source);
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.Head.Returns(hasHead ? Build.A.Block.WithNumber(1).TestObject : null);
-
-        ILogManager logManager = logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink));
-        return new FrameTxPrefixSimulator(envFactory, blockFinder, new TestSpecProvider(Eip8141Prototype.Instance), logManager);
+        return CreateSimulator(envFactory, BlockFinderAtHead(), budgetPerHeadMs: 1000, logSink);
     }
 
-    private static Transaction Tx() => Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
+    private static IBlockFinder BlockFinderAtHead()
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        return blockFinder;
+    }
+
+    private static FrameTxPrefixSimulator CreateSimulator(
+        IReadOnlyTxProcessingEnvFactory envFactory,
+        IBlockFinder blockFinder,
+        int budgetPerHeadMs,
+        InterfaceLogger? logSink = null) =>
+        new(envFactory,
+            blockFinder,
+            new TestSpecProvider(Bogota.Instance),
+            new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs },
+            logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink)));
+
+    private static Transaction FrameTx() => new()
+    {
+        Type = TxType.FrameTx,
+        SenderAddress = TestItem.AddressA,
+        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)],
+        FrameSignatures = [],
+        DecodedMaxFeePerGas = UInt256.One,
+    };
+
+    private sealed class TestEnvUnavailableException : Exception;
 }
