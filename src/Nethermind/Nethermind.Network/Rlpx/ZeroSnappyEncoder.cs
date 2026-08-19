@@ -23,6 +23,7 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
         RlpReader reader = new(input.AsSpan());
         int packetTypeLen = reader.PeekNextRlpLength();
 
+        // Defensive only: the input is always a locally serialized packet, so its type prefix fits by construction.
         int bodyLength = input.ReadableBytes - packetTypeLen;
         if (bodyLength < 0)
         {
@@ -48,5 +49,5 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowPacketTypePrefixLengthExceedsBuffer()
-        => throw new CorruptedFrameException("Packet type prefix length exceeds remaining buffer");
+        => throw new InvalidOperationException("Packet type prefix length exceeds remaining buffer");
 }

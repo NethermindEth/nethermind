@@ -12,10 +12,18 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 {
     internal class ZeroFrameMergerTestWrapper : ZeroFrameMerger
     {
-        public ZeroFrameMergerTestWrapper()
-            : base(LimboLogs.Instance) => _context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
-
         private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
+
+        public ZeroFrameMergerTestWrapper()
+            : base(LimboLogs.Instance)
+        {
+            IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+            allocator.Buffer(Arg.Any<int>()).Returns(call => AllocatedBuffer = UnpooledByteBufferAllocator.Default.Buffer(call.Arg<int>()));
+            _context.Allocator.Returns(allocator);
+        }
+
+        /// <summary>The buffer most recently allocated for an in-progress chunked packet, or <c>null</c> if there was none.</summary>
+        public IByteBuffer AllocatedBuffer { get; private set; }
 
         public ZeroPacket Decode(IByteBuffer input)
         {

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Linq;
 using DotNetty.Buffers;
-using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -136,7 +136,7 @@ public class SnappyTests
 
         input.WriteByte(0xb7);
 
-        Assert.That(() => encoder.TestEncode(input, output), Throws.InstanceOf<CorruptedFrameException>());
+        Assert.That(() => encoder.TestEncode(input, output), Throws.InstanceOf<InvalidOperationException>());
     }
 
     /// <summary>

@@ -70,6 +70,8 @@ public class ZeroNettyP2PHandlerTests
     {
         yield return new TestCaseData(new byte[] { 0x80 }).SetName("Invalid_length_varint");
         yield return new TestCaseData(new byte[] { 0x01 }).SetName("Missing_literal_data");
+        // A frame sized exactly to its packet type prefix leaves no content bytes at all.
+        yield return new TestCaseData(Array.Empty<byte>()).SetName("Empty_payload");
     }
 
     [Test]

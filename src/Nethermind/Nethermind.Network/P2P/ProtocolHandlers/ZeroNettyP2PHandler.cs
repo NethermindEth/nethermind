@@ -75,7 +75,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             {
                 int length = Snappy.Decompress(
                     snappyInput,
-                    output.Array.AsSpan(output.ArrayOffset + output.WriterIndex));
+                    output.Array.AsSpan(output.ArrayOffset + output.WriterIndex, uncompressedLength));
                 output.SetWriterIndex(output.WriterIndex + length);
             }
             catch (InvalidDataException exception)
@@ -147,7 +147,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         if (logger.IsDebug)
         {
             ReadOnlyMemory<byte> prefix = content.Array.AsMemory(content.ArrayOffset + content.ReaderIndex, Math.Min(32, readableBytes));
-            logger.Error($"Snappy decompression failed for {readableBytes} bytes: {prefix.ToHexString()}");
+            logger.Debug($"Snappy decompression failed for {readableBytes} bytes: {prefix.ToHexString()}");
         }
 
         return new CorruptedFrameException(exception);

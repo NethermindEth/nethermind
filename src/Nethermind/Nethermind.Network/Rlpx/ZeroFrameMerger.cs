@@ -97,18 +97,7 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
-            int read;
-            ulong rlpPacketType;
-            try
-            {
-                RlpReader reader = new(input.AsSpan());
-                rlpPacketType = reader.DecodeULong();
-                read = reader.Position;
-            }
-            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
-            {
-                throw new CorruptedFrameException(exception);
-            }
+            ulong rlpPacketType = DecodePacketType(input, out int read);
 
             if (read > frame.Size)
             {
@@ -137,6 +126,25 @@ namespace Nethermind.Network.Rlpx
             {
                 input.ReadBytes(_zeroPacket.Content, frame.Size - read);
                 // do not call Release since the input buffer is managed by
+            }
+        }
+
+        /// <remarks>
+        /// The try/catch lives here rather than in <see cref="ReadFirstChunk"/> so that the caller stays free of an
+        /// exception handling region, which RyuJIT refuses to inline.
+        /// </remarks>
+        private static ulong DecodePacketType(IByteBuffer input, out int read)
+        {
+            try
+            {
+                RlpReader reader = new(input.AsSpan());
+                ulong packetType = reader.DecodeULong();
+                read = reader.Position;
+                return packetType;
+            }
+            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            {
+                throw new CorruptedFrameException(exception);
             }
         }
 

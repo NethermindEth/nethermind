@@ -244,6 +244,8 @@ public class ZeroNettyFrameMergerTests
         Assert.That(() => wrapper.Decode(continuationFrame),
             Throws.InstanceOf<CorruptedFrameException>(),
             "continuation frame larger than remaining packet size must be rejected");
+        Assert.That(wrapper.AllocatedBuffer.ReferenceCount, Is.Zero,
+            "the in-progress packet buffer must be released, not just dropped");
 
         using DisposableByteBuffer recoveryInput = BuildFrames(1).AsDisposable();
         ZeroPacket recovered = wrapper.Decode(recoveryInput);
@@ -255,6 +257,25 @@ public class ZeroNettyFrameMergerTests
         {
             recovered?.Release();
         }
+    }
+
+    [Test]
+    public void Throws_when_continuation_frame_carries_a_different_context_id()
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
+
+        // A continuation frame header is [size:3][sequence prefix][capability id][context id][padding], all three
+        // header body items being single byte here. Bumping the context id detaches the frame from the packet above.
+        const int continuationContextIdOffset = Frame.HeaderSize + Frame.DefaultMaxFrameSize + 5;
+        frames.SetByte(continuationContextIdOffset, frames.GetByte(continuationContextIdOffset) + 1);
+
+        Assert.That(() => wrapper.Decode(frames),
+            Throws.InstanceOf<CorruptedFrameException>(),
+            "a frame from another context id must not be merged into the in-progress packet");
+        Assert.That(wrapper.AllocatedBuffer.ReferenceCount, Is.Zero,
+            "the in-progress packet buffer must be released, not just dropped");
     }
 
     [Test]

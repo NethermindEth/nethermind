@@ -12,6 +12,9 @@ namespace Nethermind.Network.Rlpx
 {
     internal class FrameHeaderReader
     {
+        private const int HeaderBodyOffset = 3;
+        private const int HeaderBodyLength = Frame.HeaderSize - HeaderBodyOffset;
+
         private int? _currentContextId;
 
         public byte[] HeaderBytes { get; } = new byte[Frame.HeaderSize];
@@ -23,29 +26,42 @@ namespace Nethermind.Network.Rlpx
             frameSize = (frameSize << 8) + (HeaderBytes[1] & 0xFF);
             frameSize = (frameSize << 8) + (HeaderBytes[2] & 0xFF);
 
+            ReadHeaderBody(out int? contextId, out int? totalPacketSize);
+
+            ValidateTotalPacketSize(frameSize, totalPacketSize);
+
+            // A frame that carries a context id but no total packet size continues the packet opened under that same
+            // context id, so the comparison has to happen before the field is overwritten.
+            bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
+            bool isFirst = totalPacketSize.HasValue || !isChunked;
+            _currentContextId = contextId;
+
+            return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
+        }
+
+        /// <summary>Decodes the RLP header body of the frame header just read into <see cref="HeaderBytes"/>.</summary>
+        /// <remarks>
+        /// Kept separate from <see cref="ReadFrameHeader"/> so that the exception handling region covers the RLP
+        /// decoding only, and does not risk swallowing a <see cref="CorruptedFrameException"/> raised elsewhere.
+        /// </remarks>
+        /// <exception cref="CorruptedFrameException">The header body is not a well formed RLP sequence.</exception>
+        private void ReadHeaderBody(out int? contextId, out int? totalPacketSize)
+        {
             try
             {
-                RlpReader headerBodyItems = new(HeaderBytes.AsSpan(3, 13));
+                RlpReader headerBodyItems = new(HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength));
                 int headerDataLength = headerBodyItems.ReadSequenceLength();
                 if ((uint)headerDataLength > (uint)(headerBodyItems.Length - headerBodyItems.Position))
                 {
-                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length exceeds {HeaderBytes.Length - 3} bytes");
+                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length exceeds {HeaderBodyLength} bytes");
                 }
 
                 int headerDataEnd = headerDataLength + headerBodyItems.Position;
                 int numberOfItems = headerBodyItems.PeekNumberOfItemsRemaining(headerDataEnd);
                 headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
-                int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
-                _currentContextId = contextId;
-                int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
-
-                ValidateTotalPacketSize(frameSize, totalPacketSize);
-
-                bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
-                bool isFirst = totalPacketSize.HasValue || !isChunked;
-
+                contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
+                totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
                 headerBodyItems.Check(headerDataEnd);
-                return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
             }
             catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
             {
