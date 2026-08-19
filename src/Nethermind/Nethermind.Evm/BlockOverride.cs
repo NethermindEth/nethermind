@@ -44,4 +44,12 @@ public class BlockOverride
         // EIP-4844 formula. The override is applied via BlobBaseFeeOverrideCalculatorDecorator
         // (and for simulate via IBlobBaseFeeOverrideProvider) instead.
     }
+
+    /// <summary>Returns a shallow copy with the base fee replaced by <paramref name="baseFee"/>.</summary>
+    public BlockOverride WithBaseFee(in UInt256 baseFee)
+    {
+        BlockOverride copy = (BlockOverride)MemberwiseClone();
+        copy.BaseFeePerGas = baseFee;
+        return copy;
+    }
 }

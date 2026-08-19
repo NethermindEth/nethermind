@@ -185,6 +185,12 @@ public class GethStyleTracer(
         // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
         // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
         // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
+        // Most callers pass a block owned by the block tree, so clone before mutating its header below.
+        if (options.BlockOverrides is not null || options.NoBaseFee)
+        {
+            block = block.WithReplacedBodyCloned(block.Body);
+        }
+
         BlockHeader baseBlockHeader = (processingOptions & ProcessingOptions.ForceSameBlock) == 0
             ? FindParent(block)
             : block.Header;
