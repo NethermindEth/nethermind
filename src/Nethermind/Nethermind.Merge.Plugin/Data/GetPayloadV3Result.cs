@@ -13,7 +13,7 @@ public class GetPayloadV3Result<TVersionedExecutionPayload>(Block block, UInt256
 {
     public BlobsBundleV1 BlobsBundle { get; } = blobsBundle;
 
-    public override bool ValidateFork(ISpecProvider specProvider)
+    public override bool ValidateFork(ISpecProvider specProvider, int version)
     {
         IReleaseSpec spec = specProvider.GetSpec(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp);
         return spec.IsEip4844Enabled && !spec.IsEip7623Enabled;

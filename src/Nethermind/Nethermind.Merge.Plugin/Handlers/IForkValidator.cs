@@ -7,5 +7,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public interface IForkValidator
 {
-    bool ValidateFork(ISpecProvider specProvider);
+    /// <param name="version">The engine-API method version the payload arrived on.</param>
+    bool ValidateFork(ISpecProvider specProvider, int version);
 }

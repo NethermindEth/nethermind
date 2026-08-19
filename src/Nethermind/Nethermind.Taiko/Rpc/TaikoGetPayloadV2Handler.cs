@@ -49,5 +49,5 @@ public class TaikoGetPayloadV2Result(Block block, UInt256 blockFees) : GetPayloa
 
     public override ExecutionPayload ExecutionPayload => _taikoPayload;
 
-    public override bool ValidateFork(ISpecProvider specProvider) => true;
+    public override bool ValidateFork(ISpecProvider specProvider, int version) => true;
 }

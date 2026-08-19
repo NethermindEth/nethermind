@@ -120,8 +120,14 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
     }
 
-    public override bool ValidateFork(ISpecProvider specProvider)
-         => specProvider.GetSpec(BlockNumber, Timestamp).BlockLevelAccessListsEnabled;
+    public override bool ValidateFork(ISpecProvider specProvider, int version)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
+        // V5 and V6 carry this same payload type and differ only by the inclusion list, which
+        // rides alongside it — so the fork decides which of the two versions is the valid one.
+        return spec.BlockLevelAccessListsEnabled
+            && spec.IsEip7805Enabled == (version >= EngineApiVersions.NewPayload.V6);
+    }
 
 
     /// <summary>

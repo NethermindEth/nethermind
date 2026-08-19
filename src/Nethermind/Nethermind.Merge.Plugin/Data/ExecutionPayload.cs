@@ -289,6 +289,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         _ => 1
     };
 
-    public virtual bool ValidateFork(ISpecProvider specProvider) =>
+    public virtual bool ValidateFork(ISpecProvider specProvider, int version) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
 }
