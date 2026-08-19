@@ -1135,6 +1135,35 @@ public class FrameTxProcessorTests
         Assert.That(result.ErrorDescription, Does.Contain("not enabled"));
     }
 
+    /// <remarks>
+    /// Driven through <c>CallAndRestore</c> — the <c>eth_call</c> / <c>eth_estimateGas</c> path, which runs with
+    /// <see cref="ExecutionOptions.SkipValidation"/> — because static validation already refuses these modes.
+    /// An unrecognised mode is neither SENDER nor read-only, so without the processor check it would run as a
+    /// DEFAULT frame: state-changing, called from the entry point, and reported as a successful execution.
+    /// </remarks>
+    [TestCase((byte)(TxFrame.ModePostTx + 1), TestName = "CallAndRestore_FrameModeJustAboveTheDefinedRange_IsRejected")]
+    [TestCase(byte.MaxValue, TestName = "CallAndRestore_FrameModeMaxByte_IsRejected")]
+    public void CallAndRestore_UndefinedFrameMode_IsRejected(byte mode)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(mode, target: Observer));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False, "an undefined mode executed instead of being refused");
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.InvalidMode));
+        }
+    }
+
     // The difference from a VERIFY revert: the body unwinds but the transaction stays valid and pays.
     [TestCase(false, ExpectedResult = StatusCode.Success, TestName = "Execute_PostTxAsserts_TransactionSucceeds")]
     [TestCase(true, ExpectedResult = StatusCode.Failure, TestName = "Execute_PostTxReverts_TransactionFailsButIsIncluded")]
