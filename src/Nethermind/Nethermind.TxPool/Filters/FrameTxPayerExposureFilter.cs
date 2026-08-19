@@ -30,8 +30,8 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // The upper-bound TXPARAM(0x06), shared with the processor so the admission bound and the
-        // payer-solvency gate cannot drift — this is where the base branch's under-reservation closes.
+        // The upper-bound TXPARAM(0x06), priced with the processor's helper so the admission bound
+        // and the payer-solvency gate cannot drift.
         IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
         if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
         {
