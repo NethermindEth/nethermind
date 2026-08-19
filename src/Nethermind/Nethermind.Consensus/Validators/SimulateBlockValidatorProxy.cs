@@ -34,6 +34,4 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
         baseBlockValidator.ValidateBodyAgainstHeader(header, toBeValidated, out error);
 
-    public bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options) =>
-        baseBlockValidator.ValidateInclusionList(processedBlock, suggestedBlock, worldState, options);
 }

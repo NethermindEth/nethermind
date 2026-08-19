@@ -150,15 +150,6 @@ public class BlockValidator(
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) =>
         ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
 
-    /// <inheritdoc/>
-    public bool ValidateInclusionList(Block processedBlock, Block suggestedBlock, IWorldState worldState, ProcessingOptions options)
-    {
-        if (options.ContainsFlag(ProcessingOptions.NoValidation)) return true;
-        IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
-        // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
-        return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, _txValidator);
-    }
-
     /// <summary>
     /// Processed block validation is comparing the block hashes (which include all other results).
     /// We only make exact checks on what is invalid if the hash is different.
