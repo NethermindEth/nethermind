@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -200,6 +202,100 @@ public class FrameTransactionForRpcTests
         {
             Assert.That(roundTripped.MaxFeePerBlobGas, Is.EqualTo((UInt256)456));
             Assert.That(roundTripped.BlobVersionedHashes, Has.Length.EqualTo(1));
+        }
+    }
+
+    private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        tx.NonceKeys = nonceKeys;
+        tx.Nonce = nonceSeq;
+        return tx;
+    }
+
+    private static IEnumerable<TestCaseData> NonceKeySets()
+    {
+        yield return new TestCaseData(new UInt256[] { 1, 7 }, new[] { "0x1", "0x7" }).SetArgDisplayNames("MultiKey");
+        // [0] is the account-nonce domain, a different payload from the absent list.
+        yield return new TestCaseData(new UInt256[] { 0 }, new[] { "0x0" }).SetArgDisplayNames("LegacyDomainSingleton");
+    }
+
+    [TestCaseSource(nameof(NonceKeySets))]
+    public void FrameTransactionForRpc_SerializesNonceKeys(UInt256[] nonceKeys, string[] expected)
+    {
+        Transaction tx = BuildKeyedFrameTx(nonceKeys);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.RootElement.TryGetProperty("nonceKeys", out JsonElement keys), Is.True);
+            Assert.That(keys.EnumerateArray().Select(static k => k.GetString()), Is.EqualTo(expected));
+            Assert.That(doc.RootElement.GetProperty("nonce").GetString(), Is.EqualTo("0x3"));
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_OmitsNonceKeys_ForEnvelopeNonce()
+    {
+        Transaction tx = BuildKeyedFrameTx(nonceKeys: null);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+
+        string json = new EthereumJsonSerializer().Serialize(rpc);
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        Assert.That(doc.RootElement.TryGetProperty("nonceKeys", out _), Is.False);
+    }
+
+    [TestCaseSource(nameof(NonceKeySets))]
+    public void FrameTransactionForRpc_ToTransaction_RoundTripsNonceKeys(UInt256[] nonceKeys, string[] _)
+    {
+        Transaction original = BuildKeyedFrameTx(nonceKeys);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(original);
+
+        Transaction roundTripped = ((FrameTransactionForRpc)rpc).ToTransaction().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.NonceKeys, Is.EqualTo(nonceKeys));
+            Assert.That(roundTripped.Nonce, Is.EqualTo(original.Nonce));
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_KeepsAbsentNonceKeys()
+    {
+        Transaction original = BuildKeyedFrameTx(nonceKeys: null);
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(original);
+
+        Transaction roundTripped = ((FrameTransactionForRpc)rpc).ToTransaction().Data!;
+
+        Assert.That(roundTripped.NonceKeys, Is.Null);
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_DeserializesNonceKeys_FromCallParams()
+    {
+        const string json = """
+            {
+                "from": "0x0000000000000000000000000000000000000001",
+                "nonce": "0x3",
+                "nonceKeys": ["0x1", "0x7"],
+                "frames": [{"mode": 0, "flags": 3, "gasLimit": "0x186a0", "value": "0x0", "data": "0x"}]
+            }
+            """;
+
+        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+
+        Assert.That(rpc, Is.InstanceOf<FrameTransactionForRpc>());
+        Transaction tx = rpc.ToTransaction().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.NonceKeys, Is.EqualTo(new UInt256[] { 1, 7 }));
+            Assert.That(tx.Nonce, Is.EqualTo(3UL));
         }
     }
 

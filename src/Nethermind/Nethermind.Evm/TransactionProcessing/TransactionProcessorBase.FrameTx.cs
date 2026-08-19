@@ -29,7 +29,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <remarks>
     /// With <see cref="Transaction.NonceKeys"/> every selected key must currently sit at
     /// <see cref="Transaction.Nonce"/>, so the set is consumed as a unit and a partially advanced set is not
-    /// replayable. A malformed set is rejected as malformed, not as a nonce mismatch: it names no sequence.
+    /// replayable. Assumes the caller has already checked well-formedness, which is not state-dependent and
+    /// so is enforced whether or not the entry point validates.
     /// </remarks>
     private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
     {
@@ -49,17 +50,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.Ok;
         }
 
-        // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
-        if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
-        }
-
         if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
         }
 
+        // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
         ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
         return (tx.Nonce < current
             ? TransactionResult.ErrorType.TransactionNonceTooLow
@@ -81,9 +77,20 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("keyed nonces are not enabled");
         }
 
-        // Pre-flight: nonce and protocol-validated signatures.
-        TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
-        if (!nonceResult) return nonceResult;
+        // Structural, so it holds even where validation is skipped: the fixed-size buffers reached below
+        // take a well-formed set as their precondition, and eth_call arrives here without a validator.
+        if (tx.NonceKeys is { } nonceKeys && !KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
+        }
+
+        // Pre-flight: nonce and protocol-validated signatures. The state comparison follows SkipValidation
+        // as the account-nonce path does: eth_call overwrites the supplied nonce with the account nonce.
+        if (ShouldValidate(opts))
+        {
+            TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
+            if (!nonceResult) return nonceResult;
+        }
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         // EIP-7928: resolved without recording an account access - a tx that never takes the P256

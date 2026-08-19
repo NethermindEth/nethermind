@@ -1718,6 +1718,15 @@ public class FrameTxProcessorTests
         return _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer ?? NullTxTracer.Instance);
     }
 
+    private TransactionResult CallAndRestore(Transaction tx)
+    {
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+        return _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+    }
+
     private TransactionResult ProcessWithBlobHeader(Transaction tx, ulong excessBlobGas, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
@@ -1841,6 +1850,48 @@ public class FrameTxProcessorTests
 
             Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL), "a keyed set leaves the account nonce alone");
         }
+    }
+
+    /// <remarks>
+    /// <c>eth_call</c> and <c>eth_estimateGas</c> replace the supplied nonce with the sender's account nonce,
+    /// which a keyed sequence has no relation to, so the nonce check has to follow <c>SkipValidation</c> as
+    /// the account-nonce path does or a keyed transaction is unreachable from those entry points.
+    /// </remarks>
+    [Test]
+    public void CallAndRestore_KeyedNonceOutOfSequence_IsStillSimulated()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        Transaction executed = FrameTx(nonce: 5, SelfVerifyFrame());
+        executed.NonceKeys = [7];
+        Transaction simulated = FrameTx(nonce: 5, SelfVerifyFrame());
+        simulated.NonceKeys = [7];
+
+        Assert.That(Process(executed).TransactionExecuted, Is.False, "key 7 sits at sequence 0, so the set is not consumable");
+        Assert.That(CallAndRestore(simulated).TransactionExecuted, Is.True);
+    }
+
+    /// <remarks>
+    /// Only the state half of the nonce check may follow <c>SkipValidation</c>. The RPC view caps nothing and
+    /// <c>eth_call</c> reaches the processor without a validator, so an oversized set would otherwise arrive at
+    /// the fixed-size buffers downstream, which take a well-formed set as their precondition.
+    /// </remarks>
+    [Test]
+    public void CallAndRestore_KeyedNonceSetOverTheLimit_IsMalformedNotThrown()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        // Full-width and strictly increasing, so the length is the only thing that is wrong with the set.
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = UInt256.MaxValue - (UInt256)(keys.Length - 1 - i);
+        }
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.NonceKeys = keys;
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
     }
 
     // The property the set semantics exist for: one advanced key makes the whole set unusable.
