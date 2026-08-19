@@ -44,6 +44,11 @@ jobs:
               echo "cpu${n}: $(cat "$c/topology/thread_siblings_list" 2>/dev/null || echo n/a)"
             done | sort -V | head -32
             echo
+            echo "-- live load and leftovers (a stray load generator competes with the node) --"
+            echo "loadavg:         $(cut -d' ' -f1-3 /proc/loadavg)"
+            echo "mem total/avail: $(awk '/MemTotal|MemAvailable/{printf "%s ", $2/1048576"GiB"}' /proc/meminfo)"
+            docker ps --format '  running: {{.Names}} ({{.Image}}, up {{.RunningFor}})' || true
+            echo
             echo "-- what a container sees (same image family the benchmarks run) --"
             docker run --rm --entrypoint sh alpine:3 -c 'echo "container nproc: $(nproc)"' 2>/dev/null || echo "docker probe skipped"
             echo '```'
