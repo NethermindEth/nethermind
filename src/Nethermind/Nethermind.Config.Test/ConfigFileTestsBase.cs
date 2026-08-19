@@ -50,11 +50,7 @@ public abstract class ConfigFileTestsBase
 
     [ConfigFileGroup("archive")]
     protected IEnumerable<string> ArchiveConfigs
-        => Configs.Where(static config => config.Contains("_archive") && !config.Contains("_archive_clone"));
-
-    [ConfigFileGroup("archive_clone")]
-    protected IEnumerable<string> ArchiveCloneConfigs
-        => Configs.Where(static config => config.Contains("_archive_clone"));
+        => Configs.Where(static config => config.Contains("_archive"));
 
     [ConfigFileGroup("poacore")]
     protected IEnumerable<string> PoaCoreConfigs

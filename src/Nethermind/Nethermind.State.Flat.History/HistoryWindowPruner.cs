@@ -25,8 +25,7 @@ internal interface IPruneBudget
 /// row format requires for reads in <c>[floor, watermark]</c> to keep resolving, and deletes the rest. A single
 /// pass is a bounded, resumable scan-and-delete over each history column — never a whole-column compaction — so
 /// it never blocks capture (which only ever writes above the watermark; the pruner only ever deletes below the
-/// floor, a disjoint range by construction) and never blocks a concurrent backfill importer from running (the two
-/// are mutually exclusive via <see cref="IBackfillInterlock"/>).
+/// floor, a disjoint range by construction).
 /// </summary>
 public sealed class HistoryWindowPruner : IDisposable
 {
@@ -37,23 +36,14 @@ public sealed class HistoryWindowPruner : IDisposable
     private static ReadOnlySpan<byte> StorageCursorKey => "history:prune:cursor:storage"u8;
     private static ReadOnlySpan<byte> ClearsCursorKey => "history:prune:cursor:clears"u8;
     private static ReadOnlySpan<byte> BlocksCursorKey => "history:prune:cursor:blocks"u8;
-    private static ReadOnlySpan<byte> SidecarRetentionCursorKey => "history:prune:cursor:sidecar-retention"u8;
-    private static ReadOnlySpan<byte> SidecarOverCapCursorKey => "history:prune:cursor:sidecar-overcap"u8;
-
-    // Rows checked between each GatherMetric() re-check while purging over the byte cap - cheap enough to call
-    // often, but calling it after every single delete would be needless overhead on a column that can be huge.
-    private const int SidecarOverCapMetricCheckInterval = 1000;
-
     private readonly HistoryWriter _writer;
     private readonly IDb _availableBlocks;
     private readonly IDb _accountHistory;
     private readonly IDb _storageHistory;
     private readonly IDb _storageClears;
-    private readonly IDb _changesetSidecar;
     private readonly HistoryAvailability _availability;
     private readonly HistoryRowFormat _rowFormat;
     private readonly IFlatDbConfig _config;
-    private readonly IBackfillInterlock _interlock;
     private readonly HistoryScopeGate _scopeGate;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _wakeSignal = new(0, 1);
@@ -61,20 +51,10 @@ public sealed class HistoryWindowPruner : IDisposable
     private readonly Task _loop;
     private ulong _lastFloorPublishWatermark;
 
-    // Owned here (not in HistoryAvailability, a pure availability/scope-record store) so a concurrent backfill
-    // importer has one dedicated method pair to call around its active pass. Real mutual exclusion, not a sampled
-    // flag: RunOnePass only proceeds if it can claim the gate outright, so a pass can never start deleting rows a
-    // backfill is concurrently writing, and BeginBackfill only returns once any in-flight pass has released it.
-    // Plain-lock-backed (not ReaderWriterLockSlim): ImportRangeAsync awaits across network I/O between
-    // BeginBackfill and its matching dispose, and its continuation can resume on a different thread — a lock type
-    // that tracks per-thread ownership would throw when release happens on a thread that never acquired it.
-    private readonly BackfillGate _backfillGate = new();
-
     public HistoryWindowPruner(
         HistoryWriter writer,
         IColumnsDb<FlatHistoryColumns> history,
         IFlatDbConfig config,
-        IBackfillInterlock interlock,
         HistoryScopeGate scopeGate,
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
@@ -85,17 +65,13 @@ public sealed class HistoryWindowPruner : IDisposable
         _accountHistory = history.GetColumnDb(FlatHistoryColumns.AccountHistory);
         _storageHistory = history.GetColumnDb(FlatHistoryColumns.StorageHistory);
         _storageClears = history.GetColumnDb(FlatHistoryColumns.StorageClears);
-        _changesetSidecar = history.GetColumnDb(FlatHistoryColumns.ChangesetSidecar);
         _availability = availability;
         _rowFormat = rowFormat;
         _config = config;
-        _interlock = interlock;
         _scopeGate = scopeGate;
         _logger = logManager.GetClassLogger<HistoryWindowPruner>();
 
-        // The sidecar's own retention/cap can require pruning even when the read-path window is unbounded
-        // (HistoryRetentionBlocks == 0) - the two are independent knobs, see PruneChangesetSidecarColumn's remarks.
-        bool shouldRun = config.HistoryRetentionBlocks > 0 || SidecarPruningConfigured(config);
+        bool shouldRun = config.HistoryRetentionBlocks > 0;
         _loop = shouldRun ? RunLoopAsync() : Task.CompletedTask;
         if (shouldRun)
         {
@@ -103,17 +79,12 @@ public sealed class HistoryWindowPruner : IDisposable
         }
     }
 
-    private static bool SidecarPruningConfigured(IFlatDbConfig config) =>
-        config.HistoryChangesetSidecarEnabled &&
-        (config.HistoryChangesetSidecarRetentionBlocks > 0 || config.HistoryChangesetSidecarMaxBytes > 0);
-
     /// <summary>
     /// One-time (startup) reconciliation of the operator's <c>Flat.HistorySliceAddresses</c> allow-list against
     /// the scope records already on disk: deletes a scope for an address no longer configured (its rows below the
     /// general floor become prunable again on the next pass) and creates one for a newly configured address that
     /// has none yet. Never touches an already-existing scope's floor - that is the per-pass maintenance below
-    /// (bounded retention) or a future backfill importer's job (unbounded), never a blind reset back to some seed
-    /// value on every restart.
+    /// (bounded retention), never a blind reset back to some seed value on every restart.
     /// </summary>
     /// <exception cref="InvalidConfigurationException">Slices are configured against a database that is not
     /// windowed (<see cref="IFlatDbConfig.HistoryRetentionBlocks"/> is 0) - a slice is meaningless there (the v2
@@ -183,123 +154,9 @@ public sealed class HistoryWindowPruner : IDisposable
     private static byte[] AccountKeyOf(Address address) =>
         address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
 
-    /// <summary>Blocks (briefly — only against an already-in-flight prune pass, bounded by its own budget) until
-    /// the gate is claimed for backfill, then marks it active for the duration of the returned scope. Multiple
-    /// concurrent backfills may hold this simultaneously (many readers); a prune pass claims it exclusively (one
-    /// writer, no readers). Idempotent and exception-safe by construction — disposing the same scope twice, or
-    /// disposing it from a <c>finally</c> after an exception, only ever releases once.</summary>
-    public IDisposable BeginBackfill()
-    {
-        SpinWait spinner = default;
-        while (!_backfillGate.TryEnterBackfill())
-        {
-            spinner.SpinOnce();
-        }
-
-        return new BackfillScope(this);
-    }
-
-    /// <summary>Async counterpart to <see cref="BeginBackfill"/>: suspends instead of spinning while an in-flight
-    /// prune pass holds the gate. A pass can run for its whole configured budget
-    /// (<see cref="IFlatDbConfig.HistoryPrunePassBudgetSeconds"/>, up to tens of seconds), so a caller reached from
-    /// an async import loop should never burn a thread spin-waiting that long — this awaits the pass's exit signal
-    /// instead. Same acquire/release contract as <see cref="BeginBackfill"/> otherwise: idempotent, exception-safe
-    /// scope, any number of concurrent backfills admitted, exclusive against a prune pass.</summary>
-    public async Task<IDisposable> BeginBackfillAsync(CancellationToken cancellationToken)
-    {
-        while (!_backfillGate.TryEnterBackfill())
-        {
-            await _backfillGate.WaitForPruneToExitAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        return new BackfillScope(this);
-    }
-
-    private void EndBackfill() => _backfillGate.ExitBackfill();
-
-    private sealed class BackfillScope(HistoryWindowPruner owner) : IDisposable
-    {
-        private int _disposed;
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0) owner.EndBackfill();
-        }
-    }
-
-    /// <summary>Real shared/exclusive gate between concurrent backfill importers (any number of simultaneous
-    /// readers) and this pruner (one exclusive writer, admitted only when no reader holds the gate). Deliberately
-    /// not <see cref="ReaderWriterLockSlim"/>: that type tracks lock ownership per-thread, and
-    /// <c>BeginBackfill</c>/<c>EndBackfill</c> are held across <c>await</c> points in an async importer whose
-    /// continuation can resume on a different thread than the one that entered — released-without-held would
-    /// throw. This type carries no thread affinity: each method is a single synchronous, uncontended-fast
-    /// <c>lock</c> section, never held across a suspension point.</summary>
-    private sealed class BackfillGate
-    {
-        private readonly Lock _sync = new();
-        private int _activeBackfills;
-        private bool _pruningActive;
-        // Reset to a fresh instance on every ExitPrune: an awaiter that captured the Task before this pass
-        // started must still observe it complete when this exact pass exits, even though a later pass may already
-        // be waiting on the replacement instance by then.
-        private TaskCompletionSource<bool> _pruneExited = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public bool TryEnterBackfill()
-        {
-            lock (_sync)
-            {
-                if (_pruningActive) return false;
-                _activeBackfills++;
-                return true;
-            }
-        }
-
-        public void ExitBackfill()
-        {
-            lock (_sync)
-            {
-                _activeBackfills--;
-            }
-        }
-
-        public bool TryEnterPrune()
-        {
-            lock (_sync)
-            {
-                if (_activeBackfills > 0 || _pruningActive) return false;
-                _pruningActive = true;
-                return true;
-            }
-        }
-
-        /// <summary>The Task an async waiter should await before retrying <see cref="TryEnterBackfill"/> - already
-        /// completed when no pass is currently active, so a caller can unconditionally await this exactly once per
-        /// failed <see cref="TryEnterBackfill"/> attempt without a separate active-check.</summary>
-        public Task WaitForPruneToExitAsync()
-        {
-            lock (_sync)
-            {
-                return _pruningActive ? _pruneExited.Task : Task.CompletedTask;
-            }
-        }
-
-        public void ExitPrune()
-        {
-            TaskCompletionSource<bool> exited;
-            lock (_sync)
-            {
-                _pruningActive = false;
-                exited = _pruneExited;
-                _pruneExited = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            }
-
-            exited.TrySetResult(true);
-        }
-    }
-
     private void OnWatermarkAdvanced(ulong watermark)
     {
-        // Written from RunOnePassUnderGate on the prune loop's own task, read here from whatever thread the
+        // Written from RunOnePass on the prune loop's own task, read here from whatever thread the
         // writer's capture path runs on: Volatile is the correctness requirement, not the plain field a
         // single-writer/single-reader assumption would permit.
         if (watermark < Volatile.Read(ref _lastFloorPublishWatermark) + _config.HistoryPruneIntervalBlocks) return;
@@ -342,40 +199,14 @@ public sealed class HistoryWindowPruner : IDisposable
     /// (e.g. "exhausted after N rows") never leaks its state into an unrelated column.</summary>
     internal void RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
     {
-        // Advisory fast path: some other caller may set this without ever going through BeginBackfill/EndBackfill.
-        // Declining here (or at the real gate below) never re-arms the wake signal immediately — doing so would
-        // busy-spin RunLoopAsync for the entire backfill duration, since the very next iteration would just wake,
-        // decline, and re-arm again. A decline instead relies on OnWatermarkAdvanced's own natural retrigger:
-        // capture keeps advancing the watermark during backfill, and each capture re-evaluates the interval
-        // threshold against it, so the request is retried on the next captured block rather than lost outright.
-        if (_interlock.IsBackfillActive) return;
-        if (!_backfillGate.TryEnterPrune()) return;
-
-        try
-        {
-            RunOnePassUnderGate(token, budgetFactory);
-        }
-        finally
-        {
-            _backfillGate.ExitPrune();
-        }
-    }
-
-    private void RunOnePassUnderGate(CancellationToken token, Func<IPruneBudget>? budgetFactory)
-    {
         // Never zero: a zero-duration wall-clock budget would exhaust before scanning a single row, forever
         // (HasAnyPendingCursor then stays true, so the floor can never advance again either).
         TimeSpan passBudget = TimeSpan.FromSeconds(Math.Max(1, _config.HistoryPrunePassBudgetSeconds));
         Func<IPruneBudget> newBudget = budgetFactory ?? (() => new WallClockBudget(passBudget));
 
-        // Independent of the read-path window below: the sidecar has its own retention knob and hard byte cap,
-        // and no reader ever pins against it through HistoryScopeGate, so it needs neither a floor-publish nor a
-        // drain before deleting - only a plain, resumable range scan.
-        bool completedSidecar = PruneChangesetSidecarColumn(newBudget, token);
-
         bool completedReadPathWindow = RunReadPathWindowPass(passBudget, newBudget, token);
 
-        if (!(completedSidecar && completedReadPathWindow))
+        if (!completedReadPathWindow)
         {
             Metrics.FlatHistoryPrunePassesYielded++;
             try { _wakeSignal.Release(); } catch (SemaphoreFullException) { }
@@ -406,17 +237,6 @@ public sealed class HistoryWindowPruner : IDisposable
 
             ulong newFloor = watermark - retention;
 
-            // A backfill importer may have connected a range that extends the window further back than this
-            // pass's own retention math would compute; raising the floor past its bottom without pruning it in
-            // the same pass would silently re-delete data the importer just spent effort populating.
-            if (_availability.TryGetConnectedRange(out ulong importedFloor, out _) && importedFloor < newFloor)
-            {
-                newFloor = importedFloor;
-            }
-
-            // CAS-style: only actually raises if newFloor is still above whatever the current value is at this
-            // instant, so a concurrent importer lowering the floor on the same shared instance cannot have its
-            // write clobbered by this call proceeding on a stale read.
             if (!_availability.TryRaiseGlobalFloor(newFloor)) return true;
 
             Metrics.FlatHistoryFloor = (long)newFloor;
@@ -464,135 +284,6 @@ public sealed class HistoryWindowPruner : IDisposable
         }
 
         return minFloor;
-    }
-
-    /// <summary>
-    /// The changesets sidecar (<c>[block BE | chunkIndex BE]</c>, block-major): retention and lifecycle are
-    /// independent of the read-path window's floor - it serves devp2p replay and backfill import, not as-of-block
-    /// reads, and no reader ever pins against it through <see cref="HistoryScopeGate"/>, so pruning it needs
-    /// neither a published floor nor a drain. Unlike the read-path columns, block being the key's prefix makes
-    /// "everything below a cutoff" a cheap contiguous-range scan with no per-key retention logic at all.
-    /// </summary>
-    private bool PruneChangesetSidecarColumn(Func<IPruneBudget> newBudget, CancellationToken token)
-    {
-        if (!_config.HistoryChangesetSidecarEnabled) return true;
-
-        ulong sidecarRetention = _config.HistoryChangesetSidecarRetentionBlocks > 0
-            ? _config.HistoryChangesetSidecarRetentionBlocks
-            : _config.HistoryRetentionBlocks;
-
-        bool completedRetention = true;
-        if (sidecarRetention > 0)
-        {
-            ulong watermark = _writer.LastCapturedBlock;
-            ulong retentionFloor = watermark > sidecarRetention ? watermark - sidecarRetention : 0;
-            completedRetention = PruneSidecarBelow(retentionFloor, SidecarRetentionCursorKey, newBudget(), token);
-        }
-
-        if (!completedRetention) return false;
-
-        long maxBytes = _config.HistoryChangesetSidecarMaxBytes;
-        if (maxBytes <= 0) return true;
-
-        if (_changesetSidecar.GatherMetric().Size <= maxBytes) return true;
-
-        // Retention alone did not bring the column under its hard cap - drop the oldest still-retained ranges,
-        // ahead of their normal retention floor, until back under budget. FlatHistorySidecarOverCapPurgedRows
-        // makes this degraded state observable: it means the sidecar's retention window is genuinely too wide for
-        // the configured cap, not a one-off blip.
-        return PruneSidecarOverCap(maxBytes, newBudget(), token);
-    }
-
-    private bool PruneSidecarBelow(ulong floor, ReadOnlySpan<byte> cursorKeyName, IPruneBudget budget, CancellationToken token)
-    {
-        if (floor == 0) return true;
-
-        ISortedKeyValueStore sorted = (ISortedKeyValueStore)_changesetSidecar;
-        byte[]? cursor = ReadCursor(cursorKeyName);
-
-        Span<byte> upperBound = stackalloc byte[BlockBytes];
-        BinaryPrimitives.WriteUInt64BigEndian(upperBound, floor);
-
-        int sinceFlush = 0;
-        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound);
-        IWriteBatch batch = _changesetSidecar.StartWriteBatch();
-        try
-        {
-            while (view.MoveNext())
-            {
-                if (budget.Exhausted || token.IsCancellationRequested)
-                {
-                    WriteCursor(cursorKeyName, view.CurrentKey);
-                    return false;
-                }
-
-                batch.Remove(view.CurrentKey);
-                Metrics.FlatHistoryPrunedRows++;
-                sinceFlush = FlushBatchIfNeeded(_changesetSidecar, ref batch, sinceFlush);
-            }
-        }
-        finally
-        {
-            batch.Dispose();
-        }
-
-        ClearCursor(cursorKeyName);
-        return true;
-    }
-
-    /// <summary>Deletes oldest-first from wherever the last over-cap purge (or the start of the column) left off,
-    /// re-checking the actual on-disk size every <see cref="SidecarOverCapMetricCheckInterval"/> rows rather than
-    /// computing a target block up front — per-row byte sizes are not tracked, so the only reliable signal is the
-    /// column's own metric after a batch of deletes has actually committed.</summary>
-    private bool PruneSidecarOverCap(long maxBytes, IPruneBudget budget, CancellationToken token)
-    {
-        ISortedKeyValueStore sorted = (ISortedKeyValueStore)_changesetSidecar;
-        byte[]? cursor = ReadCursor(SidecarOverCapCursorKey);
-
-        Span<byte> upperBound = stackalloc byte[BlockBytes + 1];
-        upperBound.Fill(0xFF);
-
-        int sinceFlush = 0;
-        int sinceMetricCheck = 0;
-        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound);
-        IWriteBatch batch = _changesetSidecar.StartWriteBatch();
-        try
-        {
-            while (view.MoveNext())
-            {
-                if (budget.Exhausted || token.IsCancellationRequested)
-                {
-                    WriteCursor(SidecarOverCapCursorKey, view.CurrentKey);
-                    return false;
-                }
-
-                batch.Remove(view.CurrentKey);
-                Metrics.FlatHistoryPrunedRows++;
-                Metrics.FlatHistorySidecarOverCapPurgedRows++;
-                sinceFlush = FlushBatchIfNeeded(_changesetSidecar, ref batch, sinceFlush);
-
-                if (++sinceMetricCheck < SidecarOverCapMetricCheckInterval) continue;
-                sinceMetricCheck = 0;
-
-                // Force the pending deletes visible to GatherMetric before trusting its answer.
-                batch.Dispose();
-                batch = _changesetSidecar.StartWriteBatch();
-                if (_changesetSidecar.GatherMetric().Size <= maxBytes)
-                {
-                    WriteCursor(SidecarOverCapCursorKey, view.CurrentKey);
-                    return true;
-                }
-            }
-        }
-        finally
-        {
-            batch.Dispose();
-        }
-
-        // Ran out of rows entirely without getting under budget - nothing left to purge; clear the cursor so the
-        // next pass starts fresh once capture has written new rows for it to reconsider.
-        ClearCursor(SidecarOverCapCursorKey);
-        return true;
     }
 
     /// <summary>
@@ -795,7 +486,7 @@ public sealed class HistoryWindowPruner : IDisposable
 
     public void Dispose()
     {
-        if (_config.HistoryRetentionBlocks > 0 || SidecarPruningConfigured(_config))
+        if (_config.HistoryRetentionBlocks > 0)
         {
             _writer.WatermarkAdvanced -= OnWatermarkAdvanced;
         }

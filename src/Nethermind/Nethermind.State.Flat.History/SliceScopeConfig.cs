@@ -8,8 +8,8 @@ namespace Nethermind.State.Flat.History;
 
 /// <summary>One <c>Flat.HistorySliceAddresses</c> entry: an address, and optionally the bounded retention (in
 /// blocks below the watermark) the operator wants for it. Absent retention means unbounded intent - the pruner
-/// never advances that scope's floor on its own; deepening it below wherever it starts is a backfill concern,
-/// out of this parser's scope. A range scope (one record covering several addresses), if ever needed, is a new
+/// never advances that scope's floor on its own. A range scope (one record covering several addresses), if ever
+/// needed, is a new
 /// record kind under its own reserved-key prefix - not a retrofit of this point-scope shape.</summary>
 public readonly record struct SliceScopeEntry(Address Address, ulong? RetentionBlocks);
 

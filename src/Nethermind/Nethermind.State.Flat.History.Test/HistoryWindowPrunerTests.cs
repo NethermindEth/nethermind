@@ -118,118 +118,6 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
-    public void RunOnePass_WhenBackfillInterlockIsActive_IsANoOp()
-    {
-        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
-        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 5, new Account(1, 100));
-        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
-
-        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8, interlock: new AlwaysActiveBackfillInterlock());
-        pruner.RunOnePass(CancellationToken.None);
-
-        HistoryStoreV3 accountHistoryV3 = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
-        Span<byte> buffer = stackalloc byte[256];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_reader.IsPrunedBelowFloor(0), Is.False, "a pass must not publish a floor while backfill is active");
-            Assert.That(accountHistoryV3.TryGetValueBeforeNextChange(4, AccountKey(), buffer, out ulong foundAt), Is.GreaterThan(0));
-            Assert.That(foundAt, Is.EqualTo(5UL), "a pass must not delete any row while backfill is active");
-        }
-
-        pruner.Dispose();
-    }
-
-    [Test]
-    public void RunOnePass_WhileABeginBackfillScopeIsOpen_IsANoOp()
-    {
-        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
-        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 5, new Account(1, 100));
-        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
-
-        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
-        IDisposable backfillScope = pruner.BeginBackfill();
-
-        // Deterministic, single-threaded: this is the real gate (BeginBackfill/EndBackfill), not the external
-        // IBackfillInterlock the sibling test above exercises — proving the pruner's own admission check, not
-        // just the advisory flag, blocks a pass for as long as the scope is open.
-        pruner.RunOnePass(CancellationToken.None);
-
-        HistoryStoreV3 accountHistoryV3 = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
-        Span<byte> buffer = stackalloc byte[256];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_reader.IsPrunedBelowFloor(0), Is.False, "a pass must not publish a floor while a BeginBackfill scope is open");
-            Assert.That(accountHistoryV3.TryGetValueBeforeNextChange(4, AccountKey(), buffer, out ulong foundAt), Is.GreaterThan(0));
-            Assert.That(foundAt, Is.EqualTo(5UL), "a pass must not delete any row while a BeginBackfill scope is open");
-        }
-
-        backfillScope.Dispose();
-        pruner.RunOnePass(CancellationToken.None);
-
-        Assert.That(_reader.IsPrunedBelowFloor(0), Is.True, "once the scope is disposed, a subsequent pass must proceed normally");
-
-        pruner.Dispose();
-    }
-
-    [Test]
-    public void BeginBackfillAsync_WhileAPrunePassHoldsTheGate_CompletesOnlyAfterThePassReleases()
-    {
-        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
-        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
-
-        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
-
-        using ManualResetEventSlim entered = new(false);
-        using ManualResetEventSlim release = new(false);
-
-        // Blocks the pass mid-column on its very first budget check (there is exactly one row to scan, so the
-        // check is guaranteed to happen) - the pass is genuinely still holding the gate for as long as this
-        // background call has not returned, not merely simulated by a flag.
-        Task passTask = Task.Run(() => pruner.RunOnePass(CancellationToken.None, () => new GateProbeBudget(entered, release)));
-        entered.Wait();
-
-        Task<IDisposable> backfillTask = pruner.BeginBackfillAsync(CancellationToken.None);
-
-        // Deterministic, not a race: BeginBackfillAsync runs synchronously up to its first await, and by the time
-        // entered.Wait() above returned, TryEnterPrune already set the gate's pruning-active flag (well before the
-        // per-row budget check that signals entered) - so this call's own TryEnterBackfill is guaranteed to have
-        // failed and suspended on the pass's not-yet-signaled exit task, with no dependency on timing or sleeps.
-        Assert.That(backfillTask.IsCompleted, Is.False, "the async wait must not complete while the prune pass still holds the gate");
-
-        release.Set();
-        passTask.Wait();
-
-        Assert.That(backfillTask.GetAwaiter().GetResult(), Is.Not.Null, "the async wait must complete once the prune pass releases the gate");
-        Assert.That(backfillTask.IsCompletedSuccessfully, Is.True);
-
-        backfillTask.Result.Dispose();
-        pruner.Dispose();
-    }
-
-    [Test]
-    public void BeginBackfill_DisposedTwice_ReleasesTheGateOnlyOnce()
-    {
-        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
-        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
-
-        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
-        IDisposable firstScope = pruner.BeginBackfill();
-        IDisposable secondScope = pruner.BeginBackfill();
-
-        firstScope.Dispose();
-        firstScope.Dispose(); // double-dispose must not release the gate an extra time
-
-        pruner.RunOnePass(CancellationToken.None);
-        Assert.That(_reader.IsPrunedBelowFloor(0), Is.False, "the second, still-open scope must still block a pass after the first scope's double-dispose");
-
-        secondScope.Dispose();
-        pruner.RunOnePass(CancellationToken.None);
-        Assert.That(_reader.IsPrunedBelowFloor(0), Is.True, "once every scope is disposed, a pass must proceed normally");
-
-        pruner.Dispose();
-    }
-
-    [Test]
     public void RunOnePass_WithAnExhaustedBudget_YieldsMidColumnAndResumesFromCursorOnTheNextPass()
     {
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
@@ -356,75 +244,7 @@ public class HistoryWindowPrunerTests
         clears.RecordClear(block, accountKey, batch.GetColumnBatch(FlatHistoryColumns.StorageClears));
     }
 
-    [Test]
-    public void PruneChangesetSidecarColumn_RetentionIndependentOfReadPathWindow_DeletesBelowItsOwnFloor()
-    {
-        ChangesetSidecarStore sidecarStore = new(_historyColumns.GetColumnDb(FlatHistoryColumns.ChangesetSidecar));
-        WriteSidecarChunk(sidecarStore, 0);
-        WriteSidecarChunk(sidecarStore, 5);
-        WriteSidecarChunk(sidecarStore, 10);
-        WriteSidecarChunk(sidecarStore, 15);
-        WriteSidecarChunk(sidecarStore, 20);
-        HistoryColumnsWriter.SetWatermark(_historyColumns, 20);
-
-        // HistoryRetentionBlocks stays 0 (unbounded read-path window) - the sidecar's own retention knob is what
-        // drives this pruning, proving the two are genuinely independent per FlatDbColumns.ChangesetSidecar's doc.
-        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 0, configure: c =>
-        {
-            c.HistoryChangesetSidecarEnabled = true;
-            c.HistoryChangesetSidecarRetentionBlocks = 8;
-        });
-        pruner.RunOnePass(CancellationToken.None);
-        pruner.Dispose();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(sidecarStore.TryGetChunk(0, 0), Is.Null, "floor = 20 - 8 = 12; block 0 is below it");
-            Assert.That(sidecarStore.TryGetChunk(5, 0), Is.Null, "block 5 is below the floor too");
-            Assert.That(sidecarStore.TryGetChunk(10, 0), Is.Null, "block 10 is below the floor too");
-            Assert.That(sidecarStore.TryGetChunk(15, 0), Is.Not.Null, "block 15 is at/above the floor");
-            Assert.That(sidecarStore.TryGetChunk(20, 0), Is.Not.Null, "block 20 is at/above the floor");
-        }
-    }
-
-    // The in-memory test double's GatherMetric().Size reports a row count, not real bytes - the pruner's own
-    // logic does not care what unit the metric is in, only that it compares against the configured cap, so this
-    // still exercises the real control flow (detect over-cap, purge oldest-first, re-check, record the metric).
-    [Test]
-    public void PruneChangesetSidecarColumn_OverItsByteCap_PurgesOldestRangesAheadOfRetention_AndRecordsTheMetric()
-    {
-        ChangesetSidecarStore sidecarStore = new(_historyColumns.GetColumnDb(FlatHistoryColumns.ChangesetSidecar));
-        for (ulong block = 0; block < 1500; block++)
-        {
-            WriteSidecarChunk(sidecarStore, block);
-        }
-        HistoryColumnsWriter.SetWatermark(_historyColumns, 1500);
-
-        long before = Metrics.FlatHistorySidecarOverCapPurgedRows;
-
-        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 0, configure: c =>
-        {
-            c.HistoryChangesetSidecarEnabled = true;
-            c.HistoryChangesetSidecarMaxBytes = 1000;
-        });
-        pruner.RunOnePass(CancellationToken.None);
-        pruner.Dispose();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(sidecarStore.TryGetChunk(0, 0), Is.Null, "the oldest rows must be purged first to get back under the cap");
-            Assert.That(sidecarStore.TryGetChunk(1499, 0), Is.Not.Null, "the newest rows must survive - only enough of the oldest are dropped to get under budget");
-            Assert.That(Metrics.FlatHistorySidecarOverCapPurgedRows, Is.GreaterThan(before), "the forced-early-purge metric must record this degraded state");
-        }
-    }
-
-    private void WriteSidecarChunk(ChangesetSidecarStore store, ulong block)
-    {
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
-        store.RecordChunk(block, 0, new byte[] { 0x01 }, batch.GetColumnBatch(FlatHistoryColumns.ChangesetSidecar));
-    }
-
-    private HistoryWindowPruner CreatePruner(ulong retentionBlocks, int passBudgetSeconds = 30, IBackfillInterlock? interlock = null, Action<FlatDbConfig>? configure = null)
+    private HistoryWindowPruner CreatePruner(ulong retentionBlocks, int passBudgetSeconds = 30, Action<FlatDbConfig>? configure = null)
     {
         FlatDbConfig config = new()
         {
@@ -439,30 +259,9 @@ public class HistoryWindowPrunerTests
         _reader = new HistoryReader(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
         return new HistoryWindowPruner(
             _writer, _historyColumns, config,
-            interlock ?? NullBackfillInterlock.Instance,
             new HistoryScopeGate(),
             availability, rowFormat,
             LimboLogs.Instance);
-    }
-
-    private sealed class GateProbeBudget(ManualResetEventSlim entered, ManualResetEventSlim release) : IPruneBudget
-    {
-        private bool _signaled;
-
-        public bool Exhausted
-        {
-            get
-            {
-                if (!_signaled)
-                {
-                    _signaled = true;
-                    entered.Set();
-                    release.Wait();
-                }
-
-                return false;
-            }
-        }
     }
 
     private sealed class CountdownBudget(int rowsBeforeExhaustion) : IPruneBudget
@@ -492,10 +291,5 @@ public class HistoryWindowPrunerTests
         StorageTree.ComputeKeyWithLookup(Slot, ref slotHash);
         Span<byte> buffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         return BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(buffer, Address.ToAccountPath, slotHash).ToArray();
-    }
-
-    private sealed class AlwaysActiveBackfillInterlock : IBackfillInterlock
-    {
-        public bool IsBackfillActive => true;
     }
 }

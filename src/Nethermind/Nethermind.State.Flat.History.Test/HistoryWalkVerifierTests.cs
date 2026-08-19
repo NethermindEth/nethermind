@@ -38,7 +38,7 @@ public class HistoryWalkVerifierTests
         return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance);
     }
 
-    private sealed class FakeHeaders : ICloneHeaderSource
+    private sealed class FakeHeaders : IHistoryHeaderSource
     {
         public Dictionary<ulong, ValueHash256> Roots { get; } = [];
 

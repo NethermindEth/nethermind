@@ -37,5 +37,4 @@ public static class Protocol
     /// Account Abstraction
     /// </summary>
     public const string AA = "aa";
-    public const string NHist = "nhist";
 }

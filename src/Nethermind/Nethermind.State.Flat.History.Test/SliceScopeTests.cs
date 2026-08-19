@@ -321,7 +321,6 @@ public class SliceScopeTests
         HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
         HistoryWindowPruner pruner = new(
             writer, _historyColumns, config,
-            NullBackfillInterlock.Instance,
             new HistoryScopeGate(),
             availability, rowFormat,
             LimboLogs.Instance);

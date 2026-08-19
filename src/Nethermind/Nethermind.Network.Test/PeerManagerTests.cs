@@ -217,63 +217,6 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
         }
 
-        [Test]
-        public async Task Will_replace_open_incoming_nhist_session_when_the_same_node_dials_again()
-        {
-            await using Context ctx = new();
-            ctx.PeerManager.Start();
-
-            Session firstSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
-            Session secondSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
-
-            ctx.RlpxPeer.CreateIncoming(firstSession);
-            Session staleSession = ctx.Sessions.Single();
-            InitSession(staleSession);
-            MarkNHistAgreed(staleSession);
-            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(staleSession));
-
-            ctx.RlpxPeer.CreateIncoming(secondSession);
-            Session freshSession = ctx.Sessions.Last();
-            InitSession(freshSession);
-
-            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession),
-                "a fresh authenticated dial from the same nhist node must replace the stale half-open session");
-            Assert.That(staleSession.IsClosing, Is.True, "the stale session must be shed, not the fresh one");
-            Assert.That(freshSession.IsClosing, Is.False);
-        }
-
-        [Test]
-        public async Task Will_keep_open_incoming_session_without_nhist_when_the_same_node_dials_again()
-        {
-            await using Context ctx = new();
-            ctx.PeerManager.Start();
-
-            Session firstSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
-            Session secondSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
-
-            ctx.RlpxPeer.CreateIncoming(firstSession);
-            Session existingSession = ctx.Sessions.Single();
-            InitSession(existingSession);
-            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(existingSession));
-
-            ctx.RlpxPeer.CreateIncoming(secondSession);
-            Session duplicateSession = ctx.Sessions.Last();
-            InitSession(duplicateSession);
-
-            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(existingSession),
-                "ordinary peers keep the upstream first-wins rule - the open session must not be replaced");
-            Assert.That(duplicateSession.IsClosing, Is.True, "the duplicate dial is rejected, not the existing session");
-            Assert.That(existingSession.IsClosing, Is.False);
-        }
-
-        private static void MarkNHistAgreed(Session session)
-        {
-            IP2PProtocolHandler p2p = Substitute.For<IP2PProtocolHandler>();
-            p2p.ProtocolCode.Returns(Protocol.P2P);
-            p2p.HasAgreedCapability(new Capability(Protocol.NHist, 1)).Returns(true);
-            session.AddProtocolHandler(p2p);
-        }
-
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
         {
             Session session = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
@@ -372,73 +315,6 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task History_server_found_through_discovery_is_dialed_even_when_the_active_peer_pool_is_full()
-        {
-            await using Context ctx = new(maxActivePeers: 3);
-            ctx.NetworkConfig.ConnectTimeoutMs = 0;
-            ctx.SyncConfig.HistorySourcePeerSlots = 6;
-            ctx.SetupPersistedPeers(10);
-            ctx.PeerPool.Start();
-            ctx.PeerManager.Start();
-
-            await ctx.RlpxPeer.WaitForConnectCallsAsync(3, TimeSpan.FromSeconds(30));
-            Assert.That(ctx.PeerPool.ActivePeers.Count, Is.AtLeast(3));
-
-            ctx.PeerPool.GetOrAdd(CreateHistoryServerNode(TestItem.PrivateKeyB, "1.2.3.10"));
-
-            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.True.After(30_000, 100),
-                "the importer can only use a server it is connected to, so a discovered one is dialed under its own budget rather than waiting for a free general slot");
-        }
-
-        [Test]
-        public async Task History_servers_are_not_dialed_when_this_node_does_not_import_history()
-        {
-            await using Context ctx = new(maxActivePeers: 3);
-            ctx.NetworkConfig.ConnectTimeoutMs = 0;
-            ctx.SetupPersistedPeers(10);
-            ctx.PeerPool.Start();
-            ctx.PeerManager.Start();
-
-            await ctx.RlpxPeer.WaitForConnectCallsAsync(3, TimeSpan.FromSeconds(30));
-            Assert.That(ctx.PeerPool.ActivePeers.Count, Is.AtLeast(3));
-
-            ctx.PeerPool.GetOrAdd(CreateHistoryServerNode(TestItem.PrivateKeyB, "1.2.3.10"));
-
-            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.False.After(2_000, 100),
-                "the reservation is left unset unless this node imports history, so an advertisement anyone can publish cannot steer connections on a node that has no use for them");
-        }
-
-        [Test]
-        public async Task History_source_slots_bound_how_many_discovered_servers_are_dialed()
-        {
-            await using Context ctx = new(maxActivePeers: 1);
-            ctx.NetworkConfig.ConnectTimeoutMs = 0;
-            ctx.SyncConfig.HistorySourcePeerSlots = 1;
-            ctx.PeerPool.Start();
-            ctx.PeerManager.Start();
-
-            ctx.PeerPool.GetOrAdd(CreateHistoryServerNode(TestItem.PrivateKeyB, "1.2.3.10"));
-            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.True.After(30_000, 100));
-
-            ctx.PeerPool.GetOrAdd(CreateHistoryServerNode(TestItem.PrivateKeyC, "1.2.3.11"));
-
-            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyC), Is.False.After(2_000, 100),
-                "the reservation is a budget, not a bypass: a second server waits for a slot instead of growing the peer count without bound");
-        }
-
-        private static Node CreateHistoryServerNode(PrivateKey privateKey, string host)
-        {
-            NodeRecord enr = new();
-            enr.SetEntry(IdEntry.Instance);
-            enr.SetEntry(new NHistEntry(rowFormatVersion: 3, servesFullArchive: true));
-            enr.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-            enr.EnrSequence = 1;
-            new NodeRecordSigner(new EthereumEcdsa(0), privateKey).Sign(enr);
-
-            return new Node(privateKey.PublicKey, host, 30303) { Enr = enr };
-        }
-
-        [Test]
         public async Task MaxActivePeers_is_not_inflated_by_static_or_trusted()
         {
             await using Context ctx = new(maxActivePeers: 20);
@@ -477,59 +353,6 @@ namespace Nethermind.Network.Test
             {
                 session.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
             }
-        }
-
-        [Test]
-        public async Task Over_capacity_nhist_peer_is_kept_in_a_serving_slot_until_the_budget_runs_out()
-        {
-            await using Context ctx = new(maxActivePeers: 5);
-            ctx.SyncConfig.HistoryServingEnabled = true;
-            ctx.SyncConfig.HistoryServingPeerSlots = 2;
-            PrivateKeyGenerator keyGenerator = new();
-            for (int i = 0; i < 6; i++)
-            {
-                PublicKey key = keyGenerator.Generate().PublicKey;
-                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
-            }
-
-            ISession first = CreateInboundNHistSession(TestItem.PublicKeyA, "1.2.3.4");
-            ISession second = CreateInboundNHistSession(TestItem.PublicKeyB, "1.2.3.5");
-            ISession third = CreateInboundNHistSession(TestItem.PublicKeyC, "1.2.3.6");
-
-            ctx.PeerManager.OnP2PProtocolInitialized(first);
-            ctx.PeerManager.OnP2PProtocolInitialized(second);
-            ctx.PeerManager.OnP2PProtocolInitialized(third);
-
-            first.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
-            second.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
-            third.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
-        }
-
-        [Test]
-        public async Task Over_capacity_nhist_peer_gets_no_slot_when_serving_is_not_enabled()
-        {
-            await using Context ctx = new(maxActivePeers: 5);
-            ctx.SyncConfig.HistoryServingEnabled = false;
-            PrivateKeyGenerator keyGenerator = new();
-            for (int i = 0; i < 6; i++)
-            {
-                PublicKey key = keyGenerator.Generate().PublicKey;
-                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "1.2.3.4", 30303));
-            }
-
-            ISession session = CreateInboundNHistSession(TestItem.PublicKeyA, "1.2.3.4");
-            ctx.PeerManager.OnP2PProtocolInitialized(session);
-
-            session.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
-        }
-
-        private static ISession CreateInboundNHistSession(PublicKey publicKey, string host)
-        {
-            ISession session = Substitute.For<ISession>();
-            session.Node.Returns(new Node(publicKey, host, 30303));
-            session.Direction.Returns(ConnectionDirection.In);
-            session.HasAgreedCapability(new Capability(Protocol.NHist, NHistVersions.NHist1)).Returns(true);
-            return session;
         }
 
         [TestCase(true, ConnectionDirection.In)]

@@ -13,15 +13,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong HistoryRetentionBlocks { get; set; } = 0;
     public ulong HistoryPruneIntervalBlocks { get; set; } = 1024;
     public int HistoryPrunePassBudgetSeconds { get; set; } = 5;
-    public bool HistoryChangesetSidecarEnabled { get; set; } = false;
-    public ulong HistoryChangesetSidecarRetentionBlocks { get; set; } = 0;
-    public long HistoryChangesetSidecarMaxBytes { get; set; } = 50.GiB;
-    public int HistoryImportShardCount { get; set; } = 16;
     public string? HistorySliceAddresses { get; set; }
-    public ulong HistoryImportBatchBlocks { get; set; } = 1000;
-    public int HistoryImportShardBufferBudgetEntries { get; set; } = 65536;
-    public bool HistoryArchiveCloneEnabled { get; set; } = false;
-    public int HistoryCloneStreamCount { get; set; } = 2;
     public bool HistoryVerifyEveryBlock { get; set; } = false;
     public int HistoryVerifySegments { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;

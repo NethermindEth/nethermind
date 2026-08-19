@@ -49,7 +49,6 @@ namespace Nethermind.Network
         private readonly IPeerPool _peerPool;
         private readonly Lock _sessionLock = new();
         private readonly List<PeerStats> _candidates;
-        private readonly List<ISession> _nhistServingSessions = [];
         private readonly RateLimiter _outgoingConnectionRateLimiter;
 
         private int _pending;
@@ -181,7 +180,6 @@ namespace Nethermind.Network
             PublicKey id = e.Peer.Node.Id;
             _lastStaticDialAttempt.TryRemove(id, out _);
             _lastStaticSkipLog.TryRemove(id, out _);
-            _lastHistorySourceDialAttempt.TryRemove(id, out _);
         }
 
         public void Start()
@@ -317,7 +315,6 @@ namespace Nethermind.Network
                     if (_isStarted)
                     {
                         await EnsureStaticPeersConnectedAsync(taskChannel);
-                        await EnsureHistorySourcesConnectedAsync(taskChannel);
                     }
 
                     if (!await CanRunPeerUpdateIterationAsync())
@@ -486,56 +483,6 @@ namespace Nethermind.Network
             }
         }
 
-        /// <summary>Dials history servers found through discovery under their own budget, on top of the general
-        /// peer limit. Without it the importer can only reach a server that was configured as a static peer: a
-        /// discovered one sits in the candidate pool competing with block, body and receipt sync, which are all
-        /// running at the same time and keep the pool full. The budget is sized to what the importer can use at
-        /// once, so the reservation stays small.</summary>
-        private async Task EnsureHistorySourcesConnectedAsync(Channel<Peer> taskChannel)
-        {
-            int slots = _syncConfig.HistorySourcePeerSlots ?? 0;
-            if (slots <= 0) return;
-
-            DateTime nowUTC = DateTime.UtcNow;
-            int connected = 0;
-            List<Peer>? toDial = null;
-
-            foreach ((_, Peer peer) in _peerPool.Peers)
-            {
-                if (!AdvertisesHistoryServing(peer.Node)) continue;
-
-                if (IsConnected(peer) || peer.IsAwaitingConnection)
-                {
-                    connected++;
-                    continue;
-                }
-
-                if (peer.Node.IsStatic) continue;
-                if (peer.Stats.IsConnectionDelayed(nowUTC).Result) continue;
-
-                (toDial ??= []).Add(peer);
-            }
-
-            if (toDial is null) return;
-
-            long now = Environment.TickCount64;
-            foreach (Peer peer in toDial)
-            {
-                if (connected >= slots) return;
-
-                if (_lastHistorySourceDialAttempt.TryGetValue(peer.Node.Id, out long last) && now - last < StaticDialDebounceMs)
-                {
-                    continue;
-                }
-
-                _lastHistorySourceDialAttempt[peer.Node.Id] = now;
-                connected++;
-                if (_logger.IsDebug) _logger.Debug($"History server {peer.Node:s} found through discovery; dialing it in a history-source slot ({connected}/{slots}).");
-                await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
-            }
-        }
-
-        private static bool AdvertisesHistoryServing(Node node) => node.Enr?.HasEntry(EnrContentKey.NHist) == true;
 
         private void LogStaticPeerSkip(Peer peer, string reason)
         {
@@ -554,7 +501,6 @@ namespace Nethermind.Network
         private static readonly TimeSpan StalePongThreshold = TimeSpan.FromSeconds(35);
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticSkipLog = new();
-        private readonly ConcurrentDictionary<PublicKey, long> _lastHistorySourceDialAttempt = new();
 
         private void SignalPeerUpdateNeeded()
         {
@@ -1027,35 +973,7 @@ namespace Nethermind.Network
             // disconnect message. Static and trusted peers are must-keep and exempt from the capacity cap.
             if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount > MaxActivePeers)
             {
-                if (TryReserveNHistServingSlot(session)) return;
-
                 session.InitiateDisconnect(DisconnectReason.TooManyPeers, $"{ActivePeersCount}");
-            }
-        }
-
-        private static readonly Capability NHistCapability = new(Protocol.NHist, NHistVersions.NHist1);
-
-        private int NHistServingSlots => _syncConfig.HistoryServingEnabled == true ? _syncConfig.HistoryServingPeerSlots : 0;
-
-        private bool TryReserveNHistServingSlot(ISession session)
-        {
-            int slots = NHistServingSlots;
-            if (slots <= 0) return false;
-            if (session.Direction != ConnectionDirection.In) return false;
-            if (!session.HasAgreedCapability(NHistCapability)) return false;
-
-            // Guarded by _sessionLock, like every other session-lifetime collection here: a disconnect can run
-            // synchronously inside a session conflict that already holds it, so a second lock would invert the
-            // order between that thread and any thread tearing another session down.
-            lock (_sessionLock)
-            {
-                _nhistServingSessions.RemoveAll(static s => s.IsClosing);
-                if (_nhistServingSessions.Contains(session)) return true;
-                if (_nhistServingSessions.Count >= slots) return false;
-
-                _nhistServingSessions.Add(session);
-                if (_logger.IsInfo) _logger.Info($"Keeping inbound nhist peer {session} in a history-serving slot ({_nhistServingSessions.Count}/{slots}).");
-                return true;
             }
         }
 
@@ -1077,7 +995,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin + NHistServingSlots)
+            if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount >= MaxActivePeers + MaxActivePeerMargin)
             {
                 if (_logger.IsTrace) TraceHardLimitDisconnect();
                 session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, $"{ActivePeersCount}");
@@ -1283,19 +1201,6 @@ namespace Nethermind.Network
 
             if (peerHasAnOpenSameDirectionSession)
             {
-                // Scoped strictly to nhist sessions: a clone consumer that locally shed a dead session redials
-                // immediately, and rejecting that RLPx-authenticated fresh dial pins it to a stale half-open
-                // session forever. For every other peer the upstream first-wins rule stays untouched — replacing
-                // healthy general-purpose sessions on any same-id redial proved to disturb sync-peer allocation.
-                ISession? stale = GetSession(peer, sessionDirection);
-                if (sessionDirection == ConnectionDirection.In && stale is not null && stale.HasAgreedCapability(NHistCapability))
-                {
-                    if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.ExistingSessionReplacing, sessionDirection);
-                    AttachSession(peer, session, sessionDirection, disconnectOpposite: false);
-                    stale.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "replaced by a fresh inbound session from the same node");
-                    return;
-                }
-
                 if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.AlreadyConnected);
                 session.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "same");
                 return;
@@ -1340,8 +1245,6 @@ namespace Nethermind.Network
         {
             lock (_sessionLock)
             {
-                _nhistServingSessions.Remove(session);
-
                 ToggleSessionEventListeners(session, false);
                 _sessions.TryRemove(session.SessionId, out _);
                 if (_isStopping)

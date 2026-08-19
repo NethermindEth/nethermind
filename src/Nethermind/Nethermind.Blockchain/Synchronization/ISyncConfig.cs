@@ -163,18 +163,6 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
     bool? SnapServingEnabled { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Whether to serve windowed flat history and changesets over nhist/1. Default is to enable whenever flat history capture and a retention window are both enabled.", DefaultValue = "null", HiddenFromDocs = true)]
-    bool? HistoryServingEnabled { get; set; }
-
-    [ConfigItem(Description = "_Technical._ Per-peer cap, in bytes per second, on nhist/1 history serving. Values below 1MiB are raised to 1MiB. Raise on a dedicated feeder to speed up archive clones and windowed backfills.", DefaultValue = "8388608", HiddenFromDocs = true)]
-    long HistoryServingMaxBytesPerSecond { get; set; }
-
-    [ConfigItem(Description = "_Technical._ Reserved inbound connection slots, on top of the general peer limit, for peers that negotiated nhist/1 while this node serves history. Lets history consumers connect to a full serving node without any pre-arrangement. 0 disables the reservation.", DefaultValue = "8", HiddenFromDocs = true)]
-    int HistoryServingPeerSlots { get; set; }
-
-    [ConfigItem(Description = "_Technical._ Reserved outbound connection slots, on top of the general peer limit, for history servers found through discovery. Sized to the number of import shards a peer can carry at once, so an importer can spread its shards without competing with block, body and receipt sync for peers. Left unset it defaults to a reservation only on a node that actually imports history, and to none otherwise: a node that never imports must not open extra connections steered by an advertisement anyone can make. 0 disables the reservation, leaving static peers as the only way to reach a server.", DefaultValue = "null", HiddenFromDocs = true)]
-    int? HistorySourcePeerSlots { get; set; }
-
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
     ulong SnapServingMaxDepth { get; set; }
 

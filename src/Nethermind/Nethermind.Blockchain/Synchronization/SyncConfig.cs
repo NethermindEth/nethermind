@@ -73,10 +73,6 @@ namespace Nethermind.Blockchain.Synchronization
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
         public bool? SnapServingEnabled { get; set; } = null;
-        public bool? HistoryServingEnabled { get; set; } = null;
-        public long HistoryServingMaxBytesPerSecond { get; set; } = 8 * 1024 * 1024;
-        public int HistoryServingPeerSlots { get; set; } = 8;
-        public int? HistorySourcePeerSlots { get; set; } = null;
         public ulong SnapServingMaxDepth { get; set; } = 128;
         public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;

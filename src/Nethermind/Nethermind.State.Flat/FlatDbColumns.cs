@@ -22,10 +22,8 @@ public enum FlatHistoryColumns
     StorageClears,
 
     /// <summary>
-    /// Purpose-built, append-only, block-major feed for devp2p serving and peer-fed backfill import —
-    /// deliberately separate from the key-major AccountHistory/StorageHistory read-path store, which v2 dropped
-    /// this shape from on purpose (see <c>HistoryAvailability.FormatVersion</c>'s doc comment). Its retention and
-    /// lifecycle are independent of the read-path window's floor.
+    /// Retired block-major changeset feed. The enum entry stays so RocksDB keeps opening databases that already
+    /// created its column family; nothing reads or writes it anymore.
     /// </summary>
     ChangesetSidecar,
 }

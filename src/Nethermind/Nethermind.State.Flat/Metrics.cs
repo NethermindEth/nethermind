@@ -323,8 +323,4 @@ public static class Metrics
     [Description("Number of history window pruner passes that yielded at their wall-clock budget and left work for the next pass")]
     public static long FlatHistoryPrunePassesYielded { get; set; }
 
-    [DetailedMetric]
-    [CounterMetric]
-    [Description("Number of changesets-sidecar rows deleted ahead of their normal retention floor because the column exceeded HistoryChangesetSidecarMaxBytes - a signal that retention alone is not keeping the sidecar bounded")]
-    public static long FlatHistorySidecarOverCapPurgedRows { get; set; }
 }

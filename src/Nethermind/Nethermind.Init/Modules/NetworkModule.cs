@@ -31,7 +31,6 @@ using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
-using NHist = Nethermind.Network.P2P.Subprotocols.NHist.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Init.Modules;
@@ -76,7 +75,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
-            .AddLast<IP2PCapabilityResolver, NHistP2PCapabilityResolver>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
@@ -101,11 +99,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<SnapV1.StorageRangeMessage, SnapV1.StorageRangesMessageSerializer>()
             .AddMessageSerializer<SnapV1.TrieNodesMessage, SnapV1.TrieNodesMessageSerializer>()
 
-            .AddMessageSerializer<NHist.GetChangesetsMessage, NHist.GetChangesetsMessageSerializer>()
-            .AddMessageSerializer<NHist.ChangesetsMessage, NHist.ChangesetsMessageSerializer>()
-            .AddMessageSerializer<NHist.NHistStatusMessage, NHist.NHistStatusMessageSerializer>()
-            .AddMessageSerializer<NHist.GetHistoryRowsMessage, NHist.GetHistoryRowsMessageSerializer>()
-            .AddMessageSerializer<NHist.HistoryRowsMessage, NHist.HistoryRowsMessageSerializer>()
 
             // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
             // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
@@ -172,7 +165,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             // Protocol handler factories
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
-            .AddProtocolHandler<Subprotocols.NHist.NHist1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
@@ -181,10 +173,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V71.Eth71ProtocolHandler>()
 
             ;
-
-        builder.RegisterInstance(State.NullHistoryServer.Instance)
-            .As<State.IHistoryServer>()
-            .PreserveExistingDefaults();
     }
 
     private sealed class TxGossipPolicySource(ILifetimeScope lifetimeScope) : ITxGossipPolicySource

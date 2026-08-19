@@ -64,7 +64,7 @@ public sealed class HistoryWalkVerifier
     private readonly ISortedKeyValueStore _storageHistory;
     private readonly ISortedKeyValueStore _storageClears;
     private readonly IDb _availableBlocks;
-    private readonly ICloneHeaderSource _headers;
+    private readonly IHistoryHeaderSource _headers;
     private readonly HistoryRowFormat _rowFormat;
     private readonly bool _rlpWrapSlots;
     private readonly ILogManager _logManager;
@@ -75,7 +75,7 @@ public sealed class HistoryWalkVerifier
     public HistoryWalkVerifier(
         IColumnsDb<FlatDbColumns> db,
         IColumnsDb<FlatHistoryColumns> history,
-        ICloneHeaderSource headers,
+        IHistoryHeaderSource headers,
         HistoryRowFormat rowFormat,
         ILogManager logManager)
         : this(
@@ -89,7 +89,7 @@ public sealed class HistoryWalkVerifier
 
     public HistoryWalkVerifier(
         IColumnsDb<FlatHistoryColumns> history,
-        ICloneHeaderSource headers,
+        IHistoryHeaderSource headers,
         HistoryRowFormat rowFormat,
         bool rlpWrapSlots,
         ILogManager logManager)

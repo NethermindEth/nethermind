@@ -150,30 +150,6 @@ public class NodeRecordSignerTests
         Assert.That(forkId.Value.Next, Is.EqualTo(next));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_round_trip_the_history_serving_entry(bool servesFullArchive)
-    {
-        const byte rowFormatVersion = 3;
-
-        Ecdsa ecdsa = new();
-        PrivateKey privateKey = new(TestPrivateKey);
-        NodeRecordSigner signer = new(ecdsa, privateKey);
-        NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new NHistEntry(rowFormatVersion, servesFullArchive));
-        nodeRecord.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
-        signer.Sign(nodeRecord);
-
-        NodeRecord decoded = NodeRecord.FromBytes(nodeRecord.ToRlpBytes(), ecdsa);
-
-        Assert.That(signer.Verify(decoded), Is.True);
-        HistoryServingAdvertisement? advertisement = decoded.GetValue<HistoryServingAdvertisement>(EnrContentKey.NHist);
-        Assert.That(advertisement, Is.Not.Null);
-        Assert.That(advertisement.Value.RowFormatVersion, Is.EqualTo(rowFormatVersion),
-            "a consumer rejects a format it cannot read before dialing, so the version has to survive the record");
-        Assert.That(advertisement.Value.ServesFullArchive, Is.EqualTo(servesFullArchive));
-    }
-
     [Test]
     public void Can_deserialize_and_verify_eth_entry_with_future_trailing_values()
     {

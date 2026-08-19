@@ -9,9 +9,8 @@ using Nethermind.Init.FlatHistory;
 namespace Nethermind.Init.Steps;
 
 /// <summary>
-/// Forces DI construction of the singleton <see cref="HistoryWalkVerificationCoordinator"/> at startup, mirroring
-/// <see cref="StartArchiveClone"/>. The coordinator no-ops for the lifetime of the process when
-/// <c>Flat.HistoryVerifyEveryBlock</c> is off.
+/// Forces DI construction of the singleton <see cref="HistoryWalkVerificationCoordinator"/> at startup. The
+/// coordinator no-ops for the lifetime of the process when <c>Flat.HistoryVerifyEveryBlock</c> is off.
 /// </summary>
 [RunnerStepDependencies(dependencies: [typeof(InitializeNetwork)])]
 public class StartHistoryWalkVerification(HistoryWalkVerificationCoordinator coordinator) : IStep

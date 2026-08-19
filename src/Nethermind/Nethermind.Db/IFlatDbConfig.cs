@@ -34,32 +34,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Per-pass wall-clock budget, in seconds, for the history window pruner's incremental scan-and-delete. A pass yields at the budget and resumes from its persisted cursor on the next pass rather than running unbounded.", DefaultValue = "5")]
     int HistoryPrunePassBudgetSeconds { get; set; }
 
-    [ConfigItem(Description = "Also capture each finalized block's changeset into the block-major changesets sidecar column (separate from the key-major history read-path columns), for future devp2p serving and concurrent backfill import. Off by default; when off the capture path does no extra work.", DefaultValue = "false")]
-    bool HistoryChangesetSidecarEnabled { get; set; }
-
-    [ConfigItem(Description = "Bounded rolling-window retention for the changesets sidecar column, in blocks below the watermark - independent of HistoryRetentionBlocks, since the sidecar serves devp2p/backfill replay rather than as-of-block reads. 0 falls back to HistoryRetentionBlocks; both 0 means unbounded (today's shipped behavior).", DefaultValue = "0")]
-    ulong HistoryChangesetSidecarRetentionBlocks { get; set; }
-
-    [ConfigItem(Description = "Hard cap, in bytes, on the changesets sidecar column's total size. When the retention-based prune alone is not enough to stay under this, the oldest still-retained block ranges are dropped early (ahead of their normal retention floor) until back under the cap; a FlatHistorySidecarOverCapPurge metric counts these forced drops. Guards against unbounded sidecar growth outrunning its own retention window under a burst of destruct-heavy blocks.", DefaultValue = "53687091200")]
-    long HistoryChangesetSidecarMaxBytes { get; set; }
-
-    [ConfigItem(Description = "Number of disjoint address-hash-prefix shards the concurrent backfill importer partitions writes into. Each shard buffers and sorts its own rows before writing, so worker count and write ordering scale with this independently of the source feed's block-major order.", DefaultValue = "16")]
-    int HistoryImportShardCount { get; set; }
-
     [ConfigItem(Description = "A comma-separated list of contract addresses to retain unbounded (or far deeper than HistoryRetentionBlocks) flat history for, independent of the general rolling window. Static allow-list only - an address is never added or removed except by editing this config and restarting.", DefaultValue = "null")]
     string? HistorySliceAddresses { get; set; }
-
-    [ConfigItem(Description = "Blocks per import batch: the concurrent backfill importer flushes all shard buffers and durably advances its resume pointer after this many blocks, so a crash mid-backfill loses at most one batch of already-buffered (not yet written) rows.", DefaultValue = "1000")]
-    ulong HistoryImportBatchBlocks { get; set; }
-
-    [ConfigItem(Description = "Per-shard sort-buffer budget, in row entries, for the concurrent backfill importer. A shard spills (sorts and writes early, then starts a fresh buffer) once it reaches this many buffered rows, rather than growing unboundedly within a batch.", DefaultValue = "65536")]
-    int HistoryImportShardBufferBudgetEntries { get; set; }
-
-    [ConfigItem(Description = "On startup, clone the full flat history archive from an eligible connected nhist1 peer (SupportsFullClone advertised, matching RowFormatVersion) via GetHistoryRows instead of building it locally. Requires a static peer already serving a full (unwindowed) archive; peer discovery is out of scope, connect one via StaticPeers.", DefaultValue = "false")]
-    bool HistoryArchiveCloneEnabled { get; set; }
-
-    [ConfigItem(Description = "Concurrent shard streams the archive clone keeps in flight against its source peer. Capped at 3 to stay under the nhist/1 per-peer in-flight limit (4) with headroom; the default matches a feeder's background serve concurrency, and raising it past what the source sustains only adds queueing.", DefaultValue = "2")]
-    int HistoryCloneStreamCount { get; set; }
 
     [ConfigItem(Description = "Once a contiguous history watermark exists, rebuild the state root from flat history rows at EVERY covered block and compare it (and the captured per-block marker) against this node's own headers - the full trustless proof of an archive's content, run once in the background. Unwindowed (v2) archives only. The range covered at the moment the check starts is what gets verified, so enable it on a node whose history is already where you want it. The pass currently holds a verified range's working set in memory; on a full mainnet archive wait for the spill-store hardening before enabling.", DefaultValue = "false")]
     bool HistoryVerifyEveryBlock { get; set; }

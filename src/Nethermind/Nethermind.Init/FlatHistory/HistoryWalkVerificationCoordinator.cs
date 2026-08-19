@@ -16,9 +16,8 @@ namespace Nethermind.Init.FlatHistory;
 /// <summary>
 /// Runs the one-shot every-block history proof when <c>Flat.HistoryVerifyEveryBlock</c> is on: waits for a
 /// contiguous watermark to exist, then walks <see cref="HistoryWalkVerifier"/> over <c>[0, watermark]</c> in the
-/// background and reports the verdict. The sampled marker check inside the clone pass stays the fast publish gate
-/// (minutes, before anything is served); this pass is the definitive content proof behind it, and its verdict
-/// changes nothing about serving - a mismatch is an operator's loud signal, not an automatic un-publish.
+/// background and reports the verdict. Its verdict changes nothing about serving - a mismatch is an operator's
+/// loud signal, not an automatic un-publish.
 /// </summary>
 public sealed class HistoryWalkVerificationCoordinator : IDisposable
 {
@@ -37,7 +36,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
     public HistoryWalkVerificationCoordinator(
         IColumnsDb<FlatDbColumns> db,
         IColumnsDb<FlatHistoryColumns> history,
-        ICloneHeaderSource headers,
+        IHistoryHeaderSource headers,
         HistoryAvailability availability,
         HistoryRowFormat rowFormat,
         IFlatDbConfig config,

@@ -47,17 +47,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // per-slot pre-value rows. Default/unused when !_isV3.
     private readonly BaseFlatPersistence.Reader _persistedFlatReader;
     private readonly StorageClearStore _storageClears;
-    private readonly ChangesetSidecarStore? _changesetSidecar;
     private readonly HistoryAvailability _availability;
     private readonly bool _rlpWrapSlots;
     private readonly bool _isV3;
     private readonly bool _enabled;
-    // Archive-clone mode: a walk that cannot connect keeps recording into a pending range (published to reads
-    // only once the imported watermark reaches its bottom) instead of disabling capture permanently.
-    private readonly bool _detachedCaptureEnabled;
-    // Deduplicates the hole report: every capture walk while the clone still streams sees the same gap, and
-    // repeating it each persist is noise. One report per distinct imported watermark carries the same signal.
-    private ulong _lastReportedHoleWatermark = ulong.MaxValue;
     private readonly ILogger _logger;
 
     // Under the persistence lock a failed lease means the range below is gone for good (history enabled mid-life);
@@ -85,11 +78,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _persistedAccounts = db.GetColumnDb(FlatDbColumns.Account);
         _persistedStorage = db.GetColumnDb(FlatDbColumns.Storage);
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
-        _changesetSidecar = config.HistoryChangesetSidecarEnabled
-            ? new ChangesetSidecarStore(history.GetColumnDb(FlatHistoryColumns.ChangesetSidecar))
-            : null;
         _availability = availability;
-        _detachedCaptureEnabled = config.HistoryArchiveCloneEnabled;
         _formatVersion = rowFormat.FormatVersion;
         _isV3 = rowFormat.IsV3;
         if (_isV3)
@@ -166,49 +155,19 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
         if (hasWatermark && target <= watermark) return;
 
-        ulong pendingFirst = 0;
-        ulong pendingLast = 0;
-        bool hasPendingRange = _detachedCaptureEnabled && _availability.TryGetPendingCaptureRange(out pendingFirst, out pendingLast);
-        if (hasPendingRange && target <= pendingLast) return;
-
         // v3 only: per-key "oldest touch in this walk still waiting to learn its pre-value" — resolved either by
         // an even older touch of the same key later in the same walk (see RecordAccountV3/RecordStorageV3), or,
         // for whatever remains once the walk connects, by ResolvePendingV3 below. Not needed for v2, which
         // records a self-contained post-value per touch and has no such deferred state.
         PendingV3Writes? pending = _isV3 ? new PendingV3Writes() : null;
 
-        // v3 + sidecar only: each block's sidecar entries are buffered here (not written) until every entry's
-        // PreValue is resolved — which, for a key with no older touch anywhere in this walk, only happens once
-        // ResolvePendingV3 runs at the very end. See FlushSidecarBuilders' remarks.
-        Dictionary<ulong, List<SidecarAccountBuilder>>? sidecarByBlock = _isV3 && _changesetSidecar is not null ? [] : null;
-
         StateId current = persistedHead;
         bool connected = false;
-        bool connectedToPendingRange = false;
-        ulong lowestCaptured = 0;
-        bool capturedAny = false;
         while (current != StateId.PreGenesis)
         {
             // A first capture can span the whole in-memory depth under the persistence lock; stay responsive to
             // shutdown. Throwing (never returning) aborts the caller's persist, so the sources survive for a retry.
             cancellationToken.ThrowIfCancellationRequested();
-
-            // The pending range sits strictly above the watermark (it only ever starts on an unconnected walk),
-            // so it is always the first connect point a walk descending from the head can reach.
-            if (hasPendingRange && current.BlockNumber <= pendingLast)
-            {
-                if (!_availability.RootMatches(current.BlockNumber, current.StateRoot))
-                {
-                    DisableCapture(
-                        $"History capture stopped: the captured state root at block {current.BlockNumber} does not match " +
-                        $"the chain being persisted ({current.StateRoot}) - a pre-finalization capture was reorged away. " +
-                        $"The pending capture range [{pendingFirst}, {pendingLast}] cannot be extended; resync the flatHistory database to re-enable capture.");
-                    return;
-                }
-
-                connectedToPendingRange = true;
-                break;
-            }
 
             if (hasWatermark && current.BlockNumber <= watermark)
             {
@@ -230,9 +189,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             {
                 using (snapshot)
                 {
-                    CaptureBlock(current.BlockNumber, current.StateRoot, snapshot, pending, sidecarByBlock);
-                    lowestCaptured = current.BlockNumber;
-                    capturedAny = true;
+                    CaptureBlock(current.BlockNumber, current.StateRoot, snapshot, pending);
                     current = snapshot.From;
                 }
             }
@@ -240,9 +197,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             {
                 using (persisted)
                 {
-                    CaptureBlock(current.BlockNumber, current.StateRoot, persisted, pending, sidecarByBlock);
-                    lowestCaptured = current.BlockNumber;
-                    capturedAny = true;
+                    CaptureBlock(current.BlockNumber, current.StateRoot, persisted, pending);
                     current = persisted.From;
                 }
             }
@@ -257,11 +212,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         if (connected)
         {
             if (pending is not null) ResolvePendingV3(pending);
-            if (sidecarByBlock is not null) FlushSidecarBuilders(sidecarByBlock);
 
             // Durable (throwing WAL-sync) before the caller persists the flat state and prunes the sources.
             _availability.PublishWatermark(target, _formatVersion);
-            if (hasPendingRange) _availability.ClearPendingCaptureRange();
             _history.SyncWal();
             Metrics.FlatHistoryWatermark = (long)target;
 
@@ -274,56 +227,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 // Contained: the watermark has already published, so letting this out would abort the persist.
                 if (_logger.IsError) _logger.Error($"A watermark-advanced handler failed at block {target}.", e);
             }
-        }
-        else if (connectedToPendingRange)
-        {
-            if (pending is not null) ResolvePendingV3(pending);
-            if (sidecarByBlock is not null) FlushSidecarBuilders(sidecarByBlock);
-
-            if (hasWatermark && pendingFirst <= watermark + 1)
-            {
-                // The imported (cloned) history reaches the pending range's bottom: the union is contiguous from
-                // genesis, so the whole range becomes servable in one publish and detached mode ends here.
-                _availability.PublishWatermark(target, _formatVersion);
-                _availability.ClearPendingCaptureRange();
-                _history.SyncWal();
-                Metrics.FlatHistoryWatermark = (long)target;
-                if (_logger.IsInfo) _logger.Info(
-                    $"History capture connected to the imported history at block {watermark}; " +
-                    $"as-of reads are now served for the full range up to block {target}.");
-
-                try
-                {
-                    WatermarkAdvanced?.Invoke(target);
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsError) _logger.Error($"A watermark-advanced handler failed at block {target}.", e);
-                }
-            }
-            else
-            {
-                _availability.PublishPendingCaptureRange(pendingFirst, target);
-                _history.SyncWal();
-                if (hasWatermark && watermark != _lastReportedHoleWatermark)
-                {
-                    _lastReportedHoleWatermark = watermark;
-                    if (_logger.IsInfo) _logger.Info(
-                        $"The imported history currently ends at block {watermark} while this node's own capture starts at block {pendingFirst}; " +
-                        $"as-of reads stay refused for [{watermark + 1}, {pendingFirst - 1}] until a clone pass covers it. The pending capture keeps recording.");
-                }
-            }
-        }
-        else if (_detachedCaptureEnabled && capturedAny)
-        {
-            if (pending is not null) ResolvePendingV3(pending);
-            if (sidecarByBlock is not null) FlushSidecarBuilders(sidecarByBlock);
-
-            _availability.PublishPendingCaptureRange(lowestCaptured, target);
-            _history.SyncWal();
-            if (_logger.IsInfo) _logger.Info(
-                $"History capture is recording a detached range [{lowestCaptured}, {target}] while the archive clone " +
-                "backfills the blocks below it; as-of reads stay refused until the two ranges connect.");
         }
         else
         {
@@ -427,7 +330,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     [SkipLocalsInit]
-    private void CaptureBlock(ulong block, in ValueHash256 stateRoot, Snapshot snapshot, PendingV3Writes? pending, Dictionary<ulong, List<SidecarAccountBuilder>>? sidecarByBlock)
+    private void CaptureBlock(ulong block, in ValueHash256 stateRoot, Snapshot snapshot, PendingV3Writes? pending)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
         HistoryColumnBatches columns = new(batch);
@@ -450,16 +353,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             }
         }
 
-        // v3 + sidecar only: one builder per touched address this block, filled in by the account/storage loops
-        // below and buffered into sidecarByBlock at the end - see CaptureUpToCore's remarks on why this can't be
-        // written immediately.
-        Dictionary<Address, SidecarAccountBuilder>? sidecarEntries = _isV3 && sidecarByBlock is not null ? [] : null;
-
         foreach (KeyValuePair<HashedKey<Address>, Account?> change in snapshot.Accounts)
         {
             Address address = change.Key.Key;
             if (_isV3)
-                RecordAccountV3(block, address.ToAccountPath, address, change.Value, accountKey, pending!, columns.AccountHistory, sidecarEntries);
+                RecordAccountV3(block, address.ToAccountPath, change.Value, accountKey, pending!, columns.AccountHistory);
             else
                 RecordAccount(block, address.ToAccountPath, change.Value, accountKey, in columns);
         }
@@ -470,82 +368,18 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             (Address addr, UInt256 slot) = change.Key.Key;
             if (_isV3)
-                RecordStorageV3(block, addr, slot, change.Value, storageKey, storageValue, pending!, columns.StorageHistory, sidecarEntries);
+                RecordStorageV3(block, addr.ToAccountPath, slot, change.Value, storageKey, storageValue, pending!, columns.StorageHistory);
             else
                 RecordStorage(block, addr.ToAccountPath, slot, change.Value, storageKey, storageValue, in columns);
         }
-
-        if (sidecarEntries is not null)
-        {
-            sidecarByBlock![block] = [.. sidecarEntries.Values];
-        }
-        else if (!_isV3 && _changesetSidecar is not null)
-        {
-            RecordChangesetSidecarChunk(block, snapshot, batch);
-        }
-    }
-
-    /// <summary>
-    /// v2 only: encodes the block's changeset, grouped by address (BAL-shaped), and writes it into the sidecar
-    /// immediately via <see cref="ChangesetSidecarStore.RecordChangeset"/>. v2 capture has no deferred pre-value
-    /// mechanism (each touch is a self-contained post-value), so every entry's PreValue is left empty here — a
-    /// documented gap for a v2-sourced sidecar stream, not a bug: task 39-5 (sidecar backfill from v2) derives a
-    /// correct pre-value for a v2-sourced stream separately, by scanning v2's own rows in order (pre = post of the
-    /// previous version). A v3-configured node (the shipping windowed configuration) never takes this path — see
-    /// <see cref="CaptureBlock(ulong, in ValueHash256, Snapshot, PendingV3Writes?, Dictionary{ulong, List{SidecarAccountBuilder}}?)"/>.
-    /// </summary>
-    private void RecordChangesetSidecarChunk(ulong block, Snapshot snapshot, IColumnsWriteBatch<FlatHistoryColumns> batch)
-    {
-        Dictionary<Address, List<ChangesetSlotEntry>> storageByAddress = [];
-        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> change in snapshot.Storages)
-        {
-            (Address address, UInt256 slot) = change.Key.Key;
-            if (!storageByAddress.TryGetValue(address, out List<ChangesetSlotEntry>? slots))
-            {
-                slots = [];
-                storageByAddress[address] = slots;
-            }
-
-            byte[] value = change.Value is SlotValue slotValue ? slotValue.AsReadOnlySpan.WithoutLeadingZeros().ToArray() : [];
-            slots.Add(new ChangesetSlotEntry(slot, value, PreValue: ReadOnlyMemory<byte>.Empty));
-        }
-
-        List<ChangesetAccountEntry> entries = new(snapshot.AccountsCount + storageByAddress.Count);
-        foreach (KeyValuePair<HashedKey<Address>, Account?> change in snapshot.Accounts)
-        {
-            Address address = change.Key.Key;
-            byte[] accountValue;
-            if (change.Value is Account account)
-            {
-                using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-                accountValue = ((ReadOnlySpan<byte>)rlp).ToArray();
-            }
-            else
-            {
-                accountValue = [];
-            }
-
-            storageByAddress.Remove(address, out List<ChangesetSlotEntry>? storageChanges);
-            entries.Add(new ChangesetAccountEntry(address, AccountChanged: true, accountValue, AccountPreValue: ReadOnlyMemory<byte>.Empty, storageChanges ?? []));
-        }
-
-        foreach (KeyValuePair<Address, List<ChangesetSlotEntry>> remaining in storageByAddress)
-        {
-            entries.Add(new ChangesetAccountEntry(remaining.Key, AccountChanged: false, ReadOnlyMemory<byte>.Empty, AccountPreValue: ReadOnlyMemory<byte>.Empty, remaining.Value));
-        }
-
-        _changesetSidecar!.RecordChangeset(block, entries, batch.GetColumnBatch(FlatHistoryColumns.ChangesetSidecar));
     }
 
     /// <summary>
     /// Captures a block whose in-memory base was converted to the persisted tier by long-finality Phase 2 — the
-    /// persisted base holds the same one-block changeset. Records the changeset sidecar too, same as the
-    /// <see cref="Snapshot"/> overload: long-finality conversion is ordinary operation on a busy chain, not an
-    /// edge case, and skipping the sidecar here would leave a gap in the chunk stream a backfill importer relies
-    /// on being contiguous.
+    /// persisted base holds the same one-block changeset.
     /// </summary>
     [SkipLocalsInit]
-    private void CaptureBlock(ulong block, in ValueHash256 stateRoot, PersistedSnapshot snapshot, PendingV3Writes? pending, Dictionary<ulong, List<SidecarAccountBuilder>>? sidecarByBlock)
+    private void CaptureBlock(ulong block, in ValueHash256 stateRoot, PersistedSnapshot snapshot, PendingV3Writes? pending)
     {
         using WholeReadSession session = snapshot.BeginWholeReadSession();
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
@@ -553,12 +387,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
         HistoryColumnBatches columns = new(batch);
         HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion);
-
-        // v2 path only (see RecordChangesetSidecarChunk's remarks for why v3 defers instead of building this
-        // immutable shape immediately).
-        List<ChangesetAccountEntry>? v2SidecarEntries = !_isV3 && _changesetSidecar is not null ? [] : null;
-        // v3 + sidecar only: mirrors CaptureBlock(Snapshot, ...)'s per-block builder dictionary.
-        Dictionary<Address, SidecarAccountBuilder>? sidecarEntries = _isV3 && sidecarByBlock is not null ? [] : null;
 
         Span<byte> accountKey = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
@@ -581,45 +409,22 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (entry.HasAccount)
             {
                 if (_isV3)
-                    RecordAccountV3(block, addrHash, entry.Address, entry.Account, accountKey, pending!, columns.AccountHistory, sidecarEntries);
+                    RecordAccountV3(block, addrHash, entry.Account, accountKey, pending!, columns.AccountHistory);
                 else
                     RecordAccount(block, addrHash, entry.Account, accountKey, in columns);
             }
 
-            // entry.Slots is a single-forward-pass-only cursor shared with the outer PerAddresses enumerator, so
-            // the v2 sidecar's slot list (when applicable) is built in this same pass rather than by re-iterating.
-            List<ChangesetSlotEntry>? v2SidecarSlots = v2SidecarEntries is not null ? [] : null;
             foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
             {
                 if (_isV3)
                 {
-                    RecordStorageV3(block, entry.Address, slot.Slot, slot.Value, storageKey, storageValue, pending!, columns.StorageHistory, sidecarEntries);
+                    RecordStorageV3(block, addrHash, slot.Slot, slot.Value, storageKey, storageValue, pending!, columns.StorageHistory);
                 }
                 else
                 {
                     RecordStorage(block, addrHash, slot.Slot, slot.Value, storageKey, storageValue, in columns);
-                    v2SidecarSlots?.Add(new ChangesetSlotEntry(
-                        slot.Slot,
-                        slot.Value is SlotValue slotValue ? slotValue.AsReadOnlySpan.WithoutLeadingZeros().ToArray() : [],
-                        PreValue: ReadOnlyMemory<byte>.Empty));
                 }
             }
-
-            v2SidecarEntries?.Add(new ChangesetAccountEntry(
-                entry.Address,
-                AccountChanged: entry.HasAccount,
-                entry.HasAccount ? EncodeAccountBytes(entry.Account) : ReadOnlyMemory<byte>.Empty,
-                AccountPreValue: ReadOnlyMemory<byte>.Empty,
-                v2SidecarSlots ?? []));
-        }
-
-        if (sidecarEntries is not null)
-        {
-            sidecarByBlock![block] = [.. sidecarEntries.Values];
-        }
-        else if (v2SidecarEntries is not null)
-        {
-            _changesetSidecar!.RecordChangeset(block, v2SidecarEntries, batch.GetColumnBatch(FlatHistoryColumns.ChangesetSidecar));
         }
     }
 
@@ -659,72 +464,32 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// becomes the new pending entry, resolved either by an even older touch later in the same walk, or by
     /// <see cref="ResolvePendingV3"/> once the walk connects.
     /// </summary>
-    /// <param name="sidecarEntries">Non-null only when this is a v3 capture with the sidecar enabled - the current
-    /// block's per-address builder map. This call's own entry, once created, is also registered as the sidecar
-    /// sink for whichever pending entry this touch resolves (which may be a DIFFERENT, older block's entry, not
-    /// this one) — see <see cref="PendingV3Writes.ResolveAndTrack"/>.</param>
-    private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Address address, Account? account, Span<byte> keyBuffer, PendingV3Writes pending, IWriteBatch accountBatch, Dictionary<Address, SidecarAccountBuilder>? sidecarEntries)
+    private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, Span<byte> keyBuffer, PendingV3Writes pending, IWriteBatch accountBatch)
     {
         byte[] flatKey = HistoryKeyLayout.EncodeAccountKey(keyBuffer, addrHash).ToArray();
 
-        if (sidecarEntries is null)
+        if (account is null)
         {
-            // No sidecar retention needed - keep the allocation-free span/pooled-buffer path.
-            if (account is null)
-            {
-                pending.ResolveAndTrack(pending.Accounts, flatKey, block, ReadOnlySpan<byte>.Empty, null, accountBatch, _accountHistoryV3!, null);
-                return;
-            }
-
-            using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-            pending.ResolveAndTrack(pending.Accounts, flatKey, block, rlp, null, accountBatch, _accountHistoryV3!, null);
+            pending.ResolveAndTrack(pending.Accounts, flatKey, block, ReadOnlySpan<byte>.Empty, accountBatch, _accountHistoryV3!);
             return;
         }
 
-        // The sidecar needs this exact post-value retained past this call, as some pending entry's eventual
-        // pre-value (resolved now against an already-pending older touch, or later against an even older one, or
-        // by ResolvePendingV3) - allocate once and use the same array for the history-row write and the sidecar
-        // entry, rather than allocating separately for each.
-        byte[] postValue = EncodeAccountBytes(account);
-        SidecarAccountBuilder entry = new(address, accountChanged: true, postValue);
-        sidecarEntries[address] = entry;
-        pending.ResolveAndTrack(pending.Accounts, flatKey, block, postValue, postValue, accountBatch, _accountHistoryV3!, entry);
+        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
+        pending.ResolveAndTrack(pending.Accounts, flatKey, block, rlp, accountBatch, _accountHistoryV3!);
     }
 
-    /// <param name="sidecarEntries">See <see cref="RecordAccountV3"/>'s parameter of the same name. This slot's
-    /// entry joins the same block-address builder an account touch for the same address may already have created
-    /// (or creates a storage-only one, <c>AccountChanged: false</c>, if not).</param>
-    private void RecordStorageV3(ulong block, Address address, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch, Dictionary<Address, SidecarAccountBuilder>? sidecarEntries)
+    private void RecordStorageV3(ulong block, in ValueHash256 addrHash, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch)
     {
-        ValueHash256 addrHash = address.ToAccountPath;
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
         byte[] flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrHash, slotHash).ToArray();
 
-        if (sidecarEntries is null)
-        {
-            int written = value is SlotValue slotValue
-                ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
-                : 0;
-            // valueBuffer[..written] is passed straight through as a span, same reasoning as RecordAccountV3 above.
-            pending.ResolveAndTrack(pending.Storages, flatKey, block, valueBuffer[..written], null, storageBatch, _storageHistoryV3!, null);
-            return;
-        }
-
-        int writtenForSidecar = value is SlotValue sidecarSlotValue
-            ? BaseFlatPersistence.EncodeSlotValue(sidecarSlotValue, _rlpWrapSlots, valueBuffer)
+        int written = value is SlotValue slotValue
+            ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
             : 0;
-        byte[] postValue = valueBuffer[..writtenForSidecar].ToArray();
-
-        if (!sidecarEntries.TryGetValue(address, out SidecarAccountBuilder? accountEntry))
-        {
-            accountEntry = new SidecarAccountBuilder(address, accountChanged: false, accountValue: []);
-            sidecarEntries[address] = accountEntry;
-        }
-
-        SidecarSlotBuilder slotEntry = new(slot, postValue);
-        accountEntry.StorageChanges.Add(slotEntry);
-        pending.ResolveAndTrack(pending.Storages, flatKey, block, postValue, postValue, storageBatch, _storageHistoryV3!, slotEntry);
+        // valueBuffer[..written] is passed straight through as a span: it is only ever written synchronously into
+        // the batch within this same call.
+        pending.ResolveAndTrack(pending.Storages, flatKey, block, valueBuffer[..written], storageBatch, _storageHistoryV3!);
     }
 
     /// <summary>
@@ -739,10 +504,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// <see cref="PendingV3Writes.ResolveAndTrack"/>'s same-block guard keeps the latter from corrupting either
     /// entry. Above <see cref="DestructSlotEnumerationCap"/> slots, gives up and poisons the account for this
     /// block instead: <see cref="HistoryReader"/>'s v3 storage path fails closed for it rather than silently
-    /// missing rows. No sidecar sink: a destruct-wiped slot with no explicit rewrite has no changeset-sidecar
-    /// entry at all yet (a separate, pre-existing gap in the sidecar's wire shape - see
-    /// <see cref="ChangesetChunkCodec"/>'s remarks and <c>PeerFedWindowImporter</c>'s), so there is nothing for this
-    /// synthetic touch to register as a sidecar sink.
+    /// missing rows.
     /// </summary>
     private void HandleSelfDestructV3(ulong block, in ValueHash256 addrHash, scoped ReadOnlySpan<byte> accountKey, PendingV3Writes pending, IWriteBatch storageBatch, IWriteBatch clearsBatch)
     {
@@ -758,15 +520,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             }
 
             byte[] flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(storageKeyBuffer, addrHash, slots.CurrentKey).ToArray();
-            pending.ResolveAndTrack(pending.Storages, flatKey, block, ReadOnlySpan<byte>.Empty, null, storageBatch, _storageHistoryV3!, null);
+            pending.ResolveAndTrack(pending.Storages, flatKey, block, ReadOnlySpan<byte>.Empty, storageBatch, _storageHistoryV3!);
         }
-    }
-
-    private static byte[] EncodeAccountBytes(Account? account)
-    {
-        if (account is null) return [];
-        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        return ((ReadOnlySpan<byte>)rlp).ToArray();
     }
 
     /// <summary>
@@ -775,8 +530,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// correct source for "value right before this block's change" here: capture always runs strictly before
     /// this round's flat persist commits, so at this point the persisted column still reflects exactly the state
     /// as of the old watermark (before this batch), and nothing between the old watermark and this pending
-    /// block touched the key — otherwise that touch would already have resolved this entry. Also fills in the
-    /// matching sidecar entry's PreValue (when one is registered) with this exact same read, for the same reason.
+    /// block touched the key — otherwise that touch would already have resolved this entry.
     /// </summary>
     private void ResolvePendingV3(PendingV3Writes pending)
     {
@@ -787,89 +541,17 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch storageBatch = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
 
         Span<byte> valueBuffer = stackalloc byte[PendingPreValueBufferSize];
-        foreach ((byte[] flatKey, ulong block, ISidecarPreValueSink? sink) in pending.Accounts.Values)
+        foreach ((byte[] flatKey, ulong block) in pending.Accounts.Values)
         {
             int written = _persistedAccounts.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), valueBuffer);
-            ReadOnlySpan<byte> preValue = valueBuffer[..Math.Max(written, 0)];
-            _accountHistoryV3!.RecordPreValue(block, flatKey, preValue, accountBatch);
-            sink?.SetPreValue(preValue.ToArray());
+            _accountHistoryV3!.RecordPreValue(block, flatKey, valueBuffer[..Math.Max(written, 0)], accountBatch);
         }
 
-        foreach ((byte[] flatKey, ulong block, ISidecarPreValueSink? sink) in pending.Storages.Values)
+        foreach ((byte[] flatKey, ulong block) in pending.Storages.Values)
         {
             int written = _persistedStorage.Get(flatKey, valueBuffer);
-            ReadOnlySpan<byte> preValue = valueBuffer[..Math.Max(written, 0)];
-            _storageHistoryV3!.RecordPreValue(block, flatKey, preValue, storageBatch);
-            sink?.SetPreValue(preValue.ToArray());
+            _storageHistoryV3!.RecordPreValue(block, flatKey, valueBuffer[..Math.Max(written, 0)], storageBatch);
         }
-    }
-
-    /// <summary>Converts every block's buffered v3 sidecar builders into the immutable wire shape (now that every
-    /// entry's PreValue is resolved, by either <see cref="PendingV3Writes.ResolveAndTrack"/>'s in-walk chaining or
-    /// <see cref="ResolvePendingV3"/>'s final persisted-column read) and writes them out. Deferred to here, once
-    /// per walk, rather than per-block during <see cref="CaptureBlock(ulong, in ValueHash256, Snapshot, PendingV3Writes?, Dictionary{ulong, List{SidecarAccountBuilder}}?)"/>:
-    /// a key with no older touch anywhere in the walk has its pre-value known only once <see cref="ResolvePendingV3"/>
-    /// runs, which is after every block in the walk has already been visited.</summary>
-    private void FlushSidecarBuilders(Dictionary<ulong, List<SidecarAccountBuilder>> sidecarByBlock)
-    {
-        if (sidecarByBlock.Count == 0) return;
-
-        using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
-        IWriteBatch sidecarBatch = batch.GetColumnBatch(FlatHistoryColumns.ChangesetSidecar);
-        foreach ((ulong block, List<SidecarAccountBuilder> builders) in sidecarByBlock)
-        {
-            _changesetSidecar!.RecordChangeset(block, ToChangesetEntries(builders), sidecarBatch);
-        }
-    }
-
-    private static List<ChangesetAccountEntry> ToChangesetEntries(List<SidecarAccountBuilder> builders)
-    {
-        List<ChangesetAccountEntry> entries = new(builders.Count);
-        foreach (SidecarAccountBuilder account in builders)
-        {
-            List<ChangesetSlotEntry> slots = new(account.StorageChanges.Count);
-            foreach (SidecarSlotBuilder slot in account.StorageChanges)
-            {
-                slots.Add(new ChangesetSlotEntry(slot.Slot, slot.Value, slot.PreValue));
-            }
-
-            entries.Add(new ChangesetAccountEntry(account.Address, account.AccountChanged, account.AccountValue, account.AccountPreValue, slots));
-        }
-
-        return entries;
-    }
-
-    /// <summary>Receives a resolved pre-value once <see cref="PendingV3Writes.ResolveAndTrack"/> or
-    /// <see cref="ResolvePendingV3"/> determines it - implemented by the mutable v3 sidecar builders, which are
-    /// otherwise opaque to the pending-resolution machinery.</summary>
-    private interface ISidecarPreValueSink
-    {
-        void SetPreValue(byte[] value);
-    }
-
-    /// <summary>Mutable, capture-time-only builder for one storage slot's v3 sidecar entry — see
-    /// <see cref="RecordStorageV3"/>. Converted to the immutable <see cref="ChangesetSlotEntry"/> wire shape only
-    /// once its <see cref="PreValue"/> is resolved, by <see cref="ToChangesetEntries"/>.</summary>
-    private sealed class SidecarSlotBuilder(UInt256 slot, byte[] value) : ISidecarPreValueSink
-    {
-        public readonly UInt256 Slot = slot;
-        public readonly byte[] Value = value;
-        public byte[] PreValue = [];
-        public void SetPreValue(byte[] value) => PreValue = value;
-    }
-
-    /// <summary>Mutable, capture-time-only builder for one address's v3 sidecar entry — see
-    /// <see cref="RecordAccountV3"/>/<see cref="RecordStorageV3"/>. Converted to the immutable
-    /// <see cref="ChangesetAccountEntry"/> wire shape only once its <see cref="AccountPreValue"/> (and every one
-    /// of <see cref="StorageChanges"/>' pre-values) is resolved, by <see cref="ToChangesetEntries"/>.</summary>
-    private sealed class SidecarAccountBuilder(Address address, bool accountChanged, byte[] accountValue) : ISidecarPreValueSink
-    {
-        public readonly Address Address = address;
-        public readonly bool AccountChanged = accountChanged;
-        public readonly byte[] AccountValue = accountValue;
-        public byte[] AccountPreValue = [];
-        public readonly List<SidecarSlotBuilder> StorageChanges = [];
-        public void SetPreValue(byte[] value) => AccountPreValue = value;
     }
 
     /// <summary>Per-walk deferred-resolution state for v3 capture — see <see cref="RecordAccountV3"/>. Keyed
@@ -878,25 +560,18 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// captured block) does not need to allocate on top of.</summary>
     private sealed class PendingV3Writes
     {
-        public readonly Dictionary<byte[], (byte[] FlatKey, ulong Block, ISidecarPreValueSink? Sink)> Accounts = new(Bytes.EqualityComparer);
-        public readonly Dictionary<byte[], (byte[] FlatKey, ulong Block, ISidecarPreValueSink? Sink)> Storages = new(Bytes.EqualityComparer);
+        public readonly Dictionary<byte[], (byte[] FlatKey, ulong Block)> Accounts = new(Bytes.EqualityComparer);
+        public readonly Dictionary<byte[], (byte[] FlatKey, ulong Block)> Storages = new(Bytes.EqualityComparer);
 
-        /// <param name="postValueOwned">A heap-owned array backing the same bytes as <paramref name="postValue"/>,
-        /// required only when a resolution might need to hand this value to a sidecar sink (which outlives this
-        /// call) - <c>null</c> is safe whenever no sidecar capture is in play, since <paramref name="postValue"/>
-        /// alone (which may be a transient stack/pooled span) is only ever otherwise used to write synchronously
-        /// into <paramref name="batch"/> within this same call.</param>
         public void ResolveAndTrack(
-            Dictionary<byte[], (byte[] FlatKey, ulong Block, ISidecarPreValueSink? Sink)> map,
+            Dictionary<byte[], (byte[] FlatKey, ulong Block)> map,
             byte[] flatKey,
             ulong block,
             ReadOnlySpan<byte> postValue,
-            byte[]? postValueOwned,
             IWriteBatch batch,
-            HistoryStoreV3 store,
-            ISidecarPreValueSink? sink)
+            HistoryStoreV3 store)
         {
-            if (map.TryGetValue(flatKey, out (byte[] FlatKey, ulong Block, ISidecarPreValueSink? Sink) older))
+            if (map.TryGetValue(flatKey, out (byte[] FlatKey, ulong Block) older))
             {
                 if (older.Block == block)
                 {
@@ -906,22 +581,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                     // "older" entry here to resolve, and firing RecordPreValue between them would fabricate a
                     // pre-value from whichever call happens to run second. Leave the pending entry pointed at this
                     // block - an even older touch (elsewhere in the walk) or the persisted-flat fallback still
-                    // resolves it correctly regardless of which of the two calls ran first. If only one of the two
-                    // calls actually has a sidecar entry to fill in later (the synthetic wipe never does), keep
-                    // that one rather than losing it to whichever call happened to run first.
-                    if (sink is not null && older.Sink is null)
-                    {
-                        map[flatKey] = (flatKey, block, sink);
-                    }
-
+                    // resolves it correctly regardless of which of the two calls ran first.
                     return;
                 }
 
                 store.RecordPreValue(older.Block, older.FlatKey, postValue, batch);
-                older.Sink?.SetPreValue(postValueOwned ?? postValue.ToArray());
             }
 
-            map[flatKey] = (flatKey, block, sink);
+            map[flatKey] = (flatKey, block);
         }
     }
 

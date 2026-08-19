@@ -28,7 +28,6 @@ public enum DisconnectReason : byte
 
     // Non sync, non connection related disconnect
     SnapServerNotImplemented,
-    NHistServerNotImplemented,
     IncompatibleP2PVersion,
     InvalidNetworkId,
     InvalidGenesis,
@@ -88,7 +87,7 @@ public static class DisconnectReasonExtension
         DisconnectReason.InvalidNetworkId or DisconnectReason.InvalidGenesis or DisconnectReason.MissingForkId or DisconnectReason.InvalidForkId => EthDisconnectReason.BreachOfProtocol,
         DisconnectReason.ClientFiltered => EthDisconnectReason.DisconnectRequested,
         DisconnectReason.ProtocolInitTimeout => EthDisconnectReason.ReceiveMessageTimeout,
-        DisconnectReason.SnapServerNotImplemented or DisconnectReason.NHistServerNotImplemented or DisconnectReason.TxFlooding or DisconnectReason.NoCapabilityMatched => EthDisconnectReason.UselessPeer,
+        DisconnectReason.SnapServerNotImplemented or DisconnectReason.TxFlooding or DisconnectReason.NoCapabilityMatched => EthDisconnectReason.UselessPeer,
         DisconnectReason.DropWorstPeer => EthDisconnectReason.TooManyPeers,
         DisconnectReason.PeerRemoved or DisconnectReason.PeerRefreshFailed => EthDisconnectReason.DisconnectRequested,
         DisconnectReason.ForwardSyncFailed => EthDisconnectReason.DisconnectRequested,

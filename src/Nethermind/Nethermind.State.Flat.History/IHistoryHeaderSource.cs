@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History;
 
-public interface ICloneHeaderSource
+public interface IHistoryHeaderSource
 {
     ValueHash256? TryGetStateRoot(ulong block);
 }

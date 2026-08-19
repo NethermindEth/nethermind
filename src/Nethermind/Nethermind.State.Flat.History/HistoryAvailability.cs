@@ -45,16 +45,6 @@ public sealed class HistoryAvailability
     private const int ScopeRecordKeyLength = ScopeRecordPrefixLength + HistoryKeyLayout.ScopeKeyLength;
     private const int ScopeRecordValueLength = BlockBytes;
 
-    // A peer-fed backfill importer can publish a connected, contiguous imported range that extends the window
-    // backward past the floor the pruner's own retention math would compute — see TryGetConnectedRange's remarks
-    // on why the pruner must never raise the floor past the bottom of one.
-    private static ReadOnlySpan<byte> ConnectedRangeKey => "history:import:connected"u8; // [floor|anchor]
-
-    // A contiguous range the capture recorded while detached from the watermark (archive clone in progress):
-    // rows and per-block markers exist for [first, last] but nothing in it is served until the imported
-    // watermark reaches the range's bottom and the two merge into one contiguous-from-genesis watermark.
-    private static ReadOnlySpan<byte> PendingCaptureRangeKey => "history:capture:pending"u8; // [first|last]
-
     private readonly IDb _availableBlocks;
     private readonly ISortedKeyValueStore _sortedAvailableBlocks;
     private readonly Lock _floorLock = new();
@@ -62,11 +52,9 @@ public sealed class HistoryAvailability
     // Monotonic fast path: never used to refuse (a miss re-reads), so a reader instance cannot lag the writer.
     private long _observedWatermark = -1;
 
-    // The mirror-image fast path: refusing early is safe only while the floor only ever moves up (a cached value
-    // then never overstates how much is retained). A backfill importer can also LOWER the floor (extending the
-    // window backward); TryLowerGlobalFloor invalidates this cache when that happens, so a lowering is observed
-    // immediately by every holder of this instance instead of only for a fresh one. An accept always re-reads the
-    // DB regardless, so a read can never slip in below a floor that advanced since the cache was last observed.
+    // The mirror-image fast path: refusing early is safe because the floor only ever moves up (a cached value
+    // then never overstates how much is retained). An accept always re-reads the DB regardless, so a read can
+    // never slip in below a floor that advanced since the cache was last observed.
     private long _observedFloor = -1;
 
     // Generation-guarded cache: a scan started before a concurrent Publish/Remove could otherwise publish a torn
@@ -175,8 +163,8 @@ public sealed class HistoryAvailability
     public bool IsCoveredAndRootMatches(ulong block, in ValueHash256 stateRoot)
         => IsCovered(block) && RootMatches(block, stateRoot);
 
-    /// <summary>Whether <paramref name="block"/>'s captured marker equals <paramref name="stateRoot"/> — independent
-    /// of coverage, so a detached (pending) capture range can verify continuity above the watermark.</summary>
+    /// <summary>Whether <paramref name="block"/>'s captured marker equals <paramref name="stateRoot"/> —
+    /// independent of coverage.</summary>
     public bool RootMatches(ulong block, in ValueHash256 stateRoot)
     {
         Span<byte> key = stackalloc byte[BlockBytes];
@@ -184,33 +172,6 @@ public sealed class HistoryAvailability
         byte[]? capturedRoot = _availableBlocks.Get(key);
         return capturedRoot is { Length: RootBytes } && stateRoot == new ValueHash256(capturedRoot);
     }
-
-    /// <summary>The contiguous range a detached capture has recorded but not published; see
-    /// <see cref="PendingCaptureRangeKey"/>'s remarks. <c>false</c> when none is pending.</summary>
-    public bool TryGetPendingCaptureRange(out ulong first, out ulong last)
-    {
-        byte[]? value = _availableBlocks.Get(PendingCaptureRangeKey);
-        if (value is not { Length: 2 * BlockBytes })
-        {
-            first = 0;
-            last = 0;
-            return false;
-        }
-
-        first = BinaryPrimitives.ReadUInt64BigEndian(value);
-        last = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(BlockBytes));
-        return true;
-    }
-
-    public void PublishPendingCaptureRange(ulong first, ulong last)
-    {
-        Span<byte> value = stackalloc byte[2 * BlockBytes];
-        BinaryPrimitives.WriteUInt64BigEndian(value, first);
-        BinaryPrimitives.WriteUInt64BigEndian(value[BlockBytes..], last);
-        _availableBlocks.PutSpan(PendingCaptureRangeKey, value);
-    }
-
-    public void ClearPendingCaptureRange() => _availableBlocks.Remove(PendingCaptureRangeKey);
 
     /// <summary>The raw stamped format byte, or <c>null</c> when nothing has ever been stamped (a fresh DB).
     /// <see cref="HistoryWriter"/> reads this at construction to latch the windowed format upgrade-only — once a
@@ -248,8 +209,7 @@ public sealed class HistoryAvailability
     /// publish before deleting anything below it: a crash between the two leaves the floor honestly behind (never
     /// ahead of) what is still on disk, mirroring <see cref="PublishWatermark"/>'s fail-closed ordering.
     /// Unconditional — for the initial seed (there is no prior floor to race against). A pruner raising the floor
-    /// or an importer lowering it must go through <see cref="TryRaiseGlobalFloor"/>/<see cref="TryLowerGlobalFloor"/>
-    /// instead, so the two directions cannot interleave a lost update.
+    /// must go through <see cref="TryRaiseGlobalFloor"/> instead.
     /// </summary>
     public void PublishGlobalFloor(ulong floor)
     {
@@ -262,10 +222,8 @@ public sealed class HistoryAvailability
     }
 
     /// <summary>
-    /// Raises the retention floor if and only if <paramref name="newFloor"/> is strictly above the current value
-    /// — the pruner's side of the CAS pair with <see cref="TryLowerGlobalFloor"/>, so a concurrent backfill
-    /// importer lowering the floor (extending the window backward) cannot have its write clobbered by a stale
-    /// compare racing on the same instance. Returns whether the floor actually moved.
+    /// Raises the retention floor if and only if <paramref name="newFloor"/> is strictly above the current value.
+    /// Returns whether the floor actually moved.
     /// </summary>
     public bool TryRaiseGlobalFloor(ulong newFloor)
     {
@@ -287,39 +245,6 @@ public sealed class HistoryAvailability
 
         return raised;
     }
-
-    /// <summary>
-    /// Lowers the retention floor if and only if <paramref name="newFloor"/> is strictly below the current value
-    /// (or none is published yet) — the backfill importer's side of the CAS pair with
-    /// <see cref="TryRaiseGlobalFloor"/>. Invalidates the refuse-fast-path cache on every collaborator sharing
-    /// this instance, so a reader that had cached the higher floor observes the lowering immediately rather than
-    /// for the remainder of the process lifetime. Returns whether the floor actually moved.
-    /// </summary>
-    public bool TryLowerGlobalFloor(ulong newFloor)
-    {
-        bool lowered;
-        lock (_floorLock)
-        {
-            bool hasFloor = TryGetGlobalFloor(out ulong current);
-            lowered = !hasFloor || newFloor < current;
-            if (lowered)
-            {
-                WriteGlobalFloorUnderLock(newFloor);
-                InvalidateFloorCache();
-            }
-        }
-
-        if (lowered)
-        {
-            Changed?.Invoke();
-        }
-
-        return lowered;
-    }
-
-    /// <summary>Resets the refuse-fast-path cache so the next <see cref="IsBelowGlobalFloor"/> call re-reads the
-    /// DB instead of trusting a floor value that may have just been lowered out from under it.</summary>
-    public void InvalidateFloorCache() => Volatile.Write(ref _observedFloor, -1);
 
     private void WriteGlobalFloorUnderLock(ulong floor)
     {
@@ -523,29 +448,6 @@ public sealed class HistoryAvailability
         return floor;
     }
 
-    /// <summary>
-    /// The most recent contiguous range a backfill importer has connected and durably imported — <c>[floor,
-    /// anchor]</c>, both inclusive. A rolling-window pruner must never raise the global floor past
-    /// <paramref name="floor"/>-out (the bottom of this range) without also pruning it in the same pass: doing so
-    /// would silently re-delete a range the importer just spent effort populating, purely because the pruner's own
-    /// retention math (<c>watermark - retention</c>) does not know an import extended the window backward. Absent
-    /// (returns <c>false</c>) when no backfill has ever connected a range on this DB.
-    /// </summary>
-    public bool TryGetConnectedRange(out ulong floor, out ulong anchor)
-    {
-        byte[]? value = _availableBlocks.Get(ConnectedRangeKey);
-        if (value is not { Length: 2 * BlockBytes })
-        {
-            floor = 0;
-            anchor = 0;
-            return false;
-        }
-
-        floor = BinaryPrimitives.ReadUInt64BigEndian(value);
-        anchor = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(BlockBytes));
-        return true;
-    }
-
     /// <summary>Records the per-block marker (<c>block -> captured state root</c>) into <paramref name="batch"/>.</summary>
     /// <remarks>Also stamps <paramref name="formatVersion"/> atomically with the marker: capture batches commit
     /// before any watermark publish, so a marker without a format key must never be an observable on-disk state —
@@ -567,11 +469,6 @@ public sealed class HistoryAvailability
     /// per-block capture batches so it advances only after the whole captured range is durable — a partial or
     /// failed capture leaves the watermark where it was, so reads above the gap fail closed.
     /// </summary>
-    /// <summary>Publishes coverage up to <paramref name="watermark"/>. Monotonic on purpose: a completed clone
-    /// keeps its stored target on disk, so a restart re-runs the pass, skips every already-done column and
-    /// republishes that same target - which by then sits far below the head this node has been capturing since.
-    /// Lowering it there would un-cover everything captured in between and leave the clone coordinator waiting
-    /// for a connection that can never happen, re-streaming the whole archive on every restart.</summary>
     public void PublishWatermark(ulong watermark, byte formatVersion)
     {
         if (TryGetWatermark(out ulong current) && current >= watermark)

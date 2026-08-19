@@ -8,7 +8,7 @@ using Nethermind.State.Flat.History;
 
 namespace Nethermind.Init.Modules;
 
-public sealed class BlockTreeCloneHeaderSource(IBlockFinder blockFinder) : ICloneHeaderSource
+public sealed class BlockTreeHistoryHeaderSource(IBlockFinder blockFinder) : IHistoryHeaderSource
 {
     public ValueHash256? TryGetStateRoot(ulong block)
     {

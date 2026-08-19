@@ -35,7 +35,7 @@ public class HistoryWalkVerificationCoordinatorTests
         _historyColumns.Dispose();
     }
 
-    private sealed class FakeHeaders : ICloneHeaderSource
+    private sealed class FakeHeaders : IHistoryHeaderSource
     {
         public Dictionary<ulong, ValueHash256> Roots { get; } = [];
 
