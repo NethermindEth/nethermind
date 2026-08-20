@@ -3,6 +3,18 @@ name: Run EXPB Reproducible Benchmarks
 on:
   workflow_dispatch:
     inputs:
+      arch:
+        description: >-
+          Which self-hosted benchmark runner to use, and with it every path that differs between the
+          boxes. amd64 = `reproducible-benchmarks` (EPYC 4344P, snapshots under /mnt/sda); arm64 =
+          `reproducible-benchmarks-arm` (Axion, snapshots under /data, flat layout only). Timings from
+          the two boxes are NOT comparable — never mix them in one A/B.
+        required: false
+        type: choice
+        options:
+          - amd64
+          - arm64
+        default: amd64
       expb_repo:
         description: execution-payloads-benchmarks repository in owner/repo format
         required: false
@@ -19,18 +31,6 @@ on:
           - halfpath
           - flat
         default: flat
-      arch:
-        description: >-
-          Which self-hosted benchmark runner to use, and with it every path that differs between the
-          boxes. amd64 = `reproducible-benchmarks` (EPYC 4344P, snapshots under /mnt/sda); arm64 =
-          `reproducible-benchmarks-arm` (Axion, snapshots under /data, flat layout only). Timings from
-          the two boxes are NOT comparable — never mix them in one A/B.
-        required: false
-        type: choice
-        options:
-          - amd64
-          - arm64
-        default: amd64
       payload_set:
         description: Payload set mode
         required: true
@@ -61,6 +61,9 @@ on:
           --FlatDb.PersistenceWriteBufferFloor. Keeps small-CompactSize persistence batches from
           shrinking RocksDB memtables (decouples write amplification from CompactSize). Set empty to
           disable. Ignored for non-flat layouts and when additional_extra_flags already sets it.
+          SET THIS EMPTY when benchmarking an image built before 2026-06-16 (#11936 added the flag):
+          older clients reject an unknown argument by printing CLI usage and exiting, which looks
+          like a workflow failure rather than a flag mismatch.
         required: false
         default: "67108864"
       expb_env:
@@ -663,6 +666,7 @@ jobs:
       - name: Print resolved inputs
         run: |
           echo "Event: ${{ github.event_name }}"
+          echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
           echo "Payload set: ${{ matrix.payload_set }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
@@ -1834,6 +1838,7 @@ jobs:
       - name: Print resolved inputs
         run: |
           echo "Multi-image benchmark run"
+          echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Image tag: ${{ matrix.tag }}"
           echo "Run: ${{ matrix.run }} of ${{ needs.resolve.outputs.run_count }}"

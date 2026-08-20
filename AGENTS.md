@@ -138,14 +138,16 @@ See [global.json](./global.json) for the required .NET SDK version.
 This repository contains a dedicated workflow for reproducible payload benchmarks:
 
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
-- Main execution runner label: `reproducible-benchmarks-arm`. That runner carries a single snapshot
-  set — Nethermind in the **flat** layout under `/data/nethermind/nethermind-flat-<block>` — so the
-  benchmark workflows accept only that configuration and refuse any other client or layout up front.
+- Execution runner: chosen by the `arch` input — `amd64` (default) runs on `reproducible-benchmarks`
+  with snapshots under `/mnt/sda`; `arm64` runs on `reproducible-benchmarks-arm` with snapshots under
+  `/data`. The ARM box carries a single snapshot set — Nethermind in the **flat** layout — so it
+  refuses any other client, layout, or an image it would have to build; the amd64 box takes all of
+  them. **Never compare timings across the two boxes.**
 
 ### What the workflow does
 
 - Resolves runtime inputs (branch, state layout, payload set, delay, optional extra flags).
-- Selects one benchmark config file from `/data/expb-data`.
+- Selects one benchmark config file from the runner's expb data dir (`/mnt/sda/expb-data` on amd64, `/data/expb-data` on arm64).
 - Builds or reuses Nethermind Docker image tag depending on branch rules.
 - Renders a temporary config (does not modify source files) by:
   - replacing `<<DOCKER_TAG>>`
@@ -217,3 +219,23 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
 - Optional low-variance mode: pass `-f expb_env="EXPB_EVM_WARMUP=1"` to enable expb's per-block EVM warmup (`eth_simulateV1` before each measured block). It serves the measured block's reads from warm caches, which lowers both run-to-run CV (~1.8%→~0.55% on flat-realblocks) and AVG. Pair it with a raised RPC gas cap — `-f additional_extra_flags="--JsonRpc.GasCap=1000000000000"` — otherwise the per-request gas budget (default 100M) is exhausted on dense blocks and the warmup `eth_simulateV1` calls fail with `-38013` (intrinsic gas), silently leaving those blocks un-warmed. Caveat: warmup minimizes cold RocksDB/storage interaction, so it is a low-variance *compute* signal, not a substitute for the default cold benchmark — don't use it when measuring storage-layer changes.
 - dotTrace XML reports are 50-70MB. **Never load full XML into context.** Use [`scripts/dottrace-report.sh`](./scripts/dottrace-report.sh): `top <report.xml> [N]` for hot spots, `compare <a.xml> <b.xml> [N]` for regressions/improvements. Runs in <2 seconds via grep+awk.
+
+## RPC Benchmark Workflow Guidance
+
+- Workflow file: [`.github/workflows/run-rpc-benchmarks.yml`](./.github/workflows/run-rpc-benchmarks.yml)
+- Scripts and full reference: [`scripts/rpc-bench/README.md`](./scripts/rpc-bench/README.md)
+
+`run-rpc-benchmarks` measures state-reading JSON-RPC (`eth_call`, `eth_getBalance`, `trace_*`,
+`debug_*`) against a parked DB snapshot on the same two benchmark runners as expb — pick the box with
+`arch`, and always pass `docker_image` explicitly so the runner pulls a prebuilt tag rather than
+building one. For an A/B use `benchmark_tool=jsonbench-sweep` with `tool_config.clients` listing one
+`nethermind@<image>` per arm (the first is the response-parity baseline, compared byte-for-byte), then
+dispatch the same config a second time with the arms swapped, because position artifacts on this rig
+reach ~10% and have pointed in opposite directions on different workloads.
+
+```bash
+gh workflow run run-rpc-benchmarks.yml --ref <branch> \
+  -f arch=amd64 -f benchmark_tool=jsonbench-sweep \
+  -f docker_image=nethermindeth/nethermind:master-<sha> \
+  -f tool_config='{"clients":"nethermind@nethermindeth/nethermind:master-<sha> nethermind@nethermindeth/nethermind:<pr-tag>","rps_list":"100","duration":"120s"}'
+```

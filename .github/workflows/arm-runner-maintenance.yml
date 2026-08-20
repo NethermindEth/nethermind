@@ -2,7 +2,9 @@ name: ARM Runner Maintenance
 
 # Frees disk on the reproducible-benchmarks-arm runner after benchmark runs fill it
 # (docker layer churn, leftover containers/networks, runner diag/work debris).
-# Never removes tagged images - the pinned armbench-*/master-* A/B images must survive.
+# By default never removes tagged images - the pinned armbench-*/master-* A/B images must survive.
+# prune_unused_images=true additionally drops unreferenced tags older than 96h, which is the only
+# thing that reclaims this box's containerd-backed image store (see that step for why).
 
 on:
   # push registers the workflow for dispatch on this branch (dispatch-only workflows on
@@ -59,7 +61,18 @@ jobs:
           docker builder prune -af || true
           docker image prune -f || true
           if [[ "${PRUNE_UNUSED_IMAGES}" == "true" ]]; then
-            docker image prune -af --filter "until=96h" || true
+            # Docker here uses the CONTAINERD image store, so image content lives in /var/lib/containerd
+            # rather than /var/lib/docker, and `image prune -a --filter until=` reports 0B against it
+            # (`docker system df` even reports a negative reclaimable). Only an explicit rmi frees it,
+            # so age-filter the tags ourselves and remove those no container references.
+            cutoff=$(( $(date +%s) - 96*3600 ))
+            while IFS=$'	' read -r created img; do
+              [[ -z "${img:-}" || "${img}" == *'<none>'* ]] && continue
+              ts=$(date -d "${created}" +%s 2>/dev/null) || continue
+              (( ts > cutoff )) && continue
+              [[ -n "$(docker ps -aq --filter "ancestor=${img}" 2>/dev/null)" ]] && continue
+              docker rmi "${img}" >/dev/null 2>&1 && echo "removed ${img} (created ${created})"
+            done < <(docker images --format '{{.CreatedAt}}	{{.Repository}}:{{.Tag}}')
           fi
 
       - name: Trim runner diag and work debris
