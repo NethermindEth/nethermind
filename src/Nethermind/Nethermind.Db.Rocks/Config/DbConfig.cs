@@ -293,6 +293,13 @@ public class DbConfig : IDbConfig
     public bool? FlatDbVerifyChecksum { get; set; } = true;
     public string FlatDbRocksDbOptions { get; set; } =
 
+        // Serve reads straight from the mapped SST rather than copying blocks through the block cache.
+        // A DB-wide option, so it only pays off on the uncompressed Account column (the Storage column
+        // still decompresses into a buffer); in exchange, the block cache is left to the column that
+        // needs it. Flat state is a random-point-read workload on local NVMe, which is the case mmap
+        // reads are for.
+        "allow_mmap_reads=true;" +
+
         // Common across flat columns.
         "min_write_buffer_number_to_merge=2;" +
         "block_based_table_factory.block_restart_interval=4;" +
