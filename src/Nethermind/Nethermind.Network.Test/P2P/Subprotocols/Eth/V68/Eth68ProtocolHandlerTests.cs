@@ -747,7 +747,7 @@ public class Eth68ProtocolHandlerTests
             new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
             txPoolConfig,
-            Substitute.For<ISpecProvider>(),
+            Substitute.For<IChainHeadSpecProvider>(),
             _txGossipPolicy);
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
