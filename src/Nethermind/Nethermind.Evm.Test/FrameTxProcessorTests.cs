@@ -1116,6 +1116,59 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>
+    /// A payment approval that must create a non-existent sender but whose frame's remaining state budget
+    /// cannot cover the NEW_ACCOUNT charge halts the frame, so the state it wrote before the APPROVE is
+    /// rolled back (ethereum/EIPs#12062, attempt_approval).
+    /// </summary>
+    /// <remarks>
+    /// A second sponsor sets the payer so the transaction stays valid; otherwise the whole-transaction
+    /// revert on an unset payer would mask the frame-level divergence. Without the roll-back the first
+    /// sponsor's SSTORE stays committed while its receipt reports failure — a divergence on both the
+    /// state root and the receipts.
+    /// </remarks>
+    [Test]
+    public void Execute_PaymentApprovalCannotCoverSenderCreation_RollsBackTheApprovingFrame()
+    {
+        Address sponsorA = TestItem.AddressD;
+        Address sponsorB = TestItem.AddressF;
+        DeployContract(sponsorA,
+            Prepare.EvmCode
+                .PushData(1).PushData(0).Op(Instruction.SSTORE)
+                .PushData(TxFrame.ApprovePayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done,
+            1.Ether);
+        DeployContract(sponsorB, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsorA, executionGasLimit: 200_000, stateGasLimit: (ulong)GasCostOf.SSetState, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsorB, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+        tx.FrameSignatures = [SelfExecutionSignature(tx)];
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "sponsor B set the payer, so the transaction is valid");
+            AssertStorage(sponsorA, 0, UInt256.Zero,
+                "sponsor A's approval frame halted on the NEW_ACCOUNT shortfall, so the slot it wrote before APPROVE is rolled back");
+            Assert.That(_stateProvider.GetBalance(sponsorA), Is.EqualTo(1.Ether),
+                "the halted sponsor A frame charges nothing");
+        }
+    }
+
+    private static TxFrameSignature SelfExecutionSignature(Transaction tx)
+    {
+        // compute_sig_hash elides the raw signature bytes, so it is computed with the placeholder entry installed.
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyA, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs);
+    }
+
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)

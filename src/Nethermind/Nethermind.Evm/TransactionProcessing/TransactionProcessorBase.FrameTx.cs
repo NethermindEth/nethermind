@@ -351,7 +351,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
-        ulong grossGas = intrinsicGas + totalFrameGasUsed - (ulong)stateGasCorrection;
+        ulong stateGasCorrectionU = (ulong)Math.Max(0, stateGasCorrection);
+        ulong grossGasBeforeCorrection = intrinsicGas + totalFrameGasUsed;
+        ulong grossGas = grossGasBeforeCorrection > stateGasCorrectionU ? grossGasBeforeCorrection - stateGasCorrectionU : 0;
         ulong gasAfterRefund = grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec);
         // EIP-8141 (ethereum/EIPs#12062): the calldata floor bounds the execution dimension alone, and state gas is added on top rather than absorbed. State gas is clamped since later-frame refills can drive the running total negative.
         ulong blockStateGas = (ulong)Math.Max(0, totalStateGas - stateGasCorrection);
@@ -571,9 +573,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
             : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
-        if (substate.IsError)
+        if (substate.IsError || substate.ShouldRevert)
         {
-            // EIP-8141 (ethereum/EIPs#12062): an exceptionally halted frame grows no state and owes zero state gas.
+            // EIP-8141 (ethereum/EIPs#12062): a frame that halts or reverts commits no state, so it owes zero state gas; its entry NEW_ACCOUNT charge is rolled back with the frame.
             TGasPolicy.ResetForHalt(ref state.Gas, (long)frame.StateGasLimit, 0);
         }
 
@@ -583,6 +585,23 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             : TGasPolicy.GetPreRefundGas(in state.Gas, combinedLimit);
         // Clamp: a reverted or errored frame carries no non-negativity guarantee on its state gas.
         stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas));
+
+        // EIP-8141 (ethereum/EIPs#12062, attempt_approval): apply the signaled approval within the frame's rollback boundary.
+        if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
+        {
+            long remainingStateBudget = (long)frame.StateGasLimit - stateGasUsed;
+            if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateBudget, out long approvalStateGas))
+            {
+                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                gasUsed = frame.ExecutionGasLimit;
+                stateGasUsed = 0;
+            }
+            else
+            {
+                stateGasUsed += approvalStateGas;
+                gasUsed += (ulong)approvalStateGas;
+            }
+        }
 
         if (substate.ShouldRevert || substate.IsError)
         {
@@ -649,33 +668,44 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (scope == 0) return true;
         frameContext.ApprovalScopeSignal = 0;
 
-        if ((scope & TxFrame.ApproveExecution) != 0)
+        bool approvesExecution = (scope & TxFrame.ApproveExecution) != 0;
+        bool approvesPayment = (scope & TxFrame.ApprovePayment) != 0;
+
+        // EIP-8141 (ethereum/EIPs#12062, attempt_approval): commit no approval effect until the sender-creation budget is checked.
+        bool applyPayment = false;
+        long newAccountCost = 0;
+        if (approvesPayment)
+        {
+            // The APPROVE opcode rejects a second payer and payment before execution approval
+            // (EvmInstructions.FrameTx.cs), but the default-code sponsor path signals approval
+            // directly, bypassing those guards — so they are re-enforced here for both paths to agree.
+            // A void payment (payer already set, no execution approval, or the payer moved its balance
+            // below MaxCost after an inner-call APPROVE) leaves Payer unset; the tx then fails the payer
+            // gate unless a later frame approves payment.
+            bool executionApproved = frameContext.SenderApproved || approvesExecution;
+            if (frameContext.Payer is null && executionApproved
+                && WorldState.GetBalance(resolvedTarget) >= frameContext.MaxCost)
+            {
+                applyPayment = true;
+                if (!WorldState.AccountExists(frameContext.Sender))
+                {
+                    newAccountCost = TGasPolicy.GetNewAccountStateCost();
+                    if (availableStateGas < newAccountCost) return false;
+                }
+            }
+        }
+
+        if (approvesExecution)
         {
             frameContext.SenderApproved = true;
         }
 
-        if ((scope & TxFrame.ApprovePayment) != 0)
+        if (applyPayment)
         {
-            // The APPROVE opcode rejects a second payer and payment before execution approval
-            // (EvmInstructions.FrameTx.cs), but the default-code sponsor path signals approval
-            // directly, bypassing those guards — so they must be re-enforced here for both paths to
-            // agree. Without this, two payment approvals against the same target charge MaxCost and
-            // increment the nonce twice while only the last payer is refunded.
-            if (frameContext.Payer is not null || !frameContext.SenderApproved) return true;
-
-            // Re-checked at charge time: the frame may have moved the payer's balance after an
-            // APPROVE issued from an inner call, and the debit must never throw mid-block. A void
-            // payment leaves Payer unset, so the transaction fails the payer gate unless a later
-            // frame approves payment.
-            if (WorldState.GetBalance(resolvedTarget) < frameContext.MaxCost) return true;
-
             // Incrementing the nonce creates a non-existent sender; the creation is charged from the
-            // approving frame's state gas pool immediately before the increment. A pool that cannot
-            // cover it halts the frame exceptionally, discarding every approval effect (attempt_approval).
-            if (!WorldState.AccountExists(frameContext.Sender))
+            // approving frame's state gas pool immediately before the increment (attempt_approval).
+            if (newAccountCost > 0)
             {
-                long newAccountCost = TGasPolicy.GetNewAccountStateCost();
-                if (availableStateGas < newAccountCost) return false;
                 stateGasCharged = newAccountCost;
                 WorldState.CreateAccountIfNotExists(frameContext.Sender, UInt256.Zero);
             }
