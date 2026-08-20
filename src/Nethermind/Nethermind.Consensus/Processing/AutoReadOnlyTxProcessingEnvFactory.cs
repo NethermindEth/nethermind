@@ -20,6 +20,9 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
         {
             builder
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
+                // EIP-7906: idle until a transaction that reads its own diff switches it on, so that when
+                // one does, the whole stack - tx processor and code repository alike - shares one slice.
+                .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
         });
 

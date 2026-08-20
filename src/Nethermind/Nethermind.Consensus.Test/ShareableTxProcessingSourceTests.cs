@@ -29,6 +29,17 @@ public class ShareableTxProcessingSourceTests
         _container?.Dispose();
     }
 
+    // EIP-7906: a POST_TX frame reads the transaction's own diff, which exists only if something records
+    // it. eth_call has no block-level recorder, so the scope carries one, idle until a transaction needs it.
+    [Test]
+    public void Build_GivesAWorldStateThatCanRecordATransactionDiff()
+    {
+        using IReadOnlyTxProcessingScope scope = _shareableSource.Build(IWorldState.PreGenesis);
+
+        Assert.That(scope.WorldState, Is.AssignableTo<IBlockAccessListSource>());
+        Assert.That(((IBlockAccessListSource)scope.WorldState).GeneratedBlockAccessList, Is.Null);
+    }
+
     [Test]
     public void OnSubsequentBuild_GiveDifferentWorldState()
     {

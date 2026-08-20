@@ -49,6 +49,24 @@ public class DisposableScopeOverridableEnvTests
         Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
     }
 
+    // EIP-7906: a POST_TX frame reads the transaction's own diff, so this stack carries a recorder. It
+    // stays idle - keeping state overrides in the prestate - until a transaction switches it on.
+    [Test]
+    public void BuildAndOverride_WithStateOverride_LeavesTheDiffRecorderIdle()
+    {
+        using TestContext ctx = new();
+
+        using Scope<Components> scope = ctx.Env.BuildAndOverride(
+            Build.A.BlockHeader.TestObject,
+            new Dictionary<Address, AccountOverride>
+            {
+                { TestItem.AddressA, new AccountOverride { Balance = 123 } }
+            });
+
+        Assert.That(scope.Component.WorldState, Is.AssignableTo<IBlockAccessListSource>());
+        Assert.That(((IBlockAccessListSource)scope.Component.WorldState).GeneratedBlockAccessList, Is.Null);
+    }
+
     [Test]
     public void BuildAndOverride_AfterExceptionFromInvalidStateOverride_CanBeCalledAgain()
     {

@@ -1600,8 +1600,8 @@ public class FrameTxProcessorTests
         Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted, Is.False);
     }
 
-    // The opcodes sit in the jump table for every transaction once EIP-7906 is on, so one with no frame
-    // context at all must exceptional-halt rather than dereference a null one.
+    // The opcodes are in the jump table for every transaction once EIP-7906 is on, so the absent frame
+    // context must halt rather than be dereferenced.
     [TestCase(Instruction.TXTRACE)]
     [TestCase(Instruction.TXDIFF)]
     [TestCase(Instruction.EVENTDATACOPY)]
@@ -1645,8 +1645,7 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // Negative control: the assertion machinery genuinely fails a wrong expectation, so a success above
-    // is evidence the opcode returned the right value rather than that the assertion can never fail.
+    // Negative control: without it, a passing assertion above could just mean the harness never fails.
     [Test]
     public void Execute_TxDiff_WrongExpectation_FailsTheAssertion()
     {
@@ -1687,8 +1686,8 @@ public class FrameTxProcessorTests
         UInt256 topic = 777;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(data).PushData(0).Op(Instruction.MSTORE)          // mem[0..32] = data
-            .PushData(topic).PushData(32).PushData(0).Op(Instruction.LOG1) // LOG1(offset 0, len 32, topic)
+            .PushData(data).PushData(0).Op(Instruction.MSTORE)
+            .PushData(topic).PushData(32).PushData(0).Op(Instruction.LOG1)
             .Op(Instruction.STOP).Done);
         DeployContract(Recipient, PostTxAssertAll(
             (Txtrace(0x0C, 0), To32(1)),                        // events_count
@@ -1720,8 +1719,8 @@ public class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
-    // EIP-7906 requires a TXDIFF param that falls back to live state (0x00-0x05) to be recorded in the
-    // EIP-7928 block access list like any other state-reading opcode, so a rebuilt BAL matches.
+    // A TXDIFF param that falls back to live state (0x00-0x05) reads like any other state-reading
+    // opcode, so its access must reach the EIP-7928 block access list.
     [TestCase(true, false, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList")]
     [TestCase(false, false, TestName = "Execute_WithoutTxDiff_TheAccountStaysOutOfTheBlockAccessList")]
     [TestCase(true, true, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList_Parallel")]
@@ -1741,8 +1740,7 @@ public class FrameTxProcessorTests
         Assert.That(slice.HasAccount(Observer), Is.EqualTo(readBalance));
     }
 
-    // Same reserved-operand rule on TXDIFF: a param keyed only by address (here 0x0A,
-    // account_change_flags) marks in3 "must be 0".
+    // Same reserved-operand rule on TXDIFF: 0x0A (account_change_flags) marks in3 "must be 0".
     [TestCase(0, ExpectedResult = StatusCode.Success, TestName = "Execute_TxDiffAddressParam_ZeroIn3_Succeeds")]
     [TestCase(1, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxDiffAddressParam_NonZeroIn3_HaltsExceptionally")]
     public byte Execute_TxDiffAddressParam_In3MustBeZero(int in3)
@@ -1824,6 +1822,57 @@ public class FrameTxProcessorTests
         CallOutputTracer tracer = new();
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
         return (result, tracer);
+    }
+
+    /// <summary>Runs <paramref name="tx"/> the way <c>eth_call</c> does: an idle recorder in the stack
+    /// and no block-level slice, so the transaction has to start its own to be able to read its diff.</summary>
+    private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx)
+        => CallSimulated(tx, out _);
+
+    private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx, out TracedAccessWorldState idleRecorder)
+    {
+        idleRecorder = new(_stateProvider, parallel: false);
+        EthereumCodeInfoRepository codeInfoRepository = new(idleRecorder);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, idleRecorder, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1)
+            .WithBeneficiary(Beneficiary)
+            .WithGasLimit(30_000_000).TestObject;
+        CallOutputTracer tracer = new();
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
+        return (processor.CallAndRestore(tx, tracer), tracer);
+    }
+
+    [Test]
+    public void CallAndRestore_PostTxAssertion_ReadsTheTransactionDiffWithoutABlockAccessList()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, PostTxAssertAll(
+            (Txtrace(0x01, 0), To32(1)),            // slots_changed
+            (Txtrace(0x09, 0), To32(99)),           // slot value after
+            (Txdiff(0x00, Observer, 5), To32(0)))); // slot_value_before
+
+        (TransactionResult result, CallOutputTracer tracer) = CallSimulated(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)));
+
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription ?? result.Error.ToString());
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
+    // The per-transaction slice must not outlive the transaction that needed it.
+    [Test]
+    public void CallAndRestore_PostTxAssertion_LeavesTheRecorderIdleAfterwards()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, PostTxAssertAll((Txtrace(0x01, 0), To32(0))));
+
+        (_, CallOutputTracer tracer) = CallSimulated(
+            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModePostTx, target: Recipient)), out TracedAccessWorldState idleRecorder);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(((IBlockAccessListSource)idleRecorder).GeneratedBlockAccessList, Is.Null);
     }
 
     private RecentRootReference CommitReference(ulong slot)

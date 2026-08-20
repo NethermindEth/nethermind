@@ -255,10 +255,10 @@ public static unsafe partial class EvmInstructions
     }
 
     /// <summary>Shared POST_TX diff view for the current frame tx, built once and cached. False (an
-    /// exceptional halt) outside a POST_TX frame or when the BAL diff source is unavailable.</summary>
+    /// exceptional halt) outside a POST_TX frame or when the diff source is unavailable.</summary>
     /// <remarks>
-    /// The diff source is the EIP-7928 recording world state, built only on the block-processing path, so
-    /// read-only re-execution (eth_call, trace) halts here — a non-BAL source is a follow-up.
+    /// The source is the in-flight EIP-7928 slice: block processing always records one, and simulation
+    /// starts one per transaction that carries a POST_TX frame.
     /// </remarks>
     private static bool TryGetPostTxView<TGasPolicy>(VirtualMachine<TGasPolicy> vm, out TransactionDiffView view, out FrameTxContext ctx)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>

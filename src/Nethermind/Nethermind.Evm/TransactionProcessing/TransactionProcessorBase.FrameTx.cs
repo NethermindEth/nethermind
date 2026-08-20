@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
@@ -25,6 +26,37 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
+    /// <summary>
+    /// EIP-7906: starts recording this transaction's EIP-7928 slice when it carries a POST_TX frame and
+    /// nothing else is recording one, and returns the recorder so the caller can stop it.
+    /// </summary>
+    /// <remarks>
+    /// The slice is the diff source the assertion opcodes read. Block processing always has one in
+    /// flight; simulation (eth_call, eth_estimateGas) does not, and without this a POST_TX assertion
+    /// would halt there while succeeding in a block. Recording starts before the transaction touches
+    /// state, so the captured prestate is the transaction's own baseline.
+    /// </remarks>
+    private IBlockAccessListSource? BeginPostTxDiffRecording(Transaction tx, IReleaseSpec spec)
+    {
+        if (!spec.IsEip7906Enabled
+            || tx.Frames is not { } frames
+            || WorldState is not IBlockAccessListSource { GeneratedBlockAccessList: null } recorder)
+        {
+            return null;
+        }
+
+        foreach (TxFrame frame in frames)
+        {
+            if (frame.Mode == TxFrame.ModePostTx)
+            {
+                recorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+                return recorder;
+            }
+        }
+
+        return null;
+    }
+
     private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
     {
         Address sender = tx.SenderAddress!;

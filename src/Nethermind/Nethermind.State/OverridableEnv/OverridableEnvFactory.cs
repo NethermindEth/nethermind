@@ -18,6 +18,9 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState)
+            // EIP-7906: idle until a transaction that reads its own diff switches it on, so that when one
+            // does, the whole stack - tx processor and code repository alike - records into one slice.
+            .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
             .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
             .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!));
 
