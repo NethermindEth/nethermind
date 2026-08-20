@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -129,7 +128,7 @@ public sealed class HistoryWalkVerifier
 
         HistoryWalkVerdict[] verdicts = new HistoryWalkVerdict[effectiveSegments];
         Parallel.For(0, effectiveSegments, new ParallelOptions { CancellationToken = token },
-            i => verdicts[i] = WalkSegment(bounds[i].From, bounds[i].To, data[i], clearsByIdentity, token));
+            i => verdicts[i] = WalkSegment(bounds[i].From, bounds[i].To, data[i], clearsByIdentity, countAnchor: i == 0, token));
 
         List<HistoryWalkMismatch> mismatches = [];
         ulong compared = 0;
@@ -148,6 +147,7 @@ public sealed class HistoryWalkVerifier
         ulong toInclusive,
         SegmentData data,
         Dictionary<byte[], List<ulong>> clearsByIdentity,
+        bool countAnchor,
         CancellationToken token)
     {
         List<HistoryWalkMismatch> mismatches = [];
@@ -169,8 +169,10 @@ public sealed class HistoryWalkVerifier
 
         state.UpdateRootHash();
 
+        // Adjacent segments share their boundary block: segment i's start is segment i-1's end. The check runs in
+        // both (it is what anchors each segment), but only the first counts it, so BlocksCompared stays exact.
         ulong compared = 0;
-        if (!CompareStateRoot(fromInclusive, state, mismatches, ref compared))
+        if (!CompareStateRoot(fromInclusive, state, mismatches, ref compared, countAnchor))
         {
             return new HistoryWalkVerdict(false, compared, mismatches);
         }
@@ -262,7 +264,7 @@ public sealed class HistoryWalkVerifier
     /// <summary>Whether the walk can continue - a root or missing-header failure poisons every later comparison.
     /// Also checks the captured marker against the header (the serving gate trusts the marker, rebuilt roots never
     /// touch it); a marker mismatch reports without stopping.</summary>
-    private bool CompareStateRoot(ulong block, StateTree state, List<HistoryWalkMismatch> mismatches, ref ulong compared)
+    private bool CompareStateRoot(ulong block, StateTree state, List<HistoryWalkMismatch> mismatches, ref ulong compared, bool count = true)
     {
         ValueHash256 rebuilt = new(state.RootHash.Bytes);
         ValueHash256? expected = _headers.TryGetStateRoot(block);
@@ -272,7 +274,7 @@ public sealed class HistoryWalkVerifier
             return false;
         }
 
-        compared++;
+        if (count) compared++;
 
         Span<byte> markerKey = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(markerKey, block);

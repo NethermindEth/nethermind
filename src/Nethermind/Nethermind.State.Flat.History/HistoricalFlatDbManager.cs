@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 

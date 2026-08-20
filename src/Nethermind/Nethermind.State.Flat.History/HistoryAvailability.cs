@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
@@ -210,6 +209,7 @@ public sealed class HistoryAvailability
             WriteGlobalFloorUnderLock(floor);
         }
 
+        Metrics.FlatHistoryFloor = (long)floor;
     }
 
     /// <summary>
@@ -227,10 +227,6 @@ public sealed class HistoryAvailability
             {
                 WriteGlobalFloorUnderLock(newFloor);
             }
-        }
-
-        if (raised)
-        {
         }
 
         return raised;
@@ -254,7 +250,6 @@ public sealed class HistoryAvailability
         {
             WriteScopeRecordUnderLock(accountKey, floor);
         }
-
     }
 
     public bool TryGetScopeFloor(ReadOnlySpan<byte> accountKey, out ulong floor)
@@ -288,10 +283,6 @@ public sealed class HistoryAvailability
             }
         }
 
-        if (raised)
-        {
-        }
-
         return raised;
     }
 
@@ -306,7 +297,6 @@ public sealed class HistoryAvailability
             _availableBlocks.Remove(key);
             InvalidateScopeCache();
         }
-
     }
 
     private void WriteScopeRecordUnderLock(ReadOnlySpan<byte> accountKey, ulong floor)
@@ -456,6 +446,5 @@ public sealed class HistoryAvailability
         BinaryPrimitives.WriteUInt64BigEndian(value, watermark);
         _availableBlocks.PutSpan(WatermarkKey, value);
         _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
-
     }
 }

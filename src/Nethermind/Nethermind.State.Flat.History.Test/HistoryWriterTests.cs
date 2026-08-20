@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -637,7 +636,7 @@ public class HistoryWriterTests
     }
 
     [Test]
-    public void V3_TwoBlocksTouchingTheSameKeyInOneWalk_ResolveTheOlderTouchsPostValueAsTheNewersPreValue()
+    public void V3_TwoBlocksTouchingTheSameKeyInOneWalk_ResolveTheOlderTouchesPostValueAsTheNewersPreValue()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 

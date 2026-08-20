@@ -116,10 +116,21 @@ public sealed class HistoryReader
         return AccountDecoder.Slim.TryDecodeStruct(ref context, out account);
     }
 
+    /// <remarks>Live column first, history second. Capture commits a block's row strictly before the flat persist
+    /// that supersedes it, so a round completing between the two reads is still caught: the seek runs after the
+    /// live read and is therefore guaranteed to observe the row. Seeking first would let that round slip between
+    /// the reads and return the post-change live value as the value at <paramref name="block"/>.</remarks>
+    [SkipLocalsInit]
     private int TryGetAccountV3(ulong block, ReadOnlySpan<byte> flatKey, Span<byte> valueBuffer)
     {
+        Span<byte> liveBuffer = stackalloc byte[AccountValueBufferSize];
+        int live = _persistedAccounts!.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), liveBuffer);
+
         int written = _accountHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
-        return written >= 0 ? written : _persistedAccounts!.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), valueBuffer);
+        if (written >= 0) return written;
+
+        if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
+        return live;
     }
 
     /// <summary>
@@ -155,8 +166,17 @@ public sealed class HistoryReader
                     $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
                     "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
 
+            // Live column first, history second - see TryGetAccountV3's remarks for why the order is load-bearing.
+            Span<byte> liveBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+            int live = _persistedStorage!.Get(flatKey, liveBuffer);
+
             int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
-            if (written < 0) written = _persistedStorage!.Get(flatKey, valueBuffer);
+            if (written < 0)
+            {
+                if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
+                written = live;
+            }
+
             if (written <= 0) { value = default; return false; }
             value = DecodeSlotValue(valueBuffer[..written]);
             return true;

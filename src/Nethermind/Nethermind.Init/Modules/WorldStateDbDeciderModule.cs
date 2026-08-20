@@ -28,12 +28,8 @@ internal class WorldStateDbDeciderModule : Module
                 (policy, syncConfig, flatFactory, patriciaFactory) =>
                 {
                     if (!policy.ShouldTurnOnFlatDb()) return patriciaFactory().WorldStateManager;
-                    // Flat snap serving resolves persisted roots only, and the in-memory tier makes persistence
-                    // deliberately lazy - the near-head roots snap peers actually request are systematically not
-                    // on disk yet, so a flat node advertising snap answers empty and starves any syncing peer
-                    // that latches onto it. Default off (set before InitializeNetwork registers capabilities);
-                    // an operator who knows their persistence cadence can still opt in explicitly.
-                    syncConfig.SnapServingEnabled ??= false;
+                    // Flat state can always serve snap requests; set before InitializeNetwork registers capabilities.
+                    syncConfig.SnapServingEnabled ??= true;
                     return flatFactory();
                 })
 

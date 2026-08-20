@@ -8,7 +8,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 

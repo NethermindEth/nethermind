@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Bytes = Nethermind.Core.Extensions.Bytes;

@@ -47,6 +47,13 @@ namespace Nethermind.Network
         private readonly List<PeerStats> _candidates;
         private readonly RateLimiter _outgoingConnectionRateLimiter;
 
+        private const long StaticDialDebounceMs = 5_000;
+        private const long StaleDialThresholdMs = 60_000;
+        private const long StaticSkipLogIntervalMs = 60_000;
+        private static readonly TimeSpan StalePongThreshold = TimeSpan.FromSeconds(35);
+        private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
+        private readonly ConcurrentDictionary<PublicKey, long> _lastStaticSkipLog = new();
+
         private int _pending;
         private int _tryCount;
         private int _newActiveNodes;
@@ -486,13 +493,6 @@ namespace Nethermind.Network
             _lastStaticSkipLog[peer.Node.Id] = now;
             _logger.Info($"Static peer {peer.Node:s} is not connected and not redialed: {reason}.");
         }
-
-        private const long StaticDialDebounceMs = 5_000;
-        private const long StaleDialThresholdMs = 60_000;
-        private const long StaticSkipLogIntervalMs = 60_000;
-        private static readonly TimeSpan StalePongThreshold = TimeSpan.FromSeconds(35);
-        private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
-        private readonly ConcurrentDictionary<PublicKey, long> _lastStaticSkipLog = new();
 
         private void SignalPeerUpdateNeeded()
         {

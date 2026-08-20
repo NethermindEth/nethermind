@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 

@@ -3,10 +3,8 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;

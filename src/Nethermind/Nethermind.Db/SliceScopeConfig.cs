@@ -47,13 +47,16 @@ public static class SliceScopeConfig
             retentionBlocks = parsedRetention;
         }
 
-        Address? address = null;
+        Address? address;
         try
         {
+            // Address.TryParse only guards IndexOutOfRangeException; malformed hex escapes it as a FormatException,
+            // which belongs to the operator as the configuration error below, not to the caller as a crash.
             Address.TryParse(addressToken.ToString(), out address);
         }
-        catch (Exception)
+        catch (FormatException)
         {
+            address = null;
         }
 
         if (address is null)

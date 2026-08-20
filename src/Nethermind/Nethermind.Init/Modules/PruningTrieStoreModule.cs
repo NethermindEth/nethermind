@@ -59,11 +59,7 @@ public class PruningTrieStoreModule : Module
                 INodeStorageFactory nodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, logManager);
                 nodeStorageFactory.DetectCurrentKeySchemeFrom(stateDb);
 
-                // Same default as WorldStateDbDeciderModule's flat branch, guarded here too because the two
-                // factories race on resolution order: a flat node must never default snap serving on - it
-                // resolves persisted roots only and answers near-head range requests empty.
                 syncConfig.SnapServingEnabled |= syncConfig.SnapServingEnabled is null
-                                                 && !ctx.Resolve<FlatStateActivationPolicy>().ShouldTurnOnFlatDb()
                                                  && nodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.HalfPath or null
                                                  && initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Hash;
 

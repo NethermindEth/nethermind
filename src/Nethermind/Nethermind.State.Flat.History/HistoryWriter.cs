@@ -6,7 +6,6 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -308,6 +307,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
 
         _availability.PublishWatermark(pivotBlock, _formatVersion);
+
+        // Raise-only: seeding a pivot below an already-published floor would re-admit reads for heights whose
+        // rows the pruner has already deleted, and they would answer from live state instead of failing closed.
+        if (_availability.TryGetGlobalFloor(out ulong currentFloor) && pivotBlock < currentFloor)
+        {
+            throw new InvalidOperationException(
+                $"Cannot seed the flat history floor at pivot {pivotBlock}: it is below the published retention floor " +
+                $"{currentFloor}, whose rows are already pruned. Resync the flatHistory database to start from this pivot.");
+        }
+
         _availability.PublishGlobalFloor(pivotBlock);
         _history.SyncWal();
     }
@@ -477,6 +486,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (++slotCount > DestructSlotEnumerationCap)
             {
                 _storageClears.RecordPoisonedClear(block, accountKey, clearsBatch);
+                Metrics.FlatHistoryPoisonedDestructs++;
+                if (_logger.IsWarn) _logger.Warn(
+                    $"Account {addrHash} self-destructed at block {block} with more than {DestructSlotEnumerationCap} persisted slots; " +
+                    "its per-slot pre-values were not recorded, so storage reads for it below this block will fail closed.");
                 return;
             }
 

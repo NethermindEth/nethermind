@@ -318,6 +318,10 @@ public static class Metrics
     [Description("Number of rows deleted by the history window pruner")]
     public static long FlatHistoryPrunedRows { get; set; }
 
+    [CounterMetric]
+    [Description("Number of accounts whose storage history was poisoned because a self-destruct exceeded the per-slot enumeration cap; storage reads below those blocks fail closed for that account")]
+    public static long FlatHistoryPoisonedDestructs { get; set; }
+
     [DetailedMetric]
     [CounterMetric]
     [Description("Number of history window pruner passes that yielded at their wall-clock budget and left work for the next pass")]

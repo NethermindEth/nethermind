@@ -19,7 +19,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State.Flat;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Trie;
 using NSubstitute;
