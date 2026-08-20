@@ -64,7 +64,7 @@ public class PayloadDecoder : IPayloadDecoder
         if (4 > data.Length) throw new ArgumentException("Invalid transaction data");
         UInt32 firstTxOffset = BinaryPrimitives.ReadUInt32LittleEndian(data[..4]);
         // SSZ layout: the first transaction starts after a 4-byte offset per transaction.
-        if (firstTxOffset is 0 || firstTxOffset % 4 != 0 || firstTxOffset > data.Length) throw new ArgumentException("Invalid transaction offset");
+        if (firstTxOffset is 0 || firstTxOffset % 4 != 0 || firstTxOffset > data.Length) throw new ArgumentException("Invalid first transaction offset");
         UInt32 txCount = firstTxOffset / 4;
         byte[][] txs = new byte[txCount][];
         int previous = (int)firstTxOffset;
