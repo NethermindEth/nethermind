@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
@@ -40,7 +39,12 @@ namespace Nethermind.Network.Test.P2P
             bool shouldThrow)
             where TMessage : P2PMessage
         {
-            ArrayPoolList<byte[]> entries = new(items, Enumerable.Repeat(new byte[] { 0x42 }, items));
+            ArrayPoolList<byte[]> entries = new(items);
+            for (int i = 0; i < items; i++)
+            {
+                entries.Add([0x42]);
+            }
+
             using TMessage message = createMessage(new ByteArrayListAdapter(entries));
 
             using DisposableByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(items + 64).AsDisposable();

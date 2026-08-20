@@ -7,6 +7,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.FastSync;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages;
@@ -27,6 +28,20 @@ public class SnapMessageLimitsTests
         int maxTheoreticalItems = (int)(SnapMessageLimits.MaxResponseBytes / minEntryBytes);
 
         Assert.That(limit, Is.GreaterThanOrEqualTo(maxTheoreticalItems), $"{limitName} must accommodate the maximum item count that fits in a {SnapMessageLimits.MaxResponseBytes}-byte response at {minEntryBytes} bytes/entry");
+    }
+
+    /// <summary>
+    /// The request-bounded response caps must stay above the largest request this client issues,
+    /// or a valid response is rejected and its peer disconnected and banned.
+    /// </summary>
+    [Test]
+    public void Request_bounded_response_caps_accommodate_our_largest_request()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SnapMessageLimits.MaxResponseTrieNodes, Is.GreaterThanOrEqualTo(TreeSync.MaxRequestSize));
+            Assert.That(SnapMessageLimits.MaxRequestHashes, Is.GreaterThanOrEqualTo(TreeSync.MaxRequestSize));
+        }
     }
 
     [Test]

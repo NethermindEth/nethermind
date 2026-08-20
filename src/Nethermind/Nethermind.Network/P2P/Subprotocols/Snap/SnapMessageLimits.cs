@@ -11,6 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap;
 
 internal static class SnapMessageLimits
 {
+    // Request caps bound responses too: at most one entry per requested item.
     public const int MaxRequestHashes = 4_096;
     public const int MaxRequestAccounts = 4_096;
     public const int MaxRequestPathGroups = 4_096;
