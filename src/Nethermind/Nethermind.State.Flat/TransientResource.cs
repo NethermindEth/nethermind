@@ -35,10 +35,9 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
 
     /// <summary>
-    /// The trie warmer's negative cache: paths whose persistence lookup missed, keyed like <see cref="Nodes"/> but
-    /// holding only unresolved placeholders. It is read and written exclusively by the warmer and is never consulted
-    /// by a live read nor promoted into the shared <see cref="TrieNodeCache"/>, so a stale miss can never reach the
-    /// state-root computation.
+    /// The trie warmer's negative cache: paths whose in-memory lookup missed, keyed like <see cref="Nodes"/> but
+    /// holding only unresolved placeholders. No live read consults it (live reads use <see cref="Nodes"/> only) and
+    /// <see cref="TrieNodeCache.Add"/> never promotes it into the shared <see cref="TrieNodeCache"/>.
     /// </summary>
     public TrieNodeCache.ChildCache MissNodes = new(size.NodesCacheSize);
 
