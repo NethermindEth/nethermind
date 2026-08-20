@@ -12,8 +12,8 @@ public static class TxTypeExtensions
     public static bool Supports1559(this TxType txType)
         => txType >= TxType.EIP1559 && txType != TxType.DepositTx;
 
-    // EIP8141-GAP: frame transactions carry blob_versioned_hashes/max_fee_per_blob_gas fields, but
-    // the spec does not define sidecar/network-wrapper handling; blob support is off in the prototype.
+    // A type-3-only predicate. A frame tx may or may not carry blobs, so its blob handling keys on
+    // presence (Transaction.CarriesBlobs) rather than on the type.
     public static bool SupportsBlobs(this TxType txType)
         => txType == TxType.Blob;
 

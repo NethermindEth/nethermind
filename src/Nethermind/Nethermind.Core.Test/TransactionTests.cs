@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -81,7 +82,27 @@ public class TransactionTests
             Assert.That(transaction.Supports1559, Is.True, "frame txs carry EIP-1559 fee fields");
             Assert.That(transaction.SupportsAccessList, Is.False, "frame txs have no access list field");
             Assert.That(transaction.SupportsAuthorizationList, Is.False, "frame txs have no authorization list");
-            Assert.That(transaction.SupportsBlobs, Is.False, "blob sidecars are not supported by the prototype");
+            Assert.That(transaction.SupportsBlobs, Is.False, "frame tx blob handling keys on blob presence, not the type");
+        }
+    }
+
+    // The compensating invariant for SupportsBlobs being type-3-only: a blob-carrying frame tx must
+    // still be recognised as carrying blobs, or it would bypass every blob path in the node.
+    [TestCase(0, false)]
+    [TestCase(2, true)]
+    public void FrameTx_CarriesBlobs_TracksBlobPresenceNotType(int blobCount, bool expected)
+    {
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = Enumerable.Range(0, blobCount).Select(static _ => new byte[32]).ToArray()
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.SupportsBlobs, Is.False);
+            Assert.That(transaction.CarriesBlobs, Is.EqualTo(expected));
+            Assert.That(transaction.GetBlobCount(), Is.EqualTo(blobCount));
         }
     }
 
