@@ -373,10 +373,17 @@ public static class FrameTxValidation
         ulong dataLength = 0;
         ulong totalFrameGas = 0;
         ulong totalStateGas = 0;
+        ulong valueTransferCost = 0;
         foreach (TxFrame frame in frames)
         {
             tokens += CountCalldataTokens(frame.Data.Span, spec);
             dataLength += (ulong)frame.Data.Length;
+
+            // EIP-8141 (ethereum/EIPs#12062): a value-bearing frame with an explicit target other than the sender pays a flat value-transfer cost.
+            if (!frame.Value.IsZero && frame.Target is not null && !frame.Target.Equals(transaction.SenderAddress))
+            {
+                valueTransferCost += Eip8141Constants.ValueTransferGasCost;
+            }
 
             ulong frameGas = frame.ExecutionGasLimit + frame.StateGasLimit;
             ulong accumulated = totalFrameGas + frameGas;
@@ -413,7 +420,8 @@ public static class FrameTxValidation
 
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
-                             + signatureVerificationCost;
+                             + signatureVerificationCost
+                             + valueTransferCost;
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
