@@ -315,7 +315,6 @@ public class FrameTxPayerExposureFilterTests
         return state;
     }
 
-    /// <summary>The same frame tx as <see cref="FrameTxCostingExactly"/>, carrying <paramref name="blobCount"/> blobs.</summary>
     /// <summary>A blob-carrying frame tx whose max cost is exactly <paramref name="cost"/>: the blob leg is
     /// priced at zero, so the gas leg alone decides it.</summary>
     private static Transaction BlobFrameTxCosting(int cost)
@@ -326,6 +325,7 @@ public class FrameTxPayerExposureFilterTests
         return tx;
     }
 
+    /// <summary>The same frame tx as <see cref="FrameTxCostingExactly"/>, carrying <paramref name="blobCount"/> blobs.</summary>
     private static Transaction BlobFrameTx(int blobCount, int maxFeePerBlobGas)
     {
         Transaction tx = FrameTxCostingExactly(TestCost);
