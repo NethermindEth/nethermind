@@ -13,6 +13,7 @@ internal static class TestArchive
         using MemoryStream tarBuffer = new();
         using (TarWriter writer = new(tarBuffer, leaveOpen: true))
         {
+            writer.WriteEntry(new PaxGlobalExtendedAttributesTarEntry(new Dictionary<string, string> { ["comment"] = "test" }));
             writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "db"));
             HashSet<string> directories = [];
             foreach (string name in files.Keys)
@@ -29,11 +30,7 @@ internal static class TestArchive
             }
         }
 
-        tarBuffer.Position = 0;
-        using MemoryStream compressed = new();
-        using (CompressionStream zstd = new(compressed, leaveOpen: true))
-            tarBuffer.CopyTo(zstd);
-        return compressed.ToArray();
+        return Compress(tarBuffer);
     }
 
     public static byte[] BuildTarZstWithoutTopLevelDirectory()
@@ -45,11 +42,7 @@ internal static class TestArchive
             writer.WriteEntry(entry);
         }
 
-        tarBuffer.Position = 0;
-        using MemoryStream compressed = new();
-        using (CompressionStream zstd = new(compressed, leaveOpen: true))
-            tarBuffer.CopyTo(zstd);
-        return compressed.ToArray();
+        return Compress(tarBuffer);
     }
 
     public static byte[] BuildTarZstWithSymlink()
@@ -61,11 +54,7 @@ internal static class TestArchive
             writer.WriteEntry(new PaxTarEntry(TarEntryType.SymbolicLink, "db/escape") { LinkName = "/tmp" });
         }
 
-        tarBuffer.Position = 0;
-        using MemoryStream compressed = new();
-        using (CompressionStream zstd = new(compressed, leaveOpen: true))
-            tarBuffer.CopyTo(zstd);
-        return compressed.ToArray();
+        return Compress(tarBuffer);
     }
 
     public static Dictionary<string, byte[]> BuildFiles(int seed = 42)
@@ -80,5 +69,14 @@ internal static class TestArchive
             [$"state/a{seed}.sst"] = state,
             [$"headers/b{seed}.sst"] = headers,
         };
+    }
+
+    private static byte[] Compress(MemoryStream tarBuffer)
+    {
+        tarBuffer.Position = 0;
+        using MemoryStream compressed = new();
+        using (CompressionStream zstd = new(compressed, leaveOpen: true))
+            tarBuffer.CopyTo(zstd);
+        return compressed.ToArray();
     }
 }

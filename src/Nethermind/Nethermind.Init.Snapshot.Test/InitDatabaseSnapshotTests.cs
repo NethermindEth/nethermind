@@ -57,7 +57,7 @@ public class InitDatabaseSnapshotTests
         long snapshotSize = WriteSnapshotTar();
         AdvanceCheckpoint(SnapshotStage.Verified);
         long freeSpace = snapshotSize * 2;
-        Assert.That(freeSpace, Is.GreaterThanOrEqualTo(InitDatabaseSnapshot.GetRequiredSpaceForExtraction(snapshotSize)),
+        Assert.That(freeSpace, Is.GreaterThanOrEqualTo(SnapshotDiskSpace.GetRequiredSpaceForExtraction(snapshotSize)),
             "precondition: free space must cover the extraction estimate");
         Assert.That(freeSpace, Is.LessThan((long)(snapshotSize * 2.5)),
             "precondition: free space must be below the legacy 2.5x requirement to prove the regression is fixed");
@@ -112,7 +112,7 @@ public class InitDatabaseSnapshotTests
         _snapshotConfig.DownloadUrl = server.Url;
         _snapshotConfig.Streaming = true;
         _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
-        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(archive.Length * 2L));
 
         await step.Execute(CancellationToken.None);
 
@@ -127,9 +127,54 @@ public class InitDatabaseSnapshotTests
         _snapshotConfig.Streaming = true;
         _snapshotConfig.StreamingConnections = connections;
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(CancellationToken.None),
+        Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(timeout.Token),
             "a connection count outside 1-16 must be rejected before any network activity");
+    }
+
+    [Test]
+    public async Task Execute_VerifiedCheckpointWithoutArchive_StreamsFromScratch()
+    {
+        using FlakySnapshotServer server = new();
+        Dictionary<string, byte[]> files = TestArchive.BuildFiles();
+        byte[] archive = TestArchive.BuildTarZst(files);
+        server.Content = archive;
+        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = true;
+        _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(archive.Length * 2L));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state/a42.sst")), Is.True,
+            "a checkpoint past Downloaded with no archive on disk must stream instead of skipping the download stage");
+    }
+
+    [Test]
+    public async Task Execute_CompletedCheckpointNoDatabaseNoArchive_RedownloadsAndExtracts()
+    {
+        using FlakySnapshotServer server = new();
+        using MemoryStream tarBuffer = new();
+        using (TarWriter tarWriter = new(tarBuffer, leaveOpen: true))
+        {
+            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "data"));
+            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "data/state.bin")
+            {
+                DataStream = new MemoryStream(new byte[1000])
+            });
+        }
+        server.Content = tarBuffer.ToArray();
+        AdvanceCheckpoint(SnapshotStage.Completed);
+        _snapshotConfig.DownloadUrl = server.Url;
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+            "a stale completed checkpoint with neither database nor archive must restart the two-phase flow from the download");
     }
 
     [Test]
@@ -156,8 +201,8 @@ public class InitDatabaseSnapshotTests
         byte[] archive = TestArchive.BuildTarZst(files);
         server.Content = archive;
         Directory.CreateDirectory(Path.Combine(_dbPath, "lost+found"));
-        AdvanceCheckpoint(SnapshotStage.Completed);
         _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        AdvanceCheckpoint(SnapshotStage.Completed);
         _snapshotConfig.DownloadUrl = server.Url;
         _snapshotConfig.Streaming = true;
         _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
@@ -184,7 +229,7 @@ public class InitDatabaseSnapshotTests
         AdvanceCheckpoint(SnapshotStage.Verified);
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
 
-        IOException exception = Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None))!;
+        InvalidOperationException exception = Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(CancellationToken.None))!;
 
         Assert.That(exception.Message, Does.Contain("StripComponents"),
             "an extraction that produced no files must point the operator at the strip configuration");
@@ -210,7 +255,7 @@ public class InitDatabaseSnapshotTests
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(
         long totalSize, long existingSize, long expected) =>
-        Assert.That(InitDatabaseSnapshot.GetRequiredSpaceForDownload(totalSize, existingSize), Is.EqualTo(expected),
+        Assert.That(SnapshotDiskSpace.GetRequiredSpaceForDownload(totalSize, existingSize), Is.EqualTo(expected),
             "the pre-download requirement should be the remaining bytes plus the extraction estimate of the full snapshot");
 
     private long WriteSnapshotTar()

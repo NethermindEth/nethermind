@@ -13,6 +13,8 @@ internal sealed class FlakySnapshotServer : IDisposable
     private readonly CancellationTokenSource _hangCts = new();
     private int _requestCount;
     private int _hangConsumed;
+    private int _rangeIgnored;
+    private int _redirected;
     private int _switchAfterRequests = int.MaxValue;
     private byte[] _newContent = [];
     private string? _newETag;
@@ -43,6 +45,10 @@ internal sealed class FlakySnapshotServer : IDisposable
     public int? HangOnceAfterBytes { get; set; }
 
     public int? ServerErrorFirstRequests { get; set; }
+
+    public bool IgnoreRangeOnce { get; set; }
+
+    public bool RedirectFirstRequest { get; set; }
 
     public int RequestCount => _requestCount;
 
@@ -89,6 +95,14 @@ internal sealed class FlakySnapshotServer : IDisposable
 
         try
         {
+            if (RedirectFirstRequest && Interlocked.Exchange(ref _redirected, 1) == 0)
+            {
+                response.StatusCode = 302;
+                response.Headers["Location"] = Url;
+                response.Close();
+                return;
+            }
+
             if (FailWithNotFoundAfterRequests is int failAfter && requestNumber > failAfter)
             {
                 response.StatusCode = 404;
@@ -113,6 +127,9 @@ internal sealed class FlakySnapshotServer : IDisposable
                           && rangeHeader is not null
                           && (ifRange is null || ifRange == etag)
                           && TryParseRange(rangeHeader, content.Length, ref from, ref to);
+
+            if (ranged && IgnoreRangeOnce && rangeHeader != "bytes=0-0" && Interlocked.Exchange(ref _rangeIgnored, 1) == 0)
+                ranged = false;
 
             if (ranged && from >= content.Length)
             {
@@ -146,7 +163,7 @@ internal sealed class FlakySnapshotServer : IDisposable
                 await response.OutputStream.FlushAsync();
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(30), _hangCts.Token);
+                    await Task.Delay(Timeout.InfiniteTimeSpan, _hangCts.Token);
                 }
                 catch (OperationCanceledException)
                 {

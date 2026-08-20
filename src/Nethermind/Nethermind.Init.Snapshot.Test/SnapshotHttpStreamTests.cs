@@ -104,10 +104,42 @@ public class SnapshotHttpStreamTests
     {
         _server.Content = BuildContent(100_000);
         _server.FailWithNotFoundAfterRequests = 1;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
         Assert.ThrowsAsync<HttpRequestException>(
-            () => DownloadAsync(connections: 2),
+            () => DownloadAsync(connections: 2, cancellationToken: timeout.Token),
             "a permanent HTTP error must abort the stream instead of retrying forever");
+    }
+
+    [Test]
+    public async Task Read_ServerIgnoresOneRangeRequest_RetriesAndDeliversExactContent()
+    {
+        byte[] content = BuildContent(100_000);
+        _server.Content = content;
+        _server.IgnoreRangeOnce = true;
+
+        (byte[] delivered, byte[] hash) = await DownloadAsync(connections: 2);
+
+        Assert.That(delivered, Is.EqualTo(content), "a single 200 answer to a range request must be retried instead of corrupting the stream");
+        Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "the retried chunk must be hashed exactly once");
+    }
+
+    [Test]
+    public async Task Dispose_AfterFullDownload_ReleasesPooledBuffers()
+    {
+        byte[] content = BuildContent(100_000);
+        _server.Content = content;
+        SnapshotStreamSettings settings = new(3, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30), ComputeChecksum: true);
+        using SnapshotHttpClient client = new();
+        SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, CancellationToken.None);
+        SnapshotHttpStream stream = new(client, _server.Url, remoteInfo, settings, LimboLogs.Instance, CancellationToken.None);
+        using MemoryStream delivered = new();
+        await Task.Run(() => stream.CopyTo(delivered));
+
+        await stream.DisposeAsync();
+
+        Assert.That(stream.PooledBufferCount, Is.EqualTo(0),
+            "disposing the stream must release the pooled chunk buffers instead of keeping them reachable");
     }
 
     [Test]
@@ -123,15 +155,15 @@ public class SnapshotHttpStreamTests
         Assert.That(hash, Is.EqualTo(SHA256.HashData(content)), "bytes received before the stall must be hashed exactly once");
     }
 
-    private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(int connections, TimeSpan? stallTimeout = null)
+    private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(int connections, TimeSpan? stallTimeout = null, CancellationToken cancellationToken = default)
     {
-        SnapshotStreamSettings settings = new(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), stallTimeout ?? TimeSpan.FromSeconds(30));
+        SnapshotStreamSettings settings = new(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), stallTimeout ?? TimeSpan.FromSeconds(30), ComputeChecksum: true);
         using SnapshotHttpClient client = new();
-        SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, CancellationToken.None);
-        await using SnapshotHttpStream stream = new(client, _server.Url, remoteInfo, settings, LimboLogs.Instance, CancellationToken.None);
+        SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, cancellationToken);
+        await using SnapshotHttpStream stream = new(client, _server.Url, remoteInfo, settings, LimboLogs.Instance, cancellationToken);
         using MemoryStream delivered = new();
         await Task.Run(() => stream.CopyTo(delivered));
-        byte[] hash = await stream.FinishAsync(CancellationToken.None);
+        byte[] hash = (await stream.FinishAsync(cancellationToken))!;
         return (delivered.ToArray(), hash);
     }
 

@@ -21,10 +21,12 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
     /// are stripped (equivalent to <c>tar --strip-components</c>).
     /// </summary>
     public Task ExtractAsync(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken) =>
-        Task.Run(() => Extract(archivePath, destinationPath, stripComponents, cancellationToken), cancellationToken);
+        Task.Factory.StartNew(
+            () => Extract(archivePath, destinationPath, stripComponents, cancellationToken),
+            cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     public Task ExtractTarStreamAsync(Stream archiveStream, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken) =>
-        Task.Run(() =>
+        Task.Factory.StartNew(() =>
         {
             if (_logger.IsInfo)
                 _logger.Info($"Extracting streamed snapshot to {destinationPath}. Do not interrupt!");
@@ -41,7 +43,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
             }
 
             EnsureNotEmpty(destinationPath);
-        }, cancellationToken);
+        }, cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     private void Extract(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken)
     {
@@ -51,9 +53,9 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         string extension = Path.GetExtension(archivePath).ToLowerInvariant();
         string innerExtension = Path.GetExtension(Path.GetFileNameWithoutExtension(archivePath)).ToLowerInvariant();
 
-        if (IsZip(extension))
+        if (SnapshotArchiveFormat.IsZip(extension))
             ExtractZip(archivePath, destinationPath, cancellationToken);
-        else if (IsTarArchive(extension, innerExtension))
+        else if (SnapshotArchiveFormat.IsTarBased(extension, innerExtension))
             ExtractTar(archivePath, destinationPath, extension, stripComponents, cancellationToken);
         else
             throw new NotSupportedException($"Unsupported snapshot archive format: {archivePath}");
@@ -63,16 +65,10 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
 
     private static void EnsureNotEmpty(string destinationPath)
     {
-        if (!InitDatabaseSnapshot.DatabaseExists(destinationPath))
-            throw new IOException(
+        if (!SnapshotDatabase.Exists(destinationPath))
+            throw new InvalidOperationException(
                 $"The archive produced no files under '{destinationPath}'. Check Snapshot.StripComponents against the archive layout.");
     }
-
-    private static bool IsZip(string extension) =>
-        extension is ".zip";
-
-    private static bool IsTarArchive(string extension, string innerExtension) =>
-        extension is ".tar" or ".zst" or ".zstd" or ".gz" or ".bz2" or ".xz" || innerExtension == ".tar";
 
     private static void ExtractZip(string archivePath, string destinationPath, CancellationToken cancellationToken)
     {

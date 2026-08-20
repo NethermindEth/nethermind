@@ -136,17 +136,21 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public async Task InitializeAsync_ArchiveNotMatchingStripComponents_DeletesDatabaseWithoutThrowing()
+    public void InitializeAsync_ArchiveNotMatchingStripComponents_DeletesDatabaseAndThrows()
     {
         byte[] archive = TestArchive.BuildTarZstWithoutTopLevelDirectory();
         _server.Content = archive;
         _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
 
-        await CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None);
+        InvalidOperationException exception = Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateInitializer().InitializeAsync(checkpoint, CancellationToken.None),
+            "an extraction that produced no files is a configuration error and must fail startup in both modes")!;
 
-        Assert.That(Directory.Exists(_dbPath), Is.False,
-            "an extraction that produced no files must be treated as a failure, not silently completed");
+        Assert.That(exception.Message, Does.Contain("StripComponents"),
+            "the failure must point the operator at the strip configuration");
+        Assert.That(SnapshotDatabase.Exists(_dbPath), Is.False,
+            "the partially created database directory must be cleaned up before failing");
         Assert.That(checkpoint.Read(), Is.EqualTo(SnapshotStage.Started),
             "the checkpoint must not advance when nothing was extracted");
     }
@@ -231,7 +235,7 @@ public class StreamingSnapshotInitializerTests
 
     private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null) =>
         new(_config, _server.Url, _dbPath, drives ?? [],
-            new SnapshotStreamSettings(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30)),
+            new SnapshotStreamSettings(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30), _config.Checksum is not null),
             LimboLogs.Instance);
 
     private SnapshotCheckpoint CreateCheckpoint() => new(_config, LimboLogs.Instance);

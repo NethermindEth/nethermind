@@ -7,7 +7,6 @@ using System.Security.Cryptography;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Core.Extensions;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 
@@ -25,7 +24,6 @@ public class InitDatabaseSnapshot(
     INethermindApi api,
     [KeyFilter(nameof(IInitConfig.BaseDbPath))] IDriveInfo[] drives) : IStep
 {
-    private const double ExtractionSpaceMultiplier = 1.5;
     private const int MaxStreamingConnections = 16;
     private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
@@ -64,14 +62,14 @@ public class InitDatabaseSnapshot(
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        if (DatabaseExists(dbPath))
+        if (SnapshotDatabase.Exists(dbPath))
         {
             if (checkpoint.Read() < SnapshotStage.Extracted)
             {
                 if (_logger.IsInfo)
                     _logger.Info("Extraction did not complete last time. Restarting. To interrupt press Ctrl^C");
                 await Task.Delay(TimeSpan.FromSeconds(ExtractionRestartDelaySeconds), cancellationToken).ConfigureAwait(false);
-                Directory.Delete(dbPath, true);
+                SnapshotDatabase.Delete(dbPath);
             }
             else
             {
@@ -93,7 +91,7 @@ public class InitDatabaseSnapshot(
             {
                 StreamingSnapshotInitializer initializer = new(
                     snapshotConfig, snapshotUrl, dbPath, drives,
-                    SnapshotStreamSettings.Default(snapshotConfig.StreamingConnections), api.LogManager);
+                    SnapshotStreamSettings.Default(snapshotConfig.StreamingConnections, snapshotConfig.Checksum is not null), api.LogManager);
                 await initializer.InitializeAsync(checkpoint, cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -168,29 +166,6 @@ public class InitDatabaseSnapshot(
         checkpoint.Advance(SnapshotStage.Downloaded);
     }
 
-    internal static bool DatabaseExists(string dbPath)
-    {
-        if (File.Exists(dbPath))
-            return true;
-        if (!Directory.Exists(dbPath))
-            return false;
-
-        try
-        {
-            foreach (string entry in Directory.EnumerateFileSystemEntries(dbPath))
-            {
-                if (Path.GetFileName(entry) != "lost+found")
-                    return true;
-            }
-        }
-        catch (Exception e) when (e is UnauthorizedAccessException or IOException)
-        {
-            return true;
-        }
-
-        return false;
-    }
-
     private long GetFileSize(string path)
     {
         IFileInfo file = api.FileSystem.FileInfo.New(path);
@@ -209,7 +184,7 @@ public class InitDatabaseSnapshot(
                 _logger.Info($"Verifying snapshot checksum {config.Checksum}.");
 
             byte[] actual = await ComputeChecksumAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
-            if (!VerifyChecksum(actual, config.Checksum, "Aborting snapshot initialization, but the node will continue running.", _logger))
+            if (!SnapshotChecksum.Verify(actual, config.Checksum, "Aborting snapshot initialization, but the node will continue running.", _logger))
                 return false;
         }
         else if (_logger.IsWarn)
@@ -221,36 +196,13 @@ public class InitDatabaseSnapshot(
         return true;
     }
 
-    internal static bool VerifyChecksum(byte[] actual, string? expectedHex, string onMismatch, ILogger logger)
-    {
-        if (expectedHex is null)
-        {
-            if (logger.IsWarn)
-                logger.Warn("Snapshot checksum is not configured.");
-            return true;
-        }
-
-        byte[] expected = Bytes.FromHexString(expectedHex);
-        if (Bytes.AreEqual(actual, expected))
-        {
-            if (logger.IsInfo)
-                logger.Info("Snapshot checksum verified.");
-            return true;
-        }
-
-        if (logger.IsError)
-            logger.Error(
-                $"Snapshot checksum verification failed. Expected: {expectedHex}, actual: {Convert.ToHexString(actual).ToLowerInvariant()}. {onMismatch}");
-        return false;
-    }
-
     private async Task ExtractAsync(
         string snapshotPath, string dbPath, int stripComponents, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
     {
         if (checkpoint.Read() >= SnapshotStage.Extracted)
             return;
 
-        CheckDiskSpace(drives, GetRequiredSpaceForExtraction(GetFileSize(snapshotPath)), "extract");
+        SnapshotDiskSpace.Check(drives, SnapshotDiskSpace.GetRequiredSpaceForExtraction(GetFileSize(snapshotPath)), "extract");
 
         SnapshotExtractor extractor = new(api.LogManager);
         await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
@@ -264,7 +216,7 @@ public class InitDatabaseSnapshot(
         long? totalSize;
         try
         {
-            totalSize = await downloader.GetTotalSizeAsync(url, existingSize, cancellationToken).ConfigureAwait(false);
+            totalSize = (await downloader.ProbeAsync(url, cancellationToken).ConfigureAwait(false)).Length;
         }
         catch (Exception e) when (e is IOException or HttpRequestException)
         {
@@ -280,24 +232,7 @@ public class InitDatabaseSnapshot(
             return;
         }
 
-        CheckDiskSpace(drives, GetRequiredSpaceForDownload(totalSize.Value, existingSize), "download and extract");
-    }
-
-    internal static long GetRequiredSpaceForDownload(long totalSize, long existingSize) =>
-        totalSize - existingSize + GetRequiredSpaceForExtraction(totalSize);
-
-    internal static long GetRequiredSpaceForExtraction(long snapshotSize) =>
-        (long)(snapshotSize * ExtractionSpaceMultiplier);
-
-    internal static void CheckDiskSpace(IDriveInfo[] drives, long required, string operation)
-    {
-        foreach (IDriveInfo drive in drives)
-        {
-            if (drive.AvailableFreeSpace < required)
-                throw new IOException(
-                    $"Insufficient disk space on '{drive.RootDirectory.FullName}' to {operation} the snapshot: " +
-                    $"need at least {required} bytes, {drive.AvailableFreeSpace} available.");
-        }
+        SnapshotDiskSpace.Check(drives, SnapshotDiskSpace.GetRequiredSpaceForDownload(totalSize.Value, existingSize), "download and extract");
     }
 
     private async Task<byte[]> ComputeChecksumAsync(string filePath, CancellationToken cancellationToken)
@@ -305,10 +240,10 @@ public class InitDatabaseSnapshot(
         long fileSize = new FileInfo(filePath).Length;
         using IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(ChecksumBufferSize);
-        byte[] checksum;
-        await using (FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read,
-            FileShare.None, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan))
+        try
         {
+            await using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read,
+                FileShare.None, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
             long bytesHashed = 0;
             DateTime nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
 
@@ -324,9 +259,12 @@ public class InitDatabaseSnapshot(
                     nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
                 }
             }
-            checksum = hasher.GetHashAndReset();
+
+            return hasher.GetHashAndReset();
         }
-        ArrayPool<byte>.Shared.Return(buffer);
-        return checksum;
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 }

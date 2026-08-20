@@ -19,7 +19,6 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan StallTimeout = SnapshotHttpClient.DefaultStallTimeout;
 
-    // A single client is shared for all retries to preserve the connection pool.
     private readonly SnapshotHttpClient _client = new();
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotDownloader>();
 
@@ -82,16 +81,8 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
             _logger.Info($"Snapshot downloaded to {destinationPath}.");
     }
 
-    public async Task<long?> GetTotalSizeAsync(string url, long existingSize, CancellationToken cancellationToken)
-    {
-        using HttpResponseMessage response = await _client.GetAsync(
-            url, existingSize > 0 ? new RangeHeaderValue(existingSize, null) : null, ifRange: null, cancellationToken).ConfigureAwait(false);
-
-        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
-            return existingSize;
-
-        return ResolveCopyStrategy(response.StatusCode, existingSize, response.Content.Headers.ContentLength).totalSize;
-    }
+    public Task<SnapshotRemoteInfo> ProbeAsync(string url, CancellationToken cancellationToken) =>
+        _client.ProbeAsync(url, cancellationToken);
 
     public void Dispose() => _client.Dispose();
 

@@ -23,12 +23,24 @@ internal sealed class StreamingSnapshotInitializer(
     {
         EnsureStreamableArchive(config.SnapshotFileName);
         DeleteStaleArchive();
+        using SnapshotHttpClient client = new();
 
         for (int attempt = 1; attempt <= MaxSourceChangedRestarts; attempt++)
         {
+            SnapshotRemoteInfo remoteInfo = await ProbeWithRetryAsync(client, cancellationToken).ConfigureAwait(false);
+            if (remoteInfo.Length is null && config.Checksum is null)
+                throw new InvalidOperationException(
+                    "The server does not report the snapshot size and Snapshot.Checksum is not set, so a truncated download could not be detected. Set Snapshot.Checksum or disable Snapshot.Streaming.");
+
+            LogMode(remoteInfo);
+            CheckDiskSpace(remoteInfo.Length);
+
             try
             {
-                await StreamAndExtractAsync(checkpoint, cancellationToken).ConfigureAwait(false);
+                if (await StreamAndExtractAsync(client, remoteInfo, checkpoint, cancellationToken).ConfigureAwait(false))
+                    return;
+
+                DeleteDatabase();
                 return;
             }
             catch (SnapshotSourceChangedException e)
@@ -37,50 +49,50 @@ internal sealed class StreamingSnapshotInitializer(
                     _logger.Warn($"{e.Message} Restarting the snapshot download.");
                 DeleteDatabase();
             }
+            catch (Exception e) when (e is IOException or InvalidDataException or EndOfStreamException or ZstdException)
+            {
+                if (_logger.IsError)
+                    _logger.Error($"Snapshot streaming failed: {e.Message} Deleting the partially extracted database; the node will continue running.");
+                DeleteDatabase();
+                return;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                DeleteDatabase();
+                throw;
+            }
         }
 
         if (_logger.IsError)
             _logger.Error($"The snapshot kept changing on the server across {MaxSourceChangedRestarts} attempts. Giving up; the node will continue running.");
     }
 
-    private async Task StreamAndExtractAsync(SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
+    private async Task<bool> StreamAndExtractAsync(
+        SnapshotHttpClient client, SnapshotRemoteInfo remoteInfo, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
     {
-        using SnapshotHttpClient client = new();
-        SnapshotRemoteInfo remoteInfo = await ProbeWithRetryAsync(client, cancellationToken).ConfigureAwait(false);
-        if (remoteInfo.Length is null && config.Checksum is null)
-            throw new InvalidOperationException(
-                "The server does not report the snapshot size and Snapshot.Checksum is not set, so a truncated download could not be detected. Set Snapshot.Checksum or disable Snapshot.Streaming.");
-
-        LogMode(remoteInfo);
-        CheckDiskSpace(remoteInfo.Length);
-
-        await using SnapshotHttpStream stream = new(client, url, remoteInfo, settings, logManager, cancellationToken);
-        SnapshotExtractor extractor = new(logManager);
-        string extension = Path.GetExtension(config.SnapshotFileName).ToLowerInvariant();
-        byte[] checksum;
-        try
+        byte[]? checksum;
+        await using (SnapshotHttpStream stream = new(client, url, remoteInfo, settings, logManager, cancellationToken))
         {
+            SnapshotExtractor extractor = new(logManager);
+            string extension = Path.GetExtension(config.SnapshotFileName).ToLowerInvariant();
             await extractor.ExtractTarStreamAsync(stream, dbPath, extension, config.StripComponents, cancellationToken).ConfigureAwait(false);
             checksum = await stream.FinishAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception e) when (e is IOException or InvalidDataException or EndOfStreamException or ZstdException
-                                  && e is not SnapshotSourceChangedException)
-        {
-            if (_logger.IsError)
-                _logger.Error($"Snapshot streaming failed: {e.Message} Deleting the partially extracted database; the node will continue running.");
-            DeleteDatabase();
-            return;
-        }
 
-        if (!VerifyChecksum(checksum))
+        if (config.Checksum is null)
         {
-            DeleteDatabase();
-            return;
+            if (_logger.IsWarn)
+                _logger.Warn("Snapshot checksum is not configured.");
+        }
+        else if (!SnapshotChecksum.Verify(checksum!, config.Checksum, "Deleting the extracted database; the node will continue running.", _logger))
+        {
+            return false;
         }
 
         checkpoint.Advance(SnapshotStage.Completed);
         if (_logger.IsInfo)
             _logger.Info("Database successfully initialized from streamed snapshot.");
+        return true;
     }
 
     private async Task<SnapshotRemoteInfo> ProbeWithRetryAsync(SnapshotHttpClient client, CancellationToken cancellationToken)
@@ -109,7 +121,7 @@ internal sealed class StreamingSnapshotInitializer(
     private static void EnsureStreamableArchive(string fileName)
     {
         string extension = Path.GetExtension(fileName).ToLowerInvariant();
-        if (extension is not (".tar" or ".zst" or ".zstd" or ".gz"))
+        if (!SnapshotArchiveFormat.IsStreamable(extension))
             throw new NotSupportedException(
                 $"Snapshot streaming supports only tar-based archives (.tar, .tar.zst, .tar.gz), but Snapshot.SnapshotFileName is '{fileName}'. Set Snapshot.SnapshotFileName to match the archive or disable Snapshot.Streaming.");
     }
@@ -147,17 +159,19 @@ internal sealed class StreamingSnapshotInitializer(
             return;
         }
 
-        long required = InitDatabaseSnapshot.GetRequiredSpaceForExtraction(snapshotLength.Value);
-        InitDatabaseSnapshot.CheckDiskSpace(drives, required, "extract");
+        SnapshotDiskSpace.Check(drives, SnapshotDiskSpace.GetRequiredSpaceForExtraction(snapshotLength.Value), "extract");
     }
-
-    private bool VerifyChecksum(byte[] actual) =>
-        InitDatabaseSnapshot.VerifyChecksum(
-            actual, config.Checksum, "Deleting the extracted database; the node will continue running.", _logger);
 
     private void DeleteDatabase()
     {
-        if (Directory.Exists(dbPath))
-            Directory.Delete(dbPath, true);
+        try
+        {
+            SnapshotDatabase.Delete(dbPath);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"Could not fully delete the database at {dbPath}: {e.Message}");
+        }
     }
 }

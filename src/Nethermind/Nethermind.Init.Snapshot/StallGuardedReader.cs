@@ -12,15 +12,16 @@ internal sealed class StallGuardedReader(TimeSpan stallTimeout, CancellationToke
         _stallCts.CancelAfter(stallTimeout);
         try
         {
-            int read = await content.ReadAsync(buffer, _stallCts.Token).ConfigureAwait(false);
-            if (!_stallCts.TryReset())
-                Recreate();
-            return read;
+            return await content.ReadAsync(buffer, _stallCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
         {
-            Recreate();
             throw new IOException($"No data received for {stallTimeout.TotalSeconds}s.", e);
+        }
+        finally
+        {
+            if (!_stallCts.TryReset())
+                Recreate();
         }
     }
 

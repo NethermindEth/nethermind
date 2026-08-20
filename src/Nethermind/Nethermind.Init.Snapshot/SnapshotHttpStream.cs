@@ -12,10 +12,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Snapshot;
 
-internal sealed record SnapshotStreamSettings(int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay, TimeSpan StallTimeout)
+internal sealed record SnapshotStreamSettings(int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay, TimeSpan StallTimeout, bool ComputeChecksum)
 {
-    public static SnapshotStreamSettings Default(int connections) =>
-        new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300), SnapshotHttpClient.DefaultStallTimeout);
+    public static SnapshotStreamSettings Default(int connections, bool computeChecksum) =>
+        new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300), SnapshotHttpClient.DefaultStallTimeout, computeChecksum);
 }
 
 internal sealed class SnapshotHttpStream : Stream
@@ -30,7 +30,7 @@ internal sealed class SnapshotHttpStream : Stream
     private readonly SnapshotRemoteInfo _remoteInfo;
     private readonly SnapshotStreamSettings _settings;
     private readonly ILogger _logger;
-    private readonly IncrementalHash _hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    private readonly IncrementalHash? _hasher;
     private readonly CancellationTokenSource _cts;
     private readonly SemaphoreSlim _window;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<Chunk>> _pending = new();
@@ -61,16 +61,19 @@ internal sealed class SnapshotHttpStream : Stream
         _remoteInfo = remoteInfo;
         _settings = settings;
         _logger = logManager.GetClassLogger<SnapshotHttpStream>();
+        _hasher = settings.ComputeChecksum ? IncrementalHash.CreateHash(HashAlgorithmName.SHA256) : null;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _window = new SemaphoreSlim(settings.Connections + 1, settings.Connections + 1);
+        bool ranged = remoteInfo is { SupportsRanges: true, Length: not null };
+        int producerCount = ranged ? settings.Connections : 1;
+        _window = new SemaphoreSlim(producerCount + 1, producerCount + 1);
         _progress = new ProgressReporter(ProgressLabel, logManager, (ulong)(remoteInfo.Length ?? 0), ProgressInterval);
         _progress.Logger.SetFormat(SnapshotProgress.FormatBytes(ProgressLabel, remoteInfo.Length));
 
-        if (remoteInfo is { SupportsRanges: true, Length: long length })
+        if (ranged)
         {
-            _chunkCount = (length + settings.ChunkSize - 1) / settings.ChunkSize;
-            _producers = new Task[settings.Connections];
-            for (int i = 0; i < settings.Connections; i++)
+            _chunkCount = (remoteInfo.Length!.Value + settings.ChunkSize - 1) / settings.ChunkSize;
+            _producers = new Task[producerCount];
+            for (int i = 0; i < producerCount; i++)
                 _producers[i] = Task.Run(FetchChunksAsync);
         }
         else
@@ -105,14 +108,14 @@ internal sealed class SnapshotHttpStream : Stream
 
         int toCopy = Math.Min(buffer.Length, _current.Length - _currentConsumed);
         _current.Buffer!.AsSpan(_currentConsumed, toCopy).CopyTo(buffer);
-        _hasher.AppendData(_current.Buffer!, _currentConsumed, toCopy);
+        _hasher?.AppendData(_current.Buffer!, _currentConsumed, toCopy);
         _currentConsumed += toCopy;
         _position += toCopy;
         _progress.Update((ulong)_position);
 
         if (_currentConsumed == _current.Length)
         {
-            _buffers.Add(_current.Buffer!);
+            ReturnBuffer(_current.Buffer!);
             _current = default;
             _window.Release();
         }
@@ -120,12 +123,12 @@ internal sealed class SnapshotHttpStream : Stream
         return toCopy;
     }
 
-    public async Task<byte[]> FinishAsync(CancellationToken cancellationToken)
+    public async Task<byte[]?> FinishAsync(CancellationToken cancellationToken)
     {
-        await Task.Run(Drain, cancellationToken).ConfigureAwait(false);
+        await Task.Factory.StartNew(Drain, cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
         if (_remoteInfo.Length is long expected && _position != expected)
             throw new IOException($"Snapshot stream ended after {_position} bytes, expected {expected}.");
-        return _hasher.GetHashAndReset();
+        return _hasher?.GetHashAndReset();
     }
 
     public override void Flush() { }
@@ -157,7 +160,7 @@ internal sealed class SnapshotHttpStream : Stream
         _cts.Cancel();
         await Task.WhenAll(_producers).ConfigureAwait(false);
         _progress.Dispose();
-        _hasher.Dispose();
+        _hasher?.Dispose();
         _cts.Dispose();
         _window.Dispose();
         _buffers.Clear();
@@ -457,6 +460,10 @@ internal sealed class SnapshotHttpStream : Stream
         && e is IOException or HttpRequestException or OperationCanceledException;
 
     private byte[] RentBuffer() => _buffers.TryTake(out byte[]? buffer) ? buffer : new byte[_settings.ChunkSize];
+
+    private void ReturnBuffer(byte[] buffer) => _buffers.Add(buffer);
+
+    internal int PooledBufferCount => _buffers.Count;
 
     private static TimeSpan Min(TimeSpan left, TimeSpan right) => left < right ? left : right;
 
