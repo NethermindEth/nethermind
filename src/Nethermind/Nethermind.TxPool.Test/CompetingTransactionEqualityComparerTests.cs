@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -50,5 +51,28 @@ namespace Nethermind.TxPool.Test
         [TestCaseSource(nameof(TestCases))]
         public bool HashCode_test(Transaction t1, Transaction t2) =>
             CompetingTransactionEqualityComparer.Instance.GetHashCode(t1) == CompetingTransactionEqualityComparer.Instance.GetHashCode(t2);
+
+        // The account-nonce case takes a two-value combine instead of the general loop; it has to
+        // produce the same value, or a pool entry stops being findable by an equal transaction.
+        [TestCaseSource(nameof(AccountNonceDomainTransactions))]
+        public void HashCode_of_an_account_nonce_transaction_matches_the_general_algorithm(Transaction tx)
+        {
+            HashCode reference = new();
+            reference.Add(tx?.SenderAddress);
+            reference.Add(tx?.Nonce);
+
+            Assert.That(CompetingTransactionEqualityComparer.Instance.GetHashCode(tx), Is.EqualTo(reference.ToHashCode()));
+        }
+
+        public static IEnumerable AccountNonceDomainTransactions
+        {
+            get
+            {
+                yield return new TestCaseData(null).SetArgDisplayNames("Null");
+                yield return new TestCaseData(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).TestObject).SetArgDisplayNames("Account_nonce");
+                yield return new TestCaseData(KeyedTx([])).SetArgDisplayNames("Empty_nonce_keys");
+                yield return new TestCaseData(KeyedTx([0])).SetArgDisplayNames("Nonce_key_zero");
+            }
+        }
     }
 }

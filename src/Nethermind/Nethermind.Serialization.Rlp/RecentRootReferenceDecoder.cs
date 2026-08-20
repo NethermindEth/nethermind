@@ -65,8 +65,10 @@ public sealed class RecentRootReferenceDecoder : RlpDecoder<RecentRootReference>
         }
 
         int length = GetArrayLength(references);
-        Span<byte> buffer = stackalloc byte[MaxCalldataLength];
-        Span<byte> calldata = buffer[..length];
+        // Allocate only what is encoded, but keep the bound: the references can reach here from an
+        // RPC-built transaction that never went through the decoder's count limit.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxCalldataLength);
+        Span<byte> calldata = stackalloc byte[length];
         RlpWriter writer = new(calldata);
         EncodeArray(ref writer, references);
         int zeros = calldata.CountZeros();

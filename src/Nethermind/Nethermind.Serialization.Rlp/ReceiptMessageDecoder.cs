@@ -183,7 +183,12 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, framesLength);
         }
 
-        private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt)
+        private static int GetFrameReceiptContentLength(TxFrameReceipt frameReceipt) =>
+            Rlp.LengthOf((ulong)frameReceipt.Status)
+            + Rlp.LengthOf(frameReceipt.GasUsed)
+            + Rlp.LengthOfSequence(GetFrameLogsLength(frameReceipt));
+
+        private static int GetFrameLogsLength(TxFrameReceipt frameReceipt)
         {
             int logsLength = 0;
             for (int i = 0; i < frameReceipt.Logs.Length; i++)
@@ -191,37 +196,23 @@ namespace Nethermind.Serialization.Rlp
                 logsLength += Rlp.LengthOf(frameReceipt.Logs[i]);
             }
 
-            return Rlp.LengthOf((ulong)frameReceipt.Status)
-                   + Rlp.LengthOf(frameReceipt.GasUsed)
-                   + Rlp.LengthOfSequence(logsLength);
+            return logsLength;
         }
 
-        private static void EncodeFrameTxReceipt<TWriter>(ref TWriter writer, TxReceipt item)
+        private static void EncodeFrameTxReceipt<TWriter>(ref TWriter writer, TxReceipt item, int totalContentLength, int framesLength)
             where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
-            (int totalContentLength, _) = GetFrameTxContentLength(item);
             writer.StartSequence(totalContentLength);
             writer.Encode(item.GasUsedTotal);
             writer.Encode(item.Payer);
 
             TxFrameReceipt[] frameReceipts = item.FrameReceipts ?? [];
-            int framesLength = 0;
-            for (int i = 0; i < frameReceipts.Length; i++)
-            {
-                framesLength += Rlp.LengthOfSequence(GetFrameReceiptContentLength(frameReceipts[i]));
-            }
-
             writer.StartSequence(framesLength);
             LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
             for (int i = 0; i < frameReceipts.Length; i++)
             {
                 TxFrameReceipt frameReceipt = frameReceipts[i];
-                int logsLength = 0;
-                for (int j = 0; j < frameReceipt.Logs.Length; j++)
-                {
-                    logsLength += Rlp.LengthOf(frameReceipt.Logs[j]);
-                }
-
+                int logsLength = GetFrameLogsLength(frameReceipt);
                 writer.StartSequence(Rlp.LengthOf((ulong)frameReceipt.Status) + Rlp.LengthOf(frameReceipt.GasUsed) + Rlp.LengthOfSequence(logsLength));
                 writer.Encode((ulong)frameReceipt.Status);
                 writer.Encode(frameReceipt.GasUsed);
@@ -240,10 +231,11 @@ namespace Nethermind.Serialization.Rlp
                 return (0, 0);
             }
 
+            // A frame receipt carries the per-frame receipts where a plain one carries the logs, so the
+            // second element is that sequence's length.
             if (item.TxType == TxType.FrameTx)
             {
-                (int frameTxTotal, _) = GetFrameTxContentLength(item);
-                return (frameTxTotal, 0);
+                return GetFrameTxContentLength(item);
             }
 
             int contentLength = 0;
@@ -333,7 +325,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                EncodeFrameTxReceipt(ref writer, item);
+                EncodeFrameTxReceipt(ref writer, item, totalContentLength, logsLength);
                 return;
             }
 
