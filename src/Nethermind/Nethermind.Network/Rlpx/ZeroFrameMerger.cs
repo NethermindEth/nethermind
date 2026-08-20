@@ -104,6 +104,11 @@ namespace Nethermind.Network.Rlpx
                 ThrowPacketTypeLengthExceedsFrameSize(read, frame.Size);
             }
 
+            if (rlpPacketType > byte.MaxValue)
+            {
+                ThrowPacketTypeOutOfRange(rlpPacketType);
+            }
+
             input.SkipBytes(read);
             IByteBuffer content;
             if (frame.IsChunked)
@@ -157,5 +162,10 @@ namespace Nethermind.Network.Rlpx
         private static void ThrowPacketTypeLengthExceedsFrameSize(int packetTypeLength, int frameSize)
             => throw new CorruptedFrameException(
                 $"{nameof(ZeroFrameMerger)} packet type length {packetTypeLength} exceeds frame size {frameSize}");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowPacketTypeOutOfRange(ulong packetType)
+            => throw new CorruptedFrameException(
+                $"{nameof(ZeroFrameMerger)} packet type {packetType} does not fit in a byte");
     }
 }

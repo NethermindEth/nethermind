@@ -260,6 +260,29 @@ public class ZeroNettyFrameMergerTests
     }
 
     [Test]
+    public void Merges_frame_carrying_a_context_id_when_no_packet_is_in_progress()
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        using DisposableByteBuffer frame = BuildFrames(1).AsDisposable();
+
+        // The splitter emits [capability id, context id] = [0, 0] for a single frame; a non-zero context id with no
+        // total packet size is still a normal frame as long as no packet is open under it.
+        const int contextIdOffset = 5;
+        frame.SetByte(contextIdOffset, 1);
+
+        ZeroPacket packet = wrapper.Decode(frame);
+        try
+        {
+            Assert.That(packet, Is.Not.Null, "a frame carrying a context id must not be mistaken for a continuation");
+        }
+        finally
+        {
+            packet?.Release();
+        }
+    }
+
+    [Test]
     public void Throws_when_continuation_frame_carries_a_different_context_id()
     {
         ZeroFrameMergerTestWrapper wrapper = new();
@@ -308,6 +331,8 @@ public class ZeroNettyFrameMergerTests
     {
         yield return new TestCaseData(new byte[] { 0x85, 0x01 }, 5).SetName("Packet_type_length_exceeds_frame_size");
         yield return new TestCaseData(new byte[] { 0xb8, 0x38 }, 5).SetName("Packet_type_integer_length_exceeds_supported_width");
+        // 256 would otherwise be truncated to 0 and delivered as a Hello.
+        yield return new TestCaseData(new byte[] { 0x82, 0x01, 0x00 }, 5).SetName("Packet_type_value_does_not_fit_in_a_byte");
     }
 
     [Test]

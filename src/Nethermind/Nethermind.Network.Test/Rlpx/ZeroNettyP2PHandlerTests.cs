@@ -64,6 +64,7 @@ public class ZeroNettyP2PHandlerTests
         Assert.That(() => handler.ChannelRead(channelHandlerContext, packet), Throws.InstanceOf<CorruptedFrameException>());
 
         session.DidNotReceive().ReceiveMessage(Arg.Any<ZeroPacket>());
+        Assert.That(packet.ReferenceCount, Is.Zero, "the inbound packet must be released even when decoding throws");
     }
 
     private static IEnumerable<TestCaseData> MalformedSnappyPayloads()
