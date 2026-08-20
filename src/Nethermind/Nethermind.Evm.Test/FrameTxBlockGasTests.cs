@@ -39,9 +39,15 @@ public class FrameTxBlockGasTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
         _state = TestWorldStateFactory.CreateForTest();
         _closer = _state.BeginScope(IWorldState.PreGenesis);
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
+    }
+
+    /// <summary>Points the processor at <paramref name="spec"/>, keeping the world state as it is.</summary>
+    private void UseSpec(IReleaseSpec spec)
+    {
+        _specProvider = new TestSpecProvider(spec);
         EthereumCodeInfoRepository codeInfoRepository = new(_state);
         EthereumVirtualMachine vm = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _state, vm, codeInfoRepository, LimboLogs.Instance);
@@ -144,6 +150,34 @@ public class FrameTxBlockGasTests
             Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
                 Is.EqualTo(tracer.GasConsumedResult.SpentGas - expectedStateGas),
                 "the two dimensions must together account for the gas the transaction spent");
+        }
+    }
+
+    /// <summary>Without EIP-8037 the block charge is the single pre-8037 dimension, not a 2D split.</summary>
+    /// <remarks>
+    /// Bogota composes EIP-8141 onto Osaka, where neither EIP-8037 nor EIP-7778 is enabled, so the block
+    /// owes the post-refund spend. Splitting the gross sum there would bill the block pre-refund gas.
+    /// </remarks>
+    [Test]
+    public void Execute_WithoutEip8037_ChargesTheBlockThePostRefundSpend()
+    {
+        UseSpec(Bogota.Instance);
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        // Setting a fresh slot and clearing it again earns an EIP-3529 refund, so the pre- and
+        // post-refund charges differ.
+        Deploy(Writer, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+
+        TestAllTracerWithOutput tracer = new();
+        Assert.That(Process(FrameTx(nonce: 0, Writer), tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Refund, Is.GreaterThan(0), "the transaction must earn a refund for the two charges to differ");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero, "there is no state dimension before EIP-8037");
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(tracer.GasConsumedResult.SpentGas));
         }
     }
 

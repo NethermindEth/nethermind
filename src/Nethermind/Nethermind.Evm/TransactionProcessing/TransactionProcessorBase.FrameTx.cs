@@ -457,16 +457,29 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
         ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
-        ulong blockStateGas = (ulong)totalFrameStateGasUsed;
-        // blockStateGas <= grossGas by the reservoir-0 invariant: each frame rents an empty state-gas
-        // reservoir, so every state charge is already counted inside totalFrameGasUsed (hence grossGas),
-        // which is what makes the SaturatingSub in CalculateBlockExecutionGas sound.
-        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
+        ulong blockStateGas = 0;
+        ulong blockRegularGas;
+        if (spec.IsEip8037Enabled)
+        {
+            blockStateGas = (ulong)totalFrameStateGasUsed;
+            // blockStateGas <= grossGas by the reservoir-0 invariant: each frame rents an empty state-gas
+            // reservoir, so every state charge is already counted inside totalFrameGasUsed (hence grossGas),
+            // which is what makes the SaturatingSub in CalculateBlockExecutionGas sound.
+            blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
+        }
+        else
+        {
+            // Without the two dimensions the block keeps one: EIP-7778's pre-refund gross, else the
+            // post-refund spend that EffectiveBlockGas falls back to when both dimensions are zero.
+            blockRegularGas = spec.IsEip7778Enabled ? Math.Max(grossGas, floorGas) : 0;
+        }
+
+        GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
         // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
         // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
         // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
         // tx's real regular gas into the header.
-        tx.BlockGasUsed = blockRegularGas;
+        tx.BlockGasUsed = gasConsumed.EffectiveBlockGas;
         Address payer = frameContext.Payer;
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
@@ -533,7 +546,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
             // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
             LogEntry[] txLogs = TxFrameReceipt.ConcatLogs(frameReceipts);
-            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
             if (postTxReverted)
             {
                 tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");
