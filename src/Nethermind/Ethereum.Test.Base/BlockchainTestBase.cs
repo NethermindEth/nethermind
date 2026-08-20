@@ -219,7 +219,7 @@ public abstract class BlockchainTestBase
                 {
                     if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
                     {
-                        Assert.Fail($"Failed to process genesis block: {args.Exception}");
+                        Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
                         genesisProcessed.Set();
                     }
                 };
@@ -751,7 +751,9 @@ public abstract class BlockchainTestBase
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 
-        stateProvider.Commit(specProvider.GenesisSpec);
+        // Genesis allocation semantics, as in GenesisBuilder: EIP-158 must not prune a pre-alloc
+        // account that is empty but holds storage.
+        stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
         stateProvider.CommitTree(0);
         stateProvider.Reset();
     }
