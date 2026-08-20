@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
@@ -23,14 +21,7 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
         RlpReader reader = new(input.AsSpan());
         int packetTypeLen = reader.PeekNextRlpLength();
 
-        // Defensive only: the input is always a locally serialized packet, so its type prefix fits by construction.
-        int bodyLength = input.ReadableBytes - packetTypeLen;
-        if (bodyLength < 0)
-        {
-            ThrowPacketTypePrefixLengthExceedsBuffer();
-        }
-
-        int maxLength = Snappy.GetMaxCompressedLength(bodyLength);
+        int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes - packetTypeLen);
         output.EnsureWritable(packetTypeLen + maxLength);
         output.WriteBytes(input, packetTypeLen);
 
@@ -46,8 +37,4 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceCompressing(int readableBytes) => _logger.Trace($"Compressing with Snappy a message of length {readableBytes}");
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowPacketTypePrefixLengthExceedsBuffer()
-        => throw new InvalidOperationException("Packet type prefix length exceeds remaining buffer");
 }

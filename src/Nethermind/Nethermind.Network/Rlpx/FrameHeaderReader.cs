@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
@@ -15,8 +15,6 @@ namespace Nethermind.Network.Rlpx
         private const int HeaderBodyOffset = 3;
         private const int HeaderBodyLength = Frame.HeaderSize - HeaderBodyOffset;
 
-        private int? _currentContextId;
-
         public byte[] HeaderBytes { get; } = new byte[Frame.HeaderSize];
 
         public FrameInfo ReadFrameHeader(IByteBuffer input)
@@ -29,14 +27,7 @@ namespace Nethermind.Network.Rlpx
             ReadHeaderBody(out int? contextId, out int? totalPacketSize);
 
             ValidateTotalPacketSize(frameSize, totalPacketSize);
-
-            // A frame that carries a context id but no total packet size continues the packet opened under that same
-            // context id, so the comparison has to happen before the field is overwritten.
-            bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
-            bool isFirst = totalPacketSize.HasValue || !isChunked;
-            _currentContextId = contextId;
-
-            return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
+            return new FrameInfo(frameSize, contextId, totalPacketSize);
         }
 
         /// <summary>Decodes the RLP header body of the frame header just read into <see cref="HeaderBytes"/>.</summary>
@@ -89,12 +80,11 @@ namespace Nethermind.Network.Rlpx
             static void ThrowCorruptedFrameException(int frameSize, int totalPacketSize) => throw new CorruptedFrameException($"Invalid Rlpx header lengths, packet size {totalPacketSize}, frame size {frameSize}");
         }
 
-        internal readonly struct FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
+        internal readonly struct FrameInfo(int size, int? contextId, int? totalPacketSize)
         {
-            public bool IsChunked { get; } = isChunked;
-            public bool IsFirst { get; } = isFirst;
             public int Size { get; } = size;
-            public int TotalPacketSize { get; } = totalPacketSize;
+            public int? ContextId { get; } = contextId;
+            public int? TotalPacketSize { get; } = totalPacketSize;
             public int Padding => Frame.CalculatePadding(Size);
 
             public int PayloadSize => Size + Padding;

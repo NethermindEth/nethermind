@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -20,12 +20,13 @@ namespace Nethermind.Network.Rlpx
         private readonly ILogger _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private ZeroPacket? _zeroPacket;
+        private int? _currentContextId;
         private readonly FrameHeaderReader _headerReader = new();
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
             base.HandlerRemoved(context);
-            _zeroPacket?.Release();
+            ReleaseInProgressPacket();
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
@@ -44,34 +45,39 @@ namespace Nethermind.Network.Rlpx
             }
 
             FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
-            if (frame.IsFirst)
+            bool isFirst = frame.TotalPacketSize.HasValue || _zeroPacket is null;
+            if (isFirst)
             {
                 if (_zeroPacket is not null)
                 {
                     // Offending frame is intentionally not processed: the CorruptedFrameException
                     // propagates up the pipeline and closes the peer connection.
-                    _zeroPacket.Release();
-                    _zeroPacket = null;
+                    ReleaseInProgressPacket();
                     throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a new first chunk before the in-progress packet completed");
                 }
 
                 ReadFirstChunk(context, input, frame);
+                _currentContextId = frame.TotalPacketSize.HasValue ? frame.ContextId : null;
             }
             else
             {
-                if (_zeroPacket is null)
+                if (frame.ContextId != _currentContextId)
                 {
-                    throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a continuation chunk with no in-progress packet");
+                    int? expectedContextId = _currentContextId;
+                    ReleaseInProgressPacket();
+                    ThrowUnexpectedContextId(frame.ContextId, expectedContextId);
                 }
 
                 ReadChunk(input, frame);
             }
 
-            if (!_zeroPacket.Content.IsWritable())
+            input.SkipBytes(frame.Padding);
+
+            if (_zeroPacket.Content.MaxWritableBytes == 0)
             {
-                input.SkipBytes(frame.Padding);
                 output.Add(_zeroPacket);
                 _zeroPacket = null;
+                _currentContextId = null;
 
                 if (input.IsReadable())
                 {
@@ -83,14 +89,14 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
-            if (frame.Size > _zeroPacket.Content.WritableBytes)
+            if (frame.Size > _zeroPacket.Content.MaxWritableBytes)
             {
-                int remainingPacketSize = _zeroPacket.Content.WritableBytes;
-                _zeroPacket.Release();
-                _zeroPacket = null;
+                int remainingPacketSize = _zeroPacket.Content.MaxWritableBytes;
+                ReleaseInProgressPacket();
                 ThrowFrameSizeExceedsRemaining(frame.Size, remainingPacketSize);
             }
 
+            _zeroPacket.Content.EnsureWritable(frame.Size);
             input.ReadBytes(_zeroPacket.Content, frame.Size);
         }
 
@@ -111,9 +117,11 @@ namespace Nethermind.Network.Rlpx
 
             input.SkipBytes(read);
             IByteBuffer content;
-            if (frame.IsChunked)
+            if (frame.TotalPacketSize.HasValue)
             {
-                content = context.Allocator.Buffer(frame.TotalPacketSize - read);
+                int initialContentSize = frame.Size - read;
+                int totalContentSize = frame.TotalPacketSize.Value - read;
+                content = context.Allocator.Buffer(initialContentSize, totalContentSize);
             }
             else
             {
@@ -127,11 +135,18 @@ namespace Nethermind.Network.Rlpx
 
             // If not chunked, then we already used a slice of the input,
             // otherwise we need to read into the freshly allocated buffer.
-            if (frame.IsChunked)
+            if (frame.TotalPacketSize.HasValue)
             {
                 input.ReadBytes(_zeroPacket.Content, frame.Size - read);
                 // do not call Release since the input buffer is managed by
             }
+        }
+
+        private void ReleaseInProgressPacket()
+        {
+            _zeroPacket?.Release();
+            _zeroPacket = null;
+            _currentContextId = null;
         }
 
         /// <remarks>
@@ -167,5 +182,10 @@ namespace Nethermind.Network.Rlpx
         private static void ThrowPacketTypeOutOfRange(ulong packetType)
             => throw new CorruptedFrameException(
                 $"{nameof(ZeroFrameMerger)} packet type {packetType} does not fit in a byte");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowUnexpectedContextId(int? contextId, int? expectedContextId)
+            => throw new CorruptedFrameException(
+                $"{nameof(ZeroFrameMerger)} continuation frame context id {contextId} does not match in-progress packet context id {expectedContextId}");
     }
 }

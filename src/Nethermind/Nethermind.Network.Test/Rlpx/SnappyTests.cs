@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using System.Linq;
 using DotNetty.Buffers;
@@ -125,18 +124,6 @@ public class SnappyTests
         byte[] compressed = encoder.TestEncode(Bytes.Concat(1, expectedUncompressed));
         byte[] uncompressedResult = Snappy.DecompressToArray(compressed.Skip(1).ToArray());
         Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
-    }
-
-    [Test]
-    public void Encode_rejects_packet_type_prefix_larger_than_input()
-    {
-        ZeroSnappyEncoderForTest encoder = new();
-        using DisposableByteBuffer input = Unpooled.Buffer().AsDisposable();
-        using DisposableByteBuffer output = Unpooled.Buffer().AsDisposable();
-
-        input.WriteByte(0xb7);
-
-        Assert.That(() => encoder.TestEncode(input, output), Throws.InstanceOf<InvalidOperationException>());
     }
 
     /// <summary>

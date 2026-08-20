@@ -44,6 +44,36 @@ public class ZeroNettyFrameMergerTests
         return output;
     }
 
+    private static IByteBuffer BuildFrame(byte[] payload, int contextId, int? totalPacketSize = null)
+    {
+        int paddingSize = Frame.CalculatePadding(payload.Length);
+        IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(Frame.HeaderSize + payload.Length + paddingSize);
+
+        output.WriteByte(payload.Length >> 16);
+        output.WriteByte(payload.Length >> 8);
+        output.WriteByte(payload.Length);
+
+        int headerContentLength = Rlp.LengthOf(0) + Rlp.LengthOf(contextId);
+        if (totalPacketSize.HasValue)
+        {
+            headerContentLength += Rlp.LengthOf(totalPacketSize.Value);
+        }
+
+        ByteBufferRlpWriter writer = new(output);
+        writer.StartSequence(headerContentLength);
+        writer.Encode(0);
+        writer.Encode(contextId);
+        if (totalPacketSize.HasValue)
+        {
+            writer.Encode(totalPacketSize.Value);
+        }
+
+        output.WriteZero(Frame.HeaderSize - output.WriterIndex);
+        output.WriteBytes(payload);
+        output.WriteZero(paddingSize);
+        return output;
+    }
+
     [Test]
     public void Handles_non_chunked_frames()
     {
@@ -187,34 +217,6 @@ public class ZeroNettyFrameMergerTests
     }
 
     [Test]
-    public void Throws_on_continuation_frame_with_no_in_progress_packet()
-    {
-        ZeroFrameMergerTestWrapper wrapper = new();
-
-        using DisposableByteBuffer firstPacket = BuildFrames(3).AsDisposable();
-        ZeroPacket completed = null;
-        try
-        {
-            completed = wrapper.Decode(firstPacket);
-            Assert.That(completed, Is.Not.Null);
-
-            using DisposableByteBuffer orphanSource = BuildFrames(3).AsDisposable();
-            const int firstFrameSize = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
-            const int continuationFrameOffset = firstFrameSize;
-            using DisposableByteBuffer orphanFrame = PooledByteBufferAllocator.Default.Buffer(firstFrameSize).AsDisposable();
-            orphanFrame.WriteBytes(orphanSource, srcIndex: continuationFrameOffset, length: firstFrameSize);
-
-            Assert.That(() => wrapper.Decode(orphanFrame),
-                Throws.InstanceOf<CorruptedFrameException>(),
-                "continuation frame without an in-progress packet must be rejected");
-        }
-        finally
-        {
-            completed?.Release();
-        }
-    }
-
-    [Test]
     public void Throws_when_continuation_frame_exceeds_remaining_packet_size()
     {
         using PooledBufferLeakDetector detector = new(message: "the in-progress packet buffer must be released, not just dropped");
@@ -261,10 +263,25 @@ public class ZeroNettyFrameMergerTests
         }
     }
 
-    [Test]
-    public void Merges_frame_carrying_a_context_id_when_no_packet_is_in_progress()
+    [TestCase(false, TestName = "Merges_normal_frame_with_context_id_on_fresh_connection")]
+    [TestCase(true, TestName = "Merges_normal_frame_reusing_completed_context_id")]
+    public void Merges_normal_frame_with_context_id_when_no_packet_is_in_progress(bool completeChunkedPacketFirst)
     {
         ZeroFrameMergerTestWrapper wrapper = new();
+
+        if (completeChunkedPacketFirst)
+        {
+            using DisposableByteBuffer chunkedFrames = BuildFrames(2).AsDisposable();
+            ZeroPacket completedPacket = wrapper.Decode(chunkedFrames);
+            try
+            {
+                Assert.That(completedPacket, Is.Not.Null);
+            }
+            finally
+            {
+                completedPacket?.Release();
+            }
+        }
 
         using DisposableByteBuffer frame = BuildFrames(1).AsDisposable();
 
@@ -280,6 +297,52 @@ public class ZeroNettyFrameMergerTests
         finally
         {
             packet?.Release();
+        }
+    }
+
+    [Test]
+    public void Merges_chunked_packet_when_intermediate_frame_has_padding()
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        using DisposableByteBuffer firstFrame = BuildFrame([2, 0, 0, 0, 0], contextId: 1, totalPacketSize: 7).AsDisposable();
+        Assert.That(wrapper.Decode(firstFrame), Is.Null, "the first chunk must leave the packet open");
+
+        using DisposableByteBuffer finalFrame = BuildFrame([0, 0], contextId: 1).AsDisposable();
+        ZeroPacket packet = wrapper.Decode(finalFrame);
+        try
+        {
+            Assert.That(packet, Is.Not.Null);
+            Assert.That(packet.Content.ReadableBytes, Is.EqualTo(6));
+        }
+        finally
+        {
+            packet?.Release();
+        }
+    }
+
+    [Test]
+    public void Allocates_chunked_packet_buffer_incrementally()
+    {
+        using PooledBufferLeakDetector detector = new();
+        ZeroFrameMergerTestWrapper wrapper = new(detector.Allocator);
+        long usedBefore = detector.Allocator.Metric.UsedHeapMemory;
+
+        byte[] firstPayload = new byte[Frame.DefaultMaxFrameSize];
+        firstPayload[0] = 2;
+        using DisposableByteBuffer firstFrame = BuildFrame(firstPayload, contextId: 1, totalPacketSize: SnappyParameters.MaxSnappyLength).AsDisposable();
+
+        try
+        {
+            Assert.That(wrapper.Decode(firstFrame), Is.Null, "the first chunk must leave the packet open");
+
+            long allocatedBytes = detector.Allocator.Metric.UsedHeapMemory - usedBefore;
+            Assert.That(allocatedBytes, Is.LessThan(SnappyParameters.MaxSnappyLength / 2),
+                "a small first chunk must not eagerly allocate the entire declared packet size");
+        }
+        finally
+        {
+            wrapper.HandlerRemoved(Substitute.For<IChannelHandlerContext>());
         }
     }
 
