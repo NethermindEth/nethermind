@@ -21,7 +21,6 @@ using Nethermind.Evm;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.TxPool.Comparison;
 

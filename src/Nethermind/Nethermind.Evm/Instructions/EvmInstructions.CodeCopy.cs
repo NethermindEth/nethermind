@@ -38,7 +38,7 @@ public static partial class EvmInstructions
 
     /// <summary>
     /// Copy-to-memory core with the three copy operands (destination offset, source offset, length)
-    /// already popped, for callers that pop preceding operands first (e.g. SIGPARAM and FRAMEDATACOPY).
+    /// already popped, for callers that pop preceding operands first (e.g. FRAMEDATACOPY and SIGDATACOPY).
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

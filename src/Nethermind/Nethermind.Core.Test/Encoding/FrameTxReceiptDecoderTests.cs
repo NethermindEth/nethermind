@@ -45,9 +45,9 @@ public class FrameTxReceiptDecoderTests
         LogEntry frameOnlyLog = Log(0x02);
         TxReceipt frameReceipt = CreateStorageFrameReceipt(
             [unionLog],
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [unionLog]),
-            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [frameOnlyLog]),
-            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, []));
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [unionLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, 0, [frameOnlyLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []));
         TxReceipt legacyReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
 
         ReceiptArrayStorageDecoder encoder = new(compactEncoding);
@@ -79,8 +79,8 @@ public class FrameTxReceiptDecoderTests
         LogEntry frameLog = Log(0x01);
         TxReceipt frameReceipt = CreateStorageFrameReceipt(
             [frameLog],
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [frameLog]),
-            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, [Log(0x02)]));
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [frameLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, 0, [Log(0x02)]));
 
         // Distinct sender/gas on the neighbours so realigning onto `after` is provably not `before`.
         TxReceipt before = Build.A.Receipt.WithAllFieldsFilled
@@ -149,26 +149,26 @@ public class FrameTxReceiptDecoderTests
     private static IEnumerable<TestCaseData> RoundtripCases()
     {
         yield return new TestCaseData(CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, [Log(0x01)])),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, [Log(0x01)])),
             TxFrameReceipt.StatusSuccess)
             .SetName("Roundtrip_SingleSuccessfulFrameWithLog");
 
         yield return new TestCaseData(CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 50_000, [Log(0x01), Log(0x02)]),
-            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, []),
-            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, [])),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 50_000, 9_000, [Log(0x01), Log(0x02)]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, 30_000, 0, []),
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, [])),
             TxFrameReceipt.StatusFailure)
             .SetName("Roundtrip_SuccessFailureAndSkippedStatuses");
 
         // A frame skipped by a failed atomic batch is not a success either.
         yield return new TestCaseData(CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, []),
-            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, [])),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 21_000, 5_000, []),
+            new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, [])),
             TxFrameReceipt.StatusFailure)
             .SetName("Roundtrip_SkippedFrameIsNotASuccess");
 
         yield return new TestCaseData(CreateReceipt(
-            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, [])),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 0, 0, [])),
             TxFrameReceipt.StatusSuccess)
             .SetName("Roundtrip_EmptyLogsAndZeroGas");
     }
@@ -179,7 +179,8 @@ public class FrameTxReceiptDecoderTests
         for (int i = 0; i < expected.Length; i++)
         {
             Assert.That(actual[i].Status, Is.EqualTo(expected[i].Status), $"frame receipt {i} status");
-            Assert.That(actual[i].GasUsed, Is.EqualTo(expected[i].GasUsed), $"frame receipt {i} gas used");
+            Assert.That(actual[i].ExecutionGasUsed, Is.EqualTo(expected[i].ExecutionGasUsed), $"frame receipt {i} execution gas used");
+            Assert.That(actual[i].StateGasUsed, Is.EqualTo(expected[i].StateGasUsed), $"frame receipt {i} state gas used");
             AssertLogsEqual(actual[i].Logs, expected[i].Logs);
         }
     }

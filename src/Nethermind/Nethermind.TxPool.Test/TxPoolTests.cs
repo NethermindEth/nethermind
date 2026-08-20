@@ -2130,10 +2130,10 @@ namespace Nethermind.TxPool.Test
 
         // EIP-8141: a frame transaction's GasLimit is only the sum of its frame gas limits, so the pool must gate on
         // max_gas or it admits transactions that can never fit in a block. The mandatory cost of the single frame below
-        // is FRAME_TX_INTRINSIC_COST + FRAME_TX_PER_FRAME_COST = 15,475, and each non-zero calldata byte adds 16 to the
+        // is FRAME_TX_INTRINSIC_COST + FRAME_TX_PER_FRAME_COST = 12,475, and each non-zero calldata byte adds 16 to the
         // standard cost against 40 to the EIP-7623 floor, so the last case is admissible on its standard cost alone.
         [TestCase(100_000UL, 0, true)]
-        [TestCase(115_000UL, 0, false)]
+        [TestCase(120_000UL, 0, false)]
         [TestCase(10_000UL, 4000, false)]
         public void SubmitTx_FrameTransaction_IsGatedOnMaxGas(ulong frameGasLimit, int frameDataLength, bool expectedAccepted)
         {

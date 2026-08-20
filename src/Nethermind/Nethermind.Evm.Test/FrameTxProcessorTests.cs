@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -22,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -38,6 +40,7 @@ namespace Nethermind.Evm.Test;
 public class FrameTxProcessorTests
 {
     private ISpecProvider _specProvider;
+    private OverridableReleaseSpec _spec;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
     private IDisposable _worldStateCloser;
@@ -49,12 +52,14 @@ public class FrameTxProcessorTests
     private static readonly Address Beneficiary = TestItem.AddressE;
 
     // The gas leg of max_cost (TXPARAM 0x06) for a SelfVerify + one DEFAULT frame at max fee 1, blob-free.
-    private const ulong BlobFreeMaxCost = 415_950;
+    private const ulong DefaultFrameStateGasLimit = 200_000;
+    private const ulong BlobFreeMaxCost = 612_950;
 
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        _spec = new OverridableReleaseSpec(Eip8141Prototype.Instance);
+        _specProvider = new TestSpecProvider(_spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
@@ -333,9 +338,11 @@ public class FrameTxProcessorTests
         Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient)),
             tracer: coldTracer).TransactionExecuted, Is.True);
 
+        // The precompile target pays warm entry access and runs the precompile (identity of empty
+        // input, its base cost); the cold account pays cold entry access and runs no code.
         Assert.That(coldTracer.GasSpent - precompileTracer.GasSpent,
-            Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
-            "a precompile target must pay warm entry access where a cold account pays cold");
+            Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess - IdentityPrecompile.Instance.BaseGasCost(Spec))),
+            "a precompile target pays warm entry access and dispatches the precompile where a cold account pays cold");
     }
 
     [Test]
@@ -453,7 +460,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x03, 1UL, TestName = "Execute_TxParam_MaxPriorityFee")]
     [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
     [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
-    // Max cost = sum(frame gas) 400000 + intrinsic 15000 + per-frame 475×2 (no calldata/sig).
+    // Max cost = sum(frame gas) 600000 + intrinsic 12000 + per-frame 475×2 (no calldata/sig).
     [TestCase((byte)0x06, BlobFreeMaxCost, TestName = "Execute_TxParam_MaxCost")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
@@ -511,6 +518,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x06, 3UL, TestName = "Execute_FrameParam_AllowedScope")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_FrameParam_AtomicBatch")]
     [TestCase((byte)0x08, 0UL, TestName = "Execute_FrameParam_Value")]
+    [TestCase((byte)0x09, 0UL, TestName = "Execute_FrameParam_StateGasLimit")]
     public void Execute_FrameParamIntrospection_ReadsCompletedFrame(byte param, ulong expected)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -524,6 +532,22 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         AssertStorage(Observer, 0, (UInt256)expected);
+    }
+
+    [Test]
+    public void Execute_FrameParam_StateGasLimit_ReadsDeclaredStateBudget()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x09).PushData(1).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDefault, 0, Observer, 200_000, 150_000, UInt256.Zero, default));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, (UInt256)150_000);
     }
 
     [Test]
@@ -614,19 +638,15 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_SigParamCopy_UsesMemOffsetDataOffsetLengthOrder()
+    public void Execute_SigDataCopy_UsesMemOffsetDataOffsetLengthOrder()
     {
-        // signature bytes[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
-        // Operand order (top to bottom) is memOffset, dataOffset, length — matching CALLDATACOPY and
-        // FRAMEDATACOPY. Asymmetric operands catch a reversed pop order.
         byte[] signatureBytes = new byte[32];
         for (int i = 0; i < signatureBytes.Length; i++) signatureBytes[i] = (byte)i;
 
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(8).PushData(4).PushData(0)   // length, dataOffset, memOffset (deepest to top)
-            .PushData(0x04).PushData(0)            // param (copy form), signatureIndex on top
-            .Op(Instruction.SIGPARAM)
+            .PushData(0).PushData(8).PushData(4).PushData(0)
+            .Op(Instruction.SIGDATACOPY)
             .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
@@ -636,7 +656,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         byte[] expected = new byte[32];
-        signatureBytes.AsSpan(4, 8).CopyTo(expected); // copied bytes land in the high-order end of the word
+        signatureBytes.AsSpan(4, 8).CopyTo(expected);
         AssertStorage(Observer, 0, new UInt256(expected, isBigEndian: true));
     }
 
@@ -1096,6 +1116,59 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>
+    /// A payment approval that must create a non-existent sender but whose frame's remaining state budget
+    /// cannot cover the NEW_ACCOUNT charge halts the frame, so the state it wrote before the APPROVE is
+    /// rolled back (ethereum/EIPs#12062, attempt_approval).
+    /// </summary>
+    /// <remarks>
+    /// A second sponsor sets the payer so the transaction stays valid; otherwise the whole-transaction
+    /// revert on an unset payer would mask the frame-level divergence. Without the roll-back the first
+    /// sponsor's SSTORE stays committed while its receipt reports failure — a divergence on both the
+    /// state root and the receipts.
+    /// </remarks>
+    [Test]
+    public void Execute_PaymentApprovalCannotCoverSenderCreation_RollsBackTheApprovingFrame()
+    {
+        Address sponsorA = TestItem.AddressD;
+        Address sponsorB = TestItem.AddressF;
+        DeployContract(sponsorA,
+            Prepare.EvmCode
+                .PushData(1).PushData(0).Op(Instruction.SSTORE)
+                .PushData(TxFrame.ApprovePayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done,
+            1.Ether);
+        DeployContract(sponsorB, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsorA, executionGasLimit: 200_000, stateGasLimit: (ulong)GasCostOf.SSetState, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsorB, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+        tx.FrameSignatures = [SelfExecutionSignature(tx)];
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "sponsor B set the payer, so the transaction is valid");
+            AssertStorage(sponsorA, 0, UInt256.Zero,
+                "sponsor A's approval frame halted on the NEW_ACCOUNT shortfall, so the slot it wrote before APPROVE is rolled back");
+            Assert.That(_stateProvider.GetBalance(sponsorA), Is.EqualTo(1.Ether),
+                "the halted sponsor A frame charges nothing");
+        }
+    }
+
+    private static TxFrameSignature SelfExecutionSignature(Transaction tx)
+    {
+        // compute_sig_hash elides the raw signature bytes, so it is computed with the placeholder entry installed.
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyA, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs);
+    }
+
     private TransactionResult Process(Transaction tx, UInt256 baseFeePerGas = default, ITxTracer? tracer = null)
     {
         Block block = Build.A.Block.WithNumber(1)
@@ -1152,8 +1225,8 @@ public class FrameTxProcessorTests
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
-    private static TxFrame Frame(byte mode, byte flags = 0, Address? target = null, UInt256 value = default, byte[]? data = null) =>
-        new(mode, flags, target, gasLimit: 200_000, value, data ?? Array.Empty<byte>());
+    private static TxFrame Frame(byte mode, byte flags = 0, Address? target = null, UInt256 value = default, byte[]? data = null, ulong stateGasLimit = DefaultFrameStateGasLimit) =>
+        new(mode, flags, target, executionGasLimit: 200_000, stateGasLimit, value, data ?? Array.Empty<byte>());
 
     private static Transaction FrameTx(ulong nonce, params TxFrame[] frames) =>
         new()

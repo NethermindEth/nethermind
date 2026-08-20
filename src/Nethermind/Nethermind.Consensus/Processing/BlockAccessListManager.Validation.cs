@@ -100,11 +100,36 @@ public partial class BlockAccessListManager
     {
         if (!spec.IsEip8037Enabled) return;
 
-        Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            block.Header.GasLimit,
-            cumulativeExecution,
-            cumulativeState,
-            tx.GasLimit);
+        Eip8037BlockGasInclusionCheck.Outcome outcome;
+        if (tx.SupportsFrames && tx.Frames is not null && FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong frameIntrinsic, out ulong frameFloor, out _))
+        {
+            // EIP-8141 frames declare exact per-dimension budgets: the execution reservation is the
+            // intrinsic execution plus the frames' execution budgets (bounded by the calldata floor);
+            // the state reservation is the frames' state budgets.
+            ulong totalFrameExecution = 0;
+            ulong totalFrameState = 0;
+            foreach (TxFrame frame in tx.Frames)
+            {
+                totalFrameExecution += frame.ExecutionGasLimit;
+                totalFrameState += frame.StateGasLimit;
+            }
+
+            ulong executionReservation = Math.Max(frameIntrinsic + totalFrameExecution, frameFloor);
+            outcome = Eip8037BlockGasInclusionCheck.Validate(
+                block.Header.GasLimit,
+                cumulativeExecution,
+                cumulativeState,
+                executionReservation,
+                totalFrameState);
+        }
+        else
+        {
+            outcome = Eip8037BlockGasInclusionCheck.Validate(
+                block.Header.GasLimit,
+                cumulativeExecution,
+                cumulativeState,
+                tx.GasLimit);
+        }
 
         if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
         {

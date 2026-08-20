@@ -12,8 +12,9 @@ namespace Nethermind.Core;
 public static class Eip8141Constants
 {
     public const int MaxFrames = 64;
-    public const long IntrinsicGasCost = 15_000;
+    public const long IntrinsicGasCost = 12_000;
     public const long PerFrameGasCost = 475;
+    public const ulong ValueTransferGasCost = 6_000;
     public const ulong ArbitraryVerificationGasCost = 100;
     public const ulong Secp256k1VerificationGasCost = 2_800;
     public const ulong P256VerificationGasCost = 6_700;
