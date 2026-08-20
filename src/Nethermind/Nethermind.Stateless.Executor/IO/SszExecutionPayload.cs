@@ -29,7 +29,7 @@ public partial class SszExecutionPayload(ExecutionPayloadV3 payload)
 
     /// <summary>Gets the domain payload the field properties read from and write to.</summary>
     /// <remarks>Derived containers narrow this to their own payload type to reach the fields their fork adds.</remarks>
-    protected virtual ExecutionPayloadV3 Inner { get; private set; } = payload;
+    protected virtual ExecutionPayloadV3 Inner { get; } = payload;
 
     /// <summary>Gets the wrapped domain execution payload.</summary>
     public virtual ExecutionPayloadV3 AsExecutionPayload() => Inner;

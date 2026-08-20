@@ -145,7 +145,7 @@ public class Eip7981Tests
     }
 
     [Test]
-    public void Calldata_with_access_list_floor_binds_just_above_standard()
+    public void Calldata_with_access_list_floor_equals_standard_at_exact_tie()
     {
         // Sized so the standard's fixed access-entry components exactly equal the
         // floor's per-token premium over the standard's per-byte data cost.
