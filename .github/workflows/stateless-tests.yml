@@ -21,10 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
 
       - name: Build Nethermind
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
@@ -75,7 +75,7 @@ jobs:
             output: adf8830ca4fc0fc93d4e0968d84a6a4007081b67bbe6de68d3d6c177f2e812dd
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download guest binary
         uses: actions/download-artifact@v8
