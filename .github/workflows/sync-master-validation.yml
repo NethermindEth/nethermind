@@ -133,7 +133,10 @@ jobs:
 
           # Apply chain_filter if provided
           if [ -n "$CHAIN_FILTER" ]; then
-            matrix=$(echo "$matrix" | jq --arg filter "$CHAIN_FILTER" '[.[] | select(.network | contains($filter))]')
+            matrix=$(echo "$matrix" | jq --arg filter "$CHAIN_FILTER" '
+              [.[] | select(.network == $filter)] as $exact
+              | if ($exact | length) > 0 then $exact
+                else [.[] | select(.network | contains($filter))] end')
           fi
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"

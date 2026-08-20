@@ -65,7 +65,12 @@ jobs:
           matrix=$(cat nethermind/scripts/config/testnet-matrix.json)
 
           if [ -n "$NETWORK_FILTER" ]; then
-            matrix=$(echo "$matrix" | jq --arg filter "$NETWORK_FILTER" '[.[] | select(.network | contains($filter))]')
+            # An exact network name wins over substring matching, so "hoodi" does not
+            # also drag in "taiko-hoodi"; partial names still work as before.
+            matrix=$(echo "$matrix" | jq --arg filter "$NETWORK_FILTER" '
+              [.[] | select(.network == $filter)] as $exact
+              | if ($exact | length) > 0 then $exact
+                else [.[] | select(.network | contains($filter))] end')
           fi
 
           requested_mode=$(echo "$MODE_INPUT" | tr '[:upper:]' '[:lower:]')
