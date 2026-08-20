@@ -122,13 +122,15 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.SetNonce(TestItem.AddressA, newNonce);
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
-            using (Assert.EnterMultipleScope())
+            if (expectRecorded)
             {
-                Assert.That(ac?.NonceChange is not null, Is.EqualTo(expectRecorded));
-                if (expectRecorded)
-                {
-                    Assert.That(ac!.NonceChange!.Value.Value, Is.EqualTo(newNonce));
-                }
+                Assert.That(ac, Is.Not.Null);
+                Assert.That(ac!.NonceChange, Is.Not.Null);
+                Assert.That(ac.NonceChange!.Value.Value, Is.EqualTo(newNonce));
+            }
+            else
+            {
+                Assert.That(ac, Is.Null);
             }
         }
     }
