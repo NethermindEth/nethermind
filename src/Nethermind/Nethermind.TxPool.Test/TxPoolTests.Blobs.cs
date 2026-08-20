@@ -1505,6 +1505,44 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP8141-GAP: a record reloaded from storage carries no paymaster, so it neither takes a slot nor frees
+        // one. Pinned so a fix that encodes the key on write but not on read fails here instead of under-counting.
+        [Test]
+        public void Restored_blob_carrying_frame_tx_neither_takes_its_sponsor_slot_nor_frees_one()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            foreach (PrivateKey sender in new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD })
+            {
+                EnsureSenderBalance(sender.Address, UInt256.MaxValue);
+            }
+
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressF);
+            Transaction Sponsored(PrivateKey sender) =>
+                BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressF, sender: sender);
+
+            Transaction restored = Sponsored(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(restored, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A fresh pool over the same storage stands in for a node restart.
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
+
+            AcceptTxResult afterRestart = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyB), TxHandlingOptions.None);
+            AcceptTxResult beyondTheHole = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyC), TxHandlingOptions.None);
+
+            _txPool.RemoveTransaction(restored.Hash);
+            AcceptTxResult afterRestoredRemoval = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterRestart, Is.EqualTo(AcceptTxResult.Accepted), "the reloaded record has no sponsor to count");
+                Assert.That(beyondTheHole, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "so the hole is one slot per restart, not unbounded");
+                Assert.That(afterRestoredRemoval, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "and a record that took no slot must not free one");
+            }
+        }
+
         [Test]
         public void non_blob_frame_tx_is_routed_to_normal_pool()
         {
