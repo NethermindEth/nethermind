@@ -8,7 +8,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Stateless;
@@ -136,21 +138,11 @@ public class SszMiddlewareTests
     public void Every_route_a_fork_resolves_has_a_handler()
     {
         ISszEndpointHandler[] handlers = BuildHandlers();
-        (string HttpMethod, string Resource)[] endpoints =
-        [
-            ("POST", SszRestPaths.Payloads),
-            ("POST", SszRestPaths.Forkchoice),
-            ("POST", SszRestPaths.PayloadBodiesByHash),
-            ("POST", SszRestPaths.PayloadWithWitness),
-            ("GET", SszRestPaths.Payloads),
-            ("GET", SszRestPaths.PayloadBodiesByRange),
-            ("GET", SszRestPaths.InclusionList),
-        ];
 
         List<string> missing = [];
         foreach (string fork in SszRestPaths.SupportedForksOrdered)
         {
-            foreach ((string httpMethod, string resource) in endpoints)
+            foreach ((string httpMethod, string resource) in SszRestPaths.ForkScopedEndpoints)
             {
                 int? version = SszRestPaths.MapForkToVersion(fork, resource, httpMethod, out _);
                 if (version is null) continue;
@@ -160,6 +152,19 @@ public class SszMiddlewareTests
         }
 
         Assert.That(missing, Is.Empty);
+    }
+
+    // Coverage above is only meaningful if this fixture's hand-built set matches what production
+    // registers; the bridges are lazy factories, so Configure resolves nothing off the substitute.
+    [Test]
+    public void Configurer_registers_the_handler_set_this_fixture_builds()
+    {
+        ServiceCollection services = [];
+        new SszMiddlewareConfigurer(Substitute.For<IComponentContext>()).Configure(services);
+
+        Assert.That(
+            services.Where(d => d.ServiceType == typeof(ISszEndpointHandler)).Select(d => d.ImplementationType),
+            Is.EquivalentTo(BuildHandlers().Select(h => h.GetType())));
     }
 
     private static DefaultHttpContext MakeBaseContext(string method, string path, int port)

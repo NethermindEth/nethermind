@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
@@ -126,6 +127,13 @@ public static class SszRestPaths
             // EIP-7805 (FOCIL): inclusion lists exist only from the Bogota fork onward.
             [InclusionList] = static spec => spec.IsEip7805Enabled ? 1 : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Every recognized fork-scoped (HTTP method, resource) pair, derived from the tables above.</summary>
+    public static readonly IReadOnlyList<(string HttpMethod, string Resource)> ForkScopedEndpoints =
+    [
+        .. _postVersionByResource.Keys.Select(static resource => (HttpMethods.Post, resource)),
+        .. _getVersionByResource.Keys.Select(static resource => (HttpMethods.Get, resource)),
+    ];
 
     private static readonly FrozenDictionary<string, Func<Forks.NamedReleaseSpec, int?>>.AlternateLookup<ReadOnlySpan<char>> _postVersionLookup =
         _postVersionByResource.GetAlternateLookup<ReadOnlySpan<char>>();
