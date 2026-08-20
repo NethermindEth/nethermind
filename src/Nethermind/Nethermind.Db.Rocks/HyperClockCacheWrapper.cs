@@ -42,11 +42,22 @@ public sealed class HyperClockCacheWrapper : IDisposable
 
     public long GetUsage() => (long)_cache.GetUsage();
 
+    /// <summary>Keeps the reported memory pressure balanced when an owner abandons the wrapper undisposed.</summary>
+    /// <remarks>The native handle has its own critical finalizer, so only the pressure is released here.</remarks>
+    ~HyperClockCacheWrapper() => Release(disposing: false);
+
     public void Dispose()
+    {
+        Release(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Release(bool disposing)
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        _cache.Dispose();
-        GC.RemoveMemoryPressure(_capacity);
+        // Zero when the constructor rejected the capacity before any pressure was added.
+        if (_capacity > 0) GC.RemoveMemoryPressure(_capacity);
+        if (disposing) _cache.Dispose();
     }
 }
