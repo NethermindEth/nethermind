@@ -2578,15 +2578,16 @@ namespace Nethermind.TxPool.Test
             // The verify-gas bound is out of scope here; disable it so the exposure gate is what binds.
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
 
-            UInt256 maxCost = (UInt256)1.GWei * 1_000_000;
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
-            EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
 
             Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
             Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(first, Bogota.Instance, out UInt256 maxCost), Is.True);
+            EnsureSenderBalance(sponsor, maxCost + maxCost / 2); // fits one tx, not two
 
             AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
             AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
@@ -2608,11 +2609,15 @@ namespace Nethermind.TxPool.Test
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
             // shape reaching the exposure gate here.
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)12 * TxGasLimit);
 
             Transaction first = SelfPayingFrameTx(nonce: 0, feePerGas: 6);
             Transaction bumped = SelfPayingFrameTx(nonce: 0, feePerGas: 7);
             Transaction afterRelease = SelfPayingFrameTx(nonce: 0, feePerGas: 8);
+
+            // Priced with the gate's own helper: enough for either transaction alone, never for both.
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(first, Bogota.Instance, out UInt256 firstCost), Is.True);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(bumped, Bogota.Instance, out UInt256 bumpedCost), Is.True);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, firstCost + bumpedCost - 1);
 
             AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.None);
             // 6 + 7 exceeds the balance, but the bump displaces the incumbent rather than joining it, so
@@ -2642,7 +2647,7 @@ namespace Nethermind.TxPool.Test
 
             // Sized off the reservation itself, so a repricing of max_cost moves the balance with it:
             // 3 pending at fee 3 fit within 10, the bump's 3 undiscounted plus its own 7 do not.
-            SelfPayingFrameTx(nonce: 0, feePerGas: 1).IsOverflowInTxCostAndValue(out UInt256 unitCost);
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(SelfPayingFrameTx(nonce: 0, feePerGas: 1), Bogota.Instance, out UInt256 unitCost), Is.True);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)10 * unitCost);
 
             for (ulong nonce = 0; nonce < 3; nonce++)
@@ -2672,6 +2677,11 @@ namespace Nethermind.TxPool.Test
                 tx.Frames[i] = new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data);
             }
             tx.FrameSignatures = [FrameSignature(tx, FrameSignatureDefect.None)];
+            // As FrameTxDecoder sets it: the frame-gas sum, so the sender-balance filters price below the
+            // payer gate and the exposure bound is what binds.
+            ulong frameGas = 0;
+            foreach (TxFrame frame in tx.Frames!) frameGas += frame.GasLimit;
+            tx.GasLimit = frameGas;
             tx.Hash = tx.CalculateHash();
             return tx;
         }
@@ -2714,7 +2724,8 @@ namespace Nethermind.TxPool.Test
             // pending and the payer owes both. Discounting it would admit exposure beyond the balance.
             _txPool = CreatePool(null, KeyedNonceSpecProvider());
 
-            SelfPayingFrameTx(nonce: 0, feePerGas: 1).IsOverflowInTxCostAndValue(out UInt256 unitCost);
+            // The probe carries no nonce keys, so its max cost does not depend on the EIP-8250 surcharge.
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(SelfPayingFrameTx(nonce: 0, feePerGas: 1), Bogota.Instance, out UInt256 unitCost), Is.True);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)4 * unitCost); // fits one at fee 3, not two
 
             AcceptTxResult first = _txPool.SubmitTx(SelfPayingFrameTx(nonce: 0, feePerGas: 3), TxHandlingOptions.None);

@@ -224,7 +224,7 @@ namespace Nethermind.TxPool
 
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
-            postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
+            postHashFilters.Add(new FrameTxPayerExposureFilter(_specProvider, chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -857,10 +857,19 @@ namespace Nethermind.TxPool
             }
         }
 
-        /// <summary>Releases the exposure a frame-tx payer reserved at admission, once the transaction leaves the pool.</summary>
+        /// <summary>
+        /// Releases the pending exposure a resolved frame-tx payer reserved at admission
+        /// (<see cref="FrameTxPayerExposureFilter"/>) once the transaction leaves the pool.
+        /// </summary>
+        /// <remarks>
+        /// Covers eviction, replacement, inclusion and reorg removal (all funnel through the pool
+        /// <c>Removed</c> event) plus the paths in <see cref="AddCore"/> that never insert. Replays the amount
+        /// admission recorded on the transaction, since a pooled blob-carrying frame transaction is a light
+        /// record with no frames to re-price, and the pricing spec moves with the head besides.
+        /// </remarks>
         private void ReleasePayerExposure(Transaction tx)
         {
-            if (tx.SupportsFrames && tx.PayerAddress is not null && !tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
+            if (tx.PayerAddress is not null && tx.PayerExposure is { } maxCost)
             {
                 _payerExposure.Subtract(tx.PayerAddress, maxCost);
             }

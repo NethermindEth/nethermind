@@ -32,6 +32,7 @@ public class LightTransaction : Transaction
         ProofVersion = fullTx.GetProofVersion();
         // The pool holds this record, not the full tx, so its Removed event is what releases the payer's reservation.
         PayerAddress = fullTx.PayerAddress;
+        PayerExposure = fullTx.PayerExposure;
         // Without the keys the pool reads Nonce as an account nonce, and EIP-8250 nonce_seq is not one.
         NonceKeys = fullTx.NonceKeys;
         PersistedExpiryDeadline = FrameTxValidation.TryGetExpiryDeadline(fullTx, out ulong deadline) ? deadline : null;

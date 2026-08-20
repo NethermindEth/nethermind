@@ -689,10 +689,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
         }
 
-        TransactionResult costed = CalculateSimulatedMaxCost(tx, spec, out UInt256 maxCost);
-        if (!costed)
+        // Shared with the admission gate, so the two cannot escrow against different numbers.
+        if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
         {
-            return costed;
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction maximum cost cannot be priced");
         }
 
         effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out _);
@@ -716,26 +716,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         return RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker)
             ? TransactionResult.Ok
             : TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");
-    }
-
-    /// <summary>The <c>max_cost</c> (TXPARAM 0x06) the simulated prefix's APPROVE gate reads.</summary>
-    /// <remarks>Taken from the same helper the main path escrows on, so the two cannot decide against
-    /// different numbers, except that the blob leg is priced at <c>max_fee_per_blob_gas</c> rather than the
-    /// blob base fee execution uses: the fee at inclusion is unknowable here, and over-reserving can only
-    /// make admission stricter.</remarks>
-    private static TransactionResult CalculateSimulatedMaxCost(Transaction tx, IReleaseSpec spec, out UInt256 maxCost)
-    {
-        maxCost = default;
-        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong txGasLimit))
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas budget overflows");
-        }
-
-        ulong blobGas = (ulong)(tx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
-        return UInt256.MultiplyOverflow((UInt256)txGasLimit, tx.DecodedMaxFeePerGas, out maxCost)
-            || UInt256.AddOverflow(maxCost, (UInt256)blobGas * tx.MaxFeePerBlobGas.GetValueOrDefault(), out maxCost)
-            ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction max cost overflows")
-            : TransactionResult.Ok;
     }
 
     /// <summary>Bounds a prefix frame's gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
