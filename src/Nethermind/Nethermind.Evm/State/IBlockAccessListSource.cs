@@ -14,9 +14,7 @@ public interface IBlockAccessListSource
     BlockAccessListAtIndex? GeneratedBlockAccessList { get; }
 
     /// <summary>Starts recording into <paramref name="bal"/>, or stops recording when it is null.</summary>
-    /// <remarks>
-    /// Block processing installs a slice for the whole block. Simulation stacks leave the recorder idle
-    /// and install one per transaction, so an <c>eth_call</c> only pays for a diff it is going to read.
-    /// </remarks>
+    /// <remarks>Block processing installs one per block; simulation installs one per transaction that
+    /// reads its own diff, and stays idle otherwise.</remarks>
     void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal);
 }

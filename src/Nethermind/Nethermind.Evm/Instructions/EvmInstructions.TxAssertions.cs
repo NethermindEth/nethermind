@@ -13,11 +13,10 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// EIP-7906 transaction-assertion opcodes (TXTRACE, TXDIFF, EVENTDATACOPY), valid only inside a POST_TX
-/// frame. They read the tx state diff from the in-flight BAL slice and logs from the shared frame log buffer.
+/// EIP-7906 transaction-assertion opcodes, valid only inside a POST_TX frame.
 /// https://eips.ethereum.org/EIPS/eip-7906
 /// </summary>
-/// <remarks>Operands the spec marks "must be 0" are treated as reserved: a non-zero value exceptional-halts.</remarks>
+/// <remarks>Operands the spec marks "must be 0" are reserved: a non-zero value exceptional-halts.</remarks>
 public static unsafe partial class EvmInstructions
 {
     /// <summary>TXTRACE (0xb6): enumerate the transaction's state diff and events by index.</summary>
@@ -44,8 +43,7 @@ public static unsafe partial class EvmInstructions
             0x0C => PushCountForZeroIndex<TTracingInst>(in index, view.Logs.Length, ref stack),
             >= 0x0D and <= 0x13 => TxTraceEvent<TTracingInst>(view, p, in index, ref stack),
             0x14 => index.IsZero ? stack.PushUInt256<TTracingInst>(ctx.MaxCost) : EvmExceptionType.BadInstruction,
-            // A POST_TX frame can run before any frame approves payment; that transaction is rejected
-            // after the loop, so the zero stands in for a value no valid transaction can observe.
+            // Unapproved payment is rejected after the frame loop, so no valid transaction sees this zero.
             0x15 => index.IsZero ? stack.PushAddress<TTracingInst>(ctx.Payer ?? Address.Zero) : EvmExceptionType.BadInstruction,
             _ => EvmExceptionType.BadInstruction,
         };
@@ -146,8 +144,7 @@ public static unsafe partial class EvmInstructions
         };
     }
 
-    // 0x00 before / 0x01 after, EIP-2929 storage-priced. A live read is recorded in the EIP-7928 block
-    // access list like any other state-reading opcode, as the spec requires.
+    // 0x00 before / 0x01 after. The live read enters the EIP-7928 list like any other state read.
     private static EvmExceptionType TxDiffStorage<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Address address, in UInt256 key, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -162,7 +159,7 @@ public static unsafe partial class EvmInstructions
         return value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
     }
 
-    // 0x02/0x03 balance, 0x04/0x05 code hash, EIP-2929 account-priced; live reads are BAL-recorded as above.
+    // 0x02/0x03 balance, 0x04/0x05 code hash; live reads are EIP-7928 recorded as above.
     private static EvmExceptionType TxDiffAccount<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, TransactionDiffView view, Address address, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
@@ -255,12 +252,8 @@ public static unsafe partial class EvmInstructions
         return EvmExceptionType.AccessViolation;
     }
 
-    /// <summary>Shared POST_TX diff view for the current frame tx, built once and cached. False (an
-    /// exceptional halt) outside a POST_TX frame or when the diff source is unavailable.</summary>
-    /// <remarks>
-    /// The source is the in-flight EIP-7928 slice: block processing always records one, and simulation
-    /// starts one per transaction that carries a POST_TX frame.
-    /// </remarks>
+    /// <summary>Diff view for the current frame tx, built once and shared. False outside a POST_TX
+    /// frame, or when no EIP-7928 slice is recording to source it from.</summary>
     private static bool TryGetPostTxView<TGasPolicy>(VirtualMachine<TGasPolicy> vm, out TransactionDiffView view, out FrameTxContext ctx)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
@@ -284,8 +277,7 @@ public static unsafe partial class EvmInstructions
         return true;
     }
 
-    // Bitmask: nonce 0b0001, balance 0b0010, storage 0b0100, code 0b1000. The spec asks for net diffs;
-    // a recorded nonce change is one because nonces only increase and reverts restore the prior value.
+    // The nonce bit is "written", not net: nonces only increase and a revert restores the prior value.
     private static uint ChangeFlags(AccountChangesAtIndex? account)
     {
         if (account is null) return 0;

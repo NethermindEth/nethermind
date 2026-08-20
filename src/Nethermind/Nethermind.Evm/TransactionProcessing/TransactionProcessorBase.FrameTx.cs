@@ -26,19 +26,11 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// </summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
-    /// <summary>
-    /// EIP-7906: starts recording this transaction's EIP-7928 slice when it carries a POST_TX frame and
-    /// nothing else is recording one, and returns the recorder so the caller can stop it.
-    /// </summary>
-    /// <remarks>
-    /// The slice is the diff source the assertion opcodes read. Block processing has one in flight
-    /// whenever EIP-7928 is on; simulation (eth_call, eth_estimateGas) does not, and without this a
-    /// POST_TX assertion would halt there while succeeding in a block. Recording starts before the
-    /// transaction touches state, so the captured prestate is the transaction's own baseline.
-    /// Mirroring the EIP-7928 condition matters in both directions: on a chain that scheduled EIP-7906
-    /// without it, blocks halt, and a simulation that quietly succeeded would be worse than one that
-    /// halts alike.
-    /// </remarks>
+    /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a POST_TX transaction on a
+    /// path that is not already recording one. Returns the recorder so the caller can stop it.</summary>
+    /// <remarks>Recording starts before the transaction touches state, so the prestate is its own baseline.
+    /// The EIP-7928 condition mirrors block processing in both directions: without it, simulation could
+    /// succeed on a chain whose blocks halt.</remarks>
     private IBlockAccessListSource? BeginPostTxDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
     {
         // The in-pool prefix simulation stops before the body, so no POST_TX frame ever runs under it.

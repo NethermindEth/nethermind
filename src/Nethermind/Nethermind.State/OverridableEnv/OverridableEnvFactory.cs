@@ -16,9 +16,8 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
     public IOverridableEnv Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        // Only worth a layer on a chain that ever records a diff to read; these envs also back
-        // eth_simulateV1 and the tracers, which bring their own recorder and would otherwise stack an
-        // idle one on top.
+        // eth_simulateV1 and the tracers share these envs and bring their own recorder, so only add one
+        // where a diff can actually be read.
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) =>
@@ -27,8 +26,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                 .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState);
             if (recordsTransactionDiffs)
             {
-                // Idle until a transaction that reads its own diff switches it on, so that when one does,
-                // the whole stack - tx processor and code repository alike - records into a single slice.
+                // At scope level so the tx processor and the code repository share one slice.
                 builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
             }
             builder

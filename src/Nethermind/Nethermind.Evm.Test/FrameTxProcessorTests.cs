@@ -2378,7 +2378,6 @@ public class FrameTxProcessorTests
             DecodedMaxFeePerGas = 1,
         };
 
-    // A halt in the VERIFY prefix invalidates the transaction like any other.
     [TestCase(Instruction.TXTRACE)]
     [TestCase(Instruction.TXDIFF)]
     [TestCase(Instruction.EVENTDATACOPY)]
@@ -2392,8 +2391,7 @@ public class FrameTxProcessorTests
         Assert.That(Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted, Is.False);
     }
 
-    // The opcodes are in the jump table for every transaction once EIP-7906 is on, so the absent frame
-    // context must halt rather than be dereferenced.
+    // The opcodes are in the jump table for every transaction once EIP-7906 is on.
     [TestCase(Instruction.TXTRACE)]
     [TestCase(Instruction.TXDIFF)]
     [TestCase(Instruction.EVENTDATACOPY)]
@@ -2437,7 +2435,7 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // Negative control: without it, a passing assertion above could just mean the harness never fails.
+    // Negative control: proves a passing assertion above is not just an inert harness.
     [Test]
     public void Execute_TxDiff_WrongExpectation_FailsTheAssertion()
     {
@@ -2470,7 +2468,6 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // The logs come from the frame-transaction log buffer shared across frames and nested calls.
     [Test]
     public void Execute_TxTraceAndEventDataCopy_ReadTransactionLogs()
     {
@@ -2488,7 +2485,7 @@ public class FrameTxProcessorTests
             (Txtrace(0x0F, 0), To32(topic)),                    // topic0
             (Txtrace(0x13, 0), To32(32)),                       // data length
             (Txdiff(0x08, Observer, 0), To32(1)),               // address_events_count
-                                                                // EVENTDATACOPY(eventIndex 0, memOffset 0, dataOffset 0, length 32) then MLOAD(0).
+                                                                // EVENTDATACOPY(event, memOffset, dataOffset, length), then MLOAD.
             (Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(0)
                 .Op(Instruction.EVENTDATACOPY).PushData(0).Op(Instruction.MLOAD).Done, To32(data))));
 
@@ -2511,8 +2508,7 @@ public class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
-    // A TXDIFF param that falls back to live state (0x00-0x05) reads like any other state-reading
-    // opcode, so its access must reach the EIP-7928 block access list.
+    // A TXDIFF param that falls back to live state reads like any other state-reading opcode.
     [TestCase(true, false, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList")]
     [TestCase(false, false, TestName = "Execute_WithoutTxDiff_TheAccountStaysOutOfTheBlockAccessList")]
     [TestCase(true, true, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList_Parallel")]
@@ -2560,11 +2556,8 @@ public class FrameTxProcessorTests
         return bytes;
     }
 
-    /// <summary>
-    /// Builds POST_TX assertion bytecode: each <paramref name="asserts"/> entry runs a value-producing
-    /// snippet then compares its 32-byte result to the expected word, reverting on any mismatch and
-    /// stopping (assertion holds) only if all match. Failure is observed via the frame receipt status.
-    /// </summary>
+    /// <summary>Builds POST_TX bytecode that reverts unless every <paramref name="asserts"/> snippet
+    /// produces its expected word. A failed assertion shows up as the frame receipt status.</summary>
     private static byte[] PostTxAssertAll(params (byte[] producer, byte[] expected32)[] asserts)
     {
         int total = 0;
@@ -2597,8 +2590,7 @@ public class FrameTxProcessorTests
 
     private (TransactionResult result, CallOutputTracer tracer) ProcessTraced(Transaction tx, out BlockAccessListAtIndex slice, bool parallel = false)
     {
-        // parallel: true is the read path a validating node takes — storage reads are served from the
-        // recorded change rather than from the base state.
+        // parallel: true serves storage reads from the recorded change, as a validating node does.
         TracedAccessWorldState tracedState = new(_stateProvider, parallel);
         slice = new BlockAccessListAtIndex();
         tracedState.SetGeneratingBlockAccessList(slice);
@@ -2616,8 +2608,8 @@ public class FrameTxProcessorTests
         return (result, tracer);
     }
 
-    /// <summary>Runs <paramref name="tx"/> the way <c>eth_call</c> does: an idle recorder in the stack
-    /// and no block-level slice, so the transaction has to start its own to be able to read its diff.</summary>
+    /// <summary>Runs <paramref name="tx"/> as <c>eth_call</c> does: an idle recorder and no block-level
+    /// slice, so the transaction must start its own to read its diff.</summary>
     private (TransactionResult result, CallOutputTracer tracer) CallSimulated(Transaction tx)
         => CallSimulated(tx, out _);
 
@@ -2653,8 +2645,7 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // The catastrophic-and-silent regression: if the per-transaction install ever displaced the block's
-    // own slice, that transaction's changes would be dropped from the block access list.
+    // Displacing the block's own slice would silently drop the transaction from the block access list.
     [Test]
     public void Execute_PostTxAssertionWhileABlockAccessListIsRecording_KeepsTheBlockSlice()
     {
@@ -2667,11 +2658,9 @@ public class FrameTxProcessorTests
             out BlockAccessListAtIndex slice);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        // The slice handed to the processor is still the one recording, and still holds the body's write.
         Assert.That(slice.GetAccountChanges(Observer)!.StorageChangeCount, Is.EqualTo(1));
     }
 
-    // The per-transaction slice must not outlive the transaction that needed it.
     [Test]
     public void CallAndRestore_PostTxAssertion_LeavesTheRecorderIdleAfterwards()
     {

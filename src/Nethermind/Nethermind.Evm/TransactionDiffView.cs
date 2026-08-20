@@ -11,15 +11,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>
-/// EIP-7906: an ordered, net-collapsed snapshot of a transaction's state diff and logs, built once
-/// per frame transaction and shared by its POST_TX frames.
-/// </summary>
-/// <remarks>
-/// The in-flight BAL slice already net-collapses writes and captures the prestate values, so this type
-/// only adds the spec's enumeration order and per-address indexes that make keyed TXDIFF lookups O(1).
-/// Safe to cache: a POST_TX frame is static, so the diff cannot change under it.
-/// </remarks>
+/// <summary>EIP-7906: ordered view of a transaction's state diff and logs, shared by its POST_TX frames.</summary>
+/// <remarks>The BAL slice already net-collapses writes and holds the prestate; this adds only the spec's
+/// enumeration order and the per-address indexes that make keyed TXDIFF lookups O(1).</remarks>
 internal sealed class TransactionDiffView
 {
     public readonly record struct SlotRef(Address Address, UInt256 Key);
@@ -65,8 +59,7 @@ internal sealed class TransactionDiffView
 
     public static TransactionDiffView Build(BlockAccessListAtIndex slice, LogEntry[] logs)
     {
-        // AccountChanges also holds read-only accesses, so filter first: the sort is then proportional to
-        // the diff rather than to the access set.
+        // AccountChanges also holds read-only accesses; filtering first keeps the sort down to the diff.
         List<AccountChangesAtIndex> accounts = [];
         foreach (AccountChangesAtIndex account in slice.AccountChanges)
         {
@@ -148,8 +141,7 @@ internal sealed class TransactionDiffView
         return result;
     }
 
-    // Spec contracts_deployed: empty-code hash to a non-empty hash that is not an EIP-7702 delegation
-    // designator. A CREATE leaving empty code records no CodeChange, so it is excluded for free.
+    // Spec contracts_deployed: empty code to non-empty, excluding EIP-7702 delegation designators.
     private static bool IsDeployment(AccountChangesAtIndex account)
         => account.CodeChange is { Code: { Length: > 0 } code }
            && (account.PreTxCode is null || account.PreTxCode.Length == 0)

@@ -35,9 +35,8 @@ public class ShareableTxProcessingSourceTests
         _container?.Dispose();
     }
 
-    // EIP-7906: a POST_TX frame reads the transaction's own diff, which exists only if something records
-    // it, and eth_call has no block-level recorder. These envs also back mempool admission and the
-    // parallel block-access-list parent readers, so a chain that never schedules the fork pays nothing.
+    // eth_call has no block-level recorder, and these envs also back mempool admission and the parallel
+    // BAL parent readers, so a chain that never schedules the fork must pay nothing.
     [TestCase(false, TestName = "Create_ForkNeverScheduled_NoDiffRecorder")]
     [TestCase(true, TestName = "Create_ForkScheduled_CarriesAnIdleDiffRecorder")]
     public void Create_DiffRecorderFollowsTheForkSchedule(bool schedulesEip7906)

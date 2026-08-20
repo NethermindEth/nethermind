@@ -53,9 +53,8 @@ public class DisposableScopeOverridableEnvTests
         Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
     }
 
-    // EIP-7906: a POST_TX frame reads the transaction's own diff, so a chain that schedules the fork
-    // carries a recorder here. It stays idle - which is what keeps state overrides in the prestate - and
-    // the transaction processor must share the very instance the scope hands out, or the opcodes see no diff.
+    // Idle is what keeps state overrides in the prestate, and the processor must share the very
+    // instance the scope hands out or the opcodes see no diff.
     [TestCase(false, TestName = "BuildAndOverride_ForkNeverScheduled_NoDiffRecorder")]
     [TestCase(true, TestName = "BuildAndOverride_ForkScheduled_CarriesAnIdleDiffRecorderSharedWithTheProcessor")]
     public void BuildAndOverride_DiffRecorderFollowsTheForkSchedule(bool schedulesEip7906)
@@ -122,7 +121,6 @@ public class DisposableScopeOverridableEnvTests
 
             WorldStateManager = _container.Resolve<IWorldStateManager>();
             ILifetimeScope rootLifetime = _container.Resolve<ILifetimeScope>();
-            // A caller-supplied provider drives the fork-schedule gates the factory reads at construction.
             IOverridableEnvFactory envFactory = specProvider is null
                 ? _container.Resolve<IOverridableEnvFactory>()
                 : new OverridableEnvFactory(WorldStateManager, rootLifetime, specProvider);

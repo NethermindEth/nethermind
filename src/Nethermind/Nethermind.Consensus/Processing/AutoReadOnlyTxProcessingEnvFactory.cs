@@ -17,8 +17,8 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
     public IReadOnlyTxProcessorSource Create()
     {
         IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
-        // These envs also back mempool admission and the parallel block-access-list parent readers, so the
-        // EIP-7906 diff recorder is only worth a layer on a chain that ever records a diff to read.
+        // Mempool admission and the parallel BAL parent readers share these envs, so only add a recorder
+        // where a diff can actually be read.
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
@@ -28,8 +28,7 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
                 .AddSingleton<AutoReadOnlyTxProcessingEnv>();
             if (recordsTransactionDiffs)
             {
-                // Idle until a transaction that reads its own diff switches it on, so that when one does,
-                // the whole stack - tx processor and code repository alike - shares a single slice.
+                // At scope level so the tx processor and the code repository share one slice.
                 builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
             }
         });

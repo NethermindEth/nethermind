@@ -18,16 +18,13 @@ using Nethermind.Int256;
 namespace Nethermind.State;
 
 /// <remarks>
-/// Recording is active only while <see cref="SetGeneratingBlockAccessList"/> holds a slice; with none
-/// installed every member delegates straight to the decorated state, so the decorator can sit
-/// permanently in a simulation stack and be switched on for the transactions that need a diff.
-/// The block lifecycle methods (<see cref="Clear"/>, <see cref="SetIndex"/>, <see cref="IncrementIndex"/>)
-/// deliberately keep dereferencing the slice, so block processing still fails fast on a missed setup -
-/// at its per-block <c>Setup</c> rather than silently emitting an empty BAL.
+/// Records only while <see cref="SetGeneratingBlockAccessList"/> holds a slice, so the decorator can sit
+/// idle in a simulation stack; with none installed every member delegates to the decorated state.
+/// <see cref="Clear"/>, <see cref="SetIndex"/> and <see cref="IncrementIndex"/> still dereference it, so a
+/// missed setup in block processing fails fast at <c>Setup</c> instead of emitting an empty BAL.
 /// </remarks>
 public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
-    // Null while not recording; see class remarks.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
     private UInt256 _scratchBalance;

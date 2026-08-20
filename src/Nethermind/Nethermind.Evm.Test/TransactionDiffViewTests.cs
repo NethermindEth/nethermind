@@ -9,9 +9,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>EIP-7906 diff classification, driven straight from a BAL slice.</summary>
-/// <remarks>Slice-level rather than end to end because the delegation-designator case below is not
-/// reachable through a frame transaction.</remarks>
+/// <summary>EIP-7906 diff classification, driven from a BAL slice because the delegation-designator
+/// case below is not reachable through a frame transaction.</summary>
 [TestFixture]
 public class TransactionDiffViewTests
 {
