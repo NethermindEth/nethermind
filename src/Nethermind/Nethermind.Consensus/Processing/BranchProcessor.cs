@@ -155,8 +155,8 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
-                // EIP-7805 (FOCIL): a signal, not a rejection — the block is still committed and the
-                // consensus layer reacts to it. Runs here because it reads post-execution state.
+                // A signal, not a rejection: the block is still committed. Runs here because it reads
+                // post-execution state.
                 bool inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider, blockOptions);
                 processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
                 suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;

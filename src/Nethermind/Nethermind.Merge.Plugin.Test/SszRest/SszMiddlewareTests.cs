@@ -131,9 +131,8 @@ public class SszMiddlewareTests
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
         ];
 
-    // A fork whose spec maps a resource to a method version with no handler registered at that version
-    // routes to nothing — the endpoint is advertised and recognised, but unservable. Nothing else here
-    // catches that, since the handler set is assembled by hand.
+    // A resource mapped to a method version with no registered handler is advertised and recognised but
+    // unservable, and nothing else catches that since the handler set is assembled by hand.
     [Test]
     public void Every_route_a_fork_resolves_has_a_handler()
     {
@@ -154,8 +153,7 @@ public class SszMiddlewareTests
         Assert.That(missing, Is.Empty);
     }
 
-    // Coverage above is only meaningful if this fixture's hand-built set matches what production
-    // registers; the bridges are lazy factories, so Configure resolves nothing off the substitute.
+    // The coverage above only means something if this hand-built set matches what production registers.
     [Test]
     public void Configurer_registers_the_handler_set_this_fixture_builds()
     {
@@ -1269,7 +1267,7 @@ public class SszMiddlewareTests
             ParentBeaconBlockRoot = TestItem.KeccakA,
         });
 
-    // EIP-7805 (FOCIL): the three Bogota methods must resolve to a handler (not 404) once advertised over SSZ.
+    // The three Bogota methods must resolve to a handler once advertised over SSZ.
     [Test]
     public async Task NewPayloadV6_bogota_routes_to_engine_newPayloadV6()
     {

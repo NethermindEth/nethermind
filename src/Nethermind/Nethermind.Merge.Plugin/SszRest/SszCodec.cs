@@ -104,8 +104,7 @@ public static class SszCodec
         }
     }
 
-    // ByteVector[8]: transmitted as-is (no LE flip — the bytes are already the opaque token;
-    // the spec says treat payload_id as opaque bytes, not a uint64). Empty list when there is no build.
+    // ByteVector[8] transmitted as-is: the spec treats payload_id as opaque bytes, not a uint64.
     private static SszPayloadId[] BuildPayloadIdList(string? payloadId)
     {
         if (payloadId is null) return [];

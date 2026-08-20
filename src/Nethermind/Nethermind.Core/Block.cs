@@ -139,8 +139,8 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
-    // EIP-7805: set by BlockProcessor after the post-execution IL check. False means the block is
-    // valid and executable but didn't honour the inclusion list (INCLUSION_LIST_UNSATISFIED).
+    // Set after the post-execution check: false means the block is valid and executable but did not
+    // honour its inclusion list (EIP-7805).
     [JsonIgnore]
     public bool IsInclusionListSatisfied { get; set; } = true;
 

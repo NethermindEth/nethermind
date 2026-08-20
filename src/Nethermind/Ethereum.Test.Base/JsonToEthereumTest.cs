@@ -99,8 +99,8 @@ namespace Ethereum.Test.Base
                 return engineNewPayload.ValidationError;
             }
 
-            // An inline validation error trails the method's real arguments; newPayloadV6 (EIP-7805)
-            // adds the inclusion list as a fifth one, so index 4 there is the list, not the error.
+            // An inline validation error trails the real arguments, and newPayloadV6 adds a fifth one,
+            // so index 4 there is the inclusion list rather than the error.
             int validationErrorParamIndex = newPayloadVersion >= 6 ? 5 : newPayloadVersion >= 4 ? 4 : 3;
             if (engineNewPayload.Params.Length <= validationErrorParamIndex)
             {

@@ -77,17 +77,14 @@ public class ExecutionPayloadParams(
                 return ValidationResult.Fail;
             }
 
-            // The flattened aggregate spans up to IL_COMMITTEE_SIZE members, each bounded by
-            // MAX_BYTES_PER_INCLUSION_LIST. Bound both the entry count and the raw byte total so an
-            // authenticated-but-faulty CL cannot force decode/recover work far beyond any valid FOCIL
-            // input (empty entries cost no bytes but still allocate a slot per entry downstream).
+            // Bound entry count and byte total separately so a faulty consensus client cannot force
+            // decode work beyond any valid input; empty entries cost no bytes but still allocate a slot.
             if (InclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions)
             {
                 error = "Inclusion list exceeds the maximum number of transactions";
                 return ValidationResult.Fail;
             }
 
-            // Entry count is already bounded above, so summing then checking once is bounded work.
             long totalBytes = 0;
             for (int i = 0; i < InclusionListTransactions.Length; i++)
                 totalBytes += InclusionListTransactions[i]?.Length ?? 0;
@@ -268,11 +265,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     }
 }
 
-/// <summary>
-/// A Bogota (EIP-7805) newPayload request, distinguished from its Amsterdam counterpart so that
-/// handlers shared by both forks can tell which engine API version they are serving — the payload
-/// type alone no longer does, since <see cref="ExecutionPayloadV4"/> spans the two.
-/// </summary>
+/// <summary>An EIP-7805 newPayload request, distinguished from its predecessor so that handlers shared
+/// by both forks can tell which version they serve: <see cref="ExecutionPayloadV4"/> spans the two.</summary>
 public sealed class InclusionListExecutionPayloadParams(
     ExecutionPayloadV4 executionPayload,
     Hash256?[]? blobVersionedHashes,

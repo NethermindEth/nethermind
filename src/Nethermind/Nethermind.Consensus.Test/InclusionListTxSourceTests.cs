@@ -53,7 +53,7 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
-    // Each build sees only its own IL (scoped by PayloadAttributes) — a concurrent FCU can't leak another's.
+    // Scoped by PayloadAttributes, so a concurrent FCU can't leak another build's IL.
     [Test]
     public void Inclusion_list_is_scoped_per_build()
     {
@@ -88,7 +88,7 @@ public class InclusionListTxSourceTests
     [Test]
     public void SupportsBlobs_is_false() => Assert.That(CreateSource().SupportsBlobs, Is.False);
 
-    // FOCIL: a blob IL entry must be dropped, never forwarded into block production.
+    // A blob IL entry must be dropped, never forwarded into block production.
     [Test]
     public void Blob_transactions_are_filtered_out()
     {
@@ -116,8 +116,7 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
-    // The producer offers each IL tx once, so a sender's nonces must come out ascending even when the
-    // (shuffled) list presents them in reverse — otherwise the higher nonce is skipped and never revisited.
+    // The producer offers each IL tx once, so a shuffled list must still come out in ascending nonce order.
     [Test]
     public void Sender_nonces_are_ordered_ascending()
     {
@@ -133,8 +132,7 @@ public class InclusionListTxSourceTests
             Is.EqualTo([0ul, 1ul]));
     }
 
-    // Senders must keep their first-appearance order: a plain (sender, nonce) sort would systematically
-    // favour low-address senders when the list doesn't all fit in the block.
+    // First-appearance order: sorting by address would favour low-address senders on a truncated list.
     [Test]
     public void Sender_order_of_first_appearance_is_preserved()
     {

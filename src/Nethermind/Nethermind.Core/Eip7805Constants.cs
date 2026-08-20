@@ -8,11 +8,11 @@ public static class Eip7805Constants
     public const int MaxBytesPerInclusionList = 8192;
     // Conservative lower bound for an encoded transaction's size.
     public const int MinTransactionSizeBytes = 32;
-    // Theoretical bound: the spec caps bytes, not tx count. Used as a stackalloc bound.
+    // The spec caps bytes, not tx count; this is a stackalloc bound only.
     public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList / MinTransactionSizeBytes;
-    // EIP-7805 IL_COMMITTEE_SIZE: the flattened newPayloadV6 aggregate spans at most this many members' lists.
+    // IL_COMMITTEE_SIZE: the flattened newPayloadV6 aggregate spans at most this many members' lists.
     public const int InclusionListCommitteeSize = 16;
-    // Upper bound on the flattened aggregate handed to newPayloadV6 (committee members × per-member byte cap).
+    // Upper bound on the flattened aggregate handed to newPayloadV6.
     public const int MaxAggregateInclusionListBytes = InclusionListCommitteeSize * MaxBytesPerInclusionList;
     // Corresponding entry-count bound: empty entries cost no bytes but still allocate a slot downstream.
     public const int MaxAggregateInclusionListTransactions = MaxAggregateInclusionListBytes / MinTransactionSizeBytes;

@@ -149,8 +149,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
         Hash256? blockHash = block.Hash!;
-        // EIP-7805 (FOCIL): keep the full block for IL-bearing payloads — InclusionListTransactions
-        // aren't in RLP, so a hash-only ref re-resolved from the DB would drop them and pass a censoring payload.
+        // InclusionListTransactions aren't in RLP, so a hash-only ref re-resolved from the DB would drop
+        // them and pass a censoring payload.
         BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
@@ -405,7 +405,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
                 else if (!processedBlock.IsInclusionListSatisfied)
                 {
-                    // EIP-7805: block was committed normally; signal the CL via newPayload status only.
+                    // The block was committed normally; signal the CL via newPayload status only.
                     NotifyInclusionListUnsatisfied(blockRef, processedBlock);
                 }
                 else

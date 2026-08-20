@@ -11,11 +11,7 @@ using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
-/// <summary>
-/// Handles <c>GET /engine/v2/inclusion_list</c> for Bogota (EIP-7805 / FOCIL), the SSZ-REST equivalent
-/// of <c>engine_getInclusionListV1</c>. Parameterless per execution-apis#609: the inclusion list is
-/// drawn from the node's local mempool.
-/// </summary>
+/// <summary>SSZ-REST equivalent of <c>engine_getInclusionListV1</c>.</summary>
 public sealed class GetInclusionListSszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "GET";

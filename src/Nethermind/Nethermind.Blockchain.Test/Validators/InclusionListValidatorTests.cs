@@ -40,36 +40,29 @@ public class InclusionListValidatorTests
             yield return Case("Wrong nonce", [BuildTx(nonce: 5, to: TestItem.AddressB)], true);
             yield return Case("Gas price below base fee", [BuildTx(gasPrice: 1.GWei, to: TestItem.AddressB)], true, baseFee: 5.GWei);
             yield return Case("Gas limit exceeds remaining block gas", [BuildTx(gasLimit: 25_000_000, to: TestItem.AddressB)], true, gasUsed: 10_000_000);
-            // Regression: a GasLimit above the block gas limit can never fit. The remaining-gas guard must
-            // reject it (ulong-safe); block.GasLimit - tx.GasLimit would underflow and mark the block unsatisfied.
+            // Regression: block.GasLimit - tx.GasLimit would underflow and mark the block unsatisfied.
             yield return Case("Gas limit exceeds block gas limit", [BuildTx(gasLimit: 100_000_000, to: TestItem.AddressB)], true);
             // An included tx and a not-appendable (wrong nonce) tx both absolve the builder.
             yield return Case("Partially included, remainder invalid", [_validTx, BuildTx(nonce: 7, value: UInt256.One, to: TestItem.AddressB)], true, blockTxs: [_validTx]);
-            // Post-execution semantics: a same-nonce replacement tx advances the sender nonce, so the IL tx is no longer appendable.
+            // A same-nonce replacement advances the sender nonce, so the IL tx is no longer appendable.
             yield return Case("Same-nonce replacement advances nonce", [_validTx], true, blockTxs: [BuildTx(value: UInt256.One, to: TestItem.AddressC)], senderNonce: 1);
             // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
-            // The blob carve-out applies to building an IL, not to judging one: an omitted blob tx that
-            // could have been included still leaves the payload unsatisfied.
+            // The blob carve-out applies to building an IL, not to judging one.
             yield return Case("Blob tx", [BuildBlobTx()], false);
-            // Blob gas is paid up front, so a blob fee beyond the sender's balance makes the tx
-            // unappendable even though its non-blob cost fits comfortably.
+            // Blob gas is paid up front, so a blob fee beyond the balance makes the tx unappendable.
             yield return Case("Blob tx cannot afford blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
-            // Appendability uses full tx well-formedness: a malformed type-2 tx (tip > fee cap) that
-            // normal execution rejects must not be reported appendable, so the payload stays satisfied.
+            // A tx normal execution rejects must not be reported appendable.
             yield return Case("Malformed 1559 tx (tip > fee cap)", [BuildMalformed1559Tx()], true);
-            // EEST regression (test_block_with_intrinsic_gas_too_low_pending_il_tx_is_valid):
-            // a tx whose GasLimit is below the intrinsic cost cannot execute.
-            // Non-self recipient so we hit the full 21_000 floor (self-transfers collapse into
-            // TX_BASE_COST=12_000 post-EIP-2780; the point of the case is intrinsic > gasLimit).
+            // A tx whose GasLimit is below the intrinsic cost cannot execute.
+            // Non-self recipient so the full 21_000 floor applies rather than the EIP-2780 self-transfer cost.
             yield return Case("Intrinsic gas too low", [BuildTx(gasLimit: 20_999, to: TestItem.AddressB)], true);
-            // EIP-2780: a data-free self-transfer costs 12000 intrinsic, so with 12000–20999 gas left it
-            // still fits — the 21000-gas full-block shortcut must not report "satisfied".
+            // A data-free self-transfer costs 12000 intrinsic (EIP-2780), so the 21000-gas full-block
+            // shortcut must not report "satisfied".
             yield return Case("Self-transfer fits under EIP-2780 12000 base", [BuildTx(gasLimit: 15_000, to: TestItem.AddressA)], false, gasUsed: 29_985_000);
             // 65536 * 2^240 wraps UInt256 to 0, faking an affordable cost; the overflow-checked path rejects it.
             yield return Case("Tx cost overflows 256 bits", [BuildTx(gasLimit: 65_536, gasPrice: new UInt256(0, 0, 0, 1UL << 48), value: UInt256.One, to: TestItem.AddressB)], true);
-            // Spec disallows duplicates, but adversarial input must not cause false rejection:
-            // the duplicate correctly fails the appendability check (nonce advanced).
+            // The spec disallows duplicates, but adversarial input must not cause false rejection.
             yield return Case("Duplicate IL entries with tx included", [_validTx, _validTx], true, blockTxs: [_validTx], senderNonce: 1);
         }
     }
@@ -89,9 +82,8 @@ public class InclusionListValidatorTests
         Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
     }
 
-    // Withdrawals land after the block's transactions, so an appended tx could not have spent
-    // them. Judged against raw post-block balance the sender looks funded and the block looks
-    // censoring; only the pre-withdrawal balance gives the right answer.
+    // Withdrawals land after the block's transactions, so judging against the raw post-block balance
+    // would make an honest builder look like a censor.
     [TestCase(0UL, ExpectedResult = false, TestName = "Sender funded before withdrawals is appendable")]
     [TestCase(9_500_000_000UL, ExpectedResult = true, TestName = "Sender funded only by this block's withdrawal is not appendable")]
     public bool Withdrawals_are_not_spendable_by_an_appended_tx(ulong withdrawnGwei)
@@ -171,8 +163,7 @@ public class InclusionListValidatorTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-    // A type-2 tx with maxPriorityFeePerGas > maxFeePerGas is rejected by normal transaction
-    // validation, so an omitted entry like this must be treated as not appendable.
+    // Rejected by normal transaction validation, so an omitted entry like this is not appendable.
     private static Transaction BuildMalformed1559Tx() =>
         Build.A.Transaction
             .WithType(TxType.EIP1559)

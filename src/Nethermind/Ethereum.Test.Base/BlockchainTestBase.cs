@@ -487,8 +487,7 @@ public abstract class BlockchainTestBase
                 if (payloadStatus.ValidationError is not null)
                     lastValidationError = payloadStatus.ValidationError;
 
-                // FCU after INCLUSION_LIST_UNSATISFIED too — the block is committed, so the head
-                // must advance to match the fixture's lastblockhash/postState.
+                // The block is committed even when unsatisfied, so the head must still advance.
                 if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                 {
                     string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
@@ -751,8 +750,7 @@ public abstract class BlockchainTestBase
             stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
         }
 
-        // Genesis allocation semantics, as in GenesisBuilder: EIP-158 must not prune a pre-alloc
-        // account that is empty but holds storage.
+        // As in GenesisBuilder: EIP-158 must not prune a pre-alloc account that is empty but holds storage.
         stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
         stateProvider.CommitTree(0);
         stateProvider.Reset();

@@ -9,7 +9,7 @@ public class Constants
     public const string DEFAULT_ARCHIVE_VERSION = "tests-glamsterdam-devnet@v8.1.0";
     public const string DEFAULT_ARCHIVE_NAME = "fixtures_glamsterdam-devnet.tar.gz";
 
-    // EIP-7805 (FOCIL) fixtures for Bogota — shipped as a separate archive from the default release.
+    // EIP-7805 fixtures ship as a separate archive from the default release.
     public const string FOCIL_ARCHIVE_VERSION = "tests-focil-devnet@v0.2.0";
     public const string FOCIL_ARCHIVE_NAME = "fixtures_focil-devnet.tar.gz";
 }

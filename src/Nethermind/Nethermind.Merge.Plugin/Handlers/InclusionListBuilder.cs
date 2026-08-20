@@ -18,7 +18,6 @@ public class InclusionListBuilder(ITxPool txPool)
     }
 
     // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(MaxTxs) for any mempool size.
-    // TODO: score txs and randomly sample weighted by score.
     private static ArrayPoolListRef<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
     {
         const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
@@ -44,8 +43,7 @@ public class InclusionListBuilder(ITxPool txPool)
             seen++;
         }
 
-        // Fisher-Yates over the reservoir — the byte-cap loop below treats position as
-        // priority, so the order needs to be random too, not just the membership.
+        // The byte-cap loop below treats position as priority, so shuffle: membership alone isn't enough.
         for (int i = reservoir.Count - 1; i > 0; i--)
         {
             int j = rnd.Next(i + 1);
@@ -84,8 +82,7 @@ public class InclusionListBuilder(ITxPool txPool)
         }
         catch
         {
-            // Dispose the pooled buffers accumulated so far before propagating — the caller only
-            // disposes result on the normal return, so a mid-loop throw would otherwise leak them.
+            // The caller only disposes result on the normal return, so a mid-loop throw would leak.
             result.Dispose();
             throw;
         }

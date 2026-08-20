@@ -37,8 +37,6 @@ namespace Nethermind.Consensus.Processing
 
             if (block.InclusionListTransactions is not null)
             {
-                // FOCIL: skip errors so an IL tx with valid RLP but invalid signature
-                // leaves SenderAddress null (treated as not-appendable) rather than throwing.
                 RecoverData(block.InclusionListTransactions, releaseSpec, skipErrors: true);
             }
         }
@@ -76,7 +74,7 @@ namespace Nethermind.Consensus.Processing
         /// </remarks>
         /// <param name="txs">The transactions to recover senders and authorities for.</param>
         /// <param name="releaseSpec">The spec of the block the transactions belong to.</param>
-        /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing (FOCIL inclusion-list transactions).</param>
+        /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing.</param>
         public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false)
         {
             if (txs.Length == 0)
@@ -98,8 +96,6 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (Transaction tx in txs)
                 {
-                    // Hot path (block txs) calls Recover directly so the per-tx frame stays inlinable;
-                    // only FOCIL IL recovery needs the exception-swallowing wrapper.
                     if (skipErrors) TryRecover(tx, releaseSpec);
                     else Recover(tx, releaseSpec);
                 }
@@ -115,8 +111,8 @@ namespace Nethermind.Consensus.Processing
             return state;
         }
 
-        // FOCIL only: an inclusion-list tx with valid RLP but invalid signature leaves SenderAddress null
-        // (treated as not-appendable) rather than throwing. Block-tx recovery uses Recover directly.
+        // An inclusion-list tx with valid RLP but an invalid signature is left with a null SenderAddress,
+        // which makes it not-appendable, rather than failing the whole block.
         private void TryRecover(Transaction tx, IReleaseSpec releaseSpec)
         {
             try

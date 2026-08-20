@@ -51,7 +51,6 @@ public partial class EngineModuleTests
         Assert.That(newPayload.Data.InclusionListSatisfied, Is.True);
         Assert.That(newPayload.Data.LatestValidHash, Is.EqualTo(executionPayload.BlockHash));
 
-        // Promote the new block to head, finalized, and safe.
         ResultWrapper<ForkchoiceUpdatedV2Result> finalFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash),
             payloadAttributes: null);
@@ -99,8 +98,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        // Baseline empty payload — engine computes hashes so the test stays stable across
-        // unrelated Amsterdam changes.
+        // Let the engine compute the hashes so the test stays stable across unrelated changes.
         ResultWrapper<ForkchoiceUpdatedV2Result> baselineFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
@@ -185,8 +183,7 @@ public partial class EngineModuleTests
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
 
-        // The flattened aggregate of up to 16 committee members can exceed the per-member 8 KiB cap;
-        // newPayloadV6 must not reject it (two ~6 KiB member lists here total > MAX_BYTES_PER_INCLUSION_LIST).
+        // The flattened aggregate can exceed the per-member cap; newPayloadV6 must not reject it.
         byte[] member = new byte[Eip7805Constants.MaxBytesPerInclusionList * 3 / 4];
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
             payloadResult.Data!.ExecutionPayload,
@@ -252,8 +249,8 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
-    // The witness wrapper delegates to a newPayload version, so the Bogota rejection of V5 would leave
-    // the witness flow with no working entry point unless it gains its own V6.
+    // The witness wrapper delegates to a newPayload version, so rejecting V5 would leave it without an
+    // entry point unless it gains its own V6.
     [Test]
     public async Task NewPayloadWithWitnessV6_supersedes_V5_at_Bogota()
     {
@@ -350,8 +347,7 @@ public partial class EngineModuleTests
         Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(fcu.Data.PayloadId, Is.Not.Null);
 
-        // With a non-empty IL the producer skips its EmptyBlock fast path, so the first
-        // getPayload already returns a populated payload — no polling needed.
+        // A non-empty IL skips the producer's EmptyBlock fast path, so the first getPayload is populated.
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
         Assert.That(payloadResult.Data, Is.Not.Null);
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
@@ -493,7 +489,7 @@ public partial class EngineModuleTests
         Withdrawals = [],
         ParentBeaconBlockRoot = Keccak.Zero,
         SlotNumber = 1,
-        // V4 attributes require TargetGasLimit (added by upstream after this test was written).
+        // V4 attributes require TargetGasLimit.
         TargetGasLimit = targetGasLimit,
         InclusionListTransactions = inclusionList,
     };

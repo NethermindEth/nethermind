@@ -49,7 +49,7 @@ public class Bpo2ToAmsterdamAtTime15kEngineBlockchainTests : PyspecEngineBlockch
 public class Bpo2ToBpo3AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo2ToBpo3AtTime15kEngineBlockchainTests>;
 public class Bpo3ToBpo4AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo3ToBpo4AtTime15kEngineBlockchainTests>;
 
-// EIP-7805 (FOCIL) — Bogota fork. Loads `for_bogota` from the FOCIL devnet release.
+// Loads `for_bogota` from the EIP-7805 fixture release.
 public class BogotaEngineBlockchainTests : PyspecBogotaEngineBlockchainTestFixture;
 
 // Sync blockchain tests - exercise sync-mode payload validation alongside the standard engine flow.

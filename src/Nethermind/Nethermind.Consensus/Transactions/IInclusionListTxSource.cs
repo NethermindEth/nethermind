@@ -5,10 +5,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Transactions;
 
-/// <summary>
-/// EIP-7805 (FOCIL): the transaction source that feeds the inclusion list supplied by
-/// <c>engine_forkchoiceUpdatedV5</c> into block production.
-/// </summary>
+/// <summary>Feeds the inclusion list supplied by <c>engine_forkchoiceUpdatedV5</c> into block production (EIP-7805).</summary>
 public interface IInclusionListTxSource : ITxSource
 {
     /// <summary>Decodes and retains the inclusion list for the build identified by <paramref name="inclusionListTransactions"/>.</summary>

@@ -66,8 +66,7 @@ public class PayloadAttributesPayloadIdTests
         Assert.That(id1, Is.EqualTo(id2));
     }
 
-    // forkchoiceUpdated keeps an oversized list, so the digest has a streaming path for inputs too
-    // large to assemble in one buffer. It must agree with the pooled path byte for byte.
+    // The streaming path for oversized lists must agree with the pooled path byte for byte.
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(7)]
@@ -86,8 +85,7 @@ public class PayloadAttributesPayloadIdTests
     [Test]
     public void Oversized_inclusion_list_still_yields_a_stable_distinct_payload_id()
     {
-        // Well past the aggregate bound, so the streaming path runs — forkchoiceUpdated accepts such a
-        // list rather than rejecting it, so it must still hash.
+        // Well past the aggregate bound, so the streaming path runs.
         byte[] oversized = new byte[Eip7805Constants.MaxAggregateInclusionListBytes * 2];
 
         string id1 = BaseAttrs([oversized]).GetPayloadId(Parent());

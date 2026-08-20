@@ -204,8 +204,7 @@ public class ExecutionPayloadTests
 
         Assert.That(result.Data!, Has.Length.EqualTo(size));
 
-        // Re-encode each decoded tx and compare to the original bytes. Catches any
-        // field-mixup that a thread-unsafe decoder could produce.
+        // Re-encoding catches any field-mixup a thread-unsafe decoder could produce.
         for (int i = 0; i < size; i++)
         {
             byte[] roundTripped = TxDecoder.Instance.Encode(result.Data![i], RlpBehaviors.SkipTypedWrapping).Bytes;
@@ -248,7 +247,6 @@ public class ExecutionPayloadTests
     {
         byte[][] encoded = BuildDiverseBatch(64);
 
-        // Reference run.
         Transaction[] reference = new ExecutionPayload { Transactions = encoded }.TryGetTransactions().Data!;
         Hash256[] referenceHashes = reference.Select(t => t.Hash!).ToArray();
 
@@ -267,8 +265,7 @@ public class ExecutionPayloadTests
     [Test]
     public async Task TryGetTransactions_parallel_path_safe_under_concurrent_callers()
     {
-        // Stress: multiple threads simultaneously decoding the same payload. Catches static-shared-state
-        // bugs in the per-tx-type decoders that wouldn't surface in single-call parallel.
+        // Catches static-shared-state bugs in the per-tx-type decoders that a single call would not surface.
         byte[][] encoded = BuildDiverseBatch(32);
         Hash256[] referenceHashes = new ExecutionPayload { Transactions = encoded }
             .TryGetTransactions().Data!.Select(t => t.Hash!).ToArray();

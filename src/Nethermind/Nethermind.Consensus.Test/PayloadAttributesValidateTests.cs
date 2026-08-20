@@ -74,8 +74,7 @@ public class PayloadAttributesValidateTests
     [Test]
     public void Validate_accepts_null_inclusion_list_at_V5()
     {
-        // EIP-7805: the proposer's initial FCUv5 has no inclusion list yet (it's an optional V5 field),
-        // so a Bogota attrs shaped like V4 must validate rather than be rejected.
+        // The proposer's initial FCUv5 has no inclusion list yet, so V4-shaped attributes must validate.
         ISpecProvider sp = Substitute.For<ISpecProvider>();
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip7805Enabled.Returns(true);
@@ -95,8 +94,7 @@ public class PayloadAttributesValidateTests
     [Test]
     public void Validate_rejects_V4_fcu_at_Bogota_as_unsupported_fork()
     {
-        // EIP-7805: the null-IL V4→V5 leniency applies only to FCUv5 itself; engine_forkchoiceUpdatedV4
-        // at a Bogota timestamp must report UnsupportedFork (-38005), not InvalidPayloadAttributes (-38003).
+        // The null-IL V4-as-V5 leniency applies to FCUv5 alone; V4 must still report UnsupportedFork.
         ISpecProvider sp = Substitute.For<ISpecProvider>();
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip7805Enabled.Returns(true);

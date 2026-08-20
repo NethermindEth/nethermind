@@ -14,12 +14,9 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
-/// <summary>
-/// Handles <c>POST /engine/v2/forkchoice</c> for Bogota (EIP-7805 / FOCIL), the SSZ-REST equivalent of
-/// <c>engine_forkchoiceUpdatedV5</c>. Dedicated rather than a <see cref="ForkchoiceUpdatedSszHandler{TVersion,TWire}"/>
-/// descriptor because V5 is the only forkchoiceUpdated version returning <see cref="ForkchoiceUpdatedV2Result"/>
-/// (with the inclusion-list-satisfied flag) instead of <see cref="ForkchoiceUpdatedV1Result"/>.
-/// </summary>
+/// <summary>SSZ-REST equivalent of <c>engine_forkchoiceUpdatedV5</c>.</summary>
+/// <remarks>Dedicated rather than a <see cref="ForkchoiceUpdatedSszHandler{TVersion,TWire}"/> descriptor
+/// because V5 alone returns <see cref="ForkchoiceUpdatedV2Result"/>.</remarks>
 public sealed class ForkchoiceUpdatedV5SszHandler(IEngineRpcModule engineModule, ISpecProvider specProvider) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";

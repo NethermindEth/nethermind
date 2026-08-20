@@ -202,7 +202,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
-        // IL is a per-call parameter not bound to block.Hash — never short-circuit when one is supplied (spec demands re-checking).
+        // An IL is a per-call parameter not bound to block.Hash, so never short-circuit when one is supplied.
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block.Header))
         {
             if (!HasInclusionList(block))
@@ -211,18 +211,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return NewPayloadV1Result.Valid(block.Hash);
             }
 
-            // IL-bearing: reuse the cached result for this exact (block, IL) so re-validating a
-            // known-canonical block whose parent state may be pruned doesn't regress to SYNCING.
-            // A different IL misses the cache and falls through to re-validation below.
+            // Reuse the cached result for this exact (block, IL) so re-validating a known-canonical block
+            // whose parent state may be pruned doesn't regress to SYNCING; a different IL falls through.
             if (TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
                 return cachedResult;
             }
 
-            // No retained result (node restart / cache eviction): the block is canonical, so it was
-            // already accepted. Its inclusion-list compliance can no longer be re-derived once the parent
-            // state is pruned, and SYNCING for a canonical block is worse than the pre-EIP-7805 answer.
+            // Without the parent state the compliance of an already-accepted canonical block can no longer
+            // be re-derived, and answering SYNCING for it would be worse than answering nothing.
             if (!_stateReader.HasStateForBlock(parentHeader))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored, inclusion list not re-checkable (parent state pruned). Block {block.ToString(Block.Format.Short)} found in main chain.");
@@ -318,9 +316,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private static bool HasInclusionList(Block block) => block.InclusionListTransactions is { Length: > 0 };
 
-    // Stable fingerprint of the block's inclusion list so the result cache can be keyed by
-    // (block hash, IL digest): the same block may be resubmitted with a different IL that must be
-    // re-validated. Empty/absent IL → default, which matches non-IL cache entries.
+    // An absent IL digests to default, matching non-IL cache entries.
     private static ValueHash256 ComputeInclusionListDigest(Block block)
     {
         if (block.InclusionListTransactions is not { Length: > 0 } il) return default;
@@ -333,8 +329,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return ValueKeccak.Compute(span);
     }
 
-    // Cached result for this exact (block, IL), or false. Only a "valid block" outcome short-circuits a
-    // canonical block — never resurrect a stale Invalid/Syncing for a block the tree treats as canonical.
+    // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block
+    // the tree treats as canonical.
     private bool TryGetCachedResult(Block block, [NotNullWhen(true)] out ResultWrapper<PayloadStatusV1>? result)
     {
         result = null;
@@ -461,8 +457,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, Task senderRecoveryTask)
     {
-        // The IL is a per-call parameter, so key the result cache by (block hash, IL digest): a duplicate
-        // (same block, same IL) reuses the cached outcome, while a different IL re-validates.
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
         ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
@@ -475,7 +469,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         (ValidationResult? result, string? validationMessage) = (null, null);
 
-        // If duplicate (same block and same inclusion list), reuse the cached result.
+        // If duplicate, reuse results
         if (_latestBlocks is not null
             && _latestBlocks.TryGet(block.Hash!, out CachedPayloadResult cachedResult)
             && cachedResult.InclusionListDigest == ilDigest)
@@ -521,8 +515,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // been suggested. there are three possibilities, either the block hasn't been processed yet,
                 // the block was processed and returned invalid but this wasn't saved anywhere or the block was
                 // processed and marked as valid.
-                // if marked as processed by the block tree then return VALID, otherwise null so that it's processed a few lines below.
-                // IL-bearing payloads bypass the AlreadyKnown shortcut so the current call's IL is re-validated.
+                // if marked as processed by the block tree then return VALID, otherwise null so that it's processed a few lines below
+                // an IL-bearing payload bypasses this shortcut so that the current call's IL is re-validated
                 AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) && !HasInclusionList(block) ? ValidationResult.Valid : null,
                 _ => null
             };
@@ -673,7 +667,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         InclusionListUnsatisfied
     }
 
-    // Cached newPayload outcome, keyed by block hash; the inclusion-list digest disambiguates a
-    // resubmission of the same block with a different IL (the IL is a per-call parameter).
+    // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
     private readonly record struct CachedPayloadResult(ValidationResult Result, string? Message, ValueHash256 InclusionListDigest);
 }

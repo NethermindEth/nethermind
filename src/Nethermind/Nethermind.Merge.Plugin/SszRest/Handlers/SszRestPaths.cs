@@ -124,7 +124,6 @@ public static class SszRestPaths
         {
             [Payloads] = static spec => spec.EngineApiGetPayloadVersion,
             [PayloadBodiesByRange] = static spec => spec.EngineApiPayloadBodiesByRangeVersion,
-            // EIP-7805 (FOCIL): inclusion lists exist only from the Bogota fork onward.
             [InclusionList] = static spec => spec.IsEip7805Enabled ? 1 : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 

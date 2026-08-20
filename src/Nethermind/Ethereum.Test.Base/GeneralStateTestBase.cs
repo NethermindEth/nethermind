@@ -228,8 +228,7 @@ namespace Ethereum.Test.Base
                 stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
             }
 
-            // Genesis allocation semantics, as in GenesisBuilder: EIP-158 must not prune a pre-alloc
-            // account that is empty but holds storage.
+            // As in GenesisBuilder: EIP-158 must not prune a pre-alloc account that is empty but holds storage.
             stateProvider.Commit(specProvider.GenesisSpec, isGenesis: true);
             stateProvider.CommitTree(0);
             stateProvider.Reset();

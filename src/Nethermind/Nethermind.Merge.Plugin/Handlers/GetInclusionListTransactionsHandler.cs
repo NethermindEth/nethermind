@@ -8,16 +8,10 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-/// <summary>
-/// EIP-7805 (FOCIL): builds an inclusion list of pending mempool txs, bounded by
-/// <see cref="Eip7805Constants.MaxBytesPerInclusionList"/>. Parameterless per execution-apis#609 —
-/// the list is drawn from the node's local mempool, not keyed by a block hash.
-/// </summary>
-/// <remarks>
-/// Only chains that never schedule FOCIL are refused. The list is for the next block, whose timestamp the
-/// node cannot derive from the head — a missed slot moves it — so any narrower gate risks refusing the
-/// activation slot itself. This matches how the method and its SSZ-REST route are advertised.
-/// </remarks>
+/// <summary>Builds an inclusion list from pending mempool transactions, bounded by
+/// <see cref="Eip7805Constants.MaxBytesPerInclusionList"/> (EIP-7805).</summary>
+/// <remarks>Only chains that never schedule EIP-7805 are refused: the list is for the next block, whose
+/// timestamp a missed slot moves, so a narrower gate risks refusing the activation slot itself.</remarks>
 public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
     ISpecProvider specProvider) : IHandler<InclusionListBytes>

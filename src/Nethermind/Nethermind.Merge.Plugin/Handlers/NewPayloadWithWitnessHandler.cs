@@ -46,11 +46,8 @@ public sealed class NewPayloadWithWitnessHandler(
                 payload.ParentBeaconBlockRoot,
                 payload.ExecutionRequests));
 
-    /// <remarks>
-    /// Inclusion-list compliance is not part of the witness contract, so the extra
-    /// <see cref="PayloadStatusV2"/> field is dropped and the V5 response shape is kept —
-    /// callers read compliance for this head off <c>engine_forkchoiceUpdatedV5</c> instead.
-    /// </remarks>
+    /// <remarks>Inclusion-list compliance is not part of the witness contract, so the V5 response shape is
+    /// kept and callers read compliance for this head off <c>engine_forkchoiceUpdatedV5</c>.</remarks>
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(InclusionListExecutionPayloadParams request) =>
         HandleAsync(
             request,

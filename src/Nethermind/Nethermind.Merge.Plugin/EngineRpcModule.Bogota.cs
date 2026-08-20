@@ -18,10 +18,8 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    // EIP-7805 (FOCIL): the inclusion-list compliance computed while validating a block via
-    // engine_newPayloadV6 is retained here so engine_forkchoiceUpdatedV5 can report it for a VALID
-    // head (execution-apis#609 — "using retained inclusion-list transactions if validation happens
-    // during this call"). Bounded; a null entry means "not computed", which FCU reports as null.
+    // Inclusion-list compliance computed during engine_newPayloadV6, retained so a later
+    // engine_forkchoiceUpdatedV5 to that head can report it (execution-apis#609).
     private readonly LruCache<Hash256, bool> _inclusionListSatisfiedByBlock = new(64, "inclusionListSatisfied");
 
     private readonly IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> _newPayloadWithWitnessHandlerV6 = newPayloadWithWitnessHandlerV6;
@@ -51,11 +49,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (result.Result.ResultType != ResultType.Success)
             return ResultWrapper<PayloadStatusV2>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);
 
-        // execution-apis#609: report IL compliance via inclusionListSatisfied and keep status VALID.
-        // The internal pipeline flags a censoring payload with the INCLUSION_LIST_UNSATISFIED status.
         PayloadStatusV1 status = result.Data;
-        // Both IL statuses are pipeline-internal: the block is VALID on the wire and the compliance
-        // answer moves into inclusionListSatisfied, where null means "never evaluated".
+        // Both IL statuses are pipeline-internal: on the wire the block is VALID and the compliance
+        // answer moves into inclusionListSatisfied, where null means never evaluated (execution-apis#609).
         bool internalIlStatus = status.Status is PayloadStatus.InclusionListUnsatisfied or PayloadStatus.InclusionListNotEvaluated;
         bool? inclusionListSatisfied = status.Status switch
         {
@@ -64,7 +60,6 @@ public partial class EngineRpcModule : IEngineRpcModule
             _ => null
         };
 
-        // Retain per-block so a later forkchoiceUpdatedV5 to this head can report the same result.
         if (inclusionListSatisfied is { } satisfied && status.LatestValidHash is { } validHash)
             _inclusionListSatisfiedByBlock.Set(validHash, satisfied);
 
@@ -82,15 +77,14 @@ public partial class EngineRpcModule : IEngineRpcModule
         PayloadAttributes? payloadAttributes = null,
         BitArray? custodyColumns = null)
     {
-        // Out of fork the attributes are rejected below with -38005, so don't pay the decode first.
+        // Out of fork the attributes are rejected below with -38005, so don't pay for the decode.
         if (payloadAttributes?.InclusionListTransactions is { } ilTxs
             && _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)) is { IsEip7805Enabled: true } spec)
         {
-            // Bound the aggregate before the (expensive) RLP decode + sender recovery, matching the
-            // newPayloadV6 input cap. An oversized or unparsable IL is a no-op, not a protocol error.
+            // Bound the aggregate before the expensive decode and sender recovery; an oversized or
+            // unparsable IL is a no-op, not a protocol error.
             if (ExceedsAggregateInclusionListBound(ilTxs))
             {
-                // Warn once per FCU (not per improvement iteration) — the block will build without the IL.
                 if (_logger.IsWarn) _logger.Warn($"engine_forkchoiceUpdatedV5: discarding oversized inclusion list ({ilTxs.Length} entries); building without it.");
             }
             else
@@ -110,8 +104,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (result.Result.ResultType != ResultType.Success)
             return ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);
 
-        // execution-apis#609: report inclusion-list compliance for a VALID head from the result
-        // retained when the head was validated via engine_newPayloadV6; null when not available.
+        // execution-apis#609: report compliance retained from the head's engine_newPayloadV6 validation.
         bool? inclusionListSatisfied = result.Data.PayloadStatus.Status == PayloadStatus.Valid
             && _inclusionListSatisfiedByBlock.TryGet(forkchoiceState.HeadBlockHash, out bool satisfied)
             ? satisfied

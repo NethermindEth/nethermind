@@ -58,8 +58,8 @@ public class BlockchainProcessorTests
 
             internal readonly HashSet<Hash256> Processed = [];
 
-            // The block instance actually handed to the branch processor, so tests can assert transient
-            // (non-RLP) data like the inclusion list survived recovery-queue resolution.
+            // The instance actually handed to the branch processor, so tests can assert that transient
+            // non-RLP data survived recovery-queue resolution.
             internal readonly ConcurrentDictionary<Hash256, Block> ProcessedBlockByHash = new();
 
             private readonly ConcurrentHashSet<Hash256> _allowedToFail = [];
@@ -793,8 +793,7 @@ public class BlockchainProcessorTests
             .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
             .FullyProcessed(_blockB2D4).BecomesNewHead();
 
-    // At the recovery-queue limit an IL-bearing block must keep its full instance, not a hash-only
-    // BlockRef re-resolved from the DB, or the transient (non-RLP) inclusion list is lost before validation.
+    // A hash-only BlockRef re-resolved from the DB would lose the non-RLP inclusion list before validation.
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Inclusion_list_survives_recovery_queue_backlog()
     {

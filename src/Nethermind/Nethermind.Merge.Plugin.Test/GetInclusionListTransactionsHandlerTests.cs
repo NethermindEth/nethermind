@@ -32,9 +32,8 @@ public class GetInclusionListTransactionsHandlerTests
         return new GetInclusionListTransactionsHandler(pool, specProvider);
     }
 
-    // The committee builds a block's list before that block exists, and a missed slot moves its
-    // timestamp, so estimating it from the head can refuse the activation slot itself. Only whether
-    // the chain schedules FOCIL at all is decidable here.
+    // The list is built before its block exists and a missed slot moves the timestamp, so only whether
+    // the chain schedules inclusion lists at all is decidable here.
     [TestCase(true, true)]
     [TestCase(false, false)]
     public void Fork_gate_follows_whether_the_chain_schedules_focil(bool focilScheduled, bool supported)

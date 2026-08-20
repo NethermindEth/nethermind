@@ -168,8 +168,8 @@ public class PayloadAttributes
         for (int i = 0; i < inclusionListTransactions.Length; i++)
             totalLength += sizeof(uint) + (long)(inclusionListTransactions[i]?.Length ?? 0);
 
-        // forkchoiceUpdated keeps an oversized list rather than rejecting it, so here the size is bounded
-        // only by the engine body cap — stream those instead of renting a buffer that big in one piece.
+        // forkchoiceUpdated keeps an oversized list rather than rejecting it, so stream anything past
+        // the aggregate bounds instead of renting a buffer sized by the engine body cap.
         if (totalLength > MaxPooledInclusionListDigestBuffer)
             return ComputeInclusionListDigestStreaming(inclusionListTransactions);
 
@@ -261,9 +261,8 @@ public class PayloadAttributes
         int actualVersion = this.GetVersion();
         int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
 
-        // EIP-7805: V5's only new field (inclusionListTransactions) is optional, so a null-IL attrs is
-        // shape-identical to V4. Treat it as V5 under a Bogota timestamp so the initial FCUv5 build isn't
-        // rejected — but only for FCUv5 itself, so FCUv3/V4 still report UnsupportedFork (-38005).
+        // V5's only new field is optional, so a null-IL attributes object is shape-identical to V4. Accept
+        // it as V5 for FCUv5 alone, leaving earlier FCU versions to report UnsupportedFork.
         if (timestampVersion == PayloadAttributesVersions.V5
             && actualVersion == PayloadAttributesVersions.V4
             && fcuVersion == EngineApiVersions.Fcu.V5)
@@ -312,7 +311,7 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
             >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
-            // EIP-7805: inclusionListTransactions is optional — the initial FCUv5 build starts with it null.
+            // Optional: the initial FCUv5 build starts with it null.
             _ => null
         };
     }
