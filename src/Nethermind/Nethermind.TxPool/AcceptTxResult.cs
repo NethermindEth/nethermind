@@ -12,12 +12,13 @@ namespace Nethermind.TxPool
     /// </summary>
     /// <remarks>
     /// Equality is by an id that the declarations below hand out in order, never by a literal, so results added
-    /// independently on parallel branches cannot end up sharing one. Starting below zero keeps
-    /// <see cref="Accepted"/> at id 0, so a default-valued result still reads as accepted.
+    /// independently on parallel branches cannot end up sharing one. Ids start at zero, so <see cref="Accepted"/>,
+    /// declared first, keeps id 0 and a default-valued result still reads as accepted.
     /// </remarks>
     public readonly struct AcceptTxResult : IEquatable<AcceptTxResult>
     {
-        private static int _lastId = -1;
+        // Deliberately uninitialized: an initializer would make the ids depend on where this field sits in the file.
+        private static int _lastId;
 
         /// <summary>
         /// The transaction has been accepted. This is the only 'success' outcome.
@@ -177,10 +178,12 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Declares a result distinct from every other declared result.
         /// </summary>
+        /// <remarks>For static declarations only: every call permanently consumes an id from a process-wide
+        /// counter, so two calls with identical arguments are not equal to each other.</remarks>
         /// <param name="code">The short code reported to the submitter.</param>
         /// <param name="message">An optional detail appended to <paramref name="code"/>.</param>
         public AcceptTxResult(string code, string? message = null)
-            : this(Interlocked.Increment(ref _lastId), code, message)
+            : this(Interlocked.Increment(ref _lastId) - 1, code, message)
         {
         }
 

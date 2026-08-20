@@ -72,6 +72,18 @@ public class AcceptTxResultTests
         }
     }
 
+    /// <remarks>Ids are handed out from zero in declaration order, so this holds only while
+    /// <see cref="AcceptTxResult.Accepted"/> is declared first.</remarks>
+    [Test]
+    public void Default_result_is_accepted()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(default(AcceptTxResult), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That((bool)default(AcceptTxResult), Is.True);
+        }
+    }
+
     [Test]
     public void Bool_converts_to_accepted_or_invalid()
     {
