@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -63,6 +64,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // Resolved once at construction (via the shared HistoryRowFormat — see its remarks for why an upgrade-only,
     // never-recomputed-fresh resolution matters), then fixed for the process lifetime.
     private readonly byte _formatVersion;
+    private readonly PendingV3Writes? _pendingV3;
+    private bool _formatStamped;
 
     public HistoryWriter(IColumnsDb<FlatDbColumns> db, IColumnsDb<FlatHistoryColumns> history, IFlatDbConfig config, HistoryAvailability availability, HistoryRowFormat rowFormat, ILogManager logManager)
     {
@@ -80,7 +83,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _storageClears = new StorageClearStore(history.GetColumnDb(FlatHistoryColumns.StorageClears));
         _availability = availability;
         _formatVersion = rowFormat.FormatVersion;
+        _formatStamped = availability.StampedFormatVersion == _formatVersion;
         _isV3 = rowFormat.IsV3;
+        _pendingV3 = _isV3 ? new PendingV3Writes() : null;
         if (_isV3)
         {
             _accountHistoryV3 = new HistoryStoreV3(history.GetColumnDb(FlatHistoryColumns.AccountHistory));
@@ -119,12 +124,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// Captures the changeset of every not-yet-captured block on <paramref name="persistedHead"/>'s chain, up to and
     /// including it, advances the contiguous watermark, and makes both crash-durable before returning.
     /// </summary>
-    /// <remarks>
-    /// Walks backwards through each base's <see cref="Snapshot.From"/> link (one base == one block's changeset),
-    /// leasing from the persisted tier when long-finality Phase 2 converted the in-memory copy away, until it
-    /// connects to the existing watermark (or genesis). The watermark gates reads and advances only on a connect,
-    /// so a partial capture fails closed. On a connect the history WAL is synced before returning — the flat
-    /// persist commits only after, and must never get ahead of durable history.
+    /// <remarks>Walks backwards through the snapshot links until it connects to the existing watermark (or
+    /// genesis); a partial capture fails closed, and the history WAL is synced before the flat persist commits.
     /// </remarks>
     public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, CancellationToken cancellationToken)
     {
@@ -159,7 +160,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         // an even older touch of the same key later in the same walk (see RecordAccountV3/RecordStorageV3), or,
         // for whatever remains once the walk connects, by ResolvePendingV3 below. Not needed for v2, which
         // records a self-contained post-value per touch and has no such deferred state.
-        PendingV3Writes? pending = _isV3 ? new PendingV3Writes() : null;
+        PendingV3Writes? pending = _pendingV3;
+        pending?.Clear();
 
         StateId current = persistedHead;
         bool connected = false;
@@ -216,6 +218,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             // Durable (throwing WAL-sync) before the caller persists the flat state and prunes the sources.
             _availability.PublishWatermark(target, _formatVersion);
             _history.SyncWal();
+            _formatStamped = true;
             Metrics.FlatHistoryWatermark = (long)target;
 
             try
@@ -262,14 +265,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// Seeds the block-0 changeset from the chain's initial allocations, for a node that cannot capture genesis via
     /// the walk — without it a dormant genesis allocation reads as absent at every height.
     /// </summary>
-    /// <remarks>
-    /// Under v3 this needs no rows at all: a query at block 0 finding no captured change forward-seeks to nothing
-    /// (nothing has been captured yet) and correctly falls through to the persisted flat column, which already
-    /// holds the genesis allocations once genesis itself is processed — see <see cref="HistoryStoreV3"/>'s remarks
-    /// for why that fallback is sound. Under v2 there is no such fallback, so the allocations must be written as
-    /// explicit rows. Must run at startup before block processing: it writes without the persistence lock that
-    /// serializes <see cref="CaptureUpTo"/>, so it must not overlap a capture.
-    /// </remarks>
+    /// <remarks>v3 writes no rows (the persisted-flat fallback answers); v2 must write explicit rows. Runs at
+    /// startup before block processing - it writes without the persistence lock.</remarks>
     [SkipLocalsInit]
     public void SeedGenesis(IReadOnlyCollection<KeyValuePair<Address, Account>> allocations, in ValueHash256 genesisStateRoot)
     {
@@ -282,10 +279,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (!_isV3)
             {
-                Span<byte> accountKey = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
                 foreach (KeyValuePair<Address, Account> allocation in allocations)
                 {
-                    RecordAccount(0, allocation.Key.ToAccountPath, allocation.Value, accountKey, in columns);
+                    RecordAccount(0, allocation.Key.ToAccountPath, allocation.Value, in columns);
                 }
             }
         }
@@ -297,26 +293,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     /// <summary>
-    /// Seeds a windowed node's floor at a snap-sync pivot instead of genesis: publishes watermark = floor = pivot
-    /// so a later capture walk connects to it through the existing watermark-based connect path unchanged — a
-    /// pivot seed is just a watermark reset at a non-zero block, the same mechanism <see cref="SeedGenesis"/>
-    /// already uses at block 0.
+    /// Seeds a windowed node's floor at a snap-sync pivot: publishes watermark = floor = pivot with no rows needed
+    /// under v3 (the persisted flat column holds exactly the pivot's state; the fallback answers). No-op on v2,
+    /// which has no fallback to lean on. Call at the sync-completion seam before any block processes on top.
     /// </summary>
-    /// <remarks>
-    /// No account/storage rows are written, and none are needed: pivot-start is a v3-only mode (a query at or
-    /// after the pivot that finds no captured change forward-seeks to nothing and correctly falls through to the
-    /// persisted flat column, which already holds exactly the pivot's state — sync has just finished writing it,
-    /// nothing else has run yet). A full state copy was only ever needed to support v2 semantics, which has no
-    /// such fallback; this is a no-op on a v2 (unwindowed) writer rather than publishing a floor v2 cannot back —
-    /// pivot-starting is simply not supported for v2 in this pass, the same as today (before this feature
-    /// existed) for any node syncing without flat history. Call at the sync-completion seam (mirroring how
-    /// <see cref="IStateBoundaryWriter.OldestStateBlock"/> is advanced there for the trie backend) before any
-    /// block has been processed on top of the pivot.
-    /// </remarks>
-    public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot, IPersistence.IPersistenceReader reader)
+    public void SeedPivot(ulong pivotBlock, in ValueHash256 pivotStateRoot)
     {
         if (!_enabled || !_isV3) return;
-        _ = reader; // no state scan needed under v3 — kept in the signature for the IHistoryPivotSeeder contract
 
         using (IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch())
         {
@@ -334,9 +317,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
         HistoryColumnBatches columns = new(batch);
-        HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion);
+        HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion, stampFormat: !_formatStamped);
 
-        Span<byte> accountKey = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
         foreach (KeyValuePair<HashedKey<Address>, bool> destructed in snapshot.SelfDestructedStorageAddresses)
         {
             // Value == true means the account had no persisted storage before the destruct; PersistenceManager
@@ -344,12 +326,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (destructed.Value) continue;
 
             ValueHash256 addrHash = destructed.Key.Key.ToAccountPath;
-            ReadOnlySpan<byte> destructedAccountKey = HistoryKeyLayout.EncodeAccountKey(accountKey, addrHash);
-            _storageClears.RecordClear(block, destructedAccountKey, columns.StorageClears);
+            _storageClears.RecordClear(block, addrHash.Bytes, columns.StorageClears);
 
             if (_isV3)
             {
-                HandleSelfDestructV3(block, addrHash, destructedAccountKey, pending!, columns.StorageHistory, columns.StorageClears);
+                HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending!, columns.StorageHistory, columns.StorageClears);
             }
         }
 
@@ -357,9 +338,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         {
             Address address = change.Key.Key;
             if (_isV3)
-                RecordAccountV3(block, address.ToAccountPath, change.Value, accountKey, pending!, columns.AccountHistory);
+                RecordAccountV3(block, address.ToAccountPath, change.Value, pending!, columns.AccountHistory);
             else
-                RecordAccount(block, address.ToAccountPath, change.Value, accountKey, in columns);
+                RecordAccount(block, address.ToAccountPath, change.Value, in columns);
         }
 
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
@@ -386,9 +367,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _history.StartWriteBatch();
         HistoryColumnBatches columns = new(batch);
-        HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion);
+        HistoryAvailability.MarkBlock(columns.AvailableBlocks, block, stateRoot, _formatVersion, stampFormat: !_formatStamped);
 
-        Span<byte> accountKey = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
         Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> storageValue = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
@@ -397,21 +377,20 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (entry.SelfDestructFlag is false)
             {
-                ReadOnlySpan<byte> destructedAccountKey = HistoryKeyLayout.EncodeAccountKey(accountKey, addrHash);
-                _storageClears.RecordClear(block, destructedAccountKey, columns.StorageClears);
+                _storageClears.RecordClear(block, addrHash.Bytes, columns.StorageClears);
 
                 if (_isV3)
                 {
-                    HandleSelfDestructV3(block, addrHash, destructedAccountKey, pending!, columns.StorageHistory, columns.StorageClears);
+                    HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending!, columns.StorageHistory, columns.StorageClears);
                 }
             }
 
             if (entry.HasAccount)
             {
                 if (_isV3)
-                    RecordAccountV3(block, addrHash, entry.Account, accountKey, pending!, columns.AccountHistory);
+                    RecordAccountV3(block, addrHash, entry.Account, pending!, columns.AccountHistory);
                 else
-                    RecordAccount(block, addrHash, entry.Account, accountKey, in columns);
+                    RecordAccount(block, addrHash, entry.Account, in columns);
             }
 
             foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
@@ -428,9 +407,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    private void RecordAccount(ulong block, in ValueHash256 addrHash, Account? account, Span<byte> keyBuffer, scoped in HistoryColumnBatches columns)
+    private void RecordAccount(ulong block, in ValueHash256 addrHash, Account? account, scoped in HistoryColumnBatches columns)
     {
-        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(keyBuffer, addrHash);
+        ReadOnlySpan<byte> flatKey = addrHash.Bytes;
 
         if (account is null)
         {
@@ -456,17 +435,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _storageHistory!.RecordChange(block, flatKey, valueBuffer[..written], columns.StorageHistory);
     }
 
-    /// <summary>
-    /// v3 write: <paramref name="pending"/> tracks, per key, the newest block within this same walk whose
-    /// "value before that block" is still unknown. Since the walk visits blocks newest-to-oldest, the post-value
-    /// this call observes at <paramref name="block"/> is exactly the value the key held right before whatever
-    /// newer touch is still pending for it — that pending row can now be finalized. This call's own touch then
-    /// becomes the new pending entry, resolved either by an even older touch later in the same walk, or by
-    /// <see cref="ResolvePendingV3"/> once the walk connects.
-    /// </summary>
-    private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, Span<byte> keyBuffer, PendingV3Writes pending, IWriteBatch accountBatch)
+    /// <summary>v3 write: the walk visits newest-to-oldest, so this call's post-value finalizes the newer pending
+    /// touch of the same key, and its own touch becomes the new pending entry (resolved by an even older touch or
+    /// by <see cref="ResolvePendingV3"/> once the walk connects).</summary>
+    private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, PendingV3Writes pending, IWriteBatch accountBatch)
     {
-        byte[] flatKey = HistoryKeyLayout.EncodeAccountKey(keyBuffer, addrHash).ToArray();
+        byte[] flatKey = addrHash.Bytes.ToArray();
 
         if (account is null)
         {
@@ -492,20 +466,10 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         pending.ResolveAndTrack(pending.Storages, flatKey, block, valueBuffer[..written], storageBatch, _storageHistoryV3!);
     }
 
-    /// <summary>
-    /// v3 only: a self-destruct with persisted storage wipes every slot without leaving a per-slot changeset entry
-    /// (the live column expresses it as a range-delete), so those slots are recovered here by enumerating the
-    /// account's persisted slots and feeding each one through the same deferred pre-value mechanism as an ordinary
-    /// write, with an empty post-value (the wipe). Reading the persisted flat column is safe: capture always runs
-    /// strictly before this round's flat persist commits — see the class-level remarks and
-    /// <see cref="HistoryStoreV3"/>'s remarks for the invariant chain this relies on. A same-key touch anywhere
-    /// else in this walk — an older write establishing the true pre-destruct value, or a same-block rewrite
-    /// (resurrection) — chains against this synthetic touch exactly as it would against a real one;
-    /// <see cref="PendingV3Writes.ResolveAndTrack"/>'s same-block guard keeps the latter from corrupting either
-    /// entry. Above <see cref="DestructSlotEnumerationCap"/> slots, gives up and poisons the account for this
-    /// block instead: <see cref="HistoryReader"/>'s v3 storage path fails closed for it rather than silently
-    /// missing rows.
-    /// </summary>
+    /// <summary>v3 only: a self-destruct wipes slots via a range-delete with no per-slot entries, so the account's
+    /// persisted slots are enumerated and fed through the pending mechanism as synthetic empty-post-value touches.
+    /// Above <see cref="DestructSlotEnumerationCap"/> slots, poisons the account for this block instead; the read
+    /// path fails closed for it.</summary>
     private void HandleSelfDestructV3(ulong block, in ValueHash256 addrHash, scoped ReadOnlySpan<byte> accountKey, PendingV3Writes pending, IWriteBatch storageBatch, IWriteBatch clearsBatch)
     {
         using IPersistence.IFlatIterator slots = _persistedFlatReader.CreateStorageIterator(addrHash, ValueKeccak.Zero, ValueKeccak.MaxValue);
@@ -524,14 +488,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
     }
 
-    /// <summary>
-    /// Finalizes every key touched during this walk whose oldest (within the walk) pre-value is still unknown —
-    /// there was no even-older touch of it later in the same walk to resolve it. The persisted flat column is the
-    /// correct source for "value right before this block's change" here: capture always runs strictly before
-    /// this round's flat persist commits, so at this point the persisted column still reflects exactly the state
-    /// as of the old watermark (before this batch), and nothing between the old watermark and this pending
-    /// block touched the key — otherwise that touch would already have resolved this entry.
-    /// </summary>
+    /// <summary>Finalizes the walk's still-unresolved oldest touches from the persisted flat column - capture runs
+    /// strictly before this round's flat persist commits, so the column still holds exactly the pre-walk value for
+    /// every pending key.</summary>
     private void ResolvePendingV3(PendingV3Writes pending)
     {
         if (pending.Accounts.Count == 0 && pending.Storages.Count == 0) return;
@@ -541,17 +500,27 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch storageBatch = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
 
         Span<byte> valueBuffer = stackalloc byte[PendingPreValueBufferSize];
-        foreach ((byte[] flatKey, ulong block) in pending.Accounts.Values)
+        foreach ((byte[] flatKey, ulong block) in SortedByKey(pending.Accounts))
         {
             int written = _persistedAccounts.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), valueBuffer);
             _accountHistoryV3!.RecordPreValue(block, flatKey, valueBuffer[..Math.Max(written, 0)], accountBatch);
         }
 
-        foreach ((byte[] flatKey, ulong block) in pending.Storages.Values)
+        foreach ((byte[] flatKey, ulong block) in SortedByKey(pending.Storages))
         {
             int written = _persistedStorage.Get(flatKey, valueBuffer);
             _storageHistoryV3!.RecordPreValue(block, flatKey, valueBuffer[..Math.Max(written, 0)], storageBatch);
         }
+    }
+
+    // Sorted so the point reads walk the persisted column in key order, sharing index and data blocks instead of
+    // seeking randomly per key.
+    private static (byte[] FlatKey, ulong Block)[] SortedByKey(Dictionary<byte[], (byte[] FlatKey, ulong Block)> map)
+    {
+        (byte[] FlatKey, ulong Block)[] entries = new (byte[] FlatKey, ulong Block)[map.Count];
+        map.Values.CopyTo(entries, 0);
+        Array.Sort(entries, static (a, b) => Bytes.BytesComparer.Compare(a.FlatKey, b.FlatKey));
+        return entries;
     }
 
     /// <summary>Per-walk deferred-resolution state for v3 capture — see <see cref="RecordAccountV3"/>. Keyed
@@ -563,6 +532,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         public readonly Dictionary<byte[], (byte[] FlatKey, ulong Block)> Accounts = new(Bytes.EqualityComparer);
         public readonly Dictionary<byte[], (byte[] FlatKey, ulong Block)> Storages = new(Bytes.EqualityComparer);
 
+        public void Clear()
+        {
+            Accounts.Clear();
+            Storages.Clear();
+        }
+
         public void ResolveAndTrack(
             Dictionary<byte[], (byte[] FlatKey, ulong Block)> map,
             byte[] flatKey,
@@ -571,24 +546,20 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             IWriteBatch batch,
             HistoryStoreV3 store)
         {
-            if (map.TryGetValue(flatKey, out (byte[] FlatKey, ulong Block) older))
+            ref (byte[] FlatKey, ulong Block) entry = ref CollectionsMarshal.GetValueRefOrAddDefault(map, flatKey, out bool exists);
+            if (exists)
             {
-                if (older.Block == block)
+                if (entry.Block == block)
                 {
-                    // A second touch of the same key within the same block - e.g. a self-destruct's synthetic
-                    // wipe (HandleSelfDestructV3) and an explicit rewrite of the same slot in the same block
-                    // (resurrection). Both represent the one externally-visible change at this block; there is no
-                    // "older" entry here to resolve, and firing RecordPreValue between them would fabricate a
-                    // pre-value from whichever call happens to run second. Leave the pending entry pointed at this
-                    // block - an even older touch (elsewhere in the walk) or the persisted-flat fallback still
-                    // resolves it correctly regardless of which of the two calls ran first.
+                    // A second touch of the same key within the same block (destruct wipe + same-block rewrite):
+                    // firing RecordPreValue between them would fabricate a pre-value, so leave the entry pending.
                     return;
                 }
 
-                store.RecordPreValue(older.Block, older.FlatKey, postValue, batch);
+                store.RecordPreValue(entry.Block, entry.FlatKey, postValue, batch);
             }
 
-            map[flatKey] = (flatKey, block);
+            entry = (flatKey, block);
         }
     }
 

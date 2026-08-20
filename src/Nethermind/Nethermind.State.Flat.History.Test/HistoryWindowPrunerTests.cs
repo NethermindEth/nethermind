@@ -16,12 +16,6 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
 
-// HistoryRetentionBlocks > 0 forces the v3 (pre-value, ascending-suffix) row format - a pruner can never actually
-// run against v2 rows in production, since HistoryRetentionBlocks == 0 short-circuits RunOnePassUnderGate before
-// any scan. Every test that exercises an actual prune pass here therefore stages v3 rows and constructs the
-// writer/reader/pruner from the SAME config CreatePruner uses, mirroring the single DI-bound HistoryAvailability/
-// HistoryRowFormat pair production shares between them - the exact combination whose absence (writer/reader
-// resolved from one config, pruner assuming v2 regardless) masked the pruner's format-decode bug.
 public class HistoryWindowPrunerTests
 {
     private static readonly Address Address = TestItem.AddressA;
@@ -64,9 +58,6 @@ public class HistoryWindowPrunerTests
         Span<byte> buffer = stackalloc byte[256];
         ReadOnlySpan<byte> flatKey = AccountKey();
 
-        // Floor = 20 - 8 = 12. A v3 pre-value row at or below the floor can never answer a valid (>= floor) query
-        // (see HistoryRowFormat.RetainsNewestRowAtOrBelowFloor's remarks) - unlike v2 there is no single row to
-        // keep, so both blocks 5 and 10 must be gone entirely, leaving 15 as the answer for every query below it.
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountHistoryV3.TryGetValueBeforeNextChange(4, flatKey, buffer, out ulong foundAt1), Is.GreaterThan(0));
@@ -100,9 +91,6 @@ public class HistoryWindowPrunerTests
         pruner.Dispose();
     }
 
-    // retention == 0 means unwindowed (v2) - the only production-reachable configuration where a pruner is
-    // constructed but never actually scans (RunOnePassUnderGate returns before touching row format at all), so
-    // this is the one test in this file that legitimately stays on v2-shaped staging.
     [Test]
     public void RunOnePass_WithZeroRetentionBlocks_NeverPublishesAFloor()
     {
@@ -125,8 +113,6 @@ public class HistoryWindowPrunerTests
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 10, new Account(2, 200));
         HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
 
-        // Floor 12: v3 has no free "keep" row like v2 - ascending iteration visits block 0 first, which costs the
-        // pass's only allowed check and is deleted outright; the next row (block 5) is where the pass then yields.
         HistoryWindowPruner exhausted = CreatePruner(retentionBlocks: 8);
         exhausted.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 1));
         exhausted.Dispose();
@@ -152,10 +138,6 @@ public class HistoryWindowPrunerTests
         }
     }
 
-    // Regression for round-robin independence: account has two versions (needs two budget checks to finish its
-    // one key), storage has one (needs only one). Giving every column the same "one check" shaped budget must let
-    // storage complete while account yields — proving storage's progress does not wait behind account finishing,
-    // which the original completedAccount && PruneVersionedColumn(storage...) chain would have serialized.
     [Test]
     public void RunOnePass_StorageColumnMakesProgressEvenWhenAccountColumnDoesNotComplete()
     {
@@ -181,15 +163,12 @@ public class HistoryWindowPrunerTests
         }
     }
 
-    // Regression for PruneClearsColumn's per-account retention rule: two clears below the floor for the same
-    // account. Only the newest below-floor one is kept; that alone must still suffice for any query whose needed
-    // range includes it, since the newest is always >= any older one it superseded.
     [Test]
     public void PruneClearsColumn_KeepsOnlyTheNewestBelowFloorClearPerAccount_AndItAloneStillAnswersAQuery()
     {
         StorageClearStore clears = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageClears));
         Span<byte> accountKeyBuffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
-        byte[] flatAccountKey = HistoryKeyLayout.EncodeAccountKey(accountKeyBuffer, Address.ToAccountPath).ToArray();
+        byte[] flatAccountKey = Address.ToAccountPath.Bytes.ToArray();
 
         RecordClear(clears, flatAccountKey, block: 3);
         RecordClear(clears, flatAccountKey, block: 7);
@@ -209,9 +188,6 @@ public class HistoryWindowPrunerTests
         }
     }
 
-    // Regression for PruneBlockMarkers: the marker at exactly the floor block must survive (only markers strictly
-    // below it are dead), since HistoryReader.IsAvailable/Matches needs it to validate an EIP-1898 state root at
-    // the floor itself.
     [Test]
     public void PruneBlockMarkers_RetainsTheMarkerAtExactlyTheFloor_ForEip1898RootMatchingAtTheFloor()
     {
@@ -282,7 +258,7 @@ public class HistoryWindowPrunerTests
     private static byte[] AccountKey()
     {
         Span<byte> buffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
-        return HistoryKeyLayout.EncodeAccountKey(buffer, Address.ToAccountPath).ToArray();
+        return Address.ToAccountPath.Bytes.ToArray();
     }
 
     private static byte[] StorageKey()

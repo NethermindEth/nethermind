@@ -37,7 +37,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "A comma-separated list of contract addresses to retain unbounded (or far deeper than HistoryRetentionBlocks) flat history for, independent of the general rolling window. Static allow-list only - an address is never added or removed except by editing this config and restarting.", DefaultValue = "null")]
     string? HistorySliceAddresses { get; set; }
 
-    [ConfigItem(Description = "Once a contiguous history watermark exists, rebuild the state root from flat history rows at EVERY covered block and compare it (and the captured per-block marker) against this node's own headers - the full trustless proof of an archive's content, run once in the background. Unwindowed (v2) archives only. The range covered at the moment the check starts is what gets verified, so enable it on a node whose history is already where you want it. The pass currently holds a verified range's working set in memory; on a full mainnet archive wait for the spill-store hardening before enabling.", DefaultValue = "false")]
+    [ConfigItem(Description = "Rebuild the state root from flat history rows at every covered block and compare against this node's own headers, once, in the background. Unwindowed archives only; memory-heavy on large ranges.", DefaultValue = "false")]
     bool HistoryVerifyEveryBlock { get; set; }
 
     [ConfigItem(Description = "Concurrent segments the every-block history verification splits its range into. Each segment is independently anchored to its own start header, so segments share nothing but the read-only columns. 0 means half the processor count.", DefaultValue = "0")]

@@ -839,7 +839,7 @@ namespace Nethermind.Network.Test
                 CreatePeerManager();
             }
 
-            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, SyncConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
+            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
 
             public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 

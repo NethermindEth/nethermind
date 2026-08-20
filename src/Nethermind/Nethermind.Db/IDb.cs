@@ -31,10 +31,6 @@ namespace Nethermind.Db
         void SyncWal() => Flush(onlyWal: true);
         void Clear() { }
         void Compact() { }
-
-        /// <summary>Compacts only the given key range, rather than the whole column — the RocksDB-backed
-        /// implementations override this; other backends (in-memory test doubles) keep the no-op default.</summary>
-        void CompactRange(ReadOnlySpan<byte> fromKeyInclusive, ReadOnlySpan<byte> toKeyExclusive) { }
         void SetWriteBuffer(long sizeBytes) { }
 
         readonly struct DbMetric

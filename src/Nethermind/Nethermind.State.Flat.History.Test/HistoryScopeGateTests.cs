@@ -23,8 +23,8 @@ public class HistoryScopeGateTests
     public void TryDrainForFloorAdvance_AScopeClosedBeforeTheDrainCall_DoesNotBlockIt()
     {
         HistoryScopeGate gate = new();
-        int epoch = gate.EnterScope();
-        gate.ExitScope(epoch);
+        long scope = gate.EnterScope();
+        gate.ExitScope(scope);
 
         bool drained = gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None);
 
@@ -32,48 +32,70 @@ public class HistoryScopeGateTests
     }
 
     [Test]
-    public void TryDrainForFloorAdvance_TimesOutWhileAScopeStaysOpen_AndRestoresTheEpoch()
+    public void TryDrainForFloorAdvance_TimesOutWhileAScopeStaysOpen()
     {
         HistoryScopeGate gate = new();
-        int stuckEpoch = gate.EnterScope();
+        long stuckScope = gate.EnterScope();
 
         bool drained = gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None);
 
         Assert.That(drained, Is.False, "a scope that never closes must time out the drain, not hang forever");
 
-        // Restoration is observable: a scope entering now must join the SAME epoch as the stuck one, so a later
-        // retry keeps waiting on the one census that actually contains the stuck scope, instead of a flip having
-        // moved on to an unrelated (and trivially already-empty) slot.
-        int newEpoch = gate.EnterScope();
-        Assert.That(newEpoch, Is.EqualTo(stuckEpoch),
-            "after a timed-out drain, new scopes must keep joining the un-drained epoch until a retry actually succeeds");
-
-        gate.ExitScope(stuckEpoch);
-        gate.ExitScope(newEpoch);
+        gate.ExitScope(stuckScope);
     }
 
     [Test]
-    public void TryDrainForFloorAdvance_AfterASuccessfulDrain_ANewScopeJoinsTheOtherEpochAndDoesNotBlockIt()
+    public void TryDrainForFloorAdvance_AfterATimedOutDrain_ScopesThatOpenedAndClosedSinceDoNotBlockTheRetry()
+    {
+        HistoryScopeGate gate = new();
+        long stuckScope = gate.EnterScope();
+
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None), Is.False,
+            "precondition: the stuck scope times the first drain out");
+
+        gate.ExitScope(gate.EnterScope());
+        gate.ExitScope(stuckScope);
+
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True,
+            "once every scope has closed, a retry must succeed - a timed-out drain must not leave the gate waiting on the slot new scopes keep joining");
+    }
+
+    [Test]
+    public void TryDrainForFloorAdvance_AStuckScope_IsStillWaitedOnByEveryRetry()
+    {
+        HistoryScopeGate gate = new();
+        long stuckScope = gate.EnterScope();
+
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None), Is.False);
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None), Is.False,
+            "the stuck scope was admitted under an older floor generation, so a retry must keep waiting on it");
+
+        gate.ExitScope(stuckScope);
+        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
+    }
+
+    [Test]
+    public void TryDrainForFloorAdvance_AfterASuccessfulDrain_ANewScopeIsWaitedOnByTheNextDrain()
     {
         HistoryScopeGate gate = new();
 
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True,
-            "precondition: draining an empty gate succeeds and flips the epoch");
+            "precondition: draining an empty gate succeeds");
 
-        int epoch = gate.EnterScope();
+        long scope = gate.EnterScope();
         bool secondDrain = gate.TryDrainForFloorAdvance(TimeSpan.FromMilliseconds(50), CancellationToken.None);
 
-        Assert.That(secondDrain, Is.False, "a scope opened into the new epoch must be waited on by the next drain, not skipped");
+        Assert.That(secondDrain, Is.False, "a scope opened after the drain must be waited on by the next one, not skipped");
 
-        gate.ExitScope(epoch);
+        gate.ExitScope(scope);
     }
 
     [Test]
     public void EnterScope_ExitScope_NeverGoesNegativeUnderSequentialUse()
     {
         HistoryScopeGate gate = new();
-        int first = gate.EnterScope();
-        int second = gate.EnterScope();
+        long first = gate.EnterScope();
+        long second = gate.EnterScope();
         gate.ExitScope(first);
         gate.ExitScope(second);
 

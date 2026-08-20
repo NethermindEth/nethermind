@@ -146,65 +146,24 @@ public class SlicedReceiptRetentionTests
         Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressA)), Is.False);
     }
 
-    [Test]
-    public void ShouldRetainReceipts_returns_false_when_the_bloom_does_not_match()
-    {
-        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
-        SlicedReceiptRetention retention = new(flatDbConfig, Substitute.For<ILogIndexStorage>());
-
-        Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressB)), Is.False);
-    }
-
-    [Test]
-    public void ShouldRetainReceipts_trusts_a_matching_bloom_when_the_log_index_cannot_confirm()
+    [TestCase(false, false, 0, false, false, TestName = "bloom does not match")]
+    [TestCase(true, false, 0, false, true, TestName = "matching bloom trusted when the log index cannot confirm")]
+    [TestCase(true, true, 0, true, true, TestName = "matching bloom confirmed through the log index")]
+    [TestCase(true, true, 0, false, false, TestName = "bloom false positive refuted by the log index")]
+    [TestCase(true, true, 100, false, true, TestName = "bloom trusted when the log index does not cover the block")]
+    public void ShouldRetainReceipts_Cases(bool bloomMatches, bool indexEnabled, int indexMinBlock, bool indexHits, bool expected)
     {
         IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
         ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
-        logIndexStorage.Enabled.Returns(false);
-        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
-
-        Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressA)), Is.True);
-    }
-
-    [Test]
-    public void ShouldRetainReceipts_confirms_a_matching_bloom_through_the_log_index()
-    {
-        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
-        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
-        logIndexStorage.Enabled.Returns(true);
-        logIndexStorage.MinBlockNumber.Returns(0);
+        logIndexStorage.Enabled.Returns(indexEnabled);
+        logIndexStorage.MinBlockNumber.Returns(indexMinBlock);
         logIndexStorage.MaxBlockNumber.Returns(1000);
-        logIndexStorage.GetEnumerator(TestItem.AddressA, 5, 5).Returns(_ => new[] { 5 }.AsEnumerable().GetEnumerator());
+        logIndexStorage.GetEnumerator(TestItem.AddressA, 5, 5).Returns(_ =>
+            (indexHits ? new[] { 5 }.AsEnumerable() : Enumerable.Empty<int>()).GetEnumerator());
         SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
 
-        Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressA, 5)), Is.True);
-    }
-
-    [Test]
-    public void ShouldRetainReceipts_rejects_a_bloom_false_positive_when_the_log_index_refutes_it()
-    {
-        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
-        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
-        logIndexStorage.Enabled.Returns(true);
-        logIndexStorage.MinBlockNumber.Returns(0);
-        logIndexStorage.MaxBlockNumber.Returns(1000);
-        logIndexStorage.GetEnumerator(TestItem.AddressA, 5, 5).Returns(_ => Enumerable.Empty<int>().GetEnumerator());
-        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
-
-        Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressA, 5)), Is.False);
-    }
-
-    [Test]
-    public void ShouldRetainReceipts_trusts_the_bloom_when_the_log_index_does_not_cover_the_block()
-    {
-        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
-        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
-        logIndexStorage.Enabled.Returns(true);
-        logIndexStorage.MinBlockNumber.Returns(100);
-        logIndexStorage.MaxBlockNumber.Returns(1000);
-        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
-
-        Assert.That(retention.ShouldRetainReceipts(BlockWithBloom(TestItem.AddressA, 5)), Is.True);
+        Block block = BlockWithBloom(bloomMatches ? TestItem.AddressA : TestItem.AddressB, 5);
+        Assert.That(retention.ShouldRetainReceipts(block), Is.EqualTo(expected));
     }
 
     private static Block BlockWithBloom(Address address, ulong number = 5)

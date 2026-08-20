@@ -24,10 +24,6 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
 
-/// <summary>
-/// Regression for receipt loss across a capture breaker trip: once the trip lets the persist resume and prune the
-/// blocks' regeneration sources, a restarted node must still serve the bodies skipped since the last watermark.
-/// </summary>
 [TestFixture]
 public class ReceiptRetentionAcrossCaptureBreakerTests
 {
@@ -58,7 +54,6 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
 
         _specProvider = new TestSpecProvider(Byzantium.Instance);
         _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();
-        // A hash-valued tx index resolves without the block tree.
         _receiptConfig = new ReceiptConfig { DeriveFromState = true, CompactTxIndex = false };
         _blockTree = Substitute.For<IBlockTree>();
         _blockStore = Substitute.For<IBlockStore>();
@@ -88,7 +83,6 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
         Assert.That(CreateStorage().HasBlock(block.Number, block.Hash!), Is.False,
             "precondition: the body write is skipped while capture is healthy");
 
-        // Block 2 will never be captured, so the trip must persist its retained body.
         ISnapshotRepository failing = Substitute.For<ISnapshotRepository>();
         failing.TryLeaseInMemoryState(default, default, out _).ThrowsForAnyArgs(new IOException("disk failure"));
         for (int i = 0; i < MaxConsecutiveCaptureFailures; i++)
@@ -96,7 +90,6 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
             Assert.Throws<IOException>(() => _writer.CaptureUpTo(StateAt(2), failing, CancellationToken.None));
         }
 
-        // "Restart": a fresh storage over the same database.
         PersistentReceiptStorage restarted = CreateStorage();
 
         using (Assert.EnterMultipleScope())
@@ -120,7 +113,6 @@ public class ReceiptRetentionAcrossCaptureBreakerTests
         Block block = ProcessedBlock();
         storage.InsertDeferred(block, [Build.A.Receipt.WithCalculatedBloom().TestObject], _specProvider.GetSpec((ForkActivation)block.Number));
 
-        // Capture catches up over block 2, making it durably derivable, before the breaker trips.
         CommitBlock(1, 2);
         _writer.CaptureUpTo(StateAt(2), _tier.Repository, CancellationToken.None);
         ISnapshotRepository failing = Substitute.For<ISnapshotRepository>();

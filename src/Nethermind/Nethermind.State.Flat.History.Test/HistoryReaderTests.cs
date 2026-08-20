@@ -38,7 +38,6 @@ public class HistoryReaderTests
         _historyColumns.Dispose();
     }
 
-    // Account: nonce/balance set at block 5, overwritten at 20, deleted at 30. -1 == absent.
     [TestCase(3ul, -1)]
     [TestCase(5ul, 5)]
     [TestCase(19ul, 5)]
@@ -68,7 +67,6 @@ public class HistoryReaderTests
         }
     }
 
-    // Storage: 0xAA at block 5, 0xBBCC at block 20, cleared at block 30. null == unset.
     [TestCase(3ul, null)]
     [TestCase(5ul, "aa")]
     [TestCase(19ul, "aa")]

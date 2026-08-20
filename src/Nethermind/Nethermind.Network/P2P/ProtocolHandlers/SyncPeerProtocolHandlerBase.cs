@@ -496,13 +496,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         #region IPeerWithSatelliteProtocol
 
         private readonly ConcurrentDictionary<string, object> _protocolHandlers = new();
-        private ConcurrentDictionary<string, object> ProtocolHandlers => _protocolHandlers;
 
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => ProtocolHandlers[protocol] = protocolHandler;
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => _protocolHandlers[protocol] = protocolHandler;
 
         public bool TryGetSatelliteProtocol<T>(string protocol, out T? protocolHandler) where T : class
         {
-            if (ProtocolHandlers.TryGetValue(protocol, out object handler))
+            if (_protocolHandlers.TryGetValue(protocol, out object handler))
             {
                 protocolHandler = handler as T;
                 return protocolHandler is not null;

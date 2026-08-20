@@ -13,7 +13,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
 using NUnit.Framework;
 
-namespace Nethermind.Init.Test.FlatHistory;
+namespace Nethermind.Runner.Test.Ethereum;
 
 [TestFixture]
 public class HistoryWalkVerificationCoordinatorTests
@@ -67,8 +67,6 @@ public class HistoryWalkVerificationCoordinatorTests
     [Test]
     public async Task WhenTheWatermarkAppears_RunsTheWalkOnceAndReportsTheVerdict()
     {
-        // An empty history whose every covered block carries the empty-tree root: the walk's start state is the
-        // empty trie, nothing changes, and every header agrees - the smallest honest archive there is.
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, HistoryVerifySegments = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
         ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);

@@ -7,14 +7,8 @@ using Nethermind.Db;
 
 namespace Nethermind.State.Flat.History;
 
-/// <summary>
-/// The single owner of "which row format is this process using, and how are its rows shaped" — resolved once (via
-/// <see cref="HistoryAvailability.ResolveFormatVersion"/>) and shared by every collaborator that needs to encode,
-/// decode, or reason about <see cref="HistoryStore"/>/<see cref="HistoryStoreV3"/> row suffixes, instead of each
-/// one independently calling <see cref="HistoryAvailability.ResolveFormatVersion"/> and re-deriving an
-/// <c>_isV3</c> flag. This is what makes a decode format-correct by construction rather than by every call site
-/// remembering which suffix direction applies.
-/// </summary>
+/// <summary>The single owner of "which row format is this process using" - resolved once and shared, so no
+/// collaborator re-derives its own flag or suffix direction.</summary>
 public sealed class HistoryRowFormat
 {
     /// <exception cref="InvalidConfigurationException">The resolved format is v3 on a layout other than
@@ -51,22 +45,12 @@ public sealed class HistoryRowFormat
     /// descending suffix) for the <c>AccountHistory</c>/<c>StorageHistory</c> columns.</summary>
     public bool IsV3 { get; }
 
-    /// <summary>
-    /// Whether the window pruner must retain exactly the newest row at or below the floor per key (v2 — its
-    /// descending suffix means that single row is the answer every read in <c>[floor, next-change)</c> resolves
-    /// to via a floor-seek) or may delete every row at or below the floor unconditionally (v3 — an ascending,
-    /// pre-value row at or below the floor can never be the answer to a query at or above the floor, since a
-    /// forward-seek only ever returns a row strictly above the query block; see <see cref="HistoryStoreV3"/>'s
-    /// remarks).
-    /// </summary>
+    /// <summary>Whether the pruner must keep each key's newest row at or below the floor (v2: it answers every
+    /// read in <c>[floor, next-change)</c>) or may delete everything at or below it (v3).</summary>
     public bool RetainsNewestRowAtOrBelowFloor => !IsV3;
 
-    /// <summary>
-    /// Decodes an <c>AccountHistory</c>/<c>StorageHistory</c> row's block suffix back to a block number, per this
-    /// format's suffix direction — the complement for v2's descending suffix, the raw value for v3's ascending
-    /// one. <see cref="StorageClearStore"/> and <see cref="HistoryAvailability"/>'s own columns are unaffected:
-    /// both use a plain ascending block suffix regardless of format, so only these two columns need this.
-    /// </summary>
+    /// <summary>Decodes a history row's block suffix per this format's direction - complement for v2, raw for v3.
+    /// Only the two versioned columns need this; clears and markers are always plain ascending.</summary>
     public ulong DecodeSuffixBlock(ReadOnlySpan<byte> suffix)
     {
         ulong raw = BinaryPrimitives.ReadUInt64BigEndian(suffix);

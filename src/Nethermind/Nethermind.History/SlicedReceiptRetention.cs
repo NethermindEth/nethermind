@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -55,47 +56,6 @@ internal sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogInd
         return false;
     }
 
-    private static FrozenSet<Address> ParseAddresses(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return FrozenSet<Address>.Empty;
-        }
-
-        HashSet<Address> addresses = [];
-        foreach (Range tokenRange in raw.AsSpan().Split(','))
-        {
-            ReadOnlySpan<char> token = raw.AsSpan(tokenRange).Trim();
-            if (token.IsEmpty)
-            {
-                continue;
-            }
-
-            int separatorIndex = token.IndexOf(':');
-            ReadOnlySpan<char> addressToken = separatorIndex < 0 ? token : token[..separatorIndex];
-
-            Address? address;
-            try
-            {
-                if (!Address.TryParse(addressToken.ToString(), out address) || address is null)
-                {
-                    address = null;
-                }
-            }
-            catch (Exception)
-            {
-                address = null;
-            }
-
-            if (address is null)
-            {
-                throw new InvalidConfigurationException(
-                    $"Flat.HistorySliceAddresses entry '{token}' has address '{addressToken}', which is not a valid address.", -1);
-            }
-
-            addresses.Add(address);
-        }
-
-        return addresses.ToFrozenSet();
-    }
+    private static FrozenSet<Address> ParseAddresses(string? raw) =>
+        SliceScopeConfig.Parse(raw).Select(static entry => entry.Address).ToFrozenSet();
 }

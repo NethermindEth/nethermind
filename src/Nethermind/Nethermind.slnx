@@ -131,7 +131,6 @@
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
   <Project Path="Nethermind.History/Nethermind.History.csproj" />
   <Project Path="Nethermind.Init.Snapshot/Nethermind.Init.Snapshot.csproj" />
-  <Project Path="Nethermind.Init.Test/Nethermind.Init.Test.csproj" />
   <Project Path="Nethermind.Init/Nethermind.Init.csproj" />
   <Project Path="Nethermind.JsonRpc.SourceGenerator.Build/Nethermind.JsonRpc.SourceGenerator.Build.csproj" />
   <Project Path="Nethermind.JsonRpc.SourceGenerator/Nethermind.JsonRpc.SourceGenerator.csproj" />

@@ -61,16 +61,6 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
-    // The base DbOnTheRocks.CompactRange targets only the default column family — the same trap Flush already
-    // documents for its own base method — so this fans it out to every named column, mirroring Compact() above.
-    public override void CompactRange(ReadOnlySpan<byte> fromKeyInclusive, ReadOnlySpan<byte> toKeyExclusive)
-    {
-        foreach (T key in ColumnKeys)
-        {
-            _columnDbs[key].CompactRange(fromKeyInclusive, toKeyExclusive);
-        }
-    }
-
     /// <inheritdoc/>
     /// <remarks>
     /// The base implementation flushes only the WAL and the default column family. On a full flush this

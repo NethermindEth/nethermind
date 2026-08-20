@@ -13,7 +13,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, ITunableDb
+public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
@@ -125,15 +125,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Compact() =>
         _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
-
-    public void CompactRange(ReadOnlySpan<byte> fromKeyInclusive, ReadOnlySpan<byte> toKeyExclusive) =>
-        _rocksDb.CompactRange(fromKeyInclusive.ToArray(), toKeyExclusive.ToArray(), _columnFamily);
-
-    // Delegates to the whole underlying database rather than tuning this column family alone: for a columns-db
-    // whose column families all share one dedicated RocksDB instance (e.g. flatHistory, separate from the live
-    // flat-state db), that is already the correct scope — every sibling column shares the same write-buffer and
-    // compaction behavior regardless of which column family triggered the tune.
-    public void Tune(ITunableDb.TuneType type) => _mainDb.Tune(type);
 
     /// <summary>
     /// Not sure how to handle delete of the columns DB

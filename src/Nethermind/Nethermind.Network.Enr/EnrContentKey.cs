@@ -21,10 +21,6 @@ namespace Nethermind.Network.Enr
         public static ReadOnlySpan<byte> Eth2U8 => "eth2"u8;
 
         /// <summary>
-        /// State history this node serves to archive consumers.
-        /// </summary>
-
-        /// <summary>
         /// Name of identity scheme, e.g. "v4"
         /// </summary>
         public const string Id = "id";

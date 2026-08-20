@@ -71,16 +71,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Request<TRequest, TResponse> request,
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
-            CancellationToken token,
-            TimeSpan? timeout = null)
-            => HandleResponseInner(request, speedType, describeRequestFunc, token, timeout).Unwrap();
+            CancellationToken token)
+            => HandleResponseInner(request, speedType, describeRequestFunc, token).Unwrap();
 
         private async Task<Task<TResponse>> HandleResponseInner<TRequest, TResponse>(
             Request<TRequest, TResponse> request,
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
-            CancellationToken token,
-            TimeSpan? timeout = null
+            CancellationToken token
         )
         {
             Task<TResponse> task = request.CompletionSource.Task;
@@ -89,7 +87,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             CancellationToken cancellationToken = compositeCancellation.Token;
 
-            Task firstTask = await Task.WhenAny(task, Task.Delay(timeout ?? Timeouts.Eth, cancellationToken));
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, cancellationToken));
 
             if (ReferenceEquals(firstTask, task))
             {

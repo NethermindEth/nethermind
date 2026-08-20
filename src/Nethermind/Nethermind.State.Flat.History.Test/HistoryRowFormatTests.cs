@@ -85,6 +85,20 @@ public class HistoryRowFormatTests
     }
 
     [Test]
+    public void Resolve_WindowingConfiguredAgainstAnExistingV2Database_Refuses()
+    {
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), 1, ValueKeccak.Zero, HistoryAvailability.FormatVersion);
+        }
+
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = 100, Layout = FlatLayout.Flat };
+
+        Assert.That(() => HistoryRowFormat.Resolve(Availability(), config), Throws.InstanceOf<InvalidConfigurationException>(),
+            "v2 rows are descending post-values; reading them with v3 forward-seeks answers wrongly instead of failing, so windowing an existing v2 database must refuse outright");
+    }
+
+    [Test]
     public void Resolve_WhenTheDatabaseIsAlreadyStampedWindowed_RefusesOnANonFlatLayoutEvenWithRetentionUnset()
     {
         Availability().PublishGlobalFloor(10);

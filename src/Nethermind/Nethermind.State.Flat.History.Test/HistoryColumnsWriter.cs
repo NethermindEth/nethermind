@@ -13,18 +13,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History.Test;
 
-/// <summary>
-/// Writes history rows directly into the history columns using the same flat encoders the production writer uses,
-/// so reader/manager tests can stage a history window without driving the full capture path.
-/// </summary>
 internal static class HistoryColumnsWriter
 {
     public static void RecordAccount(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, Account? account)
     {
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
 
-        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
-            stackalloc byte[HistoryKeyLayout.AccountKeyLength], address.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = address.ToAccountPath.Bytes;
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
@@ -57,19 +52,16 @@ internal static class HistoryColumnsWriter
         store.RecordChange(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
     }
 
-    /// <summary>Writes a raw account-history row, bypassing the account encoder — for staging corrupt rows.</summary>
     public static void RecordRawAccountRow(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, ReadOnlySpan<byte> rawRow)
     {
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
 
-        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
-            stackalloc byte[HistoryKeyLayout.AccountKeyLength], address.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = address.ToAccountPath.Bytes;
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         store.RecordChange(block, flatKey, rawRow, batch.GetColumnBatch(FlatHistoryColumns.AccountHistory));
     }
 
-    /// <summary>Writes a raw storage-history row, bypassing the slot encoder — for staging corrupt rows.</summary>
     public static void RecordRawStorageRow(IColumnsDb<FlatHistoryColumns> columns, Address address, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawRow)
     {
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
@@ -83,38 +75,27 @@ internal static class HistoryColumnsWriter
         store.RecordChange(block, flatKey, rawRow, batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
     }
 
-    /// <summary>Records the per-block availability marker (<c>block -> captured state root</c>).</summary>
     public static void MarkBlock(IColumnsDb<FlatHistoryColumns> columns, ulong block, in ValueHash256 stateRoot)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, stateRoot, HistoryAvailability.FormatVersion);
     }
 
-    /// <summary>Records the per-block availability marker stamped as the windowed (v3) format - the v3 counterpart
-    /// to <see cref="MarkBlock"/>, for staging markers directly on a windowed writer/reader without a full
-    /// capture walk.</summary>
     public static void MarkBlockV3(IColumnsDb<FlatHistoryColumns> columns, ulong block, in ValueHash256 stateRoot)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, stateRoot, HistoryAvailability.WindowedFormatVersion);
     }
 
-    /// <summary>Publishes the contiguous watermark (and stamps the format version), gating reads at or below it.</summary>
     public static void SetWatermark(IColumnsDb<FlatHistoryColumns> columns, ulong watermark) =>
         new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(watermark, HistoryAvailability.FormatVersion);
 
-    /// <summary>Publishes the retention floor (and stamps the windowed format version), gating reads below it.</summary>
     public static void SetGlobalFloor(IColumnsDb<FlatHistoryColumns> columns, ulong floor) =>
         new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishGlobalFloor(floor);
 
-    /// <summary>Reads the raw stamped format byte directly, for regression tests on format-version stamping.</summary>
     public static byte? GetStampedFormatVersion(IColumnsDb<FlatHistoryColumns> columns) =>
         new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).StampedFormatVersion;
 
-    /// <summary>Builds the shared <see cref="HistoryAvailability"/>/<see cref="HistoryRowFormat"/> pair a test's
-    /// writer, reader and pruner must all share — mirroring the single DI-bound instance production wires them
-    /// through, so a test cannot accidentally recreate the exact "writer/reader resolved from one config, pruner
-    /// from another" mismatch that masked the pruner's format-decode bug.</summary>
     public static (HistoryAvailability Availability, HistoryRowFormat RowFormat) CreateSharedFormat(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config)
     {
         HistoryAvailability availability = new(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
@@ -122,14 +103,11 @@ internal static class HistoryColumnsWriter
         return (availability, rowFormat);
     }
 
-    /// <summary>Writes a v3 pre-value account row directly (the shape a windowed writer's capture produces), for
-    /// staging pruner/reader test fixtures without driving a full capture walk.</summary>
     public static void RecordAccountV3(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, Account? account)
     {
         HistoryStoreV3 store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory));
 
-        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
-            stackalloc byte[HistoryKeyLayout.AccountKeyLength], address.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = address.ToAccountPath.Bytes;
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
@@ -144,8 +122,6 @@ internal static class HistoryColumnsWriter
         store.RecordPreValue(block, flatKey, rlp, history);
     }
 
-    /// <summary>Writes a v3 pre-value storage row directly — the ascending-suffix counterpart to
-    /// <see cref="RecordStorage"/>, for staging pruner/reader test fixtures without driving a full capture walk.</summary>
     public static void RecordStorageV3(IColumnsDb<FlatHistoryColumns> columns, Address address, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawValueBeforeChange)
     {
         HistoryStoreV3 store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory));
@@ -164,8 +140,6 @@ internal static class HistoryColumnsWriter
         store.RecordPreValue(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));
     }
 
-    /// <summary>Publishes the contiguous watermark stamped as the windowed (v3) format, for staging v3 pruner/reader
-    /// test fixtures — the v3 counterpart to <see cref="SetWatermark"/>.</summary>
     public static void SetWatermarkV3(IColumnsDb<FlatHistoryColumns> columns, ulong watermark) =>
         new HistoryAvailability(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks)).PublishWatermark(watermark, HistoryAvailability.WindowedFormatVersion);
 

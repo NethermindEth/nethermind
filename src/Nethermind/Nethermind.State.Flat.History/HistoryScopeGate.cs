@@ -1,103 +1,66 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// Lock-free epoch counter that lets the window pruner wait for historical read scopes admitted under an old
-/// floor to finish before it deletes the rows they may still be reading. A scope opened when the floor was F_old
-/// can still be mid-read when the pruner publishes F_new and starts deleting toward it; without this drain, that
-/// read could see a row disappear mid-flight and (for a fall-through-style read) resolve to the wrong answer
-/// instead of failing closed. Scope entry/exit is Interlocked-only — no lock on the read path — so opening a new
-/// scope is never blocked by a draining pruner.
+/// Lets the window pruner wait for historical read scopes admitted under an old floor to finish before it deletes
+/// the rows they may still be reading. Each scope records the floor generation it was admitted under; a drain
+/// bumps the generation and waits only for scopes below it, so scopes admitted after the floor publish (safe by
+/// their own admission check) never delay a drain and a single stuck scope cannot make later drains wait on
+/// unrelated readers.
 /// </summary>
 /// <remarks>
-/// The pruner must call <see cref="TryDrainForFloorAdvance"/> AFTER publishing the new floor, not before: any
-/// scope opened after publish already sees the new floor at its own admission check (<c>HistoricalFlatDbManager</c>
-/// re-reads the floor on every scope open, never a cached value), so it is safe by construction regardless of
-/// which epoch it lands in. The only scopes that need draining are ones admitted before publish, under the old,
-/// lower floor. Calling this before publish would let a scope open in the gap between the flip and the publish
-/// join the "new" epoch and never be waited on, even though it read under the old floor.
+/// The pruner must call <see cref="TryDrainForFloorAdvance"/> AFTER publishing the new floor: a scope opened
+/// after publish re-reads the floor at its own admission check, so it is safe by construction and carries the
+/// bumped generation.
 /// </remarks>
 public sealed class HistoryScopeGate
 {
-    private long _epoch0Active;
-    private long _epoch1Active;
-    private int _currentEpoch;
-    private int _strandedEpoch = -1;
+    private readonly ConcurrentDictionary<long, long> _activeScopes = new();
+    private long _nextScopeId;
+    private long _floorGeneration;
 
-    /// <summary>
-    /// Marks a historical read scope as open, returning the epoch it joined for the matching
-    /// <see cref="ExitScope"/> call. Increment-then-validate against a concurrent <see cref="FlipEpoch"/>: a scope
-    /// that raced a flip mid-registration retries into whichever epoch is current once its own increment is
-    /// visible, so the drain can never sample a count of zero while a scope is still completing its entry.
-    /// </summary>
-    public int EnterScope()
+    /// <summary>Marks a historical read scope as open, returning the token for the matching
+    /// <see cref="ExitScope"/> call. A registration that races a drain may be missed by its sweep, which is safe:
+    /// the caller validates availability against the already-published floor only after this returns, so a scope
+    /// the sweep did not wait for fails closed instead of reading rows the pruner is deleting.</summary>
+    public long EnterScope()
     {
-        while (true)
-        {
-            int epoch = Volatile.Read(ref _currentEpoch);
-            Increment(epoch);
-            if (Volatile.Read(ref _currentEpoch) == epoch) return epoch;
-
-            // A flip landed between the read and the increment: this registration may already be invisible to
-            // whichever epoch the flip moved to. Undo and retry against the now-current epoch.
-            Decrement(epoch);
-        }
+        long scopeId = Interlocked.Increment(ref _nextScopeId);
+        _activeScopes[scopeId] = Volatile.Read(ref _floorGeneration);
+        return scopeId;
     }
 
-    /// <summary>Closes the scope that joined <paramref name="epoch"/> — the value the matching
-    /// <see cref="EnterScope"/> call returned; a mismatched epoch would undercount the wrong census.</summary>
-    public void ExitScope(int epoch) => Decrement(epoch);
+    public void ExitScope(long scopeId) => _activeScopes.TryRemove(scopeId, out _);
 
-    /// <summary>
-    /// Flips new scope registrations onto the other epoch slot, waits (bounded) for every scope counted in the
-    /// epoch active at the moment of the flip to close, and reports whether the drain completed. On timeout or
-    /// cancellation, restores the pre-flip epoch so a retried call keeps targeting the same census — without this,
-    /// a second call would flip past an already-stuck scope and wait on an unrelated (and already-empty) slot
-    /// while the stuck scope's epoch is never observed again.
-    /// </summary>
+    /// <summary>Bumps the floor generation and waits (bounded) for every scope admitted under an older one to
+    /// close. On timeout no state needs restoring: a retry bumps again and still waits only on the genuinely old
+    /// scopes, while everything admitted since carries a newer generation.</summary>
     internal bool TryDrainForFloorAdvance(TimeSpan timeout, CancellationToken token)
     {
-        int drainEpoch = FlipEpoch();
-        int strandedEpoch = _strandedEpoch;
+        long generation = Interlocked.Increment(ref _floorGeneration);
         Stopwatch stopwatch = Stopwatch.StartNew();
-        while (ActiveInEpoch(drainEpoch) > 0 || (strandedEpoch >= 0 && ActiveInEpoch(strandedEpoch) > 0))
+        while (AnyScopeBelow(generation))
         {
-            if (token.IsCancellationRequested || stopwatch.Elapsed >= timeout)
-            {
-                Volatile.Write(ref _currentEpoch, drainEpoch);
-                _strandedEpoch = 1 - drainEpoch;
-                return false;
-            }
+            if (token.IsCancellationRequested || stopwatch.Elapsed >= timeout) return false;
 
             Thread.Sleep(10);
         }
 
-        _strandedEpoch = -1;
         return true;
     }
 
-    private int FlipEpoch()
+    private bool AnyScopeBelow(long generation)
     {
-        int previous = Volatile.Read(ref _currentEpoch);
-        Volatile.Write(ref _currentEpoch, 1 - previous);
-        return previous;
-    }
+        foreach (KeyValuePair<long, long> scope in _activeScopes)
+        {
+            if (scope.Value < generation) return true;
+        }
 
-    private long ActiveInEpoch(int epoch) => epoch == 0 ? Volatile.Read(ref _epoch0Active) : Volatile.Read(ref _epoch1Active);
-
-    private void Increment(int epoch)
-    {
-        if (epoch == 0) Interlocked.Increment(ref _epoch0Active);
-        else Interlocked.Increment(ref _epoch1Active);
-    }
-
-    private void Decrement(int epoch)
-    {
-        if (epoch == 0) Interlocked.Decrement(ref _epoch0Active);
-        else Interlocked.Decrement(ref _epoch1Active);
+        return false;
     }
 }

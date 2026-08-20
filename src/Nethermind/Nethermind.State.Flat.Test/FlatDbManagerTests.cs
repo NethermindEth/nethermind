@@ -506,6 +506,24 @@ public class FlatDbManagerTests
         Assert.That(manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Is.False);
     }
 
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_below_floor_with_a_slice_scope_routes_to_the_restricted_reader()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        MarkHistoryAvailable(0, 41, block => CreateStateId(block, (byte)block)); // watermark = 40
+        HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        availability.PublishGlobalFloor(10);
+        availability.PublishScope(HistoryAddr.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength], floor: 0);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(CreateStateId(5, rootByte: 5));
+
+        Assert.That(bundle, Is.Not.Null, "below the general floor with a slice configured, the block is served restricted instead of refused");
+        Assert.That(manager.HasStateForBlock(CreateStateId(5, rootByte: 5)), Is.True);
+    }
+
     private HistoricalFlatDbManager WrapHistory(FlatDbManager inner) => new(
         inner,
         _persistenceManager,
@@ -547,8 +565,7 @@ public class FlatDbManagerTests
 
     private void RecordAccount(ulong block, Account? account)
     {
-        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
-            stackalloc byte[HistoryKeyLayout.AccountKeyLength], HistoryAddr.ToAccountPath);
+        ReadOnlySpan<byte> flatKey = HistoryAddr.ToAccountPath.Bytes;
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);

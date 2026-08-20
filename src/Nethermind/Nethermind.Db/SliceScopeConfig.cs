@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 
-namespace Nethermind.State.Flat.History;
+namespace Nethermind.Db;
 
-/// <summary>One <c>Flat.HistorySliceAddresses</c> entry: an address, and optionally the bounded retention (in
-/// blocks below the watermark) the operator wants for it. Absent retention means unbounded intent - the pruner
-/// never advances that scope's floor on its own. A range scope (one record covering several addresses), if ever
-/// needed, is a new
-/// record kind under its own reserved-key prefix - not a retrofit of this point-scope shape.</summary>
+/// <summary>One <c>FlatDb.HistorySliceAddresses</c> entry: an address, and optionally the bounded retention (in
+/// blocks below the watermark) the operator wants for it. Absent retention means unbounded intent.</summary>
 public readonly record struct SliceScopeEntry(Address Address, ulong? RetentionBlocks);
 
 public static class SliceScopeConfig
@@ -48,17 +47,13 @@ public static class SliceScopeConfig
             retentionBlocks = parsedRetention;
         }
 
-        Address? address;
+        Address? address = null;
         try
         {
-            if (!Address.TryParse(addressToken.ToString(), out address) || address is null)
-            {
-                address = null;
-            }
+            Address.TryParse(addressToken.ToString(), out address);
         }
         catch (Exception)
         {
-            address = null;
         }
 
         if (address is null)

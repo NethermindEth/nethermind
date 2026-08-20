@@ -14,21 +14,10 @@ namespace Nethermind.State.Flat.History;
 /// the smallest recorded block strictly greater than the query block.
 /// </summary>
 /// <remarks>
-/// A read finding no captured change above its query block falls back to the current live flat value, on the
-/// premise that nothing changed the key since. That rule is sound under one condition: the fallback must read the
-/// <em>persisted</em> flat column
-/// (<c>FlatDbColumns.Account</c>/<c>Storage</c>), never a tip- or snapshot-stack-including view. The invariant
-/// chain that makes this hold: <see cref="HistoryWriter"/>'s capture always runs strictly before the flat persist
-/// it captured from commits (its own contract — "the flat persist commits only after; must never get ahead of
-/// durable history"), so at any moment the persisted flat columns hold exactly the state as of the current
-/// watermark, never ahead of it and never behind it once a round completes. A key changed in
-/// <c>(watermark, tip]</c> lives only in the in-memory snapshot stack, not yet in the persisted columns — the
-/// persisted columns still hold its value as of the watermark. So for a query at <c>B &lt;= watermark</c> whose
-/// forward-seek finds no captured change in <c>(B, watermark]</c>, the key's value provably did not change from B
-/// through the watermark, and the persisted column's value (== the watermark's value) equals the value at B.
-/// <see cref="HistoryReader"/> implements the fallback this way; do not introduce a fallback that reads through a
-/// bundle/scope that could observe the tip instead. Prune correctness (a plain range-delete below the floor, no
-/// per-key retention logic) is independent of this and unaffected either way.
+/// A read finding no captured change above its query block falls back to the live flat value - sound only against
+/// the PERSISTED flat column, never a tip/snapshot-stacked view: capture runs strictly before the flat persist it
+/// captured from commits, so the persisted columns always hold exactly the state as of the watermark, and a key
+/// with no captured change in <c>(B, watermark]</c> provably still holds its block-B value there.
 /// </remarks>
 internal sealed class HistoryStoreV3
 {

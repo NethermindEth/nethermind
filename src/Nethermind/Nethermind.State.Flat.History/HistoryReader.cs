@@ -16,14 +16,9 @@ namespace Nethermind.State.Flat.History;
 /// Reads finalized historical state "as of block B" from the history columns. Serves block-parameter reads below
 /// the finalization barrier, where the per-block snapshots have already been pruned.
 /// </summary>
-/// <remarks>
-/// Two row formats, chosen once from the stamped format version (never mixed on the same DB — see
-/// <see cref="HistoryAvailability.ResolveFormatVersion"/>): v2 (<see cref="HistoryStore"/>, post-value, descending
-/// suffix) does a single floor-seek and never needs a fallback. v3 (<see cref="HistoryStoreV3"/>, pre-value,
-/// ascending suffix) forward-seeks for the first change after B, and if none is captured, falls through to the
-/// persisted (never tip/snapshot-stacked) live flat column — see <see cref="HistoryStoreV3"/>'s remarks for why
-/// that fallback is sound.
-/// </remarks>
+/// <remarks>v2 (post-value, descending suffix) floor-seeks and needs no fallback; v3 (pre-value, ascending suffix)
+/// forward-seeks and falls through to the persisted flat column - see <see cref="HistoryStoreV3"/>'s remarks for
+/// why that fallback is sound.</remarks>
 public sealed class HistoryReader
 {
     // Slim-format account RLP is at most nonce + balance + two 32-byte hashes; 256 bytes is ample headroom.
@@ -104,8 +99,8 @@ public sealed class HistoryReader
     [SkipLocalsInit]
     public bool TryGetAccount(ulong block, Address address, out AccountStruct account)
     {
-        ReadOnlySpan<byte> flatKey = HistoryKeyLayout.EncodeAccountKey(
-            stackalloc byte[HistoryKeyLayout.AccountKeyLength], address.ToAccountPath);
+        ValueHash256 accountPath = address.ToAccountPath;
+        ReadOnlySpan<byte> flatKey = accountPath.Bytes;
 
         Span<byte> valueBuffer = stackalloc byte[AccountValueBufferSize];
         int written = _isV3
@@ -134,9 +129,8 @@ public sealed class HistoryReader
     public bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value) =>
         TryGetStorage(block, address, index, out value, clearsCache: null);
 
-    /// <param name="clearsCache">Optional per-scope memo that skips the per-slot self-destruct probe for the
-    /// overwhelmingly common account with no clear markers at all. Consulted only on the v2 path — see the v3
-    /// gap note below.</param>
+    /// <param name="clearsCache">Optional per-scope memo that skips the per-slot self-destruct probes for the
+    /// overwhelmingly common account with no clear markers at all.</param>
     [SkipLocalsInit]
     internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value, StorageClearsScopeCache? clearsCache)
     {
@@ -151,12 +145,12 @@ public sealed class HistoryReader
         if (_isV3)
         {
             // A destruct whose persisted-slot count exceeded HistoryWriter's enumeration cap left no per-slot
-            // pre-value rows for this account above the destruct block — silently falling through would omit
-            // slots rather than answer wrong, but fail closed instead: a caller cannot tell "no history" from
-            // "history exists but was too large to record" otherwise.
-            ReadOnlySpan<byte> destructAccountKey = HistoryKeyLayout.EncodeAccountKey(
-                stackalloc byte[HistoryKeyLayout.AccountKeyLength], addrHash);
-            if (_storageClears.HasPoisonedClearAbove(destructAccountKey, block))
+            // pre-value rows for this account above the destruct block — fail closed so a caller can tell
+            // "no history" from "history exists but was too large to record".
+            bool poisoned = clearsCache is not null
+                ? clearsCache.HasPoisonedClearAbove(addrHash, _storageClears, block)
+                : _storageClears.HasPoisonedClearAbove(addrHash.Bytes, block);
+            if (poisoned)
                 throw new StateUnavailableException(
                     $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
                     "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
@@ -177,8 +171,7 @@ public sealed class HistoryReader
 
         // A self-destruct between the slot's last write and the read block kills the value. The live column
         // expresses the destruct as a range-delete, which leaves no per-slot tombstone in the history.
-        ReadOnlySpan<byte> accountKey = HistoryKeyLayout.EncodeAccountKey(
-            stackalloc byte[HistoryKeyLayout.AccountKeyLength], addrHash);
+        ReadOnlySpan<byte> accountKey = addrHash.Bytes;
         bool mayHaveClear = clearsCache?.HasAnyClearUpTo(addrHash, accountKey, _storageClears, block) ?? true;
         if (mayHaveClear && _storageClears.HasClearInRange(accountKey, changedAtBlock, block))
         {

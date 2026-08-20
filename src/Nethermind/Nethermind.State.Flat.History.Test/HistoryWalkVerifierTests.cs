@@ -74,7 +74,7 @@ public class HistoryWalkVerifierTests
         StorageClearStore clears = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageClears));
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         Span<byte> key = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
-        clears.RecordClear(block, HistoryKeyLayout.EncodeAccountKey(key, address.ToAccountPath), batch.GetColumnBatch(FlatHistoryColumns.StorageClears));
+        clears.RecordClear(block, address.ToAccountPath.Bytes, batch.GetColumnBatch(FlatHistoryColumns.StorageClears));
     }
 
     private void MarkAll(FakeHeaders headers)
@@ -130,7 +130,6 @@ public class HistoryWalkVerifierTests
         Account before = new(1, 100);
         Account after = new(2, 200);
 
-        // The truth: the change happened at block 2. The rows claim block 1.
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, before);
         HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, after);
 

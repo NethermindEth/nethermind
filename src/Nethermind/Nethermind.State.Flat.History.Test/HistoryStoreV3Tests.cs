@@ -7,8 +7,6 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
 
-// These tests cover only the store's own forward-seek contract in isolation; the end-to-end as-of-block read
-// (including the persisted-flat fallback and self-destruct handling) is covered by HistoryWriterTests instead.
 public class HistoryStoreV3Tests
 {
     private static readonly byte[] KeyA = [1, 2, 3, 4];
@@ -27,8 +25,6 @@ public class HistoryStoreV3Tests
     [TearDown]
     public void TearDown() => _columnsDb.Dispose();
 
-    // KeyA's value was 0xAA before the change at block 20, and 0xBBCC before the change at block 30 (i.e. it held
-    // 0xAA from some point up to 20, then 0xBBCC from 20 up to 30).
     [TestCase(5ul, "aa", 20ul)]
     [TestCase(19ul, "aa", 20ul)]
     [TestCase(20ul, "bbcc", 30ul)]
@@ -72,8 +68,6 @@ public class HistoryStoreV3Tests
     [Test]
     public void TryGetValueBeforeNextChange_DoesNotBleedAcrossKeys()
     {
-        // KeyA's only change is at 20; KeyB's only change is at 25 (a higher block, chosen so a broken key
-        // boundary would show up as KeyA's query wrongly finding KeyB's later row instead of nothing).
         Record(20, KeyA, [0xAA]);
         Record(25, KeyB, [0xBB]);
 
@@ -113,8 +107,6 @@ public class HistoryStoreV3Tests
         }
     }
 
-    // A row wider than the caller's buffer means the row is corrupt (every encoder here caps at the buffer's
-    // size) - fail loudly rather than truncate a pre-value into something that reads as a different, wrong value.
     [Test]
     public void TryGetValueBeforeNextChange_ValueWiderThanTheBuffer_ThrowsStateUnavailable()
     {

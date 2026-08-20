@@ -50,6 +50,8 @@ public sealed class HistoryWindowPruner : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _loop;
     private ulong _lastFloorPublishWatermark;
+    private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
+    private bool _disposed;
 
     public HistoryWindowPruner(
         HistoryWriter writer,
@@ -79,17 +81,10 @@ public sealed class HistoryWindowPruner : IDisposable
         }
     }
 
-    /// <summary>
-    /// One-time (startup) reconciliation of the operator's <c>Flat.HistorySliceAddresses</c> allow-list against
-    /// the scope records already on disk: deletes a scope for an address no longer configured (its rows below the
-    /// general floor become prunable again on the next pass) and creates one for a newly configured address that
-    /// has none yet. Never touches an already-existing scope's floor - that is the per-pass maintenance below
-    /// (bounded retention), never a blind reset back to some seed value on every restart.
-    /// </summary>
-    /// <exception cref="InvalidConfigurationException">Slices are configured against a database that is not
-    /// windowed (<see cref="IFlatDbConfig.HistoryRetentionBlocks"/> is 0) - a slice is meaningless there (the v2
-    /// unwindowed format already retains everything), and publishing one would incorrectly stamp the windowed
-    /// format onto v2 data.</exception>
+    /// <summary>One-time (startup) reconciliation of the allow-list against the scope records on disk: removes
+    /// scopes no longer configured, seeds new ones, never touches an existing scope's floor.</summary>
+    /// <exception cref="InvalidConfigurationException">Slices configured on an unwindowed database, or a slice
+    /// retention shallower than the general window.</exception>
     public void ReconcileSliceScopes()
     {
         IReadOnlyList<SliceScopeEntry> configured = SliceScopeConfig.Parse(_config.HistorySliceAddresses);
@@ -100,6 +95,18 @@ public sealed class HistoryWindowPruner : IDisposable
                 "Flat.HistorySliceAddresses is set, but this flatHistory database is not windowed " +
                 "(HistoryRetentionBlocks is 0). Per-contract slices require the v3 pre-value format used by " +
                 "windowed retention; unset HistorySliceAddresses or set HistoryRetentionBlocks.", -1);
+        }
+
+        foreach (SliceScopeEntry entry in configured)
+        {
+            if (entry.RetentionBlocks is { } sliceRetention && sliceRetention < _config.HistoryRetentionBlocks)
+            {
+                throw new InvalidConfigurationException(
+                    $"Flat.HistorySliceAddresses entry for {entry.Address} sets retention {sliceRetention}, " +
+                    $"shallower than HistoryRetentionBlocks ({_config.HistoryRetentionBlocks}). A slice can only " +
+                    "deepen retention: a shallower one would delete that address's rows inside the general window " +
+                    "while reads still resolve them from live state, silently returning wrong historical values.", -1);
+            }
         }
 
         Dictionary<byte[], SliceScopeEntry> configuredByKey = new(configured.Count, Bytes.EqualityComparer);
@@ -144,7 +151,8 @@ public sealed class HistoryWindowPruner : IDisposable
     /// raise-only CAS), and never below <see cref="ReconcileSliceScopes"/>'s seed.</summary>
     private void MaintainBoundedSliceFloors(ulong watermark)
     {
-        foreach (SliceScopeEntry entry in SliceScopeConfig.Parse(_config.HistorySliceAddresses))
+        _configuredSlices ??= SliceScopeConfig.Parse(_config.HistorySliceAddresses);
+        foreach (SliceScopeEntry entry in _configuredSlices)
         {
             if (entry.RetentionBlocks is not { } retention || watermark <= retention) continue;
             _availability.TryRaiseScopeFloor(AccountKeyOf(entry.Address), watermark - retention);
@@ -159,8 +167,9 @@ public sealed class HistoryWindowPruner : IDisposable
         // Written from RunOnePass on the prune loop's own task, read here from whatever thread the
         // writer's capture path runs on: Volatile is the correctness requirement, not the plain field a
         // single-writer/single-reader assumption would permit.
+        if (Volatile.Read(ref _disposed)) return;
         if (watermark < Volatile.Read(ref _lastFloorPublishWatermark) + _config.HistoryPruneIntervalBlocks) return;
-        try { _wakeSignal.Release(); } catch (SemaphoreFullException) { }
+        try { _wakeSignal.Release(); } catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException) { }
     }
 
     private async Task RunLoopAsync()
@@ -177,9 +186,6 @@ public sealed class HistoryWindowPruner : IDisposable
                 return;
             }
 
-            // No pre-check against the gate here: RunOnePass claims it (or cleanly declines) itself, so there is
-            // exactly one place that can skip a pass — a duplicate outer check previously consumed the wake
-            // signal on decline without re-arming it, losing the very request that should have retried later.
             try
             {
                 RunOnePass(token);
@@ -191,12 +197,8 @@ public sealed class HistoryWindowPruner : IDisposable
         }
     }
 
-    /// <summary>Runs one prune cycle synchronously on the calling thread — internal so tests can drive it
-    /// directly instead of racing the background wake-signal loop, per the project's no-timing-tests rule.
-    /// <paramref name="budgetFactory"/> lets a test supply a deterministic budget instead of racing a wall-clock
-    /// <see cref="HistoryPrunePassBudgetSeconds"/> value — called once per column, exactly like the production
-    /// path constructs one <see cref="WallClockBudget"/> per column, so a stateful test budget for one column
-    /// (e.g. "exhausted after N rows") never leaks its state into an unrelated column.</summary>
+    /// <summary>Runs one prune cycle synchronously - internal so tests can drive it deterministically instead of
+    /// racing the wake-signal loop; <paramref name="budgetFactory"/> is called once per column.</summary>
     internal void RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
     {
         // Never zero: a zero-duration wall-clock budget would exhaust before scanning a single row, forever
@@ -259,11 +261,8 @@ public sealed class HistoryWindowPruner : IDisposable
         // the other three columns could go passes on end without a single row examined.
         bool hasScopes = _availability.GetScopesArray().Length > 0;
 
-        // Clears and block markers are not (yet) resolved per-key like AccountHistory/StorageHistory above - a
-        // clear-context row or a block's root marker is retained down to the DEEPEST configured scope floor
-        // instead, so a sliced address's clear-probe and canonicity check both stay answerable even though this
-        // is coarser than strictly necessary for every other key. See HistoryReader's clear-probe remarks for why
-        // collapsing clears context away would be a wrong-answer hazard, not just a missing-data one.
+        // Clears and block markers are retained down to the DEEPEST configured scope floor, so a sliced address's
+        // clear-probe and canonicity check stay answerable - coarser than per-key, but never a wrong answer.
         ulong markersAndClearsFloor = hasScopes ? ComputeMinScopeFloor(floor) : floor;
 
         bool completedAccount = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, newBudget(), token);
@@ -286,16 +285,10 @@ public sealed class HistoryWindowPruner : IDisposable
         return minFloor;
     }
 
-    /// <summary>
-    /// <c>AccountHistory</c>/<c>StorageHistory</c>: each key's versions sit contiguously, in the suffix order
-    /// <see cref="_rowFormat"/> defines. v2 (descending, post-value) iterates a group newest-first, so the first
-    /// row at or below the floor is the answer every read in <c>[floor, next-change)</c> resolves to via a
-    /// floor-seek — every row after it in the same run (strictly older) is dead weight, but that one must survive.
-    /// v3 (ascending, pre-value) has no such row to keep: a row at or below the floor can never be the answer to a
-    /// forward-seek at or above the floor (which only ever returns a row strictly above the query), so every row
-    /// at or below the floor is unconditionally dead. <see cref="HistoryRowFormat.RetainsNewestRowAtOrBelowFloor"/>
-    /// selects between the two so this decode/retention logic never has to assume one format over the other.
-    /// </summary>
+    /// <summary>v2 must keep each key's newest row at or below the floor (it is the answer every read in
+    /// <c>[floor, next-change)</c> resolves to); under v3 every row at or below the floor is unconditionally dead
+    /// (a forward-seek only ever returns rows strictly above the query).
+    /// <see cref="HistoryRowFormat.RetainsNewestRowAtOrBelowFloor"/> selects between the two.</summary>
     private bool PruneVersionedColumn(IDb column, ReadOnlySpan<byte> cursorKeyName, HistoryKeyLayout keyLayout, ulong floor, bool hasScopes, IPruneBudget budget, CancellationToken token)
     {
         int flatKeyLength = keyLayout.FlatKeyLength;
@@ -305,13 +298,14 @@ public sealed class HistoryWindowPruner : IDisposable
         Span<byte> upperBound = stackalloc byte[flatKeyLength + BlockBytes + 1];
         upperBound.Fill(0xFF);
 
-        byte[]? currentGroupKey = null;
+        Span<byte> currentGroupKey = stackalloc byte[flatKeyLength];
+        bool hasGroup = false;
         bool currentGroupHasFloorRow = false;
         ulong currentGroupFloor = floor;
         Span<byte> addressKey = stackalloc byte[HistoryKeyLayout.ScopeKeyLength];
         int sinceFlush = 0;
 
-        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound);
+        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound, ReadFlags.HintCacheMiss);
         IWriteBatch batch = column.StartWriteBatch();
         try
         {
@@ -319,6 +313,10 @@ public sealed class HistoryWindowPruner : IDisposable
             {
                 if (budget.Exhausted || token.IsCancellationRequested)
                 {
+                    // Deletes must land before the cursor does: a crash between the two would otherwise strand
+                    // the skipped-over rows below the floor forever.
+                    batch.Dispose();
+                    batch = column.StartWriteBatch();
                     WriteCursor(cursorKeyName, view.CurrentKey);
                     return false;
                 }
@@ -327,9 +325,10 @@ public sealed class HistoryWindowPruner : IDisposable
                 if (key.Length != flatKeyLength + BlockBytes) continue;
 
                 ReadOnlySpan<byte> keyPrefix = key[..flatKeyLength];
-                if (currentGroupKey is null || !keyPrefix.SequenceEqual(currentGroupKey))
+                if (!hasGroup || !keyPrefix.SequenceEqual(currentGroupKey))
                 {
-                    currentGroupKey = keyPrefix.ToArray();
+                    keyPrefix.CopyTo(currentGroupKey);
+                    hasGroup = true;
                     currentGroupHasFloorRow = false;
 
                     // Byte-for-byte today's cost when no slices are configured: currentGroupFloor never leaves
@@ -385,7 +384,7 @@ public sealed class HistoryWindowPruner : IDisposable
         byte[]? pendingBelowFloorKey = null;
         int sinceFlush = 0;
 
-        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound);
+        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound, ReadFlags.HintCacheMiss);
         IWriteBatch batch = _storageClears.StartWriteBatch();
         try
         {
@@ -393,6 +392,8 @@ public sealed class HistoryWindowPruner : IDisposable
             {
                 if (budget.Exhausted || token.IsCancellationRequested)
                 {
+                    batch.Dispose();
+                    batch = _storageClears.StartWriteBatch();
                     WriteCursor(ClearsCursorKey, view.CurrentKey);
                     return false;
                 }
@@ -434,7 +435,7 @@ public sealed class HistoryWindowPruner : IDisposable
         BinaryPrimitives.WriteUInt64BigEndian(upperBound, floor);
 
         int sinceFlush = 0;
-        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound);
+        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound, ReadFlags.HintCacheMiss);
         IWriteBatch batch = _availableBlocks.StartWriteBatch();
         try
         {
@@ -442,6 +443,8 @@ public sealed class HistoryWindowPruner : IDisposable
             {
                 if (budget.Exhausted || token.IsCancellationRequested)
                 {
+                    batch.Dispose();
+                    batch = _availableBlocks.StartWriteBatch();
                     WriteCursor(BlocksCursorKey, view.CurrentKey);
                     return false;
                 }
@@ -486,6 +489,7 @@ public sealed class HistoryWindowPruner : IDisposable
 
     public void Dispose()
     {
+        Volatile.Write(ref _disposed, true);
         if (_config.HistoryRetentionBlocks > 0)
         {
             _writer.WatermarkAdvanced -= OnWatermarkAdvanced;

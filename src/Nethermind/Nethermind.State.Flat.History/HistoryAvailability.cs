@@ -64,7 +64,6 @@ public sealed class HistoryAvailability
     private ScopeFloor[]? _cachedScopes;
     private int _scopeGeneration;
 
-    public event Action? Changed;
 
     public HistoryAvailability(IDb availableBlocks)
     {
@@ -107,15 +106,10 @@ public sealed class HistoryAvailability
         }
     }
 
-    /// <summary>
-    /// Resolves which row format this process must use, upgrade-only: once a DB has ever been stamped
-    /// <see cref="WindowedFormatVersion"/> it stays declared that way regardless of later config (see
-    /// <see cref="HistoryWriter"/>'s format-version field comment for why deriving this fresh from config alone
-    /// on every write would be unsafe). v2 (post-value, descending suffix) and v3 (pre-value, ascending suffix)
-    /// are incompatible row shapes in the same column — a DB cannot be converted between them in place.
-    /// </summary>
-    /// <exception cref="InvalidConfigurationException"><paramref name="windowingConfigured"/> is true but this DB
-    /// already holds existing v2 data — windowing requires v3, and there is no in-place v2-&gt;v3 migration.</exception>
+    /// <summary>Resolves the row format upgrade-only: once stamped <see cref="WindowedFormatVersion"/>, a DB stays
+    /// that way regardless of later config - v2 and v3 rows are incompatible shapes in the same column.</summary>
+    /// <exception cref="InvalidConfigurationException">Windowing configured against existing v2 data - there is no
+    /// in-place migration.</exception>
     public byte ResolveFormatVersion(bool windowingConfigured)
     {
         byte? stamped = StampedFormatVersion;
@@ -173,11 +167,7 @@ public sealed class HistoryAvailability
         return capturedRoot is { Length: RootBytes } && stateRoot == new ValueHash256(capturedRoot);
     }
 
-    /// <summary>The raw stamped format byte, or <c>null</c> when nothing has ever been stamped (a fresh DB).
-    /// <see cref="HistoryWriter"/> reads this at construction to latch the windowed format upgrade-only — once a
-    /// DB has ever been stamped <see cref="WindowedFormatVersion"/> it must stay declared that way regardless of
-    /// later config, never derived from config alone on every write. Also gives regression tests visibility into
-    /// the exact on-disk value rather than only its downstream effect through <see cref="VerifyFormat"/>.</summary>
+    /// <summary>The raw stamped format byte, or <c>null</c> for a fresh DB.</summary>
     internal byte? StampedFormatVersion => _availableBlocks.Get(FormatVersionKey) is { Length: 1 } value ? value[0] : null;
 
     /// <summary>The retention floor for the all-keys (global) scope: reads below it have been pruned. Unset — the
@@ -218,7 +208,6 @@ public sealed class HistoryAvailability
             WriteGlobalFloorUnderLock(floor);
         }
 
-        Changed?.Invoke();
     }
 
     /// <summary>
@@ -240,7 +229,6 @@ public sealed class HistoryAvailability
 
         if (raised)
         {
-            Changed?.Invoke();
         }
 
         return raised;
@@ -265,7 +253,6 @@ public sealed class HistoryAvailability
             WriteScopeRecordUnderLock(accountKey, floor);
         }
 
-        Changed?.Invoke();
     }
 
     public bool TryGetScopeFloor(ReadOnlySpan<byte> accountKey, out ulong floor)
@@ -301,7 +288,6 @@ public sealed class HistoryAvailability
 
         if (raised)
         {
-            Changed?.Invoke();
         }
 
         return raised;
@@ -319,7 +305,6 @@ public sealed class HistoryAvailability
             InvalidateScopeCache();
         }
 
-        Changed?.Invoke();
     }
 
     private void WriteScopeRecordUnderLock(ReadOnlySpan<byte> accountKey, ulong floor)
@@ -354,14 +339,9 @@ public sealed class HistoryAvailability
         accountKey.CopyTo(buffer[ScopeRecordPrefixLength..]);
     }
 
-    /// <summary>
-    /// A scope is keyed by <see cref="HistoryKeyLayout.ScopeKeyLength"/> bytes, narrower than an account row's
-    /// whole path, because a storage row only carries that much of its address. Silently truncating a wider key
-    /// here would let every write path "succeed" while <see cref="ResolveScope(ReadOnlySpan{byte}, ulong)"/> - which
-    /// compares whole keys - resolves that same address to the general floor instead, and the slice's rows would be
-    /// pruned with no exception and no failing test. Narrow explicitly, via
-    /// <see cref="HistoryKeyLayout.ExtractAddressKey"/>, and the mismatch cannot happen.
-    /// </summary>
+    /// <summary>Scopes are keyed by <see cref="HistoryKeyLayout.ScopeKeyLength"/> bytes (a storage row carries only
+    /// that much of its address); silently truncating a wider key would let a publish "succeed" while lookups miss
+    /// it and the slice's rows get pruned.</summary>
     private static void RequireScopeKey(ReadOnlySpan<byte> key)
     {
         if (key.Length != HistoryKeyLayout.ScopeKeyLength)
@@ -394,7 +374,7 @@ public sealed class HistoryAvailability
         // have raced a concurrent Publish/Remove and reflects a torn view. Leaving the cache null makes the next
         // caller rescan instead of trusting a stale result; this call still returns its own (possibly torn) scan
         // rather than retrying, since a fresh caller immediately after will simply rescan for real.
-        if (Interlocked.CompareExchange(ref _scopeGeneration, generationBeforeScan, generationBeforeScan) == generationBeforeScan)
+        if (Volatile.Read(ref _scopeGeneration) == generationBeforeScan)
         {
             Volatile.Write(ref _cachedScopes, scanned);
         }
@@ -440,7 +420,6 @@ public sealed class HistoryAvailability
 
     public ScopeFloor ResolveScope(ReadOnlySpan<byte> key) => ResolveScope(key, GeneralFloorOrZero());
 
-    public ScopeFloor ResolveScope(in ValueHash256 accountHash) => ResolveScope(accountHash.Bytes[..HistoryKeyLayout.ScopeKeyLength]);
 
     private ulong GeneralFloorOrZero()
     {
@@ -449,19 +428,15 @@ public sealed class HistoryAvailability
     }
 
     /// <summary>Records the per-block marker (<c>block -> captured state root</c>) into <paramref name="batch"/>.</summary>
-    /// <remarks>Also stamps <paramref name="formatVersion"/> atomically with the marker: capture batches commit
-    /// before any watermark publish, so a marker without a format key must never be an observable on-disk state —
-    /// it would read as a pre-release layout on restart. The caller (not this method) decides which version is
-    /// current for the DB — see the field comment on <see cref="HistoryWriter"/>'s format-version field for why
-    /// this can never default to the plain <see cref="FormatVersion"/>: doing so would silently downgrade a
-    /// windowed DB's stamp back to <see cref="FormatVersion"/> on the very next captured block after a prune pass
-    /// bumped it to <see cref="WindowedFormatVersion"/>.</remarks>
-    public static void MarkBlock(IWriteBatch batch, ulong block, in ValueHash256 stateRoot, byte formatVersion)
+    /// <remarks>Stamps <paramref name="formatVersion"/> atomically with the marker (a marker without a format key
+    /// must never be observable on disk); pass <paramref name="stampFormat"/> false only once a publish already
+    /// made the stamp durable.</remarks>
+    public static void MarkBlock(IWriteBatch batch, ulong block, in ValueHash256 stateRoot, byte formatVersion, bool stampFormat = true)
     {
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
         batch.PutSpan(key, stateRoot.Bytes);
-        batch.PutSpan(FormatVersionKey, [formatVersion]);
+        if (stampFormat) batch.PutSpan(FormatVersionKey, [formatVersion]);
     }
 
     /// <summary>
@@ -481,7 +456,6 @@ public sealed class HistoryAvailability
         _availableBlocks.PutSpan(WatermarkKey, value);
         _availableBlocks.PutSpan(FormatVersionKey, [formatVersion]);
 
-        Changed?.Invoke();
     }
 }
 

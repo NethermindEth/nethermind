@@ -68,10 +68,10 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         return true;
     }
 
-    internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc, TimeSpan? timeout = null) where TRes : P2PMessage
+    internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage
     {
         SyncServeValueTaskRequest<TReq, TRes> syncServeRequest = new(handler, request, fulfillFunc);
-        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeValueTaskRequestRunner<TReq, TRes>.Run, timeout, source: RequestSource<TReq>.Name))
+        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeValueTaskRequestRunner<TReq, TRes>.Run, source: RequestSource<TReq>.Name))
         {
             request.TryDispose();
             return false;

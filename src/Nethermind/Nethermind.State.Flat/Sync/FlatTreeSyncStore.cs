@@ -255,7 +255,7 @@ public class FlatTreeSyncStore(
         {
             Hash256 pivotStateRoot = pivotHeader.StateRoot ?? throw new InvalidOperationException(
                 $"Sync pivot header {pivotHeader.Number} has no state root; cannot seed the flat history floor at it.");
-            historyPivotSeeder.SeedPivot(pivotHeader.Number, pivotStateRoot, reader);
+            historyPivotSeeder.SeedPivot(pivotHeader.Number, pivotStateRoot);
         }
 
         // Create and immediately dispose to increment state ID

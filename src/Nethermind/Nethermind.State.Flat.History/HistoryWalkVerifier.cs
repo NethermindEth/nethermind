@@ -28,28 +28,11 @@ public readonly record struct HistoryWalkMismatch(ulong Block, HistoryWalkMismat
 public readonly record struct HistoryWalkVerdict(bool Verified, ulong BlocksCompared, IReadOnlyList<HistoryWalkMismatch> Mismatches);
 
 /// <summary>
-/// Proves an unwindowed (v2) archive's history content against this node's own headers at EVERY block of a range:
-/// builds the state at the range's start from the rows alone, anchors it to the header, then walks forward
-/// applying each block's recorded post-values and comparing the recomputed root to that block's header. No
-/// execution is involved because the headers already are consensus-verified execution output - the only question
-/// left is whether the rows this node holds produce those commitments. Per-block (not sampled, not tip-only) on
-/// purpose: a row attributing a change to the wrong block leaves the tip root correct while every as-of answer in
-/// between is wrong, and only the root check at the misattributed height catches it.
+/// Proves an unwindowed (v2) archive's content against this node's own headers by rebuilding the state root from
+/// rows at EVERY block of a range - per-block because a change attributed to the wrong block leaves the tip root
+/// correct while every as-of answer in between is wrong. v2 only (v3 rows are pre-values behind a floor). Holds
+/// the range's working set in memory; segment sizing against available memory is the caller's job.
 /// </summary>
-/// <remarks>
-/// Trust anchors, all local: the header root at the range start (anchors the built start state), the header root
-/// at every walked block (anchors the account rows), and each account record's own storageRoot - itself anchored
-/// by the state root - against which the account's storage trie, rebuilt from slot rows, is compared whenever its
-/// slots change. Ranges are independently anchored at both ends, so segments of the chain can be verified
-/// concurrently by separate instances.
-///
-/// v2 only: its rows are post-values ("at block b this key became V"), exactly the instruction a forward walk
-/// applies. A windowed (v3) database is refused - its rows are pre-values, unchanged keys carry no rows at all,
-/// and the retention floor removed the ancestry a genesis-anchored walk needs.
-///
-/// This pass holds the range's start state and deltas in memory - segment sizing against available memory is the
-/// caller's job (see the 39-10 task file for the spill-store hardening this deliberately defers).
-/// </remarks>
 public sealed class HistoryWalkVerifier
 {
     private const int BlockBytes = sizeof(ulong);
@@ -118,13 +101,8 @@ public sealed class HistoryWalkVerifier
         _logger = logManager.GetClassLogger<HistoryWalkVerifier>();
     }
 
-    /// <summary>
-    /// Splits <c>[fromInclusive, toInclusive]</c> into <paramref name="segments"/> contiguous ranges and verifies
-    /// them concurrently - sound because every segment is independently anchored: its start state is compared to
-    /// its own start header before its walk begins, so no segment consumes another's output. Adjacent segments
-    /// share their boundary block's comparison; the double-check is harmless and keeps the ranges self-contained.
-    /// All scans and tries are per-call state, so the concurrent calls share nothing but the read-only columns.
-    /// </summary>
+    /// <summary>Verifies the range as concurrent, independently anchored segments - each start state is compared
+    /// to its own header before the walk, so no segment consumes another's output.</summary>
     public HistoryWalkVerdict VerifyRangeParallel(ulong fromInclusive, ulong toInclusive, int segments, CancellationToken token)
     {
         if (segments < 1) throw new ArgumentOutOfRangeException(nameof(segments));
@@ -142,7 +120,8 @@ public sealed class HistoryWalkVerifier
         }
 
         HistoryWalkVerdict[] verdicts = new HistoryWalkVerdict[effectiveSegments];
-        Parallel.For(0, effectiveSegments, i => verdicts[i] = VerifyRange(bounds[i].From, bounds[i].To, token));
+        Parallel.For(0, effectiveSegments, new ParallelOptions { CancellationToken = token },
+            i => verdicts[i] = VerifyRange(bounds[i].From, bounds[i].To, token));
 
         List<HistoryWalkMismatch> mismatches = [];
         ulong compared = 0;
@@ -279,12 +258,9 @@ public sealed class HistoryWalkVerifier
         return new HistoryWalkVerdict(verified, compared, mismatches);
     }
 
-    /// <summary>Whether the walk can continue - a state-root or missing-header failure at <paramref name="block"/>
-    /// leaves every later comparison meaningless, a clean match keeps going. Also checks the block's captured
-    /// <c>AvailableBlocks</c> marker against the same header: the serving gate trusts the marker (an EIP-1898 hash
-    /// is accepted or refused by comparing against it), so a corrupt marker over honest rows would still misroute
-    /// serving - and rebuilt roots never touch it. A marker mismatch reports without stopping; it does not affect
-    /// how the state evolves.</summary>
+    /// <summary>Whether the walk can continue - a root or missing-header failure poisons every later comparison.
+    /// Also checks the captured marker against the header (the serving gate trusts the marker, rebuilt roots never
+    /// touch it); a marker mismatch reports without stopping.</summary>
     private bool CompareStateRoot(ulong block, StateTree state, List<HistoryWalkMismatch> mismatches, ref ulong compared)
     {
         ValueHash256 rebuilt = new(state.RootHash.Bytes);
@@ -318,7 +294,7 @@ public sealed class HistoryWalkVerifier
         List<(ValueHash256, Account)> start = [];
         SortedDictionary<ulong, List<(ValueHash256, Account?)>> deltas = [];
 
-        using ISortedView view = _accountHistory.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(AccountRowKeyLength));
+        using ISortedView view = _accountHistory.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(AccountRowKeyLength), ReadFlags.HintCacheMiss);
         ValueHash256 currentPath = default;
         bool haveGroup = false;
         bool startChosen = false;
@@ -359,7 +335,7 @@ public sealed class HistoryWalkVerifier
     private Dictionary<byte[], List<ulong>> ScanClears(CancellationToken token)
     {
         Dictionary<byte[], List<ulong>> clears = new(Bytes.EqualityComparer);
-        using ISortedView view = _storageClears.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(ClearRowKeyLength));
+        using ISortedView view = _storageClears.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(ClearRowKeyLength), ReadFlags.HintCacheMiss);
         while (view.MoveNext())
         {
             token.ThrowIfCancellationRequested();
@@ -387,7 +363,7 @@ public sealed class HistoryWalkVerifier
         Dictionary<byte[], List<(ValueHash256, byte[])>> start = new(Bytes.EqualityComparer);
         SortedDictionary<ulong, List<(byte[], ValueHash256, byte[])>> deltas = [];
 
-        using ISortedView view = _storageHistory.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(StorageRowKeyLength));
+        using ISortedView view = _storageHistory.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(StorageRowKeyLength), ReadFlags.HintCacheMiss);
         byte[]? currentFlatKey = null;
         byte[]? currentIdentity = null;
         ValueHash256 currentSlot = default;

@@ -403,8 +403,8 @@ namespace Nethermind.Db.Test
 
             db.Flush();
 
-            // Exactly what the archive clone asks for shard 0: a one-byte lower bound and a 128-byte upper bound
-            // ending the shard, so the two bounds fall in different capped:8 prefix buckets.
+            // A one-byte lower bound and a 128-byte upper bound, so the two bounds fall in different capped:8
+            // prefix buckets.
             byte[] upperBound = new byte[128];
             upperBound[0] = 0x0F;
             upperBound.AsSpan(1).Fill(0xFF);

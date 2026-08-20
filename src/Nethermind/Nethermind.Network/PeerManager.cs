@@ -21,10 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Config;
-using Nethermind.Network.Enr;
-using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
@@ -40,7 +37,6 @@ namespace Nethermind.Network
     {
         private readonly ILogger _logger;
         private readonly INetworkConfig _networkConfig;
-        private readonly ISyncConfig _syncConfig;
         private readonly IRlpxHost _rlpxHost;
         private readonly IEnode _enode;
         private readonly INodeStatsManager _stats;
@@ -76,7 +72,6 @@ namespace Nethermind.Network
             IPeerPool peerPool,
             INodeStatsManager stats,
             INetworkConfig networkConfig,
-            ISyncConfig syncConfig,
             IEnode enode,
             ILogManager logManager)
         {
@@ -85,7 +80,6 @@ namespace Nethermind.Network
             _enode = enode;
             _stats = stats;
             _networkConfig = networkConfig;
-            _syncConfig = syncConfig;
             _onHandshakeComplete = OnHandshakeComplete;
             _onSessionDisconnected = OnDisconnected;
             _outgoingConnectParallelism = networkConfig.NumConcurrentOutgoingConnects;

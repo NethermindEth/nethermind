@@ -34,10 +34,6 @@ public class HistoryBackedPersistenceReaderTests
         HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
         HistoryColumnsWriter.RecordStorage(_historyColumns, Address, Slot, 5, [0xAA]);
 
-        // The constructor re-validates availability against the SAME state root every Reader(block) call below
-        // uses (Keccak.EmptyTreeHash) - closing the check-register race means a block must genuinely be available
-        // (covered by the watermark, root matching) before a reader can be built for it at all, matching the real
-        // HistoricalFlatDbManager -> HistoryBackedPersistenceReader call chain.
         for (ulong block = 0; block <= 10; block++)
         {
             HistoryColumnsWriter.MarkBlock(_historyColumns, block, Keccak.EmptyTreeHash);
@@ -83,9 +79,6 @@ public class HistoryBackedPersistenceReaderTests
         }
     }
 
-    // Corrupt value rows are decoded here, after the bundle gather, so FlatStateReader's gather-level translation
-    // never sees them; the reader itself must map them to the unavailable-state contract (MissingTrieNodeException),
-    // which JSON-RPC reports as resource-not-found instead of an internal error.
     [Test]
     public void Corrupt_account_row_surfaces_as_missing_trie_node()
     {
@@ -127,9 +120,6 @@ public class HistoryBackedPersistenceReaderTests
         }
     }
 
-    // Closes the check-register race between HistoricalFlatDbManager's own (pre-construction) availability check
-    // and this reader's scope registration: the constructor re-validates under its own scope, so a block that is
-    // not actually available (here: above the watermark) must fail closed at construction, not be silently served.
     [Test]
     public void Constructor_ForABlockAboveTheWatermark_ThrowsMissingTrieNode_AndReleasesTheScope()
     {
@@ -137,12 +127,9 @@ public class HistoryBackedPersistenceReaderTests
 
         Assert.That(() => Reader(11, gate), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
 
-        // No leaked scope: draining succeeds immediately, proving the failed construction released what it took.
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }
 
-    // EIP-1898: a non-canonical root at an otherwise-covered height must also fail closed at construction, not
-    // just at a later read - the same re-validation this constructor performs after entering its own scope.
     [Test]
     public void Constructor_ForANonCanonicalStateRoot_ThrowsMissingTrieNode_AndReleasesTheScope()
     {
@@ -207,7 +194,7 @@ public class HistoryBackedPersistenceReaderTests
     }
 }
 
-public class RestrictedHistoryBackedPersistenceReaderTests
+public class RestrictedModeHistoryBackedPersistenceReaderTests
 {
     private static readonly Address SlicedAddress = new("0x0000000000000000000000000000000000000abc");
     private static readonly Address NonSlicedAddress = new("0x0000000000000000000000000000000000000def");
@@ -244,30 +231,27 @@ public class RestrictedHistoryBackedPersistenceReaderTests
     [Test]
     public void GetAccount_ForAnAddressCoveredByASliceScope_Resolves()
     {
-        Account? account = Reader(3, SliceScopes()).GetAccount(SlicedAddress);
+        Account? account = Reader(3).GetAccount(SlicedAddress);
         Assert.That(account, Is.Not.Null);
         Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
     }
 
     [Test]
     public void GetAccount_ForAnAddressNotCoveredByAnySliceScope_ThrowsMissingTrieNode() =>
-        Assert.That(() => Reader(3, SliceScopes()).GetAccount(NonSlicedAddress),
+        Assert.That(() => Reader(3).GetAccount(NonSlicedAddress),
             Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
 
     [Test]
-    public void GetAccount_ForAnAddressWhoseSliceFloorIsDeeperThanTheQueriedBlock_ThrowsMissingTrieNode()
-    {
-        IReadOnlyList<ScopeFloor> scopesWithShallowerFloor = [new ScopeFloor(AccountKeyOf(SlicedAddress), Floor: 4, IsGeneral: false)];
-        Assert.That(() => Reader(3, scopesWithShallowerFloor).GetAccount(SlicedAddress),
+    public void GetAccount_ForAnAddressWhoseSliceFloorIsDeeperThanTheQueriedBlock_ThrowsMissingTrieNode() =>
+        Assert.That(() => Reader(3, sliceFloor: 4).GetAccount(SlicedAddress),
             Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>(),
             "the scope's own floor (4) is still above the query (3) - the address is retained only from block 4 onward");
-    }
 
     [Test]
     public void TryGetSlot_ForAnAddressCoveredByASliceScope_Resolves()
     {
         SlotValue value = default;
-        bool found = Reader(3, SliceScopes()).TryGetSlot(SlicedAddress, Slot, ref value);
+        bool found = Reader(3).TryGetSlot(SlicedAddress, Slot, ref value);
 
         Assert.That(found, Is.True);
         Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
@@ -278,7 +262,7 @@ public class RestrictedHistoryBackedPersistenceReaderTests
         Assert.That(() =>
         {
             SlotValue value = default;
-            Reader(3, SliceScopes()).TryGetSlot(NonSlicedAddress, Slot, ref value);
+            Reader(3).TryGetSlot(NonSlicedAddress, Slot, ref value);
         }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
 
     [Test]
@@ -286,52 +270,21 @@ public class RestrictedHistoryBackedPersistenceReaderTests
     {
         HistoryScopeGate gate = new();
 
-        Assert.That(() => Reader(3, SliceScopes(), gate, TestItem.KeccakA),
+        Assert.That(() => Reader(3, sliceFloor: 0, gate, TestItem.KeccakA),
             Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
 
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }
 
-    [Test]
-    public void Dispose_ReleasesTheScope()
-    {
-        HistoryScopeGate gate = new();
-        RestrictedHistoryBackedPersistenceReader reader = Reader(3, SliceScopes(), gate, Keccak.EmptyTreeHash);
-
-        reader.Dispose();
-
-        Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
-    }
-
-    [Test]
-    public void Unsupported_members_throw_not_supported()
-    {
-        RestrictedHistoryBackedPersistenceReader reader = Reader(3, SliceScopes());
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => reader.TryLoadStateRlp(default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
-            Assert.That(() => reader.TryLoadStorageRlp(Keccak.Zero, default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
-            Assert.That(() => reader.GetAccountRaw(default), Throws.InstanceOf<NotSupportedException>());
-            Assert.That(() => { SlotValue raw = default; reader.TryGetStorageRaw(default, default, ref raw); }, Throws.InstanceOf<NotSupportedException>());
-            Assert.That(() => reader.CreateAccountIterator(default, default), Throws.InstanceOf<NotSupportedException>());
-            Assert.That(() => reader.CreateStorageIterator(default, default, default), Throws.InstanceOf<NotSupportedException>());
-            Assert.That(reader.IsPreimageMode, Is.False);
-        }
-    }
-
-    private static IReadOnlyList<ScopeFloor> SliceScopes() => [new ScopeFloor(AccountKeyOf(SlicedAddress), Floor: 0, IsGeneral: false)];
-
     private static byte[] AccountKeyOf(Address address) =>
         address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
 
-    private RestrictedHistoryBackedPersistenceReader Reader(ulong block, IReadOnlyList<ScopeFloor> sliceScopes) =>
-        Reader(block, sliceScopes, new HistoryScopeGate(), Keccak.EmptyTreeHash);
-
-    private RestrictedHistoryBackedPersistenceReader Reader(ulong block, IReadOnlyList<ScopeFloor> sliceScopes, HistoryScopeGate scopeGate, Hash256 stateRoot)
+    private HistoryBackedPersistenceReader Reader(ulong block, ulong sliceFloor = 0, HistoryScopeGate? scopeGate = null, Hash256? stateRoot = null)
     {
         FlatDbConfig config = new() { HistoryRetentionBlocks = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        availability.PublishScope(AccountKeyOf(SlicedAddress), sliceFloor);
         HistoryReader reader = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
-        return new RestrictedHistoryBackedPersistenceReader(reader, new StateId(block, stateRoot), scopeGate, sliceScopes);
+        return new HistoryBackedPersistenceReader(reader, new StateId(block, stateRoot ?? Keccak.EmptyTreeHash), scopeGate ?? new HistoryScopeGate(), restrictToSlices: true);
     }
 }

@@ -7,6 +7,6 @@ namespace Nethermind.Network.P2P
 {
     internal class MessageConstants
     {
-        public static Random Random => Random.Shared;
+        public static readonly Random Random = new();
     }
 }
