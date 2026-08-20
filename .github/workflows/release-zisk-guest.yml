@@ -57,7 +57,7 @@ jobs:
           echo "Guest SHA-256: \`$digest\`" >> $GITHUB_STEP_SUMMARY
 
           # Without these flags tar records mtime/uid/gid, so two archives of a
-          # byte-identical guest (and their signatures) differ
+          # byte-identical guest differ
           tar --sort=name --owner=0 --group=0 --numeric-owner \
             --mtime="@$(git log -1 --format=%ct)" -czf "$archive_name" nethermind
           tar -tzf "$archive_name"
