@@ -16,7 +16,6 @@ on:
         required: true
         type: choice
         options:
-          - halfpath
           - flat
         default: flat
       payload_set:
@@ -121,7 +120,8 @@ on:
       client_env:
         description: >-
           Extra environment variables for the Nethermind client container (KEY=VALUE, comma-separated),
-          injected into the scenario extra_env. Example: DOTNET_GCgen0size=0x20000000. Single-image runs only.
+          injected into the scenario extra_env. Example: DOTNET_GCgen0size=0x20000000. Applied to every
+          scenario, including each image of a multi-image run.
         required: false
         default: ""
   pull_request:
@@ -213,7 +213,7 @@ jobs:
             payload_set="${DISPATCH_PAYLOAD_SET}"
             expb_repo="${DISPATCH_EXPB_REPO}"
             expb_branch="${DISPATCH_EXPB_BRANCH}"
-            expb_data_dir="/mnt/sda/expb-data"
+            expb_data_dir="/data/expb-data"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             if [[ -n "${DISPATCH_AMOUNT}" ]]; then
               amount="${DISPATCH_AMOUNT}"
@@ -281,7 +281,7 @@ jobs:
             payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
-            expb_data_dir="/mnt/sda/expb-data"
+            expb_data_dir="/data/expb-data"
             delay_seconds="0"
             amount=""
             additional_extra_flags=""
@@ -299,7 +299,7 @@ jobs:
             payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
-            expb_data_dir="/mnt/sda/expb-data"
+            expb_data_dir="/data/expb-data"
             delay_seconds="0"
             amount=""
             additional_extra_flags=""
@@ -443,6 +443,7 @@ jobs:
 
       - name: Trigger publish-docker.yml
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        id: trigger-publish-docker
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: publish-docker.yml
@@ -465,9 +466,21 @@ jobs:
           TIMEOUT: "120"
           ORG_NAME: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
+          # Wait on the run we actually dispatched. Without this the script falls back to discovering a
+          # run by workflow name + branch, which silently latches onto any other concurrent build of the
+          # same branch and reports success for an image that was never produced.
+          RUN_ID: ${{ steps.trigger-publish-docker.outputs.runId }}
           NAME_FILTER: Publish Docker image
           REF: ${{ needs.resolve.outputs.branch }}
         run: |
+          # An empty runId would silently fall back to run discovery - the exact false green this
+          # guards against. benc-uk/workflow-dispatch returns without setting outputs (and without
+          # failing) when the target workflow is disabled, and @v1 is a moving tag that could drop the
+          # output, so make the bypass impossible rather than unlikely.
+          if [ -z "${RUN_ID}" ]; then
+            echo "::error::The dispatch step produced no runId; refusing to fall back to run discovery."
+            exit 1
+          fi
           chmod +x scripts/wait-for-workflow.sh
           ./scripts/wait-for-workflow.sh
 
@@ -561,7 +574,7 @@ jobs:
         payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
       max-parallel: 1
       fail-fast: false
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
@@ -614,6 +627,18 @@ jobs:
           echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
           echo "Scenario name: ${SCENARIO_NAME}"
+
+      - name: Ensure Docker is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+            run_as_root apt-get update
+            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+            run_as_root systemctl start docker || run_as_root service docker start
+          fi
+          docker version
 
       - name: Restore cached master metrics
         id: restore-master-metrics
@@ -706,16 +731,22 @@ jobs:
             > "${flags_file}"
 
           YQ="${RUNNER_TEMP}/yq"
-          if [[ ! -x "${YQ}" ]]; then
-            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
-            chmod +x "${YQ}"
-          fi
+          case "$(uname -m)" in
+            x86_64) yq_arch="amd64" ;;
+            aarch64|arm64) yq_arch="arm64" ;;
+            *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+          esac
+          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          chmod +x "${YQ}"
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
+            -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-snapshot#/data/nethermind/nethermind-flat-25490000#g" \
+            -e "s#/mnt/sda/nethermind-flat-25490000#/data/nethermind/nethermind-flat-25490000#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
@@ -760,8 +791,8 @@ jobs:
           set -euo pipefail
 
           if ! command -v uv >/dev/null 2>&1; then
-            echo "uv is required on runner but was not found in PATH."
-            exit 1
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="${HOME}/.local/bin:${PATH}"
           fi
 
           if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
@@ -1745,7 +1776,7 @@ jobs:
       matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    runs-on: [self-hosted, reproducible-benchmarks]
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
@@ -1762,6 +1793,18 @@ jobs:
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
+
+      - name: Ensure Docker is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            run_as_root() { if [[ "${EUID}" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+            run_as_root apt-get update
+            run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+            run_as_root systemctl start docker || run_as_root service docker start
+          fi
+          docker version
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -1786,6 +1829,7 @@ jobs:
           SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
+          CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
@@ -1831,16 +1875,22 @@ jobs:
             > "${flags_file}"
 
           YQ="${RUNNER_TEMP}/yq"
-          if [[ ! -x "${YQ}" ]]; then
-            curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "${YQ}"
-            chmod +x "${YQ}"
-          fi
+          case "$(uname -m)" in
+            x86_64) yq_arch="amd64" ;;
+            aarch64|arm64) yq_arch="arm64" ;;
+            *) echo "Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+          esac
+          curl -sSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}" -o "${YQ}"
+          chmod +x "${YQ}"
 
           # Replace placeholders and rename scenario key with sed (preserves comments)
           sed \
             -e "s#<<DOCKER_TAG>>#${DOCKER_TAG}#g" \
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
+            -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-snapshot#/data/nethermind/nethermind-flat-25490000#g" \
+            -e "s#/mnt/sda/nethermind-flat-25490000#/data/nethermind/nethermind-flat-25490000#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
@@ -1858,6 +1908,22 @@ jobs:
             echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
           fi
 
+          # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
+          # Keys/values go through strenv so quotes and yq metacharacters in values stay literal.
+          if [[ -n "${CLIENT_ENV:-}" ]]; then
+            IFS=',' read -ra client_env_entries <<< "${CLIENT_ENV}"
+            for entry in "${client_env_entries[@]}"; do
+              entry="${entry#"${entry%%[![:space:]]*}"}"
+              entry="${entry%"${entry##*[![:space:]]}"}"
+              [[ -z "${entry}" || "${entry}" != *"="* ]] && continue
+              env_key="${entry%%=*}"
+              env_value="${entry#*=}"
+              SK="${scenario_key}" K="${env_key}" V="${env_value}" \
+                "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
+              echo "Set client env ${env_key}=${env_value}."
+            done
+          fi
+
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
@@ -1868,8 +1934,8 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v uv >/dev/null 2>&1; then
-            echo "uv is required on runner but was not found in PATH."
-            exit 1
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="${HOME}/.local/bin:${PATH}"
           fi
           if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"

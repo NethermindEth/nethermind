@@ -125,6 +125,7 @@ public abstract class TransactionTestBase
 
     private static readonly System.Collections.Generic.Dictionary<string, string[]> s_exceptionToErrorFragments = new()
     {
+        ["TransactionException.NONCE_OVERFLOW"] = ["NonceTooHigh"],
         ["TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST"] = ["EIP-7702 transaction with empty auth list"],
         ["TransactionException.TYPE_4_INVALID_AUTHORIZATION_FORMAT"] = ["InvalidAuthorityList", .. s_rlpDecodeFragments],
         ["TransactionException.TYPE_4_INVALID_AUTHORITY_SIGNATURE"] = ["InvalidAuthoritySignature", .. s_rlpDecodeFragments],
@@ -138,6 +139,11 @@ public abstract class TransactionTestBase
         ["TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH"] = ["InvalidBlobVersionedHashVersion"],
         ["TransactionException.TYPE_3_TX_CONTRACT_CREATION"] = ["blob transaction of type create"],
         ["TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS"] = ["max fee per blob gas less than block blob gas fee"],
+        ["TransactionException.NONCE_TOO_BIG"] = ["NonceTooHigh"],
+        ["TransactionException.NONCE_IS_MAX"] = ["NonceTooHigh"],
+        ["TransactionException.NONCE_OVERFLOW"] = ["NonceTooWide"],
+        ["TransactionException.RLP_LEADING_ZEROS_NONCE"] = ["Non-canonical integer"],
+        ["TransactionException.RLP_LEADING_ZEROS_NONCE_SIZE"] = ["Non-canonical integer", .. s_rlpDecodeFragments],
+        ["TransactionException.RLP_INVALID_NONCE"] = [.. s_rlpDecodeFragments],
     };
 }
-
