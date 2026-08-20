@@ -246,6 +246,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Snapshot prefixEndSnapshot = txSnapshot;
         int prefixEndIndex = -1;
         long prefixEndRefund = 0;
+        long prefixEndStateGas = 0;
         bool postTxReverted = false;
 
         for (int i = 0; i < frames.Length; i++)
@@ -339,6 +340,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // atomic-batch unrolling, but unlike a VERIFY revert it leaves the transaction valid.
                 WorldState.Restore(prefixEndSnapshot);
                 refundCounter = prefixEndRefund;
+                // EIP-8037: the discarded body commits no state, so its state charges are not owed;
+                // the execution gas it consumed stays charged, as in the batch unroll below.
+                totalFrameStateGasUsed = prefixEndStateGas;
 
                 // Body logs go with the state that produced them; the tx log set is derived from these
                 // receipts, so clearing them here also keeps them out of the bloom.
@@ -373,6 +377,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     prefixEndSnapshot = WorldState.TakeSnapshot();
                     prefixEndIndex = i;
                     prefixEndRefund = refundCounter;
+                    prefixEndStateGas = totalFrameStateGasUsed;
                 }
             }
             else
@@ -418,6 +423,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                         prefixEndSnapshot = batchStartSnapshot;
                         prefixEndIndex = batchStartIndex - 1;
                         prefixEndRefund = batchStartRefund;
+                        prefixEndStateGas = batchStartStateGas;
                     }
 
                     int terminal = i;
