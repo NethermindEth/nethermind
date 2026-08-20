@@ -144,21 +144,21 @@ public class Eip7981Tests
         }
     }
 
-    /// <summary>The access-list tokens push the floor past the standard cost, so the floor binds.</summary>
-    /// <remarks>
-    /// Previously sized as an exact tie. EIP-8038 makes a tie unreachable: every adjustment here moves
-    /// the floor-minus-standard gap by a multiple of 6, and this construction leaves a gap of 100.
-    /// </remarks>
     [Test]
     public void Calldata_with_access_list_floor_binds_just_above_standard()
     {
-        AccessList accessList = new AccessList.Builder().AddAddress(Address.Zero).Build();
-        Transaction transaction = new() { To = Address.Zero, Data = new byte[50], AccessList = accessList };
+        // Sized so the standard's fixed access-entry components exactly equal the
+        // floor's per-token premium over the standard's per-byte data cost.
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(Address.Zero)
+            .AddStorage(UInt256.Zero)
+            .AddStorage(UInt256.One)
+            .Build();
+        Transaction transaction = new() { To = Address.Zero, Data = new byte[115], AccessList = accessList };
 
         EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
 
-        Assert.That(cost.FloorGas - cost.Standard, Is.EqualTo(100UL));
-        Assert.That(cost.MinimalGas, Is.EqualTo(cost.FloorGas));
-        Assert.That(cost.MinimalGas, Is.EqualTo(19_480UL));
+        Assert.That(cost.Standard, Is.EqualTo(cost.FloorGas));
+        Assert.That(cost.MinimalGas, Is.EqualTo(27_736UL));
     }
 }

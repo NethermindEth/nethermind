@@ -234,8 +234,8 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
 
-            // Recipient touch: COLD + TRANSFER_LOG + TX_VALUE; authorization: state-independent base.
-            ulong recipientExecution = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+            // Recipient touch: COLD + TX_VALUE (transfer log folded into TX_VALUE); authorization: state-independent base.
+            ulong recipientExecution = Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
             Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientExecution + Eip8038Constants.PerAuthBaseExecution));
             Assert.That(intrinsicGas.Standard.StateReservoir, Is.Zero);
         }
@@ -248,7 +248,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            // Create execution = CREATE_ACCESS, which already prices the endowment; NEW_ACCOUNT is top-frame state gas.
+            // Create execution = CREATE_ACCESS (value endowment adds nothing); NEW_ACCOUNT is top-frame state gas.
             ulong expectedExecution = GasCostOf.TransactionEip2780 + Eip8038Constants.CreateAccess;
             Assert.That(gas.Standard, Is.EqualTo(expectedExecution));
             Assert.That(gas.MinimalGas, Is.EqualTo(Math.Max(gas.Standard, gas.FloorGas)));
@@ -262,7 +262,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Amsterdam.Instance);
 
-            ulong recipientExecution = Eip8038Constants.ColdAccountAccess + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780;
+            ulong recipientExecution = Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
             ulong expectedExecution = GasCostOf.TransactionEip2780 + recipientExecution + Eip8038Constants.PerAuthBaseExecution;
             Assert.That(gas.Standard, Is.EqualTo(expectedExecution));
         }
@@ -283,11 +283,10 @@ namespace Nethermind.Evm.Test
         // EIP-2780 fixed-cost vectors: the intrinsic is state-independent, so the recipient
         // touch and value-move costs are flat for every non-self recipient.
         private const ulong TxBaseEip2780 = GasCostOf.TransactionEip2780;
-        private const ulong TransferLogEip2780 = GasCostOf.TransferLogEip2780;
         private const ulong ColdAccess = GasCostOf.ColdAccountAccess;
         private const ulong TxValueCost = GasCostOf.TxValueCostEip2780;
 
-        [TestCase(false, 1ul, TxBaseEip2780 + ColdAccess + TxValueCost + TransferLogEip2780, TestName = "Eip2780_intrinsic_value_transfer_20600")]
+        [TestCase(false, 1ul, TxBaseEip2780 + ColdAccess + TxValueCost, TestName = "Eip2780_intrinsic_value_transfer_20600")]
         [TestCase(true, 1ul, TxBaseEip2780, TestName = "Eip2780_intrinsic_self_transfer_12000")]
         [TestCase(false, 0ul, TxBaseEip2780 + ColdAccess, TestName = "Eip2780_intrinsic_no_transfer_14600")]
         [TestCase(true, 0ul, TxBaseEip2780, TestName = "Eip2780_intrinsic_self_no_transfer_12000")]
@@ -314,24 +313,26 @@ namespace Nethermind.Evm.Test
 
             ulong actual = IntrinsicGasCalculator.Calculate(tx, spec).Standard;
 
-            Assert.That(actual, Is.EqualTo(TxBaseEip2780 + GasCostOf.AccessAccountListEntry + ColdAccess + TxValueCost + TransferLogEip2780));
+            Assert.That(actual, Is.EqualTo(TxBaseEip2780 + GasCostOf.AccessAccountListEntry + ColdAccess + TxValueCost));
         }
 
-        [Test]
-        public void Eip2780_intrinsic_gas_for_create_is_the_same_with_and_without_value()
+        [TestCase(false, TestName = "Eip2780_create_value_independent_pre8038")]
+        [TestCase(true, TestName = "Eip2780_create_value_independent_8038")]
+        public void Eip2780_intrinsic_gas_for_create_is_value_independent(bool eip8038Enabled)
         {
-            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true };
+            OverridableReleaseSpec spec = new(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true, IsEip8038Enabled = eip8038Enabled };
 
             Transaction createZero = Build.A.Transaction.WithValue(0).WithCode(Array.Empty<byte>())
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction createValue = Build.A.Transaction.WithValue(1).WithCode(Array.Empty<byte>())
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-            // CREATE_ACCESS already prices the deployment target's balance write.
-            Assert.That(IntrinsicGasCalculator.Calculate(createZero, spec).Standard,
-                Is.EqualTo(TxBaseEip2780 + GasCostOf.TxCreate));
-            Assert.That(IntrinsicGasCalculator.Calculate(createValue, spec).Standard,
-                Is.EqualTo(TxBaseEip2780 + GasCostOf.TxCreate));
+            // The create charge (CREATE_ACCESS under EIP-8038) already covers the recipient balance write,
+            // so a value endowment adds nothing — create-with-value equals create-with-zero-value.
+            ulong createCharge = eip8038Enabled ? Eip8038Constants.CreateAccess : GasCostOf.TxCreate;
+            ulong expected = TxBaseEip2780 + createCharge;
+            Assert.That(IntrinsicGasCalculator.Calculate(createZero, spec).Standard, Is.EqualTo(expected));
+            Assert.That(IntrinsicGasCalculator.Calculate(createValue, spec).Standard, Is.EqualTo(expected));
         }
 
         [TestCase(false, GasCostOf.ColdAccountAccess)]

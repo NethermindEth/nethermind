@@ -299,6 +299,10 @@ internal static class RlpHelpers
         => throw new RlpException($"Non-canonical integer at position {position}");
 
     [DoesNotReturn, StackTraceHidden]
+    public static ulong ThrowNonceTooWide(int position)
+        => throw new RlpException($"NonceTooWide: Transaction nonce exceeds uint64 at position {position}");
+
+    [DoesNotReturn, StackTraceHidden]
     public static void ThrowUnexpectedIntegerLength(int position, int length)
         => throw new RlpException($"Unexpected length of integer value {length} at position {position}");
 

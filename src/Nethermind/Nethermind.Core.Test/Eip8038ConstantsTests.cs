@@ -57,6 +57,20 @@ public class Eip8038ConstantsTests
     }
 
     [Test]
+    public void Access_list_address_cost_subtracts_warm_access()
+    {
+        ulong addressCost = Eip8038Constants.AccessListAddressCost;
+        Assert.That(addressCost, Is.EqualTo(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess));
+    }
+
+    [Test]
+    public void Access_list_storage_key_cost_subtracts_warm_access()
+    {
+        ulong storageKeyCost = Eip8038Constants.AccessListStorageKeyCost;
+        Assert.That(storageKeyCost, Is.EqualTo(Eip8038Constants.ColdStorageAccess - Eip8038Constants.WarmAccess));
+    }
+
+    [Test]
     public void Access_list_costs_are_raised_above_the_eip2930_values()
     {
         ulong addressCost = Eip8038Constants.AccessListAddressCost;

@@ -101,8 +101,7 @@ env:
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
   # Fixture source: the glamsterdam-devnet releases of ethereum/execution-specs. They ship
   # fixtures for all forks (Frontier..Amsterdam) with the devnet-8 Amsterdam semantics
-  # this branch implements. Must stay on the devnet line ZKEVM_VERSION was filled from, or the
-  # two sets disagree on the EIP-8038 gas parameters. Pass an exact tag to pin.
+  # this branch implements. Pass an exact tag (e.g. tests-glamsterdam-devnet@v8.1.0) to pin.
   EEST_REPOSITORY: ethereum/execution-specs
   EEST_VERSION: ${{ inputs.eest_version || 'tests-glamsterdam-devnet@v8.1.0' }}
   EEST_ARCHIVE: fixtures_glamsterdam-devnet.tar.gz
