@@ -49,8 +49,12 @@ public class InclusionListValidatorTests
             yield return Case("Same-nonce replacement advances nonce", [_validTx], true, blockTxs: [BuildTx(value: UInt256.One, to: TestItem.AddressC)], senderNonce: 1);
             // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
-            // Blob txs MUST NOT appear in an IL; treated as not appendable.
-            yield return Case("Blob tx", [BuildBlobTx()], true);
+            // The blob carve-out applies to building an IL, not to judging one: an omitted blob tx that
+            // could have been included still leaves the payload unsatisfied.
+            yield return Case("Blob tx", [BuildBlobTx()], false);
+            // Blob gas is paid up front, so a blob fee beyond the sender's balance makes the tx
+            // unappendable even though its non-blob cost fits comfortably.
+            yield return Case("Blob tx cannot afford blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
             // Appendability uses full tx well-formedness: a malformed type-2 tx (tip > fee cap) that
             // normal execution rejects must not be reported appendable, so the payload stays satisfied.
             yield return Case("Malformed 1559 tx (tip > fee cap)", [BuildMalformed1559Tx()], true);
@@ -157,13 +161,13 @@ public class InclusionListValidatorTests
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
-    private static Transaction BuildBlobTx() =>
+    private static Transaction BuildBlobTx(UInt256? maxFeePerBlobGas = null) =>
         Build.A.Transaction
             .WithType(TxType.Blob)
             .WithGasLimit(100_000)
             .WithMaxFeePerGas(10.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
-            .WithMaxFeePerBlobGas(10.GWei)
+            .WithMaxFeePerBlobGas(maxFeePerBlobGas ?? 10.GWei)
             .WithBlobVersionedHashes(1)
             .WithChainId(TestBlockchainIds.ChainId)
             .WithNonce(0)
