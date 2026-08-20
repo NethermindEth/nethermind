@@ -35,7 +35,7 @@ DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 # summaries; parity reports carry counts, never request/response bytes; node logs are scanned as
 # counts only and deleted.
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
-CORPUS_DIR="${CORPUS_DIR:-/data/expb-data/rpc-bench}"
+CORPUS_DIR="${CORPUS_DIR:-/data/expb-data/rpc-bench}"   # the workflow passes the selected runner's dir
 # Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
 # Size a corpus cell by request count instead of wall time. CORPUS_REQUESTS is absolute;
@@ -93,24 +93,28 @@ if [[ ! "$CORPUS_WARMUP_DURATION" =~ ^[0-9]+s?$ ]]; then
 fi
 WARMUP_SECONDS="${CORPUS_WARMUP_DURATION%s}"
 
-# The benchmark runner carries ONE snapshot set — Nethermind, flat layout, at SNAPSHOT_BLOCK — so
-# nothing else can produce a result there. Refuse the rest up front: a geth/reth entry otherwise
-# reaches start-node.sh with a DB_SOURCE that does not exist, which is only a per-client
-# `::warning::`, so the sweep would report a two-thirds-empty matrix as success — and in corpus mode
-# a baseline with no candidate, i.e. no parity verdict at all. The single-node workflow rejects the
-# same two axes, but it reads the top-level inputs that sweep mode supersedes, so the sweep has to
-# check its own. Re-enabling a client or layout means provisioning its snapshot and widening this.
+# Sweep mode resolves ONE snapshot set — Nethermind, flat layout, at SNAPSHOT_BLOCK — and varies only
+# the image, so a geth/reth entry would reach start-node.sh with a DB_SOURCE that does not exist. That
+# is only a per-client `::warning::`, so the sweep would report a two-thirds-empty matrix as success —
+# and in corpus mode a baseline with no candidate, i.e. no parity verdict at all. Refuse it up front.
+# (Cross-client comparison lives in single-node mode, which resolves a path per client.) The single-node
+# workflow rejects the same two axes, but it reads the top-level inputs that sweep mode supersedes, so
+# the sweep has to check its own. Widening this means teaching it a per-client snapshot path.
 for entry in $CLIENTS; do
   if [[ "${entry%%@*}" != "nethermind" ]]; then
-    echo "::error::client '${entry%%@*}' has no snapshot on this runner — only nethermind is supported"; exit 1
+    echo "::error::sweep mode resolves one Nethermind snapshot set, so client '${entry%%@*}' cannot run here"
+    echo "::error::use benchmark_tool=jsonbench (single-node) with client/reference_client for cross-client work"
+    exit 1
   fi
 done
 if [[ "$STATE_LAYOUT" != "flat" ]]; then
-  echo "::error::state_layout '${STATE_LAYOUT}' has no snapshot on this runner — only flat is supported"; exit 1
+  echo "::error::sweep mode resolves a flat snapshot, so state_layout '${STATE_LAYOUT}' cannot run here"; exit 1
 fi
 
-# `ctype@image` variants share the one snapshot set, so the image is the only thing that varies.
-SNAPSHOT_PATH="/data/nethermind/nethermind-flat-${SNAPSHOT_BLOCK}"
+# Snapshot root differs per benchmark box (/mnt/sda on amd64, /data/nethermind on arm64); the workflow
+# passes the resolved one. `ctype@image` variants share that set, so the image is the only variable.
+SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
+SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"
 NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
 # One isolation mode for every node, so storage counters stay comparable: overlayfs adds a layer and
 # changes readahead and page-cache behaviour, so disk-read-per-request would otherwise measure a
@@ -119,7 +123,7 @@ NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
 #
 # `direct` is refused without explicit consent. It bind-mounts the snapshot READ-WRITE, and a node's
 # startup alone rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column
-# family. The Nethermind snapshots under /data/nethermind are shared with expb, so one direct run
+# family. The Nethermind snapshots on these boxes are shared with expb, so one direct run
 # silently replaces the fixture every later benchmark compares against — which happened on
 # 2026-08-13 and cost a day of measurements (eth_call p99 tripled while an untouched client moved 2%).
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"

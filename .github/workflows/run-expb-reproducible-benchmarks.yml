@@ -3,6 +3,18 @@ name: Run EXPB Reproducible Benchmarks
 on:
   workflow_dispatch:
     inputs:
+      arch:
+        description: >-
+          Which self-hosted benchmark runner to use, and with it every path that differs between the
+          boxes. amd64 = `reproducible-benchmarks` (EPYC 4344P, snapshots under /mnt/sda); arm64 =
+          `reproducible-benchmarks-arm` (Axion, snapshots under /data, flat layout only). Timings from
+          the two boxes are NOT comparable — never mix them in one A/B.
+        required: false
+        type: choice
+        options:
+          - amd64
+          - arm64
+        default: amd64
       expb_repo:
         description: execution-payloads-benchmarks repository in owner/repo format
         required: false
@@ -16,6 +28,7 @@ on:
         required: true
         type: choice
         options:
+          - halfpath
           - flat
         default: flat
       payload_set:
@@ -48,6 +61,9 @@ on:
           --FlatDb.PersistenceWriteBufferFloor. Keeps small-CompactSize persistence batches from
           shrinking RocksDB memtables (decouples write amplification from CompactSize). Set empty to
           disable. Ignored for non-flat layouts and when additional_extra_flags already sets it.
+          SET THIS EMPTY when benchmarking an image built before 2026-06-16 (#11936 added the flag):
+          older clients reject an unknown argument by printing CLI usage and exiting, which looks
+          like a workflow failure rather than a flag mismatch.
         required: false
         default: "67108864"
       expb_env:
@@ -153,6 +169,9 @@ jobs:
       expb_repo: ${{ steps.resolve.outputs.expb_repo }}
       expb_branch: ${{ steps.resolve.outputs.expb_branch }}
       expb_data_dir: ${{ steps.resolve.outputs.expb_data_dir }}
+      runner_label: ${{ steps.resolve.outputs.runner_label }}
+      flat_snapshot_dir: ${{ steps.resolve.outputs.flat_snapshot_dir }}
+      flat_snapshot_block_dir: ${{ steps.resolve.outputs.flat_snapshot_block_dir }}
       delay_seconds: ${{ steps.resolve.outputs.delay_seconds }}
       amount: ${{ steps.resolve.outputs.amount }}
       additional_extra_flags: ${{ steps.resolve.outputs.additional_extra_flags }}
@@ -182,6 +201,7 @@ jobs:
           CURRENT_REPO: ${{ github.repository }}
           PUSH_BRANCH: ${{ github.ref_name }}
           DISPATCH_STATE_LAYOUT: ${{ inputs.state_layout }}
+          DISPATCH_ARCH: ${{ inputs.arch }}
           DISPATCH_PAYLOAD_SET: ${{ inputs.payload_set }}
           DISPATCH_EXPB_REPO: ${{ inputs.expb_repo }}
           DISPATCH_EXPB_BRANCH: ${{ inputs.expb_branch }}
@@ -213,7 +233,7 @@ jobs:
             payload_set="${DISPATCH_PAYLOAD_SET}"
             expb_repo="${DISPATCH_EXPB_REPO}"
             expb_branch="${DISPATCH_EXPB_BRANCH}"
-            expb_data_dir="/data/expb-data"
+            arch="${DISPATCH_ARCH:-amd64}"
             delay_seconds="${DISPATCH_DELAY_SECONDS:-0}"
             if [[ -n "${DISPATCH_AMOUNT}" ]]; then
               amount="${DISPATCH_AMOUNT}"
@@ -281,7 +301,7 @@ jobs:
             payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
-            expb_data_dir="/data/expb-data"
+            arch="amd64"
             delay_seconds="0"
             amount=""
             additional_extra_flags=""
@@ -299,7 +319,7 @@ jobs:
             payload_sets='["superblocks","realblocks","fusaka"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
-            expb_data_dir="/data/expb-data"
+            arch="amd64"
             delay_seconds="0"
             amount=""
             additional_extra_flags=""
@@ -310,6 +330,36 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+          fi
+
+          # One switch drives the runner and every path that differs between the two boxes, so a
+          # dispatch cannot end up on one runner holding the other's snapshot paths.
+          case "${arch}" in
+            arm64)
+              runner_label="reproducible-benchmarks-arm"
+              expb_data_dir="/data/expb-data"
+              # This box carries a single flat snapshot and serves both config spellings from it.
+              flat_snapshot_dir="/data/nethermind/nethermind-flat-25490000"
+              flat_snapshot_block_dir="/data/nethermind/nethermind-flat-25490000"
+              ;;
+            amd64)
+              runner_label="reproducible-benchmarks"
+              expb_data_dir="/mnt/sda/expb-data"
+              # Identity rewrites: the configs on this box already carry these paths.
+              flat_snapshot_dir="/mnt/sda/nethermind-flat-snapshot"
+              flat_snapshot_block_dir="/mnt/sda/nethermind-flat-25490000"
+              ;;
+            *)
+              echo "::error::Unsupported arch '${arch}' (expected amd64 or arm64)."
+              exit 1
+              ;;
+          esac
+
+          # The ARM box stocks only a flat snapshot, and the config render rewrites only the flat
+          # paths, so a halfpath run there would fail deep inside expb instead of here in seconds.
+          if [[ "${arch}" == "arm64" && "${state_layout}" != "flat" ]]; then
+            echo "::error::The reproducible-benchmarks-arm runner only serves a flat snapshot - dispatch with arch=amd64 for halfpath."
+            exit 1
           fi
 
           # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
@@ -402,6 +452,9 @@ jobs:
             echo "expb_repo=${expb_repo}"
             echo "expb_branch=${expb_branch}"
             echo "expb_data_dir=${expb_data_dir}"
+            echo "runner_label=${runner_label}"
+            echo "flat_snapshot_dir=${flat_snapshot_dir}"
+            echo "flat_snapshot_block_dir=${flat_snapshot_block_dir}"
             echo "delay_seconds=${delay_seconds}"
             echo "amount=${amount}"
             echo "cleanup_grace_seconds=${cleanup_grace_seconds}"
@@ -574,10 +627,12 @@ jobs:
         payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
       max-parallel: 1
       fail-fast: false
-    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+      FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
+      FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
       NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_label }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
     steps:
@@ -618,6 +673,7 @@ jobs:
       - name: Print resolved inputs
         run: |
           echo "Event: ${{ github.event_name }}"
+          echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
           echo "Payload set: ${{ matrix.payload_set }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
@@ -745,8 +801,8 @@ jobs:
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
             -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
-            -e "s#/mnt/sda/nethermind-flat-snapshot#/data/nethermind/nethermind-flat-25490000#g" \
-            -e "s#/mnt/sda/nethermind-flat-25490000#/data/nethermind/nethermind-flat-25490000#g" \
+            -e "s#/mnt/sda/nethermind-flat-snapshot#${FLAT_SNAPSHOT_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
@@ -1776,10 +1832,12 @@ jobs:
       matrix: ${{ fromJson(needs.resolve-images.outputs.matrix) }}
       max-parallel: 1
       fail-fast: false
-    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 720
     env:
       EXPB_DATA_DIR: ${{ needs.resolve.outputs.expb_data_dir }}
+      FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
+      FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
       CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
       NETHERMIND_IMAGE: ${{ matrix.image }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
@@ -1787,6 +1845,7 @@ jobs:
       - name: Print resolved inputs
         run: |
           echo "Multi-image benchmark run"
+          echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Image tag: ${{ matrix.tag }}"
           echo "Run: ${{ matrix.run }} of ${{ needs.resolve.outputs.run_count }}"
@@ -1889,8 +1948,8 @@ jobs:
             -e "s#<<DELAY>>#${DELAY_SECONDS}#g" \
             ${AMOUNT:+-e "s#<<AMOUNT>>#${AMOUNT}#g"} \
             -e "s#/mnt/sda/expb-data#${EXPB_DATA_DIR}#g" \
-            -e "s#/mnt/sda/nethermind-flat-snapshot#/data/nethermind/nethermind-flat-25490000#g" \
-            -e "s#/mnt/sda/nethermind-flat-25490000#/data/nethermind/nethermind-flat-25490000#g" \
+            -e "s#/mnt/sda/nethermind-flat-snapshot#${FLAT_SNAPSHOT_DIR}#g" \
+            -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
