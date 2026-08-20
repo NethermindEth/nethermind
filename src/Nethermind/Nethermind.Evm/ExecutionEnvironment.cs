@@ -5,12 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
-using Queue =
-#if ZK_EVM
-        Nethermind.Evm.ZkEvmQueue<Nethermind.Evm.ExecutionEnvironment>;
-#else
-        Nethermind.Evm.EvmObjectPool<Nethermind.Evm.ExecutionEnvironment>;
-#endif
+using Queue = Nethermind.Evm.EvmObjectPool<Nethermind.Evm.ExecutionEnvironment>;
 
 namespace Nethermind.Evm
 {
