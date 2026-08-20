@@ -16,10 +16,9 @@ namespace Nethermind.Evm;
 /// per frame transaction and shared by its POST_TX frames.
 /// </summary>
 /// <remarks>
-/// Read straight from the in-flight BAL slice, which already net-collapses writes per (address, slot) and
-/// captures the prestate ("before") values. This type only imposes the spec's enumeration order (by
-/// address, then slot key; events in emission order) and precomputes per-address indexes so the keyed
-/// TXDIFF lookups are O(1). Safe to cache: a POST_TX frame is static, so the diff cannot change.
+/// The in-flight BAL slice already net-collapses writes and captures the prestate values, so this type
+/// only adds the spec's enumeration order and per-address indexes that make keyed TXDIFF lookups O(1).
+/// Safe to cache: a POST_TX frame is static, so the diff cannot change under it.
 /// </remarks>
 internal sealed class TransactionDiffView
 {
@@ -43,7 +42,7 @@ internal sealed class TransactionDiffView
     private readonly Dictionary<AddressAsKey, (int Start, int Count)> _slotRuns;
     // Global Logs indices, in emission order, per emitting address (TXDIFF 0x08/0x09).
     private readonly Dictionary<AddressAsKey, int[]> _eventIndices;
-    // Memoized pre-tx code hashes, so repeated TXDIFF(0x04) calls don't re-hash the pre-tx code.
+    // Memoized so a warm-priced TXDIFF 0x04 cannot re-hash up to 24 KB of code per call.
     private Dictionary<AddressAsKey, ValueHash256>? _preTxCodeHashes;
 
     private TransactionDiffView(
@@ -66,8 +65,8 @@ internal sealed class TransactionDiffView
 
     public static TransactionDiffView Build(BlockAccessListAtIndex slice, LogEntry[] logs)
     {
-        // slice.AccountChanges also holds read-only accesses (AddAccountRead creates entries); keep only
-        // the accounts that actually changed so the sort is proportional to the diff, not the access set.
+        // AccountChanges also holds read-only accesses, so filter first: the sort is then proportional to
+        // the diff rather than to the access set.
         List<AccountChangesAtIndex> accounts = [];
         foreach (AccountChangesAtIndex account in slice.AccountChanges)
         {
@@ -127,7 +126,7 @@ internal sealed class TransactionDiffView
         return false;
     }
 
-    /// <summary>Pre-tx code hash for an address whose code changed, memoized across calls in this frame.</summary>
+    /// <summary>Pre-tx code hash for an address whose code changed, memoized for the life of this view.</summary>
     public ValueHash256 GetPreTxCodeHash(Address address, AccountChangesAtIndex account)
     {
         _preTxCodeHashes ??= [];
@@ -149,9 +148,8 @@ internal sealed class TransactionDiffView
         return result;
     }
 
-    // Spec contracts_deployed: the code hash moved from the empty-code hash to a non-empty hash that is
-    // not an EIP-7702 delegation designator. A CREATE leaving empty code records no CodeChange, so it is
-    // excluded for free.
+    // Spec contracts_deployed: empty-code hash to a non-empty hash that is not an EIP-7702 delegation
+    // designator. A CREATE leaving empty code records no CodeChange, so it is excluded for free.
     private static bool IsDeployment(AccountChangesAtIndex account)
         => account.CodeChange is { Code: { Length: > 0 } code }
            && (account.PreTxCode is null || account.PreTxCode.Length == 0)

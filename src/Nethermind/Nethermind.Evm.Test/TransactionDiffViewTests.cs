@@ -9,10 +9,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// EIP-7906 <c>contracts_deployed</c> classification and diff filtering, driven straight from a BAL
-/// slice: the delegation-designator case is not reachable through a frame transaction end to end.
-/// </summary>
+/// <summary>EIP-7906 diff classification, driven straight from a BAL slice.</summary>
+/// <remarks>Slice-level rather than end to end because the delegation-designator case below is not
+/// reachable through a frame transaction.</remarks>
 [TestFixture]
 public class TransactionDiffViewTests
 {
@@ -33,8 +32,7 @@ public class TransactionDiffViewTests
         Assert.That(view.DeployedAddresses, Has.Length.EqualTo(expected));
     }
 
-    // The spec excludes a code hash that is an EIP-7702 delegation designator, so authorising a fresh
-    // EOA must not surface as a deployed contract.
+    // The spec excludes EIP-7702 delegation designators from contracts_deployed.
     [Test]
     public void Build_DelegationDesignatorOnFreshEoa_IsNotADeployment()
     {
@@ -58,8 +56,7 @@ public class TransactionDiffViewTests
         Assert.That(view.BalanceAddresses, Is.EqualTo(new[] { High }));
     }
 
-    // Slots are ascending by (address, key) and each address's slots are contiguous, which is what the
-    // per-address run lookup behind TXDIFF 0x06/0x07 relies on.
+    // Contiguity per address is what the run lookup behind TXDIFF 0x06/0x07 relies on.
     [Test]
     public void Build_SortsSlotsByAddressThenKey()
     {
@@ -95,8 +92,7 @@ public class TransactionDiffViewTests
 
         Assert.That(hash, Is.EqualTo(hadCode ? ValueKeccak.Compute(preTxCode) : ValueKeccak.OfAnEmptyString));
 
-        // Clearing the source the hash derives from: only a memoized second call still returns it, which
-        // is the property that keeps a warm-priced param from re-hashing up to 24 KB per call.
+        // With the source cleared, only a memoized second call still returns the hash.
         account.Reset(Low);
         Assert.That(view.GetPreTxCodeHash(Low, account), Is.EqualTo(hash));
     }

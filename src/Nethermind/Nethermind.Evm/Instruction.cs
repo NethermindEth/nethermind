@@ -170,8 +170,8 @@ public enum Instruction : byte
     // EIP-8272 recent roots
     RECENTROOTREFLOAD = 0xb5,
 
-    // EIP-7906 transaction assertions. Both EIPs are draft with TBD opcode numbers; these moved up
-    // from 0xb5-0xb7 when EIP-8272 took 0xb5 on the shared base.
+    // EIP-7906 transaction assertions, draft and TBD: the spec's 0xb5-0xb7 shifts up by one here
+    // because EIP-8272 already holds 0xb5.
     TXTRACE = 0xb6,
     TXDIFF = 0xb7,
     EVENTDATACOPY = 0xb8,
