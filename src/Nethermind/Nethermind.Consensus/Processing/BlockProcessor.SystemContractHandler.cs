@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -38,8 +37,6 @@ public partial class BlockProcessor
         public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
             => blockHashStore.ApplyBlockhashStateChanges(blockHeader, spec);
 
-        public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, ulong requiredBlockNumber, IReleaseSpec spec)
-            => blockHashStore.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
 
         public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
             => executionRequestsProcessor.ProcessExecutionRequests(block, state, receipts, spec);
