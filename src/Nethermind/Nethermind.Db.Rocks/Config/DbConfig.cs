@@ -290,7 +290,9 @@ public class DbConfig : IDbConfig
     public string LogIndexStorageTopics3DbRocksDbOptions { get; set; } = "";
     public string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; } = "";
 
-    public bool? FlatDbVerifyChecksum { get; set; } = true;
+    // Experiment: flat state verifies a block checksum on every read, which is pure per-read CPU on a
+    // point-read-dominated workload. Benchmarked against master before any decision to keep it.
+    public bool? FlatDbVerifyChecksum { get; set; } = false;
     public string FlatDbRocksDbOptions { get; set; } =
 
         // Common across flat columns.
