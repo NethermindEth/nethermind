@@ -1159,7 +1159,7 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>
-    /// Every EIP-8141 structural constraint is enforced by the processor, not only by <see cref="TxValidator"/>.
+    /// Every EIP-8141 structural constraint is enforced by the processor, not only by <c>TxValidator</c>.
     /// </summary>
     /// <remarks>
     /// <see cref="ExecutionOptions.SkipValidation"/> entry points reach the processor with no static validation
@@ -1185,17 +1185,17 @@ public class FrameTxProcessorTests
 
     private static IEnumerable<TestCaseData> StructurallyInvalidFrameLists()
     {
-        TxFrame Reserved = Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag << 1, target: Observer);
-        TxFrame Batched = Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag, target: Observer);
+        TxFrame reserved = Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag << 1, target: Observer);
+        TxFrame batched = Frame(TxFrame.ModeDefault, flags: TxFrame.AtomicBatchFlag, target: Observer);
 
-        yield return Case("ReservedFlagBits", FrameTxValidation.InvalidFlags, SelfVerifyFrame(), Reserved);
+        yield return Case("ReservedFlagBits", FrameTxValidation.InvalidFlags, SelfVerifyFrame(), reserved);
         yield return Case("ValueOnADefaultFrame", FrameTxValidation.ValueOutsideSenderMode,
             SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer, value: 1));
         yield return Case("ExecutionApprovalOffTheSender", FrameTxValidation.ExecutionApprovalWrongTarget,
             Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: Observer));
-        yield return Case("AtomicBatchOnTheLastFrame", FrameTxValidation.AtomicBatchOnLastFrame, SelfVerifyFrame(), Batched);
+        yield return Case("AtomicBatchOnTheLastFrame", FrameTxValidation.AtomicBatchOnLastFrame, SelfVerifyFrame(), batched);
         yield return Case("AtomicBatchSwallowingAVerifyFrame", FrameTxValidation.AtomicBatchFollowedByVerifyFrame,
-            SelfVerifyFrame(), Batched, Frame(TxFrame.ModeVerify, target: Observer));
+            SelfVerifyFrame(), batched, Frame(TxFrame.ModeVerify, target: Observer));
         yield return Case("FrameGasSumOverflow", FrameTxValidation.FrameGasOverflow,
             SelfVerifyFrame(), new TxFrame(TxFrame.ModeDefault, 0, Observer, ulong.MaxValue, UInt256.Zero, default));
         yield return Case("MalformedExpiryFrame", FrameTxValidation.InvalidExpiryFrame,

@@ -35,7 +35,10 @@ public class FrameSignatureForRpc
     public static FrameSignatureForRpc[]? FromSignatures(TxFrameSignature[]? signatures) =>
         signatures?.Select(static s => new FrameSignatureForRpc(s)).ToArray();
 
-    /// <inheritdoc cref="RpcListConverter.TryConvert{TView,TValue}"/>
+    /// <summary>Maps the deserialized <c>signatures</c> list onto the transaction's frame signatures.</summary>
+    /// <param name="signatures">The deserialized list, or <c>null</c> when the request omitted it.</param>
+    /// <param name="converted">The mapped list, or <c>null</c> when <paramref name="signatures"/> is absent.</param>
+    /// <returns><c>false</c> if any element was JSON <c>null</c>.</returns>
     public static bool TryToSignatures(FrameSignatureForRpc[]? signatures, out TxFrameSignature[]? converted) =>
         RpcListConverter.TryConvert(signatures, static s => s.ToSignature(), out converted);
 }

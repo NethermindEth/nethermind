@@ -36,19 +36,22 @@ public class FrameForRpc
     public static FrameForRpc[]? FromFrames(TxFrame[]? frames) =>
         frames?.Select(static f => new FrameForRpc(f)).ToArray();
 
-    /// <inheritdoc cref="RpcListConverter.TryConvert{TView,TValue}"/>
+    /// <summary>Maps the deserialized <c>frames</c> list onto the transaction's frames.</summary>
+    /// <param name="frames">The deserialized list, or <c>null</c> when the request omitted it.</param>
+    /// <param name="converted">The mapped list, or <c>null</c> when <paramref name="frames"/> is absent.</param>
+    /// <returns><c>false</c> if any element was JSON <c>null</c>.</returns>
     public static bool TryToFrames(FrameForRpc[]? frames, out TxFrame[]? converted) =>
         RpcListConverter.TryConvert(frames, static f => f.ToFrame(), out converted);
 
     /// <summary>The gas limits of <paramref name="frames"/>, saturating at <see cref="ulong.MaxValue"/>.</summary>
     /// <remarks>
-    /// This is what an EIP-8141 transaction reserves and spends; <see cref="Transaction.GasLimit"/> carries the
-    /// request's <c>gas</c> field, which the frame path never reads.
+    /// This is what an EIP-8141 transaction reserves and spends, and what <see cref="Transaction.GasLimit"/>
+    /// carries for one. Takes the converted frames, which are null-free by construction.
     /// </remarks>
-    public static ulong TotalGasLimit(FrameForRpc[]? frames)
+    public static ulong TotalGasLimit(TxFrame[]? frames)
     {
         ulong total = 0;
-        foreach (FrameForRpc frame in frames ?? [])
+        foreach (TxFrame frame in frames ?? [])
         {
             if (frame.GasLimit > ulong.MaxValue - total) return ulong.MaxValue;
             total += frame.GasLimit;

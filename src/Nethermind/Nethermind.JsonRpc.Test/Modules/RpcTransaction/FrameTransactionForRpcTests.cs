@@ -205,12 +205,15 @@ public class FrameTransactionForRpcTests
     }
 
     /// <remarks>
-    /// A JSON <c>null</c> in any of the EIP-8141 lists deserializes to a null element that the mapping used to
-    /// dereference, so <c>eth_call</c> answered these requests with a <see cref="NullReferenceException"/>.
+    /// A JSON <c>null</c> in any of the EIP-8141 lists — as an element, or as one of a reference's hashes, which
+    /// System.Text.Json assigns past the converter rather than rejecting — deserializes to a null the mapping used
+    /// to dereference, so <c>eth_call</c> answered these requests with a <see cref="NullReferenceException"/>.
     /// </remarks>
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","frames":[null]}""", "frames", TestName = "ToTransaction_NullFrame_IsRejected")]
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","signatures":[null]}""", "signatures", TestName = "ToTransaction_NullSignature_IsRejected")]
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[null]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReference_IsRejected")]
+    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[{"sourceId":null,"slot":"0x1","root":"0x0000000000000000000000000000000000000000000000000000000000000001"}]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReferenceSourceId_IsRejected")]
+    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[{"sourceId":"0x0000000000000000000000000000000000000000000000000000000000000001","slot":"0x1","root":null}]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReferenceRoot_IsRejected")]
     public void FrameTransactionForRpc_ToTransaction_RejectsANullListEntry(string json, string field)
     {
         TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
@@ -250,6 +253,30 @@ public class FrameTransactionForRpcTests
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
 
         Assert.That(result.IsError, Is.EqualTo(expectedError), result.Error);
+    }
+
+    /// <remarks>
+    /// <c>FrameTxDecoder</c> gives a decoded frame tx the sum of its frame gas limits, since the type has no
+    /// <c>gas_limit</c> field of its own. An RPC-built one has to agree, or the consumers that read
+    /// <see cref="Transaction.GasLimit"/> before execution see a different transaction depending on its origin.
+    /// </remarks>
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_ReportsTheFrameGasSumAsTheGasLimit()
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Gas = 12,
+            Frames =
+            [
+                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, GasLimit = 30_000 },
+                new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC, GasLimit = 40_000 },
+            ],
+        };
+
+        Transaction tx = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).Data!;
+
+        Assert.That(tx.GasLimit, Is.EqualTo(70_000));
     }
 
     [Test]
