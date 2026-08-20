@@ -94,6 +94,83 @@ public class ArenaBasePersistenceTests
     public void ShardRouting_UsesTopBitsOfKeyPrefix(byte[] keyPrefix, int shardCount, int expectedShard) =>
         Assert.That(BaseTableView.ShardOf(keyPrefix, shardCount), Is.EqualTo(expectedShard));
 
+    /// <summary>
+    /// Rebuilds the persistence over a DB marked with the legacy raw slot encoding, as used by flat DBs
+    /// synced before RLP wrapping (the EXPB benchmark snapshots among them). Raw stores a slot as its
+    /// stripped bytes, so the value 255 is the single byte 0xff.
+    /// </summary>
+    private void SwitchToRawSlotEncoding()
+    {
+        _persistence.Dispose();
+        BasePersistence.SetSlotEncoding(_db.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRaw);
+        _persistence = NewPersistence();
+    }
+
+    [Test]
+    public void RawSlotEncoding_RoundTripsSlotValues_AcrossFold()
+    {
+        SwitchToRawSlotEncoding();
+
+        Write(batch =>
+        {
+            batch.SetAccount(TestItem.AddressA, TestItem.GenerateIndexedAccount(0));
+            batch.SetStorage(TestItem.AddressA, 1, SlotValue.FromSpanWithoutLeadingZero([0xff]));
+            batch.SetStorage(TestItem.AddressA, 2, SlotValue.FromSpanWithoutLeadingZero([0x22, 0x33]));
+            batch.SetStorage(TestItem.AddressA, 3, SlotValue.FromSpanWithoutLeadingZero(Enumerable.Repeat((byte)0xff, 32).ToArray()));
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(TestItem.AddressA, 1), Is.EqualTo([0xff]), "overlay read of a tombstone-lookalike value");
+            Assert.That(ReadSlot(TestItem.AddressA, 3), Is.EqualTo(Enumerable.Repeat((byte)0xff, 32).ToArray()));
+        }
+
+        _persistence.Fold();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(OverlayEntryCount(FlatDbColumns.Storage), Is.Zero);
+            Assert.That(ReadSlot(TestItem.AddressA, 1), Is.EqualTo([0xff]), "base read of a tombstone-lookalike value");
+            Assert.That(ReadSlot(TestItem.AddressA, 2), Is.EqualTo([0x22, 0x33]));
+            Assert.That(ReadSlot(TestItem.AddressA, 3), Is.EqualTo(Enumerable.Repeat((byte)0xff, 32).ToArray()));
+        }
+    }
+
+    /// <summary>
+    /// The deletion marker must stay distinguishable from a genuine slot value under the raw encoding,
+    /// where a stored 0xff means 255 rather than "deleted".
+    /// </summary>
+    [Test]
+    public void RawSlotEncoding_DeletionShadowsBase_WithoutClearingLookalikeValues()
+    {
+        SwitchToRawSlotEncoding();
+
+        Write(batch =>
+        {
+            batch.SetAccount(TestItem.AddressA, TestItem.GenerateIndexedAccount(0));
+            batch.SetStorage(TestItem.AddressA, 1, SlotValue.FromSpanWithoutLeadingZero([0xff]));
+            batch.SetStorage(TestItem.AddressA, 2, SlotValue.FromSpanWithoutLeadingZero([0xff]));
+        });
+        _persistence.Fold();
+
+        // Slot 2 is deleted while slot 1 keeps the identical stored bytes.
+        Write(batch => batch.SetStorage(TestItem.AddressA, 2, null));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(TestItem.AddressA, 1), Is.EqualTo([0xff]), "an untouched 0xff value must not read as deleted");
+            Assert.That(ReadSlot(TestItem.AddressA, 2), Is.Null, "the deletion must shadow the base row");
+        }
+
+        _persistence.Fold();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(TestItem.AddressA, 1), Is.EqualTo([0xff]), "the fold must not drop a 0xff value as a tombstone");
+            Assert.That(ReadSlot(TestItem.AddressA, 2), Is.Null, "the fold must eliminate the deleted row");
+        }
+    }
+
     [Test]
     public void Fold_MovesOverlayIntoShardTables_ReadsUnchanged()
     {

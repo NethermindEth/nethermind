@@ -40,15 +40,34 @@ internal sealed class BaseTableStore : IDisposable
     /// <summary>
     /// Overlay deletion marker. Deletions cannot be plain RocksDB deletes — the key may still exist in a
     /// base shard table, and a missing overlay row falls through to it — so they are written as this
-    /// 1-byte value. 0xff can never open a stored row: accounts are RLP lists (first byte ≥ 0xc0, and the
-    /// slim encoder never reaches 0xff) and slot values are RLP byte strings of 1..32 stripped bytes
-    /// (first byte ≤ 0xa0).
+    /// sentinel value instead.
     /// </summary>
+    /// <remarks>
+    /// The length is what makes it unambiguous under <em>both</em> slot encodings, so the arena works on
+    /// legacy raw-encoded DBs too: a raw slot value is at most <see cref="SlotValue.ByteCount"/> stripped
+    /// bytes, and the only RLP slot value this long is a full 32-byte string, which opens with 0xa0 rather
+    /// than <see cref="OverlayTombstone"/>. Accounts are slim-RLP lists (first byte ≥ 0xc0, and the slim
+    /// encoder never reaches 0xff) at any length. Sizing it to the slot read buffer also keeps a tombstone
+    /// readable through the existing <see cref="BaseFlatPersistence.RlpSlotValueBufferSize"/> stackallocs;
+    /// a longer marker would be silently truncated on read.
+    /// </remarks>
     internal const byte OverlayTombstone = 0xff;
 
-    internal static ReadOnlySpan<byte> TombstoneValue => [OverlayTombstone];
+    private const int TombstoneLength = BaseFlatPersistence.RlpSlotValueBufferSize;
 
-    internal static bool IsTombstone(ReadOnlySpan<byte> value) => value.Length == 1 && value[0] == OverlayTombstone;
+    private static readonly byte[] s_tombstone = CreateTombstone();
+
+    private static byte[] CreateTombstone()
+    {
+        byte[] tombstone = new byte[TombstoneLength];
+        tombstone[0] = OverlayTombstone;
+        return tombstone;
+    }
+
+    internal static ReadOnlySpan<byte> TombstoneValue => s_tombstone;
+
+    internal static bool IsTombstone(ReadOnlySpan<byte> value) =>
+        value.Length == TombstoneLength && value[0] == OverlayTombstone;
 
     private const string TableFileExtension = ".st";
     private const byte EntityAccount = 0;

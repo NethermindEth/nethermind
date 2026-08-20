@@ -30,6 +30,7 @@ public class ArenaBasePersistence : IPersistence, IDisposable
     private readonly IColumnsDb<FlatDbColumns> _db;
     private readonly BaseTableStore _store;
     private readonly WriteBufferAdjuster _adjuster;
+    private readonly bool _rlpWrapSlots;
     private int _layoutPersisted;
     private int _kindPersisted;
 
@@ -52,9 +53,9 @@ public class ArenaBasePersistence : IPersistence, IDisposable
         _db = db;
         _layoutPersisted = BasePersistence.ValidateLayoutReturnFlag(db, FlatLayout.Flat);
         ValidateBaseStoreKind(db, FlatBaseStore.Arena, config.ConvertBaseStore);
-        if (!BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<ArenaBasePersistence>()))
-            throw new InvalidConfigurationException(
-                "The Arena base store requires the RLP slot encoding, but this flat DB uses the legacy raw encoding. Wipe the flat DB and re-sync.", -1);
+        // Both tiers store slot values verbatim in the DB's own encoding, so the arena inherits it rather
+        // than imposing one; the deletion marker is unambiguous under either (see BaseTableStore.TombstoneValue).
+        _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<ArenaBasePersistence>());
         _adjuster = new WriteBufferAdjuster(db, config.PersistenceWriteBufferFloor);
         _store = new BaseTableStore(db, directory, config.BaseFoldThresholdBytes, logManager, accountShardCount, storageShardCount);
     }
@@ -166,7 +167,8 @@ public class ArenaBasePersistence : IPersistence, IDisposable
                     new ArenaBaseFlatReader(
                         (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account),
                         (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage),
-                        viewCopy
+                        viewCopy,
+                        _rlpWrapSlots
                     )
                 ),
                 trieReader,
@@ -230,7 +232,8 @@ public class ArenaBasePersistence : IPersistence, IDisposable
                     storageBatch,
                     view,
                     flags,
-                    counter
+                    counter,
+                    _rlpWrapSlots
                 )
             ),
             trieWriteBatch,
@@ -277,7 +280,8 @@ public class ArenaBasePersistence : IPersistence, IDisposable
     internal readonly struct ArenaBaseFlatReader(
         ISortedKeyValueStore accountOverlay,
         ISortedKeyValueStore storageOverlay,
-        BaseTableView view
+        BaseTableView view,
+        bool rlpWrapSlots
     ) : BasePersistence.IHashedFlatReader
     {
         public bool IsPreimageMode => false;
@@ -305,7 +309,7 @@ public class ArenaBasePersistence : IPersistence, IDisposable
                 return false;
             }
 
-            BaseFlatPersistence.DecodeSlotValue(buffer[..size], rlpWrapSlots: true, ref outValue);
+            BaseFlatPersistence.DecodeSlotValue(buffer[..size], rlpWrapSlots, ref outValue);
             return true;
         }
 
@@ -333,7 +337,7 @@ public class ArenaBasePersistence : IPersistence, IDisposable
                     view.CreateStorageCursor(firstKey, lastKey)),
                 accountKey.Bytes[BasePersistence.StoragePrefixPortion..BaseFlatPersistence.AccountKeyLength].ToArray(),
                 BasePersistence.StoragePrefixPortion,
-                rlpWrapSlots: true);
+                rlpWrapSlots);
         }
     }
 
@@ -362,7 +366,8 @@ public class ArenaBasePersistence : IPersistence, IDisposable
             IWriteBatch storageBatch,
             BaseTableView view,
             WriteFlags flags,
-            OverlayWriteCounter counter)
+            OverlayWriteCounter counter,
+            bool rlpWrapSlots)
         {
             _accountSnap = accountSnap;
             _storageSnap = storageSnap;
@@ -371,7 +376,7 @@ public class ArenaBasePersistence : IPersistence, IDisposable
             _view = view;
             _flags = flags;
             _counter = counter;
-            _inner = new BaseFlatPersistence.WriteBatch(accountSnap, storageSnap, accountBatch, storageBatch, flags, rlpWrapSlots: true);
+            _inner = new BaseFlatPersistence.WriteBatch(accountSnap, storageSnap, accountBatch, storageBatch, flags, rlpWrapSlots);
         }
 
         public void SetAccount(in ValueHash256 addrHash, ReadOnlySpan<byte> value)
