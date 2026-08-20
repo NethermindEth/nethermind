@@ -97,7 +97,8 @@ runs:
     - name: Setup Go environment
       uses: actions/setup-go@v6
       with:
-        go-version: 'stable'
+        # Pinned to 1.26: Go 1.27 breaks sedge's abigen build (cockroachdb/swiss has no go1.27 case)
+        go-version: '1.26'
         check-latest: true
         cache: true
 
