@@ -32,6 +32,7 @@ public class EvmObjectPoolTests
     private sealed class BoundItem(int id) : Item(id);
     private sealed class CrossThreadItem(int id) : Item(id);
     private sealed class ChurnItem(int id) : Item(id);
+    private sealed class GuardItem(int id) : Item(id);
 
     [Test]
     public void Empty_pool_reports_no_item()
@@ -128,6 +129,17 @@ public class EvmObjectPoolTests
         });
 
         Assert.That(seen, Is.SameAs(overflowed));
+    }
+
+    [Test]
+    public void Second_pool_over_the_same_item_type_is_rejected()
+    {
+        // The per-thread free list is static per closed generic type, so two pools over one T would
+        // hand each other's items out - two live renters of one frame or one pinned stack.
+        EvmObjectPool<GuardItem> only = new();
+
+        Assert.That(only.TryDequeue(out GuardItem? _), Is.False, "a fresh pool holds nothing");
+        Assert.That(() => new EvmObjectPool<GuardItem>(), Throws.InstanceOf<InvalidOperationException>());
     }
 
     [Test]

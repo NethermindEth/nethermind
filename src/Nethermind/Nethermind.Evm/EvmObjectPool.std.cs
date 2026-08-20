@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -42,9 +41,9 @@ internal sealed class EvmObjectPool<T>
     [ThreadStatic] private static T[]? _local;
     [ThreadStatic] private static int _localCount;
 
-#if DEBUG
+    // Never decremented: the pools are singletons built in static field initialisers, so this is a
+    // construct-once count, not a live one. A test needing a second pool needs a distinct T.
     private static int _instanceCount;
-#endif
 
     /// <param name="localCapacity">Items each thread may retain. Overflow goes to the shared queue.</param>
     /// <param name="maxShared">Items the shared queue may retain; further returns are dropped.</param>
@@ -54,12 +53,16 @@ internal sealed class EvmObjectPool<T>
         ArgumentOutOfRangeException.ThrowIfNegative(maxShared);
         _localCapacity = localCapacity;
         _maxShared = maxShared;
-#if DEBUG
-        int instances = Interlocked.Increment(ref _instanceCount);
-        Debug.Assert(instances == 1,
-            $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<T>)}; they would share one " +
-            "per-thread free list and hand each other's items out. Hoist the pool to a single instance.");
-#endif
+        // Throws rather than asserts: Debug.Assert is erased from Release and CI runs -c release, so an
+        // assertion would guard the type's most dangerous property in neither the node nor the build.
+        // Every pool is a static field initialiser, so a violation fails at type init instead of
+        // silently handing one thread's items to two renters.
+        if (Interlocked.Increment(ref _instanceCount) != 1)
+        {
+            throw new InvalidOperationException(
+                $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<T>)}; they would share one " +
+                "per-thread free list and hand each other's items out. Hoist the pool to a single instance.");
+        }
     }
 
     public bool TryDequeue([MaybeNullWhen(false)] out T item)
