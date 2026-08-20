@@ -153,14 +153,21 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            // Records restored inside the pool's constructor predate the handlers below, so the count is seeded
-            // before subscribing: UpdatePool evicts during startup, and a removal must decrement a count that
-            // already covers what it removes.
+            // Records restored inside the pool's constructor predate the handlers below, so the count and the
+            // payer ledger are seeded before subscribing: UpdatePool evicts during startup, and a removal must
+            // release against a ledger that already covers what it removes.
             if (_blobTransactions.Count > 0)
             {
                 foreach (Transaction restored in _blobTransactions.GetSnapshot())
                 {
                     if (HasExpiryDeadline(restored)) _expiringFrameTxCount++;
+                    // EIP-8141: the bound is summed over the pending set, so a record that survived the restart
+                    // has to keep counting against its payer. Restored, not re-gated: the reservation was
+                    // granted at admission, and refusing it now would leave a record no removal releases.
+                    if (restored.PayerAddress is { } payer && restored.PayerExposure is { } reserved)
+                    {
+                        _payerExposure.Restore(payer, reserved);
+                    }
                 }
             }
 
