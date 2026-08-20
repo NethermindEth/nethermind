@@ -3,40 +3,20 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.TxPool.Test.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
 [Parallelizable(ParallelScope.All)]
 internal class FrameTxVerifyGasFilterTest
 {
-    private static Transaction FrameTx(params TxFrame[] frames) => new()
-    {
-        Type = TxType.FrameTx,
-        SenderAddress = TestItem.AddressA,
-        Frames = frames,
-        FrameSignatures = [],
-    };
-
-    private static TxFrame SelfVerify(ulong gasLimit) =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
-
-    private static TxFrame Execution(ulong gasLimit) =>
-        new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit, UInt256.Zero, default);
-
-    private static TxFrame ApprovingDefault(ulong gasLimit) =>
-        new(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
-
-    // Approving flags on a DEFAULT frame do not end the validation prefix: whether that frame approves
-    // at all depends on code the sender controls, so the frames behind it may still run before any gas
-    // is paid and are charged too. That is the ceiling bypass a sender on a delegation had; a layout
-    // whose whole frame list fits under the ceiling costs the node no more than a recognized one and
-    // stays admissible.
+    // An unrecognized layout is charged its whole frame list: whether an approving DEFAULT frame approves
+    // at all depends on code the sender controls, so the frames behind it may still run before any gas is
+    // paid. A layout that fits under the ceiling anyway costs the node no more than a recognized one.
     private static IEnumerable<TestCaseData> PrefixCases()
     {
         yield return new TestCaseData(new[] { SelfVerify(1_000), Execution(3_000_000) }, AcceptTxResult.Accepted)

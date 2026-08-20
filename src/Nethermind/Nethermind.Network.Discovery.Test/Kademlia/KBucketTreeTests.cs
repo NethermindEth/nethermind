@@ -58,6 +58,21 @@ public class KBucketTreeTests
         Assert.That(result.All(expectedCandidates.Contains), Is.True);
     }
 
+    [Test]
+    public void GetOccupancy_should_track_node_count_and_capacity_across_splits()
+    {
+        KBucketTree<int, int> tree = CreateTree(k: 2, beta: 0);
+        Assert.That(tree.GetOccupancy(), Is.EqualTo(new RoutingTableOccupancy(0, 2)));
+
+        Add(tree, KeyAtDistance(31, 0x10));
+        Add(tree, KeyAtDistance(31, 0x11));
+        Assert.That(tree.GetOccupancy(), Is.EqualTo(new RoutingTableOccupancy(2, 2)));
+
+        // The bucket is full, so admitting a node at another distance splits it and grows the reported capacity.
+        Add(tree, KeyAtDistance(30, 0x20));
+        Assert.That(tree.GetOccupancy(), Is.EqualTo(new RoutingTableOccupancy(3, 6)));
+    }
+
     private static int KeyAtDistance(int distance, int suffix)
         => Int32KademliaDistance.Instance.SetBit(suffix, Int32KademliaDistance.Instance.MaxDistance - distance);
 }

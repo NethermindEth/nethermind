@@ -22,6 +22,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -127,7 +128,7 @@ public class FrameTxProducerRetryMeasurement
             .Done;
 
     [TestCase(true, 236_285ul, TestName = "control: a prefix that approves is included and paid for")]
-    [TestCase(false, 100_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
+    [TestCase(false, 300_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
     [TestCase(false, 236_285ul, TestName = "never approves, at a measured private-pool prefix")]
     public void ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
     {
@@ -141,7 +142,7 @@ public class FrameTxProducerRetryMeasurement
         IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
         balManager.Enabled.Returns(false);
         BlockProcessor.BlockProductionTransactionsExecutor executor =
-            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager);
+            new(adapter, _stateProvider, picker, LimboLogs.Instance, balManager, NullTxPool.Instance);
 
         Transaction tx = FrameTx(verifyGas);
         UInt256 beneficiaryBefore = _stateProvider.GetBalance(Beneficiary);

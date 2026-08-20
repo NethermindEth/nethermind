@@ -29,7 +29,7 @@ internal sealed class FrameTxPayerFilter(IReadOnlyStateProvider stateProvider, I
         {
             Metrics.PendingTransactionsFrameTxNoPayer++;
             if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, its validation prefix never approves a payer.");
-            return AcceptTxResult.Invalid.WithMessage("Frame transaction never approves a payer");
+            return AcceptTxResult.FrameTxNoPayer;
         }
 
         if (logger.IsTrace) logger.Trace($"Resolved frame transaction {tx.Hash} payer: {resolution.Outcome} ({resolution.Payer?.ToString() ?? "none"}).");

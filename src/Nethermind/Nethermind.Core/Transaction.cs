@@ -84,6 +84,16 @@ namespace Nethermind.Core
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
 
+        /// <summary>Whether the transaction creates a contract at the top level, so a receipt names a <c>contractAddress</c>.</summary>
+        /// <remarks>
+        /// An EIP-8141 frame transaction carries no <c>to</c> field at all, which makes
+        /// <see cref="IsContractCreation"/> true for it, yet it creates nothing at the top level: a
+        /// creation happens inside a deploy frame through <c>CREATE</c>, at an address the frame
+        /// determines. Reporting a top-level contract address for one names an account that was never
+        /// created, and every site that derives it independently invents a different address.
+        /// </remarks>
+        public bool CreatesTopLevelContract => IsContractCreation && !SupportsFrames;
+
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
         public bool HasAuthorizationList =>
             Type == TxType.SetCode &&
@@ -200,7 +210,18 @@ namespace Nethermind.Core
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        public object? NetworkWrapper { get; set; }
+        private object? _networkWrapper;
+
+        /// <remarks>Replacing the sidecar changes the mempool-form length, so the memoized size is dropped.</remarks>
+        public object? NetworkWrapper
+        {
+            get => _networkWrapper;
+            set
+            {
+                _networkWrapper = value;
+                _size = null;
+            }
+        }
 
         /// <summary>
         /// List of EOA code authorizations.
@@ -225,6 +246,10 @@ namespace Nethermind.Core
         /// resolved or when it cannot be resolved natively. In-memory only (not encoded).
         /// </summary>
         public Address? PayerAddress { get; set; }
+
+        /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
+        /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
+        public virtual ulong? PersistedExpiryDeadline => null;
 
         /// <summary>
         /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
@@ -331,7 +356,7 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool MayHaveNetworkForm => Type is TxType.Blob;
+        public bool MayHaveNetworkForm => Type is TxType.Blob or TxType.FrameTx;
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
@@ -424,7 +449,7 @@ namespace Nethermind.Core
         }
 
         public virtual ProofVersion? GetProofVersion() =>
-            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version
                 : null;
     }

@@ -264,6 +264,22 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_config_includes_builder_request_contracts()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_config");
+        JToken result = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SelectToken("result.current.systemContracts.BUILDER_DEPOSIT_CONTRACT_ADDRESS")?.Value<string>(),
+                Is.EqualTo("0x0000bff46984e3725691fa540a8c7589300d8282"));
+            Assert.That(result.SelectToken("result.current.systemContracts.BUILDER_EXIT_CONTRACT_ADDRESS")?.Value<string>(),
+                Is.EqualTo("0x000064d678505ad48f8ccb093bc65613800e8282"));
+        }
+    }
+
+    [Test]
     public async Task Eth_get_transaction_by_block_number_and_index()
     {
         using Context ctx = await Context.Create();

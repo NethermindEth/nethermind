@@ -25,26 +25,28 @@ internal sealed class NotSupportedTxFilter(ITxPoolConfig txPoolConfig, IChainHea
             return AcceptTxResult.NotSupportedTxType;
         }
 
-        // EIP-8141: a persistent blob pool stores a blob-carrying frame tx via the frame RLP decoder, which
-        // has no network-wrapper handling and drops the sidecar, reloading a wrapper-less LightTransaction that
-        // is unproducible and unservable. Only BlobsSupportMode.InMemory keeps the full tx intact, so admit it there only.
-        if (tx.SupportsFrames && tx.CarriesBlobs && _txPoolConfig.BlobsSupport.IsPersistentStorage())
-        {
-            Metrics.PendingTransactionsNotSupportedTxType++;
-            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transactions require in-memory blob support.");
-            return AcceptTxResult.NotSupportedTxType;
-        }
-
         // EIP8141-GAP (devnet only): frame txs are admitted while the fork is unscheduled on public networks.
-        // The public-mempool DoS rules (validation-prefix simulation, MAX_VERIFY_GAS, paymaster reservation,
-        // failed-APPROVE replay bound, payer-exposure accounting, dependency-set revalidation/eviction ordering)
-        // are NOT implemented and must gate this branch before any public activation. MalformedTxFilter still
-        // enforces static well-formedness downstream.
+        // Still missing before any public activation: validation-prefix simulation, paymaster reservation, the
+        // failed-APPROVE replay bound, dependency-set revalidation/eviction ordering, and payer-exposure
+        // accounting beyond natively-resolved payers (under-reserved until the shared max_cost helper) and for
+        // blob-pool records restored from disk, whose payer is not persisted so they hold no reservation.
+        // MalformedTxFilter still enforces static well-formedness downstream.
         if (tx.SupportsFrames && !_specProvider.GetCurrentHeadSpec().IsEip8141Enabled)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, frame transactions are not supported in the transaction pool.");
             return AcceptTxResult.NotSupportedTxType;
+        }
+
+        // EIP-8141: as for type-3, the mempool form of a blob-carrying frame tx is the sidecar wrapper — without it
+        // the pool can neither serve nor re-encode the transaction, and its persisted record fails to decode back.
+        // The RLP decoder enforces this for everything off the wire; a transaction built field-by-field over
+        // eth_sendTransaction never passes through it.
+        if (tx.SupportsFrames && tx.CarriesBlobs && !tx.IsInMempoolForm())
+        {
+            Metrics.PendingTransactionsFrameTxMissingSidecar++;
+            if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob-carrying frame transaction has no blob sidecar.");
+            return AcceptTxResult.FrameTxMissingSidecar;
         }
 
         return AcceptTxResult.Accepted;
