@@ -8,14 +8,18 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class SnapSyncRunner(Func<CancellationToken, Task> runDispatcher, ISnapTrieFactory snapTrieFactory) : ISnapSyncRunner
+public class SnapSyncRunner(
+    Func<CancellationToken, Task> runDispatcher,
+    ISnapTrieFactory snapTrieFactory,
+    ProgressTracker progressTracker) : ISnapSyncRunner
 {
-    public SnapSyncRunner(SimpleDispatcher<SnapSyncBatch> dispatcher, ISnapTrieFactory snapTrieFactory)
-        : this(dispatcher.Run, snapTrieFactory) { }
+    public SnapSyncRunner(SimpleDispatcher<SnapSyncBatch> dispatcher, ISnapTrieFactory snapTrieFactory, ProgressTracker progressTracker)
+        : this(dispatcher.Run, snapTrieFactory, progressTracker) { }
 
     public async Task Run(CancellationToken token)
     {
         snapTrieFactory.EnsureInitialize();
+        progressTracker.LoadProgress();
         try
         {
             await runDispatcher(token);
