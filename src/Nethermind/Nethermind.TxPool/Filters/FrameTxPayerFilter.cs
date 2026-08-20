@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
@@ -11,7 +10,7 @@ namespace Nethermind.TxPool.Filters;
 /// Resolves the fee-payer of an EIP-8141 frame transaction at admission, records it on
 /// <see cref="Transaction.PayerAddress"/>, and rejects prefixes that can never approve a payer.
 /// </summary>
-internal sealed class FrameTxPayerFilter(IReadOnlyStateProvider stateProvider, ILogger logger) : IIncomingTxFilter
+internal sealed class FrameTxPayerFilter(ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
@@ -20,7 +19,7 @@ internal sealed class FrameTxPayerFilter(IReadOnlyStateProvider stateProvider, I
             return AcceptTxResult.Accepted;
         }
 
-        FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, stateProvider, state.SenderAccount);
+        FrameTxPayerResolution resolution = FrameTxPayerResolver.Resolve(tx, state.SenderAccount);
         tx.PayerAddress = resolution.Payer;
 
         // NoPayer is structural: the prefix has no payment-approving frame, so it can never be included

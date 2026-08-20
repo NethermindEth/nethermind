@@ -73,7 +73,7 @@ public class FrameTxPayerFilterTests
 
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, Transaction tx)
     {
-        FrameTxPayerFilter filter = new(state, LimboLogs.Instance.GetClassLogger<FrameTxPayerFilterTests>());
+        FrameTxPayerFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxPayerFilterTests>());
         TxFilteringState filteringState = new(tx, state);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
