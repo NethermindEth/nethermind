@@ -440,9 +440,6 @@ public abstract class BlockchainTestBase
 
             int paramCount = NewPayloadParamCounts[newPayloadVersion];
             IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
-            // EIP-7805 (FOCIL): the IL is a separate fixture field; append it as the 5th positional arg for V6.
-            if (newPayloadVersion >= EngineApiVersions.NewPayload.V6 && enginePayload.InclusionListTransactions is { } il)
-                paramsRaw = paramsRaw.Append(JsonSerializer.Serialize(il));
             string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
 
             string npMethod = expectWitness ? "engine_newPayloadWithWitnessV" + newPayloadVersion : "engine_newPayloadV" + newPayloadVersion;
@@ -480,7 +477,7 @@ public abstract class BlockchainTestBase
             else
             {
                 PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
-                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.Status);
+                AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, enginePayload.InclusionListSatisfied);
                 lastStatus = payloadStatus.Status;
                 if (payloadStatus.ValidationError is not null)
                     lastValidationError = payloadStatus.ValidationError;
@@ -539,18 +536,15 @@ public abstract class BlockchainTestBase
     private static void AssertExpectedRpcError(int errorCode, string? errorMessage, string? validationError, int payloadVersion) =>
         Assert.That(validationError, Is.Not.Null, $"engine_newPayloadV{payloadVersion} RPC error: {errorCode} {errorMessage}");
 
-    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, string? explicitStatus = null)
+    private static void AssertPayloadStatus(PayloadStatusV1 payloadStatus, string? expectedValidationError, int payloadVersion, bool? expectedInclusionListSatisfied = null)
     {
-        // A fixture-supplied `status` wins (covers INCLUSION_LIST_UNSATISFIED for FOCIL);
-        // otherwise fall back to the legacy validation-error → INVALID convention.
-        string expectedStatus = explicitStatus ?? (expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid);
+        string expectedStatus = expectedValidationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
+        Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
 
-        // Normalize V6's VALID + inclusionListSatisfied=false (execution-apis#609) back to the legacy
-        // INCLUSION_LIST_UNSATISFIED that the FOCIL fixtures still assert.
-        string actualStatus = payloadStatus is PayloadStatusV2 { Status: PayloadStatus.Valid, InclusionListSatisfied: false }
-            ? PayloadStatus.InclusionListUnsatisfied
-            : payloadStatus.Status;
-        Assert.That(actualStatus, Is.EqualTo(expectedStatus), $"engine_newPayloadV{payloadVersion} returned {actualStatus}, expected {expectedStatus}. ValidationError: {payloadStatus.ValidationError}");
+        // EIP-7805: IL compliance is only reported for a VALID payload (execution-apis#609).
+        if (expectedInclusionListSatisfied is { } expectedIlSatisfied && payloadStatus.Status == PayloadStatus.Valid)
+            Assert.That((payloadStatus as PayloadStatusV2)?.InclusionListSatisfied, Is.EqualTo(expectedIlSatisfied),
+                $"engine_newPayloadV{payloadVersion} reported inclusionListSatisfied={(payloadStatus as PayloadStatusV2)?.InclusionListSatisfied}, expected {expectedIlSatisfied}");
 
         if (expectedValidationError is not null)
             AssertValidationError(payloadStatus.ValidationError, expectedValidationError, payloadVersion);
