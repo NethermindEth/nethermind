@@ -1,0 +1,49 @@
+name: ARM Disk Probe
+
+# One-off diagnostic: the reproducible-benchmarks-arm root disk sits at 5G free while the RPC
+# benchmark guard needs 6G, and arm-runner-maintenance reclaims 0B because Docker's data root is
+# not on /. Locates the real consumer, then reclaims only unambiguous caches (apt, journal).
+
+on:
+  push:
+    branches: [diag/arm-disk-probe]
+    paths: [.github/workflows/arm-disk-probe.yml]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    timeout-minutes: 20
+    steps:
+      - name: Where the space is
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "=== df ==="; df -h / /data 2>/dev/null || df -h /
+          echo "=== docker data root ==="; docker info 2>/dev/null | grep -i 'root dir' || true
+          echo "=== top-level of / (one filesystem) ==="
+          du -xh --max-depth=1 / 2>/dev/null | sort -rh | head -20
+          for p in /usr /var /root /opt /home /snap; do
+            [[ -d "$p" ]] || continue
+            echo "=== $p (depth 2) ==="
+            du -xh --max-depth=2 "$p" 2>/dev/null | sort -rh | head -12
+          done
+          echo "=== journal ==="; journalctl --disk-usage 2>/dev/null || true
+          echo "=== apt cache ==="; du -sh /var/cache/apt 2>/dev/null || true
+          echo "=== dotnet installs ==="; du -sh /usr/local/share/dotnet /root/.dotnet 2>/dev/null || true
+          echo "=== nuget/tool caches ==="; du -sh /root/.nuget /root/.local /opt/dottrace 2>/dev/null || true
+
+      - name: Reclaim caches only
+        shell: bash
+        run: |
+          set -uo pipefail
+          before=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/cache/apt/archives/*.deb 2>/dev/null || true
+          journalctl --vacuum-size=200M 2>/dev/null || true
+          rm -rf /root/.nuget/packages 2>/dev/null || true
+          find /var/log -type f -name '*.gz' -delete 2>/dev/null || true
+          find /var/log -type f -regextype posix-extended -regex '.*\.[0-9]+$' -delete 2>/dev/null || true
+          after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          echo "free on /: ${before}G -> ${after}G"
+          df -h /
