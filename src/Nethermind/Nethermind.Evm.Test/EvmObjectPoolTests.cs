@@ -147,25 +147,23 @@ public class EvmObjectPoolTests
         ConcurrentDictionary<ChurnItem, byte> rented = new();
         int duplicates = 0;
         int allocated = 0;
-        int allocatedAfterWarmup = -1;
+        int steadyStateAllocations = 0;
 
         Parallel.For(0, threads, _ =>
         {
             ChurnItem[] held = new ChurnItem[itemsPerThread];
             for (int round = 0; round < rounds; round++)
             {
-                // Round 0 necessarily allocates the whole concurrent working set against an empty pool,
-                // so measure recycling from round 1 on rather than against a cumulative budget.
-                if (round == 1)
-                {
-                    Interlocked.CompareExchange(ref allocatedAfterWarmup, Volatile.Read(ref allocated), -1);
-                }
-
                 for (int i = 0; i < itemsPerThread; i++)
                 {
                     if (!pool.TryDequeue(out ChurnItem? item))
                     {
                         item = new ChurnItem(Interlocked.Increment(ref allocated));
+                        // Round 0 faces an empty pool and is entitled to the whole working set. Counting
+                        // per thread rather than snapshotting a shared total keeps this exact: a global
+                        // snapshot taken when the first thread reaches round 1 would bill a lagging
+                        // thread's round-0 allocations to the steady state.
+                        if (round > 0) Interlocked.Increment(ref steadyStateAllocations);
                     }
 
                     if (!rented.TryAdd(item!, 0))
@@ -199,12 +197,10 @@ public class EvmObjectPoolTests
         Assert.That(drained, Is.LessThanOrEqualTo(maxShared + localCapacity));
 
         // Without recycling this workload would allocate threads * itemsPerThread * rounds instances.
-        // Assert on the steady state rather than the cumulative total: the warm-up round alone is
-        // entitled to the full working set, so a cumulative bound would really be measuring how often
-        // TryDequeueShared loses the publish race - a rate, not the invariant under test.
-        int steadyStateAllocations = Volatile.Read(ref allocated) - Volatile.Read(ref allocatedAfterWarmup);
-        Assert.That(allocatedAfterWarmup, Is.GreaterThanOrEqualTo(0), "warm-up snapshot was never taken");
-        Assert.That(steadyStateAllocations, Is.LessThan(threads * itemsPerThread / 4),
+        // Assert on the steady state rather than the cumulative total: a cumulative bound would really
+        // be measuring how often TryDequeueShared loses the publish race - a rate, not the invariant.
+        Assert.That(Volatile.Read(ref allocated), Is.GreaterThan(0), "no item was ever allocated");
+        Assert.That(Volatile.Read(ref steadyStateAllocations), Is.LessThan(threads * itemsPerThread / 4),
             "the pool kept allocating after warm-up instead of recycling");
     }
 
