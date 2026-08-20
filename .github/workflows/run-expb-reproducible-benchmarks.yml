@@ -312,6 +312,20 @@ jobs:
             client_env=""
           fi
 
+          # BRANCH-ONLY DEFAULT (remove before merge): every flat benchmark run on this branch
+          # measures the arena base store unless the caller explicitly picks a BaseStore, so a
+          # plain dispatch or auto PR run can never silently produce plain flat-RocksDB numbers.
+          # Baseline runs opt out with --FlatDb.BaseStore=Rocks. The ConvertBaseStore flag also
+          # triggers the render-time startup_wait bump for the conversion window.
+          if [[ "${state_layout}" == "flat" ]] && ! printf '%s' "${additional_extra_flags}" | grep -qi "FlatDb.BaseStore"; then
+            arena_flags="--FlatDb.BaseStore=Arena, --FlatDb.ConvertBaseStore=true, --FlatDb.BaseFoldThresholdBytes=0"
+            if [[ -n "${additional_extra_flags}" ]]; then
+              additional_extra_flags="${additional_extra_flags}, ${arena_flags}"
+            else
+              additional_extra_flags="${arena_flags}"
+            fi
+          fi
+
           # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
           # extra-flags pipeline, so it actually reaches Nethermind (same path as additional_extra_flags).
           # Skipped for non-flat layouts, when disabled (empty), or when the caller already set it.
