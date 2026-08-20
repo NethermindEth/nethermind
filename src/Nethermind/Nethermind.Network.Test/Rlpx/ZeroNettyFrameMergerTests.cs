@@ -28,6 +28,9 @@ public class ZeroNettyFrameMergerTests
         }
     }
 
+    /// <summary>Byte offset of the context id within a frame header: 3 size bytes, the RLP list prefix, the capability id.</summary>
+    private const int ContextIdOffsetInHeader = 5;
+
     private static IByteBuffer BuildFrames(int count)
     {
         TestFrameHelper frameBuilder = new();
@@ -214,7 +217,8 @@ public class ZeroNettyFrameMergerTests
     [Test]
     public void Throws_when_continuation_frame_exceeds_remaining_packet_size()
     {
-        ZeroFrameMergerTestWrapper wrapper = new();
+        using PooledBufferLeakDetector detector = new(message: "the in-progress packet buffer must be released, not just dropped");
+        ZeroFrameMergerTestWrapper wrapper = new(detector.Allocator);
 
         // Build a valid two-frame packet and then corrupt the continuation frame's size field.
         using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
@@ -244,8 +248,6 @@ public class ZeroNettyFrameMergerTests
         Assert.That(() => wrapper.Decode(continuationFrame),
             Throws.InstanceOf<CorruptedFrameException>(),
             "continuation frame larger than remaining packet size must be rejected");
-        Assert.That(wrapper.AllocatedBuffer.ReferenceCount, Is.Zero,
-            "the in-progress packet buffer must be released, not just dropped");
 
         using DisposableByteBuffer recoveryInput = BuildFrames(1).AsDisposable();
         ZeroPacket recovered = wrapper.Decode(recoveryInput);
@@ -268,8 +270,7 @@ public class ZeroNettyFrameMergerTests
 
         // The splitter emits [capability id, context id] = [0, 0] for a single frame; a non-zero context id with no
         // total packet size is still a normal frame as long as no packet is open under it.
-        const int contextIdOffset = 5;
-        frame.SetByte(contextIdOffset, 1);
+        frame.SetByte(ContextIdOffsetInHeader, 1);
 
         ZeroPacket packet = wrapper.Decode(frame);
         try
@@ -285,20 +286,18 @@ public class ZeroNettyFrameMergerTests
     [Test]
     public void Throws_when_continuation_frame_carries_a_different_context_id()
     {
-        ZeroFrameMergerTestWrapper wrapper = new();
+        using PooledBufferLeakDetector detector = new(message: "the in-progress packet buffer must be released, not just dropped");
+        ZeroFrameMergerTestWrapper wrapper = new(detector.Allocator);
 
         using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
 
-        // A continuation frame header is [size:3][sequence prefix][capability id][context id][padding], all three
-        // header body items being single byte here. Bumping the context id detaches the frame from the packet above.
-        const int continuationContextIdOffset = Frame.HeaderSize + Frame.DefaultMaxFrameSize + 5;
+        // Bumping the context id detaches the continuation frame from the packet opened by the frame above it.
+        const int continuationContextIdOffset = Frame.HeaderSize + Frame.DefaultMaxFrameSize + ContextIdOffsetInHeader;
         frames.SetByte(continuationContextIdOffset, frames.GetByte(continuationContextIdOffset) + 1);
 
         Assert.That(() => wrapper.Decode(frames),
             Throws.InstanceOf<CorruptedFrameException>(),
             "a frame from another context id must not be merged into the in-progress packet");
-        Assert.That(wrapper.AllocatedBuffer.ReferenceCount, Is.Zero,
-            "the in-progress packet buffer must be released, not just dropped");
     }
 
     [Test]

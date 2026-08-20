@@ -69,9 +69,10 @@ namespace Nethermind.Network.Test.Rlpx
             FrameHeaderReader reader = new();
             using DisposableByteBuffer buffer = Unpooled.Buffer(Frame.HeaderSize).AsDisposable();
 
-            buffer.WriteByte(1 >> 16);
-            buffer.WriteByte(1 >> 8);
-            buffer.WriteByte(1);
+            const int frameSize = 1;
+            buffer.WriteByte(frameSize >> 16);
+            buffer.WriteByte(frameSize >> 8);
+            buffer.WriteByte(frameSize);
 
             buffer.WriteBytes(headerBodyPrefix);
             buffer.WriteZero(Frame.HeaderSize - buffer.WriterIndex);

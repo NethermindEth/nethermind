@@ -109,7 +109,7 @@ public class SnappyTests
         string rlpxDir = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx");
         byte[] bytesPy = Bytes.FromHexString(File.ReadAllText(Path.Combine(rlpxDir, "block.py.snappy")));
         byte[] bytesGo = Bytes.FromHexString(File.ReadAllText(Path.Combine(rlpxDir, "block.go.snappy")));
-        byte[] bytesUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(rlpxDir, _uncompressedTestFileName)));
+        byte[] bytesUncompressed = Bytes.FromHexString(File.ReadAllText(_uncompressedTestFileName));
 
         ZeroSnappyEncoderForTest encoder = new();
         byte[] compressed = encoder.TestEncode(Bytes.Concat(1, bytesUncompressed));
@@ -121,7 +121,7 @@ public class SnappyTests
     public void Roundtrip_zero()
     {
         ZeroSnappyEncoderForTest encoder = new();
-        byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
+        byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(_uncompressedTestFileName));
         byte[] compressed = encoder.TestEncode(Bytes.Concat(1, expectedUncompressed));
         byte[] uncompressedResult = Snappy.DecompressToArray(compressed.Skip(1).ToArray());
         Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));

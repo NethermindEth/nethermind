@@ -42,7 +42,7 @@ namespace Nethermind.Network.Rlpx
         /// <summary>Decodes the RLP header body of the frame header just read into <see cref="HeaderBytes"/>.</summary>
         /// <remarks>
         /// Kept separate from <see cref="ReadFrameHeader"/> so that the exception handling region covers the RLP
-        /// decoding only, and does not risk swallowing a <see cref="CorruptedFrameException"/> raised elsewhere.
+        /// decoding only, rather than also spanning the frame size read and <see cref="ValidateTotalPacketSize"/>.
         /// </remarks>
         /// <exception cref="CorruptedFrameException">The header body is not a well formed RLP sequence.</exception>
         private void ReadHeaderBody(out int? contextId, out int? totalPacketSize)
@@ -51,9 +51,10 @@ namespace Nethermind.Network.Rlpx
             {
                 RlpReader headerBodyItems = new(HeaderBytes.AsSpan(HeaderBodyOffset, HeaderBodyLength));
                 int headerDataLength = headerBodyItems.ReadSequenceLength();
-                if ((uint)headerDataLength > (uint)(headerBodyItems.Length - headerBodyItems.Position))
+                int remaining = headerBodyItems.Length - headerBodyItems.Position;
+                if ((uint)headerDataLength > (uint)remaining)
                 {
-                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length exceeds {HeaderBodyLength} bytes");
+                    throw new CorruptedFrameException($"Invalid Rlpx header lengths, header body RLP length {headerDataLength} exceeds the {remaining} bytes left in the header");
                 }
 
                 int headerDataEnd = headerDataLength + headerBodyItems.Position;
