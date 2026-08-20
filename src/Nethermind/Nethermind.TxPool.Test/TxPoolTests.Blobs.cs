@@ -1455,41 +1455,23 @@ namespace Nethermind.TxPool.Test
         // EIP-8141: a blob-carrying frame tx (type 6 with versioned hashes) is routed to the blob pool,
         // mirroring type-3 routing, so it is subject to blob-pool rules. A plain frame tx and a type-3
         // blob tx must route unchanged.
-        [Test]
-        public void blob_carrying_frame_tx_is_routed_to_blob_pool()
+        [TestCase(1, true, 1, 0, TestName = "blob_carrying_frame_tx_is_routed_to_blob_pool")]
+        [TestCase(0, false, 0, 1, TestName = "non_blob_frame_tx_is_routed_to_normal_pool")]
+        public void Frame_tx_pool_routing_follows_the_blob_count(int blobCount, bool withSidecar, int expectedBlobPool, int expectedNormalPool)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
-
-            AcceptTxResult result = _txPool.SubmitTx(frameBlobTx, TxHandlingOptions.None);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
-            }
-        }
-
-        [Test]
-        public void non_blob_frame_tx_is_routed_to_normal_pool()
-        {
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
-            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
-            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-
-            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 0);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount, withSidecar: withSidecar);
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedBlobPool));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedNormalPool));
             }
         }
 

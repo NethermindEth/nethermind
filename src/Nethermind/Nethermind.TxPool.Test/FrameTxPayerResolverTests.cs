@@ -11,11 +11,14 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
 public class FrameTxPayerResolverTests
 {
+    private const ulong PrefixFrameGas = 100_000;
+
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Sponsor = TestItem.AddressB;
 
@@ -270,32 +273,18 @@ public class FrameTxPayerResolverTests
     private static void DeployedCodeAccount(TestReadOnlyStateProvider state, Address address) =>
         state.InsertCode([0x60, 0x00], address);
 
-    private static Transaction FrameTx(TxFrame[] frames, TxFrameSignature[] signatures) => new()
-    {
-        Type = TxType.FrameTx,
-        SenderAddress = Sender,
-        Frames = frames,
-        FrameSignatures = signatures,
-    };
+    private static Transaction FrameTx(TxFrame[] frames, TxFrameSignature[] signatures) =>
+        FrameTxTestFrames.FrameTx(Sender, signatures, frames);
 
-    private static TxFrameSignature Secp(Address signer) =>
-        new(TxFrameSignature.SchemeSecp256k1, signer, default, new byte[TxFrameSignature.Secp256k1SignatureLength]);
+    private static TxFrameSignature Secp(Address signer) => Secp256k1Signature(signer);
 
-    private static TxFrame SelfVerifyFrame() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
+    private static TxFrame SelfVerifyFrame() => SelfVerify(PrefixFrameGas);
 
-    private static TxFrame OnlyVerifyFrame() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, default);
+    private static TxFrame OnlyVerifyFrame() => OnlyVerify(PrefixFrameGas);
 
-    private static TxFrame PayFrame(Address target) =>
-        new(TxFrame.ModeVerify, TxFrame.ApprovePayment, target, gasLimit: 100_000, UInt256.Zero, default);
+    private static TxFrame PayFrame(Address target) => Pay(target, PrefixFrameGas);
 
-    private static TxFrame ExpiryFrame(ulong deadline)
-    {
-        byte[] data = new byte[Eip8141Constants.ExpiryDataLength];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(data, deadline);
-        return new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data);
-    }
+    private static TxFrame ExpiryFrame(ulong deadline) => ExpiryAt(deadline);
 
     private static TxFrame Frame(byte mode) => new(mode, flags: 0, target: null, gasLimit: 50_000, UInt256.Zero, default);
 

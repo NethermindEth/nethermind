@@ -480,13 +480,20 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
     }
 
-    [Test]
-    public void IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue()
+    // Bogota (Osaka-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
+    [TestCaseSource(nameof(FrameBlobProofVersionCases))]
+    public bool IsWellFormed_FrameBlobTxProofVersion(ProofVersion proofVersion)
     {
-        Transaction tx = BuildBlobCarryingFrameTx(Bogota.Instance.BlobProofVersion);
+        Transaction tx = BuildBlobCarryingFrameTx(proofVersion);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
-        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+        return txValidator.IsWellFormed(tx, Bogota.Instance).AsBool();
+    }
+
+    private static IEnumerable<TestCaseData> FrameBlobProofVersionCases()
+    {
+        yield return new TestCaseData(Bogota.Instance.BlobProofVersion).Returns(true).SetName("IsWellFormed_FrameBlobTxWithValidSidecar_ReturnsTrue");
+        yield return new TestCaseData(ProofVersion.V0).Returns(false).SetName("IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse");
     }
 
     [Test]
@@ -495,16 +502,6 @@ public class TxValidatorTests
         Transaction tx = BuildBlobCarryingFrameTx(Bogota.Instance.BlobProofVersion);
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         wrapper.Proofs[0].AsSpan().Clear(); // break the KZG cell proof while keeping the length valid
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-
-        Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
-    }
-
-    [Test]
-    public void IsWellFormed_FrameBlobTxWithWrongProofVersion_ReturnsFalse()
-    {
-        // Bogota (Osaka-based) requires the EIP-7594 cell-proof version; a legacy V0 wrapper is rejected.
-        Transaction tx = BuildBlobCarryingFrameTx(ProofVersion.V0);
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
