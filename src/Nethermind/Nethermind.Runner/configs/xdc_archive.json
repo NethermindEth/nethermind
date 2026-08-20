@@ -4,8 +4,7 @@
     "ChainSpecPath": "chainspec/xdc.json",
     "BaseDbPath": "nethermind_db/xdc_archive",
     "LogFileName": "xdc_archive.log",
-    "StateDbKeyScheme": "Hash",
-    "AutoDump": "Geth"
+    "StateDbKeyScheme": "Hash"
   },
   "Network": {
     "EnableEnrDiscovery": false
