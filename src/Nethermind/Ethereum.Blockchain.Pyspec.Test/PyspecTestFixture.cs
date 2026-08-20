@@ -67,8 +67,8 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64B
         PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
 }
 
-// Bogota engine-payload fixtures (EIP-7805 FOCIL). Shipped as a separate EELS release archive
-// from BAL, so we override ArchiveVersion/ArchiveName here.
+// Bogota engine-payload fixtures (EIP-7805 FOCIL), shipped in their own release archive,
+// hence the ArchiveVersion/ArchiveName override.
 public abstract class PyspecBogotaEngineBlockchainTestFixture() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
 {
     [TestCaseSource(nameof(LoadTests))]
