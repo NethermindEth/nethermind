@@ -78,9 +78,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if ! gh release view "$GIT_TAG" >/dev/null 2>&1; then
-            echo "Drafting release $GIT_TAG"
-            relnotes=$(cat <<'EOF'
+          relnotes=$(cat <<'EOF'
           # Release notes
 
           ### [CONTENT PLACEHOLDER]
@@ -94,8 +92,22 @@ jobs:
           The package is signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
           EOF
           )
-            gh release create "$GIT_TAG" --target "$GITHUB_SHA" -d -p \
+
+          if ! gh release view "$GIT_TAG" >/dev/null 2>&1; then
+            echo "Drafting release $GIT_TAG"
+            gh release create "$GIT_TAG" --target "$GITHUB_SHA" -d -p --latest=false \
               -t "Guest for ZisK r${{ github.run_number }}" -F <(printf '%s' "$relnotes")
+          else
+            # `run_number` restarts if this file is ever renamed, so touch nothing
+            # but this run's own draft
+            release=$(gh release view "$GIT_TAG" --json isDraft,targetCommitish \
+              -q '"\(.isDraft) \(.targetCommitish)"')
+            [[ "$release" == "true $GITHUB_SHA" ]] || \
+              { echo "::error::Release $GIT_TAG already exists"; exit 1; }
+
+            # A re-run rebuilds the guest, so the notes must follow the new digest
+            echo "Refreshing the notes of $GIT_TAG"
+            gh release edit "$GIT_TAG" -F <(printf '%s' "$relnotes")
           fi
 
           echo "Uploading assets"

@@ -17,7 +17,7 @@ jobs:
   update-docs:
     name: Update docs
     runs-on: ubuntu-latest
-    # Only client releases ship docs; exclude every component tag prefix
+    # Component releases (e.g. the ZisK guest) ship no docs
     if: github.event_name != 'release' || !startsWith(github.event.release.tag_name, 'zisk-guest-')
     steps:
       - name: Create GitHub app token
@@ -58,14 +58,19 @@ jobs:
       - name: Tag a new version
         if: github.event_name == 'release' && !github.event.release.prerelease
         working-directory: d
+        env:
+          TAG: ${{ github.event.release.tag_name }}
         run: |
           npm ci
-          npm run docusaurus docs:version ${{ github.event.release.tag_name }}
+          npm run docusaurus docs:version "$TAG"
 
       - name: Create a pull request
         working-directory: d
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          # Passed through the environment so that a dispatch input cannot be
+          # interpolated into the script of a step holding the app token
+          VERSION: ${{ github.event_name == 'release' && format('v{0}', github.event.release.tag_name) || inputs.ref }}
         run: |
           set -euo pipefail
           git add -A
@@ -75,12 +80,11 @@ jobs:
             exit 0
           fi
 
-          version="${{ github.event_name == 'release' && format('v{0}', github.event.release.tag_name) || inputs.ref }}"
           head_branch=docs/auto-update-${{ github.run_number }}-${{ github.run_attempt }}
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b $head_branch
-          git commit -m "docs: generated from ${version}"
+          git commit -m "docs: generated from $VERSION"
           git push origin $head_branch
-          gh pr create -B main -H $head_branch -t "docs: update for ${version}" \
-            -b "Generated docs based on ${version}." -l docgen
+          gh pr create -B main -H $head_branch -t "docs: update for $VERSION" \
+            -b "Generated docs based on $VERSION." -l docgen
