@@ -7,9 +7,25 @@ set -euo pipefail
 INSTANCE_NAME=$(derive_instance_name "$RUNNER_LABEL")
 echo "instance name: ${INSTANCE_NAME}"
 
-ZONE=$(resolve_zone "$INSTANCE_NAME")
 PREEMPTED=false
 DELETE_FAILED=false
+
+# A failed lookup must not be mistaken for an absent instance, or a transient API error
+# would let this job report a still-running VM as reaped. Retry once, then give up loudly.
+ZONE=""
+if ! ZONE=$(resolve_zone "$INSTANCE_NAME"); then
+  sleep 5
+  if ! ZONE=$(resolve_zone "$INSTANCE_NAME"); then
+    echo "::error title=GCP runner::could not determine whether ${INSTANCE_NAME} still exists; not treating it as reaped"
+    {
+      echo "instance_name=${INSTANCE_NAME}"
+      echo "zone="
+      echo "preempted=false"
+      echo "terminated_by=lookup-failed"
+    } >> "$GITHUB_OUTPUT"
+    exit 1
+  fi
+fi
 
 if [ -n "$ZONE" ]; then
   echo "deleting ${INSTANCE_NAME} in ${ZONE}"

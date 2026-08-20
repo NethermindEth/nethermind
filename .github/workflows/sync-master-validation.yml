@@ -231,6 +231,7 @@ jobs:
       # Frees each VM as its own sync ends; destroy_runner waits for the whole matrix.
       - name: Release this runner
         if: always()
+        continue-on-error: true
         uses: ./.github/actions/gcp-runner
         with:
           action: destroy-self
@@ -278,8 +279,16 @@ jobs:
           runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
 
   notify-on-failure:
-    needs: [sync-chain]
-    if: ${{ contains(needs.*.result, 'failure') }}
+    needs: [setup-matrix, create_a_runner, sync-chain, destroy_runner]
+    # A single create failure skips the whole sync-chain matrix, and 'skipped' does not
+    # satisfy contains(..., 'failure'), so validation would otherwise go silently unrun.
+    # Teardown results are included so a leaked runner is reported too. Requires
+    # setup-matrix to have succeeded, so the workflow_run guard skipping everything is quiet.
+    if: >-
+      ${{ always() && needs.setup-matrix.result == 'success'
+          && (contains(needs.*.result, 'failure')
+              || contains(needs.*.result, 'cancelled')
+              || needs.sync-chain.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Collect failed jobs
@@ -288,10 +297,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          SYNC_RESULT: ${{ needs.sync-chain.result }}
         run: |
           failed=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
-            --paginate -q '.jobs[] | select(.conclusion == "failure") | select(.name | startswith("Sync ")) | .name' \
-            | tr '\n' ', ' | sed 's/,$//')
+            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name' \
+            | cut -c1-60 | tr '\n' ', ' | sed 's/,$//')
+          if [ "$SYNC_RESULT" = "skipped" ]; then
+            failed="syncs did not run — ${failed:-runner creation failed}"
+          fi
           if [ -z "$failed" ]; then
             failed="(check run for details)"
           fi

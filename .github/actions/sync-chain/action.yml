@@ -194,17 +194,17 @@ runs:
         NETWORK: ${{ inputs.network }}
       run: |
         if [[ "$NETWORK" == op-* || "$NETWORK" == world-* ]]; then
-          docker logs sedge-consensus-op-l2-client
+          docker logs sedge-consensus-op-l2-client || true
         elif [[ "$NETWORK" == taiko-* ]]; then
-          docker logs sedge-consensus-taikodriver-client
+          docker logs sedge-consensus-taikodriver-client || true
         else
-          docker logs sedge-consensus-client
+          docker logs sedge-consensus-client || true
         fi
 
     - name: Check size of DB
       if: always()
       shell: bash
-      run: du -h "$GITHUB_WORKSPACE/sedge"
+      run: du -h "$GITHUB_WORKSPACE/sedge" || true
 
     - name: Stop Grafana Alloy
       if: always()

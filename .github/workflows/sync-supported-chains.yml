@@ -237,6 +237,7 @@ jobs:
       # op-mainnet finishes ten hours later.
       - name: Release this runner
         if: always()
+        continue-on-error: true
         uses: ./.github/actions/gcp-runner
         with:
           action: destroy-self

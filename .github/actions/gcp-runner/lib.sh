@@ -11,8 +11,14 @@ derive_instance_name() {
   printf 'gh-%s-%s-a%s' "${sanitized:0:40}" "$hash" "${GITHUB_RUN_ATTEMPT:-1}"
 }
 
+# Prints the zone, or nothing when the instance does not exist. Returns non-zero only when
+# the lookup itself failed: callers must not read an empty result as "already gone", or a
+# transient API error would let a live VM be reported as reaped.
 resolve_zone() {
-  local name="$1"
-  gcloud compute instances list --project="$PROJECT_ID" \
-    --filter="name=${name}" --format='value(zone.basename())' --limit=1 2>/dev/null
+  local name="$1" out
+  if ! out=$(gcloud compute instances list --project="$PROJECT_ID" \
+      --filter="name=${name}" --format='value(zone.basename())' --limit=1 2>/dev/null); then
+    return 1
+  fi
+  printf '%s' "$out"
 }
