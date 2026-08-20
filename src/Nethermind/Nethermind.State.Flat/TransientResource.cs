@@ -34,6 +34,14 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
 
+    /// <summary>
+    /// The trie warmer's negative cache: paths whose persistence lookup missed, keyed like <see cref="Nodes"/> but
+    /// holding only unresolved placeholders. It is read and written exclusively by the warmer and is never consulted
+    /// by a live read nor promoted into the shared <see cref="TrieNodeCache"/>, so a stale miss can never reach the
+    /// state-root computation.
+    /// </summary>
+    public TrieNodeCache.ChildCache MissNodes = new(size.NodesCacheSize);
+
     internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
     {
         _returnPool = pool;
@@ -73,6 +81,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public void Reset()
     {
         Nodes.Reset();
+        MissNodes.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
         {
@@ -117,9 +126,17 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
 
+    public bool TryGetMissStateNode(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => MissNodes.TryGet(null, path, hash, out node);
+
+    public TrieNode GetOrAddMissStateNode(in TreePath path, TrieNode trieNode) => MissNodes.GetOrAdd(null, path, trieNode);
+
     public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
 
     public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 
     public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);
+
+    public bool TryGetMissStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => MissNodes.TryGet(address, path, hash, out node);
+
+    public TrieNode GetOrAddMissStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => MissNodes.GetOrAdd(address, path, trieNode);
 }
