@@ -424,23 +424,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public bool HasClear => _missingAreDefault;
 
-        /// <summary>Whether any uncommitted block-level change leaves a slot at a non-zero value.</summary>
-        public bool HasNonZeroValue
-        {
-            get
-            {
-                foreach (StorageChangeTrace trace in _dictionary.Values)
-                {
-                    if (!trace.After.IsZero())
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-        }
-
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
@@ -524,16 +507,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             get
             {
-                // Block-level writes that have not been merkleized yet are invisible to the storage root
-                // (state overrides, and every tx before the block's single root computation), so consult
-                // them first: a "state" override clears the storage before writing, leaving the clear
-                // marker set alongside non-zero entries, and testing the marker first would report empty.
-                // Gated on _wasWritten because only writes can hide from the root - a non-zero read implies
-                // a non-empty root, which the check below already reports.
-                // Writes made by the currently executing transaction still live in the journal and are not
-                // seen here; this reports block-level state, which is what EIP-7610 needs.
-                if (_wasWritten && BlockChange.HasNonZeroValue) return false;
-
                 // _backend.RootHash is not reflected until after commit, but this need to be reflected before commit
                 // for SelfDestruct, since the deletion is not part of changelog, it need to be handled here.
                 if (BlockChange.HasClear) return true;
