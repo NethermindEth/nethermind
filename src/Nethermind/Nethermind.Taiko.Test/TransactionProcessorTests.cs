@@ -88,6 +88,35 @@ public class TransactionProcessorTests
         });
     }
 
+    [Test]
+    public void Contract_sender_executes_and_pays_fees_when_sender_code_check_skipped()
+    {
+        // Relaxing EIP-3607 without wrapping the spec keeps the concrete ITaikoReleaseSpec that PayFees casts to.
+        _spec.IsEip3607Enabled = true;
+        _stateProvider!.InsertCode(TestItem.AddressA, Bytes.FromHexString("0x600060"), _spec);
+        _stateProvider!.Commit(_spec);
+
+        ulong gasLimit = 100000;
+        Transaction tx = Build.A.Transaction
+            .WithValue(1)
+            .WithGasPrice(1)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(tx)
+            .WithBaseFeePerGas(1)
+            .WithExtraData(new byte[32])
+            .WithBeneficiary(TestItem.AddressC).WithGasLimit(gasLimit).TestObject;
+
+        _transactionProcessor!.SkipSenderCodeCheck = true;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(_stateProvider!.GetBalance(_spec.FeeCollector!), Is.GreaterThan(UInt256.Zero));
+    }
+
     public static IEnumerable FeesDistributionTests
     {
         get

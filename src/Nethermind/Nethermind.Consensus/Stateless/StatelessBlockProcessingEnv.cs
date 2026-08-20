@@ -30,6 +30,13 @@ public class StatelessBlockProcessingEnv(
 {
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
+    // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
+    // witness code. The first fetch of each hash still reads through the world state.
+    private readonly StaticCodeCache _codeCache = new(CodeCacheCapacity);
+
+    // A block touches a few hundred distinct hashes; MemoryAllowance.CodeCacheSize would round up to
+    // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
+    private const int CodeCacheCapacity = 512;
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
@@ -50,8 +57,6 @@ public class StatelessBlockProcessingEnv(
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
         BlockAccessListManager blockAccessListManager = new(
             WorldState,
-            specProvider,
-            blockhashProvider,
             logManager,
             new BlocksConfig()
             {
@@ -59,7 +64,8 @@ public class StatelessBlockProcessingEnv(
                 ParallelExecutionBatchRead = false
             },
             new WithdrawalProcessorFactory(logManager),
-            codeInfoRepositoryFactory: static state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), NoopCodeCache.Instance),
+            new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
+                codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
             executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
@@ -104,7 +110,7 @@ public class StatelessBlockProcessingEnv(
             specProvider,
             state,
             new EthereumVirtualMachine(blockhashProvider, specProvider, logManager),
-            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), StaticCodeCache.Instance),
+            new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache),
             logManager
         );
 }

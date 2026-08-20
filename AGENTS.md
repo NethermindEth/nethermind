@@ -138,12 +138,14 @@ See [global.json](./global.json) for the required .NET SDK version.
 This repository contains a dedicated workflow for reproducible payload benchmarks:
 
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
-- Main execution runner label: `reproducible-benchmarks`
+- Main execution runner label: `reproducible-benchmarks-arm`. That runner carries a single snapshot
+  set — Nethermind in the **flat** layout under `/data/nethermind/nethermind-flat-<block>` — so the
+  benchmark workflows accept only that configuration and refuse any other client or layout up front.
 
 ### What the workflow does
 
 - Resolves runtime inputs (branch, state layout, payload set, delay, optional extra flags).
-- Selects one benchmark config file from `/mnt/sda/expb-data`.
+- Selects one benchmark config file from `/data/expb-data`.
 - Builds or reuses Nethermind Docker image tag depending on branch rules.
 - Renders a temporary config (does not modify source files) by:
   - replacing `<<DOCKER_TAG>>`
@@ -156,7 +158,9 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Metrics source: prefers SSE client metrics (`[payload-server] client_metric` lines — Nethermind internal processing times) over K6 TTFB. Falls back to the per-payload pipe table when SSE data is unavailable.
 - On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
-- When `dottrace` input is enabled, passes `--dottrace` to expb. dotTrace snapshots (`.dtp` + chunk files) are zipped and uploaded as artifacts. A downstream Windows job (`generate-dottrace-reports`) runs Reporter.exe to produce XML reports (`*-report.xml`) uploaded as the `dottrace-reports` artifact. Each report contains `<Function>` nodes with `FQN`, `TotalTime`, `OwnTime`, `Calls`, and full call stacks — sort by `OwnTime` for hot spots, use `CallStack` attributes for call tree analysis.
+- The `dottrace` input selects a profiling mode — `false` (default), `sampling`, `tracing`, or `timeline` (`true` is a legacy alias for `sampling`) — and passes `--dottrace --dottrace-mode <mode>` to expb. Pick by question: `sampling` for "where does time go" (low overhead, the default choice), `tracing` for exact **call counts** (~4x overhead, so read its counts and distrust its times), `timeline` for waits/locks/GC over time. dotTrace snapshots (`.dtp` + chunk files; `.dtt` for timeline) are zipped and uploaded as artifacts.
+- A downstream Windows job (`generate-dottrace-reports`) runs Reporter.exe to produce XML reports (`*-report.xml`) uploaded as the `dottrace-reports` artifact. Each report contains `<Function>` nodes with `FQN`, `TotalTime`, `OwnTime`, `Calls`, and full call stacks — sort by `OwnTime` for hot spots, use `CallStack` attributes for call tree analysis. **`timeline` produces no XML** (Reporter.exe cannot convert it) — that job is gated off, so analyze the snapshot in the dotTrace UI instead.
+- Every profiled **EXPB** run also collects a **dotnet-trace EventPipe sidecar** (`.nettrace`, in the same `dottrace-*` artifact; the rpc-bench workflow does not collect one). It carries GC pause durations, lock contention, and exception events, which no CPU profile shows — use it whenever the question is about tail latency or stalls rather than hot code, and note it is the only structured output for `timeline` runs.
 - Targeted per-block dotTrace: pass `trace_blocks=<n1,n2,...>` (implies `dottrace=true`); the client's BlockProfiler plugin brackets each listed block. The artifact is one `.dtp` workspace with **one snapshot per traced block** (open in the dotTrace UI; `.dtp.NNNN` files are storage segments, not per-block files). The XML report merges all traced windows, so trace a single block per run when isolated XML matters.
 
 ### What to inspect in run output

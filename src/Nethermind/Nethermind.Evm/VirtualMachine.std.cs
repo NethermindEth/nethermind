@@ -22,9 +22,11 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         public delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? Traced;
     }
 
-    // Weak keys: transient spec wrappers (e.g. the per-block WithoutEip3607 decorator in
-    // eth_simulateV1) must not be retained forever by this process-wide cache.
+    // Weak keys: transient spec wrappers (e.g. the per-block WithoutEip158 decorator and state-override
+    // specs in eth_simulateV1) must not be retained forever by this process-wide cache.
     private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
+
+    public object ReturnData { get; set; }
 
     private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag
     {
