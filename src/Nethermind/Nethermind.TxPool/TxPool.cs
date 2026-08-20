@@ -300,8 +300,8 @@ namespace Nethermind.TxPool
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value))
             {
-                Interlocked.Decrement(ref _expiringFrameTxCount);
-                AssertExpiringFrameTxCountNotNegative();
+                int remaining = Interlocked.Decrement(ref _expiringFrameTxCount);
+                AssertExpiringFrameTxCountNotNegative(remaining);
             }
 
             ReleasePayerExposure(args.Value);
@@ -317,10 +317,11 @@ namespace Nethermind.TxPool
 #endif
         }
 
-        // A negative count arms the expiry sweep's zero-count fast path for good, so catch it at the decrement.
+        // A negative count arms the expiry sweep's zero-count fast path for good. Judge the decrement's own result:
+        // removal holds no head lock, so re-reading the field lets a concurrent insert hide the excursion.
         [Conditional("DEBUG")]
-        private void AssertExpiringFrameTxCountNotNegative() =>
-            Debug.Assert(Volatile.Read(ref _expiringFrameTxCount) >= 0, "Expiring frame transaction count went negative.");
+        private static void AssertExpiringFrameTxCountNotNegative(int remaining) =>
+            Debug.Assert(remaining >= 0, "Expiring frame transaction count went negative.");
 
         // A missed release or decrement persists for the life of the pool, locking the payer out or disarming the
         // expiry sweep. Per head rather than per operation: the walk is O(pool size) and insert and removal are hot.
