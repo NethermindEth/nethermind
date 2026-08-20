@@ -59,6 +59,7 @@ namespace Nethermind.TxPool
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
         private readonly PayerExposureCache _payerExposure = new();
+        private readonly PendingPaymasterCache _pendingPaymasters = new();
 
         private readonly ILogger _logger;
 
@@ -205,6 +206,12 @@ namespace Nethermind.TxPool
                 new KeyedNonceFilter(chainHeadInfoProvider.ReadOnlyStateProvider), // the three above skip keyed sets, this one owns them
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
+
+                // EIP-8141: cap the pending frame txs one non-canonical paymaster may sponsor. Ahead of
+                // FrameTxSignatureFilter so a flood naming one sponsor costs one account read, not a
+                // signature list; the trade-off is that such a tx is not also reported as malformed.
+                new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _pendingPaymasters, _logger),
+
                 new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve work over an uncapped signature list, so let the cheap filters reject first
             ];
 
@@ -293,16 +300,26 @@ namespace Nethermind.TxPool
         {
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            if (GetPaymaster(args.Value) is Address paymaster) _pendingPaymasters.Increment(paymaster);
         }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
         {
             RemovePendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Decrement(ref _expiringFrameTxCount);
+            if (GetPaymaster(args.Value) is Address paymaster) _pendingPaymasters.Decrement(paymaster);
             ReleasePayerExposure(args.Value);
         }
 
         private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
+
+        /// <summary>
+        /// The paymaster a pending frame transaction pays through, keying the EIP-8141 non-canonical
+        /// paymaster cap; <c>null</c> when it uses none, or when a reloaded record no longer records one.
+        /// </summary>
+        /// <remarks>Insert and removal always contribute and release the same key: the pool holds one
+        /// record per transaction, and the key is read off it rather than re-derived per event.</remarks>
+        private static Address? GetPaymaster(Transaction tx) => tx.SupportsFrames ? FrameTxValidation.GetPrefixPaymaster(tx) : null;
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
@@ -786,7 +803,8 @@ namespace Nethermind.TxPool
                 {
                     // it means it was added and immediately evicted - pool was full of better txs
                     // Its Removed already released the reservation, so a tx kept only by the broadcaster
-                    // under-counts its payer — accepted, since the broadcaster has no hook to release on.
+                    // under-counts its payer's exposure and its paymaster's pending count — accepted,
+                    // since the broadcaster has no hook to release on.
                     if (!isPersistentBroadcast || tx.CarriesBlobs || !_broadcaster.Broadcast(tx, true))
                     {
                         // we are adding only to persistent broadcast - not good enough for standard pool,

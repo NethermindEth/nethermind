@@ -24,6 +24,12 @@ public static class Eip8141Constants
     // operator-configurable mirror.
     public const ulong MaxVerifyGas = 300_000;
 
+    /// <summary>
+    /// <c>MAX_PENDING_TXS_USING_NON_CANONICAL_PAYMASTER</c>: the public-mempool cap on the pending frame
+    /// transactions one non-canonical paymaster may sponsor.
+    /// </summary>
+    public const int MaxPendingTxsUsingNonCanonicalPaymaster = 1;
+
     public static readonly Address EntryPointAddress = new("0x00000000000000000000000000000000000000aa");
     public static readonly Address ExpiryVerifierAddress = new("0x0000000000000000000000000000000000008141");
 

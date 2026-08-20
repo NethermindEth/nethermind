@@ -172,6 +172,11 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult FrameSimulationFailed = new(28, TxPoolErrorMessages.FrameSimulationFailed);
 
+        /// <summary>
+        /// An EIP-8141 frame transaction paying through an already fully-committed non-canonical paymaster.
+        /// </summary>
+        public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(29, TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
+
         private int Id { get; } = id;
         private string Code { get; } = code;
         private string? Message { get; } = message;

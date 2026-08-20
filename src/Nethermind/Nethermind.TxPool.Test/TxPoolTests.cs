@@ -2603,6 +2603,39 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void SubmitTx_FrameTransactions_SharingNonCanonicalPaymaster_BoundByPendingCap_ReleasedOnRemoval()
+        {
+            // Distinct senders share one code-carrying pay target, so the non-canonical paymaster cap
+            // bounds how many of its sponsored transactions may be pending at once.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            Transaction third = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.RemoveTransaction(first.Hash);
+            AcceptTxResult thirdResult = _txPool.SubmitTx(third, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+                Assert.That(thirdResult, Is.EqualTo(AcceptTxResult.Accepted), "removing the first tx freed the paymaster's slot");
+            }
+        }
+
+        [Test]
         public void Frame_transaction_payer_reservation_is_taken_through_the_pool_and_released_on_removal()
         {
             // BalanceTooLowFilter sums only nonces below tx.Nonce, so a same-nonce replacement is the one
@@ -2729,8 +2762,35 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void SubmitTx_FrameTransactions_SharingAPaymasterAcrossKeyedNonceDomains_BothCountAgainstTheCap()
+        {
+            // EIP-8250: two nonce-key domains at one nonce do not compete, so both stay pending and both
+            // owe the paymaster a slot. Discounting one against the other would double the cap per sender.
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, KeyedNonceSpecProvider(), frameTxPrefixSimulator: simulator);
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]);
+
+            AcceptTxResult firstResult = _txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult secondResult = _txPool.SubmitTx(second, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(secondResult, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached),
+                    "the second domain joins the pending set rather than displacing the first");
+            }
+        }
+
         // An only_verify|pay prefix naming the sponsor: opaque to native resolution, so it is simulated.
-        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey)
+        private Transaction SponsoredFrameTx(PrivateKey senderKey, PrivateKey sponsorKey, UInt256[] nonceKeys = null)
         {
             Transaction tx = new()
             {
@@ -2738,6 +2798,7 @@ namespace Nethermind.TxPool.Test
                 ChainId = _specProvider.ChainId,
                 Nonce = 0,
                 SenderAddress = senderKey.Address,
+                NonceKeys = nonceKeys,
                 Frames =
                 [
                     new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),

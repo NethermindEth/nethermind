@@ -337,6 +337,33 @@ public static class FrameTxValidation
     }
 
     /// <summary>
+    /// The paymaster <paramref name="transaction"/> pays through: the explicit target of the <c>pay</c> frame
+    /// ending its recognized validation prefix, or <c>null</c> when it pays without one, carries no frames to
+    /// read and none recorded, or is not a frame transaction at all.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the frame layout alone, so no state is read: a self-relay prefix, an unrecognized layout,
+    /// or a target-less <c>pay</c> frame yield <c>null</c>. A <c>pay</c> frame naming the sender is returned
+    /// like any other target — the spec's carve-out is the empty code hash, not self-payment. A record the
+    /// pool holds without its frames answers from <see cref="Transaction.PersistedPaymaster"/> instead, which
+    /// froze this same derivation when the record was built — except for one reloaded from storage, which
+    /// carries no frozen value, so its <c>null</c> means unknown rather than unsponsored.
+    /// </remarks>
+    public static Address? GetPrefixPaymaster(Transaction transaction)
+    {
+        TxFrame[]? frames = transaction.Frames;
+        if (frames is null)
+        {
+            // A reloaded or light pool record has no frames; its paymaster travels on the record instead.
+            return transaction.PersistedPaymaster;
+        }
+
+        return RecognizedPrefixLength(frames, transaction.SenderAddress) is int length && IsPayFrame(frames[length - 1])
+            ? frames[length - 1].Target
+            : null;
+    }
+
+    /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>

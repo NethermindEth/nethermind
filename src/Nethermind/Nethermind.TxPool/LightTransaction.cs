@@ -35,6 +35,9 @@ public class LightTransaction : Transaction
         // Without the keys the pool reads Nonce as an account nonce, and EIP-8250 nonce_seq is not one.
         NonceKeys = fullTx.NonceKeys;
         PersistedExpiryDeadline = FrameTxValidation.TryGetExpiryDeadline(fullTx, out ulong deadline) ? deadline : null;
+        // Derived here or the cap never counts a blob-carrying frame tx: the pool holds this frameless
+        // record, so the paymaster is no longer recoverable from the frame list once the full tx is gone.
+        PersistedPaymaster = FrameTxValidation.GetPrefixPaymaster(fullTx);
         _size = fullTx.GetLength();
     }
 
@@ -99,6 +102,9 @@ public class LightTransaction : Transaction
 
     /// <inheritdoc/>
     public override ulong? PersistedExpiryDeadline { get; }
+
+    /// <inheritdoc/>
+    public override Address? PersistedPaymaster { get; }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
 }
