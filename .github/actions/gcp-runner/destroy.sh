@@ -80,13 +80,21 @@ else
     PREEMPTED=true
     TERMINATED_BY=preempted
     echo "::warning title=GCP runner::${RUNNER_LABEL} was preempted — infrastructure reclaim, not a sync failure"
+    # Surface it on the run summary too: the matrix boundary reduces this to a plain failed
+    # entry, so without this the distinction is only visible deep in a job log.
+    echo "⚠️ \`${RUNNER_LABEL}\` was preempted — infrastructure reclaim, not a sync failure" >> "$GITHUB_STEP_SUMMARY"
   elif grep -qx 'delete' <<<"$ops"; then
     # The expected path when another teardown attempt got there first.
     TERMINATED_BY=already-deleted
     echo "${INSTANCE_NAME} had already been deleted"
   elif [ -z "$ops" ]; then
     TERMINATED_BY=unknown
-    echo "::warning title=GCP runner::${INSTANCE_NAME} vanished with no operations recorded"
+    # Creation having failed already explains the absence; create.sh cleans up after itself.
+    if [ "${EXPECT_INSTANCE:-true}" = "true" ]; then
+      echo "::warning title=GCP runner::${INSTANCE_NAME} vanished with no operations recorded"
+    else
+      echo "${INSTANCE_NAME} was never created"
+    fi
   else
     TERMINATED_BY=terminated
     echo "::warning title=GCP runner::${INSTANCE_NAME} was terminated externally (${ops//$'\n'/, })"

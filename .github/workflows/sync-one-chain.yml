@@ -73,6 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # Only effective if the calling job also grants id-token: write — a called
+      # workflow can never elevate GITHUB_TOKEN permissions above its caller's.
       id-token: write
     # Normally ~3 min; caps apt mirror hangs that otherwise burn the 6h default
     timeout-minutes: 15
@@ -188,6 +190,7 @@ jobs:
           action: destroy
           runner_label: ${{ inputs.runner_label }}
           github_token: ${{ steps.gh-app.outputs.token }}
+          expect_instance: ${{ needs.create_runner.result == 'success' }}
           zones: ${{ vars.GCP_ZONES }}
           project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}

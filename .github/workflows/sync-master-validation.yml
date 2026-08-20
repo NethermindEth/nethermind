@@ -135,10 +135,20 @@ jobs:
 
           matrix=$(echo "$matrix" | scripts/sync/select-networks.sh "$CHAIN_FILTER")
 
+          if [ "$(echo "$matrix" | jq 'length')" -eq 0 ]; then
+            echo "chain_filter '$CHAIN_FILTER' matched no networks"
+            exit 1
+          fi
+
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 
   sync:
     needs: [setup-matrix]
+    # A called workflow can never elevate GITHUB_TOKEN above its caller, and
+    # id-token defaults to none, so the runner lifecycle needs it granted here.
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:

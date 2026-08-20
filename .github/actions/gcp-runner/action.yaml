@@ -95,6 +95,12 @@ inputs:
     description: Boot image project.
     required: false
     default: ubuntu-os-cloud
+  expect_instance:
+    description: >-
+      Whether an instance should exist at destroy time. Pass false when creation failed, so
+      a missing instance is reported as expected rather than as a possible leak.
+    required: false
+    default: "true"
   skip_auth:
     description: Skip the built-in GCP authentication, for callers that already authenticated.
     required: false
@@ -178,4 +184,5 @@ runs:
         RUNNER_LABEL: ${{ inputs.runner_label }}
         ZONES: ${{ inputs.zones }}
         PROJECT_ID: ${{ inputs.project_id }}
+        EXPECT_INSTANCE: ${{ inputs.expect_instance }}
       run: bash "${GITHUB_ACTION_PATH}/destroy.sh"
