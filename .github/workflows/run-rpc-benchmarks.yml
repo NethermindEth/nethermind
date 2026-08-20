@@ -608,6 +608,7 @@ jobs:
           KEEP_IMAGES: |
             ${{ needs.resolve.outputs.image_ref }}
             ${{ needs.resolve.outputs.ref_image_ref }}
+          KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
         run: |
           set -uo pipefail
           MIN_FREE_GB=6
@@ -637,7 +638,12 @@ jobs:
           # only thing that frees it. Drop unused tags oldest-first, and only as many as needed, so
           # pinned A/B images survive whenever there is already room.
           if (( $(avail_gb) < MIN_FREE_GB )); then
-            keep_re="$(printf '%s\n' "${KEEP_IMAGES}" | tr -d ' ' | grep -v '^$' | paste -sd'|' -)"
+            # Sweep arms come from tool_config.clients as `ctype@image`, and run-rpc-sweep.sh treats a
+            # failed pull as "probably local" — so dropping one of those yields a silently partial matrix
+            # rather than an error. Keep them too.
+            sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null \
+              | tr ' ' '\n' | sed 's/.*@//' | grep -v '^$' || true)"
+            keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
             echo "Reclaiming stale images (keeping: ${keep_re:-none})"
             while IFS= read -r img; do
               (( $(avail_gb) >= MIN_FREE_GB )) && break
@@ -776,6 +782,7 @@ jobs:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
           REFERENCE_CLIENT: ${{ needs.resolve.outputs.reference_client }}
@@ -803,7 +810,10 @@ jobs:
           # Which corpus to replay. The sweep picks one with corpus_glob; this path had no
           # equivalent and always replayed the default file, so a profile taken here could not be
           # compared against a sweep measured on a different corpus.
-          jb_corpus="$(get '.corpus_file')";             [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
+          # Default to the selected runner's corpus dir; only an explicit corpus_file overrides it.
+          jb_corpus="$(get '.corpus_file')"
+          [[ -z "${jb_corpus}" && -n "${RESOLVED_CORPUS_DIR:-}" ]] && jb_corpus="${RESOLVED_CORPUS_DIR}/eth-call-corpus.jsonl.gz"
+          [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
           jb_html="$(getb '.html_report')";              [[ -n "${jb_html}" ]] && export JB_HTML_REPORT="${jb_html}"
           export JB_FAIL_ON_DIFF="$(getb '.fail_on_diff')"
           # getb: '// empty' would swallow an explicit 0 (jq treats it as truthy-false).
@@ -876,7 +886,9 @@ jobs:
           corpus_dir="$(get '.corpus_dir')";               [[ -z "${corpus_dir}" ]] && corpus_dir="${RESOLVED_CORPUS_DIR}"
           [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
           corpus_glob="$(get '.corpus_glob')";             [[ -n "${corpus_glob}" ]] && export CORPUS_GLOB="${corpus_glob}"
-          export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind geth reth"
+          # Sweep mode resolves one Nethermind flat snapshot, so the geth/reth default it used to carry
+          # made a bare dispatch fail its own guard. Cross-client work belongs in single-node mode.
+          export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind"
           # An ABSENT rps_list means "use the default"; an explicitly EMPTY one means "no k6 cells"
           # (corpus runs that only want parity/timings). `// empty` cannot tell those apart.
           if [[ "$(echo "${cfg}" | jq -r 'has("rps_list")')" == "true" ]]; then

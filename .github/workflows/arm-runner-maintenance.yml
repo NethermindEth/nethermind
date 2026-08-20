@@ -68,7 +68,7 @@ jobs:
             cutoff=$(( $(date +%s) - 96*3600 ))
             while IFS=$'	' read -r created img; do
               [[ -z "${img:-}" || "${img}" == *'<none>'* ]] && continue
-              ts=$(date -d "${created}" +%s 2>/dev/null) || continue
+              ts=$(date -d "${created% *}" +%s 2>/dev/null) || continue
               (( ts > cutoff )) && continue
               [[ -n "$(docker ps -aq --filter "ancestor=${img}" 2>/dev/null)" ]] && continue
               docker rmi "${img}" >/dev/null 2>&1 && echo "removed ${img} (created ${created})"

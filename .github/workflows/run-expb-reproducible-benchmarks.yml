@@ -355,6 +355,13 @@ jobs:
               ;;
           esac
 
+          # The ARM box stocks only a flat snapshot, and the config render rewrites only the flat
+          # paths, so a halfpath run there would fail deep inside expb instead of here in seconds.
+          if [[ "${arch}" == "arm64" && "${state_layout}" != "flat" ]]; then
+            echo "::error::The reproducible-benchmarks-arm runner only serves a flat snapshot - dispatch with arch=amd64 for halfpath."
+            exit 1
+          fi
+
           # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
           # extra-flags pipeline, so it actually reaches Nethermind (same path as additional_extra_flags).
           # Skipped for non-flat layouts, when disabled (empty), or when the caller already set it.
