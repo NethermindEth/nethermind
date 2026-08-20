@@ -1708,23 +1708,7 @@ namespace Nethermind.TxPool.Test
                 return tx;
             }
 
-            Transaction first = SignedBlobFrameTx(deadline: 1_000);
-            // Balance for exactly one such tx, so a reservation outliving the first rejects the second.
-            EnsureSenderBalance(TestItem.AddressA, (UInt256)first.GasLimit * first.MaxFeePerGas
-                + (UInt256)Eip4844Constants.GasPerBlob * first.MaxFeePerBlobGas!.Value);
-
-            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressA), "no reservation is taken unless the payer resolves");
-
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(500).TestObject);
-            // Resolved payer plus a still-pooled tx is what leaves a live reservation for the check to walk.
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "a deadline ahead of the head must not be swept");
-
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_500).TestObject);
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0), "the expired blob frame tx must be evicted");
-
-            // Same payer and same cost, told apart only by its deadline: only a leaked reservation rejects it.
-            Assert.That(_txPool.SubmitTx(SignedBlobFrameTx(deadline: 2_000), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            await AssertExpiredFrameTxReleasesItsPayerExposure(SignedBlobFrameTx, TxHandlingOptions.None);
         }
 
         // EIP-8141: a blob-carrying frame tx counts against the per-sender blob limit (MaxPendingBlobTxsPerSender),

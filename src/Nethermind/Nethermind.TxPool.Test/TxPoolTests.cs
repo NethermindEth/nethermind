@@ -2251,22 +2251,32 @@ namespace Nethermind.TxPool.Test
                 return tx;
             }
 
-            Transaction first = SignedFrameTx(deadline: 1_000);
-            // Balance for exactly one such transaction, so a reservation outliving the first rejects the second.
-            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)first.GasLimit * first.MaxFeePerGas);
+            await AssertExpiredFrameTxReleasesItsPayerExposure(SignedFrameTx, TxHandlingOptions.PersistentBroadcast);
+        }
 
-            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        // A head under the deadline first, so the DEBUG bookkeeping check meets a live reservation rather than an
+        // empty ledger; then one past it, and a resubmission only a leaked reservation would reject.
+        private async Task AssertExpiredFrameTxReleasesItsPayerExposure(Func<ulong, Transaction> signedFrameTx, TxHandlingOptions options)
+        {
+            Transaction first = signedFrameTx(1_000);
+            int Pending() => first.CarriesBlobs ? _txPool.GetPendingBlobTransactionsCount() : _txPool.GetPendingTransactionsCount();
+
+            // Balance for exactly one such transaction, so a reservation outliving the first rejects the second.
+            UInt256 blobCost = (UInt256)(Eip4844Constants.GasPerBlob * (ulong)(first.BlobVersionedHashes?.Length ?? 0))
+                * (first.MaxFeePerBlobGas ?? UInt256.Zero);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, (UInt256)first.GasLimit * first.MaxFeePerGas + blobCost);
+
+            Assert.That(_txPool.SubmitTx(first, options), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.PrivateKeyA.Address), "no reservation is taken unless the payer resolves");
 
-            // A head it survives first, so the DEBUG bookkeeping check meets a live reservation, not an empty ledger.
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(500).TestObject);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "a deadline ahead of the head must not be swept");
+            Assert.That(Pending(), Is.EqualTo(1), "a deadline ahead of the head must not be swept");
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(2).WithTimestamp(1_500).TestObject);
-            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "the expired frame transaction must be evicted");
+            Assert.That(Pending(), Is.EqualTo(0), "the expired frame transaction must be evicted");
 
             // Same payer and same cost, told apart only by its deadline: only a leaked reservation rejects it.
-            Assert.That(_txPool.SubmitTx(SignedFrameTx(deadline: 2_000), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(signedFrameTx(2_000), options), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
         // No expiry frame means no deadline, so the expiry pass (and the count guard that gates it) must never
