@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
+using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -272,13 +274,17 @@ public class FlatBaseStoreConverterTests
                 batch.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero(value));
         }
 
-        // Boot 2: Arena + ConvertBaseStore — run the conversion the init step would run, then read back.
+        // Boot 2: Arena + ConvertBaseStore — run the conversion through the registered init step, the
+        // same registration and instance the steps manager executes, then read back.
         using (IContainer container = BuildContainer(baseDbPath.Path,
             new FlatDbConfig { Enabled = true, BaseStore = FlatBaseStore.Arena, ConvertBaseStore = true }))
         {
-            FlatBaseStoreConverter converter = container.Resolve<FlatBaseStoreConverter>();
-            Assert.That(converter.Convert(CancellationToken.None), Is.True);
-            Assert.That(converter.Convert(CancellationToken.None), Is.False, "idempotent within the same boot");
+            Assert.That(container.Resolve<IEnumerable<StepInfo>>().Select(static s => s.StepType),
+                Does.Contain(typeof(ConvertFlatBaseStore)), "the conversion step must be registered when the flag is on");
+            ConvertFlatBaseStore step = (ConvertFlatBaseStore)container.Resolve(typeof(ConvertFlatBaseStore));
+            step.Execute(CancellationToken.None).GetAwaiter().GetResult();
+            Assert.That(container.Resolve<FlatBaseStoreConverter>().Convert(CancellationToken.None),
+                Is.False, "idempotent within the same boot");
 
             IColumnsDb<FlatDbColumns> db = container.Resolve<IColumnsDb<FlatDbColumns>>();
             using (Assert.EnterMultipleScope())
@@ -291,10 +297,13 @@ public class FlatBaseStoreConverterTests
             AssertSeededStateReadable(container.Resolve<IPersistence>());
         }
 
-        // Boot 3: Arena without the convert flag — the converted DB boots and reads normally.
+        // Boot 3: Arena without the convert flag — the converted DB boots and reads normally, and the
+        // conversion step is not even registered.
         using (IContainer container = BuildContainer(baseDbPath.Path,
             new FlatDbConfig { Enabled = true, BaseStore = FlatBaseStore.Arena }))
         {
+            Assert.That(container.Resolve<IEnumerable<StepInfo>>().Select(static s => s.StepType),
+                Does.Not.Contain(typeof(ConvertFlatBaseStore)));
             AssertSeededStateReadable(container.Resolve<IPersistence>());
         }
 
