@@ -529,13 +529,6 @@ public class DebugRpcModule(
         DebugConfigSummary config = new()
         {
             Forks = forks,
-            AppVersion = new AppVersion
-            {
-                Code = ProductInfo.ClientCode,
-                Name = ProductInfo.Name,
-                Version = ProductInfo.Version,
-                Commit = ProductInfo.Commit,
-            },
         };
 
         return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize(config, UnchangedDictionaryKeyOptions))!);
