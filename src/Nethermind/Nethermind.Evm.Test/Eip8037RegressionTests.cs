@@ -291,6 +291,10 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(transaction.GasLimit));
             Assert.That(TestState.GetBalance(Sender), Is.EqualTo(senderBalanceBefore - transaction.GasLimit));
             Assert.That(TestState.AccountExists(contractAddress), Is.False);
+            Assert.That(tracer.Actions, Has.Count.EqualTo(1));
+            Assert.That(tracer.Actions[0].CallType, Is.EqualTo(ExecutionType.CREATE));
+            Assert.That(tracer.Actions[0].Gas, Is.EqualTo((ulong)GasCostOf.CreateState - 1));
+            Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.OutOfGas }));
         }
     }
 

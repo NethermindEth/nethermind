@@ -158,7 +158,6 @@ public class EncryptionHandshakeServiceTests
         Ack();
         Agree();
 
-        //            Assert.AreEqual(_recipientHandshake.Secrets.Token, _initiatorHandshake.Secrets.Token, "Token");
         Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.EqualTo(_recipientHandshake.Secrets.AesSecret), "AES");
         Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.EqualTo(_recipientHandshake.Secrets.MacSecret), "MAC");
 
@@ -174,34 +173,44 @@ public class EncryptionHandshakeServiceTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Initiator_secrets_are_not_null(bool preEip8Format)
+    public void Initiator_secrets_match_the_test_vectors(bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        //            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
-        Assert.That(_initiatorHandshake.Secrets.AesSecret, Is.Not.Null, "AES");
-        Assert.That(_initiatorHandshake.Secrets.MacSecret, Is.Not.Null, "MAC");
-        Assert.That(_initiatorHandshake.Secrets.EgressMac, Is.Not.Null, "Egress");
-        Assert.That(_initiatorHandshake.Secrets.IngressMac, Is.Not.Null, "Ingress");
+        AssertSecrets(_initiatorHandshake);
     }
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Recipient_secrets_are_not_null(bool preEip8Format)
+    public void Recipient_secrets_match_the_test_vectors(bool preEip8Format)
     {
         InitializeRandom(preEip8Format);
         Auth(preEip8Format);
         Ack();
         Agree();
 
-        //            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
-        Assert.That(_recipientHandshake.Secrets.AesSecret, Is.Not.Null, "AES");
-        Assert.That(_recipientHandshake.Secrets.MacSecret, Is.Not.Null, "MAC");
-        Assert.That(_recipientHandshake.Secrets.EgressMac, Is.Not.Null, "Egress");
-        Assert.That(_recipientHandshake.Secrets.IngressMac, Is.Not.Null, "Ingress");
+        AssertSecrets(_recipientHandshake);
+    }
+
+    // The nonces and ephemeral keys are fixed vectors, so the AES and MAC secrets are deterministic.
+    // The MAC states also hash the packet bytes, which carry ECIES randomness. Reading .Hash finalizes them. Call this helper last.
+    private static void AssertSecrets(EncryptionHandshake handshake)
+    {
+        const int SecretSize = 32;
+        byte[] egressHash = handshake.Secrets.EgressMac.Hash;
+        byte[] ingressHash = handshake.Secrets.IngressMac.Hash;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handshake.Secrets.AesSecret, Is.EqualTo(NetTestVectors.AesSecret), "AES");
+            Assert.That(handshake.Secrets.MacSecret, Is.EqualTo(NetTestVectors.MacSecret), "MAC");
+            Assert.That(egressHash, Has.Length.EqualTo(SecretSize), "Egress");
+            Assert.That(ingressHash, Has.Length.EqualTo(SecretSize), "Ingress");
+            // The egress and ingress preimages differ. A derivation collapse makes the two hashes equal.
+            Assert.That(egressHash, Is.Not.EqualTo(ingressHash), "Egress vs Ingress");
+        }
     }
 
     [TestCase(true)]

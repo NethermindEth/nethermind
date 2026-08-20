@@ -476,7 +476,7 @@ The methods are named `XDPoS_*`, but the module is registered as `Xdc` — that 
 | `XDPoS_getSigners(block)` | Authorised signers at a block number |
 | `XDPoS_getSignersAtHash(hash)` | Authorised signers at a block hash |
 | `XDPoS_getMasternodesByNumber(block)` | Masternodes, standby nodes and penalties at a block |
-| `XDPoS_getLatestPoolStatus()` | Current vote pool, timeout pool and received sync infos |
+| `XDPoS_getLatestPoolStatus()` | Current vote pool and timeout pool, keyed by pool key |
 | `XDPoS_getV2BlockByNumber(block)` | V2 block info: round, QC, committed status |
 | `XDPoS_getV2BlockByHash(hash)` | Same, by hash |
 | `XDPoS_networkInformation()` | Network id, system contract addresses and the effective XDPoS config |

@@ -29,7 +29,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <remarks>
     /// With <see cref="Transaction.NonceKeys"/> every selected key must currently sit at
     /// <see cref="Transaction.Nonce"/>, so the set is consumed as a unit and a partially advanced set is not
-    /// replayable. A malformed set is rejected as malformed, not as a nonce mismatch: it names no sequence.
+    /// replayable. Assumes the caller has already checked well-formedness, which is not state-dependent and
+    /// so is enforced whether or not the entry point validates.
     /// </remarks>
     private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
     {
@@ -49,17 +50,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.Ok;
         }
 
-        // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
-        if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
-        {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
-        }
-
         if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
         }
 
+        // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
         ulong current = KeyedNonceManager.CurrentNonceSeq(WorldState, sender, nonceKeys[0]);
         return (tx.Nonce < current
             ? TransactionResult.ErrorType.TransactionNonceTooLow
@@ -81,9 +77,20 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("keyed nonces are not enabled");
         }
 
-        // Pre-flight: nonce and protocol-validated signatures.
-        TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
-        if (!nonceResult) return nonceResult;
+        // Structural, so it holds even where validation is skipped: the fixed-size buffers reached below
+        // take a well-formed set as their precondition, and eth_call arrives here without a validator.
+        if (tx.NonceKeys is { } nonceKeys && !KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+        {
+            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
+        }
+
+        // Pre-flight: nonce and protocol-validated signatures. The state comparison follows SkipValidation
+        // as the account-nonce path does: eth_call overwrites the supplied nonce with the account nonce.
+        if (ShouldValidate(opts))
+        {
+            TransactionResult nonceResult = ValidateFrameTxNonce(tx, sender);
+            if (!nonceResult) return nonceResult;
+        }
 
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         // EIP-7928: resolved without recording an account access - a tx that never takes the P256
@@ -112,6 +119,18 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             if ((frame.IsAtomicBatch || prevIsAtomicBatch) && frame.AllowedApproveScope != 0)
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("approval scope on atomic batch frame");
+            }
+
+            // An undefined mode would otherwise fall through to DEFAULT semantics and execute.
+            if (frame.Mode > TxFrame.ModePostTx)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.InvalidMode);
+            }
+
+            // The mode is undefined until EIP-7906 defines it, so it must not run with assertion semantics.
+            if (frame.Mode == TxFrame.ModePostTx && !spec.IsEip7906Enabled)
+            {
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(FrameTxValidation.PostTxNotEnabled);
             }
 
             prevIsAtomicBatch = frame.IsAtomicBatch;
@@ -767,9 +786,57 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, out gasUsed);
         }
 
-        // EIP8141: create_evm_from_frame charges the target's access and any value transfer reviving it
-        // from the frame's own gas. That entry charge is pending branch-wide, so every frame here is short by it.
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, spec, out _);
+        // create_evm_from_frame: the frame pays its target's access, plus the state cost of a value
+        // transfer reviving a dead target, out of its own gas limit. Precompiles are checked explicitly
+        // because EIP-2929 pre-warms them without the shared tracker holding them.
+        ulong entryExecution = spec.UseHotAndColdStorage
+            ? (accessTracker.IsCold(resolvedTarget) && !spec.IsPrecompile(resolvedTarget)
+                ? TGasPolicy.GetColdAccountAccessCost(spec)
+                : Eip8038Constants.WarmAccess)
+            : 0;
+        // Checked before the deadness query below, which is itself a recorded read: a frame that cannot
+        // afford its target's access must leave the target untouched, as the CALL path does.
+        if (entryExecution > frame.GasLimit)
+        {
+            gasUsed = frame.GasLimit;
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+        }
+
+        // The revival charge has no pre-EIP-8037 form here: EIP-8141 is only composed onto specs carrying it.
+        long entryState = spec.IsEip8037Enabled && !value.IsZero && WorldState.IsDeadAccount(resolvedTarget)
+            ? TGasPolicy.GetNewAccountStateCost()
+            : 0;
+        ulong entryCharge = entryExecution + (ulong)entryState;
+        if (entryCharge > frame.GasLimit)
+        {
+            gasUsed = frame.GasLimit;
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+        }
+
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, followDelegation: false, spec, out Address? delegation);
+        if (delegation is not null)
+        {
+            // resolve_delegated_code_address: the target counts as accessed by now, so a self-designation is warm.
+            if (spec.UseHotAndColdStorage)
+            {
+                entryCharge += delegation != resolvedTarget && accessTracker.IsCold(delegation) && !spec.IsPrecompile(delegation)
+                    ? TGasPolicy.GetColdAccountAccessCost(spec)
+                    : Eip8038Constants.WarmAccess;
+                if (entryCharge > frame.GasLimit)
+                {
+                    gasUsed = frame.GasLimit;
+                    return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                }
+            }
+
+            // create_evm_from_frame reads the designated code only after its access is paid for.
+            // EIP-7702: a precompile must not execute via delegation.
+            WorldState.AddAccountRead(delegation);
+            codeInfo = spec.IsPrecompile(delegation)
+                ? CodeInfo.Empty
+                : _codeInfoRepository.GetCachedCodeInfoNoDelegation(delegation, spec);
+        }
+
         ReadOnlyMemory<byte> inputData = frame.Data;
 
         // VmState.Dispose releases its environment only below the top level, so this one is caller-owned;
@@ -798,10 +865,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (spec.UseHotAndColdStorage)
         {
             frameTracker.WarmUp(resolvedTarget);
+            if (delegation is not null) frameTracker.WarmUp(delegation);
         }
 
+        // The reservoir starts empty, so the VM cannot draw the entry state gas back out of it.
         using VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(
-            TGasPolicy.FromULong(frame.GasLimit),
+            TGasPolicy.FromULong(frame.GasLimit - entryCharge),
             isStatic ? ExecutionType.STATICCALL : ExecutionType.TRANSACTION,
             env,
             in frameTracker,
@@ -817,8 +886,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong remainingGas = substate.IsError ? 0 : TGasPolicy.GetRemainingGas(in state.Gas);
         gasUsed = frame.GasLimit - remainingGas;
         // Clamp rather than assert: unlike the standard path, this also runs for reverted or errored
-        // frames, where the state-gas value carries no non-negativity guarantee.
-        stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas));
+        // frames, where the state-gas value carries no non-negativity guarantee. The caller discards it
+        // unless the frame succeeded, so the entry state gas is added unconditionally.
+        stateGasUsed = Math.Max(0, TGasPolicy.GetStateGasUsed(in state.Gas)) + entryState;
 
         if (substate.ShouldRevert || substate.IsError)
         {

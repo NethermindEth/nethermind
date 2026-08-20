@@ -1773,7 +1773,35 @@ namespace Nethermind.TxPool.Test
 
         private static ISpecProvider GetBogotaSpecProvider() => new TestSpecProvider(Bogota.Instance);
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false)
+        // The pool holds a light record, not the full transaction, and UpdateBucket reads its nonce. Without the
+        // keys that read is an account-nonce comparison, which a keyed sequence has no relation to.
+        [Test]
+        public async Task Keyed_blob_carrying_frame_tx_is_not_evicted_as_stale_after_a_restart()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            // The account nonce advances independently of key 0xbeef, whose sequence stays at 0 and stays includable.
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A fresh pool over the same storage stands in for a node restart.
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider(), txStorage: blobTxStorage);
+            Transaction[] restored = _txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA);
+            Assert.That(restored, Has.Length.EqualTo(1), "the restart must not evict a keyed transaction whose sequence is current");
+            Assert.That(restored[0].NonceKeys, Is.EqualTo(tx.NonceKeys), "the reloaded record must still select the keyed nonce domain");
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1),
+                "a new head must not evict a reloaded keyed transaction whose sequence is current");
+        }
+
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null)
         {
             ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
@@ -1837,6 +1865,7 @@ namespace Nethermind.TxPool.Test
                 FrameSignatures = [],
                 BlobVersionedHashes = versionedHashes,
                 NetworkWrapper = wrapper,
+                NonceKeys = nonceKeys,
             };
             tx.Hash = tx.CalculateHash();
             return tx;

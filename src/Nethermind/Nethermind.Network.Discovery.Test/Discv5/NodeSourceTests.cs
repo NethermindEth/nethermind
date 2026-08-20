@@ -83,14 +83,15 @@ public class NodeSourceTests
         }
     }
 
-    [Test]
+    [TestCase(false)]
+    [TestCase(true)]
     [CancelAfter(10000)]
-    public async Task DiscoverNodes_ShouldSkipConsensusOnlyEnrs(CancellationToken token)
+    public async Task DiscoverNodes_ShouldSkipEnrsWithoutEthEntry(bool includeEth2, CancellationToken token)
     {
-        Node consensusOnlyNode = CreateNode(1, includeEth2: true);
+        Node nonExecutionNode = CreateNode(1, includeEth2: includeEth2, ethForkHash: null);
         Node executionNode = CreateNode(2);
         IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
-        kademlia.IterateNodes().Returns([consensusOnlyNode, executionNode]);
+        kademlia.IterateNodes().Returns([nonExecutionNode, executionNode]);
         NodeSource source = CreateSource(kademlia);
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
@@ -167,7 +168,7 @@ public class NodeSourceTests
         return forkInfo;
     }
 
-    private static Node CreateNode(int index, int tcpPort = 30303, int udpPort = 30304, bool includeEth2 = false, uint? ethForkHash = null)
+    private static Node CreateNode(int index, int tcpPort = 30303, int udpPort = 30304, bool includeEth2 = false, uint? ethForkHash = CompatibleForkHash)
     {
         PrivateKey privateKey = TestItem.PrivateKeys[index];
         string host = $"192.168.1.{index + 1}";
