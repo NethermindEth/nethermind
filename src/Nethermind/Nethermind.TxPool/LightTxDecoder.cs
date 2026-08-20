@@ -99,9 +99,12 @@ public class LightTxDecoder : TxDecoder<Transaction>
         UInt256? payerExposure = null;
         if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
         {
-            ctx.ReadSequenceLength();
-            payerAddress = ctx.DecodeAddress();
-            payerExposure = ctx.DecodeUInt256();
+            // Bounded by the group's own header, so a record whose trailing group is shaped differently costs
+            // the fields it holds rather than reading on into whatever follows.
+            int end = ctx.ReadSequenceLength() + ctx.Position;
+            if (ctx.Position < end) payerAddress = ctx.DecodeAddress();
+            if (ctx.Position < end) payerExposure = ctx.DecodeUInt256();
+            ctx.Position = end;
         }
 
         return new LightTransaction(timestamp, sender, nonce, hash, value, gasLimit, gasPrice, maxFeePerGas,

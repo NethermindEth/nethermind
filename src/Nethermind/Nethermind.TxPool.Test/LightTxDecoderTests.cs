@@ -149,6 +149,25 @@ public class LightTxDecoderTests
         Assert.That(grownBy, Is.EqualTo(23));
     }
 
+    // The two payer fields are read within the group's own header, so a record whose group is shaped differently
+    // costs that group alone. Unbounded, the missing reservation would instead be read from whatever trails it.
+    [Test]
+    public void A_payer_group_is_read_within_its_own_header()
+    {
+        byte[] payerless = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+        // A group holding the address alone, then a scalar past its end for an unbounded read to reach.
+        byte[] addressOnlyGroup = [0xC0 + 21, 0x80 + Address.Size, .. TestItem.AddressB.Bytes];
+        byte[] trailing = [7];
+
+        LightTransaction decoded = LightTxDecoder.Decode([.. payerless, .. addressOnlyGroup, .. trailing]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PayerAddress, Is.EqualTo(TestItem.AddressB));
+            Assert.That(decoded.PayerExposure, Is.Null);
+        }
+    }
+
     private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null)
     {
         byte[][] versionedHashes = [new byte[32]];
