@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -184,11 +185,20 @@ public class GethStyleTracer(
         // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
         // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
         // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
+        if (options.BlockOverrides is not null || options.NoBaseFee)
+        {
+            block = block.WithReplacedBodyCloned(block.Body);
+        }
+
         BlockHeader baseBlockHeader = (processingOptions & ProcessingOptions.ForceSameBlock) == 0
             ? FindParent(block)
             : block.Header;
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
+        if (options.NoBaseFee)
+        {
+            block.Header.BaseFeePerGas = UInt256.Zero;
+        }
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(baseBlockHeader, options.StateOverrides);
 
         GethTraceOptions filtered = options with { TxHash = txHash };

@@ -196,7 +196,8 @@ public class HistoryPrunerTests
 
     [TestCase(0UL, 0UL)]
     [TestCase(1UL, 32UL)]
-    [TestCase(82125UL, 2_628_000UL)] // mainnet EIP-4444 default
+    [TestCase(33024UL, 1_056_768UL)]
+    [TestCase(82125UL, 2_628_000UL)]
     public async Task GetRetentionBlocks_converts_epochs_to_blocks(ulong retentionEpochs, ulong expected)
     {
         IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.Disabled, PruningInterval = 0 };
@@ -436,7 +437,7 @@ public class HistoryPrunerTests
 
     private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null)
     {
-        // n.b. in prod MinHistoryRetentionEpochs should be 82125, however not feasible to test this
+        // n.b. in prod MinHistoryRetentionEpochs should be 33024, however not feasible to test this
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
 
         // prevent pruner being triggered by empty queue

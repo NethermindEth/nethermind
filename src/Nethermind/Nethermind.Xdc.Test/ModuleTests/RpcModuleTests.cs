@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -11,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.Serialization.Json;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
@@ -31,7 +33,6 @@ public class RpcModuleTests
     private IEpochSwitchManager _epochSwitchManager;
     private IVotesManager _votesManager;
     private ITimeoutCertificateManager _timeoutCertificateManager;
-    private ISyncInfoManager _syncInfoManager;
     private IRewardsStore _rewardsStore;
     private XdcRpcModule _rpcModule;
 
@@ -152,7 +153,6 @@ public class RpcModuleTests
         _epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         _votesManager = Substitute.For<IVotesManager>();
         _timeoutCertificateManager = Substitute.For<ITimeoutCertificateManager>();
-        _syncInfoManager = Substitute.For<ISyncInfoManager>();
         _rewardsStore = Substitute.For<IRewardsStore>();
 
         _rpcModule = new XdcRpcModule(
@@ -162,7 +162,6 @@ public class RpcModuleTests
             _epochSwitchManager,
             _votesManager,
             _timeoutCertificateManager,
-            _syncInfoManager,
             _rewardsStore);
     }
 
@@ -454,10 +453,12 @@ public class RpcModuleTests
     }
 
 
-    [Test]
-    public void GetLatestPoolStatus_ShouldReturnSuccess_WhenValidState()
+    /// <summary>
+    /// Sets up a head block whose vote pool holds a single entry signed by two of three masternodes,
+    /// and returns that entry's reference-client pool key.
+    /// </summary>
+    private string ArrangeLatestPoolStatus()
     {
-        // Arrange
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Number = 100;
 
@@ -482,7 +483,15 @@ public class RpcModuleTests
 
         _votesManager.GetReceivedVotes().Returns(receivedVotes);
         _timeoutCertificateManager.GetReceivedTimeouts().Returns(new Dictionary<(ulong, Hash256), Dictionary<Address, Timeout>>());
-        _syncInfoManager.GetReceivedSyncInfos().Returns(new Dictionary<(ulong, Hash256), SyncInfoTypes>());
+
+        return $"10:0:100:{TestItem.KeccakA}";
+    }
+
+    [Test]
+    public void GetLatestPoolStatus_ShouldReturnSuccess_WhenValidState()
+    {
+        // Arrange
+        ArrangeLatestPoolStatus();
 
         // Act
         ResultWrapper<PoolStatus> result = _rpcModule.XDPoS_getLatestPoolStatus();
@@ -492,7 +501,41 @@ public class RpcModuleTests
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Vote, Is.Not.Null);
         Assert.That(result.Data.Timeout, Is.Not.Null);
-        Assert.That(result.Data.SyncInfo, Is.Not.Null);
+    }
+
+    /// <summary>
+    /// The response must carry the same structure as the reference client, which keys each bucket by its
+    /// <c>PoolKey()</c> and returns only <c>vote</c> and <c>timeout</c>. Member names stay camelCase per
+    /// this serializer's convention rather than the reference's PascalCase.
+    /// </summary>
+    [Test]
+    public void GetLatestPoolStatus_ShouldMatchReferenceClientStructure_WhenPoolIsNotEmpty()
+    {
+        // Arrange
+        string poolKey = ArrangeLatestPoolStatus();
+
+        // Act
+        PoolStatus poolStatus = _rpcModule.XDPoS_getLatestPoolStatus().Data;
+        string json = new EthereumJsonSerializer().Serialize(poolStatus);
+
+        // Assert
+        //Serializing at all is the regression: a ValueTuple key threw and truncated the response mid-write
+        Assert.That(json, Does.Contain($"\"{poolKey}\":"));
+
+        using JsonDocument document = JsonDocument.Parse(json);
+        List<string> members = [];
+        foreach (JsonProperty member in document.RootElement.EnumerateObject())
+        {
+            members.Add(member.Name);
+        }
+        Assert.That(members, Is.EquivalentTo(new[] { "vote", "timeout" }));
+
+        Assert.That(poolStatus.Vote!.Keys, Is.EquivalentTo(new[] { poolKey }));
+        SignerTypes bucket = poolStatus.Vote[poolKey];
+        Assert.That(bucket.CurrentNumber, Is.EqualTo(2));
+        Assert.That(bucket.CurrentSigners, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        Assert.That(bucket.MissingSigners, Is.EquivalentTo(new[] { TestItem.AddressC }));
+        Assert.That(poolStatus.Timeout, Is.Empty);
     }
 
     [Test]

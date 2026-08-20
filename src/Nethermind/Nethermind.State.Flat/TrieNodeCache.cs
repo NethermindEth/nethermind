@@ -133,7 +133,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                if (shard[j].node is { } newNode && !IsPlaceholder(newNode)) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
             }
         });
 
@@ -168,6 +168,14 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
     }
+
+    /// <summary>
+    /// Identifies a placeholder trie node: <see cref="NodeType.Unknown"/> with empty RLP, carrying only a hash. The
+    /// trie warmer's negative cache and the trie commit path both produce it; it is not an authoritative node, so it
+    /// must neither enter this shared cache nor satisfy a live read - callers fall through to the snapshots or
+    /// persistence lookup instead.
+    /// </summary>
+    internal static bool IsPlaceholder(TrieNode node) => node.NodeType == NodeType.Unknown && node.FullRlp.Length == 0;
 
     /// <summary>
     /// Clears all cached trie nodes.
