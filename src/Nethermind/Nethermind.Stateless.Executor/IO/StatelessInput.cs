@@ -17,12 +17,5 @@ public partial class StatelessInput<TExecutionPayload> where TExecutionPayload
     public ChainConfig ChainConfig { get; set; }
 
     [SszList(0x8000)]
-    public SszPublicKeys[] PublicKeys { get; set; } = [];
-}
-
-[SszContainer(isCollectionItself: true)]
-public partial struct SszPublicKeys
-{
-    [SszVector(65)]
-    public byte[] Bytes { get; set; }
+    public SszPublicKey[] PublicKeys { get; set; } = [];
 }
