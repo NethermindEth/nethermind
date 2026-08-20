@@ -97,7 +97,11 @@ else
     fi
   else
     TERMINATED_BY=terminated
-    echo "::warning title=GCP runner::${INSTANCE_NAME} was terminated externally (${ops//$'\n'/, })"
+    if [ "${EXPECT_INSTANCE:-true}" = "true" ]; then
+      echo "::warning title=GCP runner::${INSTANCE_NAME} was terminated externally (${ops//$'\n'/, })"
+    else
+      echo "${INSTANCE_NAME} was never created (${ops//$'\n'/, })"
+    fi
   fi
 fi
 
