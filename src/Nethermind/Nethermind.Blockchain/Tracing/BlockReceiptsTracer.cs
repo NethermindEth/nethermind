@@ -166,11 +166,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
             txReceipt.FrameReceipts = _frameTxReceipts;
             if (_frameTxReceipts is not null)
             {
-                // The tx is charged and included whatever its frames did, so the processor always goes
-                // through MarkAsSuccess; the status a caller sees has to come from the frames instead.
-                // Without reported frame receipts there is nothing to derive from, and overwriting
-                // would promote a failed receipt to success.
+                // A frame tx's status and logs are derived from its frames, not the tracer call (ethereum/EIPs#12061).
                 txReceipt.StatusCode = TxFrameReceipt.AggregateStatus(_frameTxReceipts);
+                txReceipt.Logs = TxFrameReceipt.ConcatLogs(_frameTxReceipts);
             }
 
             _frameTxPayer = null;
