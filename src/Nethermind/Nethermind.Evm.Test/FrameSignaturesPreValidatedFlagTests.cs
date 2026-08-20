@@ -6,7 +6,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
@@ -38,11 +37,16 @@ public class FrameSignaturesPreValidatedFlagTests
         foreach (string path in Directory.EnumerateFiles(root.FullName, "*.cs", SearchOption.AllDirectories))
         {
             string relative = Path.GetRelativePath(root.FullName, path).Replace(Path.DirectorySeparatorChar, '/');
-            if (relative.Contains(".Test/", StringComparison.Ordinal) || relative.StartsWith("artifacts/", StringComparison.Ordinal)) continue;
+            // Build output mirrors the sources, so scanning it costs thousands of reads and can only add
+            // a duplicate of a site already found.
+            if (relative.Contains(".Test/", StringComparison.Ordinal)
+                || relative.StartsWith("artifacts/", StringComparison.Ordinal)
+                || relative.Contains("/bin/", StringComparison.Ordinal)
+                || relative.Contains("/obj/", StringComparison.Ordinal)) continue;
             if (File.ReadAllText(path).Contains(Flag, StringComparison.Ordinal)) found.Add(relative);
         }
 
-        Assert.That(found.Order(), Is.EquivalentTo(ExpectedSites.Order()));
+        Assert.That(found, Is.EquivalentTo(ExpectedSites));
     }
 
     private static DirectoryInfo SourceRoot()
