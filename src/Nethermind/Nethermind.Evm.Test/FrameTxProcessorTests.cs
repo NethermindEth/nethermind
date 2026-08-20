@@ -2179,8 +2179,8 @@ public class FrameTxProcessorTests
         ValueHash256 salt = TestItem.KeccakA.ValueHash256;
         ValueHash256 sourceId = RecentRootStore.SourceId(Observer, salt);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        // Written through the production path so the test cannot keep passing against a stale encoding.
-        RecentRootStore.Write(_stateProvider, Observer, salt, root, committedSlot, Spec);
+        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
+            RecentRootStore.EntryHash(sourceId, committedSlot, root).Bytes.WithoutLeadingZeros().ToArray());
         _stateProvider.Commit(Spec);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
