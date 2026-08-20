@@ -89,6 +89,30 @@ public class InclusionListValidatorTests
         Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
     }
 
+    // Withdrawals land after the block's transactions, so an appended tx could not have spent
+    // them. Judged against raw post-block balance the sender looks funded and the block looks
+    // censoring; only the pre-withdrawal balance gives the right answer.
+    [TestCase(0UL, ExpectedResult = false, TestName = "Sender funded before withdrawals is appendable")]
+    [TestCase(9_500_000_000UL, ExpectedResult = true, TestName = "Sender funded only by this block's withdrawal is not appendable")]
+    public bool Withdrawals_are_not_spendable_by_an_appended_tx(ulong withdrawnGwei)
+    {
+        Withdrawal[] withdrawals = withdrawnGwei == 0
+            ? []
+            : [Build.A.Withdrawal.WithRecipient(TestItem.AddressA).WithAmount(withdrawnGwei).TestObject];
+
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithBaseFeePerGas(UInt256.Zero)
+            .WithTransactions([])
+            .WithWithdrawals(withdrawals)
+            .WithInclusionListTransactions([_validTx])
+            .TestObject;
+
+        // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
+        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+    }
+
     [Test]
     public void When_il_disabled_by_spec_then_accept_even_if_excluded()
     {

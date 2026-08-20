@@ -103,6 +103,30 @@ public static class InclusionListValidator
                 || UInt256.AddOverflow(txCost, blobFee, out txCost)))
             return false;
 
-        return account.Balance >= txCost && account.Nonce == tx.Nonce;
+        return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
+    }
+
+    /// <summary>
+    /// Balance the sender would have had when an appended transaction executed.
+    /// </summary>
+    /// <remarks>
+    /// Satisfaction is judged against post-block state, but withdrawals are credited after the
+    /// block's transactions, so an appended transaction could never have spent them. Post-merge
+    /// they are the only balance credit applied after execution, so removing them reconstructs
+    /// the balance as of the end of the transaction phase.
+    /// </remarks>
+    private static UInt256 SpendableBalance(Block block, Address sender, ref readonly AccountStruct account)
+    {
+        UInt256 balance = account.Balance;
+        if (block.Withdrawals is not { Length: > 0 }) return balance;
+
+        foreach (Withdrawal withdrawal in block.Withdrawals)
+        {
+            if (withdrawal.Address != sender) continue;
+            // Cannot underflow: the credit lands after execution and nothing spends it afterwards.
+            if (UInt256.SubtractUnderflow(balance, withdrawal.AmountInWei, out balance)) return UInt256.Zero;
+        }
+
+        return balance;
     }
 }
