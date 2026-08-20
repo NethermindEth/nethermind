@@ -12,27 +12,20 @@ namespace Nethermind.Evm;
 
 /// <summary>
 /// Object pool for the EVM call machinery: a per-thread free list in front of a shared queue.
-/// Exposes the same TryDequeue / Enqueue shape as the <see cref="ConcurrentQueue{T}"/> pools it
-/// replaces, and as <c>ZkEvmQueue</c> does for the guest, so call sites are unchanged.
 /// </summary>
 /// <remarks>
-/// Call frames rent and return their state in LIFO order on a single thread, but a plain
-/// <see cref="ConcurrentQueue{T}"/> funnels every rent and return of every thread through one segment
-/// head. Under RPC concurrency that contention showed up as <see cref="SpinWait"/> inside
-/// <c>TryDequeue</c>, 4.4x worse on arm64 than x64 — a contended CAS costs far more under LL/SC and a
-/// weak memory model than under x86's TSO. A short per-thread free list serves almost every request
-/// with no atomics at all; the shared queue only absorbs overflow from deep frames and any imbalance
-/// between renting and returning threads.
+/// Frames rent and return in LIFO order on one thread, so the local tier serves almost every request
+/// with no atomics; the shared queue only absorbs deep-frame overflow and cross-thread imbalance.
+/// A single <see cref="ConcurrentQueue{T}"/> instead funnelled every thread through one segment head,
+/// which showed up as <see cref="SpinWait"/> in <c>TryDequeue</c> 4.4x worse on arm64 than x64 — a
+/// contended CAS costs far more under LL/SC than under x86's TSO.
 /// <para>
-/// The per-thread free list is static, so it is shared by every instance of the same closed generic
-/// type. That suits the EVM's singleton pools; two pools over the same <typeparamref name="T"/> would
-/// let items migrate between them, so a debug assertion guards against it.
+/// The local tier is static per closed generic type, so a second pool over the same
+/// <typeparamref name="T"/> would hand out this one's items; a debug assertion guards that.
 /// </para>
 /// </remarks>
-/// <typeparam name="T">Pooled item type. One pool per type — see the remarks.</typeparam>
 internal sealed class EvmObjectPool<T>
 {
-    /// <summary>Per-thread free list length used by the frame pools, whose items are small.</summary>
     private const int DefaultLocalCapacity = 16;
 
     private readonly ConcurrentQueue<T> _shared = new();
@@ -40,14 +33,10 @@ internal sealed class EvmObjectPool<T>
     private readonly int _maxShared;
 
     /// <summary>
-    /// Upper bound on the items in <see cref="_shared"/>. Reserved before enqueueing, so the bound
-    /// never needs <see cref="ConcurrentQueue{T}.Count"/>, which walks the segments.
+    /// Bounds <see cref="_shared"/> without <see cref="ConcurrentQueue{T}.Count"/>, which walks the
+    /// segments. Reserved before an enqueue and released after a dequeue, so it can read high but never
+    /// low — zero proves the queue is empty, letting an empty local tier skip it entirely.
     /// </summary>
-    /// <remarks>
-    /// Only ever incremented before an enqueue and decremented after a successful dequeue, so it can
-    /// read high but never low: zero therefore proves the queue is empty, so a thread whose local free
-    /// list is empty can skip the shared queue instead of a TryDequeue that would fail anyway.
-    /// </remarks>
     private int _sharedCount;
 
     [ThreadStatic] private static T[]? _local;
@@ -73,8 +62,6 @@ internal sealed class EvmObjectPool<T>
 #endif
     }
 
-    /// <summary>Takes a pooled item, preferring the calling thread's free list.</summary>
-    /// <returns><see langword="true"/> if an item was available; otherwise <see langword="false"/>.</returns>
     public bool TryDequeue([MaybeNullWhen(false)] out T item)
     {
         int count = _localCount - 1;
@@ -91,7 +78,6 @@ internal sealed class EvmObjectPool<T>
         return TryDequeueShared(out item);
     }
 
-    /// <summary>Returns an item to the pool, preferring the calling thread's free list.</summary>
     public void Enqueue(T item)
     {
         T[] local = _local ??= new T[_localCapacity];
@@ -122,10 +108,9 @@ internal sealed class EvmObjectPool<T>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EnqueueShared(T item)
     {
-        // Reserve a slot first - an O(1) bound without touching ConcurrentQueue.Count.
+        // Reserve before enqueueing so the bound costs no queue walk.
         if (Interlocked.Increment(ref _sharedCount) > _maxShared)
         {
-            // Cap hit - roll back the reservation and drop the item.
             Interlocked.Decrement(ref _sharedCount);
             return;
         }

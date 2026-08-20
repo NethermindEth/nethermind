@@ -6,14 +6,9 @@ namespace Nethermind.Evm;
 internal sealed partial class StackPool
 {
     /// <summary>
-    /// The process-wide pool. Stacks carry no gas-policy state, so one instance serves every
-    /// <see cref="VmState{TGasPolicy}"/> instantiation rather than one per closed type.
+    /// The process-wide pool, and the only instance. Stacks carry no gas-policy state, so one serves
+    /// every <see cref="VmState{TGasPolicy}"/> instantiation rather than one per closed type.
     /// </summary>
-    /// <remarks>
-    /// Must stay the only instance: <see cref="EvmObjectPool{T}"/>'s per-thread free list is static per
-    /// pooled type, so a second pool would hand out this one's stacks and would inherit whichever
-    /// capacity allocated a given thread's array first.
-    /// </remarks>
     public static readonly StackPool Shared = new();
 
     private StackPool() { }
