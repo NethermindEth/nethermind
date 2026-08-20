@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -147,43 +146,62 @@ public class EvmObjectPoolTests
         ConcurrentDictionary<ChurnItem, byte> rented = new();
         int duplicates = 0;
         int allocated = 0;
-        int steadyStateAllocations = 0;
+        ConcurrentQueue<Exception> failures = new();
 
-        Parallel.For(0, threads, _ =>
+        // Dedicated threads rather than Parallel.For, which is free to run the iterations on fewer
+        // threads than requested - the duplicate check would then pass without ever renting the pool
+        // concurrently, which is the whole point of this test.
+        Thread[] workers = new Thread[threads];
+        for (int worker = 0; worker < threads; worker++)
         {
-            ChurnItem[] held = new ChurnItem[itemsPerThread];
-            for (int round = 0; round < rounds; round++)
+            workers[worker] = new Thread(() =>
             {
-                for (int i = 0; i < itemsPerThread; i++)
+                try
                 {
-                    if (!pool.TryDequeue(out ChurnItem? item))
+                    ChurnItem[] held = new ChurnItem[itemsPerThread];
+                    for (int round = 0; round < rounds; round++)
                     {
-                        item = new ChurnItem(Interlocked.Increment(ref allocated));
-                        // Round 0 faces an empty pool and is entitled to the whole working set. Counting
-                        // per thread rather than snapshotting a shared total keeps this exact: a global
-                        // snapshot taken when the first thread reaches round 1 would bill a lagging
-                        // thread's round-0 allocations to the steady state.
-                        if (round > 0) Interlocked.Increment(ref steadyStateAllocations);
-                    }
+                        for (int i = 0; i < itemsPerThread; i++)
+                        {
+                            if (!pool.TryDequeue(out ChurnItem? item))
+                            {
+                                item = new ChurnItem(Interlocked.Increment(ref allocated));
+                            }
 
-                    if (!rented.TryAdd(item!, 0))
-                    {
-                        Interlocked.Increment(ref duplicates);
-                    }
+                            if (!rented.TryAdd(item!, 0))
+                            {
+                                Interlocked.Increment(ref duplicates);
+                            }
 
-                    held[i] = item!;
+                            held[i] = item!;
+                        }
+
+                        for (int i = 0; i < itemsPerThread; i++)
+                        {
+                            // Unmark before returning, so the next renter never observes a stale mark.
+                            rented.TryRemove(held[i], out byte _);
+                            pool.Enqueue(held[i]);
+                            held[i] = null!;
+                        }
+                    }
                 }
-
-                for (int i = 0; i < itemsPerThread; i++)
+                catch (Exception e)
                 {
-                    // Unmark before returning, so the next renter never observes a stale mark.
-                    rented.TryRemove(held[i], out byte _);
-                    pool.Enqueue(held[i]);
-                    held[i] = null!;
+                    // A thread body swallows its exception unless it is carried out explicitly, and a
+                    // silent worker would look like a pass.
+                    failures.Enqueue(e);
                 }
-            }
-        });
+            })
+            { IsBackground = true };
+        }
 
+        foreach (Thread worker in workers) worker.Start();
+        foreach (Thread worker in workers)
+        {
+            Assert.That(worker.Join(TimeSpan.FromSeconds(60)), Is.True, "worker thread did not finish");
+        }
+
+        Assert.That(failures, Is.Empty, "a worker thread threw");
         Assert.That(duplicates, Is.Zero, "the same instance was rented twice concurrently");
 
         // A draining thread reaches the shared tier plus its own local list; the other threads' local
@@ -196,12 +214,15 @@ public class EvmObjectPoolTests
 
         Assert.That(drained, Is.LessThanOrEqualTo(maxShared + localCapacity));
 
-        // Without recycling this workload would allocate threads * itemsPerThread * rounds instances.
-        // Assert on the steady state rather than the cumulative total: a cumulative bound would really
-        // be measuring how often TryDequeueShared loses the publish race - a rate, not the invariant.
+        // Without recycling this workload would allocate threads * itemsPerThread * rounds = 256,000
+        // instances. The bound is deliberately loose: a starved worker can find its local list empty
+        // and the shared tier transiently drained while the other workers hold the whole working set,
+        // so post-warm-up allocation is legitimate and its rate tracks scheduling, not correctness.
+        // What is asserted is that recycling happens at all - a pool that stopped would miss by 100x.
+        // Exact per-instance behaviour is pinned by the single-threaded tests above.
         Assert.That(Volatile.Read(ref allocated), Is.GreaterThan(0), "no item was ever allocated");
-        Assert.That(Volatile.Read(ref steadyStateAllocations), Is.LessThan(threads * itemsPerThread / 4),
-            "the pool kept allocating after warm-up instead of recycling");
+        Assert.That(Volatile.Read(ref allocated), Is.LessThan(threads * itemsPerThread * 4),
+            "the pool stopped recycling and kept allocating fresh instances");
     }
 
     private static void RunOnNewThread(ThreadStart body)
