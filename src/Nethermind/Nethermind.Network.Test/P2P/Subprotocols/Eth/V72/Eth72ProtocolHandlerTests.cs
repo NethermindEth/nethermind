@@ -304,7 +304,8 @@ public class Eth72ProtocolHandlerTests
             size: tx.GetLength(),
             proofVersion: ProofVersion.V1,
             blobCellMask: BlobCellMask.Full,
-            sparseBlobNetworkSize: 0);
+            sparseBlobNetworkSize: 0,
+            type: tx.Type);
 
         _handler.SendNewTransactions([legacyLightTx], sendFullTx: false);
 
