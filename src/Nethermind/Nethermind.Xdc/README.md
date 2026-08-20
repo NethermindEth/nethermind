@@ -289,7 +289,7 @@ transactions observed two epochs back (blocks at heights that are multiples of `
 
 - **Pre-`TIPUpgradeReward`** — `Reward` XDC for the epoch, split proportionally to each masternode's signing
   count.
-- **Post-`TIPUpgradeReward`** — fixed `MasternodeReward` / `ProtectorReward` / `ObserverReward` (Wei) per
+- **Post-`TIPUpgradeReward`** — fixed `MasternodeReward` / `ProtectorReward` / `ObserverReward` (XDC) per
   qualifying signer, with minted and burned totals reported to the minted-record contract
   ([`IMintedRecordContract`](Contracts/IMintedRecordContract.cs)).
 
@@ -557,7 +557,7 @@ either fails to load.
 | `TimeoutPeriod` | **seconds** | Round timeout before a timeout vote is broadcast |
 | `TimeoutSyncThreshold` | count | Broadcast `SyncInfo` after this many consecutive timeouts |
 | `MinePeriod` | **seconds** | Minimum spacing between a parent block and its child. `2` |
-| `MasternodeReward` / `ProtectorReward` / `ObserverReward` | Wei | Fixed per-signer epoch rewards (post-`TIPUpgradeReward`) |
+| `MasternodeReward` / `ProtectorReward` / `ObserverReward` | XDC | Fixed per-signer epoch rewards (post-`TIPUpgradeReward`). Stated in XDC, as in the reference client, and scaled to wei on load. `63.42` on Apothem |
 | `MinimumMinerBlockPerEpoch` | blocks | Below this, a masternode is penalised. Only honoured once `TIPUpgradePenalty` is active; before that a hard-coded `1` applies |
 | `LimitPenaltyEpoch` | epochs | Penalty duration used post-`TIPUpgradePenalty` |
 | `MinimumSigningTx` | count | Signing transactions needed to leave penalty |
