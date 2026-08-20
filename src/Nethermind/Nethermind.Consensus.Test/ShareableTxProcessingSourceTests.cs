@@ -3,9 +3,15 @@
 
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
@@ -30,14 +36,24 @@ public class ShareableTxProcessingSourceTests
     }
 
     // EIP-7906: a POST_TX frame reads the transaction's own diff, which exists only if something records
-    // it. eth_call has no block-level recorder, so the scope carries one, idle until a transaction needs it.
-    [Test]
-    public void Build_GivesAWorldStateThatCanRecordATransactionDiff()
+    // it, and eth_call has no block-level recorder. These envs also back mempool admission and the
+    // parallel block-access-list parent readers, so a chain that never schedules the fork pays nothing.
+    [TestCase(false, TestName = "Create_ForkNeverScheduled_NoDiffRecorder")]
+    [TestCase(true, TestName = "Create_ForkScheduled_CarriesAnIdleDiffRecorder")]
+    public void Create_DiffRecorderFollowsTheForkSchedule(bool schedulesEip7906)
     {
-        using IReadOnlyTxProcessingScope scope = _shareableSource.Build(IWorldState.PreGenesis);
+        ISpecProvider specProvider = new TestSpecProvider(
+            new OverridableReleaseSpec(Cancun.Instance) { IsEip7906Enabled = schedulesEip7906, IsEip7928Enabled = schedulesEip7906 });
+        using IReadOnlyTxProcessorSource source = new AutoReadOnlyTxProcessingEnvFactory(
+            _container.Resolve<ILifetimeScope>(), _container.Resolve<IWorldStateManager>(), specProvider).Create();
 
-        Assert.That(scope.WorldState, Is.AssignableTo<IBlockAccessListSource>());
-        Assert.That(((IBlockAccessListSource)scope.WorldState).GeneratedBlockAccessList, Is.Null);
+        using IReadOnlyTxProcessingScope scope = source.Build(IWorldState.PreGenesis);
+
+        Assert.That(scope.WorldState is IBlockAccessListSource, Is.EqualTo(schedulesEip7906));
+        if (schedulesEip7906)
+        {
+            Assert.That(((IBlockAccessListSource)scope.WorldState).GeneratedBlockAccessList, Is.Null);
+        }
     }
 
     [Test]

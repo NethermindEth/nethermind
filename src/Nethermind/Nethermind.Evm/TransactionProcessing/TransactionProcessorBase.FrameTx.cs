@@ -31,15 +31,19 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// nothing else is recording one, and returns the recorder so the caller can stop it.
     /// </summary>
     /// <remarks>
-    /// The slice is the diff source the assertion opcodes read. Block processing always has one in
-    /// flight; simulation (eth_call, eth_estimateGas) does not, and without this a POST_TX assertion
-    /// would halt there while succeeding in a block. Recording starts before the transaction touches
-    /// state, so the captured prestate is the transaction's own baseline.
+    /// The slice is the diff source the assertion opcodes read. Block processing has one in flight
+    /// whenever EIP-7928 is on; simulation (eth_call, eth_estimateGas) does not, and without this a
+    /// POST_TX assertion would halt there while succeeding in a block. Recording starts before the
+    /// transaction touches state, so the captured prestate is the transaction's own baseline.
+    /// Mirroring the EIP-7928 condition matters in both directions: on a chain that scheduled EIP-7906
+    /// without it, blocks halt, and a simulation that quietly succeeded would be worse than one that
+    /// halts alike.
     /// </remarks>
     private IBlockAccessListSource? BeginPostTxDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
     {
         // The in-pool prefix simulation stops before the body, so no POST_TX frame ever runs under it.
         if (!spec.IsEip7906Enabled
+            || !spec.BlockLevelAccessListsEnabled
             || opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly)
             || tx.Frames is not { } frames
             || WorldState is not IBlockAccessListSource { GeneratedBlockAccessList: null } recorder)

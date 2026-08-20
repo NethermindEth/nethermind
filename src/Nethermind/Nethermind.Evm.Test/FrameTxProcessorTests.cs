@@ -2653,6 +2653,24 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
+    // The catastrophic-and-silent regression: if the per-transaction install ever displaced the block's
+    // own slice, that transaction's changes would be dropped from the block access list.
+    [Test]
+    public void Execute_PostTxAssertionWhileABlockAccessListIsRecording_KeepsTheBlockSlice()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, PostTxAssertAll((Txtrace(0x01, 0), To32(1))));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: Observer), Frame(TxFrame.ModePostTx, target: Recipient)),
+            out BlockAccessListAtIndex slice);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        // The slice handed to the processor is still the one recording, and still holds the body's write.
+        Assert.That(slice.GetAccountChanges(Observer)!.StorageChangeCount, Is.EqualTo(1));
+    }
+
     // The per-transaction slice must not outlive the transaction that needed it.
     [Test]
     public void CallAndRestore_PostTxAssertion_LeavesTheRecorderIdleAfterwards()

@@ -16,13 +16,25 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
     public IOverridableEnv Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
-        ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState)
-            // EIP-7906: idle until a transaction that reads its own diff switches it on, so that when one
-            // does, the whole stack - tx processor and code repository alike - records into one slice.
-            .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
-            .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
-            .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!));
+        // Only worth a layer on a chain that ever records a diff to read; these envs also back
+        // eth_simulateV1 and the tracers, which bring their own recorder and would otherwise stack an
+        // idle one on top.
+        IReleaseSpec finalSpec = specProvider.GetFinalSpec();
+        bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
+        ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) =>
+        {
+            builder
+                .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState);
+            if (recordsTransactionDiffs)
+            {
+                // Idle until a transaction that reads its own diff switches it on, so that when one does,
+                // the whole stack - tx processor and code repository alike - records into a single slice.
+                builder.AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false));
+            }
+            builder
+                .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
+                .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!);
+        });
 
         OverridableSpecProvider overridableSpecProvider = new(specProvider);
         return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider);

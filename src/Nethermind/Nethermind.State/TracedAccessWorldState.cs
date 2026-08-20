@@ -21,6 +21,9 @@ namespace Nethermind.State;
 /// Recording is active only while <see cref="SetGeneratingBlockAccessList"/> holds a slice; with none
 /// installed every member delegates straight to the decorated state, so the decorator can sit
 /// permanently in a simulation stack and be switched on for the transactions that need a diff.
+/// The block lifecycle methods (<see cref="Clear"/>, <see cref="SetIndex"/>, <see cref="IncrementIndex"/>)
+/// deliberately keep dereferencing the slice, so block processing still fails fast on a missed setup -
+/// at its per-block <c>Setup</c> rather than silently emitting an empty BAL.
 /// </remarks>
 public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
@@ -38,7 +41,13 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private AccountChangesAtIndex? _lastReadStorageChanges;
     private bool _hasLastReadCell;
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
-    public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
+    public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal)
+    {
+        // The cached entry belongs to the outgoing slice, so it cannot survive the swap.
+        _hasLastReadCell = false;
+        _lastReadStorageChanges = null;
+        _generatingBlockAccessList = bal;
+    }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
@@ -220,7 +229,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         account = AccountExistsInternal(address) ? new(
             GetNonceInternal(address),
             GetBalanceInternal(address),
-            Keccak.EmptyTreeHash, // never used
+            Keccak.EmptyTreeHash, // no caller on either the block or the simulation path reads it
             GetCodeHashInternal(address)) : AccountStruct.TotallyEmpty;
         return !account.IsTotallyEmpty;
     }
