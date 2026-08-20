@@ -1063,6 +1063,34 @@ public class TxValidatorTests
         Assert.That(FrameTxEnvelopeTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
     }
 
+    [Test]
+    public void IsWellFormed_FrameTxExecutionReservationIsBoundedByEip7825()
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                    Eip7825Constants.DefaultTxGasLimitCap - 100_000, Eip7825Constants.DefaultTxGasLimitCap, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            DecodedMaxFeePerGas = 1,
+        };
+
+        Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.True);
+
+        tx.Frames =
+        [
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
+        ];
+
+        Assert.That(FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, Bogota.Instance).AsBool(), Is.False);
+    }
+
     private static Transaction BuildBlobFrameTx(int blobCount, byte versionByte = KzgPolynomialCommitments.KzgBlobHashVersionV1)
     {
         byte[][] versionedHashes = new byte[blobCount][];

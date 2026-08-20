@@ -485,7 +485,7 @@ namespace Nethermind.Blockchain.Test
             if (expectedSkipped)
             {
                 Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Skip));
-                Assert.That(args.Reason, Does.StartWith("Not enough gas in block"));
+                Assert.That(args.Reason, Does.StartWith("Not enough").And.Contains("gas in block"));
             }
             else
             {

@@ -144,7 +144,10 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         ulong gasLimit = 0;
         foreach (TxFrame frame in transaction.Frames)
         {
-            gasLimit = frame.GasLimit > ulong.MaxValue - gasLimit ? ulong.MaxValue : gasLimit + frame.GasLimit;
+            ulong frameLimit = frame.ExecutionGasLimit > ulong.MaxValue - frame.StateGasLimit
+                ? ulong.MaxValue
+                : frame.ExecutionGasLimit + frame.StateGasLimit;
+            gasLimit = frameLimit > ulong.MaxValue - gasLimit ? ulong.MaxValue : gasLimit + frameLimit;
         }
         transaction.GasLimit = gasLimit;
 

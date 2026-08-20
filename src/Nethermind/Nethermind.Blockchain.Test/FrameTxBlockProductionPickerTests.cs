@@ -63,4 +63,42 @@ public class FrameTxBlockProductionPickerTests
             Assert.That(args.Reason, expectedReason is null ? Is.Empty.Or.Null : Is.EqualTo(expectedReason));
         }
     }
+
+    [TestCase(0UL, BlockProcessor.TxAction.Add)]
+    [TestCase(600_000UL, BlockProcessor.TxAction.Skip)]
+    public void Frame_transaction_is_checked_against_each_remaining_block_dimension(
+        ulong cumulativeStateGas,
+        BlockProcessor.TxAction expectedAction)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Bogota.Instance);
+        BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        state.GetNonce(TestItem.AddressA).Returns(AccountNonce);
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = 1,
+            Nonce = AccountNonce,
+            SenderAddress = TestItem.AddressA,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                    executionGasLimit: 500_000, stateGasLimit: 500_000, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+        Block block = Build.A.Block.WithGasLimit(1_000_000).TestObject;
+
+        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
+            block,
+            tx,
+            new HashSet<Transaction>(),
+            state,
+            cumulativeStateGas);
+
+        Assert.That(args.Action, Is.EqualTo(expectedAction));
+    }
 }

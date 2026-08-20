@@ -206,6 +206,12 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
+        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _)
+            || executionReservation > Eip7825Constants.DefaultTxGasLimitCap)
+        {
+            return FrameTxValidation.FrameExecutionGasExceedsCap;
+        }
+
         // EIP-7594: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
         // versioned-hash version byte as a type-3 blob tx.
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;

@@ -105,7 +105,7 @@ public static unsafe partial class EvmInstructions
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > 0x10U) return EvmExceptionType.BadInstruction;
+        if (param > 0x11U) return EvmExceptionType.BadInstruction;
 
         byte[][]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
@@ -129,6 +129,7 @@ public static unsafe partial class EvmInstructions
             0x0E when TEip8250.IsActive => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
             0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is { } keys ? keys[0] : UInt256.Zero),
             0x0F when TEip8272.IsActive => stack.PushUInt256<TTracingInst>((UInt256)ctx.RecentRootReferences.Length),
+            0x11 => stack.PushUInt256<TTracingInst>((UInt256)(ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in gas))),
             _ => EvmExceptionType.BadInstruction,
         };
     }
@@ -217,14 +218,14 @@ public static unsafe partial class EvmInstructions
         // Spec stack order: frameIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 frameIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (frameIndex >= (UInt256)ctx.Frames.Length) return EvmExceptionType.BadInstruction;
-        if (param > 0x08) return EvmExceptionType.BadInstruction;
+        if (param > 0x0B) return EvmExceptionType.BadInstruction;
 
         int index = (int)frameIndex.u0;
         TxFrame frame = ctx.Frames[index];
         return param.u0 switch
         {
             0x00 => stack.PushAddress<TTracingInst>(ctx.ResolvedTarget(index)),
-            0x01 => stack.PushUInt256<TTracingInst>((UInt256)frame.GasLimit),
+            0x01 => stack.PushUInt256<TTracingInst>((UInt256)frame.ExecutionGasLimit),
             0x02 => stack.PushUInt32<TTracingInst>(frame.Mode),
             0x03 => stack.PushUInt32<TTracingInst>(frame.Flags),
             0x04 => stack.PushUInt256<TTracingInst>((UInt256)frame.Data.Length),
@@ -232,8 +233,25 @@ public static unsafe partial class EvmInstructions
             0x06 => stack.PushUInt32<TTracingInst>(frame.AllowedApproveScope),
             0x07 => stack.PushUInt32<TTracingInst>((uint)(frame.IsAtomicBatch ? 1 : 0)),
             0x08 => stack.PushUInt256<TTracingInst>(frame.Value),
+            0x09 => stack.PushUInt256<TTracingInst>((UInt256)frame.StateGasLimit),
+            0x0A => FrameExecutionGasUsed<TTracingInst>(ctx, index, ref stack),
+            0x0B => FrameStateGasUsed<TTracingInst>(ctx, index, ref stack),
             _ => EvmExceptionType.BadInstruction,
         };
+    }
+
+    private static EvmExceptionType FrameExecutionGasUsed<TTracingInst>(FrameTxContext ctx, int index, ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
+        return stack.PushUInt256<TTracingInst>((UInt256)ctx.ExecutionGasUsedFor(index));
+    }
+
+    private static EvmExceptionType FrameStateGasUsed<TTracingInst>(FrameTxContext ctx, int index, ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+    {
+        if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
+        return stack.PushUInt256<TTracingInst>((UInt256)ctx.StateGasUsedFor(index));
     }
 
     private static EvmExceptionType FrameStatus<TTracingInst>(FrameTxContext ctx, int index, ref EvmStack stack)

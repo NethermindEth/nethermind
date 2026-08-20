@@ -12,10 +12,10 @@ namespace Nethermind.Optimism;
 public class OptimismBlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes) : BlockProcessor.BlockProductionTransactionPicker(specProvider, maxTxLengthKilobytes)
 {
     public override BlockProcessor.AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx,
-        IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider)
+        IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider, ulong cumulativeStateGas = 0)
     {
         if (!currentTx.IsDeposit())
-            return base.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
+            return base.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider, cumulativeStateGas);
 
         // Trusting CL with deposit tx validation
         BlockProcessor.AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);

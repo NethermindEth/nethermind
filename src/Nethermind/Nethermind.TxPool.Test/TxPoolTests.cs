@@ -2180,14 +2180,15 @@ namespace Nethermind.TxPool.Test
             return frameTx;
         }
 
-        // EIP-8141: a frame transaction's GasLimit is only the sum of its frame gas limits, so the pool must gate on
-        // max_gas or it admits transactions that can never fit in a block. The mandatory cost of the single frame below
-        // is FRAME_TX_INTRINSIC_COST + FRAME_TX_PER_FRAME_COST = 15,475, and each non-zero calldata byte adds 16 to the
-        // standard cost against 40 to the EIP-7623 floor, so the last case is admissible on its standard cost alone.
-        [TestCase(100_000UL, 0, true)]
-        [TestCase(115_000UL, 0, false)]
-        [TestCase(10_000UL, 4000, false)]
-        public void SubmitTx_FrameTransaction_IsGatedOnMaxGas(ulong frameGasLimit, int frameDataLength, bool expectedAccepted)
+        [TestCase(100_000UL, 0UL, 0, true)]
+        [TestCase(115_000UL, 0UL, 0, false)]
+        [TestCase(10_000UL, 0UL, 4000, false)]
+        [TestCase(70_000UL, 70_000UL, 0, true)]
+        public void SubmitTx_FrameTransaction_IsGatedOnBlockDimensions(
+            ulong executionGasLimit,
+            ulong stateGasLimit,
+            int frameDataLength,
+            bool expectedAccepted)
         {
             _txPool = CreatePool(null, new TestSpecProvider(Bogota.Instance));
             _headInfo.BlockGasLimit = 130_000;
@@ -2199,9 +2200,9 @@ namespace Nethermind.TxPool.Test
                 ChainId = _specProvider.ChainId,
                 Nonce = 0,
                 SenderAddress = TestItem.PrivateKeyA.Address,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
+                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, frameData)],
                 FrameSignatures = [],
-                GasLimit = frameGasLimit,
+                GasLimit = executionGasLimit + stateGasLimit,
                 GasPrice = 1.GWei,
                 DecodedMaxFeePerGas = 1.GWei,
             };
@@ -2551,7 +2552,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Bogota.Instance));
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
-            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 30_000_000);
+            Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: 15_000_000);
 
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         }
