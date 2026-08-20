@@ -34,7 +34,6 @@ public partial class EthRpcModuleTests
     private const ulong Eip8037NewAccountTransferGas = GasCostOf.TransactionEip2780
         + Eip8038Constants.ColdAccountAccess
         + GasCostOf.TxValueCostEip2780
-        + GasCostOf.TransferLogEip2780
         + (ulong)GasCostOf.NewAccountState;
     private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
 
