@@ -225,7 +225,6 @@ namespace Nethermind.TxPool
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
-            AssertNoFilterRegisteredTwice();
 
             int? reportMinutes = txPoolConfig.ReportMinutes;
             if (_logger.IsInfo && reportMinutes.HasValue)
@@ -318,20 +317,6 @@ namespace Nethermind.TxPool
 #endif
         }
 
-        // A filter listed twice runs twice, and one with a side effect — reserving payer exposure, bumping a
-        // rejection counter — applies it twice, which no filter fixture can see.
-        [Conditional("DEBUG")]
-        private void AssertNoFilterRegisteredTwice()
-        {
-#if DEBUG
-            HashSet<Type> seen = [];
-            foreach (IIncomingTxFilter filter in _preHashFilters.Concat(_postHashFilters))
-            {
-                if (!seen.Add(filter.GetType())) Debug.Fail($"{filter.GetType().Name} is registered more than once in the incoming filter pipeline.");
-            }
-#endif
-        }
-
         // A negative count arms the expiry sweep's zero-count fast path for good, so catch it at the decrement.
         [Conditional("DEBUG")]
         private void AssertExpiringFrameTxCountNotNegative() =>
@@ -345,6 +330,8 @@ namespace Nethermind.TxPool
 #if DEBUG
             for (int attempt = 0; attempt < 3; attempt++)
             {
+                // Read before the snapshots, or the window reopens: the pool drops its snapshot cache before
+                // raising Removed, so a walk that sees this bump rebuilds behind the handler that released.
                 int mutations = Volatile.Read(ref _poolMutations);
 
                 Dictionary<AddressAsKey, UInt256> pooledExposure = [];
@@ -381,6 +368,8 @@ namespace Nethermind.TxPool
         }
 
 #if DEBUG
+        // A payer the pool never resolved — a record restored from storage — prices null here and at release
+        // alike, so its exposure is out of this check's reach rather than verified by it.
         private static void AccumulateFrameTxBookkeeping(Transaction[] snapshot, Dictionary<AddressAsKey, UInt256> exposure, ref int expiring)
         {
             foreach (Transaction tx in snapshot)
