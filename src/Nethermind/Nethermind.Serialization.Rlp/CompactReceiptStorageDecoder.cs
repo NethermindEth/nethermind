@@ -61,10 +61,8 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(lastCheck);
             }
 
-            // EIP-8141: only frame receipts carry data past the logs sequence — the trailing
-            // extension holds the execution results the block cannot reproduce (payer and the
-            // per-frame receipts). Pre-fork receipts end at the logs, so the branch never fires
-            // for them.
+            // EIP-8141: only frame receipts carry data past the logs sequence — a trailing extension holding the
+            // payer and per-frame receipts. Pre-fork receipts end at the logs, so the branch never fires for them.
             if (decoderContext.Position < receiptEnd)
             {
                 txReceipt.TxType = TxType.FrameTx;
@@ -119,8 +117,7 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            // EIP-8141: skip a frame-tx receipt's trailing extension (payer + per-frame receipts) so
-            // the next receipt in the array stays aligned. Pre-fork receipts already end here (no-op).
+            // EIP-8141: skip a frame-tx receipt's trailing extension so the next receipt in the array stays aligned.
             if (decoderContext.Position < receiptEnd)
             {
                 item.TxType = TxType.FrameTx;

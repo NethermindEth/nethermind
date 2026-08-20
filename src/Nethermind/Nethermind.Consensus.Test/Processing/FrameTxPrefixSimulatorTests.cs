@@ -27,10 +27,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Processing;
 
-/// <summary>
-/// A non-accepting verdict from <see cref="FrameTxPrefixSimulator"/> is charged to the sending peer's flood
-/// counter, so the simulator must only reject for reasons the transaction is actually answerable for.
-/// </summary>
+/// <summary>A non-accepting verdict is charged to the sending peer's flood counter, so the simulator must
+/// only reject for reasons the transaction is actually answerable for.</summary>
 [TestFixture]
 public class FrameTxPrefixSimulatorTests
 {

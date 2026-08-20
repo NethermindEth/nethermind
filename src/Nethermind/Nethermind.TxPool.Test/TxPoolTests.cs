@@ -2027,7 +2027,7 @@ namespace Nethermind.TxPool.Test
             // No need to check for deposit tx
             if (txType == TxType.DepositTx) return;
 
-            // Frame txs are rejected at pool ingress until the EIP-8141 mempool rules land
+            // Frame txs are rejected at ingress under Prague; EIP-8141 activates at Bogota
             if (txType == TxType.FrameTx) return;
 
             ISpecProvider specProvider = GetPragueSpecProvider();
@@ -2180,10 +2180,8 @@ namespace Nethermind.TxPool.Test
             return frameTx;
         }
 
-        // EIP-8141: a frame transaction's GasLimit is only the sum of its frame gas limits, so the pool must gate on
-        // max_gas or it admits transactions that can never fit in a block. The mandatory cost of the single frame below
-        // is FRAME_TX_INTRINSIC_COST + FRAME_TX_PER_FRAME_COST = 15,475, and each non-zero calldata byte adds 16 to the
-        // standard cost against 40 to the EIP-7623 floor, so the last case is admissible on its standard cost alone.
+        // EIP-8141: a frame tx's GasLimit is only the sum of its frame gas limits, so the pool must gate on max_gas
+        // or admit transactions that can never fit a block; the single frame below costs 15,475 on top of its data.
         [TestCase(100_000UL, 0, true)]
         [TestCase(115_000UL, 0, false)]
         [TestCase(10_000UL, 4000, false)]
@@ -2274,9 +2272,8 @@ namespace Nethermind.TxPool.Test
                 "the expiry pass must only ever touch frame transactions carrying a deadline");
         }
 
-        // Symmetry of _expiringFrameTxCount across the replacement path: replacing A with B fires Removed(A) and
-        // Inserted(B) inside a single DistinctValueSortedPool.InsertCore call. If those ever netted the count to
-        // zero the expiry pass would be skipped and B would silently survive past its deadline; assert it is evicted.
+        // Replacing A with B fires Removed(A) and Inserted(B) in one InsertCore call; if those netted
+        // _expiringFrameTxCount to zero the expiry pass would be skipped and B would outlive its deadline.
         [Test]
         public async Task Replaced_expiring_frame_transaction_is_still_evicted_on_new_head()
         {
@@ -2299,9 +2296,8 @@ namespace Nethermind.TxPool.Test
                 "the replacement inherits the deadline and must still be evicted by the expiry pass");
         }
 
-        // EIP-8141: a frame tx whose expiry deadline is already behind the current head must be rejected at submit —
-        // never pooled, never broadcast — mirroring the on-head eviction predicate. deadline == head timestamp is the
-        // boundary the expiry-verifier predeploy still accepts (strict >), so it must be admitted.
+        // EIP-8141: a deadline already behind the head is rejected at submit, mirroring the on-head eviction
+        // predicate; deadline == head timestamp is the boundary the expiry verifier still accepts (strict >).
         [TestCase(1_000UL, 1_500UL, false, TestName = "already-expired frame tx is rejected at ingress")]
         [TestCase(2_000UL, 1_500UL, true, TestName = "not-yet-expired frame tx is accepted at ingress")]
         [TestCase(1_500UL, 1_500UL, true, TestName = "boundary deadline equal to head timestamp is accepted at ingress")]
@@ -2384,9 +2380,8 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedAccepted ? 1 : 0));
         }
 
-        // The pool must reach the same verdict as the processor: the EVM resolves P256VERIFY through the
-        // code-info repository, so gating it on a fork flag here would refuse — and disconnect the peer
-        // over — a transaction the processor accepts.
+        // The EVM resolves P256VERIFY through the code-info repository, so gating it on a fork flag here would
+        // refuse — and disconnect the peer over — a transaction the processor accepts.
         [TestCase(true, false, true, TestName = "P256VERIFY reached through EIP-7951")]
         [TestCase(false, true, true, TestName = "P256VERIFY reached through RIP-7212")]
         [TestCase(false, false, false, TestName = "P256VERIFY absent from the active precompiles")]
@@ -2476,9 +2471,8 @@ namespace Nethermind.TxPool.Test
             Transaction frameTx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null, verifyGasLimit: verifyGasLimit);
             if (withSignature)
             {
-                // A secp256k1 entry verifies for 2 800 gas, so it decides the outcome on its own at a
-                // 97 200-gas prefix. It has to be a signature that verifies: the pool rejects one that
-                // does not before the budget is ever compared.
+                // A secp256k1 entry verifies for 2 800 gas, deciding the outcome on its own at a 97 200-gas
+                // prefix. It must actually verify: the pool rejects a bad one before comparing the budget.
                 frameTx.FrameSignatures = [FrameSignature(frameTx, FrameSignatureDefect.None)];
                 frameTx.Hash = frameTx.CalculateHash();
             }
@@ -2532,12 +2526,8 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
-        /// <summary>
-        /// Block production takes the ready-filtered bucket snapshot, so a sender holding several
-        /// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed transactions must see all of them
-        /// there. Filtering on the account nonce instead drops the whole bucket, which is what kept keyed transactions
-        /// out of blocks.
-        /// </summary>
+        /// <summary>Block production takes the ready-filtered bucket snapshot, so a sender's EIP-8250 keyed
+        /// transactions must all appear there; filtering on the account nonce drops the whole bucket.</summary>
         [Test]
         public void Keyed_transactions_of_one_sender_are_all_ready_for_block_production()
         {
@@ -3273,7 +3263,7 @@ namespace Nethermind.TxPool.Test
                         builder.WithAuthorizationCodeIfAuthorizationListTx();
                         break;
                     case TxType.FrameTx:
-                        //Frame txs are rejected at pool ingress until the EIP-8141 mempool rules land
+                        //Frame txs are rejected at ingress under Prague; EIP-8141 activates at Bogota
                         continue;
                     case TxType.DepositTx:
                         continue;

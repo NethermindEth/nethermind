@@ -8,10 +8,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
 
-/// <summary>Simulates the validation prefix of opaque EIP-8141 frame transactions
-/// (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>), rejecting those that do not validate.</summary>
-/// <remarks>Must run after <see cref="FrameTxPayerFilter"/>, whose resolved payer is the EVM-free fast
-/// path here. Runs inside the pool's head read lock, so the simulator has to bound its own wait.</remarks>
+/// <summary>Simulates the validation prefix of opaque EIP-8141 frame transactions (<see cref="FrameTxPayerOutcome.RequiresSimulation"/>), rejecting those that do not validate.</summary>
+/// <remarks>Runs inside the pool's head read lock, so the simulator has to bound its own wait.</remarks>
 internal sealed class FrameTxSimulationFilter(
     IReadOnlyStateProvider stateProvider,
     IFrameTxPrefixSimulator? simulator,
@@ -41,8 +39,7 @@ internal sealed class FrameTxSimulationFilter(
                 return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
 
             case FrameTxSimulationOutcome.Undecided:
-                // No verdict was reached, so defer exactly as an unwired simulator does rather than return
-                // a non-accepting result the sending peer would be charged for.
+                // No verdict, so defer as an unwired simulator does rather than charge the sending peer for it.
                 Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationUndecided);
                 if (logger.IsDebug) logger.Debug($"Admitting frame transaction {tx.Hash} with an unresolved payer, validation-prefix simulation was unavailable: {result.Reason}.");
                 return AcceptTxResult.Accepted;

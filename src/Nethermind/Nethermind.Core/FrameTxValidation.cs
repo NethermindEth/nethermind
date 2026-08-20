@@ -10,9 +10,7 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Core;
 
 /// <summary>
-/// Static validity constraints of EIP-8141 frame transactions (the spec "Constraints" block).
-/// Structural RLP shape is enforced at decode time; this class covers the semantic constraints
-/// that are checkable without state.
+/// The EIP-8141 §Constraints checks that are decidable without state; structural RLP shape is enforced at decode time.
 /// </summary>
 public static class FrameTxValidation
 {
@@ -121,8 +119,7 @@ public static class FrameTxValidation
                 return false;
             }
 
-            // EIP-8141 (ethereum/EIPs#11955): atomic batches contain only non-VERIFY frames — the
-            // flagged frame and its successor must both be non-VERIFY.
+            // EIP-8141: atomic batches contain only non-VERIFY frames.
             if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0)
             {
                 if (frame.Mode == TxFrame.ModeVerify)
@@ -232,8 +229,6 @@ public static class FrameTxValidation
         // are enforced by FrameTxFieldsTxValidator rather than in this stateless check.
         return true;
 
-        // EIP-8141: a frame belongs to a batch when flagged, or when it is the terminating frame
-        // immediately after a flagged one (approval scope is forbidden on either).
         static bool BelongsToAtomicBatch(TxFrame[] frames, int i) =>
             (frames[i].Flags & TxFrame.AtomicBatchFlag) != 0
             || (i > 0 && (frames[i - 1].Flags & TxFrame.AtomicBatchFlag) != 0);
@@ -253,13 +248,9 @@ public static class FrameTxValidation
     /// of its validation prefix plus the cost of verifying its signatures, saturating at <see cref="ulong.MaxValue"/>.
     /// </summary>
     /// <remarks>
-    /// Derived from the frame layout alone, so no state is read. Each layout of EIP-8141 "Public
-    /// Mempool-recognized Validation Prefixes" ends in a <c>VERIFY</c> frame targeting the sender, whose
-    /// approval is protocol-defined, so the prefix provably ends there. Under any other layout approval
-    /// depends on code at an attacker-chosen target, so the whole frame list is charged. Signature
-    /// validation counts against the same budget per EIP-8141 "Validation Prefix".
+    /// A recognized EIP-8141 validation prefix provably ends at a protocol-approved <c>VERIFY</c> frame; under any
+    /// other layout approval rests on attacker-chosen code, so the whole frame list is charged.
     /// </remarks>
-    /// <param name="transaction">The frame transaction to price.</param>
     public static ulong ValidationWorkGas(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
@@ -284,14 +275,9 @@ public static class FrameTxValidation
     /// validation prefix, which EIP-8141 bars from the public mempool.
     /// </summary>
     /// <remarks>
-    /// A public-mempool rule, not a validity rule: such a transaction stays consensus-valid. A VERIFY frame
-    /// that reverts invalidates the whole transaction, so one sitting past the prefix does so on state the
-    /// pool never validated. Judged against the same prefix grammar <see cref="ValidationWorkGas"/> prices
-    /// admission with, so a layout matching none of the recognized prefixes has no boundary to sit behind
-    /// and is left to the rules that reject it on their own terms. That leaves the equivalent hole open for
-    /// unrecognized layouts until the prefix structure itself is enforced.
+    /// A public-mempool rule, not a validity rule: a VERIFY frame past the prefix can revert on state the pool never
+    /// validated, invalidating the whole transaction. Layouts matching no recognized prefix are not covered.
     /// </remarks>
-    /// <param name="transaction">The frame transaction to inspect.</param>
     public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
@@ -316,12 +302,9 @@ public static class FrameTxValidation
     /// its frame list, the only placement EIP-8141 permits.
     /// </summary>
     /// <remarks>
-    /// A public-mempool rule, not a validity rule: an expiry frame's shape and uniqueness are validated but
-    /// never its position, so such a transaction stays consensus-valid. The pool needs the placement because
-    /// it reads the deadline from the leading frame alone (<see cref="TryGetExpiryDeadline"/>); a misplaced
-    /// frame would otherwise carry a deadline the expiry sweep can never see.
+    /// A public-mempool rule, not a validity rule: position is never validated for consensus, but
+    /// <see cref="TryGetExpiryDeadline"/> reads the deadline from the leading frame alone.
     /// </remarks>
-    /// <param name="transaction">The frame transaction to inspect.</param>
     public static bool HasMisplacedExpiryFrame(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
@@ -365,10 +348,7 @@ public static class FrameTxValidation
         addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
 
     /// <summary>True if <paramref name="frame"/> is a well-formed EIP-8141 expiry-verifier VERIFY frame.</summary>
-    /// <remarks>
-    /// Position is not checked; the recognized prefix admits one only as the leading frame. The value and
-    /// data-length checks are kept so a caller may read the deadline without re-validating the frame.
-    /// </remarks>
+    /// <remarks>Position is not checked; the value and length checks let a caller read the deadline without re-validating.</remarks>
     public static bool IsExpiryVerifyFrame(TxFrame frame) =>
         frame.Mode == TxFrame.ModeVerify
         && frame.Flags == TxFrame.ApproveScopeNone
@@ -408,20 +388,11 @@ public static class FrameTxValidation
     /// </summary>
     /// <remarks>
     /// <see cref="Transaction.GasLimit"/> of a frame transaction carries only the sum of the frame gas limits, so any
-    /// consumer gating on a gas budget (mempool admission, block production, execution) must price the transaction
-    /// through this method or it under-counts by at least <see cref="Eip8141Constants.IntrinsicGasCost"/>.
-    /// A transaction whose frames reserve less than the floor raises its reservation rather than becoming invalid;
-    /// the headroom is reserved and refunded, never spendable.
-    /// The result is memoized on <see cref="Transaction.IntrinsicGasMemo"/>, which a frame transaction otherwise
-    /// leaves unused, and is keyed on the spec reference as <c>EthereumGasPolicy</c> keys its own memo.
+    /// consumer gating on a gas budget must price through this method or it under-counts the intrinsic cost.
     /// </remarks>
-    /// <param name="transaction">The frame transaction to price.</param>
-    /// <param name="spec">The release spec supplying the calldata token pricing.</param>
-    /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
     /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>
-    /// <returns><c>false</c> if the transaction carries no frames, or if the frame gas limits or the resulting budget
-    /// overflow <see cref="ulong"/>. In every failure case the outputs are 0 and the transaction cannot be priced.</returns>
+    /// <returns><c>false</c>, with all outputs 0, if the transaction carries no frames or the budget overflows <see cref="ulong"/>.</returns>
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
         if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo && ReferenceEquals(memo.Spec, spec))
@@ -531,14 +502,9 @@ public static class FrameTxValidation
     /// <see cref="Transaction.PersistedExpiryDeadline"/> for a transaction reloaded without its frames.
     /// </summary>
     /// <remarks>
-    /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; a tx whose deadline has passed can
-    /// never be included and is dropped from the mempool (ethereum/EIPs#12007, "Revalidation"). Total on any input:
-    /// <see cref="IsExpiryVerifyFrame"/> guards the data length this dereferences. Only the leading frame is read —
-    /// the sole placement EIP-8141 permits, and the one <see cref="HasMisplacedExpiryFrame"/> keeps the pool to.
+    /// The deadline is the big-endian <c>uint64</c> in that frame's 8-byte data; only the leading frame is read, the
+    /// sole placement EIP-8141 permits.
     /// </remarks>
-    /// <param name="transaction">The frame transaction to inspect.</param>
-    /// <param name="deadline">The expiry deadline in Unix seconds when the transaction carries one.</param>
-    /// <returns><c>true</c> if a deadline was read; otherwise <c>false</c>.</returns>
     public static bool TryGetExpiryDeadline(Transaction transaction, out ulong deadline)
     {
         deadline = 0;

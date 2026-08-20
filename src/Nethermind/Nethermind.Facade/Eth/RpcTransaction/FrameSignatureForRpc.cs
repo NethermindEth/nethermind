@@ -7,11 +7,8 @@ using Nethermind.Core;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-/// <summary>
-/// JSON-RPC view of an EIP-8141 signature entry: <c>[scheme, signer, msg, signature]</c>. The raw
-/// signature bytes of protocol-validated schemes are still surfaced here for observability; EVM
-/// introspection restrictions apply only inside the VM, not to the RPC representation.
-/// </summary>
+/// <summary>JSON-RPC view of an EIP-8141 signature entry: <c>[scheme, signer, msg, signature]</c>.</summary>
+/// <remarks>Raw signature bytes are surfaced here deliberately: the EIP-8141 introspection limits bind the EVM, not RPC.</remarks>
 public class FrameSignatureForRpc
 {
     public byte Scheme { get; set; }

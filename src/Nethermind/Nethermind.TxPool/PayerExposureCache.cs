@@ -18,10 +18,7 @@ internal sealed class PayerExposureCache
 
     /// <summary>Atomically reserves <paramref name="cost"/> if the summed reservation stays within <paramref name="balance"/>.</summary>
     /// <param name="reserved">On rejection, the total observed at the decision point, for diagnostics; zero otherwise.</param>
-    /// <param name="replaced">
-    /// The reservation of a pending transaction this one displaces, excluded from the bound because the
-    /// pending set does not grow. Still held rather than settled here: its own release runs on removal.
-    /// </param>
+    /// <param name="replaced">The reservation of a displaced pending transaction, excluded from the bound but still held; its release runs on removal.</param>
     public bool TryReserve(AddressAsKey key, in UInt256 cost, in UInt256 balance, out UInt256 reserved, in UInt256 replaced = default)
     {
         // A zero reservation would leave an entry Subtract never reclaims.
@@ -87,8 +84,8 @@ internal sealed class PayerExposureCache
     /// <remarks>Nothing stops a submission already in flight from reserving after this, so it bounds the leak rather than closing it.</remarks>
     public void Clear()
     {
-        // Unconditional, unlike Subtract: nothing releases these again, and TryAdd is the only increment,
-        // so retiring an entry at whatever value it now holds still retires exactly one increment.
+        // Unconditional, unlike Subtract: TryAdd is the only increment, so retiring an entry at whatever
+        // value it now holds still retires exactly one increment.
         foreach (KeyValuePair<AddressAsKey, UInt256> entry in _reserved)
         {
             if (_reserved.TryRemove(entry.Key, out _))

@@ -30,13 +30,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-/// <summary>
-/// End-to-end EIP-8141 outer-loop scenarios from the spec "Behavior" section, executed through
-/// <c>TransactionProcessor.Execute</c> under the prototype fork. Frames run with a base fee of 0 and
-/// 1 wei fees by default so balance assertions stay simple.
-/// State is NOT rolled back when a frame transaction turns out invalid mid-loop — in block
-/// processing an invalid transaction invalidates the block, so nothing observes that state.
-/// </summary>
+/// <summary>End-to-end EIP-8141 outer-loop scenarios through <c>TransactionProcessor.Execute</c>, with a
+/// base fee of 0 and 1 wei fees so balance assertions stay simple.</summary>
+/// <remarks>State is NOT rolled back when a frame transaction turns out invalid mid-loop: in block
+/// processing that invalidates the block, so nothing observes the state.</remarks>
 [TestFixture]
 public class FrameTxProcessorTests
 {
@@ -58,8 +55,7 @@ public class FrameTxProcessorTests
     [SetUp]
     public void Setup()
     {
-        // The prototype fork carries EIP-8141 only; EIP-8250 and EIP-8272 are switched on here so a test can
-        // turn either back off and assert its fork gate rather than the feature.
+        // Switched on here so a test can turn either back off and assert its fork gate, not the feature.
         _spec = new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true, IsEip8272Enabled = true, IsEip7906Enabled = true };
         _specProvider = new TestSpecProvider(_spec);
         _stateProvider = TestWorldStateFactory.CreateForTest();
@@ -147,8 +143,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
-        // The payer is charged only the spent gas: less than the whole balance (charged), but
-        // more than balance minus the frame gas limit (unused gas refunded).
+        // The payer is charged the spent gas only: unused gas is refunded.
         UInt256 balance = _stateProvider.GetBalance(Sender);
         Assert.That(balance, Is.LessThan(1.Ether), "payer charged");
         Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)frame.GasLimit), "unused gas refunded");
@@ -157,8 +152,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_BlobCarryingFrameTx_ChargesAndBurnsBlobFee()
     {
-        // EIP-8141/EIP-4844: the payer covers the burned blob fee. With base fee 0 the whole gas premium
-        // goes to the beneficiary, so the only value that leaves the payer for good is the burned blob fee.
+        // With base fee 0 the whole gas premium goes to the beneficiary, so the only value that leaves
+        // the payer for good is the burned blob fee.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlobVersionedHashes = [new byte[32]];
@@ -183,10 +178,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_BlobCarryingFrameTx_OnFeeCollectorChain_CollectsBaseFeeAndBlobFee()
     {
-        // Regression: on a fee-collector chain that also enables EIP-4844 fee collection (e.g. Gnosis),
-        // both the EIP-1559 base-fee share and the blob fee must be routed to the collector, exactly as
-        // PayFees does on the regular path. A nonzero base fee makes the 1559 leg observable: the fix
-        // credits it to the collector rather than burning it, so nothing is destroyed.
+        // A fee-collector chain with EIP-4844 collection must route both the base-fee share and the blob
+        // fee to the collector, as PayFees does; the nonzero base fee makes the 1559 leg observable.
         Address feeCollector = TestItem.AddressF;
         _spec.FeeCollector = feeCollector;
         _spec.IsEip4844FeeCollectorEnabled = true;
@@ -243,8 +236,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_TxParamMaxCost_BlobCarryingFrameTx_ReservesBlobLegAtBlobBaseFeeNotMaxFee()
     {
-        // The blob leg of max_cost (TXPARAM 0x06) is reserved at the actual blob_base_fee, not
-        // max_fee_per_blob_gas, so it equals the gas leg plus blob_gas × blob_base_fee.
+        // max_cost's blob leg reserves at the actual blob_base_fee, not max_fee_per_blob_gas.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
             .PushData(0x06).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
@@ -327,9 +319,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_MaxFeeTimesGasLimitOverflows_RejectedWithoutCreditingBeneficiary()
     {
-        // max_fee = max_priority = 2^255 with an even tx gas limit (415_950 here) wraps maxCost to
-        // 0 mod 2^256: unchecked, the payer gate passes for free and a wrapped premium is credited
-        // to the beneficiary out of nothing.
+        // max_fee = max_priority = 2^255 with an even gas limit wraps maxCost to 0 mod 2^256: unchecked,
+        // the payer gate passes for free and a wrapped premium is credited out of nothing.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient));
         tx.GasPrice = UInt256.One << 255;
@@ -414,7 +405,7 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)12345));
-        // The codeless target runs empty code in the VM, which both creates it and emits the transfer log.
+        // The codeless target runs empty code in the VM, which creates it and emits the transfer log.
         Assert.That(tracer.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the EIP-7708 transfer log must land in the frame receipt");
         LogEntry expectedLog = TransferLog.CreateTransfer(Sender, Recipient, 12345);
         using (Assert.EnterMultipleScope())
@@ -422,8 +413,8 @@ public class FrameTxProcessorTests
             Assert.That(tracer.FrameReceipts[1].Logs[0].Topics, Is.EqualTo(expectedLog.Topics));
             Assert.That(tracer.FrameReceipts[1].Logs[0].Data, Is.EqualTo(expectedLog.Data));
         }
-        // Sender pays the transferred value plus the spent gas (unused gas refunded), so the
-        // charge is more than the value alone but less than value + both frame gas limits.
+        // Sender pays the value plus the spent gas, so the charge sits between the value alone and
+        // value + both frame gas limits.
         UInt256 balance = _stateProvider.GetBalance(Sender);
         Assert.That(balance, Is.LessThan(1.Ether - (UInt256)12345), "value transferred and gas charged");
         Assert.That(balance, Is.GreaterThan(1.Ether - (UInt256)(verify.GasLimit + transfer.GasLimit + 12345)), "unused gas refunded");
@@ -532,8 +523,7 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        // The DEFAULT frame halts (status of the currently executing frame), which does not
-        // invalidate the transaction; its state changes are discarded.
+        // Reading the current frame's status halts it, which discards its writes but leaves the tx valid.
         Assert.That(result.TransactionExecuted, Is.True);
         AssertStorage(Observer, 0, UInt256.Zero);
     }
@@ -562,9 +552,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_FrameDataCopy_UsesMemOffsetDataOffsetLengthFrameIndexOrder()
     {
-        // frameData[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
-        // Operand order (top to bottom) is memOffset, dataOffset, length, frameIndex — matching
-        // CALLDATACOPY plus the trailing frameIndex. Asymmetric operands catch a reversed pop order.
+        // frameData[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0). Operands are
+        // memOffset, dataOffset, length, frameIndex top-down; asymmetric so a reversed pop order shows.
         byte[] frameData = new byte[32];
         for (int i = 0; i < frameData.Length; i++) frameData[i] = (byte)i;
 
@@ -612,8 +601,7 @@ public class FrameTxProcessorTests
     public void Execute_SigParamCopy_UsesMemOffsetDataOffsetLengthOrder()
     {
         // signature bytes[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
-        // Operand order (top to bottom) is memOffset, dataOffset, length — matching CALLDATACOPY and
-        // FRAMEDATACOPY. Asymmetric operands catch a reversed pop order.
+        // Operands are memOffset, dataOffset, length top-down; asymmetric so a reversed pop order shows.
         byte[] signatureBytes = new byte[32];
         for (int i = 0; i < signatureBytes.Length; i++) signatureBytes[i] = (byte)i;
 
@@ -674,8 +662,8 @@ public class FrameTxProcessorTests
     public void Execute_TransientStorage_DiscardedBetweenFrames()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        // Copies transient slot 0 into persistent slot 0, then leaves 42 in transient slot 0.
-        // Without the between-frames reset the second run would persist the leaked 42.
+        // Copies transient slot 0 to persistent slot 0, then leaves 42 transient: without the
+        // between-frames reset the second run would persist the leak.
         DeployContract(Observer, Prepare.EvmCode
             .PushData(0).Op(Instruction.TLOAD).PushData(0).Op(Instruction.SSTORE)
             .PushData(42).PushData(0).Op(Instruction.TSTORE)
@@ -695,8 +683,8 @@ public class FrameTxProcessorTests
     public void Execute_AtomicBatch_FrameFails_RollsBackBatchAndSkipsRemaining()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        // Batch frame 1: writes storage, succeeds. Frame 2: reverts. Frame 3 (terminal): would
-        // write storage, must be skipped. On frame 2 failure the whole batch rolls back.
+        // Frame 1 writes and succeeds, frame 2 reverts, terminal frame 3 must be skipped and the batch
+        // rolled back.
         DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
         DeployContract(TestItem.AddressD, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
@@ -718,11 +706,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_AtomicBatch_SenderFrameOutsideFailedBatch_StillExecutes()
     {
-        // Spec: a failed batch rolls back to before the batch and skips the remaining frames IN the
-        // batch; frames after the batch terminal run normally. Consequence for sponsored flows
-        // (ethereum/EIPs#11956): batching the sponsor repayment with one operation frame does not
-        // protect the sponsor when another SENDER frame sits outside the batch — the repayment
-        // reverts, the batch unrolls, and the outside frame still executes on the sponsor's gas.
+        // A failed batch skips only the frames IN the batch; frames after its terminal still run, so a
+        // sponsor repayment batched with one operation frame is not protected from an outside frame.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
         Address sponsor = TestItem.AddressD;
         DeployContract(sponsor, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
@@ -746,8 +731,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_AtomicBatch_ApprovalScopeOnBatchFrame_ReturnsMalformedTransaction()
     {
-        // EIP-8141: approval scope on an atomic-batch frame is rejected before any frame runs. The processor
-        // enforces this itself since it is reachable without static validation (e.g. eth_call).
+        // EIP-8141: rejected before any frame runs, by the processor itself since eth_call skips validation.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
         DeployContract(Observer, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
 
@@ -766,11 +750,8 @@ public class FrameTxProcessorTests
 
     /// <summary>A sponsored frame transaction estimates against the budget its frames fix, not against
     /// the sender's balance.</summary>
-    /// <remarks>
-    /// The regular estimation path bounds the search by what the sender can afford at the fee cap, which
-    /// is zero here, and searches over a gas limit the frame processor never reads. Both are wrong for a
-    /// frame transaction: the payer is chosen by the frames, and the budget is fixed by them.
-    /// </remarks>
+    /// <remarks>The regular path bounds the search by the sender's affordability and searches over a gas
+    /// limit the frame processor never reads; for a frame transaction the frames fix both.</remarks>
     [Test]
     public void EstimateGas_SponsoredFrameTx_ReturnsTheFrameBudgetForAZeroBalanceSender()
     {
@@ -803,10 +784,8 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <remarks>
-    /// The frames fix the budget, so a transaction reserving more than the block can hold is not estimable —
-    /// returning the reservation would hand the caller a figure no block can include.
-    /// </remarks>
+    /// <remarks>The frames fix the budget, so a transaction reserving more than the block can hold is not
+    /// estimable: the reservation is a figure no block could include.</remarks>
     [Test]
     public void EstimateGas_FrameTxReservingMoreThanTheBlock_ReportsTheBudgetAsUnestimable()
     {
@@ -864,8 +843,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_CodelessSenderSelfVerify_WithoutSignature_TransactionInvalid()
     {
-        // Default code requires a canonical-hash SECP256K1 signature at index 0; with no
-        // signatures the VERIFY default code reverts, so the transaction fails for lack of payer.
+        // With no signature at index 0 the VERIFY default code reverts, so no payer is ever set.
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
@@ -880,10 +858,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_CodelessSenderSelfVerify_WithSignature_ApprovesViaDefaultCode()
     {
-        // A codeless EOA (Sender == PrivateKeyA.Address) sends a self-verify frame with a
-        // canonical-hash SECP256K1 signature at index 0. Default code recovers to the sender,
-        // calls APPROVE(scope) with the frame's allowed scope, sets the payer, and the tx is valid
-        // without deploying any code.
+        // Default code recovers the index-0 signature to the sender and approves, so the transaction is
+        // valid without any code being deployed.
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
@@ -909,8 +885,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_CodelessEoaSponsor_ReadsPaymentSignatureAtIndexOne()
     {
-        // ethereum/EIPs#11954: a payment-only verifier reads the default-code signature at index 1,
-        // so a codeless EOA can sponsor a transaction whose sender approved execution at index 0.
+        // A payment-only verifier reads the default-code signature at index 1, so a codeless EOA can
+        // sponsor a transaction whose sender approved execution at index 0.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecution));
         Address sponsor = TestItem.AddressB;
         _stateProvider.CreateAccount(sponsor, 1.Ether);
@@ -944,9 +920,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_Secp256k1SignatureOnly_DoesNotRecordP256PrecompileInBal()
     {
-        // EIP-7928: precompiles are BAL-included only when accessed. A frame tx whose signatures
-        // never take the EIP-8141 P256 branch never accesses P256VERIFY, so resolving the handle
-        // for potential validation must not create a BAL entry for its address.
+        // EIP-7928: precompiles are BAL-included only when accessed, so resolving the P256VERIFY handle
+        // for a transaction that never takes the P256 branch must not create an entry.
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
@@ -1018,14 +993,9 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <remarks>
-    /// EIP-8250 prices <c>rlp(nonce_keys) || rlp(nonce_seq)</c> as transaction data, so the key set enters the
-    /// EIP-7623/7976 calldata floor at the same per-byte rate as frame and signature data. The plain baseline is
-    /// standard-bound (its floor equals its intrinsic), so it spends its frame execution above that floor; the keyed
-    /// transaction is floor-bound, so that headroom is subsumed. The extra gas is therefore the floor charge for the
-    /// added <c>nonce_calldata</c> bytes less the baseline's headroom over its own floor. Charging nothing for the key
-    /// set settles a block one client accepts and another rejects.
-    /// </remarks>
+    /// <remarks>EIP-8250 prices <c>rlp(nonce_keys) || rlp(nonce_seq)</c> as transaction data. The baseline is
+    /// standard-bound and the keyed transaction floor-bound, so the extra gas is the floor charge for the added
+    /// bytes less the baseline's headroom over its own floor.</remarks>
     [TestCaseSource(nameof(NonceCalldataCases))]
     public void Execute_KeyedNoncePayload_ChargesItsCalldataCost(UInt256[] nonceKeys, int nonceCalldataBytes)
     {
@@ -1050,11 +1020,8 @@ public class FrameTxProcessorTests
         Assert.That(keyedTracer.GasSpent - plain.GasSpent, Is.EqualTo((ulong)nonceCalldataBytes * floorPerByte - baselineHeadroom));
     }
 
-    /// <remarks>
-    /// EIP-8141 and EIP-8250 have independent transitions, so an 8141-on / 8250-off window is representable.
-    /// A key set carries no replay protection until the fork defines it, so before the fork the transaction is
-    /// rejected rather than run down the plain-nonce path.
-    /// </remarks>
+    /// <remarks>The transitions are independent, so an 8141-on / 8250-off window is representable; a key set
+    /// carries no replay protection before its fork, so the transaction is rejected rather than run.</remarks>
     [Test]
     public void Execute_KeyedNoncePayloadBeforeTheKeyedNonceFork_IsRejected()
     {
@@ -1098,10 +1065,8 @@ public class FrameTxProcessorTests
 
     /// <summary>A VERIFY frame runs as a STATICCALL, so a write inside it halts the frame, and a failed
     /// VERIFY invalidates the transaction.</summary>
-    /// <remarks>
-    /// The write-free case is the control: without it a transaction dropped for any other reason would
-    /// satisfy the assertion, and the post-state is no evidence either — the failure path restores it.
-    /// </remarks>
+    /// <remarks>The write-free case is the control: without it a transaction dropped for any other reason
+    /// would satisfy the assertion, and the failure path restores the post-state.</remarks>
     [TestCase(true, ExpectedResult = false, TestName = "Execute_VerifyFrameWritesState_InvalidatesTheTransaction")]
     [TestCase(false, ExpectedResult = true, TestName = "Execute_VerifyFrameWithoutWrite_Executes")]
     public bool Execute_VerifyFrame_IsStatic(bool writesState)
@@ -1114,11 +1079,8 @@ public class FrameTxProcessorTests
         return Process(FrameTx(nonce: 0, SelfVerifyFrame())).TransactionExecuted;
     }
 
-    /// <remarks>
-    /// EIP-8141 and EIP-7906 have independent transitions, so an 8141-on / 7906-off window is representable.
-    /// Static validation is not on the path from <c>eth_call</c>, <c>eth_estimateGas</c> or block building,
-    /// so the mode has to be refused here too rather than running with assertion semantics.
-    /// </remarks>
+    /// <remarks>The transitions are independent, and static validation is not on the <c>eth_call</c> or
+    /// block-building path, so the mode has to be refused here rather than run with assertion semantics.</remarks>
     [Test]
     public void Execute_PostTxFrameBeforeTheAssertionFork_IsRejected()
     {
@@ -1135,12 +1097,9 @@ public class FrameTxProcessorTests
         Assert.That(result.ErrorDescription, Does.Contain("not enabled"));
     }
 
-    /// <remarks>
-    /// Driven through <c>CallAndRestore</c> — the <c>eth_call</c> / <c>eth_estimateGas</c> path, which runs with
-    /// <see cref="ExecutionOptions.SkipValidation"/> — because static validation already refuses these modes.
-    /// An unrecognised mode is neither SENDER nor read-only, so without the processor check it would run as a
-    /// DEFAULT frame: state-changing, called from the entry point, and reported as a successful execution.
-    /// </remarks>
+    /// <remarks>Driven through <c>CallAndRestore</c> (which runs with <see cref="ExecutionOptions.SkipValidation"/>)
+    /// because static validation already refuses these modes; without the processor check the frame would run
+    /// as a state-changing DEFAULT and report success.</remarks>
     [TestCase((byte)(TxFrame.ModePostTx + 1), TestName = "CallAndRestore_FrameModeJustAboveTheDefinedRange_IsRejected")]
     [TestCase(byte.MaxValue, TestName = "CallAndRestore_FrameModeMaxByte_IsRejected")]
     public void CallAndRestore_UndefinedFrameMode_IsRejected(byte mode)
@@ -1212,9 +1171,8 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, UInt256.Zero, "the halted assertion unwound the body");
     }
 
-    // EIP-7906 forbids the APPROVE call, not the permission bits: a POST_TX frame carrying a scope it
-    // never exercises is a valid envelope, so rejecting it before execution would fork off a client
-    // that admits it.
+    // EIP-7906 forbids the APPROVE call, not the permission bits, so a POST_TX frame carrying an
+    // unexercised scope is still a valid envelope.
     [Test]
     public void Execute_PostTxCarriesAnUnusedApprovalScope_Succeeds()
     {
@@ -1230,9 +1188,8 @@ public class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // Asserted through gas rather than status: every rejection of an APPROVE inside a POST_TX frame
-    // fails the assertion, but only an exceptional halt burns the frame's whole gas limit, and the
-    // difference is consensus-visible in the frame receipt.
+    // Asserted through gas: any rejection fails the assertion, but only an exceptional halt burns the
+    // whole gas limit, and that difference is consensus-visible in the frame receipt.
     [Test]
     public void Execute_PostTxCallsApprove_HaltsExceptionally()
     {
@@ -1271,8 +1228,8 @@ public class FrameTxProcessorTests
             "the sender nonce bump is part of the prefix that payment approval committed");
     }
 
-    // An unrolled batch truncates the journal past the prefix snapshot the approving frame inside it
-    // took, and the failed assertion below then unwinds to it — a restore into the future.
+    // An unrolled batch truncates the journal past the prefix snapshot taken inside it, so the failed
+    // assertion below would otherwise restore into the future.
     [Test]
     public void Execute_AtomicBatchUnrollsTheApprovingFrame_InvalidatesTheTransaction()
     {
@@ -1288,8 +1245,7 @@ public class FrameTxProcessorTests
         Assert.That(Process(tx).TransactionExecuted, Is.False);
     }
 
-    // A batch that unrolls entirely inside the body leaves the assertion to run against the state the
-    // unroll restored, which is the ordering the prefix snapshot has to survive.
+    // A batch unrolling entirely inside the body leaves the assertion running against the restored state.
     [Test]
     public void Execute_AtomicBatchInTheBodyUnrolls_PostTxStillAsserts()
     {
@@ -1311,8 +1267,7 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, UInt256.Zero, "the batch write is gone and the assertion added none");
     }
 
-    // The static rules admit several assertions, so a failure in a later one must unwind the whole body
-    // rather than only what ran after the first.
+    // A failure in a later assertion must unwind the whole body, not only what ran after the first.
     [Test]
     public void Execute_SecondPostTxFrameFails_UnwindsTheWholeBody()
     {
@@ -1334,11 +1289,8 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A frame transaction's <c>CallAndRestore</c> must leave nothing behind.</summary>
-    /// <remarks>
-    /// <c>eth_estimateGas</c> runs one probe plus a binary search of <c>CallAndRestore</c> calls against a single
-    /// world state, so a surviving nonce bump makes the next iteration fail the nonce pre-check and the estimate
-    /// comes back as an error instead of a gas figure.
-    /// </remarks>
+    /// <remarks><c>eth_estimateGas</c> binary-searches <c>CallAndRestore</c> against one world state, so a
+    /// surviving nonce bump makes the next iteration fail its nonce pre-check.</remarks>
     [Test]
     public void CallAndRestore_RepeatedForGasEstimation_LeavesNoStateAndEstimates()
     {
@@ -1367,10 +1319,8 @@ public class FrameTxProcessorTests
 
     /// <summary>Every frame's execution reaches an instruction tracer, so <c>debug_traceTransaction</c>
     /// reports steps for a frame transaction.</summary>
-    /// <remarks>
-    /// Asserted on both frames because the outer loop runs each one through its own top-level VM state:
-    /// a trace covering only the validation prefix would still be non-empty.
-    /// </remarks>
+    /// <remarks>Asserted on both frames because each runs through its own top-level VM state, so a trace
+    /// covering only the validation prefix would still be non-empty.</remarks>
     [Test]
     public void Execute_InstructionTracer_ReceivesTheStepsOfEveryFrame()
     {
@@ -1414,8 +1364,7 @@ public class FrameTxProcessorTests
         ulong baselineGas = untouched.FrameReceipts![2].GasUsed;
         using (Assert.EnterMultipleScope())
         {
-            // Both observers must actually run the BALANCE: a halted frame reports its whole gas limit
-            // and a skipped one reports 0, either of which cancels out of the spread below.
+            // Both must actually run the BALANCE: a halted or skipped frame's gas cancels out of the spread.
             Assert.That(targeted.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That(untouched.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That((long)baselineGas - (long)observerGas,
@@ -1543,8 +1492,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_FrameGasBelowItsTargetAccess_LeavesTheTargetOutOfTheBal()
     {
-        // EIP-7928: the deadness query behind a value transfer is itself a recorded read, so it has to
-        // sit behind the access charge or an unaffordable frame writes its target into the list anyway.
+        // EIP-7928: the deadness query is itself a recorded read, so it must sit behind the access charge.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
 
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
@@ -1864,9 +1812,8 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_KeyedNonce_RecordsTheNonceManagerSlotInBal()
     {
-        // EIP-7928: a keyed nonce lives in NONCE_MANAGER storage rather than in the account nonce, so the
-        // slot it consumes must reach the BAL. A parallel validator reads the pre-state through the block
-        // access list, and an omitted slot makes it reject a block every sequential node accepts.
+        // EIP-7928: a keyed nonce lives in NONCE_MANAGER storage, so an omitted slot makes a parallel
+        // validator reject a block every sequential node accepts.
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
 
         TracedAccessWorldState tracedState = new(_stateProvider, parallel: false);
@@ -1902,11 +1849,8 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <remarks>
-    /// <c>eth_call</c> and <c>eth_estimateGas</c> replace the supplied nonce with the sender's account nonce,
-    /// which a keyed sequence has no relation to, so the nonce check has to follow <c>SkipValidation</c> as
-    /// the account-nonce path does or a keyed transaction is unreachable from those entry points.
-    /// </remarks>
+    /// <remarks><c>eth_call</c> replaces the supplied nonce with the account nonce, unrelated to a keyed
+    /// sequence, so the check must follow <c>SkipValidation</c> as the account-nonce path does.</remarks>
     [Test]
     public void CallAndRestore_KeyedNonceOutOfSequence_IsStillSimulated()
     {
@@ -1920,11 +1864,8 @@ public class FrameTxProcessorTests
         Assert.That(CallAndRestore(simulated).TransactionExecuted, Is.True);
     }
 
-    /// <remarks>
-    /// Only the state half of the nonce check may follow <c>SkipValidation</c>. The RPC view caps nothing and
-    /// <c>eth_call</c> reaches the processor without a validator, so an oversized set would otherwise arrive at
-    /// the fixed-size buffers downstream, which take a well-formed set as their precondition.
-    /// </remarks>
+    /// <remarks>Only the state half of the check may follow <c>SkipValidation</c>: the RPC view caps nothing,
+    /// so an oversized set would reach fixed-size buffers that assume a well-formed one.</remarks>
     [Test]
     public void CallAndRestore_KeyedNonceSetOverTheLimit_IsMalformedNotThrown()
     {
@@ -1959,8 +1900,7 @@ public class FrameTxProcessorTests
             "key 1 is at sequence 1 while key 7 is still at 0, so no sequence satisfies the set");
     }
 
-    // Key 0 is the account nonce itself, so the singleton set must advance that nonce and owe no
-    // first-use surcharge — the property that makes the EIP-8250 envelope a superset of EIP-8141's.
+    // Key 0 is the account nonce itself, so the singleton set advances it and owes no first-use surcharge.
     [Test]
     public void Execute_KeyedNonce_LegacyKeyBehavesAsTheAccountNonce()
     {
@@ -1979,7 +1919,8 @@ public class FrameTxProcessorTests
             "the legacy key owes no first-use surcharge");
     }
 
-    // EIP-8250 L174/L269: a payment approve's effects — payer and nonce consumption — are journaled outside the EIP-8141 atomic-batch snapshot, so an approval taken before a batch survives that batch unrolling.
+    // A payment approval's effects are journaled outside the atomic-batch snapshot, so an approval taken
+    // before a batch survives that batch unrolling.
     [Test]
     public void Execute_AtomicBatch_KeyedPaymentApprovalBeforeFailedBatch_SurvivesTheUnroll()
     {
@@ -2007,8 +1948,7 @@ public class FrameTxProcessorTests
         }
     }
 
-    // The default code approves without running APPROVE, so the same first-use surcharge has to be
-    // charged there or a codeless sender grows NONCE_MANAGER state for free.
+    // Default code approves without running APPROVE, so it must charge the same first-use surcharge.
     [Test]
     public void Execute_KeyedNonce_DefaultCodeApproval_ChargesFirstUse()
     {
@@ -2055,9 +1995,8 @@ public class FrameTxProcessorTests
         return tx;
     }
 
-    // An unchecked increment wraps the account nonce to zero, making every prior transaction from
-    // that sender replayable. The EIP-8250 envelope is already refused a sequence at the ceiling
-    // during stateful validity, so only the pre-8250 envelope reaches payment approval here.
+    // An unchecked increment wraps the account nonce to zero, replaying every prior transaction. Only
+    // the pre-8250 envelope reaches payment approval at the ceiling.
     [Test]
     public void Execute_PaymentApprovalAtTheNonceCeiling_PerformsNoApprovalEffects()
     {
@@ -2097,8 +2036,7 @@ public class FrameTxProcessorTests
     }
 
     // Authenticating only the first key would accept a set an attacker extended with keys approval
-    // consumes. The non-keyed envelope answers as the key set [0], which is the shape most likely to
-    // diverge between clients, so both are pinned.
+    // consumes; the non-keyed envelope answers as [0], so both shapes are pinned.
     [TestCase(false, TestName = "Execute_TxParam_NonceKeysHash_WithoutKeys")]
     [TestCase(true, TestName = "Execute_TxParam_NonceKeysHash_CommitsToEveryKey")]
     public void Execute_TxParam_NonceKeysHash_IsTheHashOfTheAnsweredKeySet(bool keyed)
@@ -2141,7 +2079,7 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, (UInt256)1);
     }
 
-    // Asserted through a sentinel: index 0x10 answers 0 without keys, which a halted frame also leaves.
+    // Sentinel-based: index 0x10 answers 0 without keys, which a halted frame also leaves.
     [TestCase(true, ExpectedResult = 0UL, TestName = "Execute_NonceIntrospectionBeforeTheFork_Halts")]
     [TestCase(false, ExpectedResult = 1UL, TestName = "Execute_NonceIntrospectionAfterTheFork_Reads")]
     public ulong Execute_NonceIntrospection_IsGatedOnTheFork(bool beforeTheFork)
@@ -2164,10 +2102,8 @@ public class FrameTxProcessorTests
         // APPROVE stack order (top to bottom): offset, length, scope.
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
 
-    // EIP-8272: a declared reference is only satisfied by the commitment the predeploy actually holds
-    // for that slot, so an uncommitted or out-of-window reference invalidates the transaction. The
-    // committed case also proves the reference's intrinsic gas is charged, since the transaction pays
-    // more than the same transaction declaring nothing.
+    // EIP-8272: only the commitment the predeploy holds satisfies a reference. The committed case also
+    // proves the intrinsic gas is charged, the transaction paying more than one declaring nothing.
     [TestCase(1_000UL, false, 1_001UL, true, TestName = "a committed reference inside the window executes")]
     [TestCase(1_001UL, false, 1_001UL, false, TestName = "a reference to the current slot is not yet referenceable")]
     [TestCase(1_001UL, false, 9_193UL, false, TestName = "a reference at the ring-aliasing boundary is older than the usable window")]
@@ -2193,8 +2129,7 @@ public class FrameTxProcessorTests
         Assert.That(referencing.TransactionExecuted, Is.EqualTo(expectedExecuted));
         if (!expectedExecuted)
         {
-            // Pinned to the reference check specifically: every other rejection in the outer loop also
-            // leaves TransactionExecuted false, so the weaker assertion would survive an unrelated break.
+            // Pinned to the reference check: every other rejection also leaves TransactionExecuted false.
             Assert.That(referencing.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
             Assert.That(referencing.ErrorDescription, Does.Contain("recent root reference"));
             return;
@@ -2208,11 +2143,8 @@ public class FrameTxProcessorTests
             "the reference's calldata and prepaid accesses must be charged");
     }
 
-    /// <remarks>
-    /// The tx validator gates references on EIP-8272, but the call entry points (eth_call, eth_estimateGas,
-    /// eth_simulateV1) reach the processor without it, so the processor rejects a reference-carrying envelope
-    /// on a pre-activation spec rather than pricing and executing a field the fork does not recognise.
-    /// </remarks>
+    /// <remarks>The call entry points reach the processor without the tx validator's EIP-8272 gate, so the
+    /// processor must reject rather than price a field the fork does not recognise.</remarks>
     [Test]
     public void Execute_RecentRootReferencesBeforeTheReferenceFork_AreRejected()
     {
@@ -2230,11 +2162,8 @@ public class FrameTxProcessorTests
         Assert.That(result.ErrorDescription, Does.Contain("not enabled"));
     }
 
-    /// <remarks>
-    /// The wire and pool paths cap the reference count in the decoder and the validator, but a set built from
-    /// RPC input reaches the processor uncapped. Rejecting it before <c>Measure</c> keeps its bounded
-    /// <c>stackalloc</c> from an out-of-range slice on an over-capped call.
-    /// </remarks>
+    /// <remarks>A set built from RPC input reaches the processor uncapped, so rejecting it before
+    /// <c>Measure</c> keeps that method's bounded <c>stackalloc</c> from an out-of-range slice.</remarks>
     [Test]
     public void Execute_MoreRecentRootReferencesThanTheCap_AreRejected()
     {
@@ -2252,14 +2181,8 @@ public class FrameTxProcessorTests
         Assert.That(result.ErrorDescription, Does.Contain("too many"));
     }
 
-    /// <remarks>
-    /// An empty reference list is a different envelope from an absent one and still occupies the single
-    /// byte <c>0xc0</c> on the wire, so it is priced: EIP-8272 short-circuits the per-reference term at
-    /// zero references, not the calldata term over <c>rlp(recent_root_references)</c>, which enters the
-    /// EIP-7623/7976 floor at the same per-byte rate as frame and signature data. Both envelopes clear
-    /// their floors once the frame entry charge is counted, so the extra gas is the standard calldata
-    /// charge for the added byte rather than its floor charge.
-    /// </remarks>
+    /// <remarks>An empty reference list still occupies the byte <c>0xc0</c> on the wire, so it is priced:
+    /// EIP-8272 short-circuits the per-reference term at zero references, not the calldata term.</remarks>
     [Test]
     public void Execute_EmptyRecentRootReferenceList_IsPricedAsTheBytesItAdds()
     {
@@ -2300,11 +2223,8 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <remarks>
-    /// EIP-8141 and EIP-8272 have independent transitions. Before the reference fork the charge buys nothing —
-    /// no predeploy is installed and no key is derived — so a declared reference must leave the budget alone,
-    /// as its calldata already does.
-    /// </remarks>
+    /// <remarks>Before the reference fork the charge buys nothing (no predeploy, no key derivation), so a
+    /// declared reference must leave the budget alone, as its calldata already does.</remarks>
     [Test]
     public void GasBudget_RecentRootReferencesBeforeTheReferenceFork_AreNotPriced()
     {
@@ -2417,8 +2337,7 @@ public class FrameTxProcessorTests
         });
     }
 
-    // Asserted through a sentinel stored after the opcode: a silent zero push would also leave slot 0
-    // at zero, and it would read as a real reference committing to the zero root.
+    // Sentinel-based: a silent zero push would also leave slot 0 at zero, reading as a real reference.
     [TestCase(0, 0, 1, TestName = "Execute_RecentRootRefLoad_InRange_Continues")]
     [TestCase(1, 0, 0, TestName = "Execute_RecentRootRefLoad_IndexPastTheDeclaredList_Halts")]
     [TestCase(0, 3, 0, TestName = "Execute_RecentRootRefLoad_UndefinedField_Halts")]

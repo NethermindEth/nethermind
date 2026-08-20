@@ -6,15 +6,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
 
-/// <summary>
-/// Rejects an EIP-8141 frame transaction whose validation prefix and signature verification would cost more than
-/// <c>MAX_VERIFY_GAS</c> to check.
-/// </summary>
-/// <remarks>
-/// A public-mempool DoS bound, not a validity rule: a block carrying such a transaction stays valid. Must run after
-/// <see cref="MalformedTxFilter"/>, which guarantees the frame list is well-formed. A configured limit of 0 lifts the
-/// bound, matching the other per-sender pool limits.
-/// </remarks>
+/// <summary>Rejects an EIP-8141 frame transaction costing more than <c>MAX_VERIFY_GAS</c> to check. A DoS bound, not a validity rule.</summary>
+/// <remarks>A configured limit of 0 lifts the bound, matching the other per-sender pool limits.</remarks>
 internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger logger) : IIncomingTxFilter
 {
     private readonly ulong _maxVerifyGas = txPoolConfig.FrameTxMaxVerifyGas;

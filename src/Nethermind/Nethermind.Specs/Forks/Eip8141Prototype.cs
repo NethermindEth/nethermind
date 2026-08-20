@@ -3,11 +3,7 @@
 
 namespace Nethermind.Specs.Forks;
 
-/// <summary>
-/// Prototype fork for EIP-8141 frame transactions. Not scheduled on any network; exists to gate
-/// the frame transaction prototype behind <c>IsEip8141Enabled</c>. Excluded from the Geth genesis
-/// fork mapping because it is not a real fork name.
-/// </summary>
+/// <summary>EIP-8141 over Amsterdam. Not a real fork name, so it is excluded from the genesis fork mapping.</summary>
 public class Eip8141Prototype() : NamedReleaseSpec<Eip8141Prototype>(Amsterdam.Instance)
 {
     public override void Apply(NamedReleaseSpec spec)

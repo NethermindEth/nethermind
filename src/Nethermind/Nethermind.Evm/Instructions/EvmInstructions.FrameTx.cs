@@ -11,12 +11,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>
-/// EIP-8141 frame transaction introspection and approval opcodes, plus the EIP-8272 reference reader,
-/// which is additionally gated on <c>IsEip8272Enabled</c>. Each exceptional-halts when executed outside
-/// a frame transaction (i.e. when the transaction-scoped <see cref="FrameTxContext"/> is absent).
-/// https://eips.ethereum.org/EIPS/eip-8141
-/// </summary>
+/// <summary>EIP-8141 frame introspection and approval opcodes, plus the EIP-8272 reference reader.
+/// Each exceptional-halts outside a frame transaction, where <see cref="FrameTxContext"/> is absent.</summary>
 public static unsafe partial class EvmInstructions
 {
     /// <summary>APPROVE (0xaa): terminate the frame successfully and record the approval scope for the outer loop.</summary>
@@ -45,7 +41,6 @@ public static unsafe partial class EvmInstructions
 
         byte scopeByte = (byte)scope.u0;
         byte allowed = frame.AllowedApproveScope;
-        // scope != 0 and every requested bit permitted by the frame flags.
         if (scope > TxFrame.ApproveScopeMask || scopeByte == 0 || (scopeByte & ~allowed) != 0)
             return EvmExceptionType.Revert;
 
@@ -54,14 +49,11 @@ public static unsafe partial class EvmInstructions
 
         if (approvesExecution)
         {
-            // Re-approval and non-sender targets revert the frame.
             if (ctx.SenderApproved || resolvedTarget != ctx.Sender) return EvmExceptionType.Revert;
         }
 
         if (approvesPayment)
         {
-            // A second payer, payment before execution approval (unless this APPROVE grants both),
-            // and an underfunded payer all revert the frame.
             if (ctx.Payer is not null) return EvmExceptionType.Revert;
             if (!approvesExecution && !ctx.SenderApproved) return EvmExceptionType.Revert;
             if (vm.WorldState.GetBalance(resolvedTarget) < ctx.MaxCost) return EvmExceptionType.Revert;
@@ -74,9 +66,7 @@ public static unsafe partial class EvmInstructions
             }
         }
 
-        // Load the return data region (RETURN semantics). The outer loop applies the approval effects.
-        // EIP8141-ISSUE: the spec does not define what happens to APPROVE's return data; loaded like
-        // RETURN and left to the outer loop. Propose the spec state its disposition explicitly.
+        // EIP8141-GAP: the spec leaves APPROVE's return data undefined; loaded with RETURN semantics.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in offset, in length, out ReadOnlyMemory<byte> returnData))
         {
@@ -134,10 +124,8 @@ public static unsafe partial class EvmInstructions
     }
 
     /// <summary>RECENTROOTREFLOAD (0xb5): read one field of a declared recent-root reference.</summary>
-    /// <remarks>
-    /// Reads the signed envelope, not the predeploy's storage: the references were checked against the
-    /// pre-state before any frame ran, so the opcode is legal in every frame mode, <c>VERIFY</c> included.
-    /// </remarks>
+    /// <remarks>Reads the signed envelope, already checked against the pre-state, so it is legal in
+    /// every frame mode including <c>VERIFY</c>.</remarks>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -239,9 +227,8 @@ public static unsafe partial class EvmInstructions
     private static EvmExceptionType FrameStatus<TTracingInst>(FrameTxContext ctx, int index, ref EvmStack stack)
         where TTracingInst : struct, IFlag
     {
-        // Reading the status of the current or a future frame is an exceptional halt.
         if (!ctx.IsFrameCompleted(index)) return EvmExceptionType.BadInstruction;
-        // 0 failure, 1 success, 2 skipped by a failed atomic batch (ethereum/EIPs#11953).
+        // 0 failure, 1 success, 2 skipped by a failed atomic batch.
         uint status = ctx.WasFrameSkipped(index) ? 2u : ctx.HasFrameSucceeded(index) ? 1u : 0u;
         return stack.PushUInt32<TTracingInst>(status);
     }

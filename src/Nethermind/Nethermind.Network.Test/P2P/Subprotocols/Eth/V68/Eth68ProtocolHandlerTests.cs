@@ -310,8 +310,7 @@ public class Eth68ProtocolHandlerTests
         _session.Received(expectedRequests).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
-    // The gate must read the header the ingress filter reads. Best-suggested leads the processed head, so
-    // a gate keyed on the latter would still decline while the pool had already started accepting.
+    // Best-suggested leads the processed head, so a gate keyed on the latter would decline while the pool already accepts.
     [Test]
     public void Frame_tx_announcement_is_requested_as_soon_as_the_ingress_filter_would_accept()
     {

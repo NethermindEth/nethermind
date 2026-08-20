@@ -15,12 +15,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
 
-/// <summary>
-/// Round-trips of the EIP-8141 frame transaction payload
-/// <c>[chain_id, nonce, sender, frames, signatures, max_priority_fee_per_gas, max_fee_per_gas,
-/// max_fee_per_blob_gas, blob_versioned_hashes]</c> and the <c>compute_sig_hash</c> elision rule.
-/// The generic transaction comparer predates frames, so fields are asserted explicitly.
-/// </summary>
+/// <summary>Round-trips of the EIP-8141 frame transaction payload and the <c>compute_sig_hash</c> elision rule.
+/// The generic transaction comparer does not cover frame fields, so they are asserted explicitly.</summary>
 [TestFixture]
 public class FrameTxDecoderTests
 {
@@ -145,10 +141,8 @@ public class FrameTxDecoderTests
     [Test]
     public void Decode_PayloadWithTrailingSignature_Throws()
     {
-        // The payload is exactly 9 fields with no envelope signature. A padding attack that appends a
-        // [v, r, s] triple must be rejected — otherwise it decodes with a spurious signature while
-        // strict clients read exactly 9 elements and drop it, a decode divergence that also changes
-        // the transaction hash.
+        // The payload is exactly 9 fields with no envelope signature, so an appended [v, r, s] triple must be
+        // rejected: decoding it with a spurious signature is a divergence that also changes the transaction hash.
         Rlp sequence = Rlp.Encode(
             Rlp.Encode(TestBlockchainIds.ChainId),   // chain_id
             Rlp.Encode(0L),                          // nonce
@@ -231,13 +225,11 @@ public class FrameTxDecoderTests
         }
     }
 
-    // Anything another client would read differently must throw rather than decode.
     [TestCaseSource(nameof(MalformedReferenceListCases))]
     public void Decode_MalformedRecentRootReferenceList_Throws(Rlp references) =>
         Assert.That(() => DecodeReferenceEnvelope(references), Throws.InstanceOf<RlpException>());
 
-    // Control: the same envelope with a well-formed list must decode, or the malformed cases above
-    // would be satisfied by any exception the surrounding payload throws.
+    // Control for the malformed cases above: without it any exception from the surrounding payload would satisfy them.
     [Test]
     public void Decode_WellFormedRecentRootReferenceList_Decodes()
     {

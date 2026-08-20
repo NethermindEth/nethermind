@@ -131,22 +131,10 @@ namespace Nethermind.Consensus.Processing
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
             }
 
-            /// <summary>
-            /// Evicts an EIP-8141 frame transaction whose frames did not approve payment, so the producer runs
-            /// its validation prefix at most once per time the transaction is pooled.
-            /// </summary>
-            /// <remarks>
-            /// A frame transaction only charges a fee once a frame approves payment. One whose prefix does not
-            /// approve leaves the producer with the whole prefix burned and nothing collected, and because
-            /// nothing else evicts it, every later block repeats that work.
-            /// Only <see cref="TransactionResult.ErrorType.MalformedTransaction"/> is evicted: every other error
-            /// either clears on its own (a nonce gap, a base fee above the transaction's cap) or is already
-            /// handled by the pool's own eviction passes. A structurally invalid prefix (bad signature, approval
-            /// scope on an atomic batch, a gas budget that overflows) never reaches here — static validation
-            /// rejects it at admission. What reaches here failed on chain state (an unfunded payer, a VERIFY
-            /// frame reading storage), so <see cref="ITxPool.EvictTransaction"/> clears the long-term cache and
-            /// the transaction can re-enter once that state changes.
-            /// </remarks>
+            /// <summary>Evicts a frame transaction whose frames approved no payment; nothing else evicts it, so every
+            /// later block would re-burn its validation prefix for nothing.</summary>
+            /// <remarks>Only <see cref="TransactionResult.ErrorType.MalformedTransaction"/> qualifies: it means the
+            /// prefix failed on chain state, so the transaction may re-enter once that state changes.</remarks>
             private void EvictUnpaidFrameTx(Transaction tx, in TransactionResult result)
             {
                 if (!tx.SupportsFrames || result.Error != TransactionResult.ErrorType.MalformedTransaction) return;

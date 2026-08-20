@@ -9,12 +9,7 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
 {
     private AccountStruct _senderAccount;
 
-    /// <remarks>
-    /// A failed lookup leaves the out-value undefined and the readers diverge on it, so a missing
-    /// account is normalised to <see cref="AccountStruct.TotallyEmpty"/>. A zeroed code hash would
-    /// otherwise read back as code-bearing, and inconsistently so once the pool's account cache
-    /// answers the same address from its own empty entry.
-    /// </remarks>
+    /// <remarks>A failed lookup leaves the out-value undefined, and a zeroed code hash reads back as code-bearing, so a missing account is normalised to <see cref="AccountStruct.TotallyEmpty"/>.</remarks>
     public AccountStruct SenderAccount
     {
         get

@@ -223,10 +223,7 @@ namespace Nethermind.Facade
         }
 
         /// <summary>Whether the sender's balance bounds <paramref name="tx"/>'s gas limit, and what is left for gas after its value.</summary>
-        /// <remarks>
-        /// False for an EIP-8141 frame transaction: its gas limit is derived from the frames rather than
-        /// chosen, and the reservation is owed by the frame-approved payer rather than by the sender.
-        /// </remarks>
+        /// <remarks>False for an EIP-8141 frame transaction: the gas is owed by the frame-approved payer, not the sender.</remarks>
         private static bool IsCappedBySenderAllowance(Transaction tx, in UInt256 senderBalance, in UInt256 feeCap, out UInt256 availableForGas)
         {
             availableForGas = UInt256.Zero;

@@ -10,20 +10,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters;
 
-/// <summary>
-/// Rejects an EIP-8141 frame transaction whose protocol-validated signatures do not verify.
-/// </summary>
-/// <remarks>
-/// The frame sender is explicit in the payload, so a frame transaction never goes through the sender
-/// recovery that rejects a bad signature on every other transaction type, and nothing else in the pool
-/// looks at <c>frame_signatures</c>. A signature that fails <c>validate_signature</c> can never verify
-/// at any future head, so pooling and gossiping one only spends peer work on a payload every conforming
-/// client must reject. Runs the same check the processor runs before any frame executes, so a pooled
-/// transaction cannot fail pre-flight on its signatures.
-/// Must run after <see cref="MalformedTxFilter"/>, which guarantees the frame and signature lists are
-/// structurally well-formed, and last among the incoming filters: the signature list is uncapped, so the
-/// cheap state filters must reject what they can before any elliptic-curve work is spent on a payload.
-/// </remarks>
+/// <summary>Rejects an EIP-8141 frame transaction whose protocol-validated signatures do not verify.</summary>
+/// <remarks>The frame sender is explicit, so nothing else in the pool checks <c>frame_signatures</c>; a failure here can never verify at any head.</remarks>
 internal sealed class FrameTxSignatureFilter(
     IChainHeadSpecProvider specProvider,
     IEthereumEcdsa ecdsa,
@@ -38,9 +26,8 @@ internal sealed class FrameTxSignatureFilter(
         }
 
         IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
-        // Same availability test the processor resolves through ICodeInfoRepository.GetPrecompile, so a
-        // chain that reaches P256VERIFY through RIP-7212 rather than EIP-7951 is not refused here for a
-        // signature block processing verifies.
+        // Same availability test the processor makes, so a chain reaching P256VERIFY via RIP-7212 rather
+        // than EIP-7951 is not refused a signature block processing would verify.
         IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress)
             ? SecP256r1Precompile.Instance
             : null;

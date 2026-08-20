@@ -8,7 +8,6 @@ using Nethermind.Int256;
 namespace Nethermind.TxPool.Test;
 
 /// <summary>Builders for the EIP-8141 frame layouts the pool filters are exercised against.</summary>
-/// <remarks>Shared so a change to the frame grammar lands in one place rather than in every filter fixture.</remarks>
 internal static class FrameTxTestFrames
 {
     public static Transaction FrameTx(params TxFrame[] frames) => new()
