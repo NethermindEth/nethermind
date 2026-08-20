@@ -177,7 +177,7 @@ from `Dockerfile` on the runner.
 {
   "db_source": "",                 // snapshot path; empty = resolved from snapshot_block
   "db_isolation": "",              // overlay | copy | readonly-bind | direct; empty = overlay
-  "scratch_root": "/data/expb-data/rpc-bench-scratch",
+  "scratch_root": "",   // empty = <expb data dir>/rpc-bench-scratch on the selected runner
   "network": "mainnet",
   "jsonrpc_modules": "Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug",
   "health_timeout_minutes": 30,
@@ -329,7 +329,8 @@ parity/timings only with an empty `rps_list`.
 
 **Corpus files** (JSON Lines, one `{"method":"eth_call","params":[...]}` per
 line, extra fields ignored, optionally gzipped) go to the runner at
-`/data/expb-data/rpc-bench/eth-call-corpus[-<label>].jsonl.gz`. A
+`<expb data dir>/rpc-bench/eth-call-corpus[-<label>].jsonl.gz` — `/mnt/sda/expb-data` on the
+amd64 runner, `/data/expb-data` on arm64, selected by the `arch` input. A
 `jsonbench-sweep` with `eth_call_corpus:true` discovers **every**
 `eth-call-corpus*.jsonl.gz` there and runs each as its own scenario;
 single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
@@ -488,7 +489,7 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
   (`/data/nethermind/nethermind-flat-<block>`, e.g. `nethermind-flat-25490000`).
   A client or layout with no set there is refused up front rather than run.
 - **A writable scratch location** on the same large disk (default
-  `/data/expb-data/rpc-bench-scratch`).
+  `<expb data dir>/rpc-bench-scratch`).
 - **`mount`/`umount` privileges** and overlayfs (expb already uses both).
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
