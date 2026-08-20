@@ -107,7 +107,7 @@ internal class XdcTransactionProcessorTests
         UInt256 initialBeneficiaryBalance = _stateProvider.GetBalance(beneficiaryAddress);
         UInt256 initialOwnerBalance = _stateProvider.GetBalance(ownerAddress);
 
-        _transactionProcessor!.TestPayFees(tx, header, _spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, StatusCode.Success);
+        _transactionProcessor!.TestPayFees(tx, header, _spec, tracer, substate, spentGas, premiumPerGas, tx.CalculateEffectiveGasPrice(_spec.IsEip1559Enabled, header.BaseFeePerGas), blobBaseFee, StatusCode.Success);
 
         UInt256 finalBeneficiaryBalance = _stateProvider.GetBalance(beneficiaryAddress);
         UInt256 finalOwnerBalance = _stateProvider.GetBalance(ownerAddress);
@@ -146,9 +146,10 @@ internal class XdcTransactionProcessorTests
             in TransactionSubstate substate,
             ulong spentGas,
             in UInt256 premiumPerGas,
+            in UInt256 effectiveGasPrice,
             in UInt256 blobBaseFee,
             int statusCode) =>
-            PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
+            PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);
     }
 }
 

@@ -453,6 +453,71 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
+        [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
+        public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created([Values] bool midFlush, [Values] bool postFlush)
+        {
+            const int keyCount = 50, flushCount = 5;
+
+            ISortedKeyValueStore sorted = (ISortedKeyValueStore)_db;
+
+            // Odd suffixes only, so every even one is a gap a seek has to walk over, shuffled so about half the seeks go backwards
+            byte[] suffixes = [.. Enumerable.Range(0, keyCount).Select(static i => (byte)(2 * i + 1))];
+            Random rng = new(42);
+            rng.Shuffle(suffixes);
+
+            // Spreads the writes over that many L0 files rather than one, so a seek can trim the files it misses
+            int flushEvery = Math.Max(1, keyCount / flushCount);
+
+            // Keep updating the DB and checking that iterator sees the latest value
+            for (int written = 0; written < suffixes.Length; written++)
+            {
+                byte i = suffixes[written];
+                _db[[1, i]] = [i];
+                AssertSeesLatest(i);
+
+                if (midFlush && written % flushEvery == flushEvery - 1) _db.Flush();
+            }
+
+            if (postFlush) _db.Flush();
+
+            foreach (byte i in suffixes)
+                AssertSeesLatest(i);
+
+            const byte pastLast = 2 * keyCount + 1;
+            AssertFindsNothing([1, pastLast], [1, pastLast + 1], "past the last key");
+
+            void AssertSeesLatest(byte i)
+            {
+                byte below = (byte)(i - 1);
+                byte above = (byte)(i + 1);
+
+                AssertFinds(i, [1, i], [1, above], "exact hit");
+                AssertFinds(i, [1, below], [1, above], "ceiling walk");
+                AssertFindsNothing([1, below], [1, i], $"gap below {i}");
+            }
+
+            void AssertFinds(byte i, ReadOnlySpan<byte> lowerBoundIncl, ReadOnlySpan<byte> upperBoundExcl, string because)
+            {
+                Span<byte> key = stackalloc byte[2];
+                Span<byte> value = stackalloc byte[1];
+
+                bool found = sorted.TryGetCeiling(lowerBoundIncl, upperBoundExcl, key, out int keyLength, value, out int valueLength);
+
+                Assert.That(found, Is.True, $"write {i} must be visible to the pooled iterator ({because})");
+                Assert.That(key[..keyLength].ToArray(), Is.EqualTo([1, i]), $"key of {i} ({because})");
+                Assert.That(value[..valueLength].ToArray(), Is.EqualTo([i]), $"value of {i} ({because})");
+            }
+
+            void AssertFindsNothing(ReadOnlySpan<byte> lowerBoundIncl, ReadOnlySpan<byte> upperBoundExcl, string because)
+            {
+                Span<byte> key = stackalloc byte[2];
+                Span<byte> value = stackalloc byte[1];
+
+                bool found = sorted.TryGetCeiling(lowerBoundIncl, upperBoundExcl, key, out _, value, out _);
+                Assert.That(found, Is.False, $"the pooled iterator must not report a stale hit ({because})");
+            }
+        }
+
         [Test]
         public void Snapshot_test()
         {
@@ -564,7 +629,7 @@ namespace Nethermind.Db.Test
         };
 
         [Test]
-        public void Can_get_all_on_empty() => _ = _db.GetAll().ToList();
+        public void Can_get_all_on_empty() => Assert.That(_db.GetAll(), Is.Empty);
 
         [Test]
         public void Smoke_test_iterator()
@@ -574,6 +639,105 @@ namespace Nethermind.Db.Test
             KeyValuePair<byte[], byte[]>[] allValues = _db.GetAll().ToArray()!;
             Assert.That(allValues[0].Key, Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(allValues[0].Value, Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+
+        [Test]
+        public void Full_enumerations_can_be_repeated_across_batches()
+        {
+            (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
+            IEnumerable<KeyValuePair<byte[], byte[]?>> all = _db.GetAll(ordered: true);
+            IEnumerable<byte[]> keys = _db.GetAllKeys(ordered: true);
+            IEnumerable<byte[]> values = _db.GetAllValues(ordered: true);
+
+            _ = all.Take(1).Single();
+            _ = keys.Take(1).Single();
+            _ = values.Take(1).Single();
+
+            KeyValuePair<byte[], byte[]?>[] firstAll = all.ToArray();
+            KeyValuePair<byte[], byte[]?>[] secondAll = all.ToArray();
+            byte[][] firstKeys = keys.ToArray();
+            byte[][] secondKeys = keys.ToArray();
+            byte[][] firstValues = values.ToArray();
+            byte[][] secondValues = values.ToArray();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstAll.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+                Assert.That(firstAll.Select(static item => item.Value), Is.EqualTo(expectedValues));
+                Assert.That(secondAll.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+                Assert.That(secondAll.Select(static item => item.Value), Is.EqualTo(expectedValues));
+                Assert.That(firstKeys, Is.EqualTo(expectedKeys));
+                Assert.That(secondKeys, Is.EqualTo(expectedKeys));
+                Assert.That(firstValues, Is.EqualTo(expectedValues));
+                Assert.That(secondValues, Is.EqualTo(expectedValues));
+            }
+        }
+
+        [Test]
+        public void Full_enumerations_resume_after_deleted_boundary()
+        {
+            (byte[][] expectedKeys, byte[][] expectedValues) = SeedFullEnumerationBatches();
+            int boundaryIndex = DbOnTheRocks.FullEnumerationBatchSize - 1;
+
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAll(ordered: true).Select(static item => item.Key),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedKeys[boundaryIndex + 1]);
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAllKeys(ordered: true),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedKeys[boundaryIndex + 1]);
+            AssertResumesAfterDeletedBoundary(
+                _db.GetAllValues(ordered: true),
+                expectedKeys[boundaryIndex],
+                expectedValues[boundaryIndex],
+                expectedValues[boundaryIndex + 1]);
+        }
+
+        private (byte[][] Keys, byte[][] Values) SeedFullEnumerationBatches()
+        {
+            int count = DbOnTheRocks.FullEnumerationBatchSize + 1;
+            byte[][] keys = new byte[count][];
+            byte[][] values = new byte[count][];
+
+            using IWriteBatch batch = _db.StartWriteBatch();
+            for (int i = 0; i < count; i++)
+            {
+                keys[i] = i.ToBigEndianByteArray();
+                values[i] = (i + count).ToBigEndianByteArray();
+                batch.Set(keys[i], values[i]);
+            }
+
+            return (keys, values);
+        }
+
+        private void AssertResumesAfterDeletedBoundary(
+            IEnumerable<byte[]> items,
+            byte[] boundaryKey,
+            byte[] boundaryValue,
+            byte[] expectedNext)
+        {
+            using IEnumerator<byte[]> enumerator = items.GetEnumerator();
+            for (int i = 0; i < DbOnTheRocks.FullEnumerationBatchSize; i++)
+            {
+                if (!enumerator.MoveNext())
+                {
+                    Assert.Fail($"Enumeration stopped at item {i} before reaching the batch boundary.");
+                }
+            }
+
+            _db.Remove(boundaryKey);
+            try
+            {
+                Assert.That(enumerator.MoveNext(), Is.True);
+                Assert.That(enumerator.Current, Is.EqualTo(expectedNext));
+            }
+            finally
+            {
+                _db.Set(boundaryKey, boundaryValue);
+            }
         }
 
         [Test]

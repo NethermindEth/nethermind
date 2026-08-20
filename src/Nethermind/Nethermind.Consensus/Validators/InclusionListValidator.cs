@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -74,8 +75,6 @@ public static class InclusionListValidator
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
-        // Blob txs MUST NOT appear in an IL.
-        if (tx.SupportsBlobs) return false;
         // Doesn't fit in the block's remaining gas → can't be included. Subtract on the block side
         // (block.GasUsed <= block.GasLimit is invariant and the block-full case returned above) so this
         // ulong arithmetic can't underflow, unlike block.GasLimit - tx.GasLimit for an oversized tx.
@@ -97,6 +96,37 @@ public static class InclusionListValidator
         if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)
             || UInt256.AddOverflow(txCost, tx.Value, out txCost))
             return false;
-        return account.Balance >= txCost && account.Nonce == tx.Nonce;
+
+        // A blob tx must also cover maxFeePerBlobGas × blob gas up front, or it could never have executed.
+        if (tx.SupportsBlobs
+            && (!BlobGasCalculator.TryCalculateBlobMaxFee(tx.BlobVersionedHashes?.Length ?? 0, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
+                || UInt256.AddOverflow(txCost, blobFee, out txCost)))
+            return false;
+
+        return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
+    }
+
+    /// <summary>
+    /// Balance the sender would have had when an appended transaction executed.
+    /// </summary>
+    /// <remarks>
+    /// Satisfaction is judged against post-block state, but withdrawals are credited after the
+    /// block's transactions, so an appended transaction could never have spent them. Post-merge
+    /// they are the only balance credit applied after execution, so removing them reconstructs
+    /// the balance as of the end of the transaction phase.
+    /// </remarks>
+    private static UInt256 SpendableBalance(Block block, Address sender, ref readonly AccountStruct account)
+    {
+        UInt256 balance = account.Balance;
+        if (block.Withdrawals is not { Length: > 0 }) return balance;
+
+        foreach (Withdrawal withdrawal in block.Withdrawals)
+        {
+            if (withdrawal.Address != sender) continue;
+            // Cannot underflow: the credit lands after execution and nothing spends it afterwards.
+            if (UInt256.SubtractUnderflow(balance, withdrawal.AmountInWei, out balance)) return UInt256.Zero;
+        }
+
+        return balance;
     }
 }

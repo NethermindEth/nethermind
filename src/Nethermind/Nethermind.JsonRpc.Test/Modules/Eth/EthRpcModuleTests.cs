@@ -97,6 +97,20 @@ public partial class EthRpcModuleTests
 
     private static void AssertAccountDoesNotExist(Context ctx, Address account) => Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
 
+    private sealed class NoRecoveryEthereumEcdsa(IEthereumEcdsa signer) : IEthereumEcdsa
+    {
+        public ulong ChainId => signer.ChainId;
+
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => signer.Sign(privateKey, in message);
+
+        public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message) => signer.RecoverPublicKey(signature, in message);
+
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) =>
+            signer.RecoverCompressedPublicKey(signature, in message);
+
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message) => null;
+    }
+
     [TestCase("earliest", "0x3635c9adc5dea00000")]
     [TestCase("latest", "0x3635c9adc5de9f09e5")]
     [TestCase("pending", "0x3635c9adc5de9f09e5")]
@@ -247,6 +261,22 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest");
         string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":[{\"transactionHash\":\"0x681c2b6f99e37fd6fe6046db8b51ec3460d699cacd6a376143fd5842ac50621f\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"cumulativeGasUsed\":\"0x5208\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"},{\"transactionHash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"transactionIndex\":\"0x1\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"cumulativeGasUsed\":\"0xa410\",\"gasUsed\":\"0x5208\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x1\",\"type\":\"0x0\"}],\"id\":67}";
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Eth_config_includes_builder_request_contracts()
+    {
+        using Context ctx = await Context.CreateWithAmsterdamEnabled();
+        string serialized = await ctx.Test.TestEthRpc("eth_config");
+        JToken result = JToken.Parse(serialized);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.SelectToken("result.current.systemContracts.BUILDER_DEPOSIT_CONTRACT_ADDRESS")?.Value<string>(),
+                Is.EqualTo("0x0000bff46984e3725691fa540a8c7589300d8282"));
+            Assert.That(result.SelectToken("result.current.systemContracts.BUILDER_EXIT_CONTRACT_ADDRESS")?.Value<string>(),
+                Is.EqualTo("0x000064d678505ad48f8ccb093bc65613800e8282"));
+        }
     }
 
     [Test]
@@ -2033,6 +2063,19 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
     }
 
+    [Test]
+    public async Task Send_raw_transaction_returns_failed_to_recover_sender_when_sender_recovery_fails()
+    {
+        IEthereumEcdsa signingEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<IEthereumEcdsa>(new NoRecoveryEthereumEcdsa(signingEcdsa)));
+        Transaction tx = Build.A.Transaction.Signed(signingEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        string serialized = await test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"failed to recover sender\"},\"id\":67}"));
+    }
+
     [TestCaseSource(nameof(SendRawTransactionSyncFailureCases))]
     public async Task EthSendRawTransactionSync_WhenSubmitFailsOrTimesOut_ReturnsExpectedError(
         string rawTxHex, string? timeoutMs, int expectedCode, string expectedMessageFragment)
@@ -2252,6 +2295,25 @@ public partial class EthRpcModuleTests
             Does.Contain("0x0000000000000000000000000000000000000000000000000000000000000001"));
     }
 
+    [Test]
+    public async Task Eth_createAccessList_unfunded_sender_without_fee_fields_succeeds()
+    {
+        // execution-apis #854: when all gas-fee fields are omitted, the request must not fail
+        // solely because the sender cannot afford client-selected default fees.
+        // London-enabled so the head block has a nonzero base fee — the divergent client
+        // behavior is defaulting maxFeePerGas to the base fee and failing affordability.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        // Unfunded sender, codeless recipient, zero value, no gas/fee fields.
+        (JToken result, long gasUsed) = await CallCreateAccessList(ctx,
+            """{"from":"0x000000000000000000000000000000000000dead","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}""",
+            stateOverrideJson: null, optimize: true);
+
+        Assert.That(result["error"], Is.Null);
+        Assert.That(result["accessList"]!.ToArray(), Is.Empty, "expected empty access list for a plain transfer to a codeless account");
+        Assert.That(gasUsed, Is.EqualTo(21_000));
+    }
+
     private static async Task<(JToken Result, long GasUsed)> CallCreateAccessList(
         Context ctx, string txJson, string? stateOverrideJson, bool optimize)
     {
@@ -2261,8 +2323,9 @@ public partial class EthRpcModuleTests
             : JsonSerializer.Deserialize<object>(stateOverrideJson);
         string serialized = await ctx.Test.TestEthRpc(
             "eth_createAccessList", tx, "latest", stateOverride, optimize);
-        JToken result = JToken.Parse(serialized)["result"]!;
-        long gasUsed = Convert.ToInt64(result["gasUsed"]!.Value<string>(), 16);
+        JToken? result = JToken.Parse(serialized)["result"];
+        Assert.That(result, Is.Not.Null, $"expected a result, got: {serialized}");
+        long gasUsed = Convert.ToInt64(result!["gasUsed"]!.Value<string>(), 16);
         return (result, gasUsed);
     }
 

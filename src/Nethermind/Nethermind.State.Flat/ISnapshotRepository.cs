@@ -63,6 +63,9 @@ public interface ISnapshotRepository
     /// <summary>Whether the persisted base bucket holds a snapshot at <paramref name="stateId"/>.</summary>
     bool HasBasePersistedSnapshot(in StateId stateId);
 
+    /// <summary>Leases the persisted base snapshot whose To equals <paramref name="to"/>. Caller disposes.</summary>
+    bool TryLeaseBasePersistedSnapshot(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
+
     /// <summary>Every loaded persisted snapshot across the three buckets, for one-off lifecycle iteration
     /// (bloom rebuild) at load time.</summary>
     IEnumerable<PersistedSnapshot> PersistedSnapshots { get; }
