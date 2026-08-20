@@ -74,9 +74,8 @@ public static unsafe partial class EvmInstructions
             }
         }
 
-        // Load the return data region (RETURN semantics). The outer loop applies the approval effects.
-        // EIP8141-ISSUE: the spec does not define what happens to APPROVE's return data; loaded like
-        // RETURN and left to the outer loop. Propose the spec state its disposition explicitly.
+        // The operands designate the frame's return data under RETURN semantics; the outer loop
+        // applies the approval effects.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in offset, in length, out ReadOnlyMemory<byte> returnData))
         {

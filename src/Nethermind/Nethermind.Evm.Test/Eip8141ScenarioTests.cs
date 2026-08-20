@@ -683,6 +683,43 @@ public class Eip8141ScenarioTests
         Assert.That(receiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 
+    // A DELEGATECALL preserves ADDRESS, so it is the one path where an APPROVE leaves an observable
+    // caller — which must see the approval region exactly as it would see a RETURN.
+    [Test]
+    public void Approve_ExposesItsMemoryRegionAsReturnData()
+    {
+        const long marker = 0xDEADBEEF;
+        DeployContract(Sponsor, ApproveReturningCode(TxFrame.ApproveExecutionAndPayment, marker));
+        DeployContract(Sender, Prepare.EvmCode
+            .DelegateCall(Sponsor, 100_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.RETURNDATASIZE)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .PushData(32).PushData(0).PushData(64)
+            .Op(Instruction.RETURNDATACOPY)
+            .PushData(64)
+            .Op(Instruction.MLOAD)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done, 1.Ether);
+
+        // A DEFAULT frame rather than VERIFY: only a non-static frame can record what it observed.
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, Sender, gasLimit: 300_000, UInt256.Zero, default),
+            SenderFrame(Recipient));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(Sender, 0, 32, "the approval region must become the frame's return data");
+            AssertStorage(Sender, 1, (UInt256)marker, "the return data must be the memory the region names");
+        }
+    }
+
     private TxReceipt[] ProcessBlock(params Transaction[] transactions)
     {
         Block block = BuildBlock(transactions);
@@ -726,6 +763,10 @@ public class Eip8141ScenarioTests
 
     private static byte[] ApproveCode(byte scope) =>
         Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    private static byte[] ApproveReturningCode(byte scope, long marker) =>
+        Prepare.EvmCode.PushData(marker).PushData(0).Op(Instruction.MSTORE)
+            .PushData(scope).PushData(32).PushData(0).Op(Instruction.APPROVE).Done;
 
     // Reads the 8-byte big-endian expiry from calldata and reverts when block.timestamp exceeds it —
     // the reference behavior of the EXPIRY_VERIFIER predeploy.
