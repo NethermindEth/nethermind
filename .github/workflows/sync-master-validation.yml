@@ -179,10 +179,11 @@ jobs:
   notify-on-failure:
     needs: [setup-matrix, sync]
     # Each network's create/sync/teardown is one unit now, so a failure anywhere in it
-    # surfaces as a failed matrix entry here. Requires setup-matrix to have succeeded so
-    # the workflow_run guard skipping everything stays quiet.
+    # surfaces as a failed matrix entry here. setup-matrix failing must page too — on the
+    # workflow_run path nobody is watching the Actions tab — but a skipped setup-matrix
+    # means the docker-publish guard rejected the run, which should stay quiet.
     if: >-
-      ${{ always() && needs.setup-matrix.result == 'success'
+      ${{ always() && needs.setup-matrix.result != 'skipped'
           && (contains(needs.*.result, 'failure')
               || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
