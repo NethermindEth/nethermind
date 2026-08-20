@@ -75,7 +75,33 @@ public sealed class FrameTxContext(
 
     private readonly Dictionary<StorageCell, int> _stateChargeOwner = [];
     private readonly long[] _frameStateGasCorrection = new long[frames.Length];
+    private readonly ulong[] _frameExecutionGasUsed = new ulong[frames.Length];
+    private readonly ulong[] _frameStateGasUsed = new ulong[frames.Length];
     private readonly List<StateGasJournalEntry> _stateGasJournal = [];
+
+    /// <summary>
+    /// Records a completed frame's attributed <c>gas_used</c> so a later frame can read it through
+    /// <c>FRAMEPARAM</c> (spec: <c>frame_receipts[frame_index].gas_used</c>). The state component is
+    /// the charge before any later refill; <see cref="StateGasUsedFor"/> nets off refill corrections.
+    /// </summary>
+    public void RecordFrameReceipt(int frame, ulong executionGasUsed, ulong stateGasUsed)
+    {
+        _frameExecutionGasUsed[frame] = executionGasUsed;
+        _frameStateGasUsed[frame] = stateGasUsed;
+    }
+
+    /// <summary>Drops a completed frame's attributed state gas when an atomic-batch unroll clears its receipt.</summary>
+    public void ClearFrameStateGasUsed(int frame) => _frameStateGasUsed[frame] = 0;
+
+    /// <summary>A completed frame's attributed <c>gas_used.execution</c> (execution gas is never refilled).</summary>
+    public ulong ExecutionGasUsedFor(int frame) => _frameExecutionGasUsed[frame];
+
+    /// <summary>A completed frame's attributed <c>gas_used.state</c>, net of refills a later frame applied to it.</summary>
+    public ulong StateGasUsedFor(int frame)
+    {
+        long net = (long)_frameStateGasUsed[frame] - _frameStateGasCorrection[frame];
+        return net > 0 ? (ulong)net : 0;
+    }
 
     /// <summary>
     /// Journal position covering the outstanding SSTORE-charge ownership map and the per-frame
