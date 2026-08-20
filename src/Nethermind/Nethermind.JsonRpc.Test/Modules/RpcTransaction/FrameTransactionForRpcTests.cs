@@ -338,4 +338,36 @@ public class FrameTransactionForRpcTests
             Assert.That(receiptForRpc.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
         }
     }
+
+    [Test]
+    public void ReceiptForRpc_FrameTx_RoundTripsPayerAndFrameReceipts()
+    {
+        LogEntry log = new(TestItem.AddressC, [1, 2, 3], [TestItem.KeccakA]);
+        TxReceipt receipt = new()
+        {
+            TxType = TxType.FrameTx,
+            Payer = TestItem.AddressA,
+            Sender = TestItem.AddressB,
+            BlockHash = Keccak.Zero,
+            Logs = [log],
+            FrameReceipts =
+            [
+                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: [log]),
+                new TxFrameReceipt(TxFrameReceipt.StatusFailure, gasUsed: 5_000, logs: []),
+            ],
+        };
+
+        TxReceipt roundTripped = new ReceiptForRpc(Keccak.Zero, receipt, blockTimestamp: 0, new TxGasInfo(UInt256.One)).ToReceipt();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(roundTripped.FrameReceipts, Has.Length.EqualTo(2));
+            Assert.That(roundTripped.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(roundTripped.FrameReceipts[0].GasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.FrameReceipts[0].Logs, Has.Length.EqualTo(1));
+            Assert.That(roundTripped.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(roundTripped.FrameReceipts[1].GasUsed, Is.EqualTo(5_000UL));
+        }
+    }
 }

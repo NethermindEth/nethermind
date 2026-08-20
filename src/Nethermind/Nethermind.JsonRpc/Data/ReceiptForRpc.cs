@@ -97,6 +97,14 @@ namespace Nethermind.JsonRpc.Data
                 PostTransactionState = Root,
                 TxType = Type
             };
+
+            // EIP-8141: mirror the constructor so a frame receipt survives the round trip.
+            if (Type == TxType.FrameTx)
+            {
+                receipt.Payer = Payer;
+                receipt.FrameReceipts = (FrameReceipts ?? []).Select(static f => f.ToFrameReceipt()).ToArray();
+            }
+
             return receipt;
         }
     }
