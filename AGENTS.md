@@ -233,6 +233,35 @@ building one. For an A/B use `benchmark_tool=jsonbench-sweep` with `tool_config.
 dispatch the same config a second time with the arms swapped, because position artifacts on this rig
 reach ~10% and have pointed in opposite directions on different workloads.
 
+### What the runners actually hold
+
+Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz`
+= **497 records** (heavy simulation traffic: every record carries state overrides, median ~331 KiB). The
+sweep discovers it by glob and prints `Corpus scenarios: …` / `corpus OK: 497 records` — read those lines
+rather than assuming a corpus set. Pin one with `corpus_glob` when more are added.
+
+The canonical cell, and what the `performance is good` label runs, is **100 rps for 120 s after a
+discarded 120 s warm-up**. Rates are the thing to get right:
+
+| rate | usable? |
+|---|---|
+| 10 | **no** — 300 requests gives mean CV ~70%, p99 CV ~206%; one cold outlier dominates |
+| 50–100 | yes; CV ~1–3% on mean/p50, p99 needs n>=3 |
+| 300 | amd64 only — on arm64 it drove a **1.22% HTTP fail rate**, tripping the 1% gate, after which percentiles above p98 describe failures, not latency |
+
+Size a cell by request count instead of duration with `corpus_requests` (absolute) or `corpus_passes`
+(a multiple of the corpus's record count) — `corpus_passes: 5` on 497 records at 100 rps is ~2,485
+requests. Note these are draws *with replacement*, so coverage is `N x (1 - (1 - 1/N)^requests)`, not a
+full pass. `corpus_parity.py` refuses corpora above **10,000 records** unless `max_corpus_records` is
+raised, and the k6 fixture is the real ceiling long before parity is (~142 MB for 497 records), so a
+50k-record capture wants sampling down rather than a bigger cap.
+
+For reference, expb's sweeps on the same boxes are sized by `amount`: `superblocks` defaults to 100,
+`realblocks` and `fusaka` to 1000, and both of the latter have 10k payloads available (fusaka covers
+blocks 25,490,001-25,499,999). Separately, `benchmark_tool=ethcallchaos` uses the EthCallChaos SQLite
+corpus (`corpus-v2`, ~1.1 GB) rather than these JSONL corpora, and with a seeded corpus it re-reports
+its own stale timings — use the json-bench per-category config for an A/B instead.
+
 ```bash
 gh workflow run run-rpc-benchmarks.yml --ref <branch> \
   -f arch=amd64 -f benchmark_tool=jsonbench-sweep \
