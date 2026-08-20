@@ -48,7 +48,6 @@ public class Eip8038ConstantsTests
         Assert.That(callValue, Is.EqualTo(Eip8038Constants.AccountWrite + Eip8038Constants.CallStipend));
     }
 
-    /// <summary>EIP-8038 prices account and storage access differently; conflating them misprices every create.</summary>
     [Test]
     public void Create_access_is_account_write_plus_cold_account_access()
     {

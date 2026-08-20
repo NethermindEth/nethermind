@@ -64,8 +64,7 @@ internal sealed class StatelessSpecProvider(
     {
         ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? baseProvider);
 
-        // Unknown chains (e.g. devnets) fall back to Mainnet: a fork catalog for a pinned fork,
-        // but the activation schedule itself for ProtocolFork.Current.
+        // Unknown chains (e.g. devnets) fall back to Mainnet — for ProtocolFork.Current, to its schedule too.
         baseProvider ??= MainnetSpecProvider.Instance;
 
         return new(baseProvider, chainId, payloadActivation, GetPayloadSpec(baseProvider, chainId, protocolFork, payloadActivation));
