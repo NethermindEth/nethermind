@@ -1431,6 +1431,7 @@ public class FrameTxProcessorTests
     [TestCase(TxFrame.ModeDefault, 64, 21UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(DEFAULT, two words)")]
     [TestCase(TxFrame.ModeSender, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(SENDER)")]
     [TestCase(TxFrame.ModePostTx, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(POST_TX)")]
+    [TestCase(TxFrame.ModeVerify, 1, 18UL, TestName = "Execute_FrameTargetsPrecompile_RunsIt(VERIFY)")]
     public void Execute_FrameTargetsPrecompile_RunsIt(byte mode, int dataLength, ulong identityGas)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -1505,10 +1506,10 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <summary>A <c>VERIFY</c> frame targeting a precompile runs default code, not the precompile.</summary>
-    /// <remarks>No signature can resolve to a precompile address, so the default code reverts.</remarks>
+    /// <summary>A <c>VERIFY</c> frame targeting a precompile approves nothing.</summary>
+    /// <remarks>The precompile takes the place of the default code, and only the default code approves.</remarks>
     [Test]
-    public void Execute_VerifyFrameTargetsPrecompile_RunsDefaultCodeAndInvalidatesTheTransaction()
+    public void Execute_VerifyFrameTargetsPrecompile_ApprovesNothing()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0,
@@ -1520,8 +1521,8 @@ public class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"),
-                "the transaction must be rejected by the default code reverting, not by an earlier check");
+            Assert.That(result.ErrorDescription, Does.Contain("never set a payer"),
+                "the frame itself must succeed, leaving the transaction unpaid rather than reverted");
         }
     }
 
