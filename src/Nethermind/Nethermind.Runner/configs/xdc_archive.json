@@ -7,6 +7,9 @@
     "StateDbKeyScheme": "Hash",
     "AutoDump": "Geth"
   },
+  "Network": {
+    "EnableEnrDiscovery": false
+  },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
