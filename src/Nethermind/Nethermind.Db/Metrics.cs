@@ -156,8 +156,7 @@ namespace Nethermind.Db
         public static Dictionary<string, long> DbMemtableSize { get; } = [];
         public static Dictionary<string, long> DbBlockCacheSize { get; } = [];
         public static Dictionary<string, long> DbIndexFilterSize { get; } = [];
-        public static Dictionary<(string, string), double> DbStats { get; } = [];
-        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = [];
+        // DbStats and DbCompactionStats omitted: double-valued and unread in the guest.
 #else
         [GaugeMetric]
         [Description("Database reads per database")]

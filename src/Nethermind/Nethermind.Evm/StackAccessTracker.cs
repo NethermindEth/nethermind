@@ -87,13 +87,13 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     private sealed class TrackingState
     {
-        private static readonly
 #if ZK_EVM
-            ZkEvmQueue<TrackingState>
+        private static readonly ZkEvmQueue<TrackingState> _trackerPool = new();
 #else
-            System.Collections.Concurrent.ConcurrentQueue<TrackingState>
+        // Rented once per top-level execution, not per frame, so one slot per thread is the whole win;
+        // the collections a returned state keeps sized would otherwise be retained a slot at a time.
+        private static readonly EvmObjectPool<TrackingState> _trackerPool = new(localCapacity: 1);
 #endif
-            _trackerPool = new();
 
         public static TrackingState RentState()
         {

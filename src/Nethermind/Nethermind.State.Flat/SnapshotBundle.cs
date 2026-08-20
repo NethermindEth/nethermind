@@ -166,7 +166,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node))
+        else if (_transientResource.TryGetStateNode(path, hash, out node) && !TrieNodeCache.IsPlaceholder(node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -207,16 +207,11 @@ public sealed class SnapshotBundle : IDisposable
         if (transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else
-        {
-            node = transientResource.GetOrAddStateNode(path,
-                TryFindStateNodeInPersistence(path, hash, out node)
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+            return node;
         }
 
-        return node;
+        return transientResource.GetOrAddStateNode(path,
+            TryFindStateNodeInPersistence(path, hash, out node) ? node : new TrieNode(NodeType.Unknown, hash));
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
@@ -293,7 +288,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
+        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) && !TrieNodeCache.IsPlaceholder(node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -317,7 +312,7 @@ public sealed class SnapshotBundle : IDisposable
         TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null)
         {
-            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node) && node is not null
+            return TryFindStorageNodeInPersistence(address, path, hash, out TrieNode? node)
                 ? node
                 : new TrieNode(NodeType.Unknown, hash);
         }
@@ -337,19 +332,14 @@ public sealed class SnapshotBundle : IDisposable
         if (transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        }
-        else
-        {
-            node = transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
-                TryFindStorageNodeInPersistence(address, path, hash, out node) && node is not null
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+            return node;
         }
 
-        return node;
+        return transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
+            TryFindStorageNodeInPersistence(address, path, hash, out node) ? node : new TrieNode(NodeType.Unknown, hash));
     }
 
-    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, out TrieNode? node)
+    private bool TryFindStorageNodeInPersistence(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
         if (_trieNodeCache.TryGet(address, path, hash, out node))
         {
@@ -469,8 +459,15 @@ public sealed class SnapshotBundle : IDisposable
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
 
-    internal void PromoteAccount(Address address, Account? account) =>
-        _changedAccounts.TryAdd(address, account);
+    internal void PromoteAccount(Address address, Account? account)
+    {
+        // ContainsKey is lock-free; TryAdd alone would take the bucket lock on every hot re-promote.
+        HashedKey<Address> key = new(address);
+        if (!_changedAccounts.ContainsKey(key))
+        {
+            _changedAccounts.TryAdd(key, account);
+        }
+    }
 
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {

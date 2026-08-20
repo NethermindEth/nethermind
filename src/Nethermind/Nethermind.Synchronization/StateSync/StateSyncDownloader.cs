@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.StateSync
                     hashList = HashList.Rent(batch.RequestedNodes);
                     task = snapHandler.GetByteCodes(new KeccakToValueKeccakList(hashList), cancellationToken);
                 }
-                else
+                else if (ProtocolSupportsTrieNodes(snapHandler))
                 {
                     if (Logger.IsTrace) Logger.Trace($"Requested TrieNodes via SnapProtocol from peer {peer}");
                     getTrieNodesRequest = GetGroupedRequest(batch);
@@ -79,6 +79,8 @@ namespace Nethermind.Synchronization.StateSync
         }
 
         protected virtual bool ProtocolSupportsNodeData(ISyncPeer peer) => peer.ProtocolVersion < EthVersions.Eth67;
+
+        protected virtual bool ProtocolSupportsTrieNodes(ISnapSyncPeer peer) => peer.CanGetTrieNodes();
 
         /// <summary>
         /// SNAP protocol allows grouping of storage requests by account path.
