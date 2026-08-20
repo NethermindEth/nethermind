@@ -154,6 +154,30 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
+    public async Task Execute_VerifiedCheckpointWithoutArchive_RedownloadsAndExtracts()
+    {
+        using FlakySnapshotServer server = new();
+        using MemoryStream tarBuffer = new();
+        using (TarWriter tarWriter = new(tarBuffer, leaveOpen: true))
+        {
+            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "data"));
+            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "data/state.bin")
+            {
+                DataStream = new MemoryStream(new byte[1000])
+            });
+        }
+        server.Content = tarBuffer.ToArray();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        _snapshotConfig.DownloadUrl = server.Url;
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+            "a checkpoint past the download with the archive deleted must restart the download instead of failing startup forever");
+    }
+
+    [Test]
     public async Task Execute_CompletedCheckpointNoDatabaseNoArchive_RedownloadsAndExtracts()
     {
         using FlakySnapshotServer server = new();

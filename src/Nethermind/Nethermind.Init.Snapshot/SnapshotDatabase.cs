@@ -35,7 +35,7 @@ internal static class SnapshotDatabase
         if (!Directory.Exists(dbPath))
             return;
 
-        foreach (string entry in Directory.EnumerateFileSystemEntries(dbPath))
+        foreach (string entry in Directory.GetFileSystemEntries(dbPath))
         {
             if (Path.GetFileName(entry) == MountArtifact)
                 continue;

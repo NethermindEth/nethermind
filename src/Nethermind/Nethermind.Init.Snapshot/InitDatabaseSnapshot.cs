@@ -85,9 +85,16 @@ public class InitDatabaseSnapshot(
             checkpoint.Advance(File.Exists(snapshotPath) ? SnapshotStage.Downloaded : SnapshotStage.Started);
         }
 
+        if (checkpoint.Read() >= SnapshotStage.Downloaded && !File.Exists(snapshotPath))
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"The snapshot checkpoint indicates a completed download, but no archive exists at {snapshotPath}. Restarting the download.");
+            checkpoint.Advance(SnapshotStage.Started);
+        }
+
         if (snapshotConfig.Streaming)
         {
-            if (checkpoint.Read() < SnapshotStage.Downloaded || !File.Exists(snapshotPath))
+            if (checkpoint.Read() < SnapshotStage.Downloaded)
             {
                 StreamingSnapshotInitializer initializer = new(
                     snapshotConfig, snapshotUrl, dbPath, drives,

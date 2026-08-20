@@ -70,8 +70,10 @@ internal sealed class StreamingSnapshotInitializer(
     private async Task<bool> StreamAndExtractAsync(
         SnapshotHttpClient client, SnapshotRemoteInfo remoteInfo, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
     {
+        string? expectedChecksum = config.Checksum;
         byte[]? checksum;
-        await using (SnapshotHttpStream stream = new(client, url, remoteInfo, settings, logManager, cancellationToken))
+        await using (SnapshotHttpStream stream = new(
+            client, url, remoteInfo, settings with { ComputeChecksum = expectedChecksum is not null }, logManager, cancellationToken))
         {
             SnapshotExtractor extractor = new(logManager);
             string extension = Path.GetExtension(config.SnapshotFileName).ToLowerInvariant();
@@ -79,12 +81,13 @@ internal sealed class StreamingSnapshotInitializer(
             checksum = await stream.FinishAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        if (config.Checksum is null)
+        if (expectedChecksum is null)
         {
             if (_logger.IsWarn)
                 _logger.Warn("Snapshot checksum is not configured.");
         }
-        else if (!SnapshotChecksum.Verify(checksum!, config.Checksum, "Deleting the extracted database; the node will continue running.", _logger))
+        else if (checksum is null
+                 || !SnapshotChecksum.Verify(checksum, expectedChecksum, "Deleting the extracted database; the node will continue running.", _logger))
         {
             return false;
         }
@@ -170,8 +173,8 @@ internal sealed class StreamingSnapshotInitializer(
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            if (_logger.IsWarn)
-                _logger.Warn($"Could not fully delete the database at {dbPath}: {e.Message}");
+            throw new IOException(
+                $"Could not clean up the database at {dbPath}, so the node must not start on top of it. Delete it manually before restarting.", e);
         }
     }
 }
