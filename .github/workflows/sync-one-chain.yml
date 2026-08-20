@@ -1,0 +1,202 @@
+name: Sync One Chain
+
+# Runs the full create -> sync -> teardown lifecycle for a single network, so callers can
+# fan out over a matrix and have each network succeed or fail on its own. A matrix-to-matrix
+# `needs` is all-to-all, so when these were separate jobs one runner-creation failure
+# skipped every sync in the run.
+
+on:
+  workflow_call:
+    inputs:
+      network:
+        type: string
+        required: true
+      mode:
+        type: string
+        required: true
+      runner_label:
+        type: string
+        required: true
+      machine_type:
+        type: string
+        required: true
+      local_ssd_count:
+        type: number
+        required: true
+      provisioning_model:
+        type: string
+        required: true
+      max_run_duration:
+        type: string
+        required: true
+      timeout:
+        description: Sync job timeout in minutes.
+        type: number
+        required: true
+      docker_image:
+        type: string
+        required: true
+      node_name_prefix:
+        type: string
+        required: true
+      checkout_ref:
+        type: string
+        required: true
+      batch_index:
+        description: Spreads runner creation to ease zone capacity pressure.
+        type: number
+        required: false
+        default: 0
+      cl:
+        type: string
+        required: false
+        default: ""
+      cl_image:
+        type: string
+        required: false
+        default: ""
+      checkpoint_sync_url:
+        type: string
+        required: false
+        default: ""
+      nethermind_args:
+        type: string
+        required: false
+        default: ""
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
+jobs:
+  create_runner:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    # Normally ~3 min; caps apt mirror hangs that otherwise burn the 6h default
+    timeout-minutes: 15
+    steps:
+      - name: Stagger runner creation
+        if: ${{ inputs.batch_index > 0 }}
+        env:
+          BATCH: ${{ inputs.batch_index }}
+        run: |
+          echo "Batch $BATCH — sleeping $(( BATCH * 10 ))s to spread zone capacity pressure"
+          sleep $(( BATCH * 10 ))
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
+      - name: Create a Runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: ${{ inputs.runner_label }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          machine_type: ${{ inputs.machine_type }}
+          local_ssd_count: ${{ inputs.local_ssd_count }}
+          provisioning_model: ${{ inputs.provisioning_model }}
+          max_run_duration: ${{ inputs.max_run_duration }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  sync:
+    needs: [create_runner]
+    runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: ${{ inputs.timeout }}
+    # Deliberately no id-token here: teardown is a separate job, so the job running sedge
+    # and the client images cannot mint credentials for the spawner account.
+    permissions:
+      contents: read
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          clean: true
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: Sync ${{ inputs.network }}
+        uses: ./.github/actions/sync-chain
+        with:
+          network: ${{ inputs.network }}
+          mode: ${{ inputs.mode }}
+          docker_image: ${{ inputs.docker_image }}
+          node_name_prefix: ${{ inputs.node_name_prefix }}
+          cl: ${{ inputs.cl }}
+          cl_image: ${{ inputs.cl_image }}
+          checkpoint_sync_url: ${{ inputs.checkpoint_sync_url }}
+          nethermind_args: ${{ inputs.nethermind_args }}
+          tests_token: ${{ steps.gh-app.outputs.token }}
+          mainnet_consensus_url: ${{ secrets.MAINNET_CONSENSUS_URL }}
+          mainnet_execution_url: ${{ secrets.MAINNET_EXECUTION_URL }}
+          sepolia_consensus_url: ${{ secrets.SEPOLIA_CONSENSUS_URL }}
+          sepolia_execution_url: ${{ secrets.SEPOLIA_EXECUTION_URL }}
+          hoodi_consensus_url: ${{ secrets.HOODI_CONSENSUS_URL }}
+          hoodi_execution_url: ${{ secrets.HOODI_EXECUTION_URL }}
+          loki_url: ${{ secrets.LOKI_URL }}
+          loki_username: ${{ secrets.LOKI_USERNAME }}
+          loki_password: ${{ secrets.LOKI_PASSWORD }}
+          prometheus_url: ${{ secrets.PROMETHEUS_URL }}
+          prometheus_username: ${{ secrets.PROMETHEUS_USERNAME }}
+          prometheus_password: ${{ secrets.PROMETHEUS_PASSWORD }}
+
+  destroy_runner:
+    needs: [create_runner, sync]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
+      - name: Destroy Runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: ${{ inputs.runner_label }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        if: always()
+        env:
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: echo "terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"
