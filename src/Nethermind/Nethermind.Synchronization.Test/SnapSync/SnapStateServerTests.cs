@@ -62,9 +62,10 @@ public class SnapStateServerTests
             Server = new SnapStateServer(_store.AsReadOnly(), LimboLogs.Instance, lastNStateRootTracker);
 
             _clientStateDb = new MemDb();
-            using ProgressTracker progressTracker = new(_clientStateDb, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
             INodeStorage nodeStorage = new NodeStorage(_clientStateDb);
-            SnapProvider = new SnapProvider(progressTracker, new MemDb(), new PatriciaSnapTrieFactory(nodeStorage, LimboLogs.Instance), LimboLogs.Instance);
+            PatriciaSnapTrieFactory snapTrieFactory = new(nodeStorage, _clientStateDb, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(snapTrieFactory, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
+            SnapProvider = new SnapProvider(progressTracker, new MemDb(), snapTrieFactory, LimboLogs.Instance);
         }
 
         public IWriteBatch BeginWriteBatch() => new WriteBatch(this);

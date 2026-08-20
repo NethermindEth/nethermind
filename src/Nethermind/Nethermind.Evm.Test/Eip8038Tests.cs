@@ -139,7 +139,7 @@ public class Eip8038Tests(bool eip8038Enabled) : VirtualMachineTestsBase
 }
 
 /// <summary>
-/// EIP-8038 raises the transaction access-list entry costs to match the cold-access costs they pre-warm.
+/// EIP-8038 raises transaction access-list entry costs while subtracting the warm charge paid on use.
 /// </summary>
 public class Eip8038IntrinsicGasTests
 {
