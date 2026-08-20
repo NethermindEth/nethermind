@@ -315,9 +315,10 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// The paymaster a pending frame transaction pays through, keying the EIP-8141 non-canonical
-        /// paymaster cap; <c>null</c> when it uses none.
+        /// paymaster cap; <c>null</c> when it uses none, or when a reloaded record no longer records one.
         /// </summary>
-        /// <remarks>State-free, so insert and removal always contribute and release the same key.</remarks>
+        /// <remarks>Insert and removal always contribute and release the same key: the pool holds one
+        /// record per transaction, and the key is read off it rather than re-derived per event.</remarks>
         private static Address? GetPaymaster(Transaction tx) => tx.SupportsFrames ? FrameTxValidation.GetPrefixPaymaster(tx) : null;
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
