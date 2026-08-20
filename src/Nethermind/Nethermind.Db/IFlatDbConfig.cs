@@ -16,6 +16,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Convert an existing flat DB written by the 'Rocks' base store into the Arena base store during startup, before block processing begins. Runs only when BaseStore is 'Arena' and the DB on disk belongs to the Rocks base store; a restart on an already-converted DB is a no-op. Conversion can take tens of minutes on mainnet-scale state — external readiness timeouts must budget for it. Ignored unless BaseStore is 'Arena'.", DefaultValue = "false")]
     bool ConvertBaseStore { get; set; }
 
+    [ConfigItem(Description = "Evict the converted shard tables from the OS page cache at the end of a base store conversion. Off by default: the pages the conversion just wrote are the ones block processing is about to read, and a running node keeps them. Enable only to measure cold-start behaviour deliberately. Ignored unless a conversion runs.", DefaultValue = "false")]
+    bool EvictPageCacheAfterConversion { get; set; }
+
+    [ConfigItem(Description = "Bits per key for the per-shard bloom filters that let the Arena base store reject a missing key without descending into its sorted table. 0 disables them. Ignored unless BaseStore is 'Arena'.", DefaultValue = "10")]
+    double BaseStoreBloomBitsPerKey { get; set; }
+
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]
     ulong BlockCacheSizeBudget { get; set; }
 

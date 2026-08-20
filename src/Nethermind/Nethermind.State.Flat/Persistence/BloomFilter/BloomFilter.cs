@@ -199,6 +199,13 @@ public sealed unsafe class BloomFilter : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// The raw filter bits, so a filter over an immutable data set can be persisted alongside it and
+    /// restored without re-reading the keys. Valid only while the filter is alive and not being written
+    /// to concurrently; the caller must reconstruct with the same capacity and bits-per-key.
+    /// </summary>
+    internal Span<byte> RawBits => new(_data, checked((int)DataBytes));
+
     /// <summary>Zero the bloom bits and reset count to 0.</summary>
     public void Clear()
     {

@@ -18,6 +18,8 @@ public class FlatDbConfig : IFlatDbConfig
     public FlatBaseStore BaseStore { get; set; } = FlatBaseStore.Rocks;
     public long BaseFoldThresholdBytes { get; set; } = 256.MiB;
     public bool ConvertBaseStore { get; set; } = false;
+    public bool EvictPageCacheAfterConversion { get; set; } = false;
+    public double BaseStoreBloomBitsPerKey { get; set; } = 10;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;
     public ulong MaxReorgDepth { get; set; } = 256;

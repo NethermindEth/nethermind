@@ -54,12 +54,14 @@ public class FlatBaseStoreConverterTests
         _dir.Dispose();
     }
 
-    private ArenaBasePersistence NewArenaPersistence() => _arena = new ArenaBasePersistence(
-        _db, _dir.Path,
-        new FlatDbConfig { BaseStore = FlatBaseStore.Arena, ConvertBaseStore = true },
-        LimboLogs.Instance, AccountShards, StorageShards);
+    private static FlatDbConfig ArenaConfig() =>
+        new() { BaseStore = FlatBaseStore.Arena, ConvertBaseStore = true };
 
-    private FlatBaseStoreConverter NewConverter(ArenaBasePersistence arena) => new(_db, arena, LimboLogs.Instance);
+    private ArenaBasePersistence NewArenaPersistence() => _arena = new ArenaBasePersistence(
+        _db, _dir.Path, ArenaConfig(), LimboLogs.Instance, AccountShards, StorageShards);
+
+    private FlatBaseStoreConverter NewConverter(ArenaBasePersistence arena) =>
+        new(_db, arena, ArenaConfig(), LimboLogs.Instance);
 
     private static readonly (Address Address, Account Account)[] SeedAccounts = Enumerable.Range(0, 16)
         .Select(static i => (TestItem.Addresses[i], TestItem.GenerateIndexedAccount(i)))

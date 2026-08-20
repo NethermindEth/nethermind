@@ -57,7 +57,7 @@ public class ArenaBasePersistence : IPersistence, IDisposable
         // than imposing one; the deletion marker is unambiguous under either (see BaseTableStore.TombstoneValue).
         _rlpWrapSlots = BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<ArenaBasePersistence>());
         _adjuster = new WriteBufferAdjuster(db, config.PersistenceWriteBufferFloor);
-        _store = new BaseTableStore(db, directory, config.BaseFoldThresholdBytes, logManager, accountShardCount, storageShardCount);
+        _store = new BaseTableStore(db, directory, config.BaseFoldThresholdBytes, logManager, accountShardCount, storageShardCount, config.BaseStoreBloomBitsPerKey);
     }
 
     /// <summary>

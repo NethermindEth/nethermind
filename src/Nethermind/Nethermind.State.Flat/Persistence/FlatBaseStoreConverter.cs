@@ -35,6 +35,7 @@ namespace Nethermind.State.Flat.Persistence;
 public sealed class FlatBaseStoreConverter(
     IColumnsDb<FlatDbColumns> db,
     ArenaBasePersistence persistence,
+    IFlatDbConfig config,
     ILogManager logManager)
 {
     private const int ProgressLogInterval = 5_000_000;
@@ -89,7 +90,7 @@ public sealed class FlatBaseStoreConverter(
     internal void CommitConverted() => persistence.WriteBaseStoreKindMarker();
 
     /// <summary>Phase 3 (post-commit cleanup, safe to lose to a crash): delete the migrated overlay rows,
-    /// compact the overlay column families, flush, and evict the arena files from the page cache.</summary>
+    /// compact the overlay column families, flush, and optionally evict the arena files from the page cache.</summary>
     internal void CleanupOverlay(CancellationToken cancellationToken)
     {
         DeleteAllRows(FlatDbColumns.Account, cancellationToken);
@@ -100,7 +101,13 @@ public sealed class FlatBaseStoreConverter(
         db.GetColumnDb(FlatDbColumns.Storage).Compact();
         db.Flush();
 
-        persistence.EvictShardTablePageCache();
+        // Off by default: the pages the conversion just wrote are the ones the node is about to read, and a
+        // real node keeps them. Evicting only makes sense to measure cold-start behaviour deliberately.
+        if (config.EvictPageCacheAfterConversion)
+        {
+            if (_logger.IsInfo) _logger.Info("Evicting the converted shard tables from the page cache.");
+            persistence.EvictShardTablePageCache();
+        }
     }
 
     private IEnumerable<KeyValuePair<byte[], byte[]>> EnumerateRows(

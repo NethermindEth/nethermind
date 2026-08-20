@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -22,8 +23,10 @@ namespace Nethermind.State.Flat.Persistence;
 internal sealed class BaseTableView : RefCountingDisposable
 {
     /// <summary>One shard's immutable sorted table: the mmap-backed file, the table's byte length
-    /// (the table always starts at offset 0 of its file), and the generation baked into the file name.</summary>
-    internal sealed record ShardTable(ArenaFile File, long Length, long Generation);
+    /// (the table always starts at offset 0 of its file), the generation baked into the file name, and an
+    /// optional sidecar bloom filter that short-circuits misses. The filter is ref-counted alongside the
+    /// file so a view outlives the fold that replaced its shard.</summary>
+    internal sealed record ShardTable(ArenaFile File, long Length, long Generation, RefCountedBloomFilter? Filter = null);
 
     private readonly ShardTable?[] _accountShards;
     private readonly ShardTable?[] _storageShards;
@@ -33,16 +36,30 @@ internal sealed class BaseTableView : RefCountingDisposable
         // Own copies of the arrays (the store mutates its arrays on fold) and pin every referenced file.
         _accountShards = (ShardTable?[])accountShards.Clone();
         _storageShards = (ShardTable?[])storageShards.Clone();
-        foreach (ShardTable? shard in _accountShards) shard?.File.AcquireLease();
-        foreach (ShardTable? shard in _storageShards) shard?.File.AcquireLease();
+        // Safe without a Try variant: views are only built while the store holds its own live lease on
+        // every shard it references.
+        foreach (ShardTable? shard in _accountShards) Acquire(shard);
+        foreach (ShardTable? shard in _storageShards) Acquire(shard);
+
+        static void Acquire(ShardTable? shard)
+        {
+            shard?.File.AcquireLease();
+            shard?.Filter?.AcquireLease();
+        }
     }
 
     internal new bool TryAcquireLease() => base.TryAcquireLease();
 
     protected override void CleanUp()
     {
-        foreach (ShardTable? shard in _accountShards) shard?.File.Dispose();
-        foreach (ShardTable? shard in _storageShards) shard?.File.Dispose();
+        foreach (ShardTable? shard in _accountShards) Release(shard);
+        foreach (ShardTable? shard in _storageShards) Release(shard);
+
+        static void Release(ShardTable? shard)
+        {
+            shard?.File.Dispose();
+            shard?.Filter?.Dispose();
+        }
     }
 
     /// <summary>Shard of <paramref name="key"/>: the top <c>log2(shardCount)</c> bits of its 16-bit
@@ -72,6 +89,10 @@ internal sealed class BaseTableView : RefCountingDisposable
 
     private static unsafe int Get(ShardTable shard, ReadOnlySpan<byte> key, Span<byte> outBuffer)
     {
+        // Misses are the descent this format cannot shorten any other way: without a filter they pay the
+        // index-block search plus a data-block page fault only to find nothing.
+        if (shard.Filter is not null && !shard.Filter.Filter.MightContain(BaseTableFilter.KeyHash(key))) return 0;
+
         MmapByteReader reader = new(shard.File.BasePtr, shard.Length);
         if (!SortedTableReader.TrySeek<MmapByteReader, NoOpPin>(in reader, new Bound(0, shard.Length), key, out Bound value))
             return 0;

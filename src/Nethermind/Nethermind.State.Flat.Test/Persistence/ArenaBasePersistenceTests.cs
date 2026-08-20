@@ -424,6 +424,79 @@ public class ArenaBasePersistenceTests
         _persistence.CreateWriteBatch(state1, new StateId(2, TestItem.KeccakB)).Dispose();
     }
 
+    /// <summary>
+    /// The filter may only ever produce false positives. A false negative would report live state as
+    /// absent, so this sweeps every stored key across many shards after a fold.
+    /// </summary>
+    [Test]
+    public void Filter_NeverHidesStoredRows()
+    {
+        const int count = 512;
+        Account[] accounts = Enumerable.Range(0, count).Select(TestItem.GenerateIndexedAccount).ToArray();
+        Address[] addresses = Enumerable.Range(0, count).Select(static i => TestItem.GetRandomAddress(new Random(i))).ToArray();
+
+        Write(batch =>
+        {
+            for (int i = 0; i < count; i++)
+            {
+                batch.SetAccount(addresses[i], accounts[i]);
+                batch.SetStorage(addresses[i], (UInt256)i, SlotValue.FromSpanWithoutLeadingZero([(byte)(i % 255 + 1)]));
+            }
+        });
+        _persistence.Fold();
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(reader.GetAccount(addresses[i]), Is.EqualTo(accounts[i]), $"account {i} hidden by the filter");
+            Assert.That(GetSlot(reader, addresses[i], (UInt256)i), Is.EqualTo([(byte)(i % 255 + 1)]), $"slot {i} hidden by the filter");
+        }
+    }
+
+    [Test]
+    public void Filter_IsReloadedAcrossRestart_AndRejectsMissingKeys()
+    {
+        Account stored = TestItem.GenerateIndexedAccount(0);
+        Write(batch => batch.SetAccount(TestItem.AddressA, stored));
+        _persistence.Fold();
+
+        Assert.That(Directory.GetFiles(_dir.Path, "*.bf"), Is.Not.Empty, "a fold should write sidecar filters");
+
+        _persistence.Dispose();
+        _persistence = NewPersistence();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadAccount(TestItem.AddressA), Is.EqualTo(stored));
+            Assert.That(ReadAccount(TestItem.AddressC), Is.Null);
+        }
+    }
+
+    /// <summary>A damaged sidecar must degrade to "no filter" rather than to a wrong answer — a truncated
+    /// filter has missing bits and would otherwise report stored keys as absent.</summary>
+    [Test]
+    public void Filter_TruncatedSidecarIsIgnored_ReadsStayCorrect()
+    {
+        Account stored = TestItem.GenerateIndexedAccount(0);
+        Write(batch => batch.SetAccount(TestItem.AddressA, stored));
+        _persistence.Fold();
+        _persistence.Dispose();
+
+        foreach (string path in Directory.GetFiles(_dir.Path, "*.bf"))
+        {
+            using FileStream fs = new(path, FileMode.Open, FileAccess.Write);
+            fs.SetLength(Math.Max(0, fs.Length - 64));
+        }
+
+        _persistence = NewPersistence();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadAccount(TestItem.AddressA), Is.EqualTo(stored));
+            Assert.That(ReadAccount(TestItem.AddressC), Is.Null);
+        }
+    }
+
     [Test]
     public void Restart_ReloadsShardTables_AndOverlay()
     {

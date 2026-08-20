@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
@@ -85,6 +86,7 @@ internal sealed class BaseTableStore : IDisposable
     private readonly IColumnsDb<FlatDbColumns> _db;
     private readonly string _directory;
     private readonly long _foldThresholdBytes;
+    private readonly double _bloomBitsPerKey;
     private readonly ILogger _logger;
     private readonly Lock _lock = new();
     private readonly BaseTableView.ShardTable?[] _accountShards;
@@ -100,13 +102,15 @@ internal sealed class BaseTableStore : IDisposable
         long foldThresholdBytes,
         ILogManager logManager,
         int accountShardCount = DefaultAccountShardCount,
-        int storageShardCount = DefaultStorageShardCount)
+        int storageShardCount = DefaultStorageShardCount,
+        double bloomBitsPerKey = 0)
     {
         ValidateShardCount(accountShardCount, nameof(accountShardCount));
         ValidateShardCount(storageShardCount, nameof(storageShardCount));
         _db = db;
         _directory = directory;
         _foldThresholdBytes = foldThresholdBytes;
+        _bloomBitsPerKey = bloomBitsPerKey;
         _logger = logManager.GetClassLogger<BaseTableStore>();
         _accountShards = new BaseTableView.ShardTable?[accountShardCount];
         _storageShards = new BaseTableView.ShardTable?[storageShardCount];
@@ -205,7 +209,11 @@ internal sealed class BaseTableStore : IDisposable
                     batch.Clear();
                     batch.Dispose();
                     // Unregistered new files: dropping their only lease deletes them from disk.
-                    foreach (ShardChange change in changes) change.NewTable?.File.Dispose();
+                    foreach (ShardChange change in changes)
+                    {
+                        change.NewTable?.File.Dispose();
+                        DiscardFilter(change.Entity, change.Shard, change.NewTable);
+                    }
                 }
             }
         }
@@ -224,13 +232,39 @@ internal sealed class BaseTableStore : IDisposable
         Volatile.Write(ref _currentView, new BaseTableView(_accountShards, _storageShards));
         oldView.Dispose();
         // Drop the store's own lease on the replaced files: each is deleted once its last reader drains.
-        foreach (ShardChange change in changes) change.OldTable?.File.Dispose();
+        foreach (ShardChange change in changes)
+        {
+            change.OldTable?.File.Dispose();
+            DiscardFilter(change.Entity, change.Shard, change.OldTable);
+        }
 
         _overlayBytesSinceFold = 0;
         if (_logger.IsDebug) _logger.Debug($"Folded flat base overlay into {changes.Count} shard tables");
     }
 
     private sealed record ShardChange(byte Entity, int Shard, BaseTableView.ShardTable? OldTable, BaseTableView.ShardTable? NewTable);
+
+    /// <summary>
+    /// Releases the store's lease on a superseded shard's filter and unlinks its file. Unlinking is safe
+    /// while readers still hold leases because a filter is read wholly into native memory at load time —
+    /// unlike the table itself, nothing reads the file again.
+    /// </summary>
+    private void DiscardFilter(byte entity, int shard, BaseTableView.ShardTable? table)
+    {
+        if (table?.Filter is null) return;
+        table.Filter.Dispose();
+
+        string path = Path.Combine(_directory, BaseTableFilter.FileNameFor(TableFileName(entity, shard, table.Generation)));
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Left behind for the next startup sweep; a stale filter is never loaded for a newer table.
+            if (_logger.IsDebug) _logger.Debug($"Could not delete superseded flat base filter '{Path.GetFileName(path)}': {e.Message}");
+        }
+    }
 
     private void FoldEntity(
         byte entity,
@@ -280,7 +314,9 @@ internal sealed class BaseTableStore : IDisposable
     private BaseTableView.ShardTable WriteShardTable(byte entity, int shard, ISortedView content)
     {
         long generation = _nextGeneration++;
-        string path = Path.Combine(_directory, TableFileName(entity, shard, generation));
+        string fileName = TableFileName(entity, shard, generation);
+        string path = Path.Combine(_directory, fileName);
+        List<ulong>? keyHashes = _bloomBitsPerKey > 0 ? [] : null;
         long length;
         FileStream stream = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, bufferSize: 1);
         ArenaBufferWriter writer = new(stream, firstOffset: 0);
@@ -292,6 +328,7 @@ internal sealed class BaseTableStore : IDisposable
                 do
                 {
                     builder.Add(content.CurrentKey, content.CurrentValue);
+                    keyHashes?.Add(BaseTableFilter.KeyHash(content.CurrentKey));
                 } while (content.MoveNext());
 
                 builder.Build();
@@ -310,7 +347,17 @@ internal sealed class BaseTableStore : IDisposable
             writer.Dispose();
         }
 
-        return new BaseTableView.ShardTable(new ArenaFile(shard, path, length), length, generation);
+        // Written and fsynced before the caller registers the table, so a filter can never be newer or
+        // shorter than the table it describes.
+        RefCountedBloomFilter? filter = null;
+        if (keyHashes is not null)
+        {
+            BloomFilter.BloomFilter? bloom = BaseTableFilter.Write(
+                Path.Combine(_directory, BaseTableFilter.FileNameFor(fileName)), keyHashes, _bloomBitsPerKey);
+            if (bloom is not null) filter = new RefCountedBloomFilter(bloom);
+        }
+
+        return new BaseTableView.ShardTable(new ArenaFile(shard, path, length), length, generation, filter);
     }
 
     /// <summary>
@@ -542,14 +589,24 @@ internal sealed class BaseTableStore : IDisposable
             if (!File.Exists(path) || new FileInfo(path).Length < length)
                 throw Corrupt($"registry references table file '{fileName}' that is missing or shorter than its recorded {length} bytes");
 
-            shards[shard] = new BaseTableView.ShardTable(new ArenaFile(shard, path, length), length, generation);
+            string filterFileName = BaseTableFilter.FileNameFor(fileName);
+            BloomFilter.BloomFilter? bloom = _bloomBitsPerKey > 0
+                ? BaseTableFilter.TryLoad(Path.Combine(_directory, filterFileName), _logger)
+                : null;
+
+            shards[shard] = new BaseTableView.ShardTable(
+                new ArenaFile(shard, path, length), length, generation,
+                bloom is null ? null : new RefCountedBloomFilter(bloom));
             registeredFiles.Add(fileName);
+            registeredFiles.Add(filterFileName);
             _nextGeneration = Math.Max(_nextGeneration, generation + 1);
         }
 
-        // Sweep files the registry does not reference — tables a crashed fold fsynced but never
-        // committed, or replaced tables whose deferred delete a crash skipped.
-        foreach (string path in Directory.GetFiles(_directory, $"*{TableFileExtension}"))
+        // Sweep files the registry does not reference — tables (and their sidecar filters) a crashed fold
+        // fsynced but never committed, or replaced ones whose deferred delete a crash skipped.
+        foreach (string path in Directory.EnumerateFiles(_directory)
+                     .Where(static p => p.EndsWith(TableFileExtension, StringComparison.Ordinal)
+                                        || p.EndsWith(BaseTableFilter.FileExtension, StringComparison.Ordinal)))
         {
             string fileName = Path.GetFileName(path);
             if (registeredFiles.Contains(fileName)) continue;
