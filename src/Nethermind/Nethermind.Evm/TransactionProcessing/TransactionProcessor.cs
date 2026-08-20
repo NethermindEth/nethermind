@@ -203,7 +203,15 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec = GetSpec(header);
             if (tx.Type == TxType.FrameTx)
             {
-                return ExecuteFrameTx(tx, tracer, opts, header, spec);
+                IBlockAccessListSource? diffRecorder = BeginPostTxDiffRecording(tx, opts, spec);
+                try
+                {
+                    return ExecuteFrameTx(tx, tracer, opts, header, spec);
+                }
+                finally
+                {
+                    diffRecorder?.SetGeneratingBlockAccessList(null);
+                }
             }
             RecoverSenderBeforeIntrinsicGas(tx, spec);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);

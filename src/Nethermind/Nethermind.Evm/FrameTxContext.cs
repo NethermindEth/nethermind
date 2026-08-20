@@ -101,6 +101,9 @@ public sealed class FrameTxContext(
 
     public TxFrame CurrentFrame => Frames[CurrentFrameIndex];
 
+    /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its POST_TX frames.</summary>
+    internal TransactionDiffView? PostTxDiffView { get; set; }
+
     public Address ResolvedTarget(int frameIndex) => Frames[frameIndex].Target ?? Sender;
 
     public Address ResolvedSigner(int signatureIndex) => Signatures[signatureIndex].Signer ?? Sender;
