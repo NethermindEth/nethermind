@@ -138,12 +138,14 @@ See [global.json](./global.json) for the required .NET SDK version.
 This repository contains a dedicated workflow for reproducible payload benchmarks:
 
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
-- Main execution runner label: `reproducible-benchmarks`
+- Main execution runner label: `reproducible-benchmarks-arm`. That runner carries a single snapshot
+  set — Nethermind in the **flat** layout under `/data/nethermind/nethermind-flat-<block>` — so the
+  benchmark workflows accept only that configuration and refuse any other client or layout up front.
 
 ### What the workflow does
 
 - Resolves runtime inputs (branch, state layout, payload set, delay, optional extra flags).
-- Selects one benchmark config file from `/mnt/sda/expb-data`.
+- Selects one benchmark config file from `/data/expb-data`.
 - Builds or reuses Nethermind Docker image tag depending on branch rules.
 - Renders a temporary config (does not modify source files) by:
   - replacing `<<DOCKER_TAG>>`

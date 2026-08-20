@@ -1,0 +1,121 @@
+name: ARM Runner Maintenance
+
+# Frees disk on the reproducible-benchmarks-arm runner after benchmark runs fill it
+# (docker layer churn, leftover containers/networks, runner diag/work debris).
+# Never removes tagged images - the pinned armbench-*/master-* A/B images must survive.
+
+on:
+  # push registers the workflow for dispatch on this branch (dispatch-only workflows on
+  # non-default branches never register) and doubles as the first cleanup run.
+  push:
+    branches: [feature/jsonbench-extra-eth-calls]
+    paths: [.github/workflows/arm-runner-maintenance.yml]
+  # No `schedule:` here on purpose — cron only fires for workflows on the default branch, so it would be
+  # dead config until this file reaches master. Until then the benchmark job reclaims per run, and the
+  # tagged-image backlog is cleared by dispatching this with prune_unused_images=true.
+  workflow_dispatch:
+    inputs:
+      prune_unused_images:
+        description: Also remove images unused by any container and older than 96h (docker image prune -a --filter until=96h). Tagged benchmark images newer than that survive.
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  clean:
+    runs-on: [self-hosted, reproducible-benchmarks-arm]
+    timeout-minutes: 30
+    steps:
+      - name: Disk usage before
+        shell: bash
+        run: |
+          set -uo pipefail
+          df -h /
+          docker system df || true
+          du -xsh /root/actions-runner/_diag /root/actions-runner/_work /tmp /var/lib/docker 2>/dev/null | sort -rh || true
+
+      - name: Reap leftover benchmark containers and networks
+        shell: bash
+        run: |
+          set -uo pipefail
+          for prefix in rpcbench- nethermind-rpcbench ethcallchaos-bench jsonbench-; do
+            docker ps -aq --filter "name=${prefix}" | xargs -r docker rm -f || true
+          done
+          # Exited expb/benchmark containers of any name
+          docker container prune -f || true
+          # Orphaned expb networks block scenario re-runs with a 409 on name collision
+          docker network prune -f || true
+          # 'volume prune' only removes anonymous volumes; named expb volumes survive and
+          # keep pointing at deleted per-run output dirs, failing later mounts with a 500.
+          docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
+          docker volume prune -f || true
+
+      - name: Prune docker caches and dangling images
+        shell: bash
+        env:
+          PRUNE_UNUSED_IMAGES: ${{ inputs.prune_unused_images }}
+        run: |
+          set -uo pipefail
+          docker builder prune -af || true
+          docker image prune -f || true
+          if [[ "${PRUNE_UNUSED_IMAGES}" == "true" ]]; then
+            docker image prune -af --filter "until=96h" || true
+          fi
+
+      - name: Trim runner diag and work debris
+        shell: bash
+        run: |
+          set -uo pipefail
+          find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete || true
+          rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
+          find /tmp -maxdepth 1 -user root -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+
+      - name: Ensure host packages
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Minimal box: benchmark workflows shell out to zip (artifact archiving) and file.
+          missing=""
+          for c in zip unzip file; do command -v "$c" >/dev/null 2>&1 || missing="$missing $c"; done
+          if [[ -n "${missing}" ]]; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ${missing}
+          fi
+          echo "zip: $(command -v zip || echo MISSING)"
+
+      - name: Ensure dotnet SDK on the host
+        shell: bash
+        run: |
+          set -uo pipefail
+          # expb's dotTrace/dotnet-trace integration drives host-side dotnet global tools;
+          # this box was provisioned without the SDK (the x64 twin has it). Idempotent.
+          # Probe from a neutral cwd with --list-sdks: the runner's leftover repo checkout
+          # carries a global.json pinning an SDK we don't ship, which fails 'dotnet --version'
+          # (exit 145) regardless of install health. Probes are time-bounded because a broken
+          # wrapper/symlink pair can exec-loop forever.
+          cd /tmp
+          if timeout 20 dotnet --list-sdks 2>/dev/null | grep -q .; then
+            echo "dotnet SDKs present:"; timeout 20 dotnet --list-sdks
+            exit 0
+          fi
+          echo "--- healing ---"
+          pkill -9 -f '/usr/local/share/dotnet' 2>/dev/null || true
+          # Remove any old symlink BEFORE writing the wrapper: a redirect through a symlink
+          # into the install dir overwrites the real muxer.
+          rm -f /usr/local/bin/dotnet
+          if ! head -c4 /usr/local/share/dotnet/dotnet 2>/dev/null | grep -q ELF; then
+            echo "muxer missing or not ELF - reinstalling SDK"
+            rm -rf /usr/local/share/dotnet
+            curl -sSL --max-time 120 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+            timeout 600 bash /tmp/dotnet-install.sh --channel 8.0 --install-dir /usr/local/share/dotnet
+          fi
+          printf '#!/bin/sh\nexport DOTNET_ROOT=/usr/local/share/dotnet\nexec /usr/local/share/dotnet/dotnet "$@"\n' > /usr/local/bin/dotnet
+          chmod +x /usr/local/bin/dotnet
+          timeout 60 dotnet --list-sdks
+
+      - name: Disk usage after
+        shell: bash
+        run: |
+          set -uo pipefail
+          df -h /
+          docker system df || true
