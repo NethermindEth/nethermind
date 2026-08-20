@@ -94,10 +94,20 @@ on:
         type: number
         default: 10
       dottrace:
-        description: Enable JetBrains dotTrace profiling (captures .dtp snapshot per run)
+        description: >-
+          dotTrace profiling of the client. sampling/tracing snapshots are post-processed to XML
+          reports; timeline captures a UI-only snapshot (Reporter cannot convert it). Line-by-line
+          is not offered - it needs PDBs the docker images do not carry. 'true' is a legacy alias
+          for sampling. Any enabled mode also collects a dotnet-trace EventPipe .nettrace
+          (gc/contention/threading/exception events) alongside, shipped in the same artifact.
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - "false"
+          - sampling
+          - tracing
+          - timeline
+        default: "false"
       trace_blocks:
         description: >-
           Comma-separated block numbers to profile with dotTrace (e.g. 22360451,22360454). When set,
@@ -157,6 +167,7 @@ jobs:
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
       client_env: ${{ steps.resolve.outputs.client_env }}
     steps:
@@ -230,14 +241,29 @@ jobs:
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
             dottrace="${DISPATCH_DOTTRACE:-false}"
+            # Normalize the profiling selector: legacy boolean 'true' means sampling.
+            case "${dottrace}" in
+              true|sampling) dottrace_mode="sampling" ;;
+              tracing|timeline) dottrace_mode="${dottrace}" ;;
+              false|"") dottrace_mode="" ;;
+              *) echo "dottrace must be false, sampling, tracing, or timeline (got '${dottrace}')."; exit 1;;
+            esac
             trace_blocks="$(printf '%s' "${DISPATCH_TRACE_BLOCKS:-}" | tr -d '[:space:]')"
             if [[ -n "${trace_blocks}" ]]; then
               if ! [[ "${trace_blocks}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
                 echo "trace_blocks must be a comma-separated list of block numbers, got '${trace_blocks}'."
                 exit 1
               fi
-              dottrace="true"   # tracing specific blocks implies dotTrace
+              # Per-block snapshots ride the MeasureProfiler API (--use-api), which needs a
+              # performance profiling session - timeline cannot bracket blocks.
+              if [[ "${dottrace_mode}" == "timeline" ]]; then
+                echo "trace_blocks cannot be combined with dottrace=timeline (per-block snapshots need a performance profiling session)."
+                exit 1
+              fi
+              # tracing specific blocks implies dotTrace
+              if [[ -z "${dottrace_mode}" ]]; then dottrace_mode="sampling"; fi
             fi
+            if [[ -n "${dottrace_mode}" ]]; then dottrace="true"; else dottrace="false"; fi
             client_env="${DISPATCH_CLIENT_ENV:-}"
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
@@ -263,6 +289,7 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            dottrace_mode=""
             trace_blocks=""
             client_env=""
           else
@@ -280,6 +307,7 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            dottrace_mode=""
             trace_blocks=""
             client_env=""
           fi
@@ -387,6 +415,7 @@ jobs:
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
+            echo "dottrace_mode=${dottrace_mode}"
             echo "trace_blocks=${trace_blocks}"
             echo "client_env=${client_env}"
             echo "additional_extra_flags<<EOF"
@@ -414,6 +443,7 @@ jobs:
 
       - name: Trigger publish-docker.yml
         if: needs.resolve.outputs.should_trigger_publish_docker == 'true'
+        id: trigger-publish-docker
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: publish-docker.yml
@@ -436,9 +466,21 @@ jobs:
           TIMEOUT: "120"
           ORG_NAME: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
+          # Wait on the run we actually dispatched. Without this the script falls back to discovering a
+          # run by workflow name + branch, which silently latches onto any other concurrent build of the
+          # same branch and reports success for an image that was never produced.
+          RUN_ID: ${{ steps.trigger-publish-docker.outputs.runId }}
           NAME_FILTER: Publish Docker image
           REF: ${{ needs.resolve.outputs.branch }}
         run: |
+          # An empty runId would silently fall back to run discovery - the exact false green this
+          # guards against. benc-uk/workflow-dispatch returns without setting outputs (and without
+          # failing) when the target workflow is disabled, and @v1 is a moving tag that could drop the
+          # output, so make the bypass impossible rather than unlikely.
+          if [ -z "${RUN_ID}" ]; then
+            echo "::error::The dispatch step produced no runId; refusing to fall back to run discovery."
+            exit 1
+          fi
           chmod +x scripts/wait-for-workflow.sh
           ./scripts/wait-for-workflow.sh
 
@@ -755,6 +797,7 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
@@ -803,7 +846,10 @@ jobs:
 
           dottrace_flag=""
           if [[ "${DOTTRACE}" == "true" ]]; then
-            dottrace_flag="--dottrace"
+            # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
+            # always rides along with dotTrace - different channel, adds the GC/lock story
+            # the CPU profile cannot show. Requires expb with --dotnet-trace support.
+            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
           fi
 
           # Marker for dottrace artifact collection — only files newer than this
@@ -1069,7 +1115,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
             echo "No dottrace output directories found for this run."
             exit 0
@@ -1857,6 +1903,7 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
           set -euo pipefail
@@ -1903,7 +1950,10 @@ jobs:
 
           dottrace_flag=""
           if [[ "${DOTTRACE}" == "true" ]]; then
-            dottrace_flag="--dottrace"
+            # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
+            # always rides along with dotTrace - different channel, adds the GC/lock story
+            # the CPU profile cannot show. Requires expb with --dotnet-trace support.
+            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
           fi
 
           # Marker for dottrace artifact collection — only files newer than this
@@ -2152,7 +2202,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d -name 'dottrace' -newer "${MARKER}" 2>/dev/null)
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
             echo "No dottrace output directories found for this run."
             exit 0
@@ -2353,9 +2403,11 @@ jobs:
 
   generate-dottrace-reports:
     needs: [resolve, benchmark, benchmark-multi]
+    # Timeline snapshots cannot be converted by Reporter.exe - they ship as the raw .dtp artifact only.
     if: >-
       always()
       && needs.resolve.outputs.dottrace == 'true'
+      && needs.resolve.outputs.dottrace_mode != 'timeline'
       && needs.resolve.outputs.should_run == 'true'
       && (needs.benchmark.result == 'success' || needs.benchmark-multi.result == 'success')
     runs-on: windows-latest

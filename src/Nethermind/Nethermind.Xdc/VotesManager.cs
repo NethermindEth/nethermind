@@ -75,7 +75,14 @@ internal class VotesManager : IVotesManager, IDisposable
         _blockTree.NewSuggestedBlock += OnNewBlock;
     }
 
-    private void OnNewBlock(object? sender, BlockEventArgs e) => _ = OnNewBlock((XdcBlockHeader)e.Block.Header);
+    private void OnNewBlock(object? sender, BlockEventArgs e)
+    {
+        // BlockTree can raise this with null block from BlockTree.SuggestHeader.
+        if (e.Block is null)
+            return;
+
+        _ = OnNewBlock((XdcBlockHeader)e.Block.Header);
+    }
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
@@ -308,7 +315,7 @@ internal class VotesManager : IVotesManager, IDisposable
     {
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+            if (peer.SyncPeer is IXdcConsensusPeer xdcProtocol)
                 xdcProtocol.SendVote(vote);
         }
     }

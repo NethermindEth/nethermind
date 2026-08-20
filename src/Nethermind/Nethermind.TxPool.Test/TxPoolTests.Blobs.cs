@@ -735,6 +735,46 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_count_reorganized_blob_txs_with_unrecoverable_sender()
+        {
+            const ulong blockNumber = 358;
+
+            Transaction blobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithHash(TestItem.KeccakA)
+                .TestObject;
+
+            IBlobTxStorage blobTxStorage = Substitute.For<IBlobTxStorage>();
+            blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Arg.Any<Transaction[]>())
+                .Returns(callInfo =>
+                {
+                    callInfo[1] = new[] { blobTx };
+                    return true;
+                });
+
+            ITxPoolConfig txPoolConfig = new TxPoolConfig()
+            {
+                Size = 128,
+                BlobsSupport = BlobsSupportMode.StorageWithReorgs
+            };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+
+            long unresolvableSenderBefore = Metrics.PendingTransactionsUnresolvableSender;
+
+            Block blockA = Build.A.Block.WithNumber(blockNumber).TestObject;
+            Block blockB = Build.A.Block.WithNumber(blockNumber).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockB, blockA);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.PendingTransactionsUnresolvableSender, Is.GreaterThanOrEqualTo(unresolvableSenderBefore + 1));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0));
+            }
+
+            blobTxStorage.Received().DeleteBlobTransactionsFromBlock(blockNumber);
+        }
+
+        [Test]
         public void should_index_blobs_when_adding_txs([Values(true, false)] bool isPersistentStorage, [Values(true, false)] bool uniqueBlobs)
         {
             const int poolSize = 10;
