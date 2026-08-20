@@ -26,6 +26,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -1892,6 +1893,48 @@ public class FrameTxProcessorTests
         BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
         Assert.That(bal.GetAccountChanges(IdentityPrecompile.Address), Is.Not.Null,
             "resolving a designation accesses the designated precompile");
+    }
+
+    /// <summary>
+    /// EIP-7702 suppression follows the address a precompile has been moved <em>to</em> by a state override,
+    /// not the address the spec lists: a designation to the new address still executes as empty code.
+    /// </summary>
+    /// <remarks>
+    /// Only the repository dispatches, and under an override it and the spec disagree about which address
+    /// holds the precompile; asking the spec would decide "not a precompile" and then run one anyway.
+    /// </remarks>
+    [Test]
+    public void Execute_FrameTargetDesignatesAMovedPrecompile_DoesNotExecuteIt()
+    {
+        Address movedTo = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, [.. Eip7702Constants.DelegationHeader, .. movedTo.Bytes]);
+
+        ITransactionProcessor processor = MovedPrecompileProcessor(IdentityPrecompile.Address, movedTo);
+        FrameReceiptTracer tracer = new();
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithBeneficiary(Beneficiary)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+
+        Assert.That(processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer).TransactionExecuted, Is.True);
+
+        // The target and the designation are both cold — the latter because a moved precompile is no
+        // longer in the spec's EIP-2929 pre-warm set — and nothing beyond those two accesses runs.
+        Assert.That(tracer.FrameReceipts![1].GasUsed, Is.EqualTo(2 * Eip8038Constants.ColdAccountAccess),
+            "the moved precompile must not execute through the designation");
+    }
+
+    /// <summary>A processor whose repository, but not whose spec, has moved a precompile to another address.</summary>
+    private ITransactionProcessor MovedPrecompileProcessor(Address precompile, Address movedTo)
+    {
+        OverridableCodeInfoRepository codeInfoRepository = new(new EthereumCodeInfoRepository(_stateProvider), _stateProvider);
+        codeInfoRepository.MovePrecompile(Spec, precompile, movedTo);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider,
+            virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 
     private sealed class FrameReceiptTracer : CallOutputTracer, IFrameTxReceiptTracer
