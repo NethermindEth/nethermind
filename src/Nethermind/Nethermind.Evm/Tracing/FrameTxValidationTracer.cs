@@ -18,9 +18,10 @@ namespace Nethermind.Evm.Tracing;
 public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifier, IReadOnlyStateProvider state, IReleaseSpec spec)
     : TxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
-    // Stack slot holding the current CALL*/EXTCODE* target, or -1. Set in StartOperation and consumed in
-    // SetOperationStack for the same instruction, as the stack operands aren't available any earlier.
+    // Stack slots holding the current CALL*/EXTCODE* target and value operands, or -1. Set in StartOperation
+    // and consumed in SetOperationStack for the same instruction, as the operands aren't available any earlier.
     private int _targetStackIndex = -1;
+    private int _valueStackIndex = -1;
 
     /// <summary>Whether the executing frame is the prefix-opening deploy frame, the only one whose
     /// carve-outs let it write state.</summary>
@@ -54,6 +55,7 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         _targetStackIndex = -1;
+        _valueStackIndex = -1;
         SettleCreate();
         if (Violated) return;
 
@@ -78,6 +80,9 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
                 break;
             case Instruction.CALL:
             case Instruction.CALLCODE:
+                _targetStackIndex = 1; // [gas, address, value, ...]
+                _valueStackIndex = 2;
+                break;
             case Instruction.DELEGATECALL:
             case Instruction.STATICCALL:
                 _targetStackIndex = 1; // [gas, address, ...]
@@ -118,10 +123,12 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
 
     public override void SetOperationStack(TraceStack stack)
     {
-        if (Violated || _targetStackIndex < 0) return;
-
         int index = _targetStackIndex;
+        int valueIndex = _valueStackIndex;
         _targetStackIndex = -1;
+        _valueStackIndex = -1;
+        if (Violated || index < 0) return;
+
         // A malformed stack faults the frame and rejects the prefix anyway; skip classification.
         if (stack.Count <= index) return;
 
@@ -129,6 +136,15 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
         if (IsForbiddenCallTarget(target))
         {
             Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
+            return;
+        }
+
+        // A funded call executes or pushes zero on the caller's balance alone, which is the same one-bit
+        // dependency on unindexed state that the BALANCE ban closes; the transfer itself is also a write
+        // neither deploy-frame carve-out covers.
+        if (valueIndex >= 0 && stack.Count > valueIndex && !stack.PeekUInt256(valueIndex).IsZero)
+        {
+            Violate("value-carrying CALL in validation prefix");
         }
     }
 
@@ -140,8 +156,9 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        // Only reachable from the deploy frame, whose carve-out covers tx.sender's storage alone.
-        if (!Violated && address != sender) Violate("SSTORE outside tx.sender storage");
+        // The carve-out is the deploy frame's alone, and covers tx.sender's storage only. Every other prefix
+        // frame is static, so this is belt-and-braces -- but that is an invariant held in another file.
+        if (!Violated && (!_inDeployFrame || address != sender)) Violate("SSTORE outside tx.sender storage");
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -154,7 +171,13 @@ public sealed class FrameTxValidationTracer(Address sender, Address expiryVerifi
         if (!Violated && to != sender) Violate("CREATE outside tx.sender");
     }
 
-    void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => Payer = payer;
+    void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+    {
+        // The prefix ends here, so anything still owed a creation frame has to be settled before the payer
+        // stands -- otherwise a trailing CREATE that opened none would be admitted rather than reported.
+        SettleCreate();
+        Payer = payer;
+    }
 
     /// <summary>Closes out a CREATE/CREATE2 that opened no creation frame.</summary>
     /// <remarks>Such a create returned zero on a collision, balance or call-depth condition, none of

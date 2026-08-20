@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -349,6 +350,68 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    // The deploy frame is the one non-static prefix frame, so it is the only place a funded CALL is
+    // reachable at all: it executes or pushes zero on the caller's balance, which a third party can move.
+    [TestCase(0, false, TestName = "Simulate_DeployFrameMakesAZeroValueCall_Allowed")]
+    [TestCase(1, true, TestName = "Simulate_DeployFrameMakesAValueCarryingCall_RecordsViolation")]
+    public void Simulate_DeployFrameCallCarryingValue_IsRefused(int value, bool violates)
+    {
+        DeployContract(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        byte[] prologue = Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, (UInt256)value).Op(Instruction.POP).Done;
+        Address deployed = InstallFactory(initCode, prologue);
+        FundAccount(deployed, 1.Ether);
+        Transaction tx = DeployTx(deployed);
+
+        (_, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        Assert.That(tracer.ViolationReason, violates ? Does.Contain("value-carrying CALL") : Is.Null);
+    }
+
+    [Test]
+    public void Simulate_DeployFrameBehindAnExpiryVerifyFrame_StillCarriesTheCarveOuts()
+    {
+        // OpensDeployPrefix accepts index 1 past an expiry-verify frame, and the SSTORE at tx.sender is
+        // what proves the carve-outs were announced for that frame rather than only for index 0.
+        DeployContract(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode);
+        byte[] initCode = Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .ForInitOf(ApproveCode(TxFrame.ApproveExecutionAndPayment)).Done;
+        Address deployed = InstallFactory(initCode);
+        FundAccount(deployed, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, ExpiryVerifyFrame(), DeployFrame(), SelfVerifyFrame());
+        tx.SenderAddress = deployed;
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(deployed));
+        }
+    }
+
+    [Test]
+    public void Simulate_DeployFrameInstallingNothingOverADeployedSender_ResolvesThePayer()
+    {
+        // The guard is that tx.sender carries code once the deploy frame is done, so a deploy frame that
+        // creates nothing passes it vacuously when the sender is already deployed. That is intended: the
+        // VERIFY frames behind it run the sender's real code either way.
+        DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(Factory, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.ViolationReason, Is.Null);
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.Payer, Is.EqualTo(Sender));
+        }
+    }
+
     [Test]
     public void Simulate_PrefixDeclaringAnUncommittedRecentRootReference_RejectedBeforeAnyFrameRuns()
     {
@@ -470,6 +533,14 @@ public class FrameTxValidationPrefixSimulationTests
         Transaction tx = FrameTx(nonce: 0, DeployFrame(), SelfVerifyFrame());
         tx.SenderAddress = deployed;
         return tx;
+    }
+
+    private static TxFrame ExpiryVerifyFrame()
+    {
+        byte[] data = new byte[Eip8141Constants.ExpiryDataLength];
+        BinaryPrimitives.WriteUInt64BigEndian(data, ulong.MaxValue);
+        return new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress,
+            gasLimit: 50_000, UInt256.Zero, data);
     }
 
     private static TxFrame DeployFrame() =>
