@@ -118,6 +118,14 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         return _cumulativeReceiptGas;
     }
 
+    /// <summary>Creates the empty receipt that <see cref="BuildReceipt"/> then fills in.</summary>
+    /// <remarks>
+    /// Chain-specific tracers override this to supply their own receipt type and the fields only they know
+    /// about. Overriding this instead of <see cref="BuildReceipt"/> keeps the shared population - including
+    /// the per-transaction state the tracer has to clear - in one place.
+    /// </remarks>
+    protected virtual TxReceipt CreateReceipt() => new();
+
     protected virtual TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         ulong cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
@@ -128,24 +136,22 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         // ReceiptForRpc pipeline) doesn't see effectiveGasPrice as null.
         UInt256 baseFee = Block.Header.BaseFeePerGas;
         UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(eip1559Enabled: baseFee > 0, baseFee);
-        TxReceipt txReceipt = new()
-        {
-            Logs = logEntries,
-            TxType = transaction.Type,
-            // Bloom calculated in parallel with other receipts
-            GasUsedTotal = cumulativeReceiptGas,  // Post-refund cumulative
-            StatusCode = statusCode,
-            Recipient = transaction.IsContractCreation ? null : recipient,
-            BlockHash = Block.Hash,
-            BlockNumber = Block.Number,
-            Index = _currentIndex,
-            GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
-            EffectiveGasPrice = effectiveGasPrice,
-            Sender = transaction.SenderAddress,
-            ContractAddress = transaction.CreatesTopLevelContract ? recipient : null,
-            TxHash = transaction.Hash,
-            PostTransactionState = stateRoot
-        };
+        TxReceipt txReceipt = CreateReceipt();
+        txReceipt.Logs = logEntries;
+        txReceipt.TxType = transaction.Type;
+        // Bloom calculated in parallel with other receipts
+        txReceipt.GasUsedTotal = cumulativeReceiptGas;  // Post-refund cumulative
+        txReceipt.StatusCode = statusCode;
+        txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
+        txReceipt.BlockHash = Block.Hash;
+        txReceipt.BlockNumber = Block.Number;
+        txReceipt.Index = _currentIndex;
+        txReceipt.GasUsed = gasConsumed.SpentGas;  // Post-refund for this tx
+        txReceipt.EffectiveGasPrice = effectiveGasPrice;
+        txReceipt.Sender = transaction.SenderAddress;
+        txReceipt.ContractAddress = transaction.CreatesTopLevelContract ? recipient : null;
+        txReceipt.TxHash = transaction.Hash;
+        txReceipt.PostTransactionState = stateRoot;
 
         // EIP-7778: execution-dimension block accounting introduces the
         // pre-refund/post-refund split. BlockGasUsed is pre-refund; ExecutionGasUsed
