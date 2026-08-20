@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -52,7 +53,7 @@ public class FrameTxProcessorTests
 
     // The gas leg of max_cost (TXPARAM 0x06) for a SelfVerify + one DEFAULT frame at max fee 1, blob-free.
     private const ulong DefaultFrameStateGasLimit = 200_000;
-    private const ulong BlobFreeMaxCost = 615_950;
+    private const ulong BlobFreeMaxCost = 612_950;
 
     [SetUp]
     public void Setup()
@@ -337,9 +338,11 @@ public class FrameTxProcessorTests
         Assert.That(Process(FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Recipient)),
             tracer: coldTracer).TransactionExecuted, Is.True);
 
+        // The precompile target pays warm entry access and runs the precompile (identity of empty
+        // input, its base cost); the cold account pays cold entry access and runs no code.
         Assert.That(coldTracer.GasSpent - precompileTracer.GasSpent,
-            Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
-            "a precompile target must pay warm entry access where a cold account pays cold");
+            Is.EqualTo((long)(Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess - IdentityPrecompile.Instance.BaseGasCost(Spec))),
+            "a precompile target pays warm entry access and dispatches the precompile where a cold account pays cold");
     }
 
     [Test]
@@ -457,7 +460,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x03, 1UL, TestName = "Execute_TxParam_MaxPriorityFee")]
     [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
     [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
-    // Max cost = sum(frame gas) 600000 + intrinsic 15000 + per-frame 475×2 (no calldata/sig).
+    // Max cost = sum(frame gas) 600000 + intrinsic 12000 + per-frame 475×2 (no calldata/sig).
     [TestCase((byte)0x06, BlobFreeMaxCost, TestName = "Execute_TxParam_MaxCost")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
