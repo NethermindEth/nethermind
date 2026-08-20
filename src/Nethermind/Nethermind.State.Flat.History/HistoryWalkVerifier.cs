@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,24 +15,12 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History;
 
-public enum HistoryWalkMismatchKind : byte
-{
-    StateRoot,
-    StorageRoot,
-    MissingHeader,
-    MissingAccountRow,
-    CapturedMarker,
-}
-
-public readonly record struct HistoryWalkMismatch(ulong Block, HistoryWalkMismatchKind Kind, ValueHash256 Rebuilt, ValueHash256 Expected);
-
-public readonly record struct HistoryWalkVerdict(bool Verified, ulong BlocksCompared, IReadOnlyList<HistoryWalkMismatch> Mismatches);
-
 /// <summary>
 /// Proves an unwindowed (v2) archive's content against this node's own headers by rebuilding the state root from
 /// rows at EVERY block of a range - per-block because a change attributed to the wrong block leaves the tip root
-/// correct while every as-of answer in between is wrong. v2 only (v3 rows are pre-values behind a floor). Holds
-/// the range's working set in memory; segment sizing against available memory is the caller's job.
+/// correct while every as-of answer in between is wrong. v2 only (v3 rows are pre-values behind a floor). Each
+/// column is scanned ONCE and its rows routed to the owning segment, so segment count multiplies concurrency, not
+/// IO. Holds the range's working set in memory; segment sizing against available memory is the caller's job.
 /// </summary>
 public sealed class HistoryWalkVerifier
 {
@@ -101,16 +90,28 @@ public sealed class HistoryWalkVerifier
         _logger = logManager.GetClassLogger<HistoryWalkVerifier>();
     }
 
+    // Per-segment slice of the partitioned scans: the state at the segment's start plus the deltas inside it.
+    private sealed class SegmentData
+    {
+        public readonly List<(ValueHash256 Path, Account Account)> StartAccounts = [];
+        public readonly SortedDictionary<ulong, List<(ValueHash256 Path, Account? Account)>> AccountDeltas = [];
+        public readonly Dictionary<byte[], List<(ValueHash256 SlotPath, byte[] Value)>> StartSlots = new(Bytes.EqualityComparer);
+        public readonly SortedDictionary<ulong, List<(byte[] Identity, ValueHash256 SlotPath, byte[] Value)>> SlotDeltas = [];
+    }
+
+    public HistoryWalkVerdict VerifyRange(ulong fromInclusive, ulong toInclusive, CancellationToken token) =>
+        VerifyRangeParallel(fromInclusive, toInclusive, 1, token);
+
     /// <summary>Verifies the range as concurrent, independently anchored segments - each start state is compared
     /// to its own header before the walk, so no segment consumes another's output.</summary>
     public HistoryWalkVerdict VerifyRangeParallel(ulong fromInclusive, ulong toInclusive, int segments, CancellationToken token)
     {
         if (segments < 1) throw new ArgumentOutOfRangeException(nameof(segments));
+        if (fromInclusive > toInclusive)
+            throw new ArgumentException($"Range start {fromInclusive} is above its end {toInclusive}.", nameof(fromInclusive));
 
         ulong span = toInclusive - fromInclusive;
         int effectiveSegments = (int)Math.Min((ulong)segments, Math.Max(span, 1));
-        if (effectiveSegments == 1) return VerifyRange(fromInclusive, toInclusive, token);
-
         (ulong From, ulong To)[] bounds = new (ulong, ulong)[effectiveSegments];
         for (int i = 0; i < effectiveSegments; i++)
         {
@@ -119,9 +120,16 @@ public sealed class HistoryWalkVerifier
                 fromInclusive + span * ((ulong)i + 1) / (ulong)effectiveSegments);
         }
 
+        SegmentData[] data = new SegmentData[effectiveSegments];
+        for (int i = 0; i < effectiveSegments; i++) data[i] = new SegmentData();
+
+        Dictionary<byte[], List<ulong>> clearsByIdentity = ScanClears(token);
+        PartitionAccounts(bounds, data, token);
+        PartitionStorage(bounds, data, clearsByIdentity, token);
+
         HistoryWalkVerdict[] verdicts = new HistoryWalkVerdict[effectiveSegments];
         Parallel.For(0, effectiveSegments, new ParallelOptions { CancellationToken = token },
-            i => verdicts[i] = VerifyRange(bounds[i].From, bounds[i].To, token));
+            i => verdicts[i] = WalkSegment(bounds[i].From, bounds[i].To, data[i], clearsByIdentity, token));
 
         List<HistoryWalkMismatch> mismatches = [];
         ulong compared = 0;
@@ -135,21 +143,14 @@ public sealed class HistoryWalkVerifier
         return new HistoryWalkVerdict(mismatches.Count == 0, compared, mismatches);
     }
 
-    public HistoryWalkVerdict VerifyRange(ulong fromInclusive, ulong toInclusive, CancellationToken token)
+    private HistoryWalkVerdict WalkSegment(
+        ulong fromInclusive,
+        ulong toInclusive,
+        SegmentData data,
+        Dictionary<byte[], List<ulong>> clearsByIdentity,
+        CancellationToken token)
     {
-        if (fromInclusive > toInclusive)
-            throw new ArgumentException($"Range start {fromInclusive} is above its end {toInclusive}.", nameof(fromInclusive));
-
         List<HistoryWalkMismatch> mismatches = [];
-
-        (List<(ValueHash256 Path, Account Account)> startAccounts,
-            SortedDictionary<ulong, List<(ValueHash256 Path, Account? Account)>> accountDeltas) = ScanAccounts(fromInclusive, toInclusive, token);
-
-        Dictionary<byte[], List<ulong>> clearsByIdentity = ScanClears(token);
-
-        (Dictionary<byte[], List<(ValueHash256 SlotPath, byte[] Value)>> startSlots,
-            SortedDictionary<ulong, List<(byte[] Identity, ValueHash256 SlotPath, byte[] Value)>> slotDeltas) =
-            ScanStorage(fromInclusive, toInclusive, clearsByIdentity, token);
 
         SortedDictionary<ulong, List<byte[]>> clearsByBlock = [];
         foreach ((byte[] identity, List<ulong> blocks) in clearsByIdentity)
@@ -161,7 +162,7 @@ public sealed class HistoryWalkVerifier
         }
 
         StateTree state = new(new RawScopedTrieStore(new MemDb()), _logManager);
-        foreach ((ValueHash256 path, Account account) in startAccounts)
+        foreach ((ValueHash256 path, Account account) in data.StartAccounts)
         {
             state.Set(path, account);
         }
@@ -189,19 +190,19 @@ public sealed class HistoryWalkVerifier
             }
 
             HashSet<byte[]>? touched = null;
-            if (slotDeltas.TryGetValue(block, out List<(byte[] Identity, ValueHash256 SlotPath, byte[] Value)>? slots))
+            if (data.SlotDeltas.TryGetValue(block, out List<(byte[] Identity, ValueHash256 SlotPath, byte[] Value)>? slots))
             {
                 touched = new HashSet<byte[]>(Bytes.EqualityComparer);
                 foreach ((byte[] identity, ValueHash256 slotPath, byte[] value) in slots)
                 {
-                    StorageTree tree = GetOrMaterialize(storageTries, startSlots, identity);
+                    StorageTree tree = GetOrMaterialize(storageTries, data.StartSlots, identity);
                     tree.Set(slotPath, value, rlpEncode: !_rlpWrapSlots);
                     touched.Add(identity);
                 }
             }
 
             Dictionary<byte[], Account?>? accountsAtBlock = null;
-            accountDeltas.TryGetValue(block, out List<(ValueHash256 Path, Account? Account)>? accountRows);
+            data.AccountDeltas.TryGetValue(block, out List<(ValueHash256 Path, Account? Account)>? accountRows);
             if (accountRows is not null)
             {
                 accountsAtBlock = new Dictionary<byte[], Account?>(Bytes.EqualityComparer);
@@ -274,7 +275,7 @@ public sealed class HistoryWalkVerifier
         compared++;
 
         Span<byte> markerKey = stackalloc byte[BlockBytes];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(markerKey, block);
+        BinaryPrimitives.WriteUInt64BigEndian(markerKey, block);
         byte[]? marker = _availableBlocks.Get(markerKey);
         if (marker is not { Length: Hash256.Size } || new ValueHash256(marker) != expected.Value)
         {
@@ -288,16 +289,13 @@ public sealed class HistoryWalkVerifier
         return false;
     }
 
-    private (List<(ValueHash256 Path, Account Account)> Start, SortedDictionary<ulong, List<(ValueHash256 Path, Account? Account)>> Deltas)
-        ScanAccounts(ulong from, ulong to, CancellationToken token)
+    private void PartitionAccounts((ulong From, ulong To)[] bounds, SegmentData[] data, CancellationToken token)
     {
-        List<(ValueHash256, Account)> start = [];
-        SortedDictionary<ulong, List<(ValueHash256, Account?)>> deltas = [];
-
+        ulong to = bounds[^1].To;
         using ISortedView view = _accountHistory.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(AccountRowKeyLength), ReadFlags.HintCacheMiss);
         ValueHash256 currentPath = default;
         bool haveGroup = false;
-        bool startChosen = false;
+        int pendingStart = -1;
         while (view.MoveNext())
         {
             token.ThrowIfCancellationRequested();
@@ -309,27 +307,29 @@ public sealed class HistoryWalkVerifier
             {
                 currentPath = new ValueHash256(pathBytes);
                 haveGroup = true;
-                startChosen = false;
+                pendingStart = bounds.Length - 1;
             }
 
             ulong block = _rowFormat.DecodeSuffixBlock(key[HistoryKeyLayout.AccountKeyLength..]);
             if (block > to) continue;
 
-            if (block > from)
+            if (block > bounds[0].From)
             {
-                GetOrAdd(deltas, block).Add((currentPath, DecodeAccount(view.CurrentValue)));
+                GetOrAdd(data[SegmentOf(bounds, block)].AccountDeltas, block).Add((currentPath, DecodeAccount(view.CurrentValue)));
             }
-            else if (!startChosen)
+
+            // v2 iterates a key's versions newest-first, so this row is the key's value at the start of every
+            // segment whose start it is the first row at or below - the read path's floor-seek rule, in bulk.
+            if (pendingStart >= 0 && block <= bounds[pendingStart].From)
             {
-                // v2 iterates a key's versions newest-first, so the first row at or below the range start is the
-                // key's value there - the same floor-seek rule the v2 read path applies, done in bulk.
-                startChosen = true;
                 Account? account = DecodeAccount(view.CurrentValue);
-                if (account is not null) start.Add((currentPath, account));
+                while (pendingStart >= 0 && block <= bounds[pendingStart].From)
+                {
+                    if (account is not null) data[pendingStart].StartAccounts.Add((currentPath, account));
+                    pendingStart--;
+                }
             }
         }
-
-        return (start, deltas);
     }
 
     private Dictionary<byte[], List<ulong>> ScanClears(CancellationToken token)
@@ -343,7 +343,7 @@ public sealed class HistoryWalkVerifier
             if (key.Length != ClearRowKeyLength) continue;
 
             byte[] identity = key[..IdentityLength].ToArray();
-            ulong block = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(key[HistoryKeyLayout.AccountKeyLength..]);
+            ulong block = BinaryPrimitives.ReadUInt64BigEndian(key[HistoryKeyLayout.AccountKeyLength..]);
             if (!clears.TryGetValue(identity, out List<ulong>? blocks))
             {
                 blocks = [];
@@ -356,18 +356,18 @@ public sealed class HistoryWalkVerifier
         return clears;
     }
 
-    private (Dictionary<byte[], List<(ValueHash256 SlotPath, byte[] Value)>> Start,
-        SortedDictionary<ulong, List<(byte[] Identity, ValueHash256 SlotPath, byte[] Value)>> Deltas)
-        ScanStorage(ulong from, ulong to, Dictionary<byte[], List<ulong>> clearsByIdentity, CancellationToken token)
+    private void PartitionStorage(
+        (ulong From, ulong To)[] bounds,
+        SegmentData[] data,
+        Dictionary<byte[], List<ulong>> clearsByIdentity,
+        CancellationToken token)
     {
-        Dictionary<byte[], List<(ValueHash256, byte[])>> start = new(Bytes.EqualityComparer);
-        SortedDictionary<ulong, List<(byte[], ValueHash256, byte[])>> deltas = [];
-
+        ulong to = bounds[^1].To;
         using ISortedView view = _storageHistory.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(StorageRowKeyLength), ReadFlags.HintCacheMiss);
         byte[]? currentFlatKey = null;
         byte[]? currentIdentity = null;
         ValueHash256 currentSlot = default;
-        bool startChosen = false;
+        int pendingStart = -1;
         while (view.MoveNext())
         {
             token.ThrowIfCancellationRequested();
@@ -382,33 +382,53 @@ public sealed class HistoryWalkVerifier
                 flatKey[..SlotPathOffset].CopyTo(currentIdentity);
                 flatKey[SlotSuffixOffset..].CopyTo(currentIdentity.AsSpan(SlotPathOffset));
                 currentSlot = new ValueHash256(flatKey[SlotPathOffset..SlotSuffixOffset]);
-                startChosen = false;
+                pendingStart = bounds.Length - 1;
             }
 
             ulong block = _rowFormat.DecodeSuffixBlock(key[BaseFlatPersistence.StorageKeyLength..]);
             if (block > to) continue;
 
-            if (block > from)
+            if (block > bounds[0].From)
             {
-                GetOrAdd(deltas, block).Add((currentIdentity!, currentSlot, view.CurrentValue.ToArray()));
+                GetOrAdd(data[SegmentOf(bounds, block)].SlotDeltas, block).Add((currentIdentity!, currentSlot, view.CurrentValue.ToArray()));
             }
-            else if (!startChosen)
+
+            if (pendingStart >= 0 && block <= bounds[pendingStart].From)
             {
-                startChosen = true;
-                if (view.CurrentValue.IsEmpty) continue;
-                if (KilledByClear(clearsByIdentity, currentIdentity!, writtenAt: block, asOf: from)) continue;
-
-                if (!start.TryGetValue(currentIdentity!, out List<(ValueHash256, byte[])>? slots))
+                byte[]? value = view.CurrentValue.IsEmpty ? null : view.CurrentValue.ToArray();
+                while (pendingStart >= 0 && block <= bounds[pendingStart].From)
                 {
-                    slots = [];
-                    start[currentIdentity!] = slots;
-                }
+                    int segment = pendingStart;
+                    pendingStart--;
+                    if (value is null) continue;
+                    if (KilledByClear(clearsByIdentity, currentIdentity!, writtenAt: block, asOf: bounds[segment].From)) continue;
 
-                slots.Add((currentSlot, view.CurrentValue.ToArray()));
+                    if (!data[segment].StartSlots.TryGetValue(currentIdentity!, out List<(ValueHash256, byte[])>? slots))
+                    {
+                        slots = [];
+                        data[segment].StartSlots[currentIdentity!] = slots;
+                    }
+
+                    slots.Add((currentSlot, value));
+                }
             }
         }
+    }
 
-        return (start, deltas);
+    // bounds are contiguous, so the delta segment for a block in (bounds[0].From, bounds[^1].To] is the unique
+    // one with From < block <= To.
+    private static int SegmentOf((ulong From, ulong To)[] bounds, ulong block)
+    {
+        int lo = 0;
+        int hi = bounds.Length - 1;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) / 2;
+            if (block <= bounds[mid].To) hi = mid;
+            else lo = mid + 1;
+        }
+
+        return lo;
     }
 
     /// <summary>The v2 destruct rule: a slot value written at <paramref name="writtenAt"/> is dead as of

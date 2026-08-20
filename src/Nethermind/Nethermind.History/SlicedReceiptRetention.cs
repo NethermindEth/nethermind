@@ -15,7 +15,6 @@ namespace Nethermind.History;
 internal sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndexStorage logIndexStorage)
 {
     private readonly FrozenSet<Address> _addresses = ParseAddresses(flatDbConfig.HistorySliceAddresses);
-    private readonly ILogIndexStorage _logIndexStorage = logIndexStorage;
 
     public bool ShouldRetainReceipts(Block block)
     {
@@ -30,9 +29,9 @@ internal sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogInd
             return false;
         }
 
-        bool indexCoversBlock = _logIndexStorage.Enabled
-            && _logIndexStorage.MinBlockNumber is { } min && block.Number >= (ulong)min
-            && _logIndexStorage.MaxBlockNumber is { } max && block.Number <= (ulong)max;
+        bool indexCoversBlock = logIndexStorage.Enabled
+            && logIndexStorage.MinBlockNumber is { } min && block.Number >= (ulong)min
+            && logIndexStorage.MaxBlockNumber is { } max && block.Number <= (ulong)max;
 
         foreach (Address address in _addresses)
         {
@@ -46,7 +45,7 @@ internal sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogInd
                 return true;
             }
 
-            using IEnumerator<int> hits = _logIndexStorage.GetEnumerator(address, (int)block.Number, (int)block.Number);
+            using IEnumerator<int> hits = logIndexStorage.GetEnumerator(address, (int)block.Number, (int)block.Number);
             if (hits.MoveNext())
             {
                 return true;

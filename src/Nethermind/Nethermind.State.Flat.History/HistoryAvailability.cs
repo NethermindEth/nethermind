@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Collections.ObjectModel;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -41,7 +42,7 @@ public sealed class HistoryAvailability
     // scope (multiple addresses sharing one record) is a new record kind under a different prefix, not a retrofit
     // of this one - see SliceScopeConfig's remarks.
     private static ReadOnlySpan<byte> ScopeRecordPrefix => "history:floor:scope:"u8;
-    private const int ScopeRecordPrefixLength = 20;
+    private const int ScopeRecordPrefixLength = 20; // == ScopeRecordPrefix.Length, asserted in the static ctor
     private const int ScopeRecordKeyLength = ScopeRecordPrefixLength + HistoryKeyLayout.ScopeKeyLength;
     private const int ScopeRecordValueLength = BlockBytes;
 
@@ -64,6 +65,7 @@ public sealed class HistoryAvailability
     private ScopeFloor[]? _cachedScopes;
     private int _scopeGeneration;
 
+    static HistoryAvailability() => Debug.Assert(ScopeRecordPrefix.Length == ScopeRecordPrefixLength);
 
     public HistoryAvailability(IDb availableBlocks)
     {
@@ -412,14 +414,13 @@ public sealed class HistoryAvailability
         ScopeFloor[] scopes = GetScopesArray();
         for (int i = 0; i < scopes.Length; i++)
         {
-            if (((ReadOnlySpan<byte>)scopes[i].Key).SequenceEqual(key)) return scopes[i];
+            if (scopes[i].Key.AsSpan().SequenceEqual(key)) return scopes[i];
         }
 
         return new ScopeFloor([], knownGeneralFloor, IsGeneral: true);
     }
 
     public ScopeFloor ResolveScope(ReadOnlySpan<byte> key) => ResolveScope(key, GeneralFloorOrZero());
-
 
     private ulong GeneralFloorOrZero()
     {
@@ -458,8 +459,3 @@ public sealed class HistoryAvailability
 
     }
 }
-
-/// <summary>One retention floor: either a configured point scope for exactly one address (<see cref="IsGeneral"/>
-/// false, <see cref="Key"/> its 20-byte account key), or the all-keys fallback (<see cref="IsGeneral"/> true,
-/// <see cref="Key"/> empty).</summary>
-public readonly record struct ScopeFloor(byte[] Key, ulong Floor, bool IsGeneral);

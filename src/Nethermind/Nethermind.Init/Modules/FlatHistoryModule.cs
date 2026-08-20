@@ -5,7 +5,6 @@ using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Db;
-using Nethermind.Init.FlatHistory;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;

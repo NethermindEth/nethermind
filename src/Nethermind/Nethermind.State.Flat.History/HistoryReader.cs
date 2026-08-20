@@ -90,7 +90,7 @@ public sealed class HistoryReader
 
     /// <summary>Every configured per-address slice scope, for a restricted bundle to carry as its own in-memory,
     /// no-further-DB-reads gate.</summary>
-    public IReadOnlyList<ScopeFloor> GetSliceScopes() => _availability.GetScopes();
+    public ScopeFloor[] GetSliceScopesArray() => _availability.GetScopesArray();
 
     /// <summary>
     /// Resolves the account as of <paramref name="block"/>. Returns <c>false</c> when the account did not exist at

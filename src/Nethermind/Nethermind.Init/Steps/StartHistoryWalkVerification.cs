@@ -4,20 +4,18 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
-using Nethermind.Init.FlatHistory;
+using Nethermind.State.Flat.History;
 
 namespace Nethermind.Init.Steps;
 
-/// <summary>
-/// Forces DI construction of the singleton <see cref="HistoryWalkVerificationCoordinator"/> at startup. The
-/// coordinator no-ops for the lifetime of the process when <c>Flat.HistoryVerifyEveryBlock</c> is off.
-/// </summary>
+/// <summary>Starts the every-block history verification; a no-op when <c>FlatDb.HistoryVerifyEveryBlock</c> is
+/// off.</summary>
 [RunnerStepDependencies(dependencies: [typeof(InitializeNetwork)])]
 public class StartHistoryWalkVerification(HistoryWalkVerificationCoordinator coordinator) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        _ = coordinator;
+        coordinator.Start();
         return Task.CompletedTask;
     }
 }

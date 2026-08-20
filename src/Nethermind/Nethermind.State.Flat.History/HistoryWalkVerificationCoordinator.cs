@@ -8,10 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Flat;
-using Nethermind.State.Flat.History;
 
-namespace Nethermind.Init.FlatHistory;
+namespace Nethermind.State.Flat.History;
 
 /// <summary>
 /// Runs the one-shot every-block history proof when <c>Flat.HistoryVerifyEveryBlock</c> is on: waits for a
@@ -30,7 +28,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
     private readonly ILogger _logger;
     private readonly TimeSpan _pollDelay;
     private readonly CancellationTokenSource _cts = new();
-    private readonly Task _loop;
+    private Task _loop = Task.CompletedTask;
     private object? _verdict;
 
     public HistoryWalkVerificationCoordinator(
@@ -54,7 +52,14 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
         // that refusal must fire exactly when the operator asked for a verification the mode cannot deliver -
         // never on a windowed node that left the flag alone.
         _verifier = Started ? new HistoryWalkVerifier(db, history, headers, rowFormat, logManager) : null;
-        _loop = Started ? RunAsync() : Task.CompletedTask;
+    }
+
+    /// <summary>Launches the background verification. Called by the startup step, never from the constructor, so
+    /// resolving the singleton has no side effects. No-op when the flag is off or already started.</summary>
+    public void Start()
+    {
+        if (!Started || !ReferenceEquals(_loop, Task.CompletedTask)) return;
+        _loop = RunAsync();
     }
 
     /// <summary>Whether this instance actually started its background verification - false means

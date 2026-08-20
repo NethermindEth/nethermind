@@ -91,6 +91,14 @@ public class SlicedReceiptRetentionTests
         Assert.That(logs.Length, Is.EqualTo(1));
         Assert.That(logs[0].Address, Is.EqualTo(slicedAddress));
         Assert.That(logs[0].BlockNumber, Is.EqualTo(slicedBlockNumber));
+
+        TxReceipt[] retained = testBlockchain.ReceiptStorage.Get(slicedBlockHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retained, Has.Length.EqualTo(1), "retained receipts must resolve by block hash even though the body is gone");
+            Assert.That(retained[0].TxHash, Is.Not.Null, "the self-describing record carries the tx hash the body would otherwise provide");
+            Assert.That(retained[0].Sender, Is.Not.Null, "the self-describing record carries the recovered sender");
+        }
     }
 
     [Test]

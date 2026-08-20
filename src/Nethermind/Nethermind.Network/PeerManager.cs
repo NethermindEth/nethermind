@@ -461,7 +461,6 @@ namespace Nethermind.Network
                     _logger.Info($"Static peer {peer.Node.Host}:{peer.Node.Port} has been marked as awaiting a connection for over {StaleDialThresholdMs / 1000}s with nothing to show for it; dialing it again rather than waiting on a flag that no longer tracks a live attempt.");
                 }
 
-
                 // The queued dial only marks IsAwaitingConnection once a worker picks it up, so back-to-back
                 // loop iterations would re-queue (and re-log) the same peer during that window.
                 long now = Environment.TickCount64;
@@ -477,7 +476,6 @@ namespace Nethermind.Network
             }
         }
 
-
         private void LogStaticPeerSkip(Peer peer, string reason)
         {
             if (!_logger.IsInfo) return;
@@ -490,7 +488,7 @@ namespace Nethermind.Network
         }
 
         private const long StaticDialDebounceMs = 5_000;
-    private const long StaleDialThresholdMs = 60_000;
+        private const long StaleDialThresholdMs = 60_000;
         private const long StaticSkipLogIntervalMs = 60_000;
         private static readonly TimeSpan StalePongThreshold = TimeSpan.FromSeconds(35);
         private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
@@ -559,7 +557,6 @@ namespace Nethermind.Network
                 await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
             }
         }
-
 
         private async Task RequestAnotherPeerUpdateIfNeededAsync()
         {

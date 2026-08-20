@@ -207,7 +207,7 @@ namespace Nethermind.Network
                 {
                     sessionSyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                     if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
-                    if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
                 }
                 else
                 {

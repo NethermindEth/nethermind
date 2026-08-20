@@ -99,7 +99,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<SnapV1.StorageRangeMessage, SnapV1.StorageRangesMessageSerializer>()
             .AddMessageSerializer<SnapV1.TrieNodesMessage, SnapV1.TrieNodesMessageSerializer>()
 
-
             // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
             // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
             .AddSingleton<IHeaderDecoder, HeaderDecoder>()

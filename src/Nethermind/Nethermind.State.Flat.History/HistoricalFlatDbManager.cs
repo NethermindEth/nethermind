@@ -88,7 +88,7 @@ public sealed class HistoricalFlatDbManager(
 
         if (!historyReader.IsBelowGlobalFloor(baseBlock.BlockNumber)) return HistoricalReadMode.Normal;
 
-        return historyReader.GetSliceScopes().Count > 0 ? HistoricalReadMode.Restricted : HistoricalReadMode.Unavailable;
+        return historyReader.GetSliceScopesArray().Length > 0 ? HistoricalReadMode.Restricted : HistoricalReadMode.Unavailable;
     }
 
     private static void ThrowUnavailable(in StateId baseBlock) =>

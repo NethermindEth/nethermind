@@ -12,14 +12,6 @@ using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
-/// <summary>A per-pass work budget, checked once per scanned row. <see cref="HistoryWindowPruner"/> uses a real
-/// wall-clock budget in production; tests inject a deterministic implementation instead of racing one, per the
-/// project's no-timing-tests rule.</summary>
-internal interface IPruneBudget
-{
-    bool Exhausted { get; }
-}
-
 /// <summary>
 /// Reclaims disk for a bounded rolling window: as the watermark advances, keeps only the row(s) each key's
 /// row format requires for reads in <c>[floor, watermark]</c> to keep resolving, and deletes the rest. A single
@@ -27,7 +19,14 @@ internal interface IPruneBudget
 /// it never blocks capture (which only ever writes above the watermark; the pruner only ever deletes below the
 /// floor, a disjoint range by construction).
 /// </summary>
-public sealed class HistoryWindowPruner : IDisposable
+public sealed class HistoryWindowPruner(
+    HistoryWriter writer,
+    IColumnsDb<FlatHistoryColumns> history,
+    IFlatDbConfig config,
+    HistoryScopeGate scopeGate,
+    HistoryAvailability availability,
+    HistoryRowFormat rowFormat,
+    ILogManager logManager) : IDisposable
 {
     private const int BlockBytes = sizeof(ulong);
     private const int FlushEveryNDeletes = 1000;
@@ -36,49 +35,28 @@ public sealed class HistoryWindowPruner : IDisposable
     private static ReadOnlySpan<byte> StorageCursorKey => "history:prune:cursor:storage"u8;
     private static ReadOnlySpan<byte> ClearsCursorKey => "history:prune:cursor:clears"u8;
     private static ReadOnlySpan<byte> BlocksCursorKey => "history:prune:cursor:blocks"u8;
-    private readonly HistoryWriter _writer;
-    private readonly IDb _availableBlocks;
-    private readonly IDb _accountHistory;
-    private readonly IDb _storageHistory;
-    private readonly IDb _storageClears;
-    private readonly HistoryAvailability _availability;
-    private readonly HistoryRowFormat _rowFormat;
-    private readonly IFlatDbConfig _config;
-    private readonly HistoryScopeGate _scopeGate;
-    private readonly ILogger _logger;
+    private readonly IDb _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+    private readonly IDb _accountHistory = history.GetColumnDb(FlatHistoryColumns.AccountHistory);
+    private readonly IDb _storageHistory = history.GetColumnDb(FlatHistoryColumns.StorageHistory);
+    private readonly IDb _storageClears = history.GetColumnDb(FlatHistoryColumns.StorageClears);
+    private readonly ILogger _logger = logManager.GetClassLogger<HistoryWindowPruner>();
     private readonly SemaphoreSlim _wakeSignal = new(0, 1);
     private readonly CancellationTokenSource _cts = new();
-    private readonly Task _loop;
+    private Task _loop = Task.CompletedTask;
     private ulong _lastFloorPublishWatermark;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
     private bool _disposed;
+    private bool _started;
 
-    public HistoryWindowPruner(
-        HistoryWriter writer,
-        IColumnsDb<FlatHistoryColumns> history,
-        IFlatDbConfig config,
-        HistoryScopeGate scopeGate,
-        HistoryAvailability availability,
-        HistoryRowFormat rowFormat,
-        ILogManager logManager)
+    /// <summary>Subscribes to watermark advances and launches the prune loop. Called by the startup step (after
+    /// the block tree is initialized), never from the constructor, so resolving the singleton has no side effects.
+    /// No-op when retention is unbounded.</summary>
+    public void Start()
     {
-        _writer = writer;
-        _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
-        _accountHistory = history.GetColumnDb(FlatHistoryColumns.AccountHistory);
-        _storageHistory = history.GetColumnDb(FlatHistoryColumns.StorageHistory);
-        _storageClears = history.GetColumnDb(FlatHistoryColumns.StorageClears);
-        _availability = availability;
-        _rowFormat = rowFormat;
-        _config = config;
-        _scopeGate = scopeGate;
-        _logger = logManager.GetClassLogger<HistoryWindowPruner>();
-
-        bool shouldRun = config.HistoryRetentionBlocks > 0;
-        _loop = shouldRun ? RunLoopAsync() : Task.CompletedTask;
-        if (shouldRun)
-        {
-            writer.WatermarkAdvanced += OnWatermarkAdvanced;
-        }
+        if (config.HistoryRetentionBlocks == 0 || _started) return;
+        _started = true;
+        writer.WatermarkAdvanced += OnWatermarkAdvanced;
+        _loop = RunLoopAsync();
     }
 
     /// <summary>One-time (startup) reconciliation of the allow-list against the scope records on disk: removes
@@ -87,9 +65,9 @@ public sealed class HistoryWindowPruner : IDisposable
     /// retention shallower than the general window.</exception>
     public void ReconcileSliceScopes()
     {
-        IReadOnlyList<SliceScopeEntry> configured = SliceScopeConfig.Parse(_config.HistorySliceAddresses);
+        IReadOnlyList<SliceScopeEntry> configured = SliceScopeConfig.Parse(config.HistorySliceAddresses);
 
-        if (configured.Count > 0 && !_rowFormat.IsV3)
+        if (configured.Count > 0 && !rowFormat.IsV3)
         {
             throw new InvalidConfigurationException(
                 "Flat.HistorySliceAddresses is set, but this flatHistory database is not windowed " +
@@ -99,11 +77,11 @@ public sealed class HistoryWindowPruner : IDisposable
 
         foreach (SliceScopeEntry entry in configured)
         {
-            if (entry.RetentionBlocks is { } sliceRetention && sliceRetention < _config.HistoryRetentionBlocks)
+            if (entry.RetentionBlocks is { } sliceRetention && sliceRetention < config.HistoryRetentionBlocks)
             {
                 throw new InvalidConfigurationException(
                     $"Flat.HistorySliceAddresses entry for {entry.Address} sets retention {sliceRetention}, " +
-                    $"shallower than HistoryRetentionBlocks ({_config.HistoryRetentionBlocks}). A slice can only " +
+                    $"shallower than HistoryRetentionBlocks ({config.HistoryRetentionBlocks}). A slice can only " +
                     "deepen retention: a shallower one would delete that address's rows inside the general window " +
                     "while reads still resolve them from live state, silently returning wrong historical values.", -1);
             }
@@ -117,22 +95,22 @@ public sealed class HistoryWindowPruner : IDisposable
 
         // Runs even for an empty configured list, so removing the last remaining slice from the allow-list still
         // deletes its scope record instead of leaving it orphaned on disk.
-        foreach (ScopeFloor existing in _availability.GetScopes())
+        foreach (ScopeFloor existing in availability.GetScopes())
         {
             if (!configuredByKey.ContainsKey(existing.Key))
             {
-                _availability.RemoveScope(existing.Key);
+                availability.RemoveScope(existing.Key);
             }
         }
 
         if (configured.Count == 0) return;
 
-        _availability.TryGetGlobalFloor(out ulong currentGeneralFloor);
-        ulong watermark = _writer.LastCapturedBlock;
+        availability.TryGetGlobalFloor(out ulong currentGeneralFloor);
+        ulong watermark = writer.LastCapturedBlock;
 
         foreach ((byte[] key, SliceScopeEntry entry) in configuredByKey)
         {
-            if (_availability.TryGetScopeFloor(key, out _)) continue;
+            if (availability.TryGetScopeFloor(key, out _)) continue;
 
             ulong seedFloor = currentGeneralFloor;
             if (entry.RetentionBlocks is { } retention)
@@ -141,7 +119,7 @@ public sealed class HistoryWindowPruner : IDisposable
                 seedFloor = Math.Max(currentGeneralFloor, retentionFloor);
             }
 
-            _availability.PublishScope(key, seedFloor);
+            availability.PublishScope(key, seedFloor);
         }
     }
 
@@ -151,11 +129,11 @@ public sealed class HistoryWindowPruner : IDisposable
     /// raise-only CAS), and never below <see cref="ReconcileSliceScopes"/>'s seed.</summary>
     private void MaintainBoundedSliceFloors(ulong watermark)
     {
-        _configuredSlices ??= SliceScopeConfig.Parse(_config.HistorySliceAddresses);
+        _configuredSlices ??= SliceScopeConfig.Parse(config.HistorySliceAddresses);
         foreach (SliceScopeEntry entry in _configuredSlices)
         {
             if (entry.RetentionBlocks is not { } retention || watermark <= retention) continue;
-            _availability.TryRaiseScopeFloor(AccountKeyOf(entry.Address), watermark - retention);
+            availability.TryRaiseScopeFloor(AccountKeyOf(entry.Address), watermark - retention);
         }
     }
 
@@ -168,7 +146,7 @@ public sealed class HistoryWindowPruner : IDisposable
         // writer's capture path runs on: Volatile is the correctness requirement, not the plain field a
         // single-writer/single-reader assumption would permit.
         if (Volatile.Read(ref _disposed)) return;
-        if (watermark < Volatile.Read(ref _lastFloorPublishWatermark) + _config.HistoryPruneIntervalBlocks) return;
+        if (watermark < Volatile.Read(ref _lastFloorPublishWatermark) + config.HistoryPruneIntervalBlocks) return;
         try { _wakeSignal.Release(); } catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException) { }
     }
 
@@ -203,7 +181,7 @@ public sealed class HistoryWindowPruner : IDisposable
     {
         // Never zero: a zero-duration wall-clock budget would exhaust before scanning a single row, forever
         // (HasAnyPendingCursor then stays true, so the floor can never advance again either).
-        TimeSpan passBudget = TimeSpan.FromSeconds(Math.Max(1, _config.HistoryPrunePassBudgetSeconds));
+        TimeSpan passBudget = TimeSpan.FromSeconds(Math.Max(1, config.HistoryPrunePassBudgetSeconds));
         Func<IPruneBudget> newBudget = budgetFactory ?? (() => new WallClockBudget(passBudget));
 
         bool completedReadPathWindow = RunReadPathWindowPass(passBudget, newBudget, token);
@@ -220,7 +198,7 @@ public sealed class HistoryWindowPruner : IDisposable
     /// pass finished the whole window (all four columns), not just started it.</summary>
     private bool RunReadPathWindowPass(TimeSpan passBudget, Func<IPruneBudget> newBudget, CancellationToken token)
     {
-        ulong retention = _config.HistoryRetentionBlocks;
+        ulong retention = config.HistoryRetentionBlocks;
         if (retention == 0) return true;
 
         ulong floor;
@@ -229,17 +207,17 @@ public sealed class HistoryWindowPruner : IDisposable
             // A previous pass yielded mid-column for the already-published floor: resume that work. Computing
             // and comparing a fresh floor here would see "no advance" (the floor was already published) and skip
             // the pass entirely, silently abandoning the deletes it still owes for the current window.
-            if (!_availability.TryGetGlobalFloor(out floor)) return true;
+            if (!availability.TryGetGlobalFloor(out floor)) return true;
         }
         else
         {
-            ulong watermark = _writer.LastCapturedBlock;
+            ulong watermark = writer.LastCapturedBlock;
             MaintainBoundedSliceFloors(watermark);
             if (watermark <= retention) return true;
 
             ulong newFloor = watermark - retention;
 
-            if (!_availability.TryRaiseGlobalFloor(newFloor)) return true;
+            if (!availability.TryRaiseGlobalFloor(newFloor)) return true;
 
             Metrics.FlatHistoryFloor = (long)newFloor;
             Volatile.Write(ref _lastFloorPublishWatermark, watermark);
@@ -248,7 +226,7 @@ public sealed class HistoryWindowPruner : IDisposable
             // Floor publishes before the drain (and before any delete): a scope opened after this point already
             // sees the new floor at its own admission check, so it is safe by construction regardless of which
             // epoch it lands in — only scopes admitted under the old, lower floor need draining before deleting.
-            if (!_scopeGate.TryDrainForFloorAdvance(passBudget, token))
+            if (!scopeGate.TryDrainForFloorAdvance(passBudget, token))
             {
                 if (_logger.IsWarn) _logger.Warn(
                     "History window pruner published a new floor but historical read scopes opened before it did not drain within the budget; deletes for this floor are deferred to the next pass.");
@@ -259,7 +237,7 @@ public sealed class HistoryWindowPruner : IDisposable
         // Each column gets its own budget instance so a slow account column can never starve storage/clears/markers
         // of all progress: without this, a resumed pass would always restart from "has account finished yet?" and
         // the other three columns could go passes on end without a single row examined.
-        bool hasScopes = _availability.GetScopesArray().Length > 0;
+        bool hasScopes = availability.GetScopesArray().Length > 0;
 
         // Clears and block markers are retained down to the DEEPEST configured scope floor, so a sliced address's
         // clear-probe and canonicity check stay answerable - coarser than per-key, but never a wrong answer.
@@ -276,7 +254,7 @@ public sealed class HistoryWindowPruner : IDisposable
     private ulong ComputeMinScopeFloor(ulong generalFloor)
     {
         ulong minFloor = generalFloor;
-        ScopeFloor[] scopes = _availability.GetScopesArray();
+        ScopeFloor[] scopes = availability.GetScopesArray();
         for (int i = 0; i < scopes.Length; i++)
         {
             if (scopes[i].Floor < minFloor) minFloor = scopes[i].Floor;
@@ -337,14 +315,14 @@ public sealed class HistoryWindowPruner : IDisposable
                     if (hasScopes)
                     {
                         keyLayout.ExtractAddressKey(keyPrefix, addressKey);
-                        currentGroupFloor = _availability.ResolveScope(addressKey, floor).Floor;
+                        currentGroupFloor = availability.ResolveScope(addressKey, floor).Floor;
                     }
                 }
 
-                ulong block = _rowFormat.DecodeSuffixBlock(key[flatKeyLength..]);
+                ulong block = rowFormat.DecodeSuffixBlock(key[flatKeyLength..]);
                 if (block <= currentGroupFloor)
                 {
-                    if (_rowFormat.RetainsNewestRowAtOrBelowFloor && !currentGroupHasFloorRow)
+                    if (rowFormat.RetainsNewestRowAtOrBelowFloor && !currentGroupHasFloorRow)
                     {
                         currentGroupHasFloorRow = true;
                     }
@@ -404,7 +382,7 @@ public sealed class HistoryWindowPruner : IDisposable
                 ulong block = BinaryPrimitives.ReadUInt64BigEndian(key[accountKeyLength..]);
                 if (block < floor)
                 {
-                    if (pendingBelowFloorKey is not null && key[..accountKeyLength].SequenceEqual(((ReadOnlySpan<byte>)pendingBelowFloorKey)[..accountKeyLength]))
+                    if (pendingBelowFloorKey is not null && key[..accountKeyLength].SequenceEqual(pendingBelowFloorKey.AsSpan(0, accountKeyLength)))
                     {
                         batch.Remove(pendingBelowFloorKey);
                         Metrics.FlatHistoryPrunedRows++;
@@ -490,9 +468,9 @@ public sealed class HistoryWindowPruner : IDisposable
     public void Dispose()
     {
         Volatile.Write(ref _disposed, true);
-        if (_config.HistoryRetentionBlocks > 0)
+        if (_started)
         {
-            _writer.WatermarkAdvanced -= OnWatermarkAdvanced;
+            writer.WatermarkAdvanced -= OnWatermarkAdvanced;
         }
 
         _cts.Cancel();

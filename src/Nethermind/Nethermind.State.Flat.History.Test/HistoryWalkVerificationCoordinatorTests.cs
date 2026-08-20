@@ -7,13 +7,10 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
-using Nethermind.Init.FlatHistory;
 using Nethermind.Logging;
-using Nethermind.State.Flat;
-using Nethermind.State.Flat.History;
 using NUnit.Framework;
 
-namespace Nethermind.Runner.Test.Ethereum;
+namespace Nethermind.State.Flat.History.Test;
 
 [TestFixture]
 public class HistoryWalkVerificationCoordinatorTests
@@ -84,6 +81,7 @@ public class HistoryWalkVerificationCoordinatorTests
 
         using HistoryWalkVerificationCoordinator coordinator = new(
             _db, _historyColumns, headers, availability, rowFormat, config, LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+        coordinator.Start();
 
         Assert.That(coordinator.Started, Is.True);
 

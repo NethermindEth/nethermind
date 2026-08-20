@@ -440,30 +440,27 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// by <see cref="ResolvePendingV3"/> once the walk connects).</summary>
     private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, PendingV3Writes pending, IWriteBatch accountBatch)
     {
-        byte[] flatKey = addrHash.Bytes.ToArray();
-
         if (account is null)
         {
-            pending.ResolveAndTrack(pending.Accounts, flatKey, block, ReadOnlySpan<byte>.Empty, accountBatch, _accountHistoryV3!);
+            pending.TrackAccount(addrHash, block, ReadOnlySpan<byte>.Empty, accountBatch, _accountHistoryV3!);
             return;
         }
 
         using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        pending.ResolveAndTrack(pending.Accounts, flatKey, block, rlp, accountBatch, _accountHistoryV3!);
+        pending.TrackAccount(addrHash, block, rlp, accountBatch, _accountHistoryV3!);
     }
 
     private void RecordStorageV3(ulong block, in ValueHash256 addrHash, in UInt256 slot, in SlotValue? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
-        byte[] flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrHash, slotHash).ToArray();
 
         int written = value is SlotValue slotValue
             ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
             : 0;
         // valueBuffer[..written] is passed straight through as a span: it is only ever written synchronously into
         // the batch within this same call.
-        pending.ResolveAndTrack(pending.Storages, flatKey, block, valueBuffer[..written], storageBatch, _storageHistoryV3!);
+        pending.TrackStorage(addrHash, slotHash, block, valueBuffer[..written], keyBuffer, storageBatch, _storageHistoryV3!);
     }
 
     /// <summary>v3 only: a self-destruct wipes slots via a range-delete with no per-slot entries, so the account's
@@ -483,8 +480,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 return;
             }
 
-            byte[] flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(storageKeyBuffer, addrHash, slots.CurrentKey).ToArray();
-            pending.ResolveAndTrack(pending.Storages, flatKey, block, ReadOnlySpan<byte>.Empty, storageBatch, _storageHistoryV3!);
+            pending.TrackStorage(addrHash, slots.CurrentKey, block, ReadOnlySpan<byte>.Empty, storageKeyBuffer, storageBatch, _storageHistoryV3!);
         }
     }
 
@@ -499,38 +495,53 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         IWriteBatch accountBatch = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
         IWriteBatch storageBatch = batch.GetColumnBatch(FlatHistoryColumns.StorageHistory);
 
+        Span<byte> keyBuffer = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
         Span<byte> valueBuffer = stackalloc byte[PendingPreValueBufferSize];
-        foreach ((byte[] flatKey, ulong block) in SortedByKey(pending.Accounts))
+        foreach (KeyValuePair<ValueHash256, ulong> entry in SortedAccounts(pending.Accounts))
         {
-            int written = _persistedAccounts.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), valueBuffer);
-            _accountHistoryV3!.RecordPreValue(block, flatKey, valueBuffer[..Math.Max(written, 0)], accountBatch);
+            int written = _persistedAccounts.Get(HistoryKeyLayout.ToFlatStateKey(entry.Key.Bytes), valueBuffer);
+            _accountHistoryV3!.RecordPreValue(entry.Value, entry.Key.Bytes, valueBuffer[..Math.Max(written, 0)], accountBatch);
         }
 
-        foreach ((byte[] flatKey, ulong block) in SortedByKey(pending.Storages))
+        foreach (KeyValuePair<PendingV3Writes.SlotKey, ulong> entry in SortedStorages(pending.Storages))
         {
+            ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, entry.Key.AddrPath, entry.Key.SlotHash);
             int written = _persistedStorage.Get(flatKey, valueBuffer);
-            _storageHistoryV3!.RecordPreValue(block, flatKey, valueBuffer[..Math.Max(written, 0)], storageBatch);
+            _storageHistoryV3!.RecordPreValue(entry.Value, flatKey, valueBuffer[..Math.Max(written, 0)], storageBatch);
         }
     }
 
-    // Sorted so the point reads walk the persisted column in key order, sharing index and data blocks instead of
-    // seeking randomly per key.
-    private static (byte[] FlatKey, ulong Block)[] SortedByKey(Dictionary<byte[], (byte[] FlatKey, ulong Block)> map)
+    // Sorted so the point reads walk the persisted column in key order (grouped per account for storage), sharing
+    // index and data blocks instead of seeking randomly per key.
+    private static KeyValuePair<ValueHash256, ulong>[] SortedAccounts(Dictionary<ValueHash256, ulong> map)
     {
-        (byte[] FlatKey, ulong Block)[] entries = new (byte[] FlatKey, ulong Block)[map.Count];
-        map.Values.CopyTo(entries, 0);
-        Array.Sort(entries, static (a, b) => Bytes.BytesComparer.Compare(a.FlatKey, b.FlatKey));
+        KeyValuePair<ValueHash256, ulong>[] entries = new KeyValuePair<ValueHash256, ulong>[map.Count];
+        ((ICollection<KeyValuePair<ValueHash256, ulong>>)map).CopyTo(entries, 0);
+        Array.Sort(entries, static (a, b) => a.Key.Bytes.SequenceCompareTo(b.Key.Bytes));
         return entries;
     }
 
-    /// <summary>Per-walk deferred-resolution state for v3 capture — see <see cref="RecordAccountV3"/>. Keyed
-    /// directly on the flat-key bytes via <see cref="Bytes.EqualityComparer"/> (value, not reference, equality) —
-    /// no hex-string re-encoding of a key that is already a byte[], which this hot path (every touch of every
-    /// captured block) does not need to allocate on top of.</summary>
+    private static KeyValuePair<PendingV3Writes.SlotKey, ulong>[] SortedStorages(Dictionary<PendingV3Writes.SlotKey, ulong> map)
+    {
+        KeyValuePair<PendingV3Writes.SlotKey, ulong>[] entries = new KeyValuePair<PendingV3Writes.SlotKey, ulong>[map.Count];
+        ((ICollection<KeyValuePair<PendingV3Writes.SlotKey, ulong>>)map).CopyTo(entries, 0);
+        Array.Sort(entries, static (a, b) =>
+        {
+            int byAccount = a.Key.AddrPath.Bytes.SequenceCompareTo(b.Key.AddrPath.Bytes);
+            return byAccount != 0 ? byAccount : a.Key.SlotHash.Bytes.SequenceCompareTo(b.Key.SlotHash.Bytes);
+        });
+        return entries;
+    }
+
+    /// <summary>Per-walk deferred-resolution state for v3 capture — see <see cref="RecordAccountV3"/>. Keyed on
+    /// value structs so tracking a touch allocates nothing; the flat key bytes are re-encoded into a caller
+    /// buffer only when a pending row is actually written.</summary>
     private sealed class PendingV3Writes
     {
-        public readonly Dictionary<byte[], (byte[] FlatKey, ulong Block)> Accounts = new(Bytes.EqualityComparer);
-        public readonly Dictionary<byte[], (byte[] FlatKey, ulong Block)> Storages = new(Bytes.EqualityComparer);
+        public readonly record struct SlotKey(ValueHash256 AddrPath, ValueHash256 SlotHash);
+
+        public readonly Dictionary<ValueHash256, ulong> Accounts = [];
+        public readonly Dictionary<SlotKey, ulong> Storages = [];
 
         public void Clear()
         {
@@ -538,28 +549,38 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             Storages.Clear();
         }
 
-        public void ResolveAndTrack(
-            Dictionary<byte[], (byte[] FlatKey, ulong Block)> map,
-            byte[] flatKey,
+        public void TrackAccount(in ValueHash256 addrPath, ulong block, ReadOnlySpan<byte> postValue, IWriteBatch batch, HistoryStoreV3 store)
+        {
+            ref ulong entry = ref CollectionsMarshal.GetValueRefOrAddDefault(Accounts, addrPath, out bool exists);
+            if (exists)
+            {
+                if (entry == block) return; // same-block re-touch: resolving here would fabricate a pre-value
+
+                store.RecordPreValue(entry, addrPath.Bytes, postValue, batch);
+            }
+
+            entry = block;
+        }
+
+        public void TrackStorage(
+            in ValueHash256 addrPath,
+            in ValueHash256 slotHash,
             ulong block,
             ReadOnlySpan<byte> postValue,
+            Span<byte> keyBuffer,
             IWriteBatch batch,
             HistoryStoreV3 store)
         {
-            ref (byte[] FlatKey, ulong Block) entry = ref CollectionsMarshal.GetValueRefOrAddDefault(map, flatKey, out bool exists);
+            ref ulong entry = ref CollectionsMarshal.GetValueRefOrAddDefault(Storages, new SlotKey(addrPath, slotHash), out bool exists);
             if (exists)
             {
-                if (entry.Block == block)
-                {
-                    // A second touch of the same key within the same block (destruct wipe + same-block rewrite):
-                    // firing RecordPreValue between them would fabricate a pre-value, so leave the entry pending.
-                    return;
-                }
+                if (entry == block) return; // destruct wipe + same-block rewrite: leave the entry pending
 
-                store.RecordPreValue(entry.Block, entry.FlatKey, postValue, batch);
+                ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrPath, slotHash);
+                store.RecordPreValue(entry, flatKey, postValue, batch);
             }
 
-            entry = (flatKey, block);
+            entry = block;
         }
     }
 

@@ -30,7 +30,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
 
     // Non-null only below the general retention floor, where per-address slices are all that remains: every read
     // checks the requested address against this in-memory set and fails closed for anything outside it.
-    private readonly IReadOnlyList<ScopeFloor>? _sliceScopes;
+    private readonly ScopeFloor[]? _sliceScopes;
 
     public HistoryBackedPersistenceReader(HistoryReader historyReader, StateId block, HistoryScopeGate scopeGate, bool restrictToSlices = false)
     {
@@ -39,7 +39,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         _scopeGate = scopeGate;
         _scopeToken = scopeGate.EnterScope();
 
-        if (restrictToSlices) _sliceScopes = historyReader.GetSliceScopes();
+        if (restrictToSlices) _sliceScopes = historyReader.GetSliceScopesArray();
 
         bool available = restrictToSlices ? historyReader.IsCoveredAndRootMatches(block) : historyReader.IsAvailable(block);
         if (!available)
@@ -88,10 +88,10 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
     private void RequireRetainedBySlice(Address address)
     {
         ReadOnlySpan<byte> key = address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength];
-        for (int i = 0; i < _sliceScopes!.Count; i++)
+        for (int i = 0; i < _sliceScopes!.Length; i++)
         {
             ScopeFloor scope = _sliceScopes[i];
-            if (_block.BlockNumber >= scope.Floor && ((ReadOnlySpan<byte>)scope.Key).SequenceEqual(key)) return;
+            if (_block.BlockNumber >= scope.Floor && scope.Key.AsSpan().SequenceEqual(key)) return;
         }
 
         throw StateUnavailable(new StateUnavailableException(

@@ -20,10 +20,4 @@ public enum FlatHistoryColumns
     StorageHistory,
     AvailableBlocks,
     StorageClears,
-
-    /// <summary>
-    /// Retired block-major changeset feed. The enum entry stays so RocksDB keeps opening databases that already
-    /// created its column family; nothing reads or writes it anymore.
-    /// </summary>
-    ChangesetSidecar,
 }

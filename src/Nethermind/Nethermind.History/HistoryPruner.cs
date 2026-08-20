@@ -403,8 +403,7 @@ public class HistoryPruner : IHistoryPruner
                         if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {blockInfo.BlockHash}.");
                         _blockTree.DeleteOldBlock(number, blockInfo.BlockHash);
                         if (_slicedReceiptRetention.ShouldRetainReceipts(block)
-                            && _receiptStorage is ISelfDescribingReceiptRetention selfDescribingReceiptRetention
-                            && selfDescribingReceiptRetention.TryRetainSelfDescribing(block))
+                            && _receiptStorage.TryRetainSelfDescribing(block))
                         {
                             Metrics.SlicedReceiptsRetained++;
                         }
