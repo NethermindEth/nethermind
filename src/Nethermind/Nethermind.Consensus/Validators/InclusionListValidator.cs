@@ -63,8 +63,8 @@ public static class InclusionListValidator
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? senderCache)
     {
         if (tx.SenderAddress is null) return false;
-        // Blob txs MUST NOT appear in an IL.
-        if (tx.SupportsBlobs) return false;
+        // Blob txs MUST NOT appear in an IL — including EIP-8141 blob-carrying frame txs.
+        if (tx.SupportsBlobs || tx.CarriesBlobs) return false;
         // Subtract on the block side (GasUsed <= GasLimit is invariant): block.GasLimit - tx.GasLimit
         // would underflow for an oversized tx.
         if (tx.GasLimit > block.GasLimit - block.GasUsed) return false;
