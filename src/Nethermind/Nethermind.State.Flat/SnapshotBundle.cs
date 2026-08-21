@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
@@ -399,6 +400,71 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+    }
+
+    /// <summary>
+    /// The trie warmer's state RLP load, publishing what it read into <see cref="TransientResource.Nodes"/>.
+    /// </summary>
+    /// <remarks>
+    /// A warmer miss means the node is absent from the in-memory structures, not from persistence, so the warmer
+    /// resolves it with this read. Without publishing, that read serves only the warmer's own throwaway node: the
+    /// block's live reads and <see cref="TrieNodeCache.Add"/> both consult <see cref="TransientResource.Nodes"/>,
+    /// so they repeat the same persistence read instead of reusing it.
+    /// <para>
+    /// The published node is a private copy decoded <em>before</em> it is stored and never handed to the warmer, so
+    /// no reader can observe it mid-resolution. That is the hazard which made publishing the warmer's own instance
+    /// unsafe: a placeholder resolved in place is a node whose <see cref="NodeType"/> and RLP change under readers.
+    /// </para>
+    /// </remarks>
+    internal byte[]? TryLoadStateRlpForWarmer(in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        byte[]? rlp = TryLoadStateRlp(path, hash, flags);
+        if (rlp is { Length: > 0 })
+        {
+            PublishWarmedNode(null, path, hash, rlp);
+        }
+
+        return rlp;
+    }
+
+    /// <inheritdoc cref="TryLoadStateRlpForWarmer"/>
+    internal byte[]? TryLoadStorageRlpForWarmer(Hash256AsKey address, in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        byte[]? rlp = TryLoadStorageRlp(address.Value, path, hash, flags);
+        if (rlp is { Length: > 0 })
+        {
+            PublishWarmedNode(address, path, hash, rlp);
+        }
+
+        return rlp;
+    }
+
+    private void PublishWarmedNode(Hash256AsKey? address, in TreePath path, Hash256 hash, byte[] rlp)
+    {
+        // Decode before publishing: the transient hands this instance to concurrent live reads and to
+        // TrieNodeCache.Add, neither of which may see a node that is still being resolved.
+        TrieNode node = new(NodeType.Unknown, hash, rlp);
+        node.ResolveNode(NullTrieNodeResolver.Instance, path);
+
+        // Same lease + ABA re-check as the warmer's find path; a torn-down bundle simply skips publishing.
+        TransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return;
+
+        try
+        {
+            if (address is { } addressKey)
+            {
+                transientResource.GetOrAddStorageNode(addressKey, path, node);
+            }
+            else
+            {
+                transientResource.GetOrAddStateNode(path, node);
+            }
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
     }
 
     // This is called only during trie commit
