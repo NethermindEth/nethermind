@@ -100,9 +100,9 @@ public class MergePluginModule : Module
             .AddDecorator<ISealer, MergeSealer>()
 
             .AddSingleton<ManualTimestamper>()
-            .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager>(
-                (specProvider, sealEngine, timestamper, blocksConfig, logManager) =>
-                    new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager))
+            .AddSingleton<PostMergeBlockProducerFactory, ISpecProvider, ISealEngine, ManualTimestamper, IBlocksConfig, ILogManager, IInclusionListTxSource>(
+                (specProvider, sealEngine, timestamper, blocksConfig, logManager, inclusionListTxSource) =>
+                    new PostMergeBlockProducerFactory(specProvider, sealEngine, timestamper, blocksConfig, logManager, inclusionListTxSource: inclusionListTxSource))
             .AddDecorator<IBlockProducerFactory, MergeBlockProducerFactory>()
             .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
             .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()

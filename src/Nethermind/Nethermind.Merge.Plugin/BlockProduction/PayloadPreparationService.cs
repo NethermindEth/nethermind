@@ -120,11 +120,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        // PrepareEmptyBlock bypasses tx selection, so no inclusion-list transaction would reach the block.
-        IBlockProducer.Flags flags = payloadAttributes.InclusionListTransactions is { Length: > 0 }
-            ? IBlockProducer.Flags.DontSeal
-            : IBlockProducer.Flags.PrepareEmptyBlock;
-        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: flags).Result!;
+        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result!;
 
         if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;
