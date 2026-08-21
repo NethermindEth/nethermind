@@ -17,6 +17,7 @@ public class PayloadDecoder : IPayloadDecoder
     {
     }
 
+    /// <inheritdoc/>
     public ExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data)
     {
         if (data.Length < Hash256.Size)

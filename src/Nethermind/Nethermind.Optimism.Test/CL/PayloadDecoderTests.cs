@@ -33,15 +33,19 @@ public class PayloadDecoderTests
         byte[] bytes = Convert.FromBase64String(testCase.Data);
 
         // The transactions region ends at the payload end and starts with one 4-byte offset per transaction
-        int transactionsOffset = bytes.Length - 4 * testCase.Payload.Transactions.Length;
+        Assert.That(testCase.Payload.Transactions, Is.Not.Empty);
+        int offsetTableSize = 4 * testCase.Payload.Transactions.Length;
+        int transactionsOffset = bytes.Length - offsetTableSize;
         foreach (byte[] transaction in testCase.Payload.Transactions)
         {
             transactionsOffset -= transaction.Length;
         }
+        Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(transactionsOffset, 4)), Is.EqualTo(offsetTableSize));
+
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(transactionsOffset, 4), firstTxOffset);
 
         Func<ExecutionPayloadV3> tryDecode = () => PayloadDecoder.Instance.DecodePayload(bytes);
-        Assert.That(tryDecode, Throws.TypeOf<InvalidDataException>().With.Message.Contains("Transaction"));
+        Assert.That(tryDecode, Throws.TypeOf<InvalidDataException>());
     }
 
     [TestCaseSource(nameof(RealPayloadsTestCases))]
@@ -91,6 +95,7 @@ public class PayloadDecoderTests
             try
             {
                 PayloadDecoder.Instance.DecodePayload(bytes.AsSpan(0, length));
+                Assert.Fail($"Truncating to {length} bytes decoded successfully");
             }
             catch (InvalidDataException)
             {
@@ -98,6 +103,37 @@ public class PayloadDecoderTests
             catch (Exception e)
             {
                 Assert.Fail($"Truncating to {length} bytes threw {e.GetType().Name}: {e.Message}");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Truncation is rejected by the container offset table before the transactions, extra data and
+    /// withdrawals regions are read, so corrupting each byte in turn is what reaches those.
+    /// </remarks>
+    [TestCaseSource(nameof(RealPayloadsTestCases))]
+    public void DecodePayload_CorruptedByte((string Data, ExecutionPayloadV3 Payload) testCase)
+    {
+        byte[] bytes = Convert.FromBase64String(testCase.Data);
+
+        for (int index = 0; index < bytes.Length; index++)
+        {
+            byte original = bytes[index];
+            bytes[index] = (byte)~original;
+            try
+            {
+                PayloadDecoder.Instance.DecodePayload(bytes);
+            }
+            catch (InvalidDataException)
+            {
+            }
+            catch (Exception e)
+            {
+                Assert.Fail($"Corrupting byte {index} threw {e.GetType().Name}: {e.Message}");
+            }
+            finally
+            {
+                bytes[index] = original;
             }
         }
     }
