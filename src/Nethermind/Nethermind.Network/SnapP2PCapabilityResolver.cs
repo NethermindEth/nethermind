@@ -4,11 +4,14 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Network;
 
@@ -29,11 +32,12 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     private readonly ISyncConfig _syncConfig;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISyncProgressResolver _syncProgressResolver;
+    private readonly IStateSyncPivot _stateSyncPivot;
     private readonly ISpecProvider _specProvider;
+    private readonly IBalHealing _balHealing;
     private readonly ILogger _logger;
 
-    // BAL healing isn't implemented yet - always false until it lands.
-    private readonly bool _canBalHeal = false;
+    private volatile bool _canBalHeal;
 
     private volatile bool _stateDownloaded;
 
@@ -43,15 +47,21 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         ISyncConfig syncConfig,
         ISyncModeSelector syncModeSelector,
         ISyncProgressResolver syncProgressResolver,
+        IStateSyncPivot stateSyncPivot,
         ISpecProvider specProvider,
+        IBalHealing balHealing,
         ILogManager logManager)
     {
         _syncConfig = syncConfig;
         _syncModeSelector = syncModeSelector;
         _syncProgressResolver = syncProgressResolver;
+        _stateSyncPivot = stateSyncPivot;
         _specProvider = specProvider;
+        _balHealing = balHealing;
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
         _syncModeSelector.Changed += OnSyncModeChanged;
+        _stateSyncPivot.FirstPivotSet += OnFirstPivotSet;
+        _canBalHeal = ComputeCanBalHeal(_stateSyncPivot.FirstPivotHeader);
     }
 
     public void Resolve(ISet<Capability> capabilities)
@@ -78,6 +88,13 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
 
     private bool StateDownloaded() => _syncProgressResolver.FindBestFullState() >= _syncProgressResolver.SyncPivot.BlockNumber;
 
+    private bool ComputeCanBalHeal(BlockHeader? firstPivotHeader)
+    {
+        if (!_syncConfig.SnapSync || _balHealing is NoopBalHealing || firstPivotHeader is null) return false;
+
+        return _specProvider.GetSpec(firstPivotHeader).BlockLevelAccessListsEnabled;
+    }
+
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {
         bool stateWasDownloaded = _stateDownloaded;
@@ -88,5 +105,19 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         Changed?.Invoke();
     }
 
-    public void Dispose() => _syncModeSelector.Changed -= OnSyncModeChanged;
+    private void OnFirstPivotSet(object? sender, BlockHeaderEventArgs e)
+    {
+        bool couldBalHeal = _canBalHeal;
+        _canBalHeal = ComputeCanBalHeal(e.Header);
+        if (couldBalHeal != _canBalHeal)
+        {
+            Changed?.Invoke();
+        }
+    }
+
+    public void Dispose()
+    {
+        _syncModeSelector.Changed -= OnSyncModeChanged;
+        _stateSyncPivot.FirstPivotSet -= OnFirstPivotSet;
+    }
 }
