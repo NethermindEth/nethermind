@@ -87,6 +87,45 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver ReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
 
+    // --- Carry-forward cache metrics ---
+    //
+    // Hit/miss counters are the cross-block state-cache signal: they count only reads that already
+    // fell through the pre-block caches and the whole snapshot chain, so the hit rate here is the
+    // share of otherwise-cold reads a cross-block cache answers. Wipes indicate the entry cap is
+    // binding (the cache clears wholesale rather than evicting).
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward account cache hits")]
+    public static long CarryForwardAccountHits;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward account cache misses")]
+    public static long CarryForwardAccountMisses;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward slot cache hits")]
+    public static long CarryForwardSlotHits;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward slot cache misses")]
+    public static long CarryForwardSlotMisses;
+
+    [CounterMetric]
+    [Description("Times the carry-forward cache was cleared wholesale because the per-kind entry cap was reached")]
+    public static long CarryForwardWipes;
+
+    [GaugeMetric]
+    [Description("Accounts currently held by the carry-forward cache")]
+    public static long CarryForwardAccountCount;
+
+    [GaugeMetric]
+    [Description("Slots currently held by the carry-forward cache")]
+    public static long CarryForwardSlotCount;
+
     [DetailedMetric]
     [Description("Time spend compacting snapshots")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]
