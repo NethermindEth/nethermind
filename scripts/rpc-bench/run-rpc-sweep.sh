@@ -188,6 +188,35 @@ PY
   fi
 }
 
+# Requests a finished k6 cell actually delivered. The warm-up is sized by a request count, and
+# k6's arrival-rate executor drops iterations once in-flight demand outruns the VU pool — which
+# run_cell does not raise with the rate — so rate x duration would overstate what a node absorbed.
+warm_delivered() {
+  [[ -s "$1" ]] || { echo 0; return 0; }
+  python3 - "$1" <<'PY' 2>/dev/null || echo 0
+import json, sys
+try:
+    m = (json.load(open(sys.argv[1])) or {}).get("metrics", {}) or {}
+    c = ((m.get("http_reqs") or {}).get("values") or {}).get("count")
+except Exception:
+    c = None
+print(int(c) if isinstance(c, (int, float)) and not isinstance(c, bool) and c > 0 else 0)
+PY
+}
+
+# achieved_rps from a replay's own meta sidecar — measured, unlike the pace it was asked for.
+warm_replay_rps() {
+  [[ -s "$1" ]] || { echo ""; return 0; }
+  python3 - "$1" <<'PY' 2>/dev/null || echo ""
+import json, sys
+try:
+    v = (json.load(open(sys.argv[1])) or {}).get("achieved_rps")
+except Exception:
+    v = None
+print(v if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else "")
+PY
+}
+
 # Corpus mode raises start-node's uniform RPC_GAS_CAP (default 1e9) to 1e12: captured calls
 # carry explicit gas up to billions, and clamping them would make calls fail artificially.
 CORPUS_RPC_GAS_CAP="1000000000000"
@@ -346,7 +375,24 @@ for entry in $CLIENTS; do
           # status (a warm-up that did its job would report failure).
           if JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" \
               "$warm_cell" "$ctype" "$label" "$corpus" ""; then
-            WARMED_SECONDS="$WARMUP_SECONDS"; WARMED_RPS="$warm_rps"
+            WARMED_SECONDS="$WARMUP_SECONDS"
+            # The (seconds, rps) pair is read as the count the node absorbed, so the rate has to
+            # be the delivered one. A short delivery is the failure mode this change can have —
+            # 400 rps is above the 300 rps that already drove a 1.22% fail rate on arm64 — and
+            # the warm-up's own fail gate is lifted, so nothing else would report it.
+            warm_got="$(warm_delivered "$warm_cell/summary.json")"
+            warm_want=$(( warm_rps * WARMUP_SECONDS ))
+            if (( warm_got > 0 )); then
+              WARMED_RPS=$(( warm_got / WARMUP_SECONDS ))
+              if (( warm_got * 10 < warm_want * 8 )); then
+                echo "::warning::warmup for ${label} delivered ${warm_got} of ${warm_want} requests (${WARMED_RPS} of ${warm_rps} rps) — measured cells may be under-warmed"
+              else
+                echo "   warmup ${clabel}/${label}: delivered ${warm_got}/${warm_want} requests at ~${WARMED_RPS} rps"
+              fi
+            else
+              WARMED_RPS="$warm_rps"
+              echo "::warning::warmup for ${label}: no usable http_reqs count — recorded warmup_rps is the requested pace, not the delivered one"
+            fi
           else
             echo "::warning::warmup for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
           fi
@@ -365,14 +411,27 @@ for entry in $CLIENTS; do
           warm_passes=$(( (warm_rps * WARMUP_SECONDS + records - 1) / records ))
           mkdir -p "$warm_cell"
           warm_started=$SECONDS
-          timeout $(( WARMUP_SECONDS + 60 )) python3 "$here/corpus_parity.py" timings \
+          # This branch is request-bounded, so the wall-clock bound must leave room for the whole
+          # request target at a slow node's pace: pacing can only delay. Scaling it with the (now
+          # short) window instead would truncate delivery below what the 240s default managed.
+          warm_timeout=$(( WARMUP_SECONDS + 60 ))
+          (( warm_timeout < 300 )) && warm_timeout=300
+          timeout "$warm_timeout" python3 "$here/corpus_parity.py" timings \
               --corpus "$corpus" --rpc-url "http://localhost:8545" \
               --out "$warm_cell/warmup-timings.csv" --passes "$warm_passes" \
               --rps "$warm_rps" --concurrency "$CORPUS_TIMINGS_CONCURRENCY"
           warm_status=$?
           # 124 = the timeout fired: the node still absorbed warm load for the whole window.
           if [[ "$warm_status" -eq 0 || "$warm_status" -eq 124 ]]; then
-            WARMED_SECONDS=$(( SECONDS - warm_started )); WARMED_RPS="$warm_rps"
+            WARMED_SECONDS=$(( SECONDS - warm_started ))
+            # The replay writes its own meta beside the CSV, and achieved_rps there is measured.
+            # A fired timeout kills it before that write, so fall back to the pace it was asked
+            # for and say so rather than pairing measured seconds with a silent target.
+            WARMED_RPS="$(warm_replay_rps "$warm_cell/timings.meta.json")"
+            if [[ -z "$WARMED_RPS" ]]; then
+              WARMED_RPS="$warm_rps"
+              echo "::warning::warmup replay for ${label}: no achieved rate recorded — warmup_rps is the requested pace, not the delivered one"
+            fi
           else
             echo "::warning::warmup replay for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
           fi

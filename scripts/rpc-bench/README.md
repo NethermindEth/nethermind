@@ -306,12 +306,14 @@ baseline. Dispatch it with `benchmark_tool: jsonbench-sweep` and:
 
 ```json
 {"eth_call_corpus": true,
- "clients": "nethermind@nethermindeth/nethermind:master nethermind",
+ "clients": "nethermind@nethermindeth/nethermind:master nethermind@nethermindeth/nethermind:<branch-tag>",
  "rps_list": "100", "duration": "120s",
  "corpus_glob": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}
 ```
 
-Holding those values fixed is what keeps results comparable across branches and over time.
+Pin both arms to prebuilt tags: a bare `nethermind` entry builds the image on the benchmark
+runner, which serializes every other job behind it. Holding the rest fixed is what keeps results
+comparable across branches and over time.
 `corpus_results.py comment --baseline nethermind_master --candidate nethermind` renders the
 per-metric latency deltas and the response-parity verdict from the **staged** tree, not the
 raw output, so its rendering has already passed the aggregate-only validator.
@@ -406,8 +408,18 @@ N x 60 s per client before measuring) driven at `corpus_warmup_rps` (default `40
 window delivers the ~24k requests that `240s` at 100 rps used to, in a quarter of the wall
 time; it is a floor, so a run measuring a higher rate warms at that rate instead): a k6 cell
 when `rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
-fixture-free mode stays fixture-free. A saturated node absorbs fewer requests than the target
-rate implies, so read the warm-up's own reported rate rather than assuming the target was met.
+fixture-free mode stays fixture-free.
+
+The request count is the point, and the rate is a request for one, not a guarantee of one — so
+both branches record what they **delivered** and warn when it lands below 80% of the target.
+Two reasons it can: `run_cell` does not scale `vus` with the rate, and k6's arrival-rate executor
+drops iterations once demand outruns that pool; and 400 rps is above the 300 rps that already
+measured a 1.22% fail rate on arm64, so on that box the warm-up is saturated by construction. The
+warm-up's own fail-rate gate is lifted, so this warning is the only thing that reports it. The
+replay branch is request-bounded rather than window-bounded for the same reason: its wall-clock
+bound has a 300s floor, so a slow node still reaches the request target instead of being cut off
+at the shorter window — meaning in that mode the warm-up can outlast `corpus_warmup_duration`.
+
 Cold nodes fail ~2% of calls and read ~60% higher p99, so every measured number below assumes
 this ran. Then one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a

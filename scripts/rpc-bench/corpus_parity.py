@@ -649,7 +649,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     timings_parser.add_argument("--warmup-seconds", type=int, default=0,
                                 help="discarded warm-up seconds applied before the matrix (recorded in meta)")
     timings_parser.add_argument("--warmup-rps", type=float, default=0.0,
-                                help="rate that warm-up ran at (recorded in meta)")
+                                help="rate the warm-up actually delivered (recorded in meta)")
 
     arguments = parser.parse_args(argv)
     try:
