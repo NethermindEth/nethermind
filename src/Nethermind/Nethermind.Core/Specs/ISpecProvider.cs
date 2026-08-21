@@ -84,6 +84,11 @@ namespace Nethermind.Core.Specs
 
     public static class SpecProviderExtensions
     {
+        /// <summary>Highest timestamp a scheduled fork may use; above it lie the "not yet scheduled" placeholders.</summary>
+        /// <remarks>Several unscheduled forks need distinct sentinels, so the window has to be wider than one
+        /// slot; it matches the delta <c>ForkInfo</c> already skips for the same reason.</remarks>
+        public const ulong LastScheduledForkTimestamp = ulong.MaxValue - 5;
+
         extension(ISpecProvider specProvider)
         {
             public IReleaseSpec GetSpec(ulong blockNumber, ulong? timestamp) => specProvider.GetSpec(new ForkActivation(blockNumber, timestamp));
@@ -93,10 +98,9 @@ namespace Nethermind.Core.Specs
             /// Resolves a spec for all planned forks applied.
             /// </summary>
             /// <returns>A spec for all planned forks applied</returns>
-            /// <remarks> The default value is long.MaxValue for block numbers and ulong.MaxValue for timestamps
-            /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
-            /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
-            public IReleaseSpec GetFinalSpec() => specProvider.GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
+            /// <remarks>Not yet scheduled forks are parked at the top of the range, so the probe stays below
+            /// <see cref="LastScheduledForkTimestamp"/> to exclude every one of them.</remarks>
+            public IReleaseSpec GetFinalSpec() => specProvider.GetSpec(long.MaxValue - 1, LastScheduledForkTimestamp);
         }
     }
 }
