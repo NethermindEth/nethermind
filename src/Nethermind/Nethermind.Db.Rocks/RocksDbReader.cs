@@ -26,7 +26,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
-    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
+    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IBatchedReadOnlyKeyValueStore, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
@@ -96,6 +96,35 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <see cref="ReadFlags.HintReadAhead"/> is ignored here: it selects the sequential-iterator path, which
+    /// has nothing to amortize for a batch of unrelated point reads. Without a column family there is no
+    /// batched native entry point, so those readers fall back to the single-key path per key — which cannot
+    /// tell a stored empty value from a missing key and reports both as absent.
+    /// </remarks>
+    public void MultiGet(
+        scoped ReadOnlySpan<byte> keys, int keyLength,
+        Span<byte> values, int valueStride, Span<int> valueLengths,
+        ReadFlags flags = ReadFlags.None)
+    {
+        ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
+
+        if (_columnFamily is null)
+        {
+            for (int i = 0; i < valueLengths.Length; i++)
+            {
+                int length = _mainDb.GetCStyleWithColumnFamily(
+                    keys.Slice(i * keyLength, keyLength), values.Slice(i * valueStride, valueStride), null, readOptions);
+                valueLengths[i] = length == 0 ? -1 : length;
+            }
+
+            return;
+        }
+
+        _mainDb.MultiGetWithColumnFamily(keys, keyLength, values, valueStride, valueLengths, _columnFamily, readOptions);
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);

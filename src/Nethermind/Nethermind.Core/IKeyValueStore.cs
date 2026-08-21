@@ -94,6 +94,38 @@ namespace Nethermind.Core
         void DangerousReleaseHandle(IntPtr handle);
     }
 
+    /// <summary>
+    /// Optional capability for stores that can serve many point reads in a single call into the
+    /// underlying engine.
+    /// </summary>
+    /// <remarks>
+    /// Purely an optimization: a store that does not implement this is read with the ordinary
+    /// single-key <see cref="IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan{byte}, Span{byte}, ReadFlags)"/>
+    /// in a loop, and both paths must return identical results. The win is amortizing the per-key
+    /// interop transition and lookup setup over the whole batch, not I/O parallelism.
+    /// </remarks>
+    public interface IBatchedReadOnlyKeyValueStore
+    {
+        /// <summary>
+        /// Reads a batch of equal-length keys in one operation.
+        /// </summary>
+        /// <param name="keys">The keys concatenated back to back, each exactly <paramref name="keyLength"/> bytes.</param>
+        /// <param name="keyLength">Length in bytes of every key in <paramref name="keys"/>.</param>
+        /// <param name="values">Destination buffer, addressed as fixed <paramref name="valueStride"/>-byte slots, one per key.</param>
+        /// <param name="valueStride">Size in bytes of each slot in <paramref name="values"/>.</param>
+        /// <param name="valueLengths">
+        /// Receives, per key, the number of bytes written into that key's slot, or <c>-1</c> when the key
+        /// is absent. Its length defines the batch size; <paramref name="keys"/> and <paramref name="values"/>
+        /// must be sized to match.
+        /// </param>
+        /// <param name="flags">Read behavior flags applied to the whole batch.</param>
+        /// <exception cref="ArgumentException">A stored value is longer than <paramref name="valueStride"/>.</exception>
+        void MultiGet(
+            scoped ReadOnlySpan<byte> keys, int keyLength,
+            Span<byte> values, int valueStride, Span<int> valueLengths,
+            ReadFlags flags = ReadFlags.None);
+    }
+
     public interface IWriteOnlyKeyValueStore
     {
         byte[]? this[ReadOnlySpan<byte> key]

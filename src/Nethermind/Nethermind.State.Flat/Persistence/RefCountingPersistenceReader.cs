@@ -11,15 +11,19 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 
-public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader
+public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader, IPersistence.IBatchedPersistenceReader
 {
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
     private readonly IPersistence.IPersistenceReader _innerReader;
+
+    // Null when the wrapped reader cannot batch, in which case the batch methods loop the single-key ones.
+    private readonly IPersistence.IBatchedPersistenceReader? _batchedInnerReader;
     private CancellationTokenSource? _cts = new();
     public RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader, ILogger logger)
     {
         _innerReader = innerReader;
+        _batchedInnerReader = innerReader as IPersistence.IBatchedPersistenceReader;
 
         _ = Task.Run(async () =>
         {
@@ -40,6 +44,28 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
+
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+    {
+        if (_batchedInnerReader is not null)
+        {
+            _batchedInnerReader.GetAccounts(addresses, results);
+            return;
+        }
+
+        for (int i = 0; i < results.Length; i++) results[i] = _innerReader.GetAccount(addresses[i]);
+    }
+
+    public void TryGetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, Span<SlotValue> outValues, Span<bool> found)
+    {
+        if (_batchedInnerReader is not null)
+        {
+            _batchedInnerReader.TryGetSlots(addresses, slots, outValues, found);
+            return;
+        }
+
+        for (int i = 0; i < found.Length; i++) found[i] = _innerReader.TryGetSlot(addresses[i], slots[i], ref outValues[i]);
+    }
 
     public StateId CurrentState => _innerReader.CurrentState;
 

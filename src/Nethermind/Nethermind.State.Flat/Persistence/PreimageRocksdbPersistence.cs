@@ -227,6 +227,23 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Loops the single-key path: preimage keys are raw addresses rather than hashes, so the hashed
+        /// batch encoders below this do not apply.
+        /// </remarks>
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            for (int i = 0; i < results.Length; i++) results[i] = GetAccount(addresses[i]);
+        }
+
+        /// <inheritdoc/>
+        /// <inheritdoc cref="GetAccounts" path="/remarks"/>
+        public void TryGetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, Span<SlotValue> outValues, Span<bool> found)
+        {
+            for (int i = 0; i < found.Length; i++) found[i] = TryGetSlot(addresses[i], slots[i], ref outValues[i]);
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             throw new InvalidOperationException("Raw operation not available in preimage mode");
 

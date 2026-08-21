@@ -44,6 +44,31 @@ public interface IPersistence
         bool IsPreimageMode { get; }
     }
 
+    /// <summary>
+    /// Optional capability for an <see cref="IPersistenceReader"/> whose backing store can serve many point
+    /// reads in one call.
+    /// </summary>
+    /// <remarks>
+    /// Kept off <see cref="IPersistenceReader"/> itself so that readers which cannot batch — and test doubles
+    /// of the reader interface — stay unaffected: callers type-test for this and otherwise loop the single-key
+    /// methods. Results are identical either way; only the cost differs.
+    /// </remarks>
+    public interface IBatchedPersistenceReader
+    {
+        /// <summary>
+        /// Batched <see cref="IPersistenceReader.GetAccount"/>. <paramref name="results"/>.Length defines the
+        /// batch size.
+        /// </summary>
+        void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results);
+
+        /// <summary>
+        /// Batched <see cref="IPersistenceReader.TryGetSlot"/>: reads <c>addresses[i]</c>/<c>slots[i]</c> into
+        /// <c>outValues[i]</c>, setting <c>found[i]</c> exactly as the single-key call would return.
+        /// <paramref name="found"/>.Length defines the batch size.
+        /// </summary>
+        void TryGetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, Span<SlotValue> outValues, Span<bool> found);
+    }
+
     public interface IWriteBatch : IDisposable
     {
         void SelfDestruct(Address addr);

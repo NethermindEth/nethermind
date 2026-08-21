@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -96,15 +97,65 @@ public sealed class SnapshotBundle : IDisposable
 
         isInCurrentSnapshot = false;
 
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
-        {
-            if (_snapshots[i].TryGetAccount(key, out acc))
-            {
-                return acc;
-            }
-        }
+        if (TryGetAccountFromLocalTiers(key, out acc)) return acc;
 
         return _readOnlySnapshotBundle.GetAccount(address, key);
+    }
+
+    /// <summary>Walks this bundle's own snapshots (newest first) for one account.</summary>
+    /// <returns><c>true</c> when a local snapshot answered, in which case the read-only bundle is not consulted.</returns>
+    private bool TryGetAccountFromLocalTiers(HashedKey<Address> key, out Account? account)
+    {
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetAccount(key, out account)) return true;
+        }
+
+        account = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Batched <see cref="GetAccount(Address)"/>: resolves each key against the write buffer and this bundle's
+    /// snapshots, then hands the residual misses to <see cref="ReadOnlySnapshotBundle.GetAccounts"/> in one call.
+    /// </summary>
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+    {
+        GuardDispose();
+
+        int count = results.Length;
+        Address[] missAddresses = ArrayPool<Address>.Shared.Rent(count);
+        Account?[] missResults = ArrayPool<Account?>.Shared.Rent(count);
+        int[] missIndexes = ArrayPool<int>.Shared.Rent(count);
+        try
+        {
+            int missCount = 0;
+            for (int i = 0; i < count; i++)
+            {
+                Address address = addresses[i];
+                HashedKey<Address> key = new(address);
+
+                if (_changedAccounts.TryGetValue(key, out Account? acc) || TryGetAccountFromLocalTiers(key, out acc))
+                {
+                    results[i] = acc;
+                    continue;
+                }
+
+                missIndexes[missCount] = i;
+                missAddresses[missCount++] = address;
+            }
+
+            if (missCount == 0) return;
+
+            _readOnlySnapshotBundle.GetAccounts(missAddresses.AsSpan(0, missCount), missResults.AsSpan(0, missCount));
+            for (int i = 0; i < missCount; i++) results[missIndexes[i]] = missResults[i];
+        }
+        finally
+        {
+            ArrayPool<Address>.Shared.Return(missAddresses, clearArray: true);
+            ArrayPool<Account?>.Shared.Return(missResults, clearArray: true);
+            ArrayPool<int>.Shared.Return(missIndexes);
+        }
     }
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
@@ -127,15 +178,34 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<(Address, UInt256)> key = new((address, index));
 
+        if (TryGetSlotFromLocalTiers(selfDestructStateIdx, key, out byte[]? local)) return local;
+
+        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+    }
+
+    /// <summary>
+    /// Walks the write buffer and this bundle's own snapshots (newest first) for one slot, stopping at the
+    /// self-destruct boundary.
+    /// </summary>
+    /// <remarks>
+    /// The boundary comparison happens <em>after</em> probing snapshot <c>i</c>, so the destructing snapshot's
+    /// own writes still win; reaching it means the slot is definitively gone and the read-only bundle must not
+    /// be consulted, which is why that case reports <c>true</c> with a null result.
+    /// </remarks>
+    /// <returns><c>true</c> when a local tier answered, in which case the read-only bundle is not consulted.</returns>
+    private bool TryGetSlotFromLocalTiers(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out byte[]? result)
+    {
         if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
         {
-            return slotValue?.ToEvmBytes();
+            result = slotValue?.ToEvmBytes();
+            return true;
         }
 
         // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
-            return null;
+            result = null;
+            return true;
         }
 
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
@@ -143,17 +213,69 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorage(key, out slotValue))
             {
-                return slotValue?.ToEvmBytes();
+                result = slotValue?.ToEvmBytes();
+                return true;
             }
 
             if (i <= currentBundleSelfDestructIdx)
             {
                 // This is the snapshot with selfdestruct
-                return null;
+                result = null;
+                return true;
             }
         }
 
-        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+        result = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Batched <see cref="GetSlot"/>: resolves each key against the write buffer and this bundle's snapshots,
+    /// then hands the residual misses to <see cref="ReadOnlySnapshotBundle.GetSlots"/> in one call.
+    /// </summary>
+    public void GetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, ReadOnlySpan<int> selfDestructIdxs, Span<byte[]?> results)
+    {
+        GuardDispose();
+
+        int count = results.Length;
+        Address[] missAddresses = ArrayPool<Address>.Shared.Rent(count);
+        UInt256[] missSlots = ArrayPool<UInt256>.Shared.Rent(count);
+        int[] missSelfDestructIdxs = ArrayPool<int>.Shared.Rent(count);
+        byte[]?[] missResults = ArrayPool<byte[]?>.Shared.Rent(count);
+        int[] missIndexes = ArrayPool<int>.Shared.Rent(count);
+        try
+        {
+            int missCount = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (TryGetSlotFromLocalTiers(selfDestructIdxs[i], (addresses[i], slots[i]), out byte[]? slot))
+                {
+                    results[i] = slot;
+                    continue;
+                }
+
+                missIndexes[missCount] = i;
+                missSlots[missCount] = slots[i];
+                missSelfDestructIdxs[missCount] = selfDestructIdxs[i];
+                missAddresses[missCount++] = addresses[i];
+            }
+
+            if (missCount == 0) return;
+
+            _readOnlySnapshotBundle.GetSlots(
+                missAddresses.AsSpan(0, missCount), missSlots.AsSpan(0, missCount),
+                missSelfDestructIdxs.AsSpan(0, missCount), missResults.AsSpan(0, missCount));
+
+            for (int i = 0; i < missCount; i++) results[missIndexes[i]] = missResults[i];
+        }
+        finally
+        {
+            ArrayPool<Address>.Shared.Return(missAddresses, clearArray: true);
+            ArrayPool<UInt256>.Shared.Return(missSlots);
+            ArrayPool<int>.Shared.Return(missSelfDestructIdxs);
+            ArrayPool<byte[]?>.Shared.Return(missResults, clearArray: true);
+            ArrayPool<int>.Shared.Return(missIndexes);
+        }
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)

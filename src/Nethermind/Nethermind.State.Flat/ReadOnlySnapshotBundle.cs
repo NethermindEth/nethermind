@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -31,6 +32,11 @@ public sealed class ReadOnlySnapshotBundle(
     // gates its persisted-tier probe on this being > 0, so a node with no persisted snapshots (e.g.
     // long finality disabled, or none persisted yet) skips the persisted lookups entirely.
     private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
+
+    // Null when the reader cannot batch (test doubles, the no-op reader), in which case the batched reads
+    // below fall back to looping the single-key ones.
+    private readonly IPersistence.IBatchedPersistenceReader? _batchedReader = persistenceReader as IPersistence.IBatchedPersistenceReader;
+
     public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
 
     /// <summary>
@@ -57,20 +63,9 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        if (TryGetAccountFromTiers(address, key, out Account? tiered)) return tiered;
+
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].TryGetAccount(key, out Account? acc))
-            {
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
-                return acc;
-            }
-        }
-
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
-            return persistedAccount;
-
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         Account? account = persistenceReader.GetAccount(address);
         if (account == null)
         {
@@ -82,6 +77,81 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         return account;
+    }
+
+    /// <summary>
+    /// Walks the in-memory snapshots (newest first) and then the persisted-snapshot tier for one account.
+    /// </summary>
+    /// <returns><c>true</c> when a tier answered, in which case persistence must not be consulted.</returns>
+    private bool TryGetAccountFromTiers(Address address, HashedKey<Address> key, out Account? account)
+    {
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryGetAccount(key, out account))
+            {
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
+                return true;
+            }
+        }
+
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out account)) return true;
+
+        account = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Batched <see cref="GetAccount(Address, HashedKey{Address})"/>: every key is resolved against the
+    /// in-memory and persisted tiers individually, and only the residual misses go to persistence — as one
+    /// batched read rather than one read per key.
+    /// </summary>
+    /// <remarks>
+    /// Falls back to the per-key path when the reader cannot batch, and while <c>recordDetailedMetrics</c> is
+    /// on so the persistence-tier latency histogram keeps measuring individual reads rather than a shared
+    /// batch duration.
+    /// </remarks>
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+    {
+        GuardDispose();
+
+        int count = results.Length;
+        if (recordDetailedMetrics || _batchedReader is null)
+        {
+            for (int i = 0; i < count; i++) results[i] = GetAccount(addresses[i]);
+            return;
+        }
+
+        Address[] missAddresses = ArrayPool<Address>.Shared.Rent(count);
+        Account?[] missResults = ArrayPool<Account?>.Shared.Rent(count);
+        int[] missIndexes = ArrayPool<int>.Shared.Rent(count);
+        try
+        {
+            int missCount = 0;
+            for (int i = 0; i < count; i++)
+            {
+                Address address = addresses[i];
+                if (TryGetAccountFromTiers(address, new HashedKey<Address>(address), out Account? account))
+                {
+                    results[i] = account;
+                    continue;
+                }
+
+                missIndexes[missCount] = i;
+                missAddresses[missCount++] = address;
+            }
+
+            if (missCount == 0) return;
+
+            _batchedReader.GetAccounts(missAddresses.AsSpan(0, missCount), missResults.AsSpan(0, missCount));
+            for (int i = 0; i < missCount; i++) results[missIndexes[i]] = missResults[i];
+        }
+        finally
+        {
+            ArrayPool<Address>.Shared.Return(missAddresses, clearArray: true);
+            ArrayPool<Account?>.Shared.Return(missResults, clearArray: true);
+            ArrayPool<int>.Shared.Return(missIndexes);
+        }
     }
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
@@ -103,29 +173,11 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        (Address address, UInt256 index) = key.Key;
-        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
-            {
-                byte[]? res = slotValue?.ToEvmBytes();
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
-                return res;
-            }
-
-            if (_persistedSnapshotCount + i <= selfDestructStateIdx)
-            {
-                return null;
-            }
-        }
-
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out byte[]? persistedSlot))
-            return persistedSlot;
+        if (TryGetSlotFromTiers(selfDestructStateIdx, key, out byte[]? tiered)) return tiered;
 
         SlotValue outSlotValue = new();
 
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
         byte[]? slotResult = outSlotValue.ToEvmBytes();
 
@@ -142,6 +194,102 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         return slotResult;
+    }
+
+    /// <summary>
+    /// Walks the in-memory snapshots (newest first) and then the persisted-snapshot tier for one slot,
+    /// stopping at the self-destruct boundary.
+    /// </summary>
+    /// <remarks>
+    /// The boundary comparison happens <em>after</em> probing snapshot <c>i</c>, so the destructing snapshot's
+    /// own writes still win; reaching it means the slot is definitively gone and persistence must not be
+    /// consulted, which is why that case reports <c>true</c> with a null result.
+    /// </remarks>
+    /// <returns><c>true</c> when a tier answered, in which case persistence must not be consulted.</returns>
+    private bool TryGetSlotFromTiers(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out byte[]? result)
+    {
+        (Address address, UInt256 index) = key.Key;
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
+            {
+                result = slotValue?.ToEvmBytes();
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
+                return true;
+            }
+
+            if (_persistedSnapshotCount + i <= selfDestructStateIdx)
+            {
+                result = null;
+                return true;
+            }
+        }
+
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out result))
+            return true;
+
+        result = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Batched <see cref="GetSlot(int, HashedKey{ValueTuple{Address, UInt256}})"/>: every key is resolved
+    /// against the in-memory and persisted tiers individually, and only the residual misses go to persistence
+    /// — as one batched read rather than one read per key.
+    /// </summary>
+    /// <inheritdoc cref="GetAccounts" path="/remarks"/>
+    public void GetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, ReadOnlySpan<int> selfDestructIdxs, Span<byte[]?> results)
+    {
+        GuardDispose();
+
+        int count = results.Length;
+        if (recordDetailedMetrics || _batchedReader is null)
+        {
+            for (int i = 0; i < count; i++) results[i] = GetSlot(addresses[i], slots[i], selfDestructIdxs[i]);
+            return;
+        }
+
+        Address[] missAddresses = ArrayPool<Address>.Shared.Rent(count);
+        UInt256[] missSlots = ArrayPool<UInt256>.Shared.Rent(count);
+        SlotValue[] missValues = ArrayPool<SlotValue>.Shared.Rent(count);
+        bool[] missFound = ArrayPool<bool>.Shared.Rent(count);
+        int[] missIndexes = ArrayPool<int>.Shared.Rent(count);
+        try
+        {
+            int missCount = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (TryGetSlotFromTiers(selfDestructIdxs[i], (addresses[i], slots[i]), out byte[]? slot))
+                {
+                    results[i] = slot;
+                    continue;
+                }
+
+                missIndexes[missCount] = i;
+                missSlots[missCount] = slots[i];
+                missAddresses[missCount++] = addresses[i];
+            }
+
+            if (missCount == 0) return;
+
+            // The single-key path hands persistence a fresh zeroed SlotValue and converts it regardless of
+            // the hit flag, so a miss yields ToEvmBytes()'s zero. Clear the pooled buffer to match.
+            missValues.AsSpan(0, missCount).Clear();
+            _batchedReader.TryGetSlots(
+                missAddresses.AsSpan(0, missCount), missSlots.AsSpan(0, missCount),
+                missValues.AsSpan(0, missCount), missFound.AsSpan(0, missCount));
+
+            for (int i = 0; i < missCount; i++) results[missIndexes[i]] = missValues[i].ToEvmBytes();
+        }
+        finally
+        {
+            ArrayPool<Address>.Shared.Return(missAddresses, clearArray: true);
+            ArrayPool<UInt256>.Shared.Return(missSlots);
+            ArrayPool<SlotValue>.Shared.Return(missValues);
+            ArrayPool<bool>.Shared.Return(missFound);
+            ArrayPool<int>.Shared.Return(missIndexes);
+        }
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>

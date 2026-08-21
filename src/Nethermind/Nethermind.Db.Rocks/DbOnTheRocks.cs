@@ -1050,6 +1050,137 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             throw new ArgumentException($"Output buffer not large enough. Output size: {length}, Buffer size: {bufferLength}");
     }
 
+    /// <summary>
+    /// Reads <paramref name="valueLengths"/>.Length equal-length keys from one column family with a single
+    /// <c>rocksdb_batched_multi_get_cf</c> call.
+    /// </summary>
+    /// <remarks>
+    /// This is the modern batched entry point, not the legacy vector <c>rocksdb_multi_get_cf</c> the
+    /// <c>byte[][]</c> indexer uses: values come back as pinnable slices, so no per-key malloc plus copy
+    /// happens on the native side. What it buys is one interop transition and one lookup setup for the whole
+    /// batch instead of per key; the bundled librocksdb is built without io_uring, so <c>async_io</c> is a
+    /// no-op and this adds no I/O parallelism.
+    /// <para>
+    /// <c>sorted_input</c> is false because callers hand keys over in arrival order rather than comparator
+    /// order. Every pinnable slice is destroyed and every error string freed before returning, including on
+    /// the throwing paths.
+    /// </para>
+    /// </remarks>
+    internal unsafe void MultiGetWithColumnFamily(
+        scoped ReadOnlySpan<byte> keys, int keyLength,
+        Span<byte> values, int valueStride, Span<int> valueLengths,
+        ColumnFamilyHandle cf, ReadOptions readOptions)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        int count = valueLengths.Length;
+        if (count == 0) return;
+
+        // One logical read per batch: the point of this path is that it is a single engine call.
+        UpdateReadMetrics();
+
+        IntPtr[] keyPtrs = ArrayPool<IntPtr>.Shared.Rent(count);
+        UIntPtr[] keySizes = ArrayPool<UIntPtr>.Shared.Rent(count);
+        IntPtr[] slices = ArrayPool<IntPtr>.Shared.Rent(count);
+        IntPtr[] errs = ArrayPool<IntPtr>.Shared.Rent(count);
+
+        // Rented arrays come back dirty. Stale values here would be read as slice/error pointers and
+        // freed, so they must be zeroed before the native call can be trusted to have filled them.
+        Array.Clear(slices, 0, count);
+        Array.Clear(errs, 0, count);
+
+        try
+        {
+            fixed (byte* keysPtr = &MemoryMarshal.GetReference(keys))
+            fixed (IntPtr* keyPtrsPtr = keyPtrs)
+            fixed (UIntPtr* keySizesPtr = keySizes)
+            fixed (IntPtr* slicesPtr = slices)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    keyPtrs[i] = (IntPtr)(keysPtr + (long)i * keyLength);
+                    keySizes[i] = (UIntPtr)keyLength;
+                }
+
+                Native.Instance.rocksdb_batched_multi_get_cf(
+                    _db.Handle, readOptions.Handle, cf.Handle, (UIntPtr)count,
+                    (IntPtr)keyPtrsPtr, (IntPtr)keySizesPtr, (IntPtr)slicesPtr, errs, 0);
+            }
+
+            CollectMultiGetResults(slices, errs, values, valueStride, valueLengths);
+        }
+        finally
+        {
+            ArrayPool<IntPtr>.Shared.Return(keyPtrs);
+            ArrayPool<UIntPtr>.Shared.Return(keySizes);
+            ArrayPool<IntPtr>.Shared.Return(slices);
+            ArrayPool<IntPtr>.Shared.Return(errs);
+        }
+    }
+
+    /// <summary>
+    /// Drains the native output of <see cref="MultiGetWithColumnFamily"/>: copies out every value, releases
+    /// every slice and error string, and only then reports the first failure seen.
+    /// </summary>
+    private unsafe void CollectMultiGetResults(
+        IntPtr[] slices, IntPtr[] errs,
+        Span<byte> values, int valueStride, Span<int> valueLengths)
+    {
+        string? error = null;
+        int oversizeLength = -1;
+
+        for (int i = 0; i < valueLengths.Length; i++)
+        {
+            IntPtr err = errs[i];
+            if (err != IntPtr.Zero)
+            {
+                error ??= Marshal.PtrToStringAnsi(err);
+                Native.Instance.rocksdb_free(err);
+            }
+
+            IntPtr slice = slices[i];
+            if (slice == IntPtr.Zero)
+            {
+                // Missing key, or a key whose status was an error — either way there is nothing to copy.
+                valueLengths[i] = -1;
+                continue;
+            }
+
+            IntPtr valuePtr = Native.Instance.rocksdb_pinnableslice_value(slice, out UIntPtr valueLength);
+            int length = (int)valueLength;
+            if (valuePtr == IntPtr.Zero)
+            {
+                valueLengths[i] = -1;
+            }
+            else if (length > valueStride)
+            {
+                // Defer throwing so the remaining slices are still destroyed.
+                valueLengths[i] = -1;
+                if (oversizeLength < 0) oversizeLength = length;
+            }
+            else
+            {
+                new ReadOnlySpan<byte>((void*)valuePtr, length).CopyTo(values.Slice(i * valueStride, valueStride));
+                valueLengths[i] = length;
+            }
+
+            Native.Instance.rocksdb_pinnableslice_destroy(slice);
+        }
+
+        if (error is not null)
+        {
+            RocksDbSharpException exception = new(error);
+            HandleFatalDbError(exception);
+            throw exception;
+        }
+
+        if (oversizeLength >= 0) ThrowNotEnoughMemory(oversizeLength, valueStride);
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowNotEnoughMemory(int length, int bufferLength) =>
+            throw new ArgumentException($"Output buffer not large enough. Output size: {length}, Buffer size: {bufferLength}");
+    }
+
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags) =>
         SetWithColumnFamily(key, null, value, writeFlags);
 

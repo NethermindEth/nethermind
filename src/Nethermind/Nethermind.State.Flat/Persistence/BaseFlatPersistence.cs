@@ -54,6 +54,13 @@ public static class BaseFlatPersistence
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32 bytes.
     internal const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
 
+    /// <summary>
+    /// Keys per batched read. Deliberately small: batching here removes per-key interop and lookup overhead,
+    /// it does not add I/O parallelism (the bundled librocksdb has no io_uring, so <c>async_io</c> is a no-op),
+    /// and larger batches only serialize more work behind one call while inflating the stack buffers below.
+    /// </summary>
+    internal const int MultiGetBatchSize = 32;
+
     internal static ReadOnlySpan<byte> EncodeAccountKeyHashed(Span<byte> buffer, in ValueHash256 address)
     {
         address.Bytes[..AccountKeyLength].CopyTo(buffer);
@@ -118,6 +125,58 @@ public static class BaseFlatPersistence
         return Rlp.Encode(withoutLeadingZeros, buffer);
     }
 
+    /// <summary>
+    /// Unwraps a value as stored in the flat Storage column to its stripped (leading-zeros-removed) bytes,
+    /// undoing <see cref="EncodeSlotValue"/>.
+    /// </summary>
+    /// <remarks>
+    /// A slot value over 32 bytes means the encoding is mismatched (e.g. a marker-less DB whose RLP-wrapped
+    /// slots are being read as raw). That is fatal rather than recoverable: the caller would otherwise pad a
+    /// bogus value into a <see cref="SlotValue"/>, or hand snap-sync healing a value that builds wrong trie
+    /// nodes.
+    /// </remarks>
+    /// <returns>A slice of <paramref name="storedValue"/>, at most <see cref="SlotValue.ByteCount"/> bytes.</returns>
+    internal static ReadOnlySpan<byte> UnwrapSlotValue(ReadOnlySpan<byte> storedValue, bool rlpWrapSlots)
+    {
+        ReadOnlySpan<byte> value = rlpWrapSlots ? new RlpReader(storedValue).DecodeByteArraySpan() : storedValue;
+        if (value.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(value.Length, rlpWrapSlots);
+        return value;
+    }
+
+    /// <summary>
+    /// Decodes a value as stored in the flat Storage column into <paramref name="outValue"/>, right-aligning
+    /// the stripped bytes in the 32-byte struct and zeroing the leading remainder.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the single-key and batched read paths so the two cannot diverge on the encoding, the
+    /// over-length guard, or the zero padding.
+    /// </remarks>
+    internal static void DecodeSlotValue(ReadOnlySpan<byte> storedValue, bool rlpWrapSlots, ref SlotValue outValue)
+    {
+        ReadOnlySpan<byte> value = UnwrapSlotValue(storedValue, rlpWrapSlots);
+
+        // UnwrapSlotValue guarantees len <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
+        int len = value.Length;
+        if (len == SlotValue.ByteCount)
+        {
+            outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
+        }
+        else
+        {
+            ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
+
+            // Zero-initialize the leading bytes before copying the value
+            Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
+
+            ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+
+            Unsafe.CopyBlockUnaligned(
+                ref destPtr,
+                ref MemoryMarshal.GetReference(value),
+                (uint)len);
+        }
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSlotValueTooLong(int length, bool rlpWrapSlots) =>
         throw new InvalidConfigurationException(
@@ -150,44 +209,89 @@ public static class BaseFlatPersistence
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
-            ReadOnlySpan<byte> value = buffer[..resultSize];
-            if (rlpWrapSlots)
-            {
-                RlpReader ctx = new(value);
-                value = ctx.DecodeByteArraySpan();
-            }
-
-            // The value was read into a RlpSlotValueBufferSize-byte buffer, so len is at most that size; this
-            // guard catches a 33-byte RLP-wrapped slot mistakenly read as raw (len 33 > 32), which would
-            // otherwise underflow the unchecked InitBlock below into a multi-GB wild memset.
-            int len = value.Length;
-            if (len > SlotValue.ByteCount) ThrowSlotValueTooLong(len, rlpWrapSlots);
-
-            // len is now guaranteed <= SlotValue.ByteCount, so the unchecked writes below stay in bounds.
-            // This writes the variable-length DB value into the end of the 32-byte struct.
-            if (len == SlotValue.ByteCount)
-            {
-                outValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value));
-            }
-            else
-            {
-                ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValue);
-
-                // Zero-initialize the leading bytes before copying the value
-                Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
-
-                ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
-
-                Unsafe.CopyBlockUnaligned(
-                    ref destPtr,
-                    ref MemoryMarshal.GetReference(value),
-                    (uint)len);
-            }
-
+            DecodeSlotValue(buffer[..resultSize], rlpWrapSlots, ref outValue);
             return true;
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
+
+        /// <inheritdoc/>
+        [SkipLocalsInit]
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte> values, int valueStride, Span<int> valueLengths)
+        {
+            if (state is not IBatchedReadOnlyKeyValueStore batched)
+            {
+                for (int i = 0; i < valueLengths.Length; i++)
+                {
+                    int length = GetAccount(addresses[i], values.Slice(i * valueStride, valueStride));
+                    valueLengths[i] = length == 0 ? -1 : length;
+                }
+
+                return;
+            }
+
+            Span<byte> keys = stackalloc byte[MultiGetBatchSize * AccountKeyLength];
+
+            for (int offset = 0; offset < valueLengths.Length; offset += MultiGetBatchSize)
+            {
+                int chunk = Math.Min(MultiGetBatchSize, valueLengths.Length - offset);
+                for (int i = 0; i < chunk; i++)
+                {
+                    EncodeAccountKeyHashed(keys.Slice(i * AccountKeyLength, AccountKeyLength), addresses[offset + i]);
+                }
+
+                batched.MultiGet(
+                    keys[..(chunk * AccountKeyLength)], AccountKeyLength,
+                    values.Slice(offset * valueStride, chunk * valueStride), valueStride,
+                    valueLengths.Slice(offset, chunk));
+            }
+        }
+
+        /// <inheritdoc/>
+        [SkipLocalsInit]
+        public void TryGetStorages(ReadOnlySpan<ValueHash256> addresses, ReadOnlySpan<ValueHash256> slots, Span<SlotValue> outValues, Span<bool> found)
+        {
+            if (storage is not IBatchedReadOnlyKeyValueStore batched)
+            {
+                for (int i = 0; i < found.Length; i++)
+                {
+                    found[i] = TryGetStorage(addresses[i], slots[i], ref outValues[i]);
+                }
+
+                return;
+            }
+
+            Span<byte> keys = stackalloc byte[MultiGetBatchSize * StorageKeyLength];
+            Span<byte> buffers = stackalloc byte[MultiGetBatchSize * RlpSlotValueBufferSize];
+            Span<int> lengths = stackalloc int[MultiGetBatchSize];
+
+            for (int offset = 0; offset < found.Length; offset += MultiGetBatchSize)
+            {
+                int chunk = Math.Min(MultiGetBatchSize, found.Length - offset);
+                for (int i = 0; i < chunk; i++)
+                {
+                    EncodeStorageKey(keys.Slice(i * StorageKeyLength, StorageKeyLength), addresses[offset + i], slots[offset + i], fullAddressStorageKey);
+                }
+
+                batched.MultiGet(
+                    keys[..(chunk * StorageKeyLength)], StorageKeyLength,
+                    buffers[..(chunk * RlpSlotValueBufferSize)], RlpSlotValueBufferSize,
+                    lengths[..chunk]);
+
+                for (int i = 0; i < chunk; i++)
+                {
+                    int length = lengths[i];
+                    if (length <= 0)
+                    {
+                        found[offset + i] = false;
+                        continue;
+                    }
+
+                    DecodeSlotValue(buffers.Slice(i * RlpSlotValueBufferSize, length), rlpWrapSlots, ref outValues[offset + i]);
+                    found[offset + i] = true;
+                }
+            }
+        }
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
         {
@@ -266,14 +370,7 @@ public static class BaseFlatPersistence
 
                 // Extract the 32-byte slot hash from the middle of the key
                 _currentKey = new ValueHash256(view.CurrentKey.Slice(slotOffset, StorageSlotKeySize));
-                ReadOnlySpan<byte> slotValue = rlpWrapSlots
-                    ? new RlpReader(view.CurrentValue).DecodeByteArraySpan()
-                    : view.CurrentValue;
-                // Mirror TryGetStorage: a slot value over 32 bytes means the encoding is mismatched (e.g. a
-                // marker-less DB read as raw). Fail loudly here too, rather than handing snap-sync healing a
-                // bad value that would build wrong trie nodes.
-                if (slotValue.Length > SlotValue.ByteCount) ThrowSlotValueTooLong(slotValue.Length, rlpWrapSlots);
-                _currentValue = slotValue.ToArray();
+                _currentValue = UnwrapSlotValue(view.CurrentValue, rlpWrapSlots).ToArray();
                 return true;
             }
             return false;

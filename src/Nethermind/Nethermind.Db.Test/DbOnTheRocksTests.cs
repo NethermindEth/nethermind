@@ -539,6 +539,32 @@ namespace Nethermind.Db.Test
             Assert.That(_db.KeyExists(new byte[] { 99, 99, 99 }), Is.False);
         }
 
+        // A snapshot of a column-less DB has no column family handle, and the batched native entry point is
+        // column-family-only — so it must fall back to per-key reads rather than fail.
+        [Test]
+        public void Snapshot_multi_get_falls_back_without_a_column_family()
+        {
+            const int keyLength = 3;
+            const int stride = 8;
+
+            _db[[1, 2, 3]] = [4, 5, 6];
+            _db[[1, 2, 5]] = [7];
+
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+
+            byte[] keys = [1, 2, 3, 1, 2, 4, 1, 2, 5]; // present, absent, present
+            byte[] values = new byte[3 * stride];
+            int[] lengths = new int[3];
+            ((IBatchedReadOnlyKeyValueStore)snapshot).MultiGet(keys, keyLength, values, stride, lengths);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lengths, Is.EqualTo(new[] { 3, -1, 1 }));
+                Assert.That(values.AsSpan(0, 3).ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+                Assert.That(values.AsSpan(2 * stride, 1).ToArray(), Is.EqualTo(new byte[] { 7 }));
+            }
+        }
+
         [Test]
         public void Snapshot_dispose_cleans_up_read_options()
         {

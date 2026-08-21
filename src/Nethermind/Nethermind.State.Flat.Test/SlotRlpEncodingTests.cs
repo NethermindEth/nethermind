@@ -112,6 +112,65 @@ public class SlotRlpEncodingTests
         Assert.That(ReadStoredSlotBytes(db), Is.EqualTo(rlpLeaf));
     }
 
+    // The batched read decodes through the same helper as the single-key read, so it must agree under both
+    // encodings — including for slots that were never written and slots that were deleted.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Batch_slot_reads_match_per_key_reads(bool rlpWrap)
+    {
+        const int count = 40; // crosses the internal batch boundary
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = CreatePersistence(db, rlpWrap);
+
+        Address[] addresses = new Address[count];
+        UInt256[] slots = new UInt256[count];
+        for (int i = 0; i < count; i++)
+        {
+            addresses[i] = Addr;
+            slots[i] = (UInt256)i;
+        }
+
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (i % 3 == 2) continue; // never written
+                batch.SetStorage(Addr, slots[i], SlotValue.FromSpanWithoutLeadingZero(new byte[] { (byte)(i + 1) }));
+            }
+        }
+
+        using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (i % 3 == 1) batch.SetStorage(Addr, slots[i], null); // deleted
+            }
+        }
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+
+        SlotValue[] batched = new SlotValue[count];
+        bool[] found = new bool[count];
+        ((IPersistence.IBatchedPersistenceReader)reader).TryGetSlots(addresses, slots, batched, found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < count; i++)
+            {
+                SlotValue expected = default;
+                bool expectedFound = reader.TryGetSlot(Addr, slots[i], ref expected);
+
+                Assert.That(found[i], Is.EqualTo(expectedFound), $"slot {i} found");
+                if (expectedFound)
+                {
+                    Assert.That(batched[i].AsReadOnlySpan.ToArray(), Is.EqualTo(expected.AsReadOnlySpan.ToArray()), $"slot {i} value");
+                }
+            }
+
+            Assert.That(Array.Exists(found, static f => f), Is.True);
+        }
+    }
+
     [Test]
     public void SetStorageRawEncoded_is_unsupported_in_raw_mode()
     {

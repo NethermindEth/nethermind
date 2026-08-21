@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -154,8 +155,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IPersistence.IBatchedPersistenceReader
     {
+        // Null when the wrapped reader cannot batch, in which case the batch methods loop the cached
+        // single-key ones.
+        private readonly IPersistence.IBatchedPersistenceReader? _batchedInner = inner as IPersistence.IBatchedPersistenceReader;
+
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
@@ -179,6 +184,125 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool found = inner.TryGetSlot(address, slot, ref outValue);
             if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
             return found;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>Serves what the cache already holds and batches only the residual misses, filling the
+        /// cache from them exactly as the single-key path does.</remarks>
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            int count = results.Length;
+            if (_batchedInner is null)
+            {
+                for (int i = 0; i < count; i++) results[i] = GetAccount(addresses[i]);
+                return;
+            }
+
+            bool current = parent.IsCurrent(generation);
+            Address[] missAddresses = ArrayPool<Address>.Shared.Rent(count);
+            Account?[] missResults = ArrayPool<Account?>.Shared.Rent(count);
+            int[] missIndexes = ArrayPool<int>.Shared.Rent(count);
+            try
+            {
+                int missCount = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    Address address = addresses[i];
+                    if (current && parent._accounts.TryGetValue(address, out Account? cached))
+                    {
+                        results[i] = cached;
+                        continue;
+                    }
+
+                    missIndexes[missCount] = i;
+                    missAddresses[missCount++] = address;
+                }
+
+                if (missCount == 0) return;
+
+                _batchedInner.GetAccounts(missAddresses.AsSpan(0, missCount), missResults.AsSpan(0, missCount));
+                for (int i = 0; i < missCount; i++)
+                {
+                    Account? account = missResults[i];
+                    results[missIndexes[i]] = account;
+                    if (current) parent.TryCacheAccount(missAddresses[i], account, generation);
+                }
+            }
+            finally
+            {
+                ArrayPool<Address>.Shared.Return(missAddresses, clearArray: true);
+                ArrayPool<Account?>.Shared.Return(missResults, clearArray: true);
+                ArrayPool<int>.Shared.Return(missIndexes);
+            }
+        }
+
+        /// <inheritdoc/>
+        /// <inheritdoc cref="GetAccounts" path="/remarks"/>
+        public void TryGetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, Span<SlotValue> outValues, Span<bool> found)
+        {
+            int count = found.Length;
+            if (_batchedInner is null)
+            {
+                for (int i = 0; i < count; i++) found[i] = TryGetSlot(addresses[i], slots[i], ref outValues[i]);
+                return;
+            }
+
+            bool current = parent.IsCurrent(generation);
+            Address[] missAddresses = ArrayPool<Address>.Shared.Rent(count);
+            UInt256[] missSlots = ArrayPool<UInt256>.Shared.Rent(count);
+            SlotValue[] missValues = ArrayPool<SlotValue>.Shared.Rent(count);
+            bool[] missFound = ArrayPool<bool>.Shared.Rent(count);
+            int[] missIndexes = ArrayPool<int>.Shared.Rent(count);
+            try
+            {
+                int missCount = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    (Address, UInt256) key = (addresses[i], slots[i]);
+                    if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
+                    {
+                        if (cached.Found) outValues[i] = cached.Value;
+                        found[i] = cached.Found;
+                        continue;
+                    }
+
+                    missIndexes[missCount] = i;
+                    missSlots[missCount] = slots[i];
+                    missAddresses[missCount++] = addresses[i];
+                }
+
+                if (missCount == 0) return;
+
+                // The single-key path leaves outValue untouched on a miss; a cleared buffer reproduces that
+                // for callers that hand in a fresh value.
+                missValues.AsSpan(0, missCount).Clear();
+                _batchedInner.TryGetSlots(
+                    missAddresses.AsSpan(0, missCount), missSlots.AsSpan(0, missCount),
+                    missValues.AsSpan(0, missCount), missFound.AsSpan(0, missCount));
+
+                for (int i = 0; i < missCount; i++)
+                {
+                    bool hit = missFound[i];
+                    int index = missIndexes[i];
+                    found[index] = hit;
+                    if (hit) outValues[index] = missValues[i];
+                    if (current)
+                    {
+                        parent.TryCacheSlot(
+                            (missAddresses[i], missSlots[i]),
+                            new CachedSlot(hit, hit ? missValues[i] : default),
+                            generation);
+                    }
+                }
+            }
+            finally
+            {
+                ArrayPool<Address>.Shared.Return(missAddresses, clearArray: true);
+                ArrayPool<UInt256>.Shared.Return(missSlots);
+                ArrayPool<SlotValue>.Shared.Return(missValues);
+                ArrayPool<bool>.Shared.Return(missFound);
+                ArrayPool<int>.Shared.Return(missIndexes);
+            }
         }
 
         public StateId CurrentState => inner.CurrentState;

@@ -267,6 +267,24 @@ public static class BasePersistence
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
+
+        /// <summary>
+        /// Batched <see cref="GetAccount"/>: reads one account per entry of <paramref name="addresses"/> into
+        /// the matching <paramref name="valueStride"/>-byte slot of <paramref name="values"/>.
+        /// </summary>
+        /// <param name="valueLengths">
+        /// Receives the bytes written per account, or <c>-1</c> when the account is absent. Its length defines
+        /// the batch size.
+        /// </param>
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte> values, int valueStride, Span<int> valueLengths);
+
+        /// <summary>
+        /// Batched <see cref="TryGetStorage"/>: reads the slot at <c>addresses[i]</c>/<c>slots[i]</c> into
+        /// <c>outValues[i]</c>, setting <c>found[i]</c> exactly as the single-key call would return.
+        /// </summary>
+        /// <remarks><paramref name="found"/>.Length defines the batch size.</remarks>
+        public void TryGetStorages(ReadOnlySpan<ValueHash256> addresses, ReadOnlySpan<ValueHash256> slots, Span<SlotValue> outValues, Span<bool> found);
+
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -294,6 +312,17 @@ public static class BasePersistence
     {
         public Account? GetAccount(Address address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+
+        /// <summary>Batched <see cref="GetAccount"/>. <paramref name="results"/>.Length defines the batch size.</summary>
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results);
+
+        /// <summary>
+        /// Batched <see cref="TryGetSlot"/>: reads <c>addresses[i]</c>/<c>slots[i]</c> into <c>outValues[i]</c>,
+        /// setting <c>found[i]</c> exactly as the single-key call would return. <paramref name="found"/>.Length
+        /// defines the batch size.
+        /// </summary>
+        public void TryGetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, Span<SlotValue> outValues, Span<bool> found);
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
@@ -386,13 +415,14 @@ public static class BasePersistence
     ) : IFlatReader
         where TFlatReader : struct, IHashedFlatReader
     {
+        private const int AccountSpanBufferSize = 256;
+
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
-        private readonly int _accountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
         {
-            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(address.ToAccountPath, valueBuffer);
             if (responseSize == 0)
             {
@@ -411,9 +441,64 @@ public static class BasePersistence
             return TryGetSlotRaw(address.ToAccountPath, slotHash, ref outValue);
         }
 
+        /// <inheritdoc/>
+        [SkipLocalsInit]
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            const int batchSize = BaseFlatPersistence.MultiGetBatchSize;
+            Span<byte> values = stackalloc byte[batchSize * AccountSpanBufferSize];
+            Span<int> lengths = stackalloc int[batchSize];
+            Span<ValueHash256> paths = stackalloc ValueHash256[batchSize];
+
+            for (int offset = 0; offset < results.Length; offset += batchSize)
+            {
+                int chunk = Math.Min(batchSize, results.Length - offset);
+                for (int i = 0; i < chunk; i++) paths[i] = addresses[offset + i].ToAccountPath;
+
+                _flatReader.GetAccounts(paths[..chunk], values[..(chunk * AccountSpanBufferSize)], AccountSpanBufferSize, lengths[..chunk]);
+
+                for (int i = 0; i < chunk; i++)
+                {
+                    // A zero length is a stored empty value, which the single-key path also reads back as a
+                    // missing account; keep the two identical.
+                    int length = lengths[i];
+                    if (length <= 0)
+                    {
+                        results[offset + i] = null;
+                        continue;
+                    }
+
+                    RlpReader ctx = new(values.Slice(i * AccountSpanBufferSize, length));
+                    results[offset + i] = _accountDecoder.Decode(ref ctx);
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        [SkipLocalsInit]
+        public void TryGetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, Span<SlotValue> outValues, Span<bool> found)
+        {
+            const int batchSize = BaseFlatPersistence.MultiGetBatchSize;
+            Span<ValueHash256> paths = stackalloc ValueHash256[batchSize];
+            Span<ValueHash256> slotHashes = stackalloc ValueHash256[batchSize];
+
+            for (int offset = 0; offset < found.Length; offset += batchSize)
+            {
+                int chunk = Math.Min(batchSize, found.Length - offset);
+                for (int i = 0; i < chunk; i++)
+                {
+                    paths[i] = addresses[offset + i].ToAccountPath;
+                    slotHashes[i] = ValueKeccak.Zero;
+                    StorageTree.ComputeKeyWithLookup(slots[offset + i], ref slotHashes[i]);
+                }
+
+                _flatReader.TryGetStorages(paths[..chunk], slotHashes[..chunk], outValues.Slice(offset, chunk), found.Slice(offset, chunk));
+            }
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash)
         {
-            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(addrHash, valueBuffer);
             return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }
@@ -435,7 +520,7 @@ public static class BasePersistence
         TTrieReader trieReader,
         StateId currentState,
         IDisposable disposer)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IPersistence.IBatchedPersistenceReader
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {
@@ -451,6 +536,12 @@ public static class BasePersistence
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results) =>
+            _flatReader.GetAccounts(addresses, results);
+
+        public void TryGetSlots(ReadOnlySpan<Address> addresses, ReadOnlySpan<UInt256> slots, Span<SlotValue> outValues, Span<bool> found) =>
+            _flatReader.TryGetSlots(addresses, slots, outValues, found);
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);

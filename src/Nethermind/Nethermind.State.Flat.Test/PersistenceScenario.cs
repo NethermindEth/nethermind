@@ -975,6 +975,128 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         Assert.That(count2, Is.EqualTo(3));
     }
 
+    // Mixed present / never-written / deleted keys spread over many accounts, long enough to cross the
+    // internal batch boundary several times. The batched read must be indistinguishable from the per-key one.
+    [TestCase(1)]
+    [TestCase(31)]
+    [TestCase(32)]
+    [TestCase(33)]
+    [TestCase(200)]
+    public void TestBatchAccountReadsMatchPerKeyReads(int count)
+    {
+        Address[] addresses = BuildAddresses(count);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            // i % 3 == 0 present, == 1 written then deleted, == 2 never written.
+            for (int i = 0; i < count; i++)
+            {
+                if (i % 3 != 2) writer.SetAccount(addresses[i], TestItem.GenerateIndexedAccount(i));
+            }
+        }
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (i % 3 == 1) writer.SetAccount(addresses[i], null);
+            }
+        }
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+
+        Account?[] batched = new Account?[count];
+        ((IPersistence.IBatchedPersistenceReader)reader).GetAccounts(addresses, batched);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Assert.That(batched[i], Is.EqualTo(reader.GetAccount(addresses[i])), $"account {i}");
+            }
+
+            // Guard against a batch that returns null for everything and still "matches".
+            Assert.That(Array.Exists(batched, static a => a is not null), Is.True, "expected at least one present account");
+        }
+    }
+
+    [TestCase(1)]
+    [TestCase(31)]
+    [TestCase(32)]
+    [TestCase(33)]
+    [TestCase(200)]
+    public void TestBatchSlotReadsMatchPerKeyReads(int count)
+    {
+        // Several accounts so the batch spans accounts, and slot values of every stripped length that the
+        // encoder handles: 1 byte, multi-byte, and the full 32 bytes.
+        Address[] addresses = BuildAddresses(Math.Max(1, count / 4));
+        Address[] slotAddresses = new Address[count];
+        UInt256[] slots = new UInt256[count];
+        for (int i = 0; i < count; i++)
+        {
+            slotAddresses[i] = addresses[i % addresses.Length];
+            slots[i] = (UInt256)i;
+        }
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            foreach (Address address in addresses) writer.SetAccount(address, TestItem.GenerateIndexedAccount(0));
+            for (int i = 0; i < count; i++)
+            {
+                if (i % 3 == 2) continue; // never written
+                writer.SetStorage(slotAddresses[i], slots[i], SlotValue.FromSpanWithoutLeadingZero(SlotBytes(i)));
+            }
+        }
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (i % 3 == 1) writer.SetStorage(slotAddresses[i], slots[i], null); // deleted
+            }
+        }
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+
+        SlotValue[] batchedValues = new SlotValue[count];
+        bool[] batchedFound = new bool[count];
+        ((IPersistence.IBatchedPersistenceReader)reader).TryGetSlots(slotAddresses, slots, batchedValues, batchedFound);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < count; i++)
+            {
+                SlotValue expectedValue = default;
+                bool expectedFound = reader.TryGetSlot(slotAddresses[i], slots[i], ref expectedValue);
+
+                Assert.That(batchedFound[i], Is.EqualTo(expectedFound), $"slot {i} found");
+                if (expectedFound)
+                {
+                    Assert.That(batchedValues[i].AsReadOnlySpan.ToArray(), Is.EqualTo(expectedValue.AsReadOnlySpan.ToArray()), $"slot {i} value");
+                }
+            }
+
+            Assert.That(Array.Exists(batchedFound, static f => f), Is.True, "expected at least one present slot");
+        }
+    }
+
+    private static Address[] BuildAddresses(int count)
+    {
+        Random random = new(count);
+        Address[] addresses = new Address[count];
+        for (int i = 0; i < count; i++) addresses[i] = TestItem.GetRandomAddress(random);
+        return addresses;
+    }
+
+    /// <summary>Stripped slot bytes cycling through 1-byte, multi-byte and full-width values.</summary>
+    private static byte[] SlotBytes(int index)
+    {
+        int length = (index % SlotValue.ByteCount) + 1;
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < length; i++) bytes[i] = (byte)(index + i + 1);
+        return bytes;
+    }
+
     [Test]
     public void TestIsPreimageMode_ReturnsCorrectValue()
     {
