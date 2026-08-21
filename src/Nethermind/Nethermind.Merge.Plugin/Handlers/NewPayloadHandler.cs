@@ -219,11 +219,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return cachedResult;
             }
 
-            // Without the parent state the compliance of an already-accepted canonical block can no longer
-            // be re-derived, and answering SYNCING for it would be worse than answering nothing.
-            if (!_stateReader.HasStateForBlock(parentHeader))
+            // Re-deriving compliance costs a full re-execution, so spend it only where the answer can still
+            // be acted on: the head itself, and only while its parent state is around to replay against.
+            if (block.Number < (_blockTree.Head?.Number ?? 0) || !_stateReader.HasStateForBlock(parentHeader))
             {
-                if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored, inclusion list not re-checkable (parent state pruned). Block {block.ToString(Block.Format.Short)} found in main chain.");
+                if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored, inclusion list not re-evaluated. Block {block.ToString(Block.Format.Short)} found in main chain.");
                 return NewPayloadV1Result.InclusionListNotEvaluated(block.Hash);
             }
         }

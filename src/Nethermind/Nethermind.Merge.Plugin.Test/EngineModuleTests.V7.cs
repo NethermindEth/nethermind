@@ -509,14 +509,49 @@ public partial class EngineModuleTests
         Assert.That(emptyBlock!.Transactions.Select(t => t.Hash), Is.EqualTo(new[] { inclusionListTx.Hash }));
     }
 
-    private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList, ulong targetGasLimit = 30_000_000UL) => new()
+    // Only the head is still attestable, so an older canonical block must not be re-executed to answer for it.
+    [Test]
+    public async Task NewPayloadV6_does_not_re_evaluate_an_inclusion_list_behind_head()
     {
-        Timestamp = Timestamper.UnixTime.Seconds,
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
+        await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3);
+
+        // A different IL misses the (block, IL) cache, and the first block is now behind head.
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            first, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
+
+        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(resend.Data.InclusionListSatisfied, Is.Null);
+    }
+
+    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot)
+    {
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(parent, Keccak.Zero, parent),
+            BuildBogotaPayloadAttributes(inclusionList: [], timestamp: Timestamper.UnixTime.Seconds + slot, slotNumber: slot));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
+
+        await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+        await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+        return payload;
+    }
+
+    private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList, ulong targetGasLimit = 30_000_000UL, ulong? timestamp = null, ulong slotNumber = 1) => new()
+    {
+        Timestamp = timestamp ?? Timestamper.UnixTime.Seconds,
         PrevRandao = Keccak.Zero,
         SuggestedFeeRecipient = TestItem.AddressC,
         Withdrawals = [],
         ParentBeaconBlockRoot = Keccak.Zero,
-        SlotNumber = 1,
+        SlotNumber = slotNumber,
         // V4 attributes require TargetGasLimit.
         TargetGasLimit = targetGasLimit,
         InclusionListTransactions = inclusionList,
