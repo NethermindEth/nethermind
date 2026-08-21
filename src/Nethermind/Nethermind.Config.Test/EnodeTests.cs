@@ -64,6 +64,57 @@ namespace Nethermind.Config.Test
             Assert.That(reparsed.HostIp, Is.EqualTo(IPAddress.Parse("192.168.2.54")));
         }
 
+        [TestCase("fd00:beef:cafe::11", 30304, "@[fd00:beef:cafe::11]:30303?discport=30304")]
+        [TestCase("fd00:beef:cafe::11", 30303, "@[fd00:beef:cafe::11]:30303")]
+        [TestCase("::ffff:172.217.12.36", 30303, "@172.217.12.36:30303")]
+        public void info_formats_host_for_reparsing(string host, int discoveryPort, string expectedTail)
+        {
+            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            IPAddress hostIp = IPAddress.Parse(host);
+            Enode enode = new(publicKey, hostIp, 30303, discoveryPort);
+
+            Assert.That(enode.Info, Does.EndWith(expectedTail));
+            Assert.That(Enode.IsEnode(enode.Info, out _), Is.True);
+            Enode reparsed = new(enode.Info);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reparsed.HostIp, Is.EqualTo(hostIp.IsIPv4MappedToIPv6 ? hostIp.MapToIPv4() : hostIp));
+                Assert.That(reparsed.Port, Is.EqualTo(30303));
+                Assert.That(reparsed.DiscoveryPort, Is.EqualTo(discoveryPort));
+            }
+        }
+
+        [Test]
+        public void can_parse_bracketed_native_ipv6_host()
+        {
+            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            IPAddress ipv6 = IPAddress.Parse("fd00:beef:cafe::11");
+
+            Enode enode = new($"enode://{publicKey.ToString(false)}@[fd00:beef:cafe::11]:30303?discport=30304");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(enode.HostIp, Is.EqualTo(ipv6));
+                Assert.That(enode.Port, Is.EqualTo(30303));
+                Assert.That(enode.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(enode.PublicKey, Is.EqualTo(publicKey));
+            }
+        }
+
+        [TestCase("/junk")]
+        [TestCase("#?discport=30304")]
+        [TestCase("?discport=-1")]
+        [TestCase("?discport=65536")]
+        [TestCase("?discport=+30304")]
+        public void rejects_malformed_enode_suffix(string suffix)
+        {
+            PublicKey publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+
+            Assert.That(
+                () => new Enode($"enode://{publicKey.ToString(false)}@127.0.0.1:30303{suffix}"),
+                Throws.ArgumentException);
+        }
+
         public static IEnumerable Ipv4vs6TestCases
         {
             get
@@ -71,10 +122,13 @@ namespace Nethermind.Config.Test
                 IPAddress ipv6_1 = IPAddress.Parse("2607:f8b0:4002:c02::6a");
                 IPAddress ipv6_2 = IPAddress.Parse("2607:f8b0:4002:c02::67");
                 IPAddress ipv4 = IPAddress.Parse("172.217.12.36");
+                IPAddress ipv4Mapped = IPAddress.Parse("::ffff:172.217.12.36");
                 yield return new TestCaseData(new object[] { new[] { ipv4 } }).Returns(ipv4);
                 yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv6_2, ipv4 } }).Returns(ipv4);
                 yield return new TestCaseData(new object[] { new[] { ipv4, ipv6_1, ipv6_2 } }).Returns(ipv4);
-                yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv6_2 } }).Returns(ipv6_1.MapToIPv4());
+                yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv6_2 } }).Returns(ipv6_1);
+                yield return new TestCaseData(new object[] { new[] { ipv4Mapped } }).Returns(ipv4);
+                yield return new TestCaseData(new object[] { new[] { ipv6_1, ipv4Mapped } }).Returns(ipv4);
             }
         }
 

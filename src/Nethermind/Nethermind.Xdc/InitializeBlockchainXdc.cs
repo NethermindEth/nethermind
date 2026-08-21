@@ -42,7 +42,10 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
-                new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),
+                [
+                    new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),
+                    new BlackListedAddressFilter(chainHeadInfoProvider, XdcSpecProvider, _api.LogManager)
+                ],
                 true
             );
 
