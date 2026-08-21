@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
@@ -30,7 +31,7 @@ public class FrameTransactionForRpcTests
         DecodedMaxFeePerGas = 100,
         Frames =
         [
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+            SelfVerify(PrefixFrameGas),
         ],
         FrameSignatures = [],
     };

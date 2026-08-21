@@ -52,8 +52,6 @@ public class FrameTxSimulationFilterTests
         }
     }
 
-    // An undecided verdict is a node-side fault; it must not produce a non-accepting result, which the
-    // peer's flood counter would charge and eventually disconnect over.
     [TestCaseSource(nameof(OpaquePrefixCases))]
     public void Accept_OpaquePrefix_FollowsTheSimulatorsVerdict(FrameTxSimulationResult simulation, AcceptTxResult expected, Address? expectedPayer)
     {
@@ -78,6 +76,8 @@ public class FrameTxSimulationFilterTests
             .SetName("Accept_OpaquePrefix_SimulatesAndRecordsResolvedPayer");
         yield return new TestCaseData(FrameTxSimulationResult.Reject("banned opcode"), AcceptTxResult.FrameSimulationFailed, null)
             .SetName("Accept_OpaquePrefixFailsSimulation_Rejected");
+        // An undecided verdict is a node-side fault, so it must not produce a non-accepting result: the
+        // peer's flood counter would charge that and eventually disconnect over it.
         yield return new TestCaseData(FrameTxSimulationResult.Undecided("simulation unavailable"), AcceptTxResult.Accepted, null)
             .SetName("Accept_OpaquePrefixUndecidedBySimulator_DefersInsteadOfChargingTheSender");
     }
@@ -111,7 +111,7 @@ public class FrameTxSimulationFilterTests
     }
 
     private static Transaction SelfVerifyTx(Address sender) =>
-        FrameTx(sender, [Secp256k1Signature(sender)], SelfVerify(gasLimit: 100_000));
+        FrameTx(sender, [Secp256k1Signature(sender)], SelfVerify(PrefixFrameGas));
 
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {

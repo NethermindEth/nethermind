@@ -24,6 +24,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -516,7 +517,7 @@ public class TxValidatorTests
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             MaxFeePerBlobGas = maxFeePerBlobGas,
         };
@@ -542,7 +543,7 @@ public class TxValidatorTests
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             MaxFeePerBlobGas = 1,
             BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
@@ -647,7 +648,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             GasPrice = 1,               // max_priority_fee_per_gas
             DecodedMaxFeePerGas = 100,  // max_fee_per_gas
@@ -1075,7 +1076,7 @@ public class TxValidatorTests
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [SelfVerify(PrefixFrameGas)],
             FrameSignatures = [],
             DecodedMaxFeePerGas = 100_000,
             MaxFeePerBlobGas = 1,
@@ -1103,8 +1104,8 @@ public class FrameTxPostTxModeGateTests
             SenderAddress = TestItem.AddressA,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModePostTx, 0, TestItem.AddressB, gasLimit: 100_000, UInt256.Zero, default),
+                SelfVerify(PrefixFrameGas),
+                PostTx(PrefixFrameGas),
             ],
         };
 

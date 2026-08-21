@@ -15,8 +15,6 @@ namespace Nethermind.TxPool.Test;
 
 public class FrameTxPayerFilterTests
 {
-    private const ulong PrefixFrameGas = 100_000;
-
     [Test]
     public void Accept_FrameTx_RecordsResolvedPayerAndAccepts()
     {

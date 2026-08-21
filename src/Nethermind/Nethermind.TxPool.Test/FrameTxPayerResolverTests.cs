@@ -17,8 +17,6 @@ namespace Nethermind.TxPool.Test;
 
 public class FrameTxPayerResolverTests
 {
-    private const ulong PrefixFrameGas = 100_000;
-
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Sponsor = TestItem.AddressB;
 
@@ -50,7 +48,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([SelfVerifyFrame()], [Secp(Sender)]);
+                return FrameTx([SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
         // The sponsor's pay-frame signature is unverified at admission, so a third party is never named natively.
@@ -59,7 +57,7 @@ public class FrameTxPayerResolverTests
             {
                 DefaultCodeAccount(state, Sender);
                 DefaultCodeAccount(state, Sponsor);
-                return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
+                return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A following pay frame can name a sponsor if the sender's balance drops below max cost, so the
@@ -69,19 +67,19 @@ public class FrameTxPayerResolverTests
             {
                 DefaultCodeAccount(state, Sender);
                 DefaultCodeAccount(state, Sponsor);
-                return FrameTx([SelfVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
+                return FrameTx([SelfVerifyFrame(), PayFrame(Sponsor)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A never-seen sender still resolves: the zeroed account reads as default (empty) code.
         yield return Case("SelfVerify_NonExistentSender_PayerIsSender",
-            _ => FrameTx([SelfVerifyFrame()], [Secp(Sender)]),
+            _ => FrameTx([SelfVerifyFrame()], [Secp256k1Signature(Sender)]),
             FrameTxPayerOutcome.Resolved, Sender);
 
         yield return Case("OnlyVerifyWithoutPay_NoPayer",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
+                return FrameTx([OnlyVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
         // NoPayer is code-independent: even a deployed sender cannot approve payment on a prefix with no
@@ -90,7 +88,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DeployedCodeAccount(state, Sender);
-                return FrameTx([OnlyVerifyFrame()], [Secp(Sender)]);
+                return FrameTx([OnlyVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
         // A leading deploy frame is part of the recognized prefix, so it is skipped like the expiry frame.
@@ -98,7 +96,7 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([DeployFrame(), SelfVerifyFrame()], [Secp(Sender)]);
+                return FrameTx([DeployFrame(), SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
         // At most one deploy frame is skipped, so the second one is the frame that must name the payer and
@@ -107,21 +105,21 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([DeployFrame(), DeployFrame(), SelfVerifyFrame()], [Secp(Sender)]);
+                return FrameTx([DeployFrame(), DeployFrame(), SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         yield return Case("DeployFrameOnly_NoPayer",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([DeployFrame()], [Secp(Sender)]);
+                return FrameTx([DeployFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.NoPayer, null);
 
         yield return Case("SelfVerify_DeployedCodeSender_RequiresSimulation",
             state =>
             {
                 DeployedCodeAccount(state, Sender);
-                return FrameTx([SelfVerifyFrame()], [Secp(Sender)]);
+                return FrameTx([SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         yield return Case("OnlyVerifyPay_DeployedCodePaymaster_RequiresSimulation",
@@ -129,7 +127,7 @@ public class FrameTxPayerResolverTests
             {
                 DefaultCodeAccount(state, Sender);
                 DeployedCodeAccount(state, Sponsor);
-                return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
+                return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A wrong signature shape isn't proof of invalidity (its placement is unsettled), so it's deferred, not dropped.
@@ -153,7 +151,7 @@ public class FrameTxPayerResolverTests
             {
                 DefaultCodeAccount(state, Sender);
                 DefaultCodeAccount(state, Sponsor);
-                return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sender)]);
+                return FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp256k1Signature(Sender), Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.RequiresSimulation, null);
 
         // A leading expiry_verify frame is skipped for shape matching; the self relay still resolves.
@@ -161,14 +159,14 @@ public class FrameTxPayerResolverTests
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([ExpiryFrame(9999), SelfVerifyFrame()], [Secp(Sender)]);
+                return FrameTx([ExpiryAt(9999), SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
             }, FrameTxPayerOutcome.Resolved, Sender);
 
         yield return Case("ExpiryFrameOnly_NoPayer",
             state =>
             {
                 DefaultCodeAccount(state, Sender);
-                return FrameTx([ExpiryFrame(9999)], []);
+                return FrameTx([ExpiryAt(9999)], []);
             }, FrameTxPayerOutcome.NoPayer, null);
     }
 
@@ -177,7 +175,7 @@ public class FrameTxPayerResolverTests
     {
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(Sender, wei: Eth(7), nonce: 5);
-        Transaction tx = FrameTx([SelfVerifyFrame()], [Secp(Sender)]);
+        Transaction tx = FrameTx([SelfVerifyFrame()], [Secp256k1Signature(Sender)]);
 
         FrameTxPayerResolution resolution = Resolve(tx, state);
         FrameTxDependencySet deps = resolution.Dependencies;
@@ -201,7 +199,7 @@ public class FrameTxPayerResolverTests
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(Sender, wei: 0, nonce: 1);
         state.CreateAccount(Sponsor, wei: Eth(3), nonce: 0);
-        Transaction tx = FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp(Sender), Secp(Sponsor)]);
+        Transaction tx = FrameTx([OnlyVerifyFrame(), PayFrame(Sponsor)], [Secp256k1Signature(Sender), Secp256k1Signature(Sponsor)]);
 
         FrameTxPayerResolution resolution = Resolve(tx, state);
 
@@ -223,9 +221,9 @@ public class FrameTxPayerResolverTests
         DefaultCodeAccount(state, Sender);
         state.InsertCode(Eip8141Constants.ExpiryVerifierCode, Eip8141Constants.ExpiryVerifierAddress);
         TxFrame[] frames = withDeploy
-            ? [ExpiryFrame(0xDEAD_BEEF), DeployFrame(), SelfVerifyFrame()]
-            : [ExpiryFrame(0xDEAD_BEEF), SelfVerifyFrame()];
-        Transaction tx = FrameTx(frames, [Secp(Sender)]);
+            ? [ExpiryAt(0xDEAD_BEEF), DeployFrame(), SelfVerifyFrame()]
+            : [ExpiryAt(0xDEAD_BEEF), SelfVerifyFrame()];
+        Transaction tx = FrameTx(frames, [Secp256k1Signature(Sender)]);
 
         FrameTxPayerResolution resolution = Resolve(tx, state);
         FrameTxDependencySet deps = resolution.Dependencies;
@@ -248,7 +246,7 @@ public class FrameTxPayerResolverTests
         TxFrame deploy = DeployFrame();
         TxFrame selfVerify = SelfVerifyFrame();
         TxFrame trailing = new(TxFrame.ModeDefault, flags: 0, target: null, gasLimit: 5_000_000, UInt256.Zero, default);
-        Transaction tx = FrameTx([deploy, selfVerify, trailing], [Secp(Sender)]);
+        Transaction tx = FrameTx([deploy, selfVerify, trailing], [Secp256k1Signature(Sender)]);
 
         FrameTxPayerResolution resolution = Resolve(tx, state);
         ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx);
@@ -276,15 +274,11 @@ public class FrameTxPayerResolverTests
     private static Transaction FrameTx(TxFrame[] frames, TxFrameSignature[] signatures) =>
         FrameTxTestFrames.FrameTx(Sender, signatures, frames);
 
-    private static TxFrameSignature Secp(Address signer) => Secp256k1Signature(signer);
-
     private static TxFrame SelfVerifyFrame() => SelfVerify(PrefixFrameGas);
 
     private static TxFrame OnlyVerifyFrame() => OnlyVerify(PrefixFrameGas);
 
     private static TxFrame PayFrame(Address target) => Pay(target, PrefixFrameGas);
-
-    private static TxFrame ExpiryFrame(ulong deadline) => ExpiryAt(deadline);
 
     private static TxFrame Frame(byte mode) => new(mode, flags: 0, target: null, gasLimit: 50_000, UInt256.Zero, default);
 

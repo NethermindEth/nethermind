@@ -15,8 +15,6 @@ namespace Nethermind.TxPool.Test;
 
 public class FrameTxPayerlessFilterTests
 {
-    private const ulong PrefixFrameGas = 100_000;
-
     // The filter takes no ECDSA/signature validator, so a structural rejection cannot invoke signature
     // verification even when the (invalid) signature list is large and would be expensive to recover.
     [Test]

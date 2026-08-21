@@ -1453,17 +1453,16 @@ namespace Nethermind.TxPool.Test
         }
 
         // EIP-8141: a blob-carrying frame tx (type 6 with versioned hashes) is routed to the blob pool,
-        // mirroring type-3 routing, so it is subject to blob-pool rules. A plain frame tx and a type-3
-        // blob tx must route unchanged.
-        [TestCase(1, true, 1, 0, TestName = "blob_carrying_frame_tx_is_routed_to_blob_pool")]
-        [TestCase(0, false, 0, 1, TestName = "non_blob_frame_tx_is_routed_to_normal_pool")]
-        public void Frame_tx_pool_routing_follows_the_blob_count(int blobCount, bool withSidecar, int expectedBlobPool, int expectedNormalPool)
+        // mirroring type-3 routing, so it is subject to blob-pool rules.
+        [TestCase(1, 1, 0, TestName = "blob_carrying_frame_tx_is_routed_to_blob_pool")]
+        [TestCase(0, 0, 1, TestName = "non_blob_frame_tx_is_routed_to_normal_pool")]
+        public void Frame_tx_pool_routing_follows_the_blob_count(int blobCount, int expectedBlobPool, int expectedNormalPool)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount, withSidecar: withSidecar);
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount, withSidecar: blobCount > 0);
 
             AcceptTxResult result = _txPool.SubmitTx(frameTx, TxHandlingOptions.None);
 

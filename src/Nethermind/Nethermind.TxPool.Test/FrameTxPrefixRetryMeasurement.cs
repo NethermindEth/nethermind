@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Buffers.Binary;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
@@ -42,6 +42,7 @@ namespace Nethermind.TxPool.Test;
 public class FrameTxPrefixRetryMeasurement
 {
     private const int HeadAdvances = 20;
+    private const ulong SampleFrameGas = 50_000;
     private const ulong FirstHeadNumber = 10_000_000;
     private const ulong SlotSeconds = 12;
     private const ulong GenesisTimestamp = 1_700_000_000;
@@ -168,21 +169,9 @@ public class FrameTxPrefixRetryMeasurement
     /// </remarks>
     private Transaction BuildFrameTx(ulong nonce, ulong? deadline)
     {
-        TxFrame[] frames;
-        if (deadline is null)
-        {
-            frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)];
-        }
-        else
-        {
-            byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-            BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-            frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData),
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default),
-            ];
-        }
+        TxFrame[] frames = deadline is null
+            ? [SelfVerify(SampleFrameGas)]
+            : [ExpiryAt(deadline.Value, SampleFrameGas), SelfVerify(SampleFrameGas)];
 
         Transaction tx = new()
         {

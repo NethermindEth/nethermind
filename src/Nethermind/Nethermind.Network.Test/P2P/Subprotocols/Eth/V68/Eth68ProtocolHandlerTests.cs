@@ -314,7 +314,7 @@ public class Eth68ProtocolHandlerTests
         AssertFrameTxAnnouncementRequested(announcedSize: 100, expectedRequests: 1);
     }
 
-    /// <summary>Announces a single frame transaction hash of the given size and asserts whether the handler asked for it.</summary>
+    /// <summary>Runs the status handshake, then announces exactly one frame transaction hash of the given size.</summary>
     private void AssertFrameTxAnnouncementRequested(int announcedSize, int expectedRequests)
     {
         using ArrayPoolList<byte> types = new(1) { (byte)TxType.FrameTx };
