@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
-using Nethermind.Core.Extensions;
+using System.IO;
+using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.Optimism.CL.P2P;
 
@@ -12,79 +13,32 @@ public class PayloadDecoder : IPayloadDecoder
 {
     public static readonly PayloadDecoder Instance = new();
 
-    private const int PrefixDataSize = 560;
-
     private PayloadDecoder()
     {
     }
 
     public ExecutionPayloadV3 DecodePayload(ReadOnlySpan<byte> data)
     {
-        ExecutionPayloadV3 payload = new();
-
-        if (PrefixDataSize >= data.Length)
+        if (data.Length < Hash256.Size)
         {
-            throw new ArgumentException("Invalid payload data size");
+            throw new InvalidDataException($"Payload is shorter than the {Hash256.Size}-byte parent beacon block root");
         }
 
-        ReadOnlySpan<byte> movingData = data;
-        payload.ParentBeaconBlockRoot = new(movingData.TakeAndMove(32));
-        payload.ParentHash = new(movingData.TakeAndMove(32));
-        payload.FeeRecipient = new(movingData.TakeAndMove(20));
-        payload.StateRoot = new(movingData.TakeAndMove(32));
-        payload.ReceiptsRoot = new(movingData.TakeAndMove(32));
-        payload.LogsBloom = new(movingData.TakeAndMove(256));
-        payload.PrevRandao = new(movingData.TakeAndMove(32));
-        payload.BlockNumber = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        payload.GasLimit = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        payload.GasUsed = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        payload.Timestamp = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        UInt32 extraDataOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
-        payload.BaseFeePerGas = new(movingData.TakeAndMove(32));
-        payload.BlockHash = new(movingData.TakeAndMove(32));
-        UInt32 transactionsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
-        UInt32 withdrawalsOffset = 32 + BinaryPrimitives.ReadUInt32LittleEndian(movingData.TakeAndMove(4));
-        payload.BlobGasUsed = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-        payload.ExcessBlobGas = BinaryPrimitives.ReadUInt64LittleEndian(movingData.TakeAndMove(8));
-
-        if (withdrawalsOffset > data.Length || transactionsOffset >= withdrawalsOffset || extraDataOffset > transactionsOffset || withdrawalsOffset != data.Length)
-        {
-            throw new ArgumentException($"Invalid offsets. Data length: {data.Length}, extraData: {extraDataOffset}, transactions: {transactionsOffset}, withdrawals: {withdrawalsOffset}");
-        }
-
-        payload.ExtraData = data[(int)extraDataOffset..(int)transactionsOffset].ToArray();
-        payload.Transactions = DecodeTransactions(data[(int)transactionsOffset..(int)withdrawalsOffset]);
-        payload.Withdrawals = [];
-
+        // The SSZ ExecutionPayload starts immediately after the parent_beacon_block_root prefix
+        SszExecutionPayloadV3.Decode(data[Hash256.Size..], out SszExecutionPayloadV3 ssz);
+        ExecutionPayloadV3 payload = ssz.AsExecutionPayload();
+        payload.ParentBeaconBlockRoot = new Hash256(data[..Hash256.Size]);
         return payload;
     }
 
-    byte[][] DecodeTransactions(ReadOnlySpan<byte> data)
+    public byte[] EncodePayload(ExecutionPayloadV3 payload)
     {
-        if (4 > data.Length) throw new ArgumentException("Invalid transaction data");
-        UInt32 firstTxOffset = BinaryPrimitives.ReadUInt32LittleEndian(data[..4]);
-        UInt32 txCount = firstTxOffset / 4;
-        byte[][] txs = new byte[txCount][];
-        int previous = (int)firstTxOffset;
-        for (int i = 0; i < txCount; i++)
-        {
-            int next;
-            if (i + 1 < txCount)
-            {
-                if (i * 4 + 8 > data.Length) throw new ArgumentException("Invalid transaction data");
-                next = (int)BinaryPrimitives.ReadUInt32LittleEndian(data[(i * 4 + 4)..(i * 4 + 8)]);
-            }
-            else
-            {
-                next = data.Length;
-            }
-            if (previous >= next || next > data.Length) throw new ArgumentException("Invalid transaction offset");
-            txs[i] = data[previous..next].ToArray();
-            previous = next;
-        }
+        ArgumentNullException.ThrowIfNull(payload.ParentBeaconBlockRoot);
 
-        return txs;
+        SszExecutionPayloadV3 ssz = new(payload);
+        byte[] encoded = new byte[Hash256.Size + SszExecutionPayloadV3.GetLength(ssz)];
+        payload.ParentBeaconBlockRoot.Bytes.CopyTo(encoded);
+        SszExecutionPayloadV3.Encode(encoded.AsSpan(Hash256.Size), ssz);
+        return encoded;
     }
-
-    public byte[] EncodePayload(ExecutionPayloadV3 payload) => throw new NotImplementedException();
 }
