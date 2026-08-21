@@ -9,7 +9,7 @@ using Queue =
 #if ZK_EVM
         Nethermind.Evm.ZkEvmQueue<Nethermind.Evm.ExecutionEnvironment>;
 #else
-        System.Collections.Concurrent.ConcurrentQueue<Nethermind.Evm.ExecutionEnvironment>;
+        Nethermind.Evm.EvmObjectPool<Nethermind.Evm.ExecutionEnvironment>;
 #endif
 
 namespace Nethermind.Evm

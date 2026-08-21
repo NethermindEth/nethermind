@@ -2,18 +2,26 @@
 
 Scripts behind the [`run-rpc-benchmarks.yml`](../../.github/workflows/run-rpc-benchmarks.yml)
 workflow, which benchmarks Nethermind's **state-reading JSON-RPC**
-(`eth_call`, `eth_getBalance`, `trace_*`, `debug_*`, …) on the
-`reproducible-benchmarks-arm` runner, reusing the EXPB workflow's DB snapshots.
+(`eth_call`, `eth_getBalance`, `trace_*`, `debug_*`, …) on a self-hosted
+benchmark runner, reusing the EXPB workflow's DB snapshots.
 Drives three load tools and can optionally capture a JetBrains dotTrace snapshot
 and post-process it to XML.
 
-**Supported configuration.** That runner carries exactly one kind of snapshot
-set — Nethermind in the **flat** layout under
-`/data/nethermind/nethermind-flat-<block>` — so `client`, `reference_client`
-(i.e. cross-client comparison mode) and `state_layout` are pinned to
-`nethermind` / `none` / `flat`. Anything else is refused before a node starts —
-by the workflow's `resolve` job for a single-node run, and by
-`run-rpc-sweep.sh` for the `tool_config.clients` list that sweep mode uses
+**Which runner, and what it can serve.** The `arch` input picks the box:
+`amd64` (default) is `reproducible-benchmarks` with snapshots under `/mnt/sda`,
+`arm64` is `reproducible-benchmarks-arm` with snapshots under `/data`. Every
+path below follows that choice. **Never compare timings across the two boxes.**
+
+The amd64 box holds the full snapshot set, so it serves every `client`,
+`reference_client` and `state_layout`. The arm64 box carries exactly one kind of
+snapshot set — Nethermind in the **flat** layout — so there `client`,
+`reference_client` and `state_layout` are held to `nethermind` / `none` / `flat`,
+and an image it would have to build is refused as well (that box's ~19G root disk
+dies under a build). `resolve` checks those limits against the selected runner.
+
+Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
+Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
+a non-Nethermind entry in `tool_config.clients`
 instead of those inputs. `start-node.sh` stays client-generic, so re-enabling
 geth/reth or a second layout is a matter of provisioning the snapshot set and
 widening those two guards.
@@ -36,7 +44,7 @@ which uses the same snapshots on this runner:
   bound to `/execution-data`; the node runs
   `--datadir=/execution-data --Init.BaseDbPath=<network>` — same as expb's
   `NethermindConfig`.
-- `state_layout=flat` → `/data/nethermind/nethermind-flat-<block>` +
+- `state_layout=flat` → `<snapshot root>/nethermind-flat-<block>` +
   `--FlatDb.Enabled=true` (the `snapshot_source` of
   `github-action-mainnet-flat.yaml`). Override via `node_config.db_source`.
 - The default `overlay` isolation matches expb's `snapshot_backend: overlay`,
@@ -51,7 +59,7 @@ which uses the same snapshots on this runner:
 ## Snapshot sets
 
 The runner keeps **block-tagged snapshot sets** under
-`/data/nethermind/nethermind-flat-<block>` — e.g. `nethermind-flat-25490000` —
+`<snapshot root>/nethermind-flat-<block>` — e.g. `nethermind-flat-25490000` —
 each carrying provenance sidecars (`_snapshot_metadata.json`,
 `_snapshot_web3_clientVersion.json`, `_snapshot_eth_getBlockByNumber.json`) that
 `start-node.sh` logs at startup.
@@ -158,7 +166,8 @@ the workflow's defensive-cleanup step).
 | `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
 | `client` | `nethermind` — the only client with a snapshot set on this runner. |
 | `reference_client` | `none` — cross-client comparison needs a second client's snapshot, which this runner does not carry. Compare two Nethermind builds with a `jsonbench-sweep` instead. |
-| `snapshot_block` | Snapshot set tag (`/data/nethermind/nethermind-flat-<tag>`); empty = `25490000`. |
+| `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
+| `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
@@ -177,7 +186,7 @@ from `Dockerfile` on the runner.
 {
   "db_source": "",                 // snapshot path; empty = resolved from snapshot_block
   "db_isolation": "",              // overlay | copy | readonly-bind | direct; empty = overlay
-  "scratch_root": "/data/expb-data/rpc-bench-scratch",
+  "scratch_root": "",   // empty = <expb data dir>/rpc-bench-scratch on the selected runner
   "network": "mainnet",
   "jsonrpc_modules": "Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug",
   "health_timeout_minutes": 30,
@@ -329,7 +338,8 @@ parity/timings only with an empty `rps_list`.
 
 **Corpus files** (JSON Lines, one `{"method":"eth_call","params":[...]}` per
 line, extra fields ignored, optionally gzipped) go to the runner at
-`/data/expb-data/rpc-bench/eth-call-corpus[-<label>].jsonl.gz`. A
+`<expb data dir>/rpc-bench/eth-call-corpus[-<label>].jsonl.gz` — `/mnt/sda/expb-data` on the
+amd64 runner, `/data/expb-data` on arm64, selected by the `arch` input. A
 `jsonbench-sweep` with `eth_call_corpus:true` discovers **every**
 `eth-call-corpus*.jsonl.gz` there and runs each as its own scenario;
 single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
@@ -485,10 +495,10 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 - **Docker** (nodes run as containers; EthCallChaos runs in a .NET SDK container;
   json-bench builds and runs its own runner image).
 - **The block-tagged Nethermind flat snapshot sets** shared with expb
-  (`/data/nethermind/nethermind-flat-<block>`, e.g. `nethermind-flat-25490000`).
+  (`<snapshot root>/nethermind-flat-<block>`, e.g. `nethermind-flat-25490000`).
   A client or layout with no set there is refused up front rather than run.
 - **A writable scratch location** on the same large disk (default
-  `/data/expb-data/rpc-bench-scratch`).
+  `<expb data dir>/rpc-bench-scratch`).
 - **`mount`/`umount` privileges** and overlayfs (expb already uses both).
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
