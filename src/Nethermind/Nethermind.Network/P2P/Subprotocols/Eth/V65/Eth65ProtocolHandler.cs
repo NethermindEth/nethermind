@@ -136,16 +136,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                if (_txPool.TryGetPendingTransaction(hash, out Transaction tx))
+                if (_txPool.TryGetPendingTransaction(hash, out Transaction tx) && CanServePooledTransaction(tx))
                 {
-                    int txSize = tx.GetLength();
+                    Transaction responseTx = PreparePooledTransactionForResponse(tx);
+                    int txSize = responseTx.GetLength();
 
                     if (txSize > packetSizeLeft && txsToSend.Count > 0)
                     {
                         break;
                     }
 
-                    txsToSend.Add(tx);
+                    txsToSend.Add(responseTx);
                     packetSizeLeft -= txSize;
                     TxPool.Metrics.PendingTransactionsSent++;
                 }
@@ -161,6 +162,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         /// <summary>Builds a transaction hash announcement.</summary>
         /// <inheritdoc cref="CreatePooledTransactionsMessage" path="/remarks"/>
         protected virtual NewPooledTransactionHashesMessage CreateAnnouncementMessage(IOwnedReadOnlyList<Hash256> hashes) => new(hashes);
+
+        protected virtual bool CanServePooledTransaction(Transaction tx) => true;
+
+        protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {

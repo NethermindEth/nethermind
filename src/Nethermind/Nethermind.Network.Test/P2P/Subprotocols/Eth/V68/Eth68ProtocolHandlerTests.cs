@@ -23,6 +23,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -157,6 +158,71 @@ public class Eth68ProtocolHandlerTests
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
+    [Test]
+    public void Should_accept_full_blob_tx_with_announced_network_size()
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        _transactionPool.Received().SubmitTx(Arg.Is<Transaction>(received => received.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
+    }
+
+    [Test]
+    public void Should_accept_geth_blob_size_estimate()
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs);
+        int gethSizeEstimate = tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength);
+        Assert.That(gethSizeEstimate, Is.Not.EqualTo(tx.GetLength()));
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { gethSizeEstimate },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        _transactionPool.Received().SubmitTx(Arg.Is<Transaction>(received => received.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
+    }
+
+    [TestCase(-8)]
+    [TestCase(8)]
+    public void Should_reject_inexact_blob_size_estimate(int sizeDifference)
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() + sizeDifference },
+            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received(1).InitiateDisconnect(
+            DisconnectReason.BackgroundTaskFailure,
+            "invalid pooled tx type or size");
+    }
+
 
     [Test]
     public void Should_disconnect_if_tx_type_is_wrong()
@@ -197,6 +263,25 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+    [Test]
+    public void should_disconnect_if_pooled_transactions_response_contains_sparse_blob_tx()
+    {
+        RecreateHandlerWithBlobSupport();
+        Transaction sparseTx = BuildSparseBlobTransaction();
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(
+            new ArrayPoolList<byte>(1) { (byte)sparseTx.Type },
+            new ArrayPoolList<int>(1) { sparseTx.GetLength() },
+            new ArrayPoolList<Hash256>(1) { sparseTx.Hash! });
+        using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { sparseTx }));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+        _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
     [Test]
@@ -248,6 +333,60 @@ public class Eth68ProtocolHandlerTests
             m.Hashes[0] == tx.Hash &&
             m.Sizes[0] == tx.GetLength() &&
             (TxType)m.Types[0] == tx.Type));
+    }
+
+    [Test]
+    public void should_not_announce_sparse_blob_tx_to_eth68_peer()
+    {
+        Transaction tx = BuildSparseBlobTransaction();
+
+        _handler.SendNewTransaction(tx);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+    }
+
+    [Test]
+    public void should_not_announce_sparse_light_blob_tx_to_eth68_peer()
+    {
+        Transaction tx = new LightTransaction(BuildSparseBlobTransaction());
+
+        _handler.SendNewTransaction(tx);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+    }
+
+    [Test]
+    public async Task should_not_serve_sparse_blob_tx_to_eth68_peer()
+    {
+        Transaction tx = BuildSparseBlobTransaction();
+        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        Assert.That(response.Transactions, Is.Empty);
+    }
+
+    [Test]
+    public async Task should_not_serve_sparse_light_blob_tx_to_eth68_peer()
+    {
+        Transaction tx = new LightTransaction(BuildSparseBlobTransaction());
+        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        using Eth65GetPooledTransactionsMessage request = new(new ArrayPoolList<Hash256>(1) { tx.Hash! });
+        using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+
+        Assert.That(response.Transactions, Is.Empty);
     }
 
     [TestCase(NewPooledTransactionHashesMessage68.MaxCount - 1)]
@@ -616,20 +755,15 @@ public class Eth68ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
 
-    private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig) =>
-        new(
-            _session,
-            _svc,
-            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
-            _syncManager,
-            RunImmediatelyScheduler.Instance,
-            _transactionPool,
-            _gossipPolicy,
-            new ForkInfo(_specProvider, _syncManager),
-            LimboLogs.Instance,
-            txPoolConfig,
-            Substitute.For<ISpecProvider>(),
-            _txGossipPolicy);
+    private static Transaction BuildSparseBlobTransaction()
+    {
+        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
+        Transaction sparseTx = new();
+        tx.CopyTo(sparseTx, copyHash: true);
+        sparseTx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with { Blobs = [] };
+        sparseTx.ClearLengthCache();
+        return sparseTx;
+    }
 
     private void ReplaceHandler(ITxPoolConfig txPoolConfig)
     {
@@ -646,6 +780,28 @@ public class Eth68ProtocolHandlerTests
         getBlockHeadersPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
     }
+
+    private void RecreateHandlerWithBlobSupport()
+    {
+        ITxPoolConfig txPoolConfig = Substitute.For<ITxPoolConfig>();
+        txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
+        ReplaceHandler(txPoolConfig);
+    }
+
+    private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig) =>
+        new(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            RunImmediatelyScheduler.Instance,
+            _transactionPool,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager),
+            LimboLogs.Instance,
+            txPoolConfig,
+            Substitute.For<ISpecProvider>(),
+            _txGossipPolicy);
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {
