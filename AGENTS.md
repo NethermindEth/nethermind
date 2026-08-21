@@ -240,8 +240,7 @@ Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T10
 sweep discovers it by glob and prints `Corpus scenarios: …` / `corpus OK: 497 records` — read those lines
 rather than assuming a corpus set. Pin one with `corpus_glob` when more are added.
 
-The canonical cell, and what the `performance is good` label runs, is **100 rps for 120 s after a
-discarded 120 s warm-up**. Rates are the thing to get right:
+The canonical cell is **100 rps for 120 s after a discarded warm-up**. Rates are the thing to get right:
 
 | rate | usable? |
 |---|---|
