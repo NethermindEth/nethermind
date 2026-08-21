@@ -76,19 +76,22 @@ public class InclusionListTxSource(
         return ordered;
     }
 
-    // FOCIL: blob (type-3) IL entries are ignored — drop them so block production never emits a blob
-    // tx that has no ShardBlobNetworkWrapper (which would make getPayloadV6 unusable for the CL).
+    // FOCIL: blob IL entries are ignored — drop them so block production never emits a blob tx that has no
+    // ShardBlobNetworkWrapper (which would make getPayloadV6 unusable for the CL). An IL is decoded from the
+    // canonical form, so this covers EIP-8141 blob-carrying frame txs too, not just type-3.
+    private static bool IsBlobCarrying(Transaction tx) => tx.SupportsBlobs || tx.CarriesBlobs;
+
     private static Transaction[] FilterBlobs(Transaction[] txs)
     {
         int kept = 0;
         for (int i = 0; i < txs.Length; i++)
-            if (!txs[i].SupportsBlobs) kept++;
+            if (!IsBlobCarrying(txs[i])) kept++;
         if (kept == txs.Length) return txs;
 
         Transaction[] result = new Transaction[kept];
         int j = 0;
         for (int i = 0; i < txs.Length; i++)
-            if (!txs[i].SupportsBlobs) result[j++] = txs[i];
+            if (!IsBlobCarrying(txs[i])) result[j++] = txs[i];
         return result;
     }
 

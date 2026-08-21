@@ -116,5 +116,35 @@ public class InclusionListTxSourceTests
             Is.EqualTo([1ul]));
     }
 
+    // EIP-8141: an IL entry is decoded from the canonical form, which carries no sidecar, so a blob-carrying
+    // frame tx forwarded into production would empty the whole payload's blobs bundle. Drop it like a type-3.
+    [Test]
+    public void Blob_carrying_frame_transactions_are_filtered_out()
+    {
+        InclusionListTxSource source = CreateSource();
+        Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction blobFrame = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = MainnetSpecProvider.Instance.ChainId,
+            Nonce = 2,
+            SenderAddress = TestItem.AddressB,
+            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, 50_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+            GasLimit = 100_000,
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 10.GWei,
+            MaxFeePerBlobGas = 10.GWei,
+            BlobVersionedHashes = [new byte[32]],
+        };
+        byte[][] il = [Encode(normal), Encode(blobFrame)];
+        PayloadAttributes attrs = Attributes(il);
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(
+            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            Is.EqualTo([1ul]));
+    }
+
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 }
