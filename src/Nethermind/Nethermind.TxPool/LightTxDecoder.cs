@@ -62,6 +62,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             blobVersionHashes: ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size),
             poolIndex: ctx.DecodeULong(),
             size: ctx.DecodePositiveInt(),
-            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
+            // DecodeByte, not ReadByte: Encode writes the RLP form of the byte, so V0 is persisted as 0x80
+            proofVersion: ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.DecodeByte() : default);
     }
 }
