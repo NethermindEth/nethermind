@@ -9,6 +9,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using System.Net;
+using System.Net.Sockets;
 using NetworkForkId = Nethermind.Network.ForkId;
 
 namespace Nethermind.Network.Discovery;
@@ -103,8 +104,16 @@ public sealed class NodeRecordProvider(
         BlockHeader? header = GetEffectiveHeader(effectiveHeader);
         NetworkForkId currentForkId = forkInfo.GetForkId(header?.Number ?? 0, header?.Timestamp ?? 0);
 
-        return new LocalNodeRecordState(ip.ExternalIpV4, ip.ExternalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
+        // Advertise an IPv6 endpoint only when the node actually listens on IPv6 (RLPx and discovery
+        // bind a single socket to LocalIp, default IPv4 Any); otherwise peers would dial an endpoint
+        // nothing is listening on.
+        IPAddress? externalIpV6 = ListensOnIPv6(ip.LocalIp) ? ip.ExternalIpV6 : null;
+
+        return new LocalNodeRecordState(ip.ExternalIpV4, externalIpV6, networkConfig.P2PPort, networkConfig.DiscoveryPort, currentForkId);
     }
+
+    private static bool ListensOnIPv6(IPAddress localIp)
+        => localIp.AddressFamily == AddressFamily.InterNetworkV6 && !localIp.IsIPv4MappedToIPv6;
 
     private BlockHeader? GetEffectiveHeader(BlockHeader? preferredHeader) => preferredHeader ?? blockTree.Head?.Header ?? blockTree.Genesis;
 

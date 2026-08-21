@@ -110,7 +110,6 @@ public class NodeRecordProviderTests
 
     [TestCase("192.0.2.1", "192.0.2.1", null)]
     [TestCase("::ffff:192.0.2.1", "192.0.2.1", null)]
-    [TestCase("2001:db8::1", null, "2001:db8::1")]
     [TestCase("255.255.255.255", null, null)] // IPAddress.None: unresolved external IP
     public async Task GetCurrentAsync_PublishesEndpointEntriesMatchingExternalIpFamily(
         string externalIp, string? expectedIp, string? expectedIp6)
@@ -132,7 +131,7 @@ public class NodeRecordProviderTests
             head,
             new NetworkForkId(0x01020304, 20),
             new IIPResolver.NethermindIp(
-                IPAddress.Loopback,
+                IPAddress.IPv6Loopback,
                 IPAddress.Parse("192.0.2.1"),
                 IPAddress.Parse("192.0.2.1"),
                 IPAddress.Parse("2001:db8::1")));
@@ -141,6 +140,40 @@ public class NodeRecordProviderTests
         NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
 
         AssertEndpointEntries(decoded, "192.0.2.1", "2001:db8::1");
+    }
+
+    [Test]
+    public async Task GetCurrentAsync_PublishesIpv6EntriesWhenListeningOnIpv6()
+    {
+        Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        NodeRecordProvider provider = CreateProvider(
+            head,
+            new NetworkForkId(0x01020304, 20),
+            new IIPResolver.NethermindIp(IPAddress.IPv6Loopback, IPAddress.Parse("2001:db8::1")));
+
+        NodeRecord record = await provider.GetCurrentAsync();
+        NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
+
+        AssertEndpointEntries(decoded, null, "2001:db8::1");
+    }
+
+    [Test]
+    public async Task GetCurrentAsync_DoesNotPublishIpv6WhenNotListeningOnIpv6()
+    {
+        Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        NodeRecordProvider provider = CreateProvider(
+            head,
+            new NetworkForkId(0x01020304, 20),
+            new IIPResolver.NethermindIp(
+                IPAddress.Loopback,
+                IPAddress.Parse("192.0.2.1"),
+                IPAddress.Parse("192.0.2.1"),
+                IPAddress.Parse("2001:db8::1")));
+
+        NodeRecord record = await provider.GetCurrentAsync();
+        NodeRecord decoded = NodeRecord.FromEnrString(record.ToString());
+
+        AssertEndpointEntries(decoded, "192.0.2.1", null);
     }
 
     private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IPAddress externalIp)
