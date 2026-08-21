@@ -59,6 +59,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         _specProvider = specProvider;
         _balHealing = balHealing;
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
+        _stateDownloaded = StateDownloaded();
         _syncModeSelector.Changed += OnSyncModeChanged;
         _stateSyncPivot.FirstPivotSet += OnFirstPivotSet;
         _canBalHeal = ComputeCanBalHeal(_stateSyncPivot.FirstPivotHeader);

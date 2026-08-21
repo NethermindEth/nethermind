@@ -79,7 +79,7 @@ public class StateSyncRunner(
         }
     }
 
-    private async Task<bool> RunBalHealing(BlockHeader? firstPivot, CancellationToken token)
+    internal async Task<bool> RunBalHealing(BlockHeader? firstPivot, CancellationToken token)
     {
         if (balHealing is NoopBalHealing)
         {
@@ -123,14 +123,22 @@ public class StateSyncRunner(
                     return false;
                 }
 
+                if (!stateSyncPivot.CanFinalize(currentPivot))
+                {
+                    if (_logger.IsInfo) _logger.Info($"BAL healing stopped - pivot {currentPivot.Number} is no longer canonical.");
+                    return false;
+                }
+
+                if (nextPivot.Number < currentPivot.Number ||
+                    (nextPivot.Number == currentPivot.Number && nextPivot.Hash != currentPivot.Hash))
+                {
+                    if (_logger.IsInfo) _logger.Info($"BAL healing stopped - pivot reorganized from {currentPivot.Number} to {nextPivot.Number}.");
+                    return false;
+                }
+
                 if (currentPivot.Number == nextPivot.Number)
                 {
-                    if (stateSyncPivot.CanFinalize(currentPivot))
-                    {
-                        break;
-                    }
-                    await Task.Delay(1000, token);
-                    continue;
+                    break;
                 }
 
                 if (!await balFetcher.EnsureRange(currentPivot, nextPivot, token))
@@ -151,6 +159,12 @@ public class StateSyncRunner(
             if (root != currentPivot.StateRoot)
             {
                 if (_logger.IsError) _logger.Error($"BAL healing failed - produced root {root} does not match pivot state root {currentPivot.StateRoot}.");
+                return false;
+            }
+
+            if (!stateSyncPivot.CanFinalize(currentPivot))
+            {
+                if (_logger.IsInfo) _logger.Info($"BAL healing stopped - pivot {currentPivot.Number} is no longer canonical.");
                 return false;
             }
 

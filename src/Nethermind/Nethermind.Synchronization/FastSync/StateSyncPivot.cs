@@ -36,14 +36,7 @@ namespace Nethermind.Synchronization.FastSync
             return _bestHeader;
         }
 
-        public void UpdateHeaderForcefully()
-        {
-            ulong target = (blockTree.BestSuggestedHeader?.Number ?? 0UL) + syncConfig.StateMinDistanceFromHead;
-            if (_bestHeader is null || target > _bestHeader.Number)
-            {
-                TrySetNewBestHeader("too many empty responses");
-            }
-        }
+        public void UpdateHeaderForcefully() => TrySetNewBestHeader("too many empty responses");
 
         private void TrySetNewBestHeader(string msg)
         {
@@ -59,6 +52,7 @@ namespace Nethermind.Synchronization.FastSync
             BlockHeader bestHeader = blockTree.FindHeader(targetBlockNumber);
             if (bestHeader is not null)
             {
+                if (_bestHeader?.Hash == bestHeader.Hash) return;
                 if (_logger.IsInfo) _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {bestHeader.Number}");
                 _bestHeader = bestHeader;
                 if (_firstPivotHeader is null)
@@ -75,6 +69,10 @@ namespace Nethermind.Synchronization.FastSync
 
         public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = [];
 
-        public bool CanFinalize(BlockHeader pivot) => true;
+        public bool CanFinalize(BlockHeader pivot)
+        {
+            Hash256? canonicalHash = blockTree.FindHeader(pivot.Number)?.Hash;
+            return canonicalHash is not null && canonicalHash == pivot.Hash;
+        }
     }
 }

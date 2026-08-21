@@ -90,6 +90,15 @@ public class SnapP2PCapabilityResolverTests
         Assert.That(Resolve(resolver).Contains(Snap2), Is.EqualTo(expected));
     }
 
+    [Test]
+    public void Resolve_uses_the_initial_state_sync_progress_without_waiting_for_a_mode_change()
+    {
+        using SnapP2PCapabilityResolver resolver = CreateResolver(
+            out _, out _, snapServing: true, bestFullStates: Pivot);
+
+        Assert.That(Resolve(resolver).Contains(Snap2), Is.True);
+    }
+
     [TestCase(true, true, true, true, TestName = "Syncing with BAL healing, BAL chain and known pivot advertises snap/2")]
     [TestCase(false, true, true, false, TestName = "Syncing without BAL healing withholds snap/2")]
     [TestCase(true, false, true, false, TestName = "Syncing on a non-BAL chain withholds snap/2")]
@@ -115,7 +124,7 @@ public class SnapP2PCapabilityResolverTests
     public void Advertises_snap2_and_raises_Changed_once_state_download_completes()
     {
         using SnapP2PCapabilityResolver resolver = CreateResolver(
-            out ISyncModeSelector syncModeSelector, out _, snapServing: true, bestFullStates: [Pivot - 1, Pivot, Pivot]);
+            out ISyncModeSelector syncModeSelector, out _, snapServing: true, bestFullStates: [Pivot - 1, Pivot - 1, Pivot, Pivot]);
 
         int fired = 0;
         resolver.Changed += () => fired++;
