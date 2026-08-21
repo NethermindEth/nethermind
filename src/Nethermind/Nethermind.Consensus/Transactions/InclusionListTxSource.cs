@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Transactions;
 
@@ -24,22 +25,38 @@ public class InclusionListTxSource(
 
     // Keyed by the build's PayloadAttributes array so a concurrent FCU can't leak another build's IL;
     // weak keys collect with the build.
-    private readonly ConditionalWeakTable<byte[][], Transaction[]> _decodedByAttributes = [];
+    private readonly ConditionalWeakTable<byte[][], Lazy<Transaction[]>> _decodedByAttributes = [];
 
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return [];
-        if (_decodedByAttributes.TryGetValue(il, out Transaction[]? txs)) return txs;
+        if (!_decodedByAttributes.TryGetValue(il, out Lazy<Transaction[]>? decoded))
+        {
+            // A miss means Set was never called for these attributes, e.g. an oversized IL that
+            // engine_forkchoiceUpdatedV5 already warned about; debug-level as this runs once per improvement.
+            if (_logger.IsDebug) _logger.Debug($"No inclusion list for this build ({il.Length} entries) — building without it.");
+            return [];
+        }
 
-        // A miss means Set never completed for these attributes, e.g. a malformed or oversized IL that
-        // engine_forkchoiceUpdatedV5 already warned about; debug-level as this runs once per improvement.
-        if (_logger.IsDebug) _logger.Debug($"No decoded inclusion list for this build ({il.Length} entries) — building without it.");
-        return [];
+        try
+        {
+            return decoded.Value;
+        }
+        catch (Exception ex) when (ex is RlpException or ArgumentException)
+        {
+            // Lazy caches the failure, so a malformed list is reported once per build, not per improvement.
+            if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
+            return [];
+        }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Decoding and sender recovery are deferred to the first <see cref="GetTransactions"/> call, so
+    /// a forkchoice update that never starts a build pays nothing.</remarks>
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
-        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions, OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec))));
+        => _decodedByAttributes.AddOrUpdate(inclusionListTransactions,
+            new Lazy<Transaction[]>(() => OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)))));
 
     // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
     // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.

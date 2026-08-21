@@ -5,6 +5,7 @@ using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -84,6 +85,23 @@ public class InclusionListTxSourceTests
         Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs), Is.Empty);
     }
 
+    // Decoding and sender recovery must stay off the engine thread: a forkchoice update that is about to be
+    // rejected, or that duplicates a build already under way, must cost nothing beyond retaining the list.
+    [Test]
+    public void Set_defers_sender_recovery_to_the_first_request()
+    {
+        CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
+        InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        byte[][] il = [Encode(tx)];
+
+        source.Set(il, Bogota.Instance);
+        Assert.That(ecdsa.Recoveries, Is.Zero);
+
+        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, Attributes(il)), Is.Not.Empty);
+        Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
+    }
+
     // Per spec, blob (EIP-4844) transactions are excluded from the inclusion list.
     [Test]
     public void SupportsBlobs_is_false() => Assert.That(CreateSource().SupportsBlobs, Is.False);
@@ -154,4 +172,20 @@ public class InclusionListTxSourceTests
     }
 
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+    private sealed class CountingEcdsa(IEthereumEcdsa inner) : IEthereumEcdsa
+    {
+        public int Recoveries;
+        public ulong ChainId => inner.ChainId;
+
+        public Address RecoverAddress(Signature signature, in ValueHash256 message)
+        {
+            Recoveries++;
+            return inner.RecoverAddress(signature, in message);
+        }
+
+        public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => inner.Sign(privateKey, in message);
+        public PublicKey RecoverPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverPublicKey(signature, in message);
+        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverCompressedPublicKey(signature, in message);
+    }
 }

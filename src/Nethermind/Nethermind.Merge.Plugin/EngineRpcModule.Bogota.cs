@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
-using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -12,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -77,26 +75,19 @@ public partial class EngineRpcModule : IEngineRpcModule
         PayloadAttributes? payloadAttributes = null,
         BitArray? custodyColumns = null)
     {
-        // Out of fork the attributes are rejected below with -38005, so don't pay for the decode.
+        // Out of fork the attributes are rejected below with -38005, so don't retain the list at all.
         if (payloadAttributes?.InclusionListTransactions is { } ilTxs
             && _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)) is { IsEip7805Enabled: true } spec)
         {
-            // Bound the aggregate before the expensive decode and sender recovery; an oversized or
-            // unparsable IL is a no-op, not a protocol error.
+            // An oversized IL is a no-op, not a protocol error. Set itself only registers the list;
+            // decoding and sender recovery happen off this thread, and only if a build starts.
             if (ExceedsAggregateInclusionListBound(ilTxs))
             {
                 if (_logger.IsWarn) _logger.Warn($"engine_forkchoiceUpdatedV5: discarding oversized inclusion list ({ilTxs.Length} entries); building without it.");
             }
             else
             {
-                try
-                {
-                    inclusionListTxSource.Set(ilTxs, spec);
-                }
-                catch (Exception ex) when (ex is RlpException or ArgumentException)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"engine_forkchoiceUpdatedV5: discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
-                }
+                inclusionListTxSource.Set(ilTxs, spec);
             }
         }
 
