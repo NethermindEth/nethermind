@@ -16,7 +16,9 @@ namespace Nethermind.Network
         /// <remarks>
         /// The result is resolved once and cached; concurrent callers await the same in-flight
         /// resolution. An explicit <c>INetworkConfig.LocalIp</c>/<c>ExternalIp</c> override is
-        /// honored when set, otherwise the address is auto-detected.
+        /// honored when set, otherwise the address is auto-detected. The IPv4/IPv6 addresses to
+        /// advertise are derived from <c>ExternalIp</c> unless <c>ExternalIpV4</c>/<c>ExternalIpV6</c>
+        /// overrides are set.
         /// </remarks>
         /// <param name="cancellationToken">
         /// Cancels only the caller's wait for the result, not the shared cached resolution (which always
@@ -71,17 +73,26 @@ namespace Nethermind.Network
                 externalIp = ExternalIp;
             }
 
-            private static IPAddress? GetExternalIpV4(IPAddress? ipAddress)
-                => ipAddress is null || IsUnspecified(ipAddress)
-                    ? null
-                    : ipAddress.AddressFamily switch
-                    {
-                        AddressFamily.InterNetwork => ipAddress,
-                        AddressFamily.InterNetworkV6 when ipAddress.IsIPv4MappedToIPv6 => ipAddress.MapToIPv4(),
-                        _ => null
-                    };
+            internal static IPAddress? GetExternalIpV4(IPAddress? ipAddress)
+            {
+                if (ipAddress is null)
+                {
+                    return null;
+                }
 
-            private static IPAddress? GetExternalIpV6(IPAddress? ipAddress)
+                // Map first so a mapped unspecified value (::ffff:0.0.0.0) is rejected like its
+                // native IPv4 equivalent.
+                if (ipAddress.IsIPv4MappedToIPv6)
+                {
+                    ipAddress = ipAddress.MapToIPv4();
+                }
+
+                return !IsUnspecified(ipAddress) && ipAddress.AddressFamily == AddressFamily.InterNetwork
+                    ? ipAddress
+                    : null;
+            }
+
+            internal static IPAddress? GetExternalIpV6(IPAddress? ipAddress)
                 => ipAddress is not null
                    && !IsUnspecified(ipAddress)
                    && ipAddress.AddressFamily == AddressFamily.InterNetworkV6
@@ -89,11 +100,10 @@ namespace Nethermind.Network
                     ? ipAddress
                     : null;
 
-            private static bool IsUnspecified(IPAddress ipAddress)
+            internal static bool IsUnspecified(IPAddress ipAddress)
                 => ipAddress.Equals(IPAddress.Any)
-                   || ipAddress.Equals(IPAddress.IPv6Any)
                    || ipAddress.Equals(IPAddress.None)
-                   || ipAddress.Equals(IPAddress.IPv6None);
+                   || ipAddress.Equals(IPAddress.IPv6Any);
         }
     }
 }

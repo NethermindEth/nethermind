@@ -17,13 +17,13 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The external IP. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
+    [ConfigItem(Description = "The external IP address used for the enode string, discovery, and peer filtering. Use only when the external IP cannot be resolved automatically.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
-    [ConfigItem(Description = $"The external IPv4 address to advertise. Use with `{nameof(ExternalIpV6)}` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv4 address to advertise in the ENR. Defaults to `{nameof(ExternalIp)}` when it is an IPv4 address. Use with `{nameof(ExternalIpV6)}` to advertise both address families.", DefaultValue = "null")]
     string? ExternalIpV4 { get; set; }
 
-    [ConfigItem(Description = $"The external IPv6 address to advertise. Use with `{nameof(ExternalIpV4)}` when the node should advertise both IPv4 and IPv6 addresses.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. Only advertised when the node listens on IPv6 (set `{nameof(LocalIp)}` to an IPv6 address). Use with `{nameof(ExternalIpV4)}` to advertise both address families.", DefaultValue = "null")]
     string? ExternalIpV6 { get; set; }
 
     /// <remarks>

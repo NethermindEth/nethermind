@@ -107,6 +107,51 @@ public class IPResolverTests
         }
     }
 
+    [TestCase("192.0.2.1", null, null, "192.0.2.1", null)]
+    [TestCase("2001:db8::1", null, null, null, "2001:db8::1")]
+    [TestCase("::ffff:198.51.100.2", null, null, "198.51.100.2", null)]
+    [TestCase("192.0.2.1", "2001:db8::1", null, "192.0.2.1", null)] // wrong-family override ignored
+    [TestCase("192.0.2.1", "::ffff:198.51.100.2", null, "198.51.100.2", null)] // mapped override normalized
+    [TestCase("192.0.2.1", "0.0.0.0", null, "192.0.2.1", null)] // unspecified override ignored
+    [TestCase("192.0.2.1", "255.255.255.255", null, "192.0.2.1", null)] // None override ignored
+    [TestCase("192.0.2.1", "::", null, "192.0.2.1", null)] // IPv6Any override ignored
+    [TestCase("192.0.2.1", "::ffff:0.0.0.0", null, "192.0.2.1", null)] // mapped unspecified override ignored
+    [TestCase("192.0.2.1", null, "192.0.2.1", "192.0.2.1", null)] // wrong-family IPv6 override ignored
+    public void NethermindIp_derives_family_addresses(
+        string externalIp, string? externalIpV4, string? externalIpV6, string? expectedIpV4, string? expectedIpV6)
+    {
+        IIPResolver.NethermindIp ip = new(
+            IPAddress.Loopback,
+            IPAddress.Parse(externalIp),
+            externalIpV4 is null ? null : IPAddress.Parse(externalIpV4),
+            externalIpV6 is null ? null : IPAddress.Parse(externalIpV6));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.ExternalIpV4, Is.EqualTo(expectedIpV4 is null ? null : IPAddress.Parse(expectedIpV4)));
+            Assert.That(ip.ExternalIpV6, Is.EqualTo(expectedIpV6 is null ? null : IPAddress.Parse(expectedIpV6)));
+        }
+    }
+
+    [Test]
+    public async Task Can_resolve_external_ip_and_family_override_independently()
+    {
+        INetworkConfig networkConfig = new NetworkConfig
+        {
+            ExternalIp = "192.0.2.1",
+            ExternalIpV4 = "198.51.100.2"
+        };
+        IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
+
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
+            Assert.That(ip.ExternalIpV4, Is.EqualTo(IPAddress.Parse("198.51.100.2")));
+        }
+    }
+
     [Test]
     public async Task Can_resolve_local_ip_with_override()
     {

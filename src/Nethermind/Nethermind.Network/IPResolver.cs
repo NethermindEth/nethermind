@@ -61,7 +61,14 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
             ?? configuredExternalIpV4
             ?? await ResolveExternalIp(cancellationToken);
 
-        if (!IsUnspecified(externalIp))
+        if (configuredExternalIpV4 is not null &&
+            configuredExternalIp?.AddressFamily == AddressFamily.InterNetwork &&
+            !configuredExternalIpV4.Equals(configuredExternalIp))
+        {
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {nameof(NetworkConfig.ExternalIpV4)} = {configuredExternalIpV4}. The ENR advertises {nameof(NetworkConfig.ExternalIpV4)} while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
+        }
+
+        if (!IIPResolver.NethermindIp.IsUnspecified(externalIp))
         {
             ThisNodeInfo.AddInfo("External IP  :", $"{externalIp}");
         }
@@ -118,7 +125,6 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
                 (bool success, IPAddress ip) = await s.TryGetIP();
                 if (success)
                 {
-                    ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
                     return ip;
                 }
             }
@@ -156,34 +162,12 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
     }
 
     private static IPAddress? NormalizeExternalIpOverride(IPAddress ipAddress, AddressFamily? expectedFamily)
-    {
-        // Normalize IPv4-mapped IPv6 to IPv4 before rejecting unspecified values, so mapped
-        // unspecified overrides (::ffff:0.0.0.0, ::ffff:255.255.255.255) are rejected like their
-        // native IPv4 equivalents instead of being returned as IPAddress.Any/None and suppressing
-        // automatic resolution.
-        if (ipAddress.IsIPv4MappedToIPv6)
+        => expectedFamily switch
         {
-            ipAddress = ipAddress.MapToIPv4();
-        }
-
-        if (IsUnspecified(ipAddress))
-        {
-            return null;
-        }
-
-        return expectedFamily switch
-        {
-            AddressFamily.InterNetwork => ipAddress.AddressFamily == AddressFamily.InterNetwork ? ipAddress : null,
-            AddressFamily.InterNetworkV6 => ipAddress.AddressFamily == AddressFamily.InterNetworkV6 ? ipAddress : null,
-            _ => ipAddress
+            AddressFamily.InterNetwork => IIPResolver.NethermindIp.GetExternalIpV4(ipAddress),
+            AddressFamily.InterNetworkV6 => IIPResolver.NethermindIp.GetExternalIpV6(ipAddress),
+            _ => IIPResolver.NethermindIp.GetExternalIpV4(ipAddress) ?? IIPResolver.NethermindIp.GetExternalIpV6(ipAddress)
         };
-    }
-
-    private static bool IsUnspecified(IPAddress ipAddress)
-        => ipAddress.Equals(IPAddress.Any)
-           || ipAddress.Equals(IPAddress.IPv6Any)
-           || ipAddress.Equals(IPAddress.None)
-           || ipAddress.Equals(IPAddress.IPv6None);
 
     private async Task<IPAddress> InitializeLocalIp()
     {
