@@ -153,15 +153,16 @@ public class FrameTxBlockGasTests
         }
     }
 
-    /// <summary>Without EIP-8037 the block charge is the single pre-8037 dimension, not a 2D split.</summary>
+    /// <summary>Without EIP-8037 the block charge is a single dimension, not a 2D split.</summary>
     /// <remarks>
-    /// Bogota composes EIP-8141 onto Osaka, where neither EIP-8037 nor EIP-7778 is enabled, so the block
-    /// owes the post-refund spend. Splitting the gross sum there would bill the block pre-refund gas.
+    /// EIP-7778 alone bills the block the pre-refund gross; without it the block owes the post-refund
+    /// spend. Both combinations are reachable — the two transition timestamps are independent.
     /// </remarks>
-    [Test]
-    public void Execute_WithoutEip8037_ChargesTheBlockThePostRefundSpend()
+    [TestCase(false, TestName = "Before EIP-7778 the block owes the post-refund spend")]
+    [TestCase(true, TestName = "EIP-7778 alone bills the block the pre-refund gross")]
+    public void Execute_WithoutEip8037_ChargesTheBlockOneDimension(bool eip7778Enabled)
     {
-        UseSpec(Bogota.Instance);
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip7778Enabled = eip7778Enabled });
         Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         // Setting a fresh slot and clearing it again earns an EIP-3529 refund, so the pre- and
         // post-refund charges differ.
@@ -171,13 +172,20 @@ public class FrameTxBlockGasTests
             .Op(Instruction.STOP).Done);
 
         TestAllTracerWithOutput tracer = new();
-        Assert.That(Process(FrameTx(nonce: 0, Writer), tracer).TransactionExecuted, Is.True);
+        Transaction tx = FrameTx(nonce: 0, Writer);
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        ulong spentGas = tracer.GasConsumedResult.SpentGas;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.Refund, Is.GreaterThan(0), "the transaction must earn a refund for the two charges to differ");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero, "there is no state dimension before EIP-8037");
-            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(tracer.GasConsumedResult.SpentGas));
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, eip7778Enabled
+                ? Is.GreaterThan(spentGas)
+                : Is.EqualTo(spentGas));
+            Assert.That(tx.BlockGasUsed, Is.EqualTo(tracer.GasConsumedResult.EffectiveBlockGas),
+                "block accounting reads BlockGasUsed, whose getter otherwise falls back to the frame-gas sum");
         }
     }
 
