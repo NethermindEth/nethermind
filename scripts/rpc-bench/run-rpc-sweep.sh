@@ -113,7 +113,7 @@ snap_path() {
 # every requested type up front instead, and only the state_layout axis the request actually uses
 # (a reth-only sweep resolves no Nethermind path, so the flat pin does not apply to it).
 declare -A SWEEP_CTYPES=()
-for entry in $CLIENTS; do SWEEP_CTYPES["${entry%%@*}"]=1; done
+for entry in $CLIENTS; do spec="${entry%%+*}"; SWEEP_CTYPES["${spec%%@*}"]=1; done
 for ctype in "${!SWEEP_CTYPES[@]}"; do
   case "$ctype" in
     nethermind|geth|reth) ;;
@@ -285,23 +285,42 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   rm -rf "$PARITY_STATE"; mkdir -p "$PARITY_STATE"
 fi
 
-# Each entry is a client type or 'ctype@image' (e.g. nethermind@nethermindeth/nethermind:master) for
+# Each entry is `ctype[@image][+flag,flag,...]` (e.g. nethermind@nethermindeth/nethermind:master) for
 # same-client version comparisons. Sequential (one node up at a time), so same-snapshot variants are safe.
 # Listing the same image twice is how a sweep measures its own run-to-run drift, so repeats get a
 # distinct label: sharing one would make each repeat overwrite the previous one's cells and state,
 # and the sweep would silently report fewer results than it ran.
+#
+# The `+` segment appends node flags for that arm alone, which is what makes a flag itself A/B-able:
+# the same image can appear twice with different flags, and the flags are part of the label so the
+# two arms neither collide nor need reading from the config to tell apart. `{ARM_SCRATCH}` in a flag
+# expands to an empty per-arm directory (wiped here, not inherited from an earlier arm or dispatch) —
+# a flag pointing a node's storage there measures every arm against the same starting state instead
+# of the state its predecessor left behind. Image tags cannot contain `+`, so the split is unambiguous.
 log_system_provenance
 
 declare -A LABEL_SEEN=()
 for entry in $CLIENTS; do
-  ctype="${entry%%@*}"
-  if [[ "$entry" == *@* ]]; then
-    img="${entry#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
+  spec="${entry%%+*}"
+  arm_flags=""
+  [[ "$entry" == *+* ]] && arm_flags="${entry#*+}"
+  arm_flags="${arm_flags//,/ }"
+  ctype="${spec%%@*}"
+  if [[ "$spec" == *@* ]]; then
+    img="${spec#*@}"; label="${ctype}_$(printf '%s' "${img##*:}" | tr -c 'a-zA-Z0-9' '_')"
   else
     img="$NM_IMAGE"; label="$ctype"
   fi
+  [[ -n "$arm_flags" ]] && label="${label}_$(printf '%s' "$arm_flags" | tr -c 'a-zA-Z0-9' '_' | cut -c1-24)"
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( ${LABEL_SEEN["$label"]} > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
+  if [[ "$arm_flags" == *"{ARM_SCRATCH}"* ]]; then
+    arm_scratch="$SCRATCH_ROOT/arm/$label"
+    assert_no_mounts_under "$arm_scratch"
+    rm -rf "$arm_scratch"; mkdir -p "$arm_scratch"
+    arm_flags="${arm_flags//\{ARM_SCRATCH\}/$arm_scratch}"
+  fi
+  [[ -n "$arm_flags" ]] && echo "arm flags: $arm_flags"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
@@ -311,7 +330,7 @@ for entry in $CLIENTS; do
        DB_SOURCE="$snap" DB_ISOLATION="$iso" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
        JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
-       ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+       ADDITIONAL_FLAGS="$arm_flags" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" \
        "$here/start-node.sh"; then
