@@ -123,6 +123,18 @@ on:
           - tracing
           - timeline
         default: "false"
+      perf:
+        description: >-
+          Record a Linux perf profile of the client alongside the run. perf samples on the host and
+          resolves both managed frames (via the runtime's perf map) and native frames (via the
+          container's shared objects), so time inside RocksDB, the allocator and the GC is attributed
+          instead of collapsing into dotTrace's single '[Native or optimized code]' node. Produces
+          perf.data plus a folded-stack profile.folded readable with scripts/perf-report.sh.
+          Independent of the dottrace input; enabling both samples the process twice, which perturbs
+          timings - use perf runs for attribution, not for A/B numbers.
+        required: false
+        type: boolean
+        default: false
       trace_blocks:
         description: >-
           Comma-separated block numbers to profile with dotTrace (e.g. 22360451,22360454). When set,
@@ -186,6 +198,7 @@ jobs:
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      perf: ${{ steps.resolve.outputs.perf }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
       client_env: ${{ steps.resolve.outputs.client_env }}
@@ -217,6 +230,7 @@ jobs:
           DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
+          DISPATCH_PERF: ${{ inputs.perf }}
           DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
           DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
         run: |
@@ -261,6 +275,7 @@ jobs:
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
             dottrace="${DISPATCH_DOTTRACE:-false}"
+            perf="${DISPATCH_PERF:-false}"
             # Normalize the profiling selector: legacy boolean 'true' means sampling.
             case "${dottrace}" in
               true|sampling) dottrace_mode="sampling" ;;
@@ -309,6 +324,7 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            perf="false"
             dottrace_mode=""
             trace_blocks=""
             client_env=""
@@ -327,6 +343,7 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            perf="false"
             dottrace_mode=""
             trace_blocks=""
             client_env=""
@@ -468,6 +485,7 @@ jobs:
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
+            echo "perf=${perf:-false}"
             echo "dottrace_mode=${dottrace_mode}"
             echo "trace_blocks=${trace_blocks}"
             echo "client_env=${client_env}"
@@ -871,6 +889,7 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
@@ -924,6 +943,11 @@ jobs:
             # always rides along with dotTrace - different channel, adds the GC/lock story
             # the CPU profile cannot show. Requires expb with --dotnet-trace support.
             dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
+          fi
+          if [[ "${PERF}" == "true" ]]; then
+            # perf samples on the host; the client only needs the perf-map env, which
+            # expb sets on the container. Nothing extra is required in the image.
+            dottrace_flag="${dottrace_flag} --perf"
           fi
 
           # Marker for dottrace artifact collection — only files newer than this
@@ -1180,8 +1204,8 @@ jobs:
             exit 1
           fi
 
-      - name: Collect and upload dotTrace snapshots
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+      - name: Collect and upload profiling artifacts
+        if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
           ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
@@ -1189,7 +1213,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
             echo "No dottrace output directories found for this run."
             exit 0
@@ -1209,8 +1233,8 @@ jobs:
 
           zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
 
-      - name: Upload dotTrace artifact
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+      - name: Upload profiling artifact
+        if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         uses: actions/upload-artifact@v4
         with:
           name: dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}
@@ -2015,6 +2039,7 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
@@ -2066,6 +2091,11 @@ jobs:
             # always rides along with dotTrace - different channel, adds the GC/lock story
             # the CPU profile cannot show. Requires expb with --dotnet-trace support.
             dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
+          fi
+          if [[ "${PERF}" == "true" ]]; then
+            # perf samples on the host; the client only needs the perf-map env, which
+            # expb sets on the container. Nothing extra is required in the image.
+            dottrace_flag="${dottrace_flag} --perf"
           fi
 
           # Marker for dottrace artifact collection — only files newer than this
@@ -2305,8 +2335,8 @@ jobs:
             echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
           fi
 
-      - name: Collect and upload dotTrace snapshots
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+      - name: Collect and upload profiling artifacts
+        if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
           ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.tag }}-run${{ matrix.run }}.zip
@@ -2314,7 +2344,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
+          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
           if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
             echo "No dottrace output directories found for this run."
             exit 0
@@ -2334,8 +2364,8 @@ jobs:
 
           zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
 
-      - name: Upload dotTrace artifact
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+      - name: Upload profiling artifact
+        if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         uses: actions/upload-artifact@v4
         with:
           name: dottrace-${{ matrix.tag }}-run${{ matrix.run }}
