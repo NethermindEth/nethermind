@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -24,6 +25,9 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_memory")]
+    private static extern ref byte[]? GetBackingMemory(ref EvmPooledMemory memory);
+
     private static IEnumerable<TestCaseData> ZeroExtendedCopyCases()
     {
         yield return new TestCaseData(
@@ -46,6 +50,36 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         yield return new TestCaseData(
             longSource, UInt256.Zero, 40, longSource.Concat(new byte[5]).ToArray())
             .SetName("CopyFromZeroExtendedAfterGas_multiword_range");
+    }
+
+    private static IEnumerable<TestCaseData> ExpandedZeroExtendedCopyCases()
+    {
+        yield return new TestCaseData(0, 0, 8192, 0UL, 8192)
+            .SetName("ExpandedCopy_full_overwrite");
+        yield return new TestCaseData(64, 5000, 4096, 0UL, 6000)
+            .SetName("ExpandedCopy_gap_and_zero_extended_tail");
+        yield return new TestCaseData(96, 4080, 64, 16UL, 96)
+            .SetName("ExpandedCopy_crosses_zero_chunk_boundary");
+        yield return new TestCaseData(160, 64, 32, 100UL, 4096)
+            .SetName("ExpandedCopy_overwrites_existing_and_new_memory_with_zeroes");
+    }
+
+    private static IEnumerable<TestCaseData> MCopyReferenceCases()
+    {
+        yield return new TestCaseData(128, 256, 0, 128, false)
+            .SetName("MCopy_non_overlapping");
+        yield return new TestCaseData(128, 16, 0, 96, false)
+            .SetName("MCopy_overlap_right");
+        yield return new TestCaseData(128, 0, 16, 96, false)
+            .SetName("MCopy_overlap_left");
+        yield return new TestCaseData(128, 0, 0, 128, false)
+            .SetName("MCopy_same_range");
+        yield return new TestCaseData(64, 5000, 4064, 96, false)
+            .SetName("MCopy_source_crosses_clean_prefix");
+        yield return new TestCaseData(64, 64, 8192, 128, false)
+            .SetName("MCopy_source_expansion_dominates");
+        yield return new TestCaseData(128, 4096, 32, 160, true)
+            .SetName("MCopy_tracing_materializes_source_first");
     }
 
     [TestCase(32UL, 1UL)]
@@ -471,6 +505,182 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             memory.Dispose();
         }
     }
+
+    [TestCaseSource(nameof(ExpandedZeroExtendedCopyCases))]
+    public void CopyFromZeroExtendedAfterGas_matches_independent_model_on_dirty_reused_buffer(
+        int initialLength,
+        int destinationOffset,
+        int sourceLength,
+        ulong sourceOffset,
+        int length)
+    {
+        PrimeDirtyBuffer();
+        byte[] initial = CreatePattern(initialLength, 0x11);
+        byte[] source = CreatePattern(sourceLength, 0x61);
+        int expectedSize = AlignToWord(Math.Max(initialLength, destinationOffset + length));
+        byte[] expected = new byte[expectedSize];
+        initial.CopyTo(expected, 0);
+        for (int i = 0; i < length; i++)
+        {
+            ulong sourceIndex = sourceOffset + (ulong)i;
+            expected[destinationOffset + i] = sourceIndex < (ulong)source.Length
+                ? source[(int)sourceIndex]
+                : (byte)0;
+        }
+
+        EvmPooledMemory memory = new();
+        try
+        {
+            WriteInitialMemory(ref memory, initial);
+            if (initial.Length != 0)
+            {
+                AssertDirtyTailWasReused(ref memory);
+            }
+
+            UInt256 destination = (UInt256)destinationOffset;
+            UInt256 uint256SourceOffset = (UInt256)sourceOffset;
+            memory.CalculateMemoryCost(in destination, (ulong)length, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+
+            memory.CopyFromZeroExtendedAfterGas(in destination, source, in uint256SourceOffset, length);
+
+            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [TestCase(false, TestName = "TrySave_full_overwrite_matches_independent_model")]
+    [TestCase(true, TestName = "SaveAfterGas_full_overwrite_matches_independent_model")]
+    public void Full_overwrite_matches_independent_model_on_dirty_reused_buffer(bool afterGas)
+    {
+        const int destinationOffset = 5000;
+        const int sourceLength = 6000;
+        PrimeDirtyBuffer();
+        byte[] initial = CreatePattern(64, 0x21);
+        byte[] source = CreatePattern(sourceLength, 0x81);
+        byte[] expected = new byte[AlignToWord(destinationOffset + sourceLength)];
+        initial.CopyTo(expected, 0);
+        source.CopyTo(expected, destinationOffset);
+
+        EvmPooledMemory memory = new();
+        try
+        {
+            WriteInitialMemory(ref memory, initial);
+            AssertDirtyTailWasReused(ref memory);
+            UInt256 destination = destinationOffset;
+            if (afterGas)
+            {
+                memory.CalculateMemoryCost(in destination, (ulong)sourceLength, out bool outOfGas);
+                Assert.That(outOfGas, Is.False);
+                memory.SaveAfterGas(in destination, source);
+            }
+            else
+            {
+                Assert.That(memory.TrySave(in destination, source), Is.True);
+            }
+
+            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [TestCaseSource(nameof(MCopyReferenceCases))]
+    public void CopyAfterGas_matches_snapshot_model_on_dirty_reused_buffer(
+        int initialLength,
+        int destinationOffset,
+        int sourceOffset,
+        int length,
+        bool materializeSourceFirst)
+    {
+        PrimeDirtyBuffer();
+        byte[] initial = CreatePattern(initialLength, 0x31);
+        int expectedSize = AlignToWord(Math.Max(destinationOffset + length, sourceOffset + length));
+        byte[] before = new byte[expectedSize];
+        initial.CopyTo(before, 0);
+        byte[] expected = (byte[])before.Clone();
+        byte[] sourceSnapshot = before.AsSpan(sourceOffset, length).ToArray();
+        sourceSnapshot.CopyTo(expected, destinationOffset);
+
+        EvmPooledMemory memory = new();
+        try
+        {
+            WriteInitialMemory(ref memory, initial);
+            AssertDirtyTailWasReused(ref memory);
+            UInt256 destination = (UInt256)destinationOffset;
+            UInt256 source = (UInt256)sourceOffset;
+            UInt256 expansionStart = (UInt256)Math.Max(destinationOffset, sourceOffset);
+            memory.CalculateMemoryCost(in expansionStart, (ulong)length, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+
+            if (materializeSourceFirst)
+            {
+                Assert.That(memory.LoadSpanAfterGas(in source, (ulong)length).ToArray(), Is.EqualTo(sourceSnapshot));
+            }
+
+            memory.CopyAfterGas(in destination, in source, (ulong)length);
+
+            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    private static void PrimeDirtyBuffer()
+    {
+        const int dirtySize = 32 * 1024;
+        byte[] dirtyBytes = new byte[dirtySize];
+        dirtyBytes.AsSpan().Fill(0xa7);
+        EvmPooledMemory dirty = new();
+        try
+        {
+            Assert.That(dirty.TrySave(UInt256.Zero, dirtyBytes), Is.True);
+        }
+        finally
+        {
+            dirty.Dispose();
+        }
+    }
+
+    private static void AssertDirtyTailWasReused(ref EvmPooledMemory memory)
+    {
+        byte[]? backingMemory = GetBackingMemory(ref memory);
+        Assert.That(backingMemory, Is.Not.Null);
+        Assert.That(backingMemory![16 * 1024], Is.EqualTo(0xa7), "negative control requires a stale pooled tail");
+    }
+
+    private static void WriteInitialMemory(ref EvmPooledMemory memory, byte[] initial)
+    {
+        for (int offset = 0; offset < initial.Length; offset += EvmPooledMemory.WordSize)
+        {
+            UInt256 location = (UInt256)offset;
+            Assert.That(memory.TrySaveWord(in location, initial.AsSpan(offset, EvmPooledMemory.WordSize)), Is.True);
+        }
+    }
+
+    private static byte[] ReadVisibleMemory(ref EvmPooledMemory memory)
+        => memory.GetTrace().Slice(0, (int)memory.Size).ToArray();
+
+    private static byte[] CreatePattern(int length, byte seed)
+    {
+        byte[] pattern = new byte[length];
+        for (int i = 0; i < pattern.Length; i++)
+        {
+            pattern[i] = (byte)(seed + i * 37);
+        }
+
+        return pattern;
+    }
+
+    private static int AlignToWord(int length)
+        => (length + EvmPooledMemory.WordSize - 1) & ~(EvmPooledMemory.WordSize - 1);
 
     [Test]
     public void GetTrace_should_not_throw_on_not_initialized_memory()

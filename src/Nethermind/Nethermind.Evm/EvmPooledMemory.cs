@@ -61,8 +61,8 @@ public struct EvmPooledMemory
         CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength, out bool isViolation);
         if (isViolation) return false;
 
-        UpdateSize(newLength);
-        value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
+        UpdateSize(newLength, rentIfNeeded: false);
+        SaveAfterGas(in location, value);
         return true;
     }
 
@@ -109,26 +109,12 @@ public struct EvmPooledMemory
     }
 
     public bool TrySave(in UInt256 location, byte[] value)
-    {
-        if (value.Length == 0)
-        {
-            return true;
-        }
-
-        ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
-        if (isViolation) return false;
-
-        UpdateSize(newLength);
-
-        Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
-        return true;
-    }
+        => TrySave(in location, value.AsSpan());
 
     /// <summary>
     /// Variant of <see cref="TrySave"/> requiring the caller to have already invoked
     /// <see cref="IGasPolicy{TSelf}.UpdateMemoryCost"/> for (<paramref name="location"/>,
-    /// <paramref name="value"/>.Length) — which both bounds-checks and grows/rents the buffer —
+    /// <paramref name="value"/>.Length), which bounds-checks and updates the logical memory size,
     /// so this skips re-validation. Mirrors <see cref="CopyAfterGas"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -142,10 +128,10 @@ public struct EvmPooledMemory
 
         Debug.Assert(location.IsUint64);
         Debug.Assert(location.u0 + (ulong)length <= Size);
-        PrepareAccessAfterGas(location.u0 + (ulong)length);
-
         int intLocation = TruncateToInt32(location.u0);
+        ulong preparedZeroedSize = PrepareOverwriteAfterGas(location.u0, (ulong)length);
         value.CopyTo(_memory.AsSpan(intLocation, length));
+        CommitOverwrite(preparedZeroedSize);
     }
 
     /// <summary>
@@ -166,8 +152,7 @@ public struct EvmPooledMemory
 
         Debug.Assert(destination.IsUint64);
         Debug.Assert(destination.u0 + (ulong)length <= Size);
-        PrepareAccessAfterGas(destination.u0 + (ulong)length);
-
+        ulong preparedZeroedSize = PrepareOverwriteAfterGas(destination.u0, (ulong)length);
         Span<byte> target = _memory.AsSpan(TruncateToInt32(destination.u0), length);
         int copiedLength = 0;
         if (sourceOffset < source.Length)
@@ -181,6 +166,8 @@ public struct EvmPooledMemory
         {
             target[copiedLength..].Clear();
         }
+
+        CommitOverwrite(preparedZeroedSize);
     }
 
     public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
@@ -361,12 +348,28 @@ public struct EvmPooledMemory
             return;
         }
 
-        int destinationOffset = TruncateToInt32(destination.u0);
-        int sourceOffset = TruncateToInt32(source.u0);
+        Debug.Assert(destination.IsUint64);
+        Debug.Assert(source.IsUint64);
+        Debug.Assert(destination.u0 + length <= Size);
+        Debug.Assert(source.u0 + length <= Size);
         int intLength = TruncateToInt32(length);
+        ulong sourceAvailable = source.u0 < _lastZeroedSize
+            ? Math.Min(length, _lastZeroedSize - source.u0)
+            : 0;
+        ulong preparedZeroedSize = PrepareOverwriteAfterGas(destination.u0, length);
+        Span<byte> target = _memory.AsSpan(TruncateToInt32(destination.u0), intLength);
 
-        PrepareAccessAfterGas(destination.u0 + length);
-        _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
+        if (sourceAvailable != 0)
+        {
+            _memory.AsSpan(TruncateToInt32(source.u0), TruncateToInt32(sourceAvailable)).CopyTo(target);
+        }
+
+        if (sourceAvailable != length)
+        {
+            target[TruncateToInt32(sourceAvailable)..].Clear();
+        }
+
+        CommitOverwrite(preparedZeroedSize);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -449,6 +452,27 @@ public struct EvmPooledMemory
     {
         Debug.Assert(newLength <= Size);
         EnsureRented();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ulong PrepareOverwriteAfterGas(ulong offset, ulong length)
+    {
+        Debug.Assert(length != 0);
+        Debug.Assert(offset + length <= Size);
+
+        byte[]? memory = _memory;
+        return memory is null || Size > (ulong)memory.Length || Size > _lastZeroedSize
+            ? RentForOverwriteSlow(offset, offset + length)
+            : 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CommitOverwrite(ulong preparedZeroedSize)
+    {
+        if (preparedZeroedSize != 0)
+        {
+            _lastZeroedSize = preparedZeroedSize;
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -576,6 +600,41 @@ public struct EvmPooledMemory
             Array.Clear(memory, (int)_lastZeroedSize, (int)(target - _lastZeroedSize));
             _lastZeroedSize = target;
         }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ulong RentForOverwriteSlow(ulong overwriteStart, ulong overwriteEnd)
+    {
+        byte[]? memory = _memory;
+        ulong zeroedSize = _lastZeroedSize;
+        if (memory is null)
+        {
+            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize));
+            zeroedSize = 0;
+        }
+        else if (Size > (ulong)memory.LongLength)
+        {
+            byte[] grown = Rent(TruncateToInt32(Size));
+            Array.Copy(memory, 0, grown, 0, (int)zeroedSize);
+            Return(memory);
+            _memory = memory = grown;
+        }
+
+        const ulong zeroChunk = 4 * 1024;
+        ulong target = Math.Min((ulong)memory.Length, (Size + (zeroChunk - 1)) & ~(zeroChunk - 1));
+        ulong beforeOverwriteEnd = Math.Min(overwriteStart, target);
+        if (beforeOverwriteEnd > zeroedSize)
+        {
+            Array.Clear(memory, (int)zeroedSize, (int)(beforeOverwriteEnd - zeroedSize));
+        }
+
+        ulong afterOverwriteStart = Math.Max(overwriteEnd, zeroedSize);
+        if (target > afterOverwriteStart)
+        {
+            Array.Clear(memory, (int)afterOverwriteStart, (int)(target - afterOverwriteStart));
+        }
+
+        return target;
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
