@@ -274,6 +274,91 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        public void Final_total_difficulty_from_config_does_not_mark_terminal_block_as_reached()
+        {
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = 5000000;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
+            MergeConfig mergeConfig = new() { FinalTotalDifficulty = "5000000" };
+            PoSSwitcher poSSwitcher = new(mergeConfig, new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec { Genesis = genesisBlock }, LimboLogs.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
+                Assert.That(poSSwitcher.FinalTotalDifficulty, Is.EqualTo((UInt256?)5000000));
+                Assert.That(poSSwitcher.TransitionFinished, Is.True);
+            }
+        }
+
+        [Test]
+        public void Reaches_and_persists_terminal_block_with_final_total_difficulty_in_config()
+        {
+            using MemDb metadataDb = new();
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = 5000000;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
+            MergeConfig mergeConfig = new() { FinalTotalDifficulty = "5000000" };
+            PoSSwitcher poSSwitcher = new(mergeConfig, new SyncConfig(), metadataDb, blockTree, specProvider, new ChainSpec { Genesis = genesisBlock }, LimboLogs.Instance);
+            int terminalBlockReachedCount = 0;
+            poSSwitcher.TerminalBlockReached += (_, _) => terminalBlockReachedCount++;
+
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.False);
+            Block terminalBlock = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(4).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
+            blockTree.SuggestBlock(terminalBlock);
+            blockTree.TryUpdateMainChain(terminalBlock.Header, true, preloadedBlocks: new[] { terminalBlock });
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+                Assert.That(terminalBlockReachedCount, Is.EqualTo(1));
+                Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(5));
+            }
+
+            PoSSwitcher restarted = new(mergeConfig, new SyncConfig(), metadataDb, blockTree, specProvider, new ChainSpec { Genesis = genesisBlock }, LimboLogs.Instance);
+            Assert.That(restarted.HasEverReachedTerminalBlock(), Is.True);
+        }
+
+        [Test]
+        public void Local_chain_above_ttd_marks_terminal_block_as_reached_without_terminal_block_metadata()
+        {
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = 3000000;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
+            MergeConfig mergeConfig = new() { FinalTotalDifficulty = "3000000" };
+            PoSSwitcher poSSwitcher = new(mergeConfig, new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec { Genesis = genesisBlock }, LimboLogs.Instance);
+
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.True);
+        }
+
+        [TestCase(0, 1, true)]
+        [TestCase(5000, 6000, true)]
+        [TestCase(5000, 4000, false)]
+        public void Genesis_difficulty_reaching_ttd_marks_terminal_block_as_reached(long ttd, long genesisDifficulty, bool expected)
+        {
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = (UInt256)ttd;
+            Block genesisBlock = Build.A.Block.WithNumber(0).WithDifficulty((UInt256)genesisDifficulty).TestObject;
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), Substitute.For<IBlockTree>(), specProvider, new ChainSpec { Genesis = genesisBlock }, LimboLogs.Instance);
+
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(expected));
+        }
+
+        [TestCase(5000, 6000, true)]
+        [TestCase(5000, 4000, false)]
+        public void Sync_pivot_above_ttd_marks_terminal_block_as_reached(long ttd, long pivotTotalDifficulty, bool expected)
+        {
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = (UInt256)ttd;
+            SyncConfig syncConfig = new() { PivotTotalDifficulty = $"{(UInt256)pivotTotalDifficulty}" };
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), Substitute.For<IBlockTree>(), specProvider, new ChainSpec(), LimboLogs.Instance);
+
+            Assert.That(poSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(expected));
+        }
+
+        [Test]
         public void No_final_difficulty_if_conditions_are_not_met() =>
             AssertFinalTotalDifficulty(10005, 10000, 10000, null);
 
