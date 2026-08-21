@@ -91,7 +91,7 @@ public static unsafe partial class EvmInstructions
     }
 
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
-    /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0C, 0x0D, 0x0E and 0x10.</typeparam>
+    /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0D, 0x0E, 0x10 and 0x11.</typeparam>
     /// <typeparam name="TEip8272">Whether the fork defines the recent-root reference count at index 0x0F.</typeparam>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
@@ -124,17 +124,17 @@ public static unsafe partial class EvmInstructions
             0x0B => stack.PushUInt256<TTracingInst>((UInt256)ctx.Signatures.Length),
             // The two extensions claim disjoint indices, so each is gated on its own fork rather than
             // on one shared ceiling: 0x0F must stay undefined on a chain with EIP-8250 but not EIP-8272.
-            0x0C when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
+            0x0C => stack.PushUInt256<TTracingInst>((UInt256)(ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in gas))),
             0x0D when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 1)),
             0x0E when TEip8250.IsActive => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
             0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is { } keys ? keys[0] : UInt256.Zero),
+            0x11 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
             0x0F when TEip8272.IsActive => stack.PushUInt256<TTracingInst>((UInt256)ctx.RecentRootReferences.Length),
-            0x11 => stack.PushUInt256<TTracingInst>((UInt256)(ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in gas))),
             _ => EvmExceptionType.BadInstruction,
         };
     }
 
-    /// <summary>RECENTROOTREFLOAD (0xb5): read one field of a declared recent-root reference.</summary>
+    /// <summary>RECENTROOTREFLOAD (0xb6): read one field of a declared recent-root reference.</summary>
     /// <remarks>
     /// Reads the signed envelope, not the predeploy's storage: the references were checked against the
     /// pre-state before any frame ran, so the opcode is legal in every frame mode, <c>VERIFY</c> included.
@@ -264,7 +264,7 @@ public static unsafe partial class EvmInstructions
         return stack.PushUInt32<TTracingInst>(status);
     }
 
-    /// <summary>SIGPARAM (0xb4): read a signature-scoped field, or copy ARBITRARY signature bytes.</summary>
+    /// <summary>SIGPARAM (0xb4): read a signature-scoped field.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSigParam<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -276,18 +276,10 @@ public static unsafe partial class EvmInstructions
         // Spec stack order: signatureIndex on top, param second.
         if (!stack.PopUInt256(out UInt256 signatureIndex, out UInt256 param)) return EvmExceptionType.StackUnderflow;
         if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
-        if (param > 0x04) return EvmExceptionType.BadInstruction;
+        if (param > 0x03) return EvmExceptionType.BadInstruction;
 
         int index = (int)signatureIndex.u0;
         TxFrameSignature signature = ctx.Signatures[index];
-
-        if (param.u0 == 0x04)
-        {
-            if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
-            if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length))
-                return EvmExceptionType.StackUnderflow;
-            return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
-        }
 
         TGasPolicy.Consume<BaseGasCost>(ref gas);
         return param.u0 switch
@@ -299,8 +291,30 @@ public static unsafe partial class EvmInstructions
             0x02 => signature.Msg.IsEmpty
                 ? stack.PushZero<TTracingInst>()
                 : stack.PushBytes<TTracingInst>(signature.Msg.Span),
-            0x03 => stack.PushUInt256<TTracingInst>((UInt256)signature.Signature.Length),
+            0x03 => signature.Scheme == TxFrameSignature.SchemeArbitrary
+                ? stack.PushUInt256<TTracingInst>((UInt256)signature.Signature.Length)
+                : EvmExceptionType.BadInstruction,
             _ => EvmExceptionType.BadInstruction,
         };
+    }
+
+    /// <summary>SIGDATACOPY (0xb5): copy an ARBITRARY signature's raw bytes into memory (CALLDATACOPY semantics).</summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSigDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
+        if (ctx is null) return EvmExceptionType.BadInstruction;
+
+        // Spec stack order: memOffset, dataOffset, length, signatureIndex (top to bottom, matching CALLDATACOPY).
+        if (!stack.PopUInt256(out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length, out UInt256 signatureIndex))
+            return EvmExceptionType.StackUnderflow;
+        if (signatureIndex >= (UInt256)ctx.Signatures.Length) return EvmExceptionType.BadInstruction;
+
+        TxFrameSignature signature = ctx.Signatures[(int)signatureIndex.u0];
+        if (signature.Scheme != TxFrameSignature.SchemeArbitrary) return EvmExceptionType.BadInstruction;
+
+        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in memOffset, in dataOffset, in length, signature.Signature.Span);
     }
 }

@@ -2181,7 +2181,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCase(100_000UL, 0UL, 0, true)]
-        [TestCase(115_000UL, 0UL, 0, false)]
+        [TestCase(118_000UL, 0UL, 0, false)]
         [TestCase(10_000UL, 0UL, 4000, false)]
         [TestCase(70_000UL, 70_000UL, 0, true)]
         public void SubmitTx_FrameTransaction_IsGatedOnBlockDimensions(

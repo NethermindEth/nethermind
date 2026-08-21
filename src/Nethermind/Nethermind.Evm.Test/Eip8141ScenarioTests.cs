@@ -175,7 +175,7 @@ public class Eip8141ScenarioTests
         ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
         ulong tokens = CalldataTokens(frameData) + CalldataTokens(witnessBytes);
         ulong floorTokens = (ulong)(frameData.Length + witnessBytes.Length) * 4;
-        ulong expected = 15_000
+        ulong expected = (ulong)Eip8141Constants.IntrinsicGasCost
                          + 2 * 475UL
                          + 100 // ARBITRARY signature verification cost
                          + Math.Max(tokens * 4 + frameGasUsed, floorTokens * 16); // EIP-7976 floor rate
@@ -218,7 +218,7 @@ public class Eip8141ScenarioTests
         TxReceipt receipt = ProcessBlock(tx)[0];
 
         ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
-        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL;
         using (Assert.EnterMultipleScope())
         {
             // EIP-7976 prices every byte as a non-zero token: 64 gas per data byte.
@@ -243,7 +243,7 @@ public class Eip8141ScenarioTests
         TxReceipt receipt = ProcessBlock(tx)[0];
 
         ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
-        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL;
         ulong standardTokenCost = 64 * 4UL;
         using (Assert.EnterMultipleScope())
         {
@@ -268,7 +268,7 @@ public class Eip8141ScenarioTests
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL;
         ulong standardGasLimit = mandatoryGas + (ulong)frameData.Length * 16UL + 40_000UL;
         ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
         using (Assert.EnterMultipleScope())
@@ -301,7 +301,7 @@ public class Eip8141ScenarioTests
         TxReceipt receipt = ProcessBlock(tx)[0];
 
         ulong frameGasUsed = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
-        ulong mandatoryGas = 15_000 + 2 * 475UL;
+        ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL;
         ulong floorGas = mandatoryGas + (ulong)frameData.Length * 64UL;
         ulong grossGas = mandatoryGas + (ulong)frameData.Length * 4UL + frameGasUsed;
         using (Assert.EnterMultipleScope())
@@ -333,7 +333,7 @@ public class Eip8141ScenarioTests
         TxReceipt receipt = ProcessBlock(tx)[0];
 
         ulong grossFrameGas = receipt.FrameReceipts!.Aggregate(0UL, static (sum, f) => sum + f.GasUsed);
-        ulong gross = 15_000 + 2 * 475UL + grossFrameGas; // no calldata or signatures
+        ulong gross = (ulong)Eip8141Constants.IntrinsicGasCost + 2 * 475UL + grossFrameGas;
         ulong applied = gross - (ulong)receipt.GasUsed;
         using (Assert.EnterMultipleScope())
         {

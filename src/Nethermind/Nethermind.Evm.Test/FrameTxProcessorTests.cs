@@ -54,7 +54,7 @@ public class FrameTxProcessorTests
 
     // The gas leg of max_cost (TXPARAM 0x06) for a SelfVerify + one DEFAULT frame at max fee 1, blob-free.
     private const ulong DefaultFrameStateGasLimit = 200_000;
-    private const ulong BlobFreeMaxCost = 615_950;
+    private const ulong BlobFreeMaxCost = 612_950;
 
     [SetUp]
     public void Setup()
@@ -454,7 +454,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
     [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]
     [TestCase((byte)0x0B, 0UL, TestName = "Execute_TxParam_SignatureCount")]
-    [TestCase((byte)0x11, DefaultFrameStateGasLimit, TestName = "Execute_TxParam_StateGasLeft")]
+    [TestCase((byte)0x0C, DefaultFrameStateGasLimit, TestName = "Execute_TxParam_StateGasLeft")]
     public void Execute_TxParamIntrospection_ExposesTransactionField(byte param, ulong expected)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -657,19 +657,18 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_SigParamCopy_UsesMemOffsetDataOffsetLengthOrder()
+    public void Execute_SigDataCopy_UsesMemOffsetDataOffsetLengthOrder()
     {
         // signature bytes[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
-        // Operand order (top to bottom) is memOffset, dataOffset, length — matching CALLDATACOPY and
-        // FRAMEDATACOPY. Asymmetric operands catch a reversed pop order.
+        // Operand order (top to bottom) is memOffset, dataOffset, length, signatureIndex — matching
+        // CALLDATACOPY. Asymmetric operands catch a reversed pop order.
         byte[] signatureBytes = new byte[32];
         for (int i = 0; i < signatureBytes.Length; i++) signatureBytes[i] = (byte)i;
 
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(8).PushData(4).PushData(0)   // length, dataOffset, memOffset (deepest to top)
-            .PushData(0x04).PushData(0)            // param (copy form), signatureIndex on top
-            .Op(Instruction.SIGPARAM)
+            .PushData(0).PushData(8).PushData(4).PushData(0) // signatureIndex, length, dataOffset, memOffset (deepest to top)
+            .Op(Instruction.SIGDATACOPY)
             .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
@@ -2224,7 +2223,7 @@ public class FrameTxProcessorTests
         _stateProvider.IncrementNonce(Sender);
         _stateProvider.Commit(Spec);
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x0C).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0x11).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
 
         Transaction tx = FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
