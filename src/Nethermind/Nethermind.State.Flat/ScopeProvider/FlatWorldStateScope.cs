@@ -331,12 +331,16 @@ public sealed class FlatWorldStateScope :
                         return;
                     }
 
-                    using ArrayPoolList<ValueHash256> keys = new(accountCount, accountCount);
+                    using ArrayPoolList<ValueHash256> keys = new(accountCount);
                     for (int i = 0; i < accountCount; i++)
                     {
-                        Address address = accountChanges[i].Address;
+                        ReadOnlyAccountChanges ac = accountChanges[i];
+                        // A BAL account that is only read keeps its leaf, so revealing its path is wasted work.
+                        if (!ac.HasStateChanges) continue;
+
+                        Address address = ac.Address;
                         _snapshotBundle.ShouldQueuePrewarm(address);
-                        keys[i] = address.ToAccountPath;
+                        keys.Add(address.ToAccountPath);
                     }
 
                     try

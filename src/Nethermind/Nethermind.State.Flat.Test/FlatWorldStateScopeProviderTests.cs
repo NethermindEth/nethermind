@@ -2200,43 +2200,43 @@ public class FlatWorldStateScopeProviderTests
         return new TestContext(trieWarmer: warmer);
     }
 
-    [Test]
-    public async Task HintBal_SkipsAddressWarmup_ForReadOnlyBalAccounts()
-    {
-        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
-        FlatWorldStateScope scope = ctx.Scope;
-
-        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
-
-        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
-    }
-
-    // Storage-only changes must still warm: the storage-root change rewrites the account leaf.
+    // BAL warm-up reveals account paths straight into the sparse arena instead of queueing warmer jobs, so the
+    // read-only skip is observed through the prewarm marks the prefetch leaves behind: a later hint for the
+    // written account is deduped, while the read-only one - never prefetched - still queues.
+    // Storage-only changes count as written: the storage-root change rewrites the account leaf.
     [TestCase(BalWriteKind.Balance)]
     [TestCase(BalWriteKind.Nonce)]
     [TestCase(BalWriteKind.Code)]
     [TestCase(BalWriteKind.Storage)]
-    public async Task HintBal_WarmsAddress_ForEachWriteKind(BalWriteKind kind)
+    public async Task HintBal_PrefetchesWrittenAccountPathsOnly(BalWriteKind kind)
     {
         using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
         FlatWorldStateScope scope = ctx.Scope;
+        CommitOneAccountWithStorage(scope, TestItem.AddressC);
 
-        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, kind)));
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB, kind)));
+        await scope.HintBal(CreateBal());
 
-        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+        scope.HintGet(TestItem.AddressB, null);
+        scope.HintGet(TestItem.AddressA, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.AddressJobPushes, Does.Contain(TestItem.AddressA));
+            Assert.That(warmer.AddressJobPushes, Does.Not.Contain(TestItem.AddressB));
+        }
     }
 
     [Test]
     public async Task HintBal_WithSink_StillReadsReadOnlyAccounts()
     {
-        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        using TestContext ctx = CreateContextWithRecordingWarmer(out _);
         FlatWorldStateScope scope = ctx.Scope;
         RecordingBalReaderSink sink = new();
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)), sink);
 
         Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
     }
 
     [Test]
