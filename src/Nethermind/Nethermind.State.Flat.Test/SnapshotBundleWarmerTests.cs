@@ -13,6 +13,9 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -139,6 +142,61 @@ public class SnapshotBundleWarmerTests
         bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
 
         Assert.That(cache.TryGetCount, Is.EqualTo(1));
+    }
+
+    // A warmer miss means the node is absent from the in-memory structures, not from persistence, so the warmer
+    // resolves it with a persistence RLP read. That read must land in the transient where the block's live reads
+    // (and TrieNodeCache.Add) can reuse it, or every warmed node is read from persistence twice.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Warmer_persistence_read_is_published_for_live_reads(bool storage)
+    {
+        Hash256 address = TestItem.KeccakC;
+        TreePath path = TreePath.FromHexString("12");
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
+        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
+
+        using SnapshotBundle bundle = new(
+            FlatTestHelpers.MakeBundle(_pool, reader), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        TrieNode warmed = storage
+            ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
+            : bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+
+        // Resolving the warmer's own placeholder is what issues the persistence read.
+        byte[]? loaded = storage
+            ? bundle.TryLoadStorageRlpForWarmer(address, path, hash, ReadFlags.None)
+            : bundle.TryLoadStateRlpForWarmer(path, hash, ReadFlags.None);
+
+        TrieNode live = storage
+            ? bundle.FindStorageNodeOrUnknown(address, path, hash)
+            : bundle.FindStateNodeOrUnknown(path, hash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmed.NodeType, Is.EqualTo(NodeType.Unknown), "the warmer's own node stays the negative-cache placeholder");
+            Assert.That(loaded, Is.EqualTo(rlp));
+            // Published already decoded: a reader can never observe it mid-resolution.
+            Assert.That(live.NodeType, Is.EqualTo(NodeType.Leaf));
+            // ...and it is a private copy, never the instance the warmer resolves in place.
+            Assert.That(live, Is.Not.SameAs(warmed));
+        }
+
+        // The live read was served from the transient instead of repeating the warmer's persistence read.
+        if (storage) reader.Received(1).TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
+        else reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
+    }
+
+    /// <summary>Builds a leaf whose RLP is long enough to be hash-referenced rather than inlined.</summary>
+    private static (byte[] Rlp, Hash256 Hash) EncodedLeaf()
+    {
+        TrieNode leaf = TrieNodeFactory.CreateLeaf([0x3, 0x4], new byte[32]);
+        TreePath empty = TreePath.Empty;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref empty);
+        return (leaf.FullRlp.ToArray()!, leaf.Keccak!);
     }
 
     // Dispose releases the transient back to the pool while warmer jobs may still be in flight. A read that
