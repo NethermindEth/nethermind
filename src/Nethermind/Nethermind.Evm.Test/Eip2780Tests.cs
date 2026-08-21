@@ -53,8 +53,8 @@ public class Eip2780Tests
             new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip2780Enabled = true, IsEip7708Enabled = true })));
 
     // Whole-transaction totals; recipient existence is irrelevant (state-independent intrinsic).
-    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess + GasCostOf.TxValueCostEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to existing EOA (20600)")]
-    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess + GasCostOf.TxValueCostEip2780 + GasCostOf.TransferLogEip2780, TestName = "value transfer to new account (20600)")]
+    [TestCase(false, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess + GasCostOf.TxValueCostEip2780, TestName = "value transfer to existing EOA (20600)")]
+    [TestCase(true, 1ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess + GasCostOf.TxValueCostEip2780, TestName = "value transfer to new account (20600)")]
     [TestCase(false, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess, TestName = "no-transfer to existing EOA (14600)")]
     [TestCase(true, 0ul, GasCostOf.TransactionEip2780 + GasCostOf.ColdAccountAccess, TestName = "no-transfer to empty account (14600)")]
     public async Task Simple_transfer_spends_eip2780_total_gas(bool recipientIsNew, ulong value, ulong expectedGas)

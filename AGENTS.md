@@ -138,12 +138,16 @@ See [global.json](./global.json) for the required .NET SDK version.
 This repository contains a dedicated workflow for reproducible payload benchmarks:
 
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
-- Main execution runner label: `reproducible-benchmarks`
+- Execution runner: chosen by the `arch` input — `amd64` (default) runs on `reproducible-benchmarks`
+  with snapshots under `/mnt/sda`; `arm64` runs on `reproducible-benchmarks-arm` with snapshots under
+  `/data`. The ARM box carries a single snapshot set — Nethermind in the **flat** layout — so it
+  refuses any other client, layout, or an image it would have to build; the amd64 box takes all of
+  them. **Never compare timings across the two boxes.**
 
 ### What the workflow does
 
 - Resolves runtime inputs (branch, state layout, payload set, delay, optional extra flags).
-- Selects one benchmark config file from `/mnt/sda/expb-data`.
+- Selects one benchmark config file from the runner's expb data dir (`/mnt/sda/expb-data` on amd64, `/data/expb-data` on arm64).
 - Builds or reuses Nethermind Docker image tag depending on branch rules.
 - Renders a temporary config (does not modify source files) by:
   - replacing `<<DOCKER_TAG>>`
@@ -215,3 +219,52 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.
 - Optional low-variance mode: pass `-f expb_env="EXPB_EVM_WARMUP=1"` to enable expb's per-block EVM warmup (`eth_simulateV1` before each measured block). It serves the measured block's reads from warm caches, which lowers both run-to-run CV (~1.8%→~0.55% on flat-realblocks) and AVG. Pair it with a raised RPC gas cap — `-f additional_extra_flags="--JsonRpc.GasCap=1000000000000"` — otherwise the per-request gas budget (default 100M) is exhausted on dense blocks and the warmup `eth_simulateV1` calls fail with `-38013` (intrinsic gas), silently leaving those blocks un-warmed. Caveat: warmup minimizes cold RocksDB/storage interaction, so it is a low-variance *compute* signal, not a substitute for the default cold benchmark — don't use it when measuring storage-layer changes.
 - dotTrace XML reports are 50-70MB. **Never load full XML into context.** Use [`scripts/dottrace-report.sh`](./scripts/dottrace-report.sh): `top <report.xml> [N]` for hot spots, `compare <a.xml> <b.xml> [N]` for regressions/improvements. Runs in <2 seconds via grep+awk.
+
+## RPC Benchmark Workflow Guidance
+
+- Workflow file: [`.github/workflows/run-rpc-benchmarks.yml`](./.github/workflows/run-rpc-benchmarks.yml)
+- Scripts and full reference: [`scripts/rpc-bench/README.md`](./scripts/rpc-bench/README.md)
+
+`run-rpc-benchmarks` measures state-reading JSON-RPC (`eth_call`, `eth_getBalance`, `trace_*`,
+`debug_*`) against a parked DB snapshot on the same two benchmark runners as expb — pick the box with
+`arch`, and always pass `docker_image` explicitly so the runner pulls a prebuilt tag rather than
+building one. For an A/B use `benchmark_tool=jsonbench-sweep` with `tool_config.clients` listing one
+`nethermind@<image>` per arm (the first is the response-parity baseline, compared byte-for-byte), then
+dispatch the same config a second time with the arms swapped, because position artifacts on this rig
+reach ~10% and have pointed in opposite directions on different workloads.
+
+### What the runners actually hold
+
+Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz`
+= **497 records** (heavy simulation traffic: every record carries state overrides, median ~331 KiB). The
+sweep discovers it by glob and prints `Corpus scenarios: …` / `corpus OK: 497 records` — read those lines
+rather than assuming a corpus set. Pin one with `corpus_glob` when more are added.
+
+The canonical cell, and what the `performance is good` label runs, is **100 rps for 120 s after a
+discarded 120 s warm-up**. Rates are the thing to get right:
+
+| rate | usable? |
+|---|---|
+| 10 | **no** — 300 requests gives mean CV ~70%, p99 CV ~206%; one cold outlier dominates |
+| 50–100 | yes; CV ~1–3% on mean/p50, p99 needs n>=3 |
+| 300 | amd64 only — on arm64 it drove a **1.22% HTTP fail rate**, tripping the 1% gate, after which percentiles above p98 describe failures, not latency |
+
+Size a cell by request count instead of duration with `corpus_requests` (absolute) or `corpus_passes`
+(a multiple of the corpus's record count) — `corpus_passes: 5` on 497 records at 100 rps is ~2,485
+requests. Note these are draws *with replacement*, so coverage is `N x (1 - (1 - 1/N)^requests)`, not a
+full pass. `corpus_parity.py` refuses corpora above **10,000 records** unless `max_corpus_records` is
+raised, and the k6 fixture is the real ceiling long before parity is (~142 MB for 497 records), so a
+50k-record capture wants sampling down rather than a bigger cap.
+
+For reference, expb's sweeps on the same boxes are sized by `amount`: `superblocks` defaults to 100,
+`realblocks` and `fusaka` to 1000, and both of the latter have 10k payloads available (fusaka covers
+blocks 25,490,001-25,499,999). Separately, `benchmark_tool=ethcallchaos` uses the EthCallChaos SQLite
+corpus (`corpus-v2`, ~1.1 GB) rather than these JSONL corpora, and with a seeded corpus it re-reports
+its own stale timings — use the json-bench per-category config for an A/B instead.
+
+```bash
+gh workflow run run-rpc-benchmarks.yml --ref <branch> \
+  -f arch=amd64 -f benchmark_tool=jsonbench-sweep \
+  -f docker_image=nethermindeth/nethermind:master-<sha> \
+  -f tool_config='{"clients":"nethermind@nethermindeth/nethermind:master-<sha> nethermind@nethermindeth/nethermind:<pr-tag>","rps_list":"100","duration":"120s"}'
+```
