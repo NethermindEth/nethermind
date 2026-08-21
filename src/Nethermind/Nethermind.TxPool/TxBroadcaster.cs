@@ -149,7 +149,34 @@ namespace Nethermind.TxPool
         public void OnNewHead(object? sender, Block block)
         {
             _baseFeeThreshold = CalculateBaseFeeThreshold();
+            StopBroadcastingExpiredFrameTxs(block.Timestamp);
             BroadcastPersistentTxs();
+        }
+
+        /// <summary>Stops broadcasting EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
+        /// <remarks>
+        /// The pool's own expiry pass reaches only the pending pools, so a locally submitted frame tx that has since
+        /// been evicted from them survives here alone and would be re-announced every head for the rest of the node's
+        /// life. Such a transaction can never be included: the expiry-verifier predeploy reverts once
+        /// <c>block.timestamp &gt; deadline</c>, and the comparison is strict here to match that condition exactly.
+        /// No fork gate is needed — only a frame transaction ever carries a deadline.
+        /// </remarks>
+        internal void StopBroadcastingExpiredFrameTxs(ulong timestamp)
+        {
+            if (_persistentTxs.Count == 0)
+            {
+                return;
+            }
+
+            foreach (Transaction tx in _persistentTxs.GetSnapshot())
+            {
+                if (tx.SupportsFrames
+                    && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
+                    && timestamp > deadline)
+                {
+                    StopBroadcast(tx.Hash!);
+                }
+            }
         }
 
         internal UInt256 CalculateBaseFeeThreshold()
