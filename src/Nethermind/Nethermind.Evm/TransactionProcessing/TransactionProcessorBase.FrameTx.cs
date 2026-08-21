@@ -769,9 +769,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // Only a VERIFY frame's codeless target runs default code (execute_frame, execution-specs);
-        // every other frame runs a top-level call, which dispatches a precompile by address.
-        if (frame.Mode == TxFrame.ModeVerify && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
+        // EIP-8141: a precompile dispatches in every mode, leaving default code to a VERIFY frame's codeless
+        // non-precompile target. The repository decides what is a precompile, being what dispatches the frame.
+        if (frame.Mode == TxFrame.ModeVerify
+            && _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null
+            && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
             return ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, tracer, out gasUsed);
         }
