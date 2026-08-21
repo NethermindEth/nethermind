@@ -19,6 +19,13 @@ namespace Nethermind.Test.Runner;
 internal class Program
 {
     private const int ProgressReportTestInterval = 100;
+    private const string EestRetiredStorageCollisionDirectory = "eip7610_create_collision";
+    private const string EestInitCollisionCategory = "test_initcollision";
+    private const string EestInitCollisionTransactionTest = "test_init_collision_create_tx[";
+    private const string EestInitCollisionOpcodeTest = "test_init_collision_create_opcode[";
+    private const string EestStorageCollisionTest = "test_create2_collision_storage[";
+    private const string EestRevertCollisionTest = "test_collision_with_create2_revert_in_initcode[";
+    private const string EestNonEmptyBalance = "-non-empty-balance-";
     private static readonly TimeSpan ProgressReportTimeInterval = TimeSpan.FromMinutes(1);
 
     public class Options
@@ -179,6 +186,7 @@ internal class Program
         while (!string.IsNullOrWhiteSpace(input))
         {
             List<string> files = CollectFiles(input, chunk);
+            bool excludeRetiredEestFixtures = Directory.Exists(input);
 
             if (isEngineTest || isBlockTest)
             {
@@ -199,7 +207,8 @@ internal class Program
             }
             else if (isStateTest)
             {
-                List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
+                List<EthereumTestResult> results = RunStateTestFiles(
+                    files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers, excludeRetiredEestFixtures);
                 Console.Out.Write(_serializer.Serialize(results, true));
             }
             else if (isTxTest)
@@ -338,38 +347,45 @@ internal class Program
 
     private static List<EthereumTestResult> RunStateTestFiles(
         List<string> files, WhenTrace whenTrace, bool traceMemory, bool traceStack,
-        ulong chainId, string filter, bool enableWarmup, int workers)
+        ulong chainId, string filter, bool enableWarmup, int workers, bool excludeRetiredEestFixtures)
     {
         // Compile filter regex once
         Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
 
         // Phase 1: Parse files in parallel
         int parseWorkers = Math.Min(workers, files.Count);
-        List<GeneralStateTest>[] perFileResults = new List<GeneralStateTest>[files.Count];
+        (List<GeneralStateTest> Tests, int Skipped)[] perFileResults = new (List<GeneralStateTest>, int)[files.Count];
 
         if (parseWorkers > 1 && files.Count > 1)
         {
             Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = parseWorkers }, i =>
             {
-                perFileResults[i] = ParseStateTestFile(files[i], filterRegex);
+                perFileResults[i] = ParseStateTestFile(files[i], filterRegex, excludeRetiredEestFixtures);
             });
         }
         else
         {
             for (int i = 0; i < files.Count; i++)
             {
-                perFileResults[i] = ParseStateTestFile(files[i], filterRegex);
+                perFileResults[i] = ParseStateTestFile(files[i], filterRegex, excludeRetiredEestFixtures);
             }
         }
 
         List<(int index, GeneralStateTest test)> testCases = [];
         int idx = 0;
+        int skippedEestFixtures = 0;
         for (int i = 0; i < perFileResults.Length; i++)
         {
-            foreach (GeneralStateTest test in perFileResults[i])
+            skippedEestFixtures += perFileResults[i].Skipped;
+            foreach (GeneralStateTest test in perFileResults[i].Tests)
             {
                 testCases.Add((idx++, test));
             }
+        }
+
+        if (skippedEestFixtures > 0)
+        {
+            Console.Error.WriteLine($"SKIPPED {skippedEestFixtures} EEST fixtures: retired EIP-7610 storage-only collision rule");
         }
 
         int completedTests = 0;
@@ -590,16 +606,42 @@ internal class Program
         return combinedResults;
     }
 
-    private static List<GeneralStateTest> ParseStateTestFile(string file, Regex? filterRegex)
+    private static (List<GeneralStateTest> Tests, int Skipped) ParseStateTestFile(string file, Regex? filterRegex, bool excludeRetiredEestFixtures)
     {
         List<GeneralStateTest> tests = [];
+        int skipped = 0;
         TestsSourceLoader source = new(new LoadGeneralStateTestFileStrategy(), file);
         foreach (GeneralStateTest test in source.LoadTests<GeneralStateTest>())
         {
             if (filterRegex is not null && !filterRegex.IsMatch(test.Name))
                 continue;
+
+            if (excludeRetiredEestFixtures && IsRetiredEestStorageCollisionTest(file, test))
+            {
+                skipped++;
+                continue;
+            }
+
             tests.Add(test);
         }
-        return tests;
+        return (tests, skipped);
+    }
+
+    private static bool IsRetiredEestStorageCollisionTest(string file, GeneralStateTest test)
+    {
+        string normalizedFile = file.Replace('\\', '/');
+        if (!normalizedFile.Contains($"/{EestRetiredStorageCollisionDirectory}/", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string category = Path.GetFileName(test.Category) ?? string.Empty;
+        string name = test.Name ?? string.Empty;
+        return string.Equals(category, EestInitCollisionCategory, StringComparison.OrdinalIgnoreCase)
+            && ((name.StartsWith(EestInitCollisionTransactionTest, StringComparison.Ordinal)
+                    || name.StartsWith(EestInitCollisionOpcodeTest, StringComparison.Ordinal))
+                && name.Contains(EestNonEmptyBalance, StringComparison.Ordinal))
+            || name.StartsWith(EestStorageCollisionTest, StringComparison.Ordinal)
+            || name.StartsWith(EestRevertCollisionTest, StringComparison.Ordinal);
     }
 }
