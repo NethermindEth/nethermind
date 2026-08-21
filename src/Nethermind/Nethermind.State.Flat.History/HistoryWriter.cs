@@ -339,7 +339,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (_isV3)
             {
-                HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending!, columns.StorageHistory, columns.StorageClears);
+                pending!.TrackDestruct(addrHash, block);
+                HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending, columns.StorageHistory, columns.StorageClears);
             }
         }
 
@@ -390,7 +391,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
                 if (_isV3)
                 {
-                    HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending!, columns.StorageHistory, columns.StorageClears);
+                    pending!.TrackDestruct(addrHash, block);
+                    HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending, columns.StorageHistory, columns.StorageClears);
                 }
             }
 
@@ -474,6 +476,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     /// <summary>v3 only: a self-destruct wipes slots via a range-delete with no per-slot entries, so the account's
     /// persisted slots are enumerated and fed through the pending mechanism as synthetic empty-post-value touches.
+    /// Slots first written lower in this same walk are absent from the persisted column and so invisible here;
+    /// <see cref="PendingV3Writes.TrackDestruct"/> covers them when the walk reaches them.
     /// Above <see cref="DestructSlotEnumerationCap"/> slots, poisons the account for this block instead; the read
     /// path fails closed for it.</summary>
     private void HandleSelfDestructV3(ulong block, in ValueHash256 addrHash, scoped ReadOnlySpan<byte> accountKey, PendingV3Writes pending, IWriteBatch storageBatch, IWriteBatch clearsBatch)
@@ -555,12 +559,20 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         public readonly Dictionary<ValueHash256, ulong> Accounts = [];
         public readonly Dictionary<SlotKey, ulong> Storages = [];
+        public readonly Dictionary<ValueHash256, ulong> Destructs = [];
 
         public void Clear()
         {
             Accounts.Clear();
             Storages.Clear();
+            Destructs.Clear();
         }
+
+        /// <summary>Records a storage-wiping destruct so that slots first written lower in this same walk - which
+        /// the destruct's persisted-column enumeration cannot see - can still splice it into their chain. The walk
+        /// descends, so each record overwrites with the lowest destruct seen so far, which is exactly the nearest
+        /// destruct above every block visited from here on.</summary>
+        public void TrackDestruct(in ValueHash256 addrPath, ulong block) => Destructs[addrPath] = block;
 
         public void TrackAccount(in ValueHash256 addrPath, ulong block, ReadOnlySpan<byte> postValue, IWriteBatch batch, HistoryStoreV3 store)
         {
@@ -585,10 +597,25 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             HistoryStoreV3 store)
         {
             ref ulong entry = ref CollectionsMarshal.GetValueRefOrAddDefault(Storages, new SlotKey(addrPath, slotHash), out bool exists);
+            if (exists && entry == block) return; // destruct wipe + same-block rewrite: leave the entry pending
+
+            // A destruct standing between this touch and the next one up wiped the slot without enumerating it,
+            // the slot having been absent from the persisted column at the time. Splice it into the chain: this
+            // touch's post-value is what the destruct erased, and the next touch up therefore starts from empty.
+            if (Destructs.Count != 0
+                && Destructs.TryGetValue(addrPath, out ulong destructBlock)
+                && destructBlock > block
+                && (!exists || destructBlock < entry))
+            {
+                ReadOnlySpan<byte> destructKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrPath, slotHash);
+                if (exists) store.RecordPreValue(entry, destructKey, ReadOnlySpan<byte>.Empty, batch);
+                store.RecordPreValue(destructBlock, destructKey, postValue, batch);
+                entry = block;
+                return;
+            }
+
             if (exists)
             {
-                if (entry == block) return; // destruct wipe + same-block rewrite: leave the entry pending
-
                 ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrPath, slotHash);
                 store.RecordPreValue(entry, flatKey, postValue, batch);
             }

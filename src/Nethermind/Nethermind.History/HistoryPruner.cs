@@ -16,7 +16,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Db.LogIndex;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
@@ -43,7 +42,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
-    private readonly SlicedReceiptRetention _slicedReceiptRetention;
+    private readonly IPrunedReceiptRetention _receiptRetention;
     private readonly bool _enabled;
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
@@ -76,8 +75,7 @@ public class HistoryPruner : IHistoryPruner
         IProcessExitSource processExitSource,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         IBlockProcessingQueue blockProcessingQueue,
-        IFlatDbConfig flatDbConfig,
-        ILogIndexStorage logIndexStorage,
+        IPrunedReceiptRetention receiptRetention,
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<HistoryPruner>();
@@ -90,7 +88,7 @@ public class HistoryPruner : IHistoryPruner
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
-        _slicedReceiptRetention = new SlicedReceiptRetention(flatDbConfig, logIndexStorage);
+        _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
@@ -402,7 +400,7 @@ public class HistoryPruner : IHistoryPruner
 
                         if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {blockInfo.BlockHash}.");
                         _blockTree.DeleteOldBlock(number, blockInfo.BlockHash);
-                        if (_slicedReceiptRetention.ShouldRetainReceipts(block)
+                        if (_receiptRetention.ShouldRetainReceipts(block)
                             && _receiptStorage.TryRetainSelfDescribing(block))
                         {
                             Metrics.SlicedReceiptsRetained++;

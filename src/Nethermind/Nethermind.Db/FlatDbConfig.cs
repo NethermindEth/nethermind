@@ -16,6 +16,7 @@ public class FlatDbConfig : IFlatDbConfig
     public string? HistorySliceAddresses { get; set; }
     public bool HistoryVerifyEveryBlock { get; set; } = false;
     public int HistoryVerifySegments { get; set; } = 0;
+    public long HistoryVerifyMaxRows { get; set; } = 0;
     public bool ImportFromPruningTrieState { get; set; } = false;
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;

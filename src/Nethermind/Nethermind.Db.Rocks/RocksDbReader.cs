@@ -127,6 +127,8 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         ReadOptions readOptions = _readOptionsFactory();
         if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
+        if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(_mainDb.ReadAheadSize);
+        if (_mainDb.CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
 
         IntPtr iterateLowerBound = IntPtr.Zero;
         IntPtr iterateUpperBound = IntPtr.Zero;

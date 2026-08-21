@@ -5,6 +5,7 @@ using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
@@ -49,6 +50,9 @@ public class FlatHistoryModule : Module
                 ctx.Resolve<HistoryScopeGate>()))
             .AddStep(typeof(SeedFlatHistoryGenesis))
             .AddStep(typeof(StartHistoryWindowPruner))
+            // Only a node configuring slices tells the history pruner to keep any receipts; everyone else keeps
+            // the default that never retains, and never pays for the bloom probe or the log-index lookup.
+            .AddSingleton<IPrunedReceiptRetention, SlicedReceiptRetention>()
             .AddSingleton<HistoryWalkVerificationCoordinator>(ctx => new HistoryWalkVerificationCoordinator(
                 ctx.Resolve<IColumnsDb<FlatDbColumns>>(),
                 ctx.Resolve<IColumnsDb<FlatHistoryColumns>>(),

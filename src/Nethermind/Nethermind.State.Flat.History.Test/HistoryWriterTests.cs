@@ -806,6 +806,36 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_SlotFirstWrittenBelowADestructInTheSameWalk_ReadsItsValueBetweenTheTwoBlocks()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot2), EncodedHistorySlot(0x0b));
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot1));
+        _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot2));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out _), Is.False,
+                "the slot did not exist before the block that first wrote it");
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue between), Is.True,
+                "the destruct one block up never enumerated this slot - it was not persisted yet - so its value has to be spliced in from the walk itself");
+            Assert.That(between.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(windowedReader.TryGetStorage(2, AddrA, Slot1, out _), Is.False,
+                "the destruct block itself must read empty");
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot2, out SlotValue persisted), Is.True);
+            Assert.That(persisted.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0b }),
+                "the persisted slot's own pre-destruct value must survive the splice unchanged");
+        }
+    }
+
+    [Test]
     public void V3_SelfDestruct_AboveEnumerationCap_PoisonsAccount_ReadFailsClosed()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);

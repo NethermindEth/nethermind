@@ -137,6 +137,34 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
+    public void RunOnePass_AfterADrainTimeout_StillOwesAndPerformsTheDeletesForTheAlreadyPublishedFloor()
+    {
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 5, new Account(1, 100));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+
+        HistoryScopeGate gate = new();
+        long stuckScope = gate.EnterScope();
+
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8, passBudgetSeconds: 1, scopeGate: gate);
+
+        bool completedWhileStuck = pruner.RunOnePass(CancellationToken.None);
+        gate.ExitScope(stuckScope);
+        bool completedAfterRelease = pruner.RunOnePass(CancellationToken.None);
+        pruner.Dispose();
+
+        HistoryStoreV3 accountHistoryV3 = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        Span<byte> buffer = stackalloc byte[256];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedWhileStuck, Is.False, "precondition: the open scope must make the drain time out");
+            Assert.That(completedAfterRelease, Is.True);
+            Assert.That(accountHistoryV3.TryGetValueBeforeNextChange(4, AccountKey(), buffer, out _), Is.EqualTo(-1),
+                "the floor was already published by the timed-out pass, so the next pass must resume its deletes rather than see no floor advance and skip them");
+        }
+    }
+
+    [Test]
     public void RunOnePass_StorageColumnMakesProgressEvenWhenAccountColumnDoesNotComplete()
     {
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
@@ -218,7 +246,7 @@ public class HistoryWindowPrunerTests
         clears.RecordClear(block, accountKey, batch.GetColumnBatch(FlatHistoryColumns.StorageClears));
     }
 
-    private HistoryWindowPruner CreatePruner(ulong retentionBlocks, int passBudgetSeconds = 30, Action<FlatDbConfig>? configure = null)
+    private HistoryWindowPruner CreatePruner(ulong retentionBlocks, int passBudgetSeconds = 30, Action<FlatDbConfig>? configure = null, HistoryScopeGate? scopeGate = null)
     {
         FlatDbConfig config = new()
         {
@@ -233,7 +261,7 @@ public class HistoryWindowPrunerTests
         _reader = new HistoryReader(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
         return new HistoryWindowPruner(
             _writer, _historyColumns, config,
-            new HistoryScopeGate(),
+            scopeGate ?? new HistoryScopeGate(),
             availability, rowFormat,
             LimboLogs.Instance);
     }

@@ -31,11 +31,11 @@ public class HistoryWalkVerifierTests
     [TearDown]
     public void TearDown() => _historyColumns.Dispose();
 
-    private HistoryWalkVerifier CreateVerifier(FakeHeaders headers)
+    private HistoryWalkVerifier CreateVerifier(FakeHeaders headers, long maxMaterializedRows = HistoryWalkVerifier.DefaultMaxMaterializedRows)
     {
         (HistoryAvailability _, HistoryRowFormat rowFormat) =
             HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance);
+        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxMaterializedRows);
     }
 
     private sealed class FakeHeaders : IHistoryHeaderSource
@@ -121,6 +121,33 @@ public class HistoryWalkVerifierTests
                 "an honest history must reproduce the header root at every block, through storage changes and a self-destruct alike");
             Assert.That(verdict.Verified, Is.True);
             Assert.That(verdict.BlocksCompared, Is.EqualTo(4UL), "every block in the range must actually be compared, not sampled");
+        }
+    }
+
+    [Test]
+    public void A_range_needing_more_rows_than_the_ceiling_is_declined_before_the_partition_allocates_them()
+    {
+        Account a0 = new(1, 100);
+        Account a1 = new(2, 200);
+        Account a2 = new(3, 300);
+
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 0, a0);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 1, a1);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, AddrA, block: 2, a2);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((AddrA, a0));
+        headers.Roots[1] = StateRootOf((AddrA, a1));
+        headers.Roots[2] = StateRootOf((AddrA, a2));
+        MarkAll(headers);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => CreateVerifier(headers, maxMaterializedRows: 1).VerifyRange(0, 2, CancellationToken.None),
+                Throws.InstanceOf<InvalidConfigurationException>(),
+                "a request whose working set exceeds the ceiling must be declined rather than allowed to exhaust the node");
+            Assert.That(CreateVerifier(headers).VerifyRange(0, 2, CancellationToken.None).Verified, Is.True,
+                "the same range under the normal ceiling must still verify");
         }
     }
 

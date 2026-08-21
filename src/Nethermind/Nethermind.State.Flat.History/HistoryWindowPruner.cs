@@ -41,8 +41,9 @@ public sealed class HistoryWindowPruner(
     private readonly ILogger _logger = logManager.GetClassLogger<HistoryWindowPruner>();
     private readonly SemaphoreSlim _wakeSignal = new(0, 1);
     private readonly CancellationTokenSource _cts = new();
-    private Task _loop = Task.CompletedTask;
+    private Thread? _loop;
     private ulong _lastFloorPublishWatermark;
+    private bool _deletesOwed;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
     private bool _disposed;
     private bool _started;
@@ -55,7 +56,11 @@ public sealed class HistoryWindowPruner(
         if (config.HistoryRetentionBlocks == 0 || _started) return;
         _started = true;
         writer.WatermarkAdvanced += OnWatermarkAdvanced;
-        _loop = RunLoopAsync();
+
+        // A pass is synchronous throughout and runs for up to HistoryPrunePassBudgetSeconds, and the scope drain
+        // blocks outright, so the loop owns a thread rather than parking a pool thread for seconds at a time.
+        _loop = new Thread(RunLoop) { IsBackground = true, Name = "Flat history window pruner" };
+        _loop.Start();
     }
 
     /// <summary>One-time (startup) reconciliation of the allow-list against the scope records on disk: removes
@@ -149,14 +154,22 @@ public sealed class HistoryWindowPruner(
         try { _wakeSignal.Release(); } catch (Exception e) when (e is SemaphoreFullException or ObjectDisposedException) { }
     }
 
-    private async Task RunLoopAsync()
+    private void RunLoop()
     {
         CancellationToken token = _cts.Token;
+        TimeSpan pauseAfterYield = PassBudget();
+        bool yielded = false;
+
         while (!token.IsCancellationRequested)
         {
             try
             {
-                await _wakeSignal.WaitAsync(token).ConfigureAwait(false);
+                // A yielded pass owes work right now, so it does not wait for the next watermark advance - but it
+                // does pause for as long as it just ran, capping the pruner at half a wall clock. Without that,
+                // a backlog larger than one budget turns this into an uninterrupted scan-and-delete competing
+                // with block processing for the same store. A watermark advance during the pause cuts it short.
+                if (yielded) _wakeSignal.Wait(pauseAfterYield, token);
+                else _wakeSignal.Wait(token);
             }
             catch (OperationCanceledException)
             {
@@ -165,31 +178,36 @@ public sealed class HistoryWindowPruner(
 
             try
             {
-                RunOnePass(token);
+                yielded = !RunOnePass(token);
             }
-            catch (Exception e) when (e is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("A history window pruner pass failed.", e);
+                yielded = false;
             }
         }
     }
 
-    /// <summary>Runs one prune cycle synchronously - internal so tests can drive it deterministically instead of
-    /// racing the wake-signal loop; <paramref name="budgetFactory"/> is called once per column.</summary>
-    internal void RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
+    // Never zero: a zero-duration wall-clock budget would exhaust before scanning a single row, forever
+    // (HasAnyPendingCursor then stays true, so the floor can never advance again either).
+    private TimeSpan PassBudget() => TimeSpan.FromSeconds(Math.Max(1, config.HistoryPrunePassBudgetSeconds));
+
+    /// <summary>Runs one prune cycle synchronously and reports whether it finished the window - internal so tests
+    /// can drive it deterministically instead of racing the wake-signal loop; <paramref name="budgetFactory"/> is
+    /// called once per column.</summary>
+    internal bool RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
     {
-        // Never zero: a zero-duration wall-clock budget would exhaust before scanning a single row, forever
-        // (HasAnyPendingCursor then stays true, so the floor can never advance again either).
-        TimeSpan passBudget = TimeSpan.FromSeconds(Math.Max(1, config.HistoryPrunePassBudgetSeconds));
+        TimeSpan passBudget = PassBudget();
         Func<IPruneBudget> newBudget = budgetFactory ?? (() => new WallClockBudget(passBudget));
 
-        bool completedReadPathWindow = RunReadPathWindowPass(passBudget, newBudget, token);
+        if (RunReadPathWindowPass(passBudget, newBudget, token)) return true;
 
-        if (!completedReadPathWindow)
-        {
-            Metrics.FlatHistoryPrunePassesYielded++;
-            try { _wakeSignal.Release(); } catch (SemaphoreFullException) { }
-        }
+        Metrics.FlatHistoryPrunePassesYielded++;
+        return false;
     }
 
     /// <summary>The read-path window: bounds what an as-of-block read can still resolve, so a floor advance must
@@ -201,9 +219,10 @@ public sealed class HistoryWindowPruner(
         if (retention == 0) return true;
 
         ulong floor;
-        if (HasAnyPendingCursor())
+        if (HasAnyPendingCursor() || Volatile.Read(ref _deletesOwed))
         {
-            // A previous pass yielded mid-column for the already-published floor: resume that work. Computing
+            // A previous pass yielded mid-column for the already-published floor, or published one and then timed
+            // out draining the scopes admitted under the old floor: either way deletes are still owed. Computing
             // and comparing a fresh floor here would see "no advance" (the floor was already published) and skip
             // the pass entirely, silently abandoning the deletes it still owes for the current window.
             if (!availability.TryGetGlobalFloor(out floor)) return true;
@@ -227,6 +246,7 @@ public sealed class HistoryWindowPruner(
             // epoch it lands in — only scopes admitted under the old, lower floor need draining before deleting.
             if (!scopeGate.TryDrainForFloorAdvance(passBudget, token))
             {
+                Volatile.Write(ref _deletesOwed, true);
                 if (_logger.IsWarn) _logger.Warn(
                     "History window pruner published a new floor but historical read scopes opened before it did not drain within the budget; deletes for this floor are deferred to the next pass.");
                 return false;
@@ -247,7 +267,9 @@ public sealed class HistoryWindowPruner(
         bool completedClears = PruneClearsColumn(markersAndClearsFloor, newBudget(), token);
         bool completedBlocks = PruneBlockMarkers(markersAndClearsFloor, newBudget(), token);
 
-        return completedAccount && completedStorage && completedClears && completedBlocks;
+        bool completed = completedAccount && completedStorage && completedClears && completedBlocks;
+        if (completed) Volatile.Write(ref _deletesOwed, false);
+        return completed;
     }
 
     private ulong ComputeMinScopeFloor(ulong generalFloor)
@@ -473,11 +495,7 @@ public sealed class HistoryWindowPruner(
         }
 
         _cts.Cancel();
-        try
-        {
-            _loop.GetAwaiter().GetResult();
-        }
-        catch (OperationCanceledException) { }
+        _loop?.Join();
 
         _cts.Dispose();
         _wakeSignal.Dispose();

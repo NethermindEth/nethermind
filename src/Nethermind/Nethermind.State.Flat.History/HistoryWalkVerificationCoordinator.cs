@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -49,7 +48,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
         // Constructed only when the flag is on: the verifier refuses a windowed database in its constructor, and
         // that refusal must fire exactly when the operator asked for a verification the mode cannot deliver -
         // never on a windowed node that left the flag alone.
-        _verifier = Started ? new HistoryWalkVerifier(db, history, headers, rowFormat, logManager) : null;
+        _verifier = Started
+            ? new HistoryWalkVerifier(db, history, headers, rowFormat, logManager, config.HistoryVerifyMaxRows)
+            : null;
     }
 
     /// <summary>Launches the background verification. Called by the startup step, never from the constructor, so
@@ -110,6 +111,10 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
+        }
+        catch (InvalidConfigurationException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"History walk verification declined before it started: {e.Message}");
         }
         catch (Exception e)
         {

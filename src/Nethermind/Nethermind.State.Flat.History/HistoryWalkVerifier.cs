@@ -19,7 +19,9 @@ namespace Nethermind.State.Flat.History;
 /// rows at EVERY block of a range - per-block because a change attributed to the wrong block leaves the tip root
 /// correct while every as-of answer in between is wrong. v2 only (v3 rows are pre-values behind a floor). Each
 /// column is scanned ONCE and its rows routed to the owning segment, so segment count multiplies concurrency, not
-/// IO. Holds the range's working set in memory; segment sizing against available memory is the caller's job.
+/// IO. The working set is held in memory and is bounded by state size rather than by range span - each segment
+/// starts from the whole account set as of its first block - so a request too large for the machine is refused
+/// outright instead of being allowed to exhaust it.
 /// </summary>
 public sealed class HistoryWalkVerifier
 {
@@ -40,6 +42,10 @@ public sealed class HistoryWalkVerifier
     private readonly bool _rlpWrapSlots;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
+    private readonly long _maxMaterializedRows;
+
+    /// <summary>Ceiling on the rows one verification may hold at once, when the caller names none.</summary>
+    public const long DefaultMaxMaterializedRows = 20_000_000;
 
     /// <summary>Resolves the slot encoding from the live flat database exactly the way <see cref="HistoryReader"/>
     /// does, so the verifier decodes slot rows with the same convention the writer stored them under.</summary>
@@ -48,13 +54,15 @@ public sealed class HistoryWalkVerifier
         IColumnsDb<FlatHistoryColumns> history,
         IHistoryHeaderSource headers,
         HistoryRowFormat rowFormat,
-        ILogManager logManager)
+        ILogManager logManager,
+        long maxMaterializedRows = DefaultMaxMaterializedRows)
         : this(
             history,
             headers,
             rowFormat,
             BasePersistence.ResolveSlotEncoding(db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<HistoryWalkVerifier>()),
-            logManager)
+            logManager,
+            maxMaterializedRows)
     {
     }
 
@@ -63,7 +71,8 @@ public sealed class HistoryWalkVerifier
         IHistoryHeaderSource headers,
         HistoryRowFormat rowFormat,
         bool rlpWrapSlots,
-        ILogManager logManager)
+        ILogManager logManager,
+        long maxMaterializedRows = DefaultMaxMaterializedRows)
     {
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(headers);
@@ -87,6 +96,25 @@ public sealed class HistoryWalkVerifier
         _rlpWrapSlots = rlpWrapSlots;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<HistoryWalkVerifier>();
+        _maxMaterializedRows = maxMaterializedRows > 0 ? maxMaterializedRows : DefaultMaxMaterializedRows;
+    }
+
+    /// <summary>Stops a verification before its partition exhausts the machine. The footprint tracks state size,
+    /// not range span - every segment starts from the whole account set as of its first block - so narrowing the
+    /// range is a weak lever and there is no chunking that makes an over-large request fit.</summary>
+    private sealed class RowBudget(long max)
+    {
+        private long _materialized;
+
+        public void Charge()
+        {
+            if (++_materialized <= max) return;
+
+            throw new InvalidConfigurationException(
+                $"History walk verification would have to hold more than {max} rows in memory for the requested " +
+                "range. Verify a narrower range, or raise Flat.HistoryVerifyMaxRows if this machine has the " +
+                "headroom - the verification is declined, not failed.", -1);
+        }
     }
 
     // Per-segment slice of the partitioned scans: the state at the segment's start plus the deltas inside it.
@@ -122,9 +150,10 @@ public sealed class HistoryWalkVerifier
         SegmentData[] data = new SegmentData[effectiveSegments];
         for (int i = 0; i < effectiveSegments; i++) data[i] = new SegmentData();
 
-        Dictionary<byte[], List<ulong>> clearsByIdentity = ScanClears(token);
-        PartitionAccounts(bounds, data, token);
-        PartitionStorage(bounds, data, clearsByIdentity, token);
+        RowBudget budget = new(_maxMaterializedRows);
+        Dictionary<byte[], List<ulong>> clearsByIdentity = ScanClears(bounds[^1].To, budget, token);
+        PartitionAccounts(bounds, data, budget, token);
+        PartitionStorage(bounds, data, clearsByIdentity, budget, token);
 
         HistoryWalkVerdict[] verdicts = new HistoryWalkVerdict[effectiveSegments];
         Parallel.For(0, effectiveSegments, new ParallelOptions { CancellationToken = token },
@@ -291,7 +320,7 @@ public sealed class HistoryWalkVerifier
         return false;
     }
 
-    private void PartitionAccounts((ulong From, ulong To)[] bounds, SegmentData[] data, CancellationToken token)
+    private void PartitionAccounts((ulong From, ulong To)[] bounds, SegmentData[] data, RowBudget budget, CancellationToken token)
     {
         ulong to = bounds[^1].To;
         using ISortedView view = _accountHistory.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(AccountRowKeyLength), ReadFlags.HintCacheMiss);
@@ -317,6 +346,7 @@ public sealed class HistoryWalkVerifier
 
             if (block > bounds[0].From)
             {
+                budget.Charge();
                 GetOrAdd(data[SegmentOf(bounds, block)].AccountDeltas, block).Add((currentPath, DecodeAccount(view.CurrentValue)));
             }
 
@@ -327,14 +357,21 @@ public sealed class HistoryWalkVerifier
                 Account? account = DecodeAccount(view.CurrentValue);
                 while (pendingStart >= 0 && block <= bounds[pendingStart].From)
                 {
-                    if (account is not null) data[pendingStart].StartAccounts.Add((currentPath, account));
+                    if (account is not null)
+                    {
+                        budget.Charge();
+                        data[pendingStart].StartAccounts.Add((currentPath, account));
+                    }
+
                     pendingStart--;
                 }
             }
         }
     }
 
-    private Dictionary<byte[], List<ulong>> ScanClears(CancellationToken token)
+    // Clears at or below the range's start still matter - they shape each segment's start state - but anything
+    // above its end can never be applied, so it is dropped here rather than carried through every segment.
+    private Dictionary<byte[], List<ulong>> ScanClears(ulong toInclusive, RowBudget budget, CancellationToken token)
     {
         Dictionary<byte[], List<ulong>> clears = new(Bytes.EqualityComparer);
         using ISortedView view = _storageClears.GetViewBetween(ReadOnlySpan<byte>.Empty, MaxBound(ClearRowKeyLength), ReadFlags.HintCacheMiss);
@@ -344,8 +381,11 @@ public sealed class HistoryWalkVerifier
             ReadOnlySpan<byte> key = view.CurrentKey;
             if (key.Length != ClearRowKeyLength) continue;
 
-            byte[] identity = key[..IdentityLength].ToArray();
             ulong block = BinaryPrimitives.ReadUInt64BigEndian(key[HistoryKeyLayout.AccountKeyLength..]);
+            if (block > toInclusive) continue;
+
+            budget.Charge();
+            byte[] identity = key[..IdentityLength].ToArray();
             if (!clears.TryGetValue(identity, out List<ulong>? blocks))
             {
                 blocks = [];
@@ -362,6 +402,7 @@ public sealed class HistoryWalkVerifier
         (ulong From, ulong To)[] bounds,
         SegmentData[] data,
         Dictionary<byte[], List<ulong>> clearsByIdentity,
+        RowBudget budget,
         CancellationToken token)
     {
         ulong to = bounds[^1].To;
@@ -392,6 +433,7 @@ public sealed class HistoryWalkVerifier
 
             if (block > bounds[0].From)
             {
+                budget.Charge();
                 GetOrAdd(data[SegmentOf(bounds, block)].SlotDeltas, block).Add((currentIdentity!, currentSlot, view.CurrentValue.ToArray()));
             }
 
@@ -405,6 +447,7 @@ public sealed class HistoryWalkVerifier
                     if (value is null) continue;
                     if (KilledByClear(clearsByIdentity, currentIdentity!, writtenAt: block, asOf: bounds[segment].From)) continue;
 
+                    budget.Charge();
                     if (!data[segment].StartSlots.TryGetValue(currentIdentity!, out List<(ValueHash256, byte[])>? slots))
                     {
                         slots = [];

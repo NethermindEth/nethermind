@@ -190,7 +190,8 @@ public class SlicedReceiptRetentionTests
                 .AddSingleton(specProvider)
                 .AddSingleton(blockProcessingQueue)
                 .AddSingleton(historyConfig)
-                .AddSingleton(flatDbConfig);
+                .AddSingleton(flatDbConfig)
+                .AddSingleton<IPrunedReceiptRetention, SlicedReceiptRetention>();
         });
     }
 }
