@@ -479,7 +479,9 @@ internal sealed class FlatSparseTrieSession : IDisposable
         while (Volatile.Read(ref _committedAccountProducers) != 0
             || Volatile.Read(ref _committedStorageProducers) != 0)
         {
-            spinWait.SpinOnce();
+            // Never escalate to Thread.Sleep(1): the producers finish in microseconds, while one
+            // 1 ms sleep is a measurable slice of the whole block budget.
+            spinWait.SpinOnce(sleep1Threshold: -1);
         }
     }
 
@@ -1031,7 +1033,9 @@ internal sealed class FlatSparseTrieSession : IDisposable
         SpinWait spinWait = new();
         while (Interlocked.CompareExchange(ref _stateWorkOwner, 1, 0) != 0)
         {
-            spinWait.SpinOnce();
+            // The owner holds the trie for one bounded batch, so yield rather than sleep: this runs
+            // on the block-processing thread at commit, where a 1 ms sleep dwarfs the wait itself.
+            spinWait.SpinOnce(sleep1Threshold: -1);
         }
     }
 
