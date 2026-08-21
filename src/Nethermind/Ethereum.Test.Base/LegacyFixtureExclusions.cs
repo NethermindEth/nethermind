@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace Ethereum.Test.Base;
 
@@ -12,16 +13,9 @@ namespace Ethereum.Test.Base;
 /// </summary>
 public static class LegacyFixtureExclusions
 {
-    private static readonly string[] RetiredStorageCollisionTests =
-    [
-        "stCreate2.create2collisionStorage_",
-        "stCreate2.create2collisionStorageParis_",
-        "stCreate2.RevertInCreateInInitCreate2_",
-        "stSStoreTest.InitCollision_",
-        "stSStoreTest.InitCollisionParis_",
-        "stExtCodeHash.dynamicAccountOverwriteEmpty_Paris_",
-        "stRevertTest.RevertInCreateInInit_Paris_",
-    ];
+    private static readonly Regex RetiredStorageCollisionTests = new(
+        @"^(?:stCreate2\.(?:create2collisionStorage|RevertInCreateInInitCreate2)|stSStoreTest\.InitCollision|stExtCodeHash\.dynamicAccountOverwriteEmpty|stRevertTest\.RevertInCreateInInit)(?:Paris)?_",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>Removes legacy collision cases that are no longer valid for the client.</summary>
     public static IEnumerable<T> Filter<T>(IEnumerable<T> tests) where T : EthereumTest
@@ -48,14 +42,6 @@ public static class LegacyFixtureExclusions
     private static bool IsRetiredStorageCollisionTest(EthereumTest test)
     {
         string testIdentifier = $"{Path.GetFileName(test.Category)}.{test.Name}";
-        foreach (string pattern in RetiredStorageCollisionTests)
-        {
-            if (testIdentifier.StartsWith(pattern, StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return RetiredStorageCollisionTests.IsMatch(testIdentifier);
     }
 }
