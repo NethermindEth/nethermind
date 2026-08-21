@@ -2267,6 +2267,8 @@ namespace Nethermind.TxPool.Test
             ShardBlobNetworkWrapper recomputed = verifier.AllocateWrapper(reconstructed.Blobs);
             verifier.ComputeProofsAndCommitments(recomputed);
             byte[][] recoveredHashes = verifier.ComputeHashes(recomputed);
+            Transaction[] lightBlobTransactions = _txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA);
+            Assert.That(lightBlobTransactions, Has.Length.EqualTo(1));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reconstructed.HasFullBlobs(), Is.True);
@@ -2278,6 +2280,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blob, Is.EqualTo(fullWrapper.Blobs[0]));
                 Assert.That(proofs, Has.Length.EqualTo(Ckzg.CellsPerExtBlob));
                 Assert.That(proofs, Is.EqualTo(recomputed.Proofs[..Ckzg.CellsPerExtBlob]));
+                Assert.That(lightBlobTransactions[0].GetLength(), Is.EqualTo(fullBlobTx.GetLength()));
             }
         }
 

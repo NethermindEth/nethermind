@@ -753,12 +753,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
     protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)
     {
-        // Keep the in-memory light entry's mask in sync so mask-only queries and
-        // announcements reflect the merged cells without loading the full transaction.
+        // Keep the in-memory light entry's metadata in sync so announcements reflect
+        // merged cells without loading the full transaction.
         TryGetBlobTxSortingEquivalent(blobTx.Hash!, out Transaction? lightTx);
         if (lightTx is LightTransaction light)
         {
-            light.BlobCellMask = (blobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
+            BlobCellMask cellMask = (blobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
+            light.UpdateBlobPoolMetadata(cellMask, blobTx.GetLength());
         }
 
         _blobTxCache.Set(blobTx.Hash, blobTx);

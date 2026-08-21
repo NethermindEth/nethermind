@@ -333,13 +333,11 @@ public class Eth68ProtocolHandler(ISession session,
         return discoveredTxHashesAndSizes;
     }
 
+    protected override bool ShouldNotifyTransactionCore(Transaction tx) =>
+        !IsSparseBlobTransaction(tx) && base.ShouldNotifyTransactionCore(tx);
+
     protected override void SendNewTransactionCore(Transaction tx)
     {
-        if (IsSparseBlobTransaction(tx))
-        {
-            return;
-        }
-
         if (tx.CanBeBroadcast())
         {
             base.SendNewTransactionCore(tx);
@@ -368,11 +366,6 @@ public class Eth68ProtocolHandler(ISession session,
 
         foreach (Transaction tx in txs)
         {
-            if (IsSparseBlobTransaction(tx))
-            {
-                continue;
-            }
-
             if (hashes.Count == NewPooledTransactionHashesMessage68.MaxCount)
             {
                 SendMessage(types, sizes, hashes);

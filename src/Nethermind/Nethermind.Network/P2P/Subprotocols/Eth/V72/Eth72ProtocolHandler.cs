@@ -415,7 +415,9 @@ public class Eth72ProtocolHandler(
             bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash.ValueHash256);
             if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
             {
-                if (!_sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, announcementMask))
+                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, announcementMask);
+                if (!recorded
+                    && (!_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask) || !localMask.IsFull))
                 {
                     continue;
                 }
@@ -519,10 +521,23 @@ public class Eth72ProtocolHandler(
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
 
-    // eth/72 strips blob payloads from pooled transaction responses, so they are served from
+    // eth/72 strips V1 blob payloads from pooled transaction responses, so they are served from
     // the sidecar-free record instead of materializing blobs from persistent storage.
     protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
-        => _txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx);
+    {
+        if (!_txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx))
+        {
+            return false;
+        }
+
+        if (tx.GetProofVersion() is not ProofVersion.V0)
+        {
+            return true;
+        }
+
+        // V0 has no cells-only encoding, so eth/72 peers require its full blob sidecar.
+        return _txPool.TryGetPendingTransaction(hash, out tx);
+    }
 
     public override void HandleMessage(PooledTransactionRequestMessage message)
     {
@@ -1676,6 +1691,11 @@ public class Eth72ProtocolHandler(
     private static int GetAnnouncementSize(Transaction tx)
     {
         if (!tx.SupportsBlobs)
+        {
+            return tx.GetLength();
+        }
+
+        if (tx.GetProofVersion() is ProofVersion.V0)
         {
             return tx.GetLength();
         }

@@ -723,7 +723,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_send_elided_v0_blob_payload_in_pooled_transactions_response()
+    public void should_preserve_v0_blob_payload_in_pooled_transactions_response()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
@@ -738,14 +738,40 @@ public class Eth72ProtocolHandlerTests
                 x[1] = BuildElidedBlobTransaction(tx);
                 return true;
             });
+        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
 
         using GetPooledTransactionsMessage request = new(new[] { tx.Hash! }.ToPooledList());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth66MessageCode.GetPooledTransactions);
 
+        _transactionPool.Received(1).TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>());
+        _transactionPool.Received(1).TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>());
         _session.Received(1).DeliverMessage(Arg.Is<PooledTransactionsMessage>(m =>
-            IsElidedBlobResponse(m, fullTxLength)));
+            IsFullV0BlobResponse(m, fullTxLength)));
+    }
+
+    [Test]
+    public void should_announce_v0_blob_tx_full_network_size()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+
+        _handler.SendNewTransaction(tx);
+
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
+            m.Hashes.Length == 1
+            && m.Hashes[0] == tx.Hash
+            && m.Sizes.Length == 1
+            && m.Sizes[0] == tx.GetLength()));
     }
 
     [Test]
@@ -1163,6 +1189,40 @@ public class Eth72ProtocolHandlerTests
         }
 
         _session.Received(1).InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
+    }
+
+    [Test]
+    public void locally_complete_blob_announcements_should_count_toward_cell_request_allowance()
+    {
+        BlobCellMask fullMask = BlobCellMask.Full;
+        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<Hash256>(), out Arg.Any<BlobCellMask>())
+            .Returns(call =>
+            {
+                call[1] = fullMask;
+                return true;
+            });
+        HandleIncomingStatusMessage();
+        for (int i = 0; i < 2; i++)
+        {
+            using NewPooledTransactionHashesMessage72 announcement = new(
+                [(byte)TxType.Blob],
+                [1024],
+                [HashFromInt(i)],
+                fullMask.ToBytes());
+            HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+        }
+
+        typeof(Eth72ProtocolHandler)
+            .GetField("_requestRatioWarmupEndsAt", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(_handler, DateTimeOffset.MinValue);
+        BlobCellMask requestedMask = BlobCellMask.FromIndices([1]);
+        for (int i = 0; i < 5; i++)
+        {
+            using GetCellsMessage72 request = new(3000 + i, [HashFromInt(i)], requestedMask.ToBytes());
+            HandleZeroMessage(request, Eth72MessageCode.GetCells);
+        }
+
+        _session.DidNotReceive().InitiateDisconnect(DisconnectReason.UselessPeer, Arg.Any<string>());
     }
 
     [Test]
@@ -4344,6 +4404,19 @@ public class Eth72ProtocolHandlerTests
         }
 
         return wrapper.Blobs.Length == 0 && transaction.GetLength() < fullTransactionLength;
+    }
+
+    private static bool IsFullV0BlobResponse(PooledTransactionsMessage response, int fullTransactionLength)
+    {
+        if (response.EthMessage.Transactions.Count != 1
+            || response.EthMessage.Transactions[0] is not { NetworkWrapper: ShardBlobNetworkWrapper wrapper } transaction)
+        {
+            return false;
+        }
+
+        return wrapper.Version == ProofVersion.V0
+            && wrapper.HasFullBlobs()
+            && transaction.GetLength() == fullTransactionLength;
     }
 
     private static bool IsV0BlobTransaction(Transaction submittedTx, Hash256 hash) =>
