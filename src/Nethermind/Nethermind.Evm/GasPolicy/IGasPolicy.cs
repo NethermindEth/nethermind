@@ -15,11 +15,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 {
     static abstract TSelf FromULong(ulong value);
 
-    /// <summary>
-    /// Seeds an EIP-8141 frame budget from its two-dimensional <c>limits = [execution, state]</c>: the execution
-    /// dimension funds <c>gas_left</c> and the state dimension funds the state reservoir. Pre-EIP-8037 policies,
-    /// having no state dimension, fall back to a single combined budget.
-    /// </summary>
+    /// <summary>Seeds a frame budget from EIP-8141 <c>limits = [execution, state]</c>; pre-EIP-8037 policies fall back to a single combined budget.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf FromFrameLimits(ulong executionGasLimit, ulong stateGasLimit) =>
         TSelf.FromULong(executionGasLimit > ulong.MaxValue - stateGasLimit ? ulong.MaxValue : executionGasLimit + stateGasLimit);

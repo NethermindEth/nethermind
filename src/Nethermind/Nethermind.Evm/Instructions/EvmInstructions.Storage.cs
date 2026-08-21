@@ -518,8 +518,7 @@ public static partial class EvmInstructions
                 {
                     bool ssetOutOfGas = !TGasPolicy.ConsumeStorageWrite<TEip8037, OnFlag>(ref gas, spec);
                     if (ssetOutOfGas) goto OutOfGas;
-                    FrameTxContext? chargeFrameCtx = vm.TxExecutionContext.FrameTxContext;
-                    if (chargeFrameCtx is not null)
+                    if (TEip8037.IsActive && vm.TxExecutionContext.FrameTxContext is { } chargeFrameCtx)
                     {
                         chargeFrameCtx.RecordStateChargeOwner(in storageCell, chargeFrameCtx.CurrentFrameIndex);
                     }

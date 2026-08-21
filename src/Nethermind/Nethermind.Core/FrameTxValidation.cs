@@ -31,7 +31,8 @@ public static class FrameTxValidation
     public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
-    public const string FrameExecutionGasExceedsCap = "frame intrinsic and execution gas exceeds the transaction gas cap";
+    public static string FrameExecutionGasExceedsCap(ulong executionReservation, ulong gasLimitCap) =>
+        $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
     public const string MultipleExpiryFrames = "at most one expiry verifier frame is allowed";
     public const string InvalidSignatureScheme = "unknown signature scheme";
@@ -251,19 +252,10 @@ public static class FrameTxValidation
     };
 
     /// <summary>
-    /// An upper bound on the public-mempool validation work of <paramref name="transaction"/>: the execution-gas
-    /// limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) of its validation prefix plus the cost of verifying its signatures,
-    /// saturating at <see cref="ulong.MaxValue"/>. The prefix's <c>limits.state</c> is bounded separately by
-    /// <c>MAX_VERIFY_STATE_GAS</c> and does not enter this budget.
+    /// Upper bound on the public-mempool validation work of a frame transaction: its validation prefix's
+    /// execution limits (EIP-8141 <c>MAX_VERIFY_GAS</c>) plus signature verification, saturating at
+    /// <see cref="ulong.MaxValue"/>. The prefix's <c>limits.state</c> is bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
     /// </summary>
-    /// <remarks>
-    /// Derived from the frame layout alone, so no state is read. Each layout of EIP-8141 "Public
-    /// Mempool-recognized Validation Prefixes" ends in a <c>VERIFY</c> frame targeting the sender, whose
-    /// approval is protocol-defined, so the prefix provably ends there. Under any other layout approval
-    /// depends on code at an attacker-chosen target, so the whole frame list is charged. Signature
-    /// validation counts against the same budget per EIP-8141 "Validation Prefix".
-    /// </remarks>
-    /// <param name="transaction">The frame transaction to price.</param>
     public static ulong ValidationWorkGas(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
@@ -284,12 +276,10 @@ public static class FrameTxValidation
     }
 
     /// <summary>
-    /// An upper bound on the state growth EIP-8141 admits through the public mempool for
-    /// <paramref name="transaction"/>: the sum of its validation prefix's <c>limits.state</c>, saturating at
-    /// <see cref="ulong.MaxValue"/>. Bounded separately by <c>MAX_VERIFY_STATE_GAS</c>; signature verification
-    /// uses no state gas, so it does not enter this budget.
+    /// Upper bound on the state growth EIP-8141 admits through the public mempool: the sum of a frame
+    /// transaction's validation prefix <c>limits.state</c>, saturating at <see cref="ulong.MaxValue"/> and
+    /// bounded separately by <c>MAX_VERIFY_STATE_GAS</c>.
     /// </summary>
-    /// <param name="transaction">The frame transaction to price.</param>
     public static ulong ValidationWorkStateGas(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];

@@ -35,11 +35,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasSpillRefunded;
     /// <summary>Indicates that execution encountered an out of gas condition.</summary>
     public bool OutOfGas;
-    /// <summary>
-    /// When set, the state pool is independent of the execution pool: a state charge exceeding the
-    /// reservoir halts rather than spilling into <see cref="Value"/>.
-    /// </summary>
-    /// <remarks>EIP-8141: the EIP-8037 reservoir spill does not apply within a frame transaction.</remarks>
+    /// <summary>When set, a state charge exceeding the reservoir halts rather than spilling into <see cref="Value"/> (EIP-8141: no EIP-8037 reservoir spill within a frame transaction).</summary>
     public bool IndependentStatePool;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -24,12 +24,7 @@ public static class Eip8037BlockGasInclusionCheck
         return Validate(blockGasLimit, cumulativeBlockExecution, cumulativeBlockState, worstCaseExecution, txGas);
     }
 
-    /// <summary>
-    /// EIP-8141 frame transactions declare exact per-dimension budgets, so their block reservations are
-    /// known rather than worst-cased: the execution reservation is the intrinsic execution cost plus the
-    /// frames' execution budgets (bounded below by the calldata floor), and the state reservation is the
-    /// frames' state budgets.
-    /// </summary>
+    /// <summary>Validates a frame transaction's exact per-dimension block reservations against the remaining execution and state capacity (EIP-8141).</summary>
     public static Outcome Validate(
         ulong blockGasLimit,
         ulong cumulativeBlockExecution,

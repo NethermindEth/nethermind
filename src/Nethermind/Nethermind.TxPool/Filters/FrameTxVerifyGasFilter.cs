@@ -43,9 +43,9 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
             ulong verifyStateGas = FrameTxValidation.ValidationWorkStateGas(tx);
             if (verifyStateGas > _maxVerifyStateGas)
             {
-                Metrics.PendingTransactionsFrameTxVerifyGasTooHigh++;
+                Metrics.PendingTransactionsFrameTxVerifyStateGasTooHigh++;
                 if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, validation prefix budgets {verifyStateGas} state gas (max {_maxVerifyStateGas}).");
-                return AcceptTxResult.FrameTxVerifyGasTooHigh;
+                return AcceptTxResult.FrameTxVerifyStateGasTooHigh;
             }
         }
 

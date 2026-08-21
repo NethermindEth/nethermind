@@ -46,8 +46,6 @@ public class TxFrame(byte mode, byte flags, Address? target, ulong executionGasL
     public ulong StateGasLimit { get; } = stateGasLimit;
 
     /// <summary>The combined gas the frame reserves against the payer, <c>limits.execution + limits.state</c>.</summary>
-    /// <remarks>Static validation rejects a transaction whose frame reservations overflow, so this sum never
-    /// wraps for a frame reaching execution.</remarks>
     public ulong GasLimit => ExecutionGasLimit + StateGasLimit;
 
     public UInt256 Value { get; } = value;

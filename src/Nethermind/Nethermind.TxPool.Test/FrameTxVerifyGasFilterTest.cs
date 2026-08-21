@@ -49,7 +49,7 @@ internal class FrameTxVerifyGasFilterTest
     {
         yield return new TestCaseData(new[] { SelfVerifyWithState(1_000, 500_000) }, AcceptTxResult.Accepted)
             .SetName("prefix state exactly at MAX_VERIFY_STATE_GAS is accepted");
-        yield return new TestCaseData(new[] { SelfVerifyWithState(1_000, 500_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh)
+        yield return new TestCaseData(new[] { SelfVerifyWithState(1_000, 500_001) }, AcceptTxResult.FrameTxVerifyStateGasTooHigh)
             .SetName("prefix state one gas over MAX_VERIFY_STATE_GAS is rejected");
         yield return new TestCaseData(new[] { SelfVerify(1_000), ExecutionWithState(1_000, 3_000_000) }, AcceptTxResult.Accepted)
             .SetName("state behind a recognized prefix is outside the ceiling");

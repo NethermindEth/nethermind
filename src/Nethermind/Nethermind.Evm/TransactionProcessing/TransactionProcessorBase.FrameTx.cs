@@ -487,12 +487,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the accumulated counter is capped at a fifth of the gross gas and subtracted here. Per-frame
         // receipts stay gross; only this transaction total is netted. The EIP-7623 floor then bounds
         // the net charge from below.
-        long stateGasCorrection = frameContext.TotalStateGasCorrection;
+        long stateGasCorrection = 0;
         for (int f = 0; f < frameReceipts.Length; f++)
         {
             long correction = frameContext.StateGasCorrectionFor(f);
             if (correction > 0)
             {
+                stateGasCorrection += correction;
                 TxFrameReceipt corrected = frameReceipts[f];
                 ulong reducedState = corrected.StateGasUsed > (ulong)correction ? corrected.StateGasUsed - (ulong)correction : 0;
                 frameReceipts[f] = new TxFrameReceipt(corrected.Status, corrected.ExecutionGasUsed, reducedState, corrected.Logs);

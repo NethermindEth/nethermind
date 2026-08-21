@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -138,11 +139,7 @@ public sealed class FrameTxContext(
         return net > 0 ? (ulong)net : 0;
     }
 
-    /// <summary>
-    /// Journal position covering the outstanding SSTORE-charge ownership map and the per-frame
-    /// <c>gas_used.state</c> corrections, captured when an EVM call frame begins so the same
-    /// rollback boundary that restores world state can restore these (EIP-8141 Gas Accounting).
-    /// </summary>
+    /// <summary>Journal position captured when an EVM call frame begins, so the rollback boundary that restores world state also restores the SSTORE-charge ownership map and per-frame <c>gas_used.state</c> corrections (EIP-8141 Gas Accounting).</summary>
     public int StateGasJournalCheckpoint => _stateGasJournal.Count;
 
     /// <summary>
@@ -152,9 +149,10 @@ public sealed class FrameTxContext(
     /// </summary>
     public void RecordStateChargeOwner(in StorageCell slot, int frame)
     {
-        int previousOwner = _stateChargeOwner.TryGetValue(slot, out int existing) ? existing : NoOwner;
+        ref int owner = ref CollectionsMarshal.GetValueRefOrAddDefault(_stateChargeOwner, slot, out bool existed);
+        int previousOwner = existed ? owner : NoOwner;
+        owner = frame;
         _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.OwnerSet, slot, previousOwner, 0));
-        _stateChargeOwner[slot] = frame;
     }
 
     /// <summary>
@@ -164,13 +162,12 @@ public sealed class FrameTxContext(
     /// </summary>
     public bool TryResolveStateChargeOwner(in StorageCell slot, out int owner)
     {
-        if (!_stateChargeOwner.TryGetValue(slot, out owner))
+        if (!_stateChargeOwner.Remove(slot, out owner))
         {
             return false;
         }
 
         _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.OwnerCleared, slot, owner, 0));
-        _stateChargeOwner.Remove(slot);
         return true;
     }
 
@@ -190,9 +187,13 @@ public sealed class FrameTxContext(
     /// </summary>
     public void RestoreStateGasJournal(int checkpoint)
     {
-        for (int k = _stateGasJournal.Count - 1; k >= checkpoint; k--)
+        int count = _stateGasJournal.Count;
+        if (count == checkpoint) return;
+
+        Span<StateGasJournalEntry> entries = CollectionsMarshal.AsSpan(_stateGasJournal);
+        for (int k = count - 1; k >= checkpoint; k--)
         {
-            StateGasJournalEntry entry = _stateGasJournal[k];
+            ref StateGasJournalEntry entry = ref entries[k];
             switch (entry.Kind)
             {
                 case StateGasJournalKind.OwnerSet:
@@ -214,25 +215,11 @@ public sealed class FrameTxContext(
             }
         }
 
-        _stateGasJournal.RemoveRange(checkpoint, _stateGasJournal.Count - checkpoint);
+        _stateGasJournal.RemoveRange(checkpoint, count - checkpoint);
     }
 
     /// <summary>The refill-driven reduction of <paramref name="frame"/>'s <c>gas_used.state</c>.</summary>
     public long StateGasCorrectionFor(int frame) => _frameStateGasCorrection[frame];
-
-    /// <summary>The total refill-driven reduction across all frames, subtracted from the tx dimensions at settlement.</summary>
-    public long TotalStateGasCorrection
-    {
-        get
-        {
-            long total = 0;
-            foreach (long correction in _frameStateGasCorrection)
-            {
-                total += correction;
-            }
-            return total;
-        }
-    }
 
     private enum StateGasJournalKind : byte
     {
