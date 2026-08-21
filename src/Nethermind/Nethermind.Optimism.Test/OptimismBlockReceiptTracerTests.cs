@@ -12,8 +12,8 @@ namespace Nethermind.Optimism.Test;
 
 public class OptimismBlockReceiptTracerTests
 {
-    private static OptimismBlockReceiptTracer BuildTracer() =>
-        new(Substitute.For<IOptimismSpecHelper>(), Substitute.For<IWorldState>());
+    private static OptimismBlockReceiptTracer BuildTracer(IOptimismSpecHelper? specHelper = null, IWorldState? worldState = null) =>
+        new(specHelper ?? Substitute.For<IOptimismSpecHelper>(), worldState ?? Substitute.For<IWorldState>());
 
     [Test]
     public void FrameTxReceipt_CarriesPayerAndFrameReceipts()
@@ -67,6 +67,35 @@ public class OptimismBlockReceiptTracerTests
             Assert.That(failedReceipt.Logs, Is.Empty);
             Assert.That(failedReceipt.Payer, Is.Null);
             Assert.That(failedReceipt.FrameReceipts, Is.Null);
+        }
+    }
+
+    /// <summary>The deposit fields are read while the world state still holds the post-transaction nonce.</summary>
+    [Test]
+    public void DepositTxReceipt_CarriesTheDepositFields()
+    {
+        IOptimismSpecHelper specHelper = Substitute.For<IOptimismSpecHelper>();
+        specHelper.IsCanyon(Arg.Any<BlockHeader>()).Returns(true);
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.GetNonce(Arg.Any<Address>()).Returns(5UL);
+
+        Transaction depositTx = Build.A.Transaction.WithType(TxType.DepositTx).WithSenderAddress(TestItem.AddressA).TestObject;
+
+        OptimismBlockReceiptTracer tracer = BuildTracer(specHelper, worldState);
+        // The block is left empty: the deposit tx decoder lives in the Optimism plugin, so putting it in a
+        // block would make the builder compute a transaction root it cannot encode.
+        tracer.StartNewBlockTrace(Build.A.Block.TestObject);
+        tracer.StartNewTxTrace(depositTx);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], []);
+        tracer.EndTxTrace();
+
+        OptimismTxReceipt receipt = (OptimismTxReceipt)tracer.LastReceipt;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.DepositNonce, Is.EqualTo(4UL), "the nonce is written before the receipt is built, so it is read back decremented");
+            Assert.That(receipt.DepositReceiptVersion, Is.EqualTo(1UL));
+            Assert.That(receipt.GasUsed, Is.EqualTo(21_000UL), "the shared population still runs for a deposit");
         }
     }
 }

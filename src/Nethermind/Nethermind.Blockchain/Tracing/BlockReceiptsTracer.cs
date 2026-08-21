@@ -120,13 +120,12 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     /// <summary>Creates the empty receipt that <see cref="BuildReceipt"/> then fills in.</summary>
     /// <remarks>
-    /// Chain-specific tracers override this to supply their own receipt type and the fields only they know
-    /// about. Overriding this instead of <see cref="BuildReceipt"/> keeps the shared population - including
-    /// the per-transaction state the tracer has to clear - in one place.
+    /// The single extension point for chain-specific tracers: supply the receipt type and only the fields
+    /// <see cref="BuildReceipt"/> does not assign, since anything it assigns is overwritten here.
     /// </remarks>
     protected virtual TxReceipt CreateReceipt() => new();
 
-    protected virtual TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
+    private TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         ulong cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
