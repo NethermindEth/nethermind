@@ -289,6 +289,12 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         _ => 1
     };
 
-    public virtual bool ValidateFork(ISpecProvider specProvider, int version) =>
+    /// <inheritdoc/>
+    /// <remarks>getPayloadV1 returns this shape, which stops being returnable once blob transactions exist.</remarks>
+    public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+
+    /// <summary>Whether this payload may arrive on the given <c>engine_newPayload</c> version.</summary>
+    /// <param name="newPayloadVersion">The <c>engine_newPayload</c> version the payload arrived on.</param>
+    public virtual bool ValidateFork(ISpecProvider specProvider, int newPayloadVersion) => ValidateFork(specProvider);
 }

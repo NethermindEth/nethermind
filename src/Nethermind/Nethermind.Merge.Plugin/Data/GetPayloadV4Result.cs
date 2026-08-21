@@ -19,7 +19,7 @@ public class GetPayloadV4Result<TVersionedExecutionPayload>(Block block, UInt256
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";
 
-    public override bool ValidateFork(ISpecProvider specProvider, int version)
+    public override bool ValidateFork(ISpecProvider specProvider)
     {
         IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp));
         return spec.IsEip7623Enabled && !spec.IsEip7594Enabled;
