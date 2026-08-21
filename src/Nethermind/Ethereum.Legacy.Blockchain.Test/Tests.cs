@@ -4,6 +4,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Ethereum.Test.Base;
+using Nethermind.Core;
+using Nethermind.Int256;
+using NUnit.Framework;
 
 namespace Ethereum.Legacy.Blockchain.Test;
 
@@ -11,6 +14,67 @@ public class MetaTests : DirectoryMetaTests<StPrefix>
 {
     protected override IEnumerable<string> FilterDirectories(IEnumerable<string> dirs) =>
         dirs.Where(d => d != "stEWASMTests");
+}
+
+public class FixtureExclusionsTests
+{
+    [TestCase("stCreate2", "create2collisionStorage_d0g0v0__Istanbul", false)]
+    [TestCase("stCreate2", "RevertInCreateInInitCreate2Paris_d0g0v0__Paris", false)]
+    [TestCase("stSStoreTest", "InitCollision_d0g0v0__Istanbul", false)]
+    [TestCase("stSStoreTest", "InitCollisionParis_d0g0v0__Paris", false)]
+    [TestCase("stExtCodeHash", "dynamicAccountOverwriteEmpty_Paris_d0g0v0__Paris", false)]
+    [TestCase("stRevertTest", "RevertInCreateInInit_d0g0v0__Istanbul", false)]
+    [TestCase("stSStoreTest", "InitCollisionNonZeroNonce_d0g0v0__Istanbul", true)]
+    [TestCase("stCreate2", "create2collisionNonce_d0g0v0__Istanbul", true)]
+    public void Filters_only_retired_storage_collision_fixtures(string category, string name, bool expectedRetained)
+    {
+        GeneralStateTest test = new() { Name = name };
+        string sourceFile = $"fixtures/{category}/fixture.json";
+
+        Assert.That(FixtureExclusions.Filter([test], sourceFile), expectedRetained ? Is.EquivalentTo([test]) : Is.Empty);
+    }
+
+    [Test]
+    public void Filters_generated_storage_collisions_from_state_and_blockchain_formats()
+    {
+        Dictionary<Address, AccountState> pre = CreatePreState(hasStorage: true, nonce: 0, hasCode: false);
+        EthereumTest[] tests =
+        [
+            new GeneralStateTest { Pre = pre },
+            new BlockchainTest { Pre = pre },
+        ];
+
+        Assert.That(FixtureExclusions.Filter(tests, "fixtures/eip7610_create_collision/test_initcollision.json"), Is.Empty);
+    }
+
+    [TestCase("eip7610_create_collision/test_initcollision", true, 1ul, false)]
+    [TestCase("eip7610_create_collision/test_initcollision", true, 0ul, true)]
+    [TestCase("eip7610_create_collision/test_initcollision", false, 0ul, false)]
+    [TestCase("another_fixture/test_initcollision", true, 0ul, false)]
+    [TestCase("eip7610_create_collision_backup/test_initcollision", true, 0ul, false)]
+    public void Retains_fixtures_outside_the_retired_storage_collision_rule(
+        string category, bool hasStorage, ulong nonce, bool hasCode)
+    {
+        GeneralStateTest test = new()
+        {
+            Category = category,
+            Pre = CreatePreState(hasStorage, nonce, hasCode),
+        };
+
+        string sourceFile = $"fixtures/{category}/fixture.json";
+        Assert.That(FixtureExclusions.Filter([test], sourceFile), Is.EquivalentTo([test]));
+    }
+
+    private static Dictionary<Address, AccountState> CreatePreState(bool hasStorage, ulong nonce, bool hasCode) =>
+        new()
+        {
+            [Address.Zero] = new AccountState
+            {
+                Nonce = nonce,
+                Code = hasCode ? [1] : [],
+                Storage = hasStorage ? new Dictionary<UInt256, byte[]> { [UInt256.One] = [1] } : [],
+            },
+        };
 }
 
 public class ArgsZeroOneBalance : LegacyStateTestFixture<ArgsZeroOneBalance>;

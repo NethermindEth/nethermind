@@ -18,8 +18,8 @@ public abstract class LegacyStateTestFixture<TSelf, TPrefix> : GeneralStateTestB
     public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
-        LegacyFixtureExclusions.Filter(new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(),
-            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<GeneralStateTest>());
+        new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(),
+            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<GeneralStateTest>();
 }
 
 /// <summary>Convenience alias defaulting to "st" prefix.</summary>
@@ -37,8 +37,8 @@ public abstract class LegacyRetryStateTestFixture<TSelf, TPrefix> : GeneralState
     public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
-        LegacyFixtureExclusions.Filter(new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(),
-            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<GeneralStateTest>());
+        new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(),
+            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<GeneralStateTest>();
 }
 
 /// <summary>Convenience alias defaulting to "st" prefix.</summary>

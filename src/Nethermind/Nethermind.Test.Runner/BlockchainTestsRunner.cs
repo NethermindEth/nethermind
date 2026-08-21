@@ -13,7 +13,6 @@ namespace Nethermind.Test.Runner;
 
 public readonly record struct BlockchainTestsRunnerOptions(
     Regex? Filter = null,
-    Regex? Exclude = null,
     ulong ChainId = 0,
     bool Trace = false,
     bool TraceMemory = false,
@@ -34,7 +33,6 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
     // Compiled once by the caller and shared across the per-file runner instances.
     private readonly Regex? _filterRegex = options.Filter;
-    private readonly Regex? _excludeRegex = options.Exclude;
     private readonly ulong _chainId = options.ChainId;
     private readonly bool _trace = options.Trace;
     private readonly bool _traceMemory = options.TraceMemory;
@@ -90,9 +88,6 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
             return null;
 
         if (_filterRegex is not null && test.Name is not null && !_filterRegex.IsMatch(test.Name))
-            return null;
-
-        if (_excludeRegex is not null && test.Name is not null && _excludeRegex.IsMatch(test.Name))
             return null;
 
         if (test.LoadFailure is not null)

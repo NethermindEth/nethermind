@@ -85,6 +85,21 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Test_storage_without_nonce_or_code_is_not_a_collision()
+        {
+            (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode);
+            TestState.CreateAccount(expectedAddress, 1.Ether);
+            TestState.Set(new StorageCell(expectedAddress, 1), [1]);
+            TestState.Commit(Spec);
+            TestState.CommitTree(0);
+
+            Execute(callCode);
+
+            AssertEip1014(expectedAddress, _defaultDeployedCode);
+            Assert.That(TestState.Get(new StorageCell(expectedAddress, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
+        }
+
+        [Test]
         public void Test_collision_with_7702_delegated_account_is_rejected()
         {
             byte[] salt = [0];
