@@ -28,8 +28,7 @@ internal sealed class FrameTxPayerExposureFilter(
             return AcceptTxResult.Accepted;
         }
 
-        // EIP8141-DEVIATION: GasLimit is the frame-gas sum, so the intrinsic and EIP-7623 floor terms go
-        // unreserved — nothing at all, and so no bound, when every frame gas limit is zero.
+        // Gap: GasLimit is the frame-gas sum, so the intrinsic and EIP-7623 floor terms go unreserved.
         if (tx.IsOverflowInTxCostAndValue(out UInt256 maxCost))
         {
             return AcceptTxResult.Int256Overflow;
@@ -40,8 +39,7 @@ internal sealed class FrameTxPayerExposureFilter(
             ? state.SenderAccount.Balance
             : stateProvider.TryGetAccount(payer, out AccountStruct payerAccount) ? payerAccount.Balance : UInt256.Zero;
 
-        // A snapshot: AddCore settles the replacement later, under the pool lock. TryReserve ignores the
-        // discount when the payer holds no reservation, so skip the bucket walk and its pool lock there.
+        // A snapshot; AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
         UInt256 replaced = exposure.GetReserved(payer).IsZero ? UInt256.Zero : ReplacedPendingReservation(tx, payer);
         if (!exposure.TryReserve(payer, maxCost, balance, out UInt256 reserved, replaced))
         {
@@ -55,10 +53,8 @@ internal sealed class FrameTxPayerExposureFilter(
         return AcceptTxResult.Accepted;
     }
 
-    /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending
-    /// set instead.</summary>
-    /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
-    /// domain is not discounted, and on the payer, since displacing another payer's tx frees that payer.</remarks>
+    /// <summary>The reservation <paramref name="tx"/> would displace, or zero when it joins the pending set instead.</summary>
+    /// <remarks>Matched on the pool's own competing key and on the payer, since displacing another payer's tx frees that payer.</remarks>
     private UInt256 ReplacedPendingReservation(Transaction tx, Address payer)
     {
         ReplacementSearch search = new(tx, payer);

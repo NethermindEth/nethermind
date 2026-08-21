@@ -152,10 +152,8 @@ public class TxPoolSourceTests
         Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }).UsingTransactionComparer());
     }
 
-    // EIP-8141: validates the tx-source selection/metering groundwork only — end-to-end production of
-    // blob-frame txs is deferred (the production picker deliberately skips them). A blob-carrying frame tx
-    // routed to the blob pool is metered against the block blob budget like a type-3 tx: selected when
-    // within budget, excluded when it would overflow it. Does not assert the tx is producible.
+    // A blob-carrying frame tx routed to the blob pool is metered against the block blob budget like a
+    // type-3 tx. Source selection only — this does not assert end-to-end producibility.
     [TestCase(3, 6, true)]
     [TestCase(3, 2, false)]
     public void GetTransactions_meters_blob_carrying_frame_tx_against_blob_budget(int blobCount, int blobLimit, bool expectSelected)

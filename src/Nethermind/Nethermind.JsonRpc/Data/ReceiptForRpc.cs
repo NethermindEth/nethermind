@@ -36,7 +36,6 @@ namespace Nethermind.JsonRpc.Data
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
             Type = receipt.TxType;
 
-            // EIP-8141: surface the gas payer and per-frame results for frame transactions.
             if (receipt.TxType == TxType.FrameTx)
             {
                 Payer = receipt.Payer;

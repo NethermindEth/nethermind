@@ -85,11 +85,8 @@ public sealed class TxValidator : ITxValidator
             GasLimitCapTxValidator.Instance,
             IntrinsicGasTxValidator.Instance
         ]));
-        // Frame transactions have no envelope ECDSA signature (explicit sender, protocol-validated
-        // signature list) — signature/intrinsic-gas validators do not apply; per-frame gas and
-        // signature validation happen during processing.
-        // EIP-8141: type 6 shares the EIP-7594 wrapper with type-3, so the same sidecar and proof-version
-        // validators run; they are no-ops for a frame tx with no wrapper.
+        // EIP-8141: no envelope signature and no envelope gas limit, so signature and intrinsic-gas validators
+        // do not apply; the EIP-7594 wrapper is shared with type-3, so its validators do and no-op without one.
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
@@ -190,10 +187,8 @@ public sealed class GasFieldsTxValidator : ITxValidator
         transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
 }
 
-/// <summary>
-/// EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes) plus the
-/// EIP-7594 blob constraints for a blob-carrying frame transaction.
-/// </summary>
+/// <summary>EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes) plus the
+/// EIP-7594 blob constraints for a blob-carrying frame transaction.</summary>
 public sealed class FrameTxFieldsTxValidator : ITxValidator
 {
     public static readonly FrameTxFieldsTxValidator Instance = new();
@@ -225,11 +220,8 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 }
 
 /// <summary>Admits the EIP-8250 keyed-nonce envelope only on forks that define it, and only well-formed.</summary>
-/// <remarks>
-/// Pre-fork the keys carry no replay protection at all — the account nonce is left untouched — so admitting
-/// one would make the transaction replayable. Well-formedness is re-checked because <c>eth_call</c>,
-/// <c>eth_estimateGas</c> and block building construct a transaction without going through the decoder.
-/// </remarks>
+/// <remarks>Pre-fork the keys give no replay protection at all, so admitting one would make the transaction
+/// replayable. Well-formedness is re-checked because callers can construct a transaction without the decoder.</remarks>
 public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 {
     public static readonly FrameTxNonceKeysTxValidator Instance = new();
@@ -255,12 +247,8 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
 }
 
 /// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
-/// <remarks>
-/// The RLP decoder tells the envelope shapes apart without fork context, so the fork that admits each
-/// one is decided here. The reference cap is re-checked because a transaction can reach validation
-/// without passing through the decoder at all — <c>eth_call</c>, <c>eth_estimateGas</c> and block
-/// building all construct one directly.
-/// </remarks>
+/// <remarks>The RLP decoder tells the envelope shapes apart without fork context, so the fork gate lives here.
+/// The reference cap is re-checked because callers can construct a transaction without the decoder.</remarks>
 public sealed class FrameTxEnvelopeTxValidator : ITxValidator
 {
     public static readonly FrameTxEnvelopeTxValidator Instance = new();
@@ -350,10 +338,8 @@ public sealed class BlobFieldsTxValidator : ITxValidator
         return ValidateBlobVersionedHashes(transaction.BlobVersionedHashes!);
     }
 
-    /// <summary>
-    /// Validates that every blob versioned hash is present, 32 bytes, and carries the KZG version byte
-    /// (EIP-4844 <c>VERSIONED_HASH_VERSION_KZG = 0x01</c>).
-    /// </summary>
+    /// <summary>Validates that every blob versioned hash is present, 32 bytes, and carries
+    /// EIP-4844's <c>VERSIONED_HASH_VERSION_KZG</c>.</summary>
     internal static ValidationResult ValidateBlobVersionedHashes(byte[]?[] blobVersionedHashes)
     {
         foreach (byte[]? versionedHash in blobVersionedHashes)

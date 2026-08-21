@@ -22,12 +22,8 @@ public class TxFrameReceipt(byte status, ulong gasUsed, LogEntry[] logs)
     public LogEntry[] Logs { get; } = logs;
 
     /// <summary>The transaction-level status reported for a frame transaction with these frame receipts.</summary>
-    /// <remarks>
-    /// The EIP-8141 receipt payload carries no transaction-level status, so the value JSON-RPC reports
-    /// has to be derived. Deriving it from the frame statuses — success only when every frame
-    /// succeeded — keeps a node that executed the block and a node that only received its receipts in
-    /// agreement, which a value taken from local execution state cannot do.
-    /// </remarks>
+    /// <remarks>The EIP-8141 receipt payload carries no transaction-level status, so it is derived from the frame
+    /// statuses; a value taken from local execution state would not agree with a receipts-only node.</remarks>
     public static byte AggregateStatus(ReadOnlySpan<TxFrameReceipt> frameReceipts)
     {
         foreach (TxFrameReceipt frameReceipt in frameReceipts)

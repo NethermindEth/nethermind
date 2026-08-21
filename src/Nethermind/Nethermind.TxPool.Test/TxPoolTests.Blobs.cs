@@ -1453,8 +1453,7 @@ namespace Nethermind.TxPool.Test
         }
 
         // EIP-8141: a blob-carrying frame tx (type 6 with versioned hashes) is routed to the blob pool,
-        // mirroring type-3 routing, so it is subject to blob-pool rules. A plain frame tx and a type-3
-        // blob tx must route unchanged.
+        // mirroring type-3 routing, so it is subject to blob-pool rules.
         [Test]
         public void blob_carrying_frame_tx_is_routed_to_blob_pool()
         {
@@ -1578,9 +1577,8 @@ namespace Nethermind.TxPool.Test
                 "a reloaded blob-carrying frame tx must still expire out of the pool");
         }
 
-        // Restoring the pool evicts as it goes, and each eviction decrements the expiry count — so the count has to
-        // be seeded from the restored records before the removal handler is attached, or an eviction cancels out a
-        // surviving transaction's own entry and the sweep never runs again.
+        // Restoring the pool evicts as it goes and each eviction decrements the expiry count, so the count must be
+        // seeded from the restored records before the removal handler is attached or the sweep never runs again.
         [Test]
         public async Task Expiring_blob_carrying_frame_tx_still_expires_when_the_restart_evicts_another_one()
         {
@@ -1611,9 +1609,8 @@ namespace Nethermind.TxPool.Test
                 "the surviving transaction must still expire out of the pool");
         }
 
-        // The mempool form of a blob-carrying frame tx is the sidecar wrapper, so a record without one cannot be read
-        // back — the RLP decoder rejects it. Everything off the wire passes that decoder, but an eth_sendTransaction
-        // request builds its transaction field by field and skips it.
+        // The mempool form is the sidecar wrapper, so a record without one cannot be read back. Everything off the
+        // wire passes that decoder, but an eth_sendTransaction request builds its transaction field by field.
         [Test]
         public void Blob_carrying_frame_tx_without_a_sidecar_is_rejected_rather_than_stored_unreadable()
         {

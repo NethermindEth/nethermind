@@ -96,13 +96,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     }
 
     /// <summary>Splits a sender's transactions into the <c>pending</c> and <c>queued</c> maps of <c>txpool_contentFrom</c>.</summary>
-    /// <remarks>
-    /// A two-pointer merge of the nonce-sorted standard and blob buckets. An account-nonce transaction stays pending while
-    /// its nonce is contiguous from the account nonce and moves to queued once a gap appears, mirroring Geth's split. An
-    /// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> keyed transaction is always pending: its sequence
-    /// lives in the nonce manager, not the account nonce, so account-nonce contiguity does not apply. A sender cannot hold
-    /// both standard and blob types at once (TxTypeTxFilter), so the two arrays rarely both populate.
-    /// </remarks>
+    /// <remarks>A transaction stays pending while its nonce is contiguous from the account nonce; an EIP-8250 keyed one is
+    /// always pending, its sequence living in the nonce manager rather than the account nonce.</remarks>
     private static (IDictionary<string, Transaction> pending, IDictionary<string, Transaction> queued)
         SplitByNonce(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
     {
@@ -141,12 +136,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     }
 
     /// <summary>The key under which <paramref name="tx"/> is listed in <c>txpool_content</c>.</summary>
-    /// <remarks>
-    /// A sender holds at most one transaction per account nonce, so the nonce identifies it. An
-    /// <see href="https://eips.ethereum.org/EIPS/eip-8250">EIP-8250</see> transaction consumes keyed sequences instead:
-    /// a sender can hold several at the same sequence and every one of them is includable, so the sequence identifies
-    /// nothing and the hash is used.
-    /// </remarks>
+    /// <remarks>The nonce identifies a sender's transaction, but under EIP-8250 a sender can hold several includable ones
+    /// at the same sequence, so keyed transactions are keyed by hash instead.</remarks>
     private static string KeyOf(Transaction tx) =>
         KeyedNonceManager.UsesKeyedNonce(tx)
             ? tx.Hash!.ToString()

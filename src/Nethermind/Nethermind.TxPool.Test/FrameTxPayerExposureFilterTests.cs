@@ -22,16 +22,14 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>
-/// EIP-8141 per-payer exposure gate: a frame transaction is rejected once its resolved payer's
-/// summed pending maximum cost would exceed the payer's balance, and accepted while it stays within.
-/// </summary>
+/// <summary>EIP-8141 per-payer exposure gate: a frame tx is rejected once its payer's summed pending max cost
+/// would exceed the payer's balance.</summary>
 public class FrameTxPayerExposureFilterTests
 {
     private static readonly Address Payer = TestItem.AddressB;
 
-    // The bound is inclusive: a tx whose reserved + max_cost exactly equals the balance is admitted,
-    // matching the spec's strict `available < tx.max_cost` rejection condition (ethereum/EIPs#12007).
+    // The bound is inclusive: reserved + max_cost exactly equal to the balance is admitted, matching
+    // EIP-8141's strict `available < tx.max_cost` rejection condition.
     [TestCase(1000, 0, false, TestName = "single tx within balance")]
     [TestCase(999, 0, true, TestName = "single tx over balance")]
     [TestCase(1500, 1000, true, TestName = "summed exposure over balance")]
@@ -47,15 +45,14 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.Accepted));
     }
 
-    // Round-1 defect: pricing the bound on the gas leg alone let a frame tx name blob hashes at an
-    // arbitrary max_fee_per_blob_gas and hold exposure the bound never counted. Pinned by magnitude, so
-    // dropping either factor of GasPerBlob * blob count * MaxFeePerBlobGas moves the boundary and fails.
+    // Pricing the bound on the gas leg alone would let a frame tx name blob hashes at an arbitrary
+    // max_fee_per_blob_gas and hold exposure the bound never counted.
     [TestCase(1, 3, TestName = "one blob")]
     [TestCase(2, 5, TestName = "two blobs")]
     [TestCase(6, 1_000_000, TestName = "six blobs at a realistic blob fee")]
     public void Accept_BlobCarryingFrameTx_ReservesTheBlobTermToo(int blobCount, int maxFeePerBlobGas)
     {
-        // Widened: the product exceeds int at six blobs and a realistic blob fee.
+        // long: the product exceeds int at six blobs and a realistic blob fee.
         long blobTerm = (long)Eip4844Constants.GasPerBlob * blobCount * maxFeePerBlobGas;
         PayerExposureCache cache = new();
 
@@ -70,9 +67,8 @@ public class FrameTxPayerExposureFilterTests
         }
     }
 
-    // The gate runs before AddCore resolves the replacement, so the displaced tx is still reserved. The
-    // bound is on the pending set the pool would hold, and only a tx this one displaces may be discounted
-    // from it — same sender, same nonce, and the same payer, or some other payer is the one being freed.
+    // The gate runs before AddCore resolves the replacement, so the displaced tx is still reserved; only a tx
+    // this one displaces — same sender, same nonce, same payer — may be discounted from the bound.
     [TestCase(0ul, false, false, TestName = "a fee bump discounts the tx it displaces")]
     [TestCase(1ul, false, true, TestName = "a later nonce joins the pending set instead")]
     [TestCase(0ul, true, true, TestName = "an incumbent paid by another payer frees that one")]
@@ -84,9 +80,8 @@ public class FrameTxPayerExposureFilterTests
         bump.Nonce = bumpNonce;
         bump.Hash = TestItem.KeccakB;
 
-        // 600 + 700 exceeds the balance, so only discounting the displaced 600 can admit the bump. In the
-        // third case the 600 is synthetic: it stands in for another pending tx of Payer's, since a
-        // reservation with nothing pending behind it is not a state admission can reach.
+        // 600 + 700 exceeds the balance, so only discounting the displaced 600 can admit the bump; in the
+        // third case the 600 stands in for another pending tx of Payer's.
         PayerExposureCache cache = new();
         cache.TryReserve(Payer, 600, balance: 1200, out _);
 
@@ -138,8 +133,8 @@ public class FrameTxPayerExposureFilterTests
     [TestCase(999, true, TestName = "self-paying sender over its balance")]
     public void Accept_SelfPayingSender_GatesOnTheAccountTheSiblingBalanceFiltersUsed(int balance, bool rejected)
     {
-        // Native resolution only ever yields payer == sender today, so this is the branch every real
-        // admission takes: it must read the cached sender account, not the state provider.
+        // Native resolution only yields payer == sender, and that branch must read the cached sender
+        // account rather than the state provider.
         Transaction tx = FrameTxCostingExactly(1000, payer: TestItem.AddressA);
         TestReadOnlyStateProvider senderAccounts = new();
         senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)balance);

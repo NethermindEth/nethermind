@@ -45,7 +45,6 @@ public class GasEstimator(
     private static readonly string InvalidErrorMarginTooHigh = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
     private const string GasEstimationOutOfGas = "Gas estimation failed due to out of gas";
     private const string TransactionExecutionFails = "Transaction execution fails";
-    /// <summary>Error emitted when the required gas exceeds the transaction and block gas limits, or the transaction gas limit cap.</summary>
     public const string CannotEstimateGasExceeded = "Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap";
     private const string ExecutionReverted = "execution reverted";
     private const string FrameTxGasLimitOverflows = "frame transaction gas limit overflows";
@@ -100,12 +99,8 @@ public class GasEstimator(
     }
 
     /// <summary>The gas an EIP-8141 frame transaction reserves, or a failure when that budget is unestimable.</summary>
-    /// <remarks>
-    /// A frame transaction has no <c>gas_limit</c> to search: the processor derives the budget from the
-    /// signed per-frame limits and ignores <see cref="Transaction.GasLimit"/>. Affordability gates are
-    /// skipped because the payer is frame-chosen rather than the sender; the tracer's out-of-gas and
-    /// revert flags are not consulted because each frame runs as its own top-level action.
-    /// </remarks>
+    /// <remarks>There is nothing to binary-search: the budget is fixed by the signed per-frame limits. The
+    /// sender's balance is not gated on either, since the payer is frame-chosen rather than the sender.</remarks>
     private static EstimationResult EstimateFrameTx(Transaction tx, BlockHeader header, IReleaseSpec spec)
     {
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas))
