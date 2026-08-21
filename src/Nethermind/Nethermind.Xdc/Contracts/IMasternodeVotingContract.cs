@@ -18,4 +18,10 @@ public interface IMasternodeVotingContract
     Address GetCandidateOwner(BlockHeader blockHeader, Address candidate);
     Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate);
     Address GetCandidateOwner(IWorldState worldState, Address candidate);
+
+    /// <summary>Returns the addresses that have voted for <paramref name="candidate"/>.</summary>
+    Address[] GetVoters(BlockHeader blockHeader, Address candidate);
+
+    /// <summary>Returns the amount <paramref name="voter"/> has staked on <paramref name="candidate"/>.</summary>
+    UInt256 GetVoterStake(BlockHeader blockHeader, Address candidate, Address voter);
 }
