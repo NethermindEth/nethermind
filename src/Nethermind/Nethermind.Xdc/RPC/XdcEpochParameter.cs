@@ -13,7 +13,8 @@ namespace Nethermind.Xdc.RPC;
 /// </summary>
 /// <remarks>
 /// Accepts a JSON number, a decimal or <c>0x</c>-prefixed string, or the keyword <c>"latest"</c>.
-/// Omitting the parameter is equivalent to <c>"latest"</c>.
+/// Omitting the parameter is equivalent to <c>"latest"</c>, as is any negative number: the reference
+/// client's <c>rpc.EpochNumber</c> is a signed integer whose <c>latest</c> sentinel is <c>-1</c>.
 /// </remarks>
 public sealed class XdcEpochParameter : IJsonRpcParam
 {
@@ -30,7 +31,9 @@ public sealed class XdcEpochParameter : IJsonRpcParam
                 EpochNumber = null;
                 break;
             case JsonValueKind.Number:
-                EpochNumber = jsonValue.GetUInt64();
+                EpochNumber = jsonValue.TryGetUInt64(out ulong epochNumber) ? epochNumber
+                    : jsonValue.TryGetInt64(out long sentinel) && sentinel < 0 ? null
+                    : throw new JsonException($"Cannot parse '{jsonValue.GetRawText()}' as an epoch number.");
                 break;
             case JsonValueKind.String:
                 EpochNumber = ParseEpoch(jsonValue.GetString()!);
@@ -42,7 +45,9 @@ public sealed class XdcEpochParameter : IJsonRpcParam
 
     private static ulong? ParseEpoch(string value)
     {
-        if (value.Length == 0 || string.Equals(value, LatestKeyword, StringComparison.OrdinalIgnoreCase))
+        if (value.Length == 0
+            || value[0] == '-'
+            || string.Equals(value, LatestKeyword, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }

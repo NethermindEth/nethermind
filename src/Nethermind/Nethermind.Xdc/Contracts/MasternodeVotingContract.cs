@@ -105,6 +105,26 @@ internal class MasternodeVotingContract(
         return (Address[])result[0]!;
     }
 
+    public Address[] GetVoters(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
+    {
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getVoters", GenerateTransaction<Transaction>(ContractAddress, "getVoters", Address.SystemUser, candidate), true);
+        object[] decoded = DecodeReturnData("getVoters", result);
+        if (decoded.Length != 1)
+            throw new InvalidOperationException("Expected 'getVoters' to return exactly one result.");
+
+        return (Address[])decoded[0]!;
+    }
+
+    public UInt256 GetVoterStake(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate, Address voter)
+    {
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getVoterCap", GenerateTransaction<Transaction>(ContractAddress, "getVoterCap", Address.SystemUser, candidate, voter), true);
+        object[] decoded = DecodeReturnData("getVoterCap", result);
+        if (decoded.Length != 1)
+            throw new InvalidOperationException("Expected 'getVoterCap' to return exactly one result.");
+
+        return (UInt256)decoded[0]!;
+    }
+
     public UInt256 GetVoterStake(BlockHeader blockHeader, Address candidate, Address voter)
     {
         CallInfo callInfo = new(blockHeader, "getVoterCap", Address.SystemUser, candidate, voter);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -12,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -70,15 +72,15 @@ internal sealed class XdcMasternodeEthModule(
 
     public ResultWrapper<XdcCandidatesResult> eth_getCandidates(XdcEpochParameter? epoch = null)
     {
-        if (!TryResolveCheckpoint(epoch, out XdcBlockHeader checkpoint, out ulong epochNumber, out IXdcReleaseSpec spec, out string? error))
+        if (!TryResolveCheckpoint(epoch, out EpochCheckpoint resolved, out string? error))
         {
-            return ResultWrapper<XdcCandidatesResult>.Fail(error!);
+            return ResultWrapper<XdcCandidatesResult>.Fail(error);
         }
 
-        XdcCandidatesResult result = new() { Epoch = (long)epochNumber };
+        XdcCandidatesResult result = new() { Epoch = (long)resolved.EpochNumber };
 
-        CandidateStake[] candidates = GetCandidateStakes(checkpoint);
-        Address[] masternodes = GetCheckpointMasternodes(checkpoint);
+        CandidateStake[] candidates = GetCandidateStakes(resolved.CandidateStateHeader);
+        Address[] masternodes = GetCheckpointMasternodes(resolved.Header);
         if (candidates.Length == 0 || masternodes.Length == 0)
         {
             return ResultWrapper<XdcCandidatesResult>.Success(result);
@@ -114,7 +116,7 @@ internal sealed class XdcMasternodeEthModule(
         result.Success = true;
         result.Candidates = statuses;
 
-        int maxMasternodes = spec.MaxMasternodes;
+        int maxMasternodes = resolved.Spec.MaxMasternodes;
         if (masternodes.Length >= maxMasternodes)
         {
             return ResultWrapper<XdcCandidatesResult>.Success(result);
@@ -125,7 +127,7 @@ internal sealed class XdcMasternodeEthModule(
             SortByStakeDescending(candidates);
         }
 
-        Address[] penalties = CollectPenalties(checkpoint, epochNumber);
+        Address[] penalties = CollectPenalties(resolved.Header, resolved.EpochNumber);
         int slots = masternodes.Length;
         foreach (CandidateStake candidate in candidates)
         {
@@ -149,15 +151,15 @@ internal sealed class XdcMasternodeEthModule(
 
     public ResultWrapper<XdcCandidateStatusResult> eth_getCandidateStatus(Address coinbase, XdcEpochParameter? epoch = null)
     {
-        if (!TryResolveCheckpoint(epoch, out XdcBlockHeader checkpoint, out ulong epochNumber, out IXdcReleaseSpec spec, out string? error))
+        if (!TryResolveCheckpoint(epoch, out EpochCheckpoint resolved, out string? error))
         {
-            return ResultWrapper<XdcCandidateStatusResult>.Fail(error!);
+            return ResultWrapper<XdcCandidateStatusResult>.Fail(error);
         }
 
-        XdcCandidateStatusResult result = new() { Epoch = (long)epochNumber };
+        XdcCandidateStatusResult result = new() { Epoch = (long)resolved.EpochNumber };
 
-        CandidateStake[] candidates = GetCandidateStakes(checkpoint);
-        Address[] masternodes = GetCheckpointMasternodes(checkpoint);
+        CandidateStake[] candidates = GetCandidateStakes(resolved.CandidateStateHeader);
+        Address[] masternodes = GetCheckpointMasternodes(resolved.Header);
         if (candidates.Length == 0 || masternodes.Length == 0)
         {
             return ResultWrapper<XdcCandidateStatusResult>.Success(result);
@@ -195,7 +197,7 @@ internal sealed class XdcMasternodeEthModule(
             return ResultWrapper<XdcCandidateStatusResult>.Success(result);
         }
 
-        int maxMasternodes = spec.MaxMasternodes;
+        int maxMasternodes = resolved.Spec.MaxMasternodes;
         if (!isCandidate || masternodes.Length >= maxMasternodes)
         {
             return ResultWrapper<XdcCandidateStatusResult>.Success(result);
@@ -206,7 +208,7 @@ internal sealed class XdcMasternodeEthModule(
             SortByStakeDescending(candidates);
         }
 
-        Address[] penalties = CollectPenalties(checkpoint, epochNumber);
+        Address[] penalties = CollectPenalties(resolved.Header, resolved.EpochNumber);
         int slots = masternodes.Length;
         foreach (CandidateStake candidate in candidates)
         {
@@ -235,13 +237,14 @@ internal sealed class XdcMasternodeEthModule(
 
     public ResultWrapper<double> eth_getStakerROI()
     {
-        if (!TryGetHead(out _, out IXdcReleaseSpec spec, out ulong currentEpoch, out string? error))
+        if (!TryGetHead(out ChainHead head, out string? error))
         {
-            return ResultWrapper<double>.Fail(error!);
+            return ResultWrapper<double>.Fail(error);
         }
 
-        // Rewards for an epoch are only paid out at the next checkpoint, so the last fully rewarded epoch is two back.
-        if (currentEpoch < 2 || !TryFindCheckpointHeader(currentEpoch - 2, out XdcBlockHeader? rewardedCheckpoint))
+        // Rewards for an epoch are only paid out at the next checkpoint, so the last settled one is an epoch back.
+        ulong currentEpoch = head.EpochNumber;
+        if (currentEpoch < 1 || !TryFindCheckpointHeader(currentEpoch - 1, out XdcBlockHeader? rewardedCheckpoint))
         {
             return ResultWrapper<double>.Success(0);
         }
@@ -252,17 +255,18 @@ internal sealed class XdcMasternodeEthModule(
             totalCap += candidate.Stake;
         }
 
-        UInt256 masternodeReward = (UInt256)spec.Reward * Unit.Ether;
+        UInt256 masternodeReward = (UInt256)head.Spec.Reward * Unit.Ether;
         return ResultWrapper<double>.Success(CalculateRoi(masternodeReward, totalCap, currentEpoch));
     }
 
     public ResultWrapper<double> eth_getStakerROIMasternode(Address masternode)
     {
-        if (!TryGetHead(out _, out _, out ulong currentEpoch, out string? error))
+        if (!TryGetHead(out ChainHead head, out string? error))
         {
-            return ResultWrapper<double>.Fail(error!);
+            return ResultWrapper<double>.Fail(error);
         }
 
+        ulong currentEpoch = head.EpochNumber;
         if (currentEpoch < 1
             || !TryFindCheckpointHeader(currentEpoch, out XdcBlockHeader? currentCheckpoint)
             || !TryFindCheckpointHeader(currentEpoch - 1, out XdcBlockHeader? rewardedCheckpoint)
@@ -287,24 +291,19 @@ internal sealed class XdcMasternodeEthModule(
             }
         }
 
-        UInt256 totalCap = UInt256.Zero;
-        foreach (Address voter in masternodeVotingContract.GetVoters(currentCheckpoint, masternode))
-        {
-            totalCap += masternodeVotingContract.GetVoterStake(currentCheckpoint, masternode, voter);
-        }
-
-        return ResultWrapper<double>.Success(CalculateRoi(masternodeReward, totalCap, currentEpoch));
+        return ResultWrapper<double>.Success(
+            CalculateRoi(masternodeReward, GetTotalVoterStake(currentCheckpoint, masternode), currentEpoch));
     }
 
     public ResultWrapper<XdcTokenSupply> eth_getTokenStats(XdcEpochParameter? epoch = null)
     {
-        if (!TryGetHead(out XdcBlockHeader head, out IXdcReleaseSpec spec, out ulong currentEpoch, out string? error))
+        if (!TryGetHead(out ChainHead head, out string? error))
         {
-            return ResultWrapper<XdcTokenSupply>.Fail(error!);
+            return ResultWrapper<XdcTokenSupply>.Fail(error);
         }
 
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = source.Build(head);
+        using IReadOnlyTxProcessingScope scope = source.Build(head.Header);
         IWorldState worldState = scope.WorldState;
 
         if (!mintedRecordContract.TryGetOnsetEpoch(worldState, out UInt256 onsetEpoch))
@@ -312,7 +311,7 @@ internal sealed class XdcMasternodeEthModule(
             return ResultWrapper<XdcTokenSupply>.Fail("Minted record is not initialized because the reward upgrade has not been applied");
         }
 
-        ulong epochNumber = currentEpoch;
+        ulong epochNumber = head.EpochNumber;
         if (epoch?.EpochNumber is ulong requestedEpoch)
         {
             if (requestedEpoch < onsetEpoch)
@@ -320,7 +319,7 @@ internal sealed class XdcMasternodeEthModule(
                 return ResultWrapper<XdcTokenSupply>.Fail("Epoch number is before the reward upgrade");
             }
 
-            if (requestedEpoch > currentEpoch)
+            if (requestedEpoch > head.EpochNumber)
             {
                 return ResultWrapper<XdcTokenSupply>.Fail("Epoch number is after the current epoch");
             }
@@ -332,7 +331,7 @@ internal sealed class XdcMasternodeEthModule(
 
         // Every epoch before the upgrade minted a flat per-epoch reward, and the onset epoch is accounted for by the upgrade.
         UInt256 preUpgradeEpochs = onsetEpoch.IsZero ? UInt256.Zero : onsetEpoch - UInt256.One;
-        UInt256 preUpgradeMinted = (UInt256)spec.Reward * Unit.Ether * preUpgradeEpochs;
+        UInt256 preUpgradeMinted = (UInt256)head.Spec.Reward * Unit.Ether * preUpgradeEpochs;
 
         return ResultWrapper<XdcTokenSupply>.Success(new XdcTokenSupply
         {
@@ -459,15 +458,21 @@ internal sealed class XdcMasternodeEthModule(
         return [.. signers];
     }
 
-    private bool TryGetHead(
-        out XdcBlockHeader head,
-        out IXdcReleaseSpec spec,
-        out ulong currentEpoch,
-        out string? error)
+    private readonly record struct ChainHead(XdcBlockHeader Header, IXdcReleaseSpec Spec, ulong EpochNumber);
+
+    /// <param name="CandidateStateHeader">
+    /// Block whose state the candidate list is read from. For <c>latest</c> this is the head rather than the
+    /// checkpoint, so candidates that proposed or resigned mid-epoch are visible, as in the reference client.
+    /// </param>
+    private readonly record struct EpochCheckpoint(
+        XdcBlockHeader Header,
+        BlockHeader CandidateStateHeader,
+        ulong EpochNumber,
+        IXdcReleaseSpec Spec);
+
+    private bool TryGetHead(out ChainHead head, [NotNullWhen(false)] out string? error)
     {
-        head = null!;
-        spec = null!;
-        currentEpoch = 0;
+        head = default;
 
         if (tree.Head?.Header is not XdcBlockHeader headHeader)
         {
@@ -481,62 +486,65 @@ internal sealed class XdcMasternodeEthModule(
             return false;
         }
 
-        head = headHeader;
-        spec = specProvider.GetXdcSpec(headHeader);
-        currentEpoch = spec.SwitchEpoch + headHeader.ExtraConsensusData.BlockRound / spec.EpochLength;
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(headHeader);
+        head = new ChainHead(headHeader, spec, spec.SwitchEpoch + headHeader.ExtraConsensusData.BlockRound / spec.EpochLength);
         error = null;
         return true;
     }
 
-    private bool TryFindCheckpointHeader(ulong epochNumber, out XdcBlockHeader checkpoint)
+    private bool TryFindCheckpointHeader(ulong epochNumber, [NotNullWhen(true)] out XdcBlockHeader? checkpoint)
     {
         BlockRoundInfo? epochBlock = epochSwitchManager.GetBlockByEpochNumber(epochNumber);
-        checkpoint = (epochBlock is null ? null : tree.FindHeader(epochBlock.Hash, epochBlock.BlockNumber) as XdcBlockHeader)!;
+        checkpoint = epochBlock is null ? null : tree.FindHeader(epochBlock.Hash, epochBlock.BlockNumber) as XdcBlockHeader;
         return checkpoint is not null;
     }
 
-    private bool TryResolveCheckpoint(
-        XdcEpochParameter? epoch,
-        out XdcBlockHeader checkpoint,
-        out ulong epochNumber,
-        out IXdcReleaseSpec spec,
-        out string? error)
+    private bool TryResolveCheckpoint(XdcEpochParameter? epoch, out EpochCheckpoint resolved, [NotNullWhen(false)] out string? error)
     {
-        checkpoint = null!;
+        resolved = default;
 
-        if (!TryGetHead(out _, out IXdcReleaseSpec headSpec, out ulong currentEpoch, out error))
+        if (!TryGetHead(out ChainHead head, out error))
         {
-            epochNumber = 0;
-            spec = null!;
             return false;
         }
 
-        epochNumber = epoch?.EpochNumber ?? currentEpoch;
-        if (epochNumber < headSpec.SwitchEpoch)
+        ulong epochNumber = epoch?.EpochNumber ?? head.EpochNumber;
+        if (epochNumber < head.Spec.SwitchEpoch)
         {
-            spec = null!;
             error = "V1 epoch is not supported";
             return false;
         }
 
-        if (!TryFindCheckpointHeader(epochNumber, out checkpoint))
+        if (!TryFindCheckpointHeader(epochNumber, out XdcBlockHeader? checkpoint))
         {
-            spec = null!;
             error = $"Cannot find epoch {epochNumber}";
             return false;
         }
 
         // The masternode cap is a per-round V2 config value, so it must be read at the checkpoint being reported.
-        spec = specProvider.GetXdcSpec(checkpoint);
+        resolved = new EpochCheckpoint(
+            checkpoint,
+            epoch?.EpochNumber is null ? head.Header : checkpoint,
+            epochNumber,
+            specProvider.GetXdcSpec(checkpoint));
         return true;
     }
 
     private static Address[] GetCheckpointMasternodes(XdcBlockHeader checkpoint) =>
         checkpoint.ValidatorsAddress is { } validators ? [.. validators] : [];
 
-    private CandidateStake[] GetCandidateStakes(XdcBlockHeader checkpoint)
+    /// <remarks>
+    /// Reads every candidate through a single processing scope. The scopeless contract overloads build one
+    /// read-only environment per call, which on a candidate list in the hundreds turns a sharable RPC method
+    /// into an easy way to burn CPU.
+    /// </remarks>
+    private CandidateStake[] GetCandidateStakes(BlockHeader stateHeader)
     {
-        Address[] candidates = masternodeVotingContract.GetCandidates(checkpoint) ?? [];
+        using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(stateHeader);
+        ITransactionProcessor processor = scope.TransactionProcessor;
+
+        Address[] candidates = masternodeVotingContract.GetCandidates(processor, stateHeader) ?? [];
         List<CandidateStake> stakes = new(candidates.Length);
         foreach (Address candidate in candidates)
         {
@@ -548,11 +556,27 @@ internal sealed class XdcMasternodeEthModule(
             stakes.Add(new CandidateStake
             {
                 Address = candidate,
-                Stake = masternodeVotingContract.GetCandidateStake(checkpoint, candidate),
+                Stake = masternodeVotingContract.GetCandidateStake(processor, stateHeader, candidate),
             });
         }
 
         return [.. stakes];
+    }
+
+    /// <inheritdoc cref="GetCandidateStakes" path="/remarks"/>
+    private UInt256 GetTotalVoterStake(BlockHeader stateHeader, Address masternode)
+    {
+        using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(stateHeader);
+        ITransactionProcessor processor = scope.TransactionProcessor;
+
+        UInt256 totalStake = UInt256.Zero;
+        foreach (Address voter in masternodeVotingContract.GetVoters(processor, stateHeader, masternode))
+        {
+            totalStake += masternodeVotingContract.GetVoterStake(processor, stateHeader, masternode, voter);
+        }
+
+        return totalStake;
     }
 
     private static BigInteger ToCapacity(in UInt256 stake) => new(stake.ToBigEndian(), isUnsigned: true, isBigEndian: true);

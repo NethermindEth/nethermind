@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
@@ -12,8 +13,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
@@ -48,6 +51,7 @@ public class XdcMasternodeEthModuleTests
     private IMintedRecordContract _mintedRecordContract = null!;
     private IRewardsStore _rewardsStore = null!;
     private IReadOnlyTxProcessingEnvFactory _txProcessingEnvFactory = null!;
+    private ITransactionProcessor _transactionProcessor = null!;
     private IWorldState _worldState = null!;
     private IXdcReleaseSpec _spec = null!;
     private XdcMasternodeEthModule _module = null!;
@@ -63,7 +67,8 @@ public class XdcMasternodeEthModuleTests
         _mintedRecordContract = Substitute.For<IMintedRecordContract>();
         _rewardsStore = Substitute.For<IRewardsStore>();
         _worldState = Substitute.For<IWorldState>();
-        _txProcessingEnvFactory = CreateProcessingEnvFactory(_worldState);
+        _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _txProcessingEnvFactory = CreateProcessingEnvFactory(_worldState, _transactionProcessor);
 
         _spec = XdcTestHelper.CreateXdcReleaseSpec(epochLength: EpochLength, maxMasternodes: 3);
         _spec.MergeSignRange = MergeSignRange;
@@ -171,6 +176,33 @@ public class XdcMasternodeEthModuleTests
         {
             Assert.That(info.Status, Is.EqualTo("MASTERNODE"));
             Assert.That(info.Capacity, Is.EqualTo(BigInteger.MinusOne));
+        }
+    }
+
+    [Test]
+    public void eth_getCandidates_reads_an_explicit_epoch_from_the_checkpoint_rather_than_the_head()
+    {
+        SetUpCheckpoint(masternodes: [TestItem.AddressA], penalties: []);
+        SetCandidates(CheckpointOf(CurrentEpoch), (TestItem.AddressA, 300), (TestItem.AddressB, 200));
+
+        ResultWrapper<XdcCandidatesResult> result = _module.eth_getCandidates(ParseEpoch(CurrentEpoch.ToString()));
+
+        Assert.That(result.Data.Candidates, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public async Task eth_getCandidates_serializes_capacity_as_a_decimal_string()
+    {
+        XdcBlockHeader head = SetUpCheckpoint(masternodes: [TestItem.AddressD], penalties: []);
+        SetCandidates(head, (TestItem.AddressA, 300));
+
+        string json = await RpcTest.TestSerializedRequest<IXdcMasternodeEthRpcModule>(_module, "eth_getCandidates");
+
+        // BigInteger keeps the reference's -1 "no stake to read" sentinel; Nethermind's converter quotes it.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Does.Contain("\"capacity\":\"300\""));
+            Assert.That(json, Does.Contain("\"capacity\":\"-1\""));
         }
     }
 
@@ -289,7 +321,7 @@ public class XdcMasternodeEthModuleTests
     public void eth_getStakerROIMasternode_annualizes_the_rewards_paid_out_for_one_masternode()
     {
         SetUpEpochTimeline();
-        XdcBlockHeader current = FindCheckpoint(RoiCurrentEpoch);
+        XdcBlockHeader current = CheckpointOf(RoiCurrentEpoch);
         XdcEpochRewards rewards = new()
         {
             Rewards = new()
@@ -303,8 +335,8 @@ public class XdcMasternodeEthModuleTests
         };
         _rewardsStore.TryGetEpochRewards(Arg.Any<Hash256>(), out Arg.Any<XdcEpochRewards?>())
             .Returns(x => { x[1] = rewards; return true; });
-        _votingContract.GetVoters(current, TestItem.AddressA).Returns([TestItem.AddressB]);
-        _votingContract.GetVoterStake(current, TestItem.AddressA, TestItem.AddressB)
+        _votingContract.GetVoters(_transactionProcessor, current, TestItem.AddressA).Returns([TestItem.AddressB]);
+        _votingContract.GetVoterStake(_transactionProcessor, current, TestItem.AddressA, TestItem.AddressB)
             .Returns((UInt256)StakeForOnePercentRoi * Unit.Ether);
 
         ResultWrapper<double> result = _module.eth_getStakerROIMasternode(TestItem.AddressA);
@@ -323,28 +355,40 @@ public class XdcMasternodeEthModuleTests
         Assert.That(result.Data, Is.Zero);
     }
 
-    [TestCase("latest", null, TestName = "The latest keyword leaves the epoch unresolved")]
-    [TestCase("12", 12ul, TestName = "A decimal string is an epoch number")]
-    [TestCase("0x1f", 31ul, TestName = "A hex string is an epoch number")]
+    [TestCase("\"latest\"", null, TestName = "The latest keyword leaves the epoch unresolved")]
+    [TestCase("\"12\"", 12ul, TestName = "A decimal string is an epoch number")]
+    [TestCase("\"0x1f\"", 31ul, TestName = "A hex string is an epoch number")]
+    [TestCase("12", 12ul, TestName = "A JSON number is an epoch number")]
+    [TestCase("-1", null, TestName = "The rpc.EpochNumber latest sentinel is read as latest")]
+    [TestCase("\"-1\"", null, TestName = "The latest sentinel is read as latest when quoted")]
     public void XdcEpochParameter_parses_the_reference_epoch_encodings(string json, ulong? expected) =>
-        Assert.That(ParseEpoch(json).EpochNumber, Is.EqualTo(expected));
+        Assert.That(ParseEpochJson(json).EpochNumber, Is.EqualTo(expected));
 
-    private static XdcEpochParameter ParseEpoch(string value)
+    private static XdcEpochParameter ParseEpoch(string value) => ParseEpochJson($"\"{value}\"");
+
+    private static XdcEpochParameter ParseEpochJson(string json)
     {
         XdcEpochParameter epoch = new();
-        epoch.ReadJson(JsonDocument.Parse($"\"{value}\"").RootElement, new JsonSerializerOptions());
+        epoch.ReadJson(JsonDocument.Parse(json).RootElement, new JsonSerializerOptions());
         return epoch;
     }
 
-    private static IReadOnlyTxProcessingEnvFactory CreateProcessingEnvFactory(IWorldState worldState)
+    private static IReadOnlyTxProcessingEnvFactory CreateProcessingEnvFactory(IWorldState worldState, ITransactionProcessor transactionProcessor)
     {
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
         scope.WorldState.Returns(worldState);
+        scope.TransactionProcessor.Returns(transactionProcessor);
         IReadOnlyTxProcessorSource source = Substitute.For<IReadOnlyTxProcessorSource>();
         source.Build(Arg.Any<BlockHeader>()).Returns(scope);
         IReadOnlyTxProcessingEnvFactory factory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         factory.Create().Returns(source);
         return factory;
+    }
+
+    private XdcBlockHeader CheckpointOf(ulong epochNumber)
+    {
+        BlockRoundInfo info = _epochSwitchManager.GetBlockByEpochNumber(epochNumber)!;
+        return (XdcBlockHeader)_blockTree.FindHeader(info.Hash, info.BlockNumber)!;
     }
 
     private void SetOnsetEpoch(ulong onsetEpoch) =>
@@ -408,10 +452,12 @@ public class XdcMasternodeEthModuleTests
     }
 
     /// <summary>Puts the head in epoch <see cref="CurrentEpoch"/> with its checkpoint at <see cref="CheckpointNumber"/>.</summary>
+    /// <returns>The head, whose state the candidate list of the latest epoch is read from.</returns>
     private XdcBlockHeader SetUpCheckpoint(Address[] masternodes, Address[] penalties)
     {
         SetHead();
-        return AddCheckpoint(CurrentEpoch, CheckpointNumber, 0, masternodes, penalties);
+        AddCheckpoint(CurrentEpoch, CheckpointNumber, 0, masternodes, penalties);
+        return (XdcBlockHeader)_blockTree.Head!.Header;
     }
 
     // A head at round 2000 sits in epoch 2, so the last fully rewarded epoch is epoch 0.
@@ -419,30 +465,25 @@ public class XdcMasternodeEthModuleTests
     private const ulong RoiCurrentEpoch = 2;
 
     /// <summary>Lays out the three most recent epoch checkpoints <see cref="EpochDuration"/> apart.</summary>
-    /// <returns>The checkpoint of the last fully rewarded epoch.</returns>
+    /// <returns>The checkpoint of the last settled epoch, which is where the reference reads staked totals.</returns>
     private XdcBlockHeader SetUpEpochTimeline()
     {
         SetHead(RoiHeadNumber);
         AddCheckpoint(RoiCurrentEpoch, 1800, 2 * EpochDuration);
-        AddCheckpoint(RoiCurrentEpoch - 1, 900, EpochDuration);
-        return AddCheckpoint(RoiCurrentEpoch - 2, 1, 0);
+        AddCheckpoint(RoiCurrentEpoch - 2, 1, 0);
+        return AddCheckpoint(RoiCurrentEpoch - 1, 900, EpochDuration);
     }
 
-    private XdcBlockHeader FindCheckpoint(ulong epochNumber)
-    {
-        BlockRoundInfo info = _epochSwitchManager.GetBlockByEpochNumber(epochNumber)!;
-        return (XdcBlockHeader)_blockTree.FindHeader(info.Hash, info.BlockNumber)!;
-    }
-
-    private void SetCandidates(XdcBlockHeader checkpoint, params (Address Address, UInt256 Stake)[] candidates)
+    private void SetCandidates(BlockHeader stateHeader, params (Address Address, UInt256 Stake)[] candidates)
     {
         Address[] addresses = new Address[candidates.Length];
         for (int i = 0; i < candidates.Length; i++)
         {
             addresses[i] = candidates[i].Address;
-            _votingContract.GetCandidateStake(checkpoint, candidates[i].Address).Returns(candidates[i].Stake);
+            _votingContract.GetCandidateStake(_transactionProcessor, stateHeader, candidates[i].Address)
+                .Returns(candidates[i].Stake);
         }
 
-        _votingContract.GetCandidates(checkpoint).Returns(addresses);
+        _votingContract.GetCandidates(_transactionProcessor, stateHeader).Returns(addresses);
     }
 }
