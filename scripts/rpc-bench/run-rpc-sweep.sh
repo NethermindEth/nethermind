@@ -49,7 +49,6 @@ CORPUS_RPC_GAS_CAP="1000000000000"
 DB_ISOLATION_ALL="${DB_ISOLATION_ALL:-}"
 DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
 SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
-SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"
 NM_LAYOUT_FLAGS="--FlatDb.Enabled=true"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 RPC="http://localhost:8545"
@@ -79,16 +78,68 @@ case "$CORPUS_BASELINE" in
   none|save|use) ;;
   *) echo "::error::CORPUS_BASELINE must be none, save or use, got '$CORPUS_BASELINE'"; exit 1 ;;
 esac
-for entry in $CLIENTS; do
-  entry="${entry%%#*}"
-  [[ "${entry%%@*}" == "nethermind" ]] || { echo "::error::sweep mode resolves one Nethermind snapshot set; client '${entry%%@*}' cannot run here (use benchmark_tool=jsonbench with reference_client)"; exit 1; }
-done
-[[ "$STATE_LAYOUT" == "flat" ]] || { echo "::error::sweep mode resolves a flat snapshot; state_layout '$STATE_LAYOUT' cannot run here"; exit 1; }
 # direct bind-mounts the expb-shared snapshot read-write; one such run replaces the fixture every later benchmark uses.
+# Snapshot root differs per benchmark box (/mnt/sda on amd64, /data/nethermind on arm64); the workflow
+# passes the resolved one. Each client type has its own block-tagged set there, mirroring the
+# single-node path's `<root>/<client>-<block>`; `ctype@image` variants share their type's set, so
+# within one client type the image is the only variable.
+
+snap_path() {
+  case "$1" in
+    nethermind) printf '%s' "${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}" ;;
+    *)          printf '%s' "${SNAPSHOT_ROOT}/$1-${SNAPSHOT_BLOCK}" ;;
+  esac
+}
+
+# A client whose snapshot set is absent reaches start-node.sh with a DB_SOURCE that does not exist,
+# and that is only a per-client `::warning::` — the sweep would report a two-thirds-empty matrix as
+# success, and in corpus mode a baseline with no candidate, i.e. no parity verdict at all. Check
+# every requested type up front instead, and only the state_layout axis the request actually uses
+# (a reth-only sweep resolves no Nethermind path, so the flat pin does not apply to it).
+declare -A SWEEP_CTYPES=()
+for entry in $CLIENTS; do SWEEP_CTYPES["${entry%%@*}"]=1; done
+for ctype in "${!SWEEP_CTYPES[@]}"; do
+  case "$ctype" in
+    nethermind|geth|reth) ;;
+    *) echo "::error::unknown sweep client type '${ctype}' (expected nethermind | geth | reth)"; exit 1 ;;
+  esac
+  if [[ ! -d "$(snap_path "$ctype")" ]]; then
+    echo "::error::no ${ctype} snapshot set at $(snap_path "$ctype") — this box cannot serve that client"
+    echo "::error::snapshot sets present under ${SNAPSHOT_ROOT}:"
+    ls -1d "${SNAPSHOT_ROOT}"/*-"${SNAPSHOT_BLOCK}" 2>/dev/null | sed 's|^|::error::  |' || true
+    exit 1
+  fi
+done
+if [[ -n "${SWEEP_CTYPES[nethermind]:-}" && "$STATE_LAYOUT" != "flat" ]]; then
+  echo "::error::sweep mode resolves a flat Nethermind snapshot, so state_layout '${STATE_LAYOUT}' cannot run here"; exit 1
+fi
+# One isolation mode per client type, so storage counters stay comparable between the images of one
+# type: overlayfs adds a layer and changes readahead and page-cache behaviour, so
+# disk-read-per-request would otherwise measure a harness difference as much as a code one. Across
+# types they can differ (reth cannot use overlay at all, below) — never read a cross-type disk-read
+# delta as a code difference. DB_ISOLATION_ALL forces one mode on every node; `copy` is the
+# overlay-free choice that still leaves the snapshot intact.
+#
+# `direct` is refused without explicit consent. It bind-mounts the snapshot READ-WRITE, and a node's
+# startup alone rewrites RocksDB MANIFEST/CURRENT/WAL and triggers flushes across every column
+# family. The Nethermind snapshots on these boxes are shared with expb, so one direct run
+# silently replaces the fixture every later benchmark compares against — which happened on
+# 2026-08-13 and cost a day of measurements (eth_call p99 tripled while an untouched client moved 2%).
+DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-false}"
 if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION" != "true" ]]; then
   echo "::error::DB_ISOLATION_ALL=direct mutates the shared snapshot; use 'copy', or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot"; exit 1
 fi
-DB_ISOLATION="${DB_ISOLATION_ALL:-overlay}"
+# reth's DB is a single large mdbx.dat, and its startup write forces overlayfs to copy the whole file
+# up before the node opens (~200 s on the mainnet set, and the copy has to fit on the box), so reth
+# runs `direct` — a read-write bind mount of its own set. That set is reth-only; the refusal above
+# exists because the *Nethermind* sets are shared with expb.
+db_isolation_for() {
+  if [[ -n "$DB_ISOLATION_ALL" ]]; then printf '%s' "$DB_ISOLATION_ALL"; return; fi
+  case "$1" in
+    reth) printf 'direct' ;;
+    *)    printf 'overlay' ;;
+  esac
+}
 
 # $1 config $2 rps $3 duration $4 cell dir $5 ctype $6 label [$7 corpus file] [$8 node container to sample]
 run_cell() {
@@ -336,10 +387,13 @@ for entry in "${schedule[@]}"; do
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
-  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${SNAPSHOT_PATH}, head=${SNAPSHOT_BLOCK})"
-  if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" DB_SOURCE="$SNAPSHOT_PATH" DB_ISOLATION="$DB_ISOLATION" \
-       SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" JSONRPC_MODULES="$JSONRPC_MODULES" \
-       LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+  snap="$(snap_path "$ctype")"; iso="$(db_isolation_for "$ctype")"
+  echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${snap}, isolation=${iso}, head=${SNAPSHOT_BLOCK})"
+  if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" \
+       DB_SOURCE="$snap" DB_ISOLATION="$iso" \
+       SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" \
+       JSONRPC_MODULES="$JSONRPC_MODULES" LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" \
+       ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        NODE_ENV_VARS="${NODE_ENV_VARS:-}${arm_env:+ $arm_env}" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" "$here/start-node.sh"; then
