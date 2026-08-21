@@ -414,7 +414,9 @@ public class Eth72ProtocolHandler(
             bool cellAnnouncementBackedOff = supportsBlobs && IsCellAnnouncementBackedOff(hash.ValueHash256);
             if (_blobSupportEnabled && supportsBlobs && !cellAnnouncementBackedOff)
             {
-                if (!_sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, announcementMask))
+                bool recorded = _sparseBlobPoolPeerRegistry.RecordAnnouncement(this, hash, announcementMask);
+                if (!recorded
+                    && (!_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask localMask) || !localMask.IsFull))
                 {
                     continue;
                 }
@@ -1676,6 +1678,11 @@ public class Eth72ProtocolHandler(
             return tx.GetLength();
         }
 
+        if (tx.GetProofVersion() is ProofVersion.V0)
+        {
+            return tx.GetLength();
+        }
+
         int consensusEncodingSize = tx is LightTransaction lightTx
             ? lightTx.GetConsensusEncodingSize()
             : tx.GetLength(shouldCountBlobs: false);
@@ -1742,7 +1749,8 @@ public class Eth72ProtocolHandler(
 
     private static Transaction ElideBlobPayload(Transaction tx)
     {
-        if (!tx.SupportsBlobs || tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+        if (!tx.SupportsBlobs
+            || tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
         {
             return tx;
         }

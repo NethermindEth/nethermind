@@ -120,7 +120,13 @@ public class LightTransaction : Transaction
     public BlobCellMask BlobCellMask
     {
         get => Volatile.Read(ref _blobCellMask)?.Value ?? default;
-        set => Volatile.Write(ref _blobCellMask, new StrongBox<BlobCellMask>(value));
+        private set => Volatile.Write(ref _blobCellMask, new StrongBox<BlobCellMask>(value));
+    }
+
+    internal void UpdateBlobPoolMetadata(BlobCellMask blobCellMask, int networkSize)
+    {
+        _size = networkSize;
+        BlobCellMask = blobCellMask;
     }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;

@@ -327,6 +327,21 @@ public class Eth68ProtocolHandlerTests
         _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void should_announce_completed_blob_tx_after_skipping_sparse_version(bool sendBatch)
+    {
+        Transaction fullTx = BuildFullBlobTransaction();
+        Transaction sparseTx = BuildSparseBlobTransaction(fullTx);
+
+        SendTransaction(sparseTx, sendBatch);
+        _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+
+        SendTransaction(fullTx, sendBatch);
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m =>
+            m.Hashes.Count == 1 && m.Hashes[0] == fullTx.Hash));
+    }
+
     [Test]
     public async Task should_not_serve_sparse_blob_tx_to_eth68_peer()
     {
@@ -630,14 +645,33 @@ public class Eth68ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
 
-    private static Transaction BuildSparseBlobTransaction()
+    private static Transaction BuildFullBlobTransaction() => Build.A.Transaction
+        .WithNonce(0UL)
+        .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+        .SignedAndResolved()
+        .TestObject;
+
+    private static Transaction BuildSparseBlobTransaction() => BuildSparseBlobTransaction(BuildFullBlobTransaction());
+
+    private static Transaction BuildSparseBlobTransaction(Transaction tx)
     {
-        Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields(spec: Osaka.Instance).SignedAndResolved().TestObject;
         Transaction sparseTx = new();
         tx.CopyTo(sparseTx, copyHash: true);
         sparseTx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with { Blobs = [] };
         sparseTx.ClearLengthCache();
         return sparseTx;
+    }
+
+    private void SendTransaction(Transaction tx, bool sendBatch)
+    {
+        if (sendBatch)
+        {
+            _handler.SendNewTransactions([tx], sendFullTx: false);
+        }
+        else
+        {
+            _handler.SendNewTransaction(tx);
+        }
     }
 
     private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
