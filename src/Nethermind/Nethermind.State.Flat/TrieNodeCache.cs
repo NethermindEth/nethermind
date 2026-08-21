@@ -135,6 +135,13 @@ public sealed class TrieNodeCache : ITrieNodeCache
             {
                 if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
             }
+
+            (int hashCode, TrieNode? node)[] missShard = transientResource.MissNodes.Shards[i];
+            for (int j = 0; j < missShard.Length; j++)
+            {
+                if (missShard[j].node is { NodeType: not NodeType.Unknown } resolved)
+                    AddToCacheWithHashCode(i, missShard[j].hashCode, resolved.CloneForSharedCache());
+            }
         });
 
         long currentTotalMemory = 0;

@@ -907,6 +907,24 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
+        /// <summary>
+        /// Returns a copy safe to publish into a node cache shared with concurrent readers of this instance.
+        /// </summary>
+        /// <remarks>
+        /// The copy owns its own <see cref="INodeData"/>, so pruning it (which rewrites child slots via
+        /// <see cref="UnresolveChild"/>) never mutates the slots of the instance a live trie still holds.
+        /// <see cref="Clone"/> alone is not enough: it drops <see cref="Keccak"/> and resets the flags, so the
+        /// key and the sealed/persisted state are carried over here to make the copy a valid cache entry.
+        /// </remarks>
+        public TrieNode CloneForSharedCache()
+        {
+            TrieNode trieNode = Clone();
+            trieNode.Keccak = Keccak;
+            if (!IsDirty) trieNode.Seal();
+            trieNode.IsPersisted = IsPersisted;
+            return trieNode;
+        }
+
         public TrieNode CloneWithChangedValue(CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();

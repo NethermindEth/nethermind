@@ -167,6 +167,67 @@ public class TrieNodeCacheTests
     }
 
     [Test]
+    public void Add_PromotesResolvedWarmerMiss()
+    {
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([7, 8, 9]);
+
+        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        transientResource.GetOrAddMissStateNode(in path, new TrieNode(NodeType.Leaf, hash));
+
+        _cache.Add(transientResource);
+
+        Assert.That(_cache.TryGet(null, in path, hash, out TrieNode? retrieved), Is.True);
+        Assert.That(retrieved!.Keccak, Is.EqualTo(hash));
+    }
+
+    [Test]
+    public void Add_DoesNotPromoteUnresolvedWarmerMiss()
+    {
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([7, 8, 9]);
+
+        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        transientResource.GetOrAddMissStateNode(in path, new TrieNode(NodeType.Unknown, hash));
+
+        _cache.Add(transientResource);
+
+        Assert.That(_cache.TryGet(null, in path, hash, out _), Is.False);
+    }
+
+    [Test]
+    public void Add_PromotesResolvedStorageWarmerMiss()
+    {
+        Hash256 address = Keccak.Compute([0xaa, 0xbb]);
+        TreePath path = TreePath.FromHexString("1234");
+        Hash256 hash = Keccak.Compute([7, 8, 9]);
+
+        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        transientResource.GetOrAddMissStorageNode(address, in path, new TrieNode(NodeType.Branch, hash));
+
+        _cache.Add(transientResource);
+
+        Assert.That(_cache.TryGet(address, in path, hash, out _), Is.True);
+    }
+
+    [Test]
+    public void Add_PromotesResolvedMissAsDetachedCopy()
+    {
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([7, 8, 9]);
+        TrieNode source = new(NodeType.Leaf, hash);
+
+        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        transientResource.GetOrAddMissStateNode(in path, source);
+
+        _cache.Add(transientResource);
+
+        Assert.That(_cache.TryGet(null, in path, hash, out TrieNode? cached), Is.True);
+        Assert.That(cached, Is.Not.SameAs(source));
+        Assert.That(cached!.Keccak, Is.EqualTo(hash));
+    }
+
+    [Test]
     public void TryGet_ReturnsNotFound_WhenHashDoesNotMatch()
     {
         TreePath path = TreePath.FromHexString("abcd");

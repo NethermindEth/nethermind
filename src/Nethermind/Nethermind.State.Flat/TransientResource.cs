@@ -35,9 +35,11 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
 
     /// <summary>
-    /// The trie warmer's negative cache: paths whose in-memory lookup missed, keyed like <see cref="Nodes"/> but
-    /// holding only unresolved placeholders. No live read consults it (live reads use <see cref="Nodes"/> only) and
-    /// <see cref="TrieNodeCache.Add"/> never promotes it into the shared <see cref="TrieNodeCache"/>.
+    /// The trie warmer's negative cache: paths whose in-memory lookup missed, keyed like <see cref="Nodes"/>. Each
+    /// entry starts as an unresolved placeholder that the warm traversal resolves in place from disk. No live read
+    /// consults it (live reads use <see cref="Nodes"/> only), so an unresolved placeholder can never reach a live
+    /// read; <see cref="TrieNodeCache.Add"/> promotes only the resolved entries, and only as detached copies
+    /// (see <see cref="TrieNode.CloneForSharedCache"/>), which is what carries the warming across blocks.
     /// </summary>
     public TrieNodeCache.ChildCache MissNodes = new(size.NodesCacheSize);
 
