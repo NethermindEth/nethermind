@@ -55,8 +55,12 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        // Decodes with the default RlpLimit item cap; preserved for existing callers.
+        public static RlpByteArrayList DecodeRlpByteArrayList(this IByteBuffer byteBuffer) =>
+            DecodeRlpByteArrayList(byteBuffer, null);
+
         /// <param name="limit">Caps the decoded item count. See <see cref="RlpByteArrayList.DecodeList"/>.</param>
-        public static RlpByteArrayList DecodeRlpByteArrayList(this IByteBuffer byteBuffer, RlpLimit? limit = null)
+        public static RlpByteArrayList DecodeRlpByteArrayList(this IByteBuffer byteBuffer, RlpLimit? limit)
         {
             NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             RlpReader ctx = new(memoryOwner.Memory.Span);

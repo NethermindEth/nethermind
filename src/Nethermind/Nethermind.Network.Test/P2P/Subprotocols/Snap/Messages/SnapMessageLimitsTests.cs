@@ -8,6 +8,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages;
@@ -31,16 +32,18 @@ public class SnapMessageLimitsTests
     }
 
     /// <summary>
-    /// The request-bounded response caps must stay above the largest request this client issues,
-    /// or a valid response is rejected and its peer disconnected and banned.
+    /// Response caps must stay above every request this client issues, or a valid response is rejected
+    /// and its peer disconnected and banned.
     /// </summary>
     [Test]
     public void Request_bounded_response_caps_accommodate_our_largest_request()
     {
         using (Assert.EnterMultipleScope())
         {
+            // Trie nodes are requested by state sync only; byte codes by both state and snap sync.
             Assert.That(SnapMessageLimits.MaxResponseTrieNodes, Is.GreaterThanOrEqualTo(TreeSync.MaxRequestSize));
             Assert.That(SnapMessageLimits.MaxRequestHashes, Is.GreaterThanOrEqualTo(TreeSync.MaxRequestSize));
+            Assert.That(SnapMessageLimits.MaxRequestHashes, Is.GreaterThanOrEqualTo(ProgressTracker.CODES_BATCH_SIZE));
         }
     }
 
