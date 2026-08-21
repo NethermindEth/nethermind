@@ -1486,19 +1486,34 @@ public class FrameTxProcessorTests
     }
 
     /// <summary>A precompile that rejects its input fails the frame that targeted it.</summary>
-    /// <remarks>The rejection is an exceptional halt, so the frame forfeits its whole gas limit.</remarks>
-    [Test]
-    public void Execute_FrameTargetsPrecompileThatRejectsItsInput_FailsTheFrame()
+    /// <remarks>The rejection is an exceptional halt, so the frame forfeits its whole gas limit. In a
+    /// <c>VERIFY</c> frame that halt invalidates the transaction, which then reports no receipts at all.</remarks>
+    [TestCase(TxFrame.ModeDefault, TestName = "Execute_FrameTargetsPrecompileThatRejectsItsInput_FailsTheFrame(DEFAULT)")]
+    [TestCase(TxFrame.ModeVerify, TestName = "Execute_FrameTargetsPrecompileThatRejectsItsInput_FailsTheFrame(VERIFY)")]
+    public void Execute_FrameTargetsPrecompileThatRejectsItsInput_FailsTheFrame(byte mode)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         byte[] notOnTheCurve = new byte[128];
         notOnTheCurve.AsSpan().Fill(0xff);
 
         FrameReceiptTracer tracer = new();
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: BN254AddPrecompile.Address, data: notOnTheCurve));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(mode, target: BN254AddPrecompile.Address, data: notOnTheCurve));
 
-        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+        TransactionResult result = Process(tx, tracer: tracer);
 
+        if (mode == TxFrame.ModeVerify)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.False);
+                Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"),
+                    "the halt invalidates the whole transaction, not just the frame that took it");
+            }
+
+            return;
+        }
+
+        Assert.That(result.TransactionExecuted, Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));

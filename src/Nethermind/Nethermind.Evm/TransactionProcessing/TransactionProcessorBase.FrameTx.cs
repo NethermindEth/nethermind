@@ -769,8 +769,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        // A precompile dispatches in every mode, so default code is left to a VERIFY frame's codeless
-        // target. The repository is what dispatches the frame, so it decides what counts as a precompile.
+        // EIP-8141: a precompile dispatches in every mode, leaving default code to a VERIFY frame's codeless
+        // non-precompile target. The repository decides what is a precompile, being what dispatches the frame.
         if (frame.Mode == TxFrame.ModeVerify
             && _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null
             && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
