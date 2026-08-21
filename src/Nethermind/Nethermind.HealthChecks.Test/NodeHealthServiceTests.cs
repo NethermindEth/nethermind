@@ -59,7 +59,7 @@ public class NodeHealthServiceTests
             blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
         }
 
-        IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, Substitute.For<ISyncPointers>(), syncConfig, Substitute.For<ISyncModeSelector>(), Substitute.For<ISyncProgressResolver>(), LimboLogs.Instance);
+        IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, Substitute.For<ISyncPointers>(), syncConfig, Substitute.For<ISyncModeSelector>(), Substitute.For<ISyncProgressResolver>(), No.BeaconSync, LimboLogs.Instance);
         IClHealthTracker tracker = Substitute.For<IClHealthTracker>();
         NodeHealthService nodeHealthService =
             new(syncServer, blockchainProcessor, blockProducerRunner, new HealthChecksConfig(),
@@ -96,7 +96,7 @@ public class NodeHealthServiceTests
         }
 
         IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, Substitute.For<ISyncPointers>(),
-            new SyncConfig(), syncModeSelector, Substitute.For<ISyncProgressResolver>(), new TestLogManager());
+            new SyncConfig(), syncModeSelector, Substitute.For<ISyncProgressResolver>(), No.BeaconSync, new TestLogManager());
         IClHealthTracker tracker = Substitute.For<IClHealthTracker>();
         tracker.CheckClAlive().Returns(test.ClAlive);
         NodeHealthService nodeHealthService =

@@ -695,7 +695,7 @@ internal static class TestRpcBlockchainExt
             blockchain.SpecProvider,
             blockchain.GasPriceOracle,
             new EthSyncingInfo(blockchain.BlockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
-                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), blockchain.LogManager),
+                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), No.BeaconSync, blockchain.LogManager),
             blockchain.FeeHistoryOracle ??
             new FeeHistoryOracle(blockchain.BlockTree, blockchain.ReceiptStorage, blockchain.SpecProvider),
             blockchain.ProtocolsManager,
