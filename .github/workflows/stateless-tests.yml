@@ -22,10 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
 
       - name: Build Nethermind
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
@@ -48,35 +48,35 @@ jobs:
       matrix:
         include:
           - input: 25526356.ssz
-            hash: 5822695902784ea16c68f3becbf1fc53650cd2289a28d6da0e60a8ebddeba05e
-            output: 0c19e14cfaca03f19c7f7ffe3b12063ce1b18d933446038ebf244e26934221e5
+            hash: 93dcf5b1b46c811371e26e99f975bb2e4e6294717abc2d050320839bd855233c
+            output: 018cc34e1eb14c42412dc26aeca8e7e1bf540f216753c7431568985b66ecca1f
           - input: 25532382.ssz
-            hash: b16c95ce92f518bbdbc62f331457d936f46442befd6aececc8cbe726e52b5935
-            output: d07954628423c7185ea21c81b41ec4678c4dd51c86347397ddb3f8beb7be3905
+            hash: 1706a8838f8cbb36f78bfdca3d83f8c9779a06dc0e50541172f099b9107c6a2a
+            output: d38ffa0643d60c76a25c4ab4ffeeb40d99f2dbedf240b3854b23a9d50233a833
           - input: 25532442.ssz
-            hash: 26896435247a3e69c5917ea623aa8908951922e7acfb54b1e13f6628adcadc8b
-            output: 491ccd71fe841cc88a08d8ae99b6d088c3358b95abca37cfca6faeea3947b846
+            hash: d226fd9a75388fa455e305da180cf6637f4663b9bb64f56a92800da97e8bcb0c
+            output: a88d5bd033c480258a436756fc8949313faf557deb9dc5dbe912ae7865d5d1f5
           - input: 25532454.ssz
-            hash: f5012e7e8324709b4c415f78bcc2542cca6db045f1b9a7856c59a8cd4c422c43
-            output: 43a91651e029b7f09f8f10a014db4afc497ebf09ad6b32756b66ff29cac46ef3
+            hash: d75dc30142d089ccdcc226d61e1a4f496f329fc71dd188d87fec9857ef483fa7
+            output: efbd3959d821214a3e6f8342548a0574e6eca68958c2ddae579921b2c6ccdc59
           - input: 25532471.ssz
-            hash: a0225bbbdb2a7b12e68ac1d1e8bcaabce297c13ac0237fd8d67b69678bc3bff3
-            output: 1b1e03db92e8ba35fdb356206548ceb124bf8e8b9d8d0bbd769c8eedd725ce64
+            hash: 315dce051c8509c204c68d99c3ea9790e1369aa1e29838428c7cc9a86caff498
+            output: 03a85934149babe2bb198c8f9aed24abbdad3eb1e959ff62249a20e0798aaef6
           - input: 25532480.ssz
-            hash: ec1c24bdb687c95b5e4c53ca064995ee8be22467f59fe36d2dea052dd6412d57
-            output: ab8b8c21e69e87f9dc7d766b6d04829e99e64f1e3f9b838208b1a7480b1b55c3
+            hash: e80386d5dc016a4b63bc6c24bf89ab636995c335dfcfdbea4df3554251c341d4
+            output: 0bdd918dd79095dd95e5c68657ed418dee6043e4e4a1d5d5974d4824e24be8f7
           - input: 25532553.ssz
-            hash: 4fc6a2e66562523bb3b757d5d0691cafabd1b24d237a51b78988bb63c507f223
-            output: 2fc28f0d034d94aeebaa168f3bb080726f64b4d9edf6864f379527145c5b1c21
+            hash: 7c2ec0703bb1fba9760d9f9f9ff0c0409bf9bd52f3b3c0d166cf2f55f0f5ff45
+            output: 9ffd288195959be5fc9bb414b8cd83968a1a653234e25811693950afcfcda880
           - input: 25532642.ssz
-            hash: c4255a01122dd7ff5d4bcb3d466d4bf3b714088483505ed8e2390797e17ee62e
-            output: 495a565c9aef290d3fe1f4f9605105eeb67cd8b42941de82a40e4f02644380a0
+            hash: c3d82df9b4a68c0348ffb003fd5e8d5e3d45de7fcda5b7f6e4e4fdc64a33c2db
+            output: 0a7fe08924c2e0feaeccfdf7541f80333cfe687f8be7c73bb4fbc88c27db6159
           - input: 25532711.ssz
-            hash: 1bb5815b03b8d2b47dc4081a8c11fdf763c4ae6414f91c19f7a52d7eb0bf0f8f
-            output: 49f1cd340014da0d021f3a2d00853ff7591dc0cacd5ecab174e863d6fc60ef0c
+            hash: 19e76df2e2c4439e1dbec2ab075560d4e17817c2194deb119097ec1fae28331d
+            output: adf8830ca4fc0fc93d4e0968d84a6a4007081b67bbe6de68d3d6c177f2e812dd
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download guest binary
         uses: actions/download-artifact@v8
@@ -87,7 +87,7 @@ jobs:
       - name: Download input
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
         run: |
-          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260714/${{ matrix.input }}" \
+          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${{ matrix.input }}" \
             -o "${{ matrix.input }}"
           echo "${{ matrix.hash }}  ${{ matrix.input }}" | sha256sum --status -c - || \
             { echo "::error::Checksum failed"; exit 1; }
@@ -97,7 +97,7 @@ jobs:
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: |
           set -euo pipefail
-          suffix=012500000001000000000000000c00000004000000080000000800000057b05d6900000000
+          suffix=0101000000000000000100
           make run INPUT="${{ matrix.input }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
           grep -q "${{ matrix.output }}$suffix" "$RUNNER_TEMP/run.log" || \
             { echo "::error::Output mismatch"; exit 1; }
