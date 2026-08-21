@@ -10,7 +10,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rpc-bench/lib.sh
 source "$HERE/lib.sh"
 
-: "${DB_SOURCE:?path to the pristine client datadir snapshot (e.g. /mnt/sda/nethermind-flat-snapshot)}"
+: "${DB_SOURCE:?path to the pristine client datadir snapshot (e.g. /data/nethermind/nethermind-flat-25490000)}"
 : "${SCRATCH_ROOT:?writable scratch root on the same large disk as the snapshot}"
 : "${STATE_DIR:?directory to persist node state for stop-node.sh}"
 
@@ -299,7 +299,7 @@ fi
 # node_args are passed as the container command.
 
 # 4) Start the node.
-docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Starting $CLIENT container '$CONTAINER_NAME'..."
 log "  node args: ${node_args[*]}"
 # ${arr[@]+...} keeps the empty-array expansion safe under set -u on bash < 4.4.
