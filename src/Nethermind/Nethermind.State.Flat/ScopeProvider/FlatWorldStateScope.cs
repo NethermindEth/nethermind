@@ -36,6 +36,7 @@ public sealed class FlatWorldStateScope :
     // it. The scope offers its generation to the retention cache at dispose only while true, so an
     // aborted (mid-batch or failed) block never admits a candidate that does not match a root.
     private bool _lastCommitClean;
+    private readonly bool _trieless;
 
     private readonly ConcurrencyController _concurrencyQuota;
     // Diagnostic Patricia cross-check of the sparse root; non-null only under VerifyWithTrie.
@@ -54,10 +55,14 @@ public sealed class FlatWorldStateScope :
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
+    private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
+
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
 
     internal FlatSparseTrieSession SparseSession { get; }
 
+    // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
+    internal bool Trieless => _trieless;
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -114,6 +119,7 @@ public sealed class FlatWorldStateScope :
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
+        _trieless = snapshotBundle.IsHistorical;
     }
 
     public void Dispose()
@@ -149,6 +155,25 @@ public sealed class FlatWorldStateScope :
         _hintBalTask = null;
     }
 
+    private bool NeedsStateTrieWarmup(Address address)
+    {
+        ReadOnlyBlockAccessList? bal = _warmupWriteSet;
+        return bal is null || bal.GetAccountChanges(address)?.HasStateChanges == true;
+    }
+
+    private void QueueStateTrieWarmup(Address address, int sequenceId)
+    {
+        if (!NeedsStateTrieWarmup(address)) return;
+
+        // Count the job before it can run: the warmer decrements on completion, and a job that
+        // finished before the increment would let the drain loop return with warmups still in flight.
+        Interlocked.Increment(ref _outstandingWarmups);
+        if (!_warmer.PushAddressJob(this, address, sequenceId))
+        {
+            Interlocked.Decrement(ref _outstandingWarmups);
+        }
+    }
+
     // Exposed for tests to observe when the wait loop is entered.
     internal Action? OnWaitingForWarmups;
 
@@ -176,6 +201,9 @@ public sealed class FlatWorldStateScope :
 
     public void UpdateRootHash()
     {
+        // A history-backed scope maintains no trie, so there is no root to recompute.
+        if (_trieless) return;
+
         PauseAndDrainPrewarmer();
         SparseSession.UpdateRootHash();
 
@@ -202,7 +230,9 @@ public sealed class FlatWorldStateScope :
 
         HintGet(address, account, promote: !isInCurrentSnapshot);
 
-        if (_configuration.VerifyWithTrie)
+        // A trie-less (history-backed) scope has no trie to verify against — the reader throws on trie-node access,
+        // and a historical value verified against the current trie would be wrong anyway.
+        if (_configuration.VerifyWithTrie && !_trieless)
         {
             Account? accTrie = _stateTree!.Get(address);
             if (accTrie != account)
@@ -220,29 +250,20 @@ public sealed class FlatWorldStateScope :
     {
         if (promote) _snapshotBundle.PromoteAccount(address, account);
         if (_snapshotBundle.ShouldQueuePrewarm(address))
-        {
-            QueueAddressWarmup(address);
-        }
+            QueueStateTrieWarmup(address, _hintSequenceId);
     }
 
-    private void QueueAddressWarmup(Address address)
-    {
-        Interlocked.Increment(ref _outstandingWarmups);
-        if (!_warmer.PushAddressJob(this, address, _hintSequenceId))
-        {
-            Interlocked.Decrement(ref _outstandingWarmups);
-        }
-    }
-
+    // Not reentrant: cancels and replaces the previous hint task unguarded; call only from the block-processing thread.
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
+        CancelHintBal();
+
         int accountCount = bal.AccountChanges.Count;
+        _warmupWriteSet = accountCount == 0 ? null : bal;
         if (accountCount == 0) return Task.CompletedTask;
 
         // Copy the span into a pooled array so the Task.Run body can capture it.
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
-
-        CancelHintBal();
 
         _hintBalCts = new CancellationTokenSource();
         CancellationToken token = _hintBalCts.Token;
@@ -375,7 +396,7 @@ public sealed class FlatWorldStateScope :
             {
                 accountChanges.Dispose();
             }
-        }, token);
+        });
     }
 
     private void LogBalPrefetchFailure(string target, Exception ex)
@@ -478,9 +499,7 @@ public sealed class FlatWorldStateScope :
         // The managed Address is materialized only after the dedupe bloom passes, so the
         // allocation happens at most once per account per block.
         if (_snapshotBundle.ShouldQueuePrewarm(address))
-        {
-            QueueAddressWarmup(address.ToAddress());
-        }
+            QueueStateTrieWarmup(address.ToAddress(), _hintSequenceId);
     }
 
     public void HintWarmSlot(in ValueAddress address, in UInt256 index)
@@ -592,7 +611,8 @@ public sealed class FlatWorldStateScope :
             }
         }
 
-        SparseSession.Publish();
+        // A history-backed scope maintains no trie, so there is nothing to publish.
+        if (!_trieless) SparseSession.Publish();
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
@@ -610,7 +630,7 @@ public sealed class FlatWorldStateScope :
             else
             {
                 newSnapshot?.Dispose();
-                cachedResource?.Dispose();
+                cachedResource?.ReleaseLease();
             }
         }
 
@@ -696,9 +716,11 @@ public sealed class FlatWorldStateScope :
 
                 OnAccountUpdated = null;
 
-                scope.SparseSession.ApplyStateUpdates(_dirtyAccounts);
+                // The per-account flat writes above already carry intra-block state for subsequent txs; only a
+                // normal scope additionally bulk-applies the dirty accounts into the sparse trie.
+                if (!scope._trieless) scope.SparseSession.ApplyStateUpdates(_dirtyAccounts);
 
-                if (scope._configuration.VerifyWithTrie)
+                if (scope._configuration.VerifyWithTrie && !scope._trieless)
                 {
                     using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree!.BeginSet(_dirtyAccounts.Count);
                     foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)

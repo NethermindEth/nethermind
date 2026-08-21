@@ -155,7 +155,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is { } newNode) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
+                if (shard[j].node is { } newNode && !IsPlaceholder(newNode)) AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
             }
         });
 
@@ -190,6 +190,14 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
     }
+
+    /// <summary>
+    /// Identifies a placeholder trie node: <see cref="NodeType.Unknown"/> with empty RLP, carrying only a hash. The
+    /// trie warmer's negative cache and the trie commit path both produce it; it is not an authoritative node, so it
+    /// must neither enter this shared cache nor satisfy a live read - callers fall through to the snapshots or
+    /// persistence lookup instead.
+    /// </summary>
+    internal static bool IsPlaceholder(TrieNode node) => node.NodeType == NodeType.Unknown && node.FullRlp.Length == 0;
 
     /// <summary>
     /// Clears all cached trie nodes.
@@ -316,6 +324,26 @@ public sealed class TrieNodeCache : ITrieNodeCache
             _count++; // Track count
 
             _shards[shard][idx] = (hashCode, node);
+        }
+
+        public TrieNode GetOrAdd(Hash256? address, in TreePath path, TrieNode trieNode)
+        {
+            (int shard, int hashCode) = GetShardAndHashCode(address, path);
+            int idx = hashCode & _mask;
+
+            ref (int hashCode, TrieNode? node) entry = ref _shards[shard][idx];
+            TrieNode? maybeNode = entry.node; // Store it to prevent concurrency issue
+            if (maybeNode is not null)
+            {
+                if (maybeNode.Keccak == trieNode.Keccak) return maybeNode;
+            }
+            else
+            {
+                _count++; // Track count
+            }
+
+            entry = (hashCode, trieNode);
+            return trieNode;
         }
     }
 }

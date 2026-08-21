@@ -126,7 +126,12 @@ public abstract class BlockchainTestBase
         IConfigProvider configProvider = new ConfigProvider();
         // Patricia by default (the production default); opt into the flat state layout with
         // TEST_USE_FLAT=1, mirroring TestBlockchain.UseFlatDb.
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.Enabled = UseFlatDb;
+        // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
+        // and a fire-and-forget background convert from one test can race another test's files. Long finality is
+        // irrelevant at EF-test chain lengths, so keep the on-disk tier off.
+        flatDbConfig.EnableLongFinality = false;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
         blocksConfig.PreWarmStateConcurrency = 0;
         blocksConfig.PreWarming = PreWarmMode.None;
@@ -573,7 +578,9 @@ public abstract class BlockchainTestBase
         ("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS", "max fee per gas less than block base fee"),
         ("TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS", "InvalidMaxPriorityFeePerGas: Cannot be higher than maxFeePerGas"),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "Block gas limit exceeded"),
+        ("TransactionException.NONCE_TOO_BIG", "NonceTooHigh"),
         ("TransactionException.NONCE_IS_MAX", "NonceTooHigh"),
+        ("TransactionException.NONCE_OVERFLOW", "NonceTooWide"),
         ("TransactionException.INITCODE_SIZE_EXCEEDED", "max initcode size exceeded"),
         ("TransactionException.NONCE_MISMATCH_TOO_LOW", "nonce too low"),
         ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "nonce too high"),

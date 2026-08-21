@@ -57,7 +57,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
-    internal ReadOptions? _readAheadReadOptions = null;
+    private ReadOptions? _readAheadReadOptions;
+    private ReadOptions _seekReadOptions = null!;
 
     internal DbOptions? DbOptions { get; private set; }
     private readonly IRocksDbConfigFactory _rocksDbConfigFactory;
@@ -92,11 +93,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
-    internal CacheLinePaddedLong _allocatedSpan;
-    private CacheLinePaddedLong _totalReads;
+    // Striped: every concurrent reader (RPC workers, prewarm workers) updates these per Get, and
+    // a single shared word per DB serializes them under load.
+    internal readonly StripedLong _allocatedSpan = new();
+    private readonly StripedLong _totalReads = new();
     private CacheLinePaddedLong _totalWrites;
 
-    private readonly IteratorManager _iteratorManager;
+    private readonly DisposableLazy<IteratorManager>? _iteratorManager;
+    private readonly DisposableLazy<IteratorManager> _seekIteratorManager;
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
@@ -122,7 +126,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _rocksDbConfigFactory = rocksDbConfigFactory;
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
-        _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
+        _iteratorManager = CreateLazyReadAheadIteratorManager(null);
+        _seekIteratorManager = CreateLazySeekIteratorManager(null);
 
         _reader = new RocksDbReader(this, CreateReadOptions, _iteratorManager, null);
 
@@ -358,7 +363,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem.File.Delete(corruptMarker);
     }
 
-    protected internal void UpdateReadMetrics() => Interlocked.Increment(ref _totalReads.Value);
+    protected internal void UpdateReadMetrics() => _totalReads.Increment();
 
     protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
 
@@ -377,7 +382,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 CacheSize = 0,
                 IndexSize = 0,
                 MemtableSize = 0,
-                TotalReads = _totalReads.Value,
+                TotalReads = _totalReads.Sum,
                 TotalWrites = _totalWrites.Value,
             };
         }
@@ -387,7 +392,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             CacheSize = GetCacheSize(),
             IndexSize = GetIndexSize(),
             MemtableSize = GetMemtableSize(),
-            TotalReads = _totalReads.Value,
+            TotalReads = _totalReads.Sum,
             TotalWrites = _totalWrites.Value,
         };
     }
@@ -713,6 +718,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? 256UL.KiB);
             _readAheadReadOptions.SetTailing(true);
         }
+
+        // A pooled seek iterator outlives the read that rented it, so it must see writes made after its creation.
+        // Tailing gives that, at the cost of re-seeking every immutable child whenever a seek goes backwards.
+        // They also don't support SeekForPrev and SeekToLast
+        _seekReadOptions = CreateReadOptions();
+        _seekReadOptions.SetTailing(true);
         #endregion
     }
 
@@ -749,6 +760,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     internal byte[]? GetWithIterator(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags, out bool success)
     {
+        ThrowIfDisposing();
+
         success = true;
 
         using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
@@ -768,6 +781,44 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         success = false;
         return null;
     }
+
+    // Uses a pool of tailing seek iterators: each one reads a live sequence,
+    // so write-batch atomicity is not guaranteed - dirty or phantom reads are possible
+    internal static bool TryGetCeilingWithIterator(
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl, IteratorManager iteratorManager,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+    {
+        keyLength = 0;
+        valueLength = 0;
+
+        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(ReadFlags.None);
+        Iterator iterator = wrapper.Iterator;
+
+        iterator.Seek(lowerBoundIncl);
+        if (!iterator.Valid()) return false;
+
+        // pooled iterator's read options are fixed at creation, so upper bound is a span compare instead of a native iterator bound
+        ReadOnlySpan<byte> key = iterator.GetKeySpan();
+        if (key.SequenceCompareTo(upperBoundExcl) >= 0) return false;
+
+        ReadOnlySpan<byte> value = iterator.GetValueSpan();
+        keyLength = key.Length;
+        valueLength = value.Length;
+        key.TryCopyTo(keyBuffer);
+        value.TryCopyTo(valueBuffer);
+        return true;
+    }
+
+    /// <summary> Pool for calls with <see cref="ReadFlags.HintReadAhead"/> - tailing iterators with large read steps. </summary>
+    internal DisposableLazy<IteratorManager>? CreateLazyReadAheadIteratorManager(ColumnFamilyHandle? cf) =>
+        _readAheadReadOptions is null ? null : CreateLazyIteratorManager(cf, _readAheadReadOptions);
+
+    /// <summary> Pool for ceiling seeks - tailing iterators. </summary>
+    internal DisposableLazy<IteratorManager> CreateLazySeekIteratorManager(ColumnFamilyHandle? cf) =>
+        CreateLazyIteratorManager(cf, _seekReadOptions);
+
+    private DisposableLazy<IteratorManager> CreateLazyIteratorManager(ColumnFamilyHandle? cf, ReadOptions readOptions) =>
+        new(() => new IteratorManager(_db, cf, readOptions));
 
     internal unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions readOptions)
     {
@@ -942,8 +993,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             if (!span.IsNullOrEmpty())
             {
-                Interlocked.Increment(ref _allocatedSpan.Value);
-                GC.AddMemoryPressure(span.Length);
+                _allocatedSpan.Increment();
+                // Pressure hints exist so the GC accounts for sizeable native memory held alive by
+                // managed wrappers. Sub-threshold spans are transient (released within the request)
+                // and each Add/Remove pair mutates GC-global accounting — a contended cost per DB
+                // read under concurrent load. The threshold must match DangerousReleaseMemory.
+                if (span.Length >= GcPressureSpanThreshold) GC.AddMemoryPressure(span.Length);
             }
             return span;
         }
@@ -1038,12 +1093,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    private const int GcPressureSpanThreshold = 16 * 1024;
+
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         if (!span.IsNullOrEmpty())
         {
-            Interlocked.Decrement(ref _allocatedSpan.Value);
-            GC.RemoveMemoryPressure(span.Length);
+            _allocatedSpan.Add(-1);
+            if (span.Length >= GcPressureSpanThreshold) GC.RemoveMemoryPressure(span.Length);
         }
         _db.DangerousReleaseMemory(span);
     }
@@ -1149,6 +1206,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return GetAllValuesCore(ordered);
     }
 
+    // `_isDisposing` check/update is not atomic and concurrent dispose/read calls may still hit a disposed native DB,
+    // yet adding any thread synchronization may affect all readers performance
     internal void ThrowIfDisposing() => ObjectDisposedException.ThrowIf(_isDisposing, this);
 
     private void IteratorSeekToFirstWithErrorHandling(Iterator iterator)
@@ -1476,6 +1535,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public virtual void Compact() => _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
 
+    public virtual void SyncWal()
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        try
+        {
+            _rocksDbNative.rocksdb_flush_wal(_db.Handle, 1);
+        }
+        catch (RocksDbSharpException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
     private void InnerFlush(bool onlyWal)
     {
         try
@@ -1558,7 +1631,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    private void ReleaseUnmanagedResources()
+    protected virtual void ReleaseUnmanagedResources()
     {
         // ReSharper disable once ConstantConditionalAccessQualifier
         // running in finalizer, potentially not fully constructed
@@ -1567,8 +1640,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             batch.Dispose();
         }
 
-        _iteratorManager.Dispose();
+        _iteratorManager?.Dispose();
+        _seekIteratorManager.Dispose();
         _db.Dispose();
+
+        RocksDbReader.DestroyReadOptions(_defaultReadOptions);
+        RocksDbReader.DestroyReadOptions(_hintCacheMissOptions);
+        RocksDbReader.DestroyReadOptions(_readAheadReadOptions);
+        RocksDbReader.DestroyReadOptions(_seekReadOptions);
 
         if (_rowCache.HasValue)
         {
@@ -1843,14 +1922,17 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         private readonly ManagedIterators _readaheadIterators3 = new();
         private readonly RocksDb _rocksDb;
         private readonly ColumnFamilyHandle? _cf;
-        private readonly ReadOptions? _readOptions;
+        private readonly ReadOptions _readOptions;
         private readonly Timer _timer;
+
+        // used to guarantee iterators in timer are not accessed after DB disposal
+        private readonly Lock _disposeLock = new();
         private bool _isDisposed;
 
         // This is about once every two second maybe at max throughput.
         private const int IteratorUsageLimit = 1000000;
 
-        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions? readOptions)
+        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions readOptions)
         {
             _rocksDb = rocksDb;
             _cf = cf;
@@ -1861,20 +1943,35 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         private void OnTimer(object? state)
         {
-            if (_isDisposed) return;
-            _readaheadIterators.ClearIterators();
-            _readaheadIterators2.ClearIterators();
-            _readaheadIterators3.ClearIterators();
+            // Skip the tick instead of stacking up callbacks
+            if (!_disposeLock.TryEnter()) return;
+
+            try
+            {
+                if (_isDisposed) return;
+
+                _readaheadIterators.ClearIterators();
+                _readaheadIterators2.ClearIterators();
+                _readaheadIterators3.ClearIterators();
+            }
+            finally
+            {
+                _disposeLock.Exit();
+            }
         }
 
         public void Dispose()
         {
-            if (_isDisposed) return;
-            _isDisposed = true;
-            _timer.Dispose();
-            _readaheadIterators.DisposeAll();
-            _readaheadIterators2.DisposeAll();
-            _readaheadIterators3.DisposeAll();
+            lock (_disposeLock)
+            {
+                if (_isDisposed) return;
+                _isDisposed = true;
+
+                _timer.Dispose();
+                _readaheadIterators.DisposeAll();
+                _readaheadIterators2.DisposeAll();
+                _readaheadIterators3.DisposeAll();
+            }
         }
 
         public RentWrapper Rent(ReadFlags flags)
@@ -2002,6 +2099,19 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         Iterator iterator = CreateIterator(readOptions, cf);
         return new RocksdbSortedView(iterator, readOptions, iterateLowerBound, iterateUpperBound);
+    }
+
+    public bool TryGetCeiling(
+        scoped ReadOnlySpan<byte> lowerBoundIncl, scoped ReadOnlySpan<byte> upperBoundExcl,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength
+    )
+    {
+        ThrowIfDisposing();
+
+        return TryGetCeilingWithIterator(
+            lowerBoundIncl, upperBoundExcl, _seekIteratorManager.Value,
+            keyBuffer, out keyLength, valueBuffer, out valueLength
+        );
     }
 
     public IKeyValueStoreSnapshot CreateSnapshot()

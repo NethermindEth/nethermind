@@ -214,8 +214,6 @@ internal class SpecialTransactionsTests
                 onlyEncounteredSpecialTx = false;
             }
         }
-
-        Assert.Pass();
     }
 
     [TestCase(false, false)]

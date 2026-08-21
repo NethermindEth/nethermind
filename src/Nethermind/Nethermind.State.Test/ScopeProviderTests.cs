@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -553,6 +554,46 @@ public class ScopeProviderTests(bool useFlat)
         Assert.That(consumerMetrics.PreBlockAccountMisses, Is.EqualTo(1));
         Assert.That(consumerMetrics.PreBlockStorageHits, Is.EqualTo(1));
         Assert.That(consumerMetrics.PreBlockStorageMisses, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Test_PopulatorStorageCapture_SkipsBackingReadWithoutCachingSpeculativeValue()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storage.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = new();
+        PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        using (PreBlockCaches.StorageReadCapture capture = caches.BeginStorageReadCapture(new StrongBox<int>(16)))
+        {
+            using IWorldStateScopeProvider.IScope readScope = populator.BeginScope(baseBlock);
+            IWorldStateScopeProvider.IStorageTree capturedStorageTree = readScope.CreateStorageTree(TestItem.AddressA);
+            Assert.That(capturedStorageTree.Get(1), Is.EqualTo(new byte[] { 1 }));
+            Assert.That(capture.Cells, Does.Contain(cell));
+        }
+
+        Assert.That(caches.StorageCache.TryGetValue(in cell, out _), Is.False);
+        using IWorldStateScopeProvider.IScope uncapturedReadScope = populator.BeginScope(baseBlock);
+        IWorldStateScopeProvider.IStorageTree uncapturedStorageTree = uncapturedReadScope.CreateStorageTree(TestItem.AddressA);
+        Assert.That(uncapturedStorageTree.Get(1), Is.EqualTo(new byte[] { 10, 20 }));
+        Assert.That(caches.StorageCache.TryGetValue(in cell, out byte[] cached), Is.True);
+        Assert.That(cached, Is.EqualTo(new byte[] { 10, 20 }));
     }
 
     [Test]

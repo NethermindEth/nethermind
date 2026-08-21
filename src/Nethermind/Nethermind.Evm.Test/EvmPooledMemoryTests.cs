@@ -102,9 +102,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(result, Is.EqualTo(0UL));
     }
 
+    [TestCase(1024)]
+    [TestCase(4096)]
+    [TestCase(32 * 1024)]
     [TestCase(70 * 1024)]
     [TestCase(2 * 1024 * 1024)]
-    public void Large_pooled_buffer_is_zeroed_on_reuse(int size)
+    public void Pooled_buffer_is_zeroed_on_reuse(int size)
     {
         EvmPooledMemory dirty = new();
         UInt256 zero = UInt256.Zero;
@@ -119,6 +122,64 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(data.Length, Is.EqualTo(size));
         Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
         clean.Dispose();
+    }
+
+    [Test]
+    public void Grow_after_dirty_reuse_preserves_written_prefix_and_zeroes_tail()
+    {
+        const int firstSize = 2048;
+        const int secondSize = 8192;
+
+        EvmPooledMemory dirty = new();
+        Span<byte> pattern = new byte[firstSize];
+        pattern.Fill(0xaa);
+        Assert.That(dirty.TrySave(UInt256.Zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory next = new();
+        try
+        {
+            byte[] firstWord = TestItem.KeccakA.BytesToArray();
+            Assert.That(next.TrySaveWord(UInt256.Zero, firstWord), Is.True);
+
+            UInt256 growOffset = (UInt256)(secondSize - EvmPooledMemory.WordSize);
+            Assert.That(next.TryLoadSpan(in growOffset, (UInt256)EvmPooledMemory.WordSize, out Span<byte> tail), Is.True);
+            Assert.That(tail.ToArray(), Is.EqualTo(new byte[EvmPooledMemory.WordSize]));
+
+            Assert.That(next.TryLoadSpan(UInt256.Zero, (UInt256)EvmPooledMemory.WordSize, out Span<byte> head), Is.True);
+            Assert.That(head.ToArray(), Is.EqualTo(firstWord));
+        }
+        finally
+        {
+            next.Dispose();
+        }
+    }
+
+    [Test]
+    public void GetTrace_slice_past_size_does_not_leak_dirty_bytes()
+    {
+        // Must exceed the 4 KiB RentSlow zero chunk, otherwise the whole buffer is zeroed anyway.
+        const int dirtySize = 32 * 1024;
+        EvmPooledMemory dirty = new();
+        Span<byte> pattern = new byte[dirtySize];
+        pattern.Fill(0xff);
+        Assert.That(dirty.TrySave(UInt256.Zero, pattern), Is.True);
+        dirty.Dispose();
+
+        EvmPooledMemory memory = new();
+        try
+        {
+            // TrySaveWord rents (unlike CalculateMemoryCost), so the dirty buffer is reused with Size = 32.
+            Assert.That(memory.TrySaveWord(UInt256.Zero, new byte[EvmPooledMemory.WordSize]), Is.True);
+
+            TraceMemory trace = memory.GetTrace();
+            Assert.That(trace.Size, Is.EqualTo((ulong)EvmPooledMemory.WordSize));
+            Assert.That(trace.Slice(0, 8 * 1024).ToArray(), Is.EqualTo(new byte[8 * 1024]), "trace leaked dirty tail bytes past Size");
+        }
+        finally
+        {
+            memory.Dispose();
+        }
     }
 
     [Test]
@@ -345,6 +406,35 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         Assert.That(memory.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> first), Is.True);
         Assert.That(first.ToArray(), Is.EqualTo(word), "originally written word must survive re-rent");
+    }
+
+    // Sizes bracket the pooling boundaries: 64 KiB (largest fresh allocation), 256 KiB (largest
+    // thread-cached buffer) and above (shared pools) — every rent source must hand out zeroed-
+    // reading memory even after a deliberately dirtied buffer was recycled through it.
+    [TestCase(64 * 1024 - 32)]
+    [TestCase(64 * 1024)]
+    [TestCase(64 * 1024 + 32)]
+    [TestCase(256 * 1024)]
+    [TestCase(256 * 1024 + 32)]
+    [TestCase(1024 * 1024)]
+    public void Growth_across_pooling_boundaries_reads_zero_and_recycles_clean(int size)
+    {
+        byte[] word = TestItem.KeccakA.BytesToArray();
+
+        EvmPooledMemory original = new();
+        Assert.That(original.TrySaveWord(0, word), Is.True);
+        Assert.That(original.TryLoadSpan((UInt256)(size - EvmPooledMemory.WordSize), (UInt256)EvmPooledMemory.WordSize, out Span<byte> tail), Is.True);
+        Assert.That(tail.ToArray(), Is.EqualTo(new byte[EvmPooledMemory.WordSize]), "grown tail must read as zero");
+        Assert.That(original.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> head), Is.True);
+        Assert.That(head.ToArray(), Is.EqualTo(word), "written word must survive growth");
+        Assert.That(original.TryLoadSpan(0, (UInt256)size, out Span<byte> whole), Is.True);
+        whole.Fill(0xff);
+        original.Dispose();
+
+        EvmPooledMemory recycled = new();
+        Assert.That(recycled.TryLoadSpan(0, (UInt256)size, out Span<byte> reused), Is.True);
+        Assert.That(reused.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "recycled buffer must read as zero");
+        recycled.Dispose();
     }
 
     [TestCaseSource(nameof(ZeroExtendedCopyCases))]

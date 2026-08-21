@@ -49,7 +49,6 @@ public class FlatWorldStateScopeProviderTests
         public SnapshotPooledList ReadOnlySnapshots = new(0);
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
-        public TransientResource? LastCreatedCachedResource { get; set; }
 
         // Retention cache for cache-aware tests that build scopes via CreateRetentionScope.
         public FlatSparseTrieCache SparseCache { get; } = new(512UL.MiB);
@@ -62,9 +61,8 @@ public class FlatWorldStateScopeProviderTests
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
                     .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
-                    .AddSingleton<IFlatDbManager>((ctx) =>
+                    .AddSingleton<IFlatDbManager>(_ =>
                     {
-                        ResourcePool resourcePool = ctx.Resolve<ResourcePool>();
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
                         flatDiff.When(it => it.AddSnapshot(Arg.Any<Snapshot>(), Arg.Any<TransientResource>()))
                             .Do(c =>
@@ -78,11 +76,10 @@ public class FlatWorldStateScopeProviderTests
                                 }
                                 LastCommittedSnapshot = snapshot;
 
-                                if (LastCreatedCachedResource is not null)
-                                {
-                                    resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, LastCreatedCachedResource);
-                                }
-                                LastCreatedCachedResource = transientResource;
+                                // Mirror FlatDbManager.AddSnapshot: returning to the pool directly would recycle
+                                // the resource while a warmer lease is still outstanding, and the resource would
+                                // then be returned a second time when that lease is released.
+                                transientResource.ReleaseLease();
 
                                 // Fail only after the resource bookkeeping so the injected failure
                                 // leaks nothing; the caller still sees the commit throw.
@@ -152,7 +149,6 @@ public class FlatWorldStateScopeProviderTests
             _cancellationTokenSource.Cancel();
 
             LastCommittedSnapshot?.Dispose();
-            if (LastCreatedCachedResource is not null) ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, LastCreatedCachedResource);
 
             SparseCache.Dispose();
             _container?.Dispose();
@@ -2120,7 +2116,7 @@ public class FlatWorldStateScopeProviderTests
         using TestContext ctx = new(trieWarmer: warmer);
         FlatWorldStateScope scope = ctx.Scope;
         CommitOneAccountWithStorage(scope, TestItem.AddressA);
-        int addressJobsBefore = warmer.AddressJobPushes;
+        int addressJobsBefore = warmer.AddressJobPushes.Length;
         int slotJobsBefore = warmer.SlotJobPushes;
         int mpmcSlotJobsBefore = warmer.MpmcSlotJobPushes;
 
@@ -2137,7 +2133,7 @@ public class FlatWorldStateScopeProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.SparseSession.RetainedTrieCount, Is.EqualTo(2));
-            Assert.That(warmer.AddressJobPushes, Is.EqualTo(addressJobsBefore));
+            Assert.That(warmer.AddressJobPushes.Length, Is.EqualTo(addressJobsBefore));
             Assert.That(warmer.SlotJobPushes, Is.EqualTo(slotJobsBefore));
             Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(mpmcSlotJobsBefore));
         }
@@ -2172,11 +2168,216 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(enteredWaitLoop, Is.False);
     }
 
+    private static ReadOnlyBlockAccessList CreateBal(params ReadOnlyAccountChanges[] accounts)
+    {
+        Array.Sort(accounts, static (a, b) => a.Address.Bytes.SequenceCompareTo(b.Address.Bytes));
+        return new ReadOnlyBlockAccessList(accounts, accounts.Length);
+    }
+
+    private static ReadOnlyAccountChanges ReadOnlyAccount(Address address) =>
+        new(address, storageChanges: [], storageReads: [(UInt256)1], balanceChanges: [], nonceChanges: [], codeChanges: []);
+
+    public enum BalWriteKind
+    {
+        Balance,
+        Nonce,
+        Code,
+        Storage,
+    }
+
+    private static ReadOnlyAccountChanges WrittenAccount(Address address, BalWriteKind kind = BalWriteKind.Balance) => kind switch
+    {
+        BalWriteKind.Balance => new(address, storageChanges: [], storageReads: [], balanceChanges: [new BalanceChange(0, UInt256.One)], nonceChanges: [], codeChanges: []),
+        BalWriteKind.Nonce => new(address, storageChanges: [], storageReads: [], balanceChanges: [], nonceChanges: [new NonceChange(0, 1)], codeChanges: []),
+        BalWriteKind.Code => new(address, storageChanges: [], storageReads: [], balanceChanges: [], nonceChanges: [], codeChanges: [new CodeChange(0, [0x00])]),
+        BalWriteKind.Storage => new(address, storageChanges: [new ReadOnlySlotChanges((UInt256)1, [new StorageChange(0, default)])], storageReads: [], balanceChanges: [], nonceChanges: [], codeChanges: []),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    private static TestContext CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer)
+    {
+        warmer = new RecordingTrieWarmer(acceptSlotJob: true, acceptMpmcSlotJob: true);
+        return new TestContext(trieWarmer: warmer);
+    }
+
+    [Test]
+    public async Task HintBal_SkipsAddressWarmup_ForReadOnlyBalAccounts()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+    }
+
+    // Storage-only changes must still warm: the storage-root change rewrites the account leaf.
+    [TestCase(BalWriteKind.Balance)]
+    [TestCase(BalWriteKind.Nonce)]
+    [TestCase(BalWriteKind.Code)]
+    [TestCase(BalWriteKind.Storage)]
+    public async Task HintBal_WarmsAddress_ForEachWriteKind(BalWriteKind kind)
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, kind)));
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+    }
+
+    [Test]
+    public async Task HintBal_WithSink_StillReadsReadOnlyAccounts()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        RecordingBalReaderSink sink = new();
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)), sink);
+
+        Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+    }
+
+    [Test]
+    public async Task HintBal_EmptyBal_ResetsPreviousWriteSet()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
+        await scope.HintBal(CreateBal());
+
+        scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+    }
+
+    [Test]
+    public async Task HintGet_AfterHintBal_SkipsReadOnlyAndUnlistedAccounts()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
+
+        scope.HintGet(TestItem.AddressA, null); // read-only in BAL
+        scope.HintGet(TestItem.AddressC, null); // not in BAL
+        scope.HintGet(TestItem.AddressB, null); // written, but already pushed by HintBal (bloom dedupe)
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+    }
+
+    [Test]
+    public void HintGet_WarmsEverything_WithoutBalHint()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+    }
+
+    [Test]
+    public async Task StartWriteBatch_KeepsBalWarmupFilter()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
+        scope.StartWriteBatch(0).Dispose();
+
+        scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
+    }
+
+    [Test]
+    public async Task HintBal_SecondBal_ReplacesPreviousWriteSet()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        // paused so the first BAL's warmup doesn't bloom-mark AddressA and mask the assert
+        scope._pausePrewarmer = true;
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA)));
+        scope._pausePrewarmer = false;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressB)));
+
+        scope.HintGet(TestItem.AddressA, null);
+
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
+    }
+
+    [Test]
+    public async Task HintWarmAccount_AfterHintBal_SkipsReadOnlyAccounts()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
+    }
+
+    [Test]
+    public void HintWarmAccount_WarmsEverything_WithoutBalHint()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+    }
+
+    private sealed class RecordingBalReaderSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    {
+        private readonly Lock _lock = new();
+        private readonly List<Address> _accountReads = [];
+
+        public Address[] AccountReads
+        {
+            get
+            {
+                lock (_lock) return _accountReads.ToArray();
+            }
+        }
+
+        public void OnAccountRead(Address address, Account? account)
+        {
+            lock (_lock) _accountReads.Add(address);
+        }
+
+        public void OnStorageRead(in StorageCell storageCell, byte[] value) { }
+
+        public bool StillNeeded(Address address, out Account? account)
+        {
+            account = null;
+            return true;
+        }
+
+        public bool StillNeeded(in StorageCell storageCell) => true;
+    }
+
     private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
     {
-        public int AddressJobPushes { get; private set; }
+        private readonly Lock _lock = new();
+        private readonly List<Address> _addressJobPushes = [];
+
         public int SlotJobPushes { get; private set; }
         public int MpmcSlotJobPushes { get; private set; }
+
+        public Address[] AddressJobPushes
+        {
+            get
+            {
+                lock (_lock) return _addressJobPushes.ToArray();
+            }
+        }
 
         public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
         {
@@ -2192,7 +2393,10 @@ public class FlatWorldStateScopeProviderTests
 
         public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
         {
-            AddressJobPushes++;
+            lock (_lock)
+            {
+                if (path is not null) _addressJobPushes.Add(path);
+            }
             return false;
         }
 

@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
@@ -24,8 +25,46 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 {
     public record Size(long PrewarmedAddressSize, int NodesCacheSize);
 
+    // Invariant: the pool return runs exactly once, at refcount zero, so an in-flight trie-warmer
+    // lookup can never overlap Reset/re-rent of this resource.
+    private long _leases = RefCountingLease.Single;
+    private IResourcePool? _returnPool;
+    private ResourcePool.Usage _returnUsage;
+
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
+
+    internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
+    {
+        _returnPool = pool;
+        _returnUsage = usage;
+        Volatile.Write(ref _leases, RefCountingLease.Single);
+    }
+
+    internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
+
+    /// <summary>
+    /// Releases one lease; the final release returns the resource to the pool it was checked out from.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="Dispose"/> (the <c>RefCountingDisposable</c> convention): the pool's
+    /// <c>IDisposable</c> contract reserves <see cref="Dispose"/> for destroying an over-capacity resource
+    /// (freeing the <see cref="BloomFilter"/>), so it cannot double as the return-to-pool path.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The final release found no return pool registered,
+    /// i.e. the resource was not checked out through <see cref="ResourcePool.GetCachedResource"/>.</exception>
+    internal void ReleaseLease()
+    {
+        if (RefCountingLease.ReleaseOnce(ref _leases))
+        {
+            if (_returnPool is null)
+            {
+                throw new InvalidOperationException($"{nameof(TransientResource)} final lease released without a registered return pool");
+            }
+
+            _returnPool.ReturnCachedResource(_returnUsage, this);
+        }
+    }
 
     public Size GetSize() => new(PrewarmedAddresses.Capacity, Nodes.Capacity);
 
@@ -76,11 +115,15 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public bool TryGetStateNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(null, path, in hash, out node);
 
+    public TrieNode GetOrAddStateNode(in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(null, path, trieNode);
+
     public void UpdateStateNode(in TreePath path, TrieNode node) => Nodes.Set(null, path, node);
 
     public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
 
     public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, in hash, out node);
+
+    public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 
     public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);
 }

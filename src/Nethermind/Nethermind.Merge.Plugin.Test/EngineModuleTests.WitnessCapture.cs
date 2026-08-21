@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -13,14 +14,17 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
@@ -489,6 +493,52 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task E2E_witness_is_serialized_as_an_rlp_data_string()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+
+        string response = await RpcTest.TestSerializedRequest(
+            chain.EngineRpcModule,
+            nameof(IEngineRpcModule.engine_newPayloadWithWitnessV5),
+            payload, Array.Empty<Hash256>(), TestItem.KeccakE, requests ?? []);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement result = document.RootElement.GetProperty("result");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.TryGetProperty("executionWitness", out _), Is.False,
+                "JSON uses witness DATA only");
+        }
+
+        RlpReader reader = new(Nethermind.Core.Extensions.Bytes.FromHexString(result.GetProperty("witness").GetString()!));
+        reader.ReadSequenceLength();
+        int headersLength = reader.ReadSequenceLength();
+        int headersEnd = reader.Position + headersLength;
+
+        HeaderDecoder headerDecoder = new();
+        BlockHeader? lastHeader = null;
+        while (reader.Position < headersEnd)
+            lastHeader = headerDecoder.Decode(ref reader);
+
+        int headersPosition = reader.Position;
+        byte[][] codes = reader.DecodeByteArrays();
+        byte[][] state = reader.DecodeByteArrays();
+        reader.CheckEnd();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headersPosition, Is.EqualTo(headersEnd));
+            Assert.That(codes.All(static code => code.Length > 0), Is.True);
+            Assert.That(state, Is.Not.Empty);
+            Assert.That(state.All(static node => node.Length > 0), Is.True);
+            Assert.That(lastHeader?.Number, Is.EqualTo(payload.BlockNumber - 1));
+        }
+    }
+
+    [Test]
     public async Task E2E_non_VALID_response_has_null_witness_and_no_rendezvous_leak()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -657,6 +707,8 @@ public partial class EngineModuleTests
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
+            "the built payload must contain exactly the submitted transactions");
         ResultWrapper<NewPayloadWithWitnessV1Result> result =
             await chain.EngineRpcModule.engine_newPayloadWithWitnessV5(payload, [], TestItem.KeccakE, requests ?? []);
 
@@ -671,9 +723,19 @@ public partial class EngineModuleTests
     {
         if (txs.Length > 0) chain.AddTransactions(txs);
         (ExecutionPayloadV4 payload, byte[][]? requests) = await BuildAmsterdamPayload(chain);
+        Assert.That(payload.Transactions, Has.Length.EqualTo(txs.Length),
+            "the built payload must contain exactly the submitted transactions");
         await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, requests ?? []);
-        await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
+
+        Task txPoolHeadWait = Wait.ForEventCondition<Block>(chain.CancellationToken,
+            h => chain.TxPool.TxPoolHeadChanged += h,
+            h => chain.TxPool.TxPoolHeadChanged -= h,
+            b => b.Hash == payload.BlockHash);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(payload.BlockHash!, payload.BlockHash!, payload.BlockHash!), null);
+        Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid),
+            "the canonicalizing forkchoiceUpdated must succeed, otherwise the tx pool head wait would time out");
+        await txPoolHeadWait;
     }
 
     /// <summary>

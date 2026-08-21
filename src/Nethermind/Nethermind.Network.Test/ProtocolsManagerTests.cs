@@ -102,7 +102,7 @@ public class ProtocolsManagerTests
     [Test]
     public void Advertised_capabilities_are_cached_and_rebuilt_on_resolver_change()
     {
-        FakeCapabilityResolver resolver = new(caps => caps.Add(new Capability(Protocol.Snap, 1)));
+        FakeCapabilityResolver resolver = new(caps => caps.Add(new Capability(Protocol.Snap, SnapVersions.Snap1)));
         ProtocolsManager manager = BuildManagerWithResolvers(resolver);
 
         Assert.That(manager.GetHighestProtocolVersion(Protocol.Snap), Is.EqualTo(1));

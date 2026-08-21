@@ -219,6 +219,24 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Estimate_gas_feeless_with_positive_blockOverride_baseFeePerGas_uses_zero_base_fee()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        const string revertOnNonZeroBaseFee = "0x4860095760006000f35b60006000fd";
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $"{{\"from\":\"{SecondaryTestAddress}\",\"to\":\"{SecondaryTestAddress}\",\"data\":\"{revertOnNonZeroBaseFee}\"}}");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $"{{\"{SecondaryTestAddress}\":{{\"code\":\"{revertOnNonZeroBaseFee}\"}}}}");
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x100"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride, blockOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, "unpriced estimate must zero the base fee override instead of reverting");
+        Assert.That(JToken.Parse(serialized)["result"], Is.Not.Null);
+    }
+
+    [Test]
     public async Task Estimate_gas_with_revert()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
@@ -635,8 +653,7 @@ public partial class EthRpcModuleTests
 
         ulong eip2780ValueTransferBase = GasCostOf.TransactionEip2780
             + Eip8038Constants.ColdAccountAccess
-            + GasCostOf.TxValueCostEip2780
-            + GasCostOf.TransferLogEip2780;
+            + GasCostOf.TxValueCostEip2780;
 
         // EIP-7981: access list with 1 address, no calldata - standard wins.
         ulong eip7981Standard = eip2780ValueTransferBase + Eip8038Constants.AccessListAddressCost

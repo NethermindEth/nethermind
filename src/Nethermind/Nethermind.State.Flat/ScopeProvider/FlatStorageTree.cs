@@ -82,7 +82,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             value = StorageTree.ZeroBytes;
         }
 
-        if (_config.VerifyWithTrie)
+        // A trie-less (history-backed) scope has no storage trie to verify against — the reader throws on trie-node
+        // access, and a historical value verified against the current trie would be wrong anyway.
+        if (_config.VerifyWithTrie && !_scope.Trieless)
         {
             byte[] treeValue = _tree.Get(index);
             if (!Bytes.AreEqual(treeValue, value))
@@ -181,6 +183,10 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
+        // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
+        // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
+        if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
+
         // The diagnostic Patricia batch commits through the mutable tree exactly as the
         // pre-sparse pipeline did; its root is compared against the sparse root per job.
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch? diagnosticBatch = _config.VerifyWithTrie
@@ -335,5 +341,15 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         [DoesNotReturn, StackTraceHidden]
         private static void ThrowMustClearFirst() =>
             throw new InvalidOperationException("Must call clear first in a storage write batch");
+    }
+
+    // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.
+    private sealed class FlatOverlayStorageWriteBatch(FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Set(in UInt256 index, byte[] value) => storageTree.Set(index, value);
+
+        public void Clear() => storageTree.SelfDestruct();
+
+        public void Dispose() { }
     }
 }
