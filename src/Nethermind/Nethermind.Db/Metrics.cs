@@ -28,39 +28,31 @@ namespace Nethermind.Db
 
         private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
 
-        // The block-processing thread keeps its dedicated padded word; every other thread (RPC
-        // workers, prewarm workers) previously shared ONE "other" word per counter, making each
-        // per-read update a contended cross-core RMW under concurrent load — striped instead.
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
-        public static long StateTreeCache => _mainStateTreeCacheHits.Value + _otherStateTreeCacheHits.Sum;
+        public static long StateTreeCache => _mainStateTreeCacheHits.Value + _otherStateTreeCacheHits.Value;
         private static CacheLinePaddedLong _mainStateTreeCacheHits;
-        private static readonly StripedLong _otherStateTreeCacheHits = new();
+        private static CacheLinePaddedLong _otherStateTreeCacheHits;
         // Exposed so consumers (e.g. ProcessingStats) can compute block-level deltas that exclude
         // background prewarmer activity, which runs with IsBlockProcessingThread = false.
         internal static long MainThreadStateTreeCache => _mainStateTreeCacheHits.Value;
-        internal static void AddStateTreeCacheHits(long count)
-        {
-            if (IsBlockProcessingThread) Interlocked.Add(ref _mainStateTreeCacheHits.Value, count);
-            else _otherStateTreeCacheHits.Add(count);
-        }
+        internal static void AddStateTreeCacheHits(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits.Value : ref _otherStateTreeCacheHits.Value, count);
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
-        public static long StateTreeReads => _mainStateTreeReads.Value + _otherStateTreeReads.Sum;
+        public static long StateTreeReads => _mainStateTreeReads.Value + _otherStateTreeReads.Value;
         private static CacheLinePaddedLong _mainStateTreeReads;
-        private static readonly StripedLong _otherStateTreeReads = new();
+        private static CacheLinePaddedLong _otherStateTreeReads;
         internal static long MainThreadStateTreeReads => _mainStateTreeReads.Value;
-        internal static void AddStateTreeReads(long count)
-        {
-            if (IsBlockProcessingThread) Interlocked.Add(ref _mainStateTreeReads.Value, count);
-            else _otherStateTreeReads.Add(count);
-        }
+        internal static void AddStateTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateTreeReads.Value : ref _otherStateTreeReads.Value, count);
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
         public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Sum;
         private static CacheLinePaddedLong _mainStateReaderReads;
+        // Bumped once per state read (StateReader), so every RPC and prewarm thread previously
+        // hit one shared word: a contended cross-core RMW per read. The block-processing thread
+        // keeps its own padded word and is left alone.
         private static readonly StripedLong _otherStateReaderReads = new();
         internal static void IncrementStateReaderReads()
         {
@@ -86,75 +78,51 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of storage trie cache hits.")]
-        public static long StorageTreeCache => _mainStorageTreeCache.Value + _otherStorageTreeCache.Sum;
+        public static long StorageTreeCache => _mainStorageTreeCache.Value + _otherStorageTreeCache.Value;
         private static CacheLinePaddedLong _mainStorageTreeCache;
-        private static readonly StripedLong _otherStorageTreeCache = new();
+        private static CacheLinePaddedLong _otherStorageTreeCache;
         internal static long MainThreadStorageTreeCache => _mainStorageTreeCache.Value;
-        internal static void AddStorageTreeCache(long count)
-        {
-            if (IsBlockProcessingThread) Interlocked.Add(ref _mainStorageTreeCache.Value, count);
-            else _otherStorageTreeCache.Add(count);
-        }
+        internal static void AddStorageTreeCache(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageTreeCache.Value : ref _otherStorageTreeCache.Value, count);
 
         [CounterMetric]
         [Description("Number of storage trie reads.")]
-        public static long StorageTreeReads => _mainStorageTreeReads.Value + _otherStorageTreeReads.Sum;
+        public static long StorageTreeReads => _mainStorageTreeReads.Value + _otherStorageTreeReads.Value;
         private static CacheLinePaddedLong _mainStorageTreeReads;
-        private static readonly StripedLong _otherStorageTreeReads = new();
+        private static CacheLinePaddedLong _otherStorageTreeReads;
         internal static long MainThreadStorageTreeReads => _mainStorageTreeReads.Value;
-        internal static void AddStorageTreeReads(long count)
-        {
-            if (IsBlockProcessingThread) Interlocked.Add(ref _mainStorageTreeReads.Value, count);
-            else _otherStorageTreeReads.Add(count);
-        }
+        internal static void AddStorageTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageTreeReads.Value : ref _otherStorageTreeReads.Value, count);
 
         [CounterMetric]
         [Description("Number of pre-block (prewarmer-shared) cache hits for accounts, counted on the consumer scope only (populator probes excluded); first-in-block touches, so hits/(hits+misses) = prewarm coverage.")]
-        public static long PreBlockCacheAccountHits => _mainPreBlockAccountHits.Value + _otherPreBlockAccountHits.Sum;
+        public static long PreBlockCacheAccountHits => _mainPreBlockAccountHits.Value + _otherPreBlockAccountHits.Value;
         private static CacheLinePaddedLong _mainPreBlockAccountHits;
-        private static readonly StripedLong _otherPreBlockAccountHits = new();
+        private static CacheLinePaddedLong _otherPreBlockAccountHits;
         internal static long MainThreadPreBlockAccountHits => _mainPreBlockAccountHits.Value;
-        internal static void AddPreBlockAccountHits(long count)
-        {
-            if (IsBlockProcessingThread) Interlocked.Add(ref _mainPreBlockAccountHits.Value, count);
-            else _otherPreBlockAccountHits.Add(count);
-        }
+        internal static void AddPreBlockAccountHits(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockAccountHits.Value : ref _otherPreBlockAccountHits.Value, count);
 
         [CounterMetric]
         [Description("Number of pre-block (prewarmer-shared) cache misses for accounts, counted on the consumer scope only (populator probes excluded).")]
-        public static long PreBlockCacheAccountMisses => _mainPreBlockAccountMisses.Value + _otherPreBlockAccountMisses.Sum;
+        public static long PreBlockCacheAccountMisses => _mainPreBlockAccountMisses.Value + _otherPreBlockAccountMisses.Value;
         private static CacheLinePaddedLong _mainPreBlockAccountMisses;
-        private static readonly StripedLong _otherPreBlockAccountMisses = new();
+        private static CacheLinePaddedLong _otherPreBlockAccountMisses;
         internal static long MainThreadPreBlockAccountMisses => _mainPreBlockAccountMisses.Value;
-        internal static void AddPreBlockAccountMisses(long count)
-        {
-            if (IsBlockProcessingThread) Interlocked.Add(ref _mainPreBlockAccountMisses.Value, count);
-            else _otherPreBlockAccountMisses.Add(count);
-        }
+        internal static void AddPreBlockAccountMisses(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockAccountMisses.Value : ref _otherPreBlockAccountMisses.Value, count);
 
         [CounterMetric]
         [Description("Number of pre-block (prewarmer-shared) cache hits for storage slots, counted on the consumer scope only (populator probes excluded); first-in-block touches, so hits/(hits+misses) = prewarm coverage.")]
-        public static long PreBlockCacheStorageHits => _mainPreBlockStorageHits.Value + _otherPreBlockStorageHits.Sum;
+        public static long PreBlockCacheStorageHits => _mainPreBlockStorageHits.Value + _otherPreBlockStorageHits.Value;
         private static CacheLinePaddedLong _mainPreBlockStorageHits;
-        private static readonly StripedLong _otherPreBlockStorageHits = new();
+        private static CacheLinePaddedLong _otherPreBlockStorageHits;
         internal static long MainThreadPreBlockStorageHits => _mainPreBlockStorageHits.Value;
-        internal static void AddPreBlockStorageHits(long count)
-        {
-            if (IsBlockProcessingThread) Interlocked.Add(ref _mainPreBlockStorageHits.Value, count);
-            else _otherPreBlockStorageHits.Add(count);
-        }
+        internal static void AddPreBlockStorageHits(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockStorageHits.Value : ref _otherPreBlockStorageHits.Value, count);
 
         [CounterMetric]
         [Description("Number of pre-block (prewarmer-shared) cache misses for storage slots, counted on the consumer scope only (populator probes excluded).")]
-        public static long PreBlockCacheStorageMisses => _mainPreBlockStorageMisses.Value + _otherPreBlockStorageMisses.Sum;
+        public static long PreBlockCacheStorageMisses => _mainPreBlockStorageMisses.Value + _otherPreBlockStorageMisses.Value;
         private static CacheLinePaddedLong _mainPreBlockStorageMisses;
-        private static readonly StripedLong _otherPreBlockStorageMisses = new();
+        private static CacheLinePaddedLong _otherPreBlockStorageMisses;
         internal static long MainThreadPreBlockStorageMisses => _mainPreBlockStorageMisses.Value;
-        internal static void AddPreBlockStorageMisses(long count)
-        {
-            if (IsBlockProcessingThread) Interlocked.Add(ref _mainPreBlockStorageMisses.Value, count);
-            else _otherPreBlockStorageMisses.Add(count);
-        }
+        internal static void AddPreBlockStorageMisses(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockStorageMisses.Value : ref _otherPreBlockStorageMisses.Value, count);
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]

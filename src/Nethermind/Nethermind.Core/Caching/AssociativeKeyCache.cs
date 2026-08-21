@@ -186,7 +186,7 @@ public sealed class AssociativeKeyCache<TKey>
                 ? bestEmpty
                 : bestStale >= 0
                     ? bestStale
-                    : Pick3RandomEvictEntry(ref entries, baseIdx, timestamp);
+                    : Pick3RandomEvictEntry(ref entries, baseIdx, timestamp, ++_evictProbe);
 
             ref Entry te = ref Unsafe.Add(ref entries, baseIdx + target);
             long existing = Volatile.Read(ref te.Header);
@@ -328,10 +328,17 @@ public sealed class AssociativeKeyCache<TKey>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Contains(in TKey key) => Get(in key);
 
+    // The recency stamp is a poor sample seed on a coarse clock: two inserts into one set inside a
+    // single tick would sample the same three ways and tie on Ticker, and the tie breaks to the
+    // first, so a same-tick burst keeps evicting one way. A thread-local probe counter varies the
+    // sample per call without reintroducing a shared write. It seeds only the choice of ways; the
+    // stamp written into the entry is still the raw timestamp.
+    [ThreadStatic] private static int _evictProbe;
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now)
+    private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now, int probe)
     {
-        (int a, int b, int c) = Pick3Indices(now);
+        (int a, int b, int c) = Pick3Indices(now + probe);
 
         long ta = Unsafe.Add(ref entries, baseIdx + a).Ticker;
         long tb = Unsafe.Add(ref entries, baseIdx + b).Ticker;
