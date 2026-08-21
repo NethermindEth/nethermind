@@ -59,6 +59,75 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
     }
 
+    [Test]
+    public void TryGetSlot_WhenUpdatingOnCommit_WrittenSlotServesTheCommittedValue()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner, updateOnCommit: true);
+        SlotValue committed = SlotValue.FromSpanWithoutLeadingZero([0x22]);
+
+        ReadSlot(cache, 1);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+            batch.SetStorage(Address, 1, committed);
+        inner.ReaderState = Basis1;
+
+        SlotValue read = default;
+        bool found;
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
+            found = reader.TryGetSlot(Address, 1, ref read);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.SlotReads, Is.EqualTo(1), "the commit refreshed the entry, so the re-read must not reach the inner store");
+            Assert.That(found, Is.True);
+            Assert.That(read, Is.EqualTo(committed));
+        }
+    }
+
+    [Test]
+    public void TryGetSlot_WhenUpdatingOnCommit_DeletedSlotServesAsAbsent()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner, updateOnCommit: true);
+
+        ReadSlot(cache, 1);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+            batch.SetStorage(Address, 1, null);
+        inner.ReaderState = Basis1;
+
+        SlotValue read = default;
+        bool found;
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
+            found = reader.TryGetSlot(Address, 1, ref read);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False, "a committed null means the slot is gone, and that must be cached as absent");
+            Assert.That(inner.SlotReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void OnCommit_WhenUpdatingOnCommit_DoesNotGrowPastCapacity()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1, updateOnCommit: true);
+
+        ReadSlot(cache, 1);
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            batch.SetStorage(Address, 1, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+            batch.SetStorage(Address, 2, SlotValue.FromSpanWithoutLeadingZero([0x33]));
+        }
+        inner.ReaderState = Basis1;
+
+        // Slot 1 was already cached so it is refreshed in place; slot 2 has no budget and stays uncached.
+        ReadSlot(cache, 1);
+        ReadSlot(cache, 2);
+
+        Assert.That(inner.SlotReads, Is.EqualTo(2), "only the already-resident entry is refreshed; the write must not evict it to admit a new key");
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)

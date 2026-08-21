@@ -26,6 +26,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     // cap keeps what it captured first rather than losing all of it repeatedly.
     private readonly bool _noWipe = ExperimentSwitches.Bool("NM_XP_CARRYFWD_NOWIPE");
 
+    // Experiment: refresh the cache with the block's committed values instead of evicting the keys it
+    // wrote, so a slot this block changed is a hit for the next block rather than a guaranteed miss.
+    // This is what reth's ExecutionCache.insert_state does.
+    private readonly bool _updateOnCommit;
+
     private readonly ConcurrentDictionary<Address, Account?> _accounts = new();
     private readonly ConcurrentDictionary<(Address, UInt256), CachedSlot> _slots = new();
     private int _accountCount;
@@ -35,9 +40,17 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private StateId _basis;
     private long _generation;
 
-    public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
+    /// <param name="updateOnCommit">
+    /// Refresh cached entries with a committed block's values instead of evicting the keys it wrote.
+    /// Defaults to the <c>NM_XP_CARRYFWD_UPDATE</c> experiment switch.
+    /// </param>
+    public CarryForwardCachingPersistence(
+        IPersistence inner,
+        int maxEntriesPerKind = DefaultMaxEntriesPerKind,
+        bool? updateOnCommit = null)
     {
         _inner = inner;
+        _updateOnCommit = updateOnCommit ?? ExperimentSwitches.Bool("NM_XP_CARRYFWD_UPDATE");
         _maxEntriesPerKind = ExperimentSwitches.Int("NM_XP_CARRYFWD_ENTRIES", maxEntriesPerKind);
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
@@ -149,6 +162,52 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
+    /// <summary>Applies a committed block by refreshing cached entries with its new values.</summary>
+    /// <remarks>
+    /// The eviction path (<see cref="OnCommitted"/>) turns every write into a guaranteed miss for the next
+    /// block. Writing the value through keeps it a hit. Entries are only refreshed, never newly inserted
+    /// beyond the cap, so the update path cannot grow the cache past its budget.
+    /// </remarks>
+    private void OnCommittedWithValues(
+        in StateId to,
+        Dictionary<Address, Account?>? accountValues,
+        Dictionary<(Address, UInt256), CachedSlot>? slotValues,
+        bool clearAll)
+    {
+        using (_lock.EnterScope())
+        {
+            _generation++;
+            _basis = to;
+
+            if (clearAll)
+            {
+                ClearAllNoLock();
+                return;
+            }
+
+            if (accountValues is not null)
+            {
+                foreach (KeyValuePair<Address, Account?> kvp in accountValues)
+                {
+                    // Refresh in place; only take a new slot while there is budget for one.
+                    if (_accounts.ContainsKey(kvp.Key)) _accounts[kvp.Key] = kvp.Value;
+                    else if (_accountCount < _maxEntriesPerKind && _accounts.TryAdd(kvp.Key, kvp.Value)) _accountCount++;
+                }
+                Metrics.CarryForwardAccountCount = _accountCount;
+            }
+
+            if (slotValues is not null)
+            {
+                foreach (KeyValuePair<(Address, UInt256), CachedSlot> kvp in slotValues)
+                {
+                    if (_slots.ContainsKey(kvp.Key)) _slots[kvp.Key] = kvp.Value;
+                    else if (_slotCount < _maxEntriesPerKind && _slots.TryAdd(kvp.Key, kvp.Value)) _slotCount++;
+                }
+                Metrics.CarryForwardSlotCount = _slotCount;
+            }
+        }
+    }
+
     private void ClearAllNoLock()
     {
         _accounts.Clear();
@@ -223,6 +282,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         private HashSet<Address>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
+        // Experiment (NM_XP_CARRYFWD_UPDATE): the committed values, so the block's own writes can
+        // refresh the cache instead of evicting from it.
+        private Dictionary<Address, Account?>? _accountValues;
+        private Dictionary<(Address, UInt256), CachedSlot>? _slotValues;
         private bool _clearAll;
 
         public void SelfDestruct(Address addr)
@@ -233,13 +296,23 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= []).Add(addr);
+            if (parent._updateOnCommit) (_accountValues ??= [])[addr] = account;
+            else (_writtenAccounts ??= []).Add(addr);
             inner.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
         {
-            (_writtenSlots ??= []).Add((addr, slot));
+            if (parent._updateOnCommit)
+            {
+                (_slotValues ??= [])[(addr, slot)] = value is { } written
+                    ? new CachedSlot(found: true, written)
+                    : new CachedSlot(found: false, default);
+            }
+            else
+            {
+                (_writtenSlots ??= []).Add((addr, slot));
+            }
             inner.SetStorage(addr, slot, value);
         }
 
@@ -275,7 +348,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public void Dispose()
         {
             inner.Dispose();
-            parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            if (parent._updateOnCommit) parent.OnCommittedWithValues(to, _accountValues, _slotValues, _clearAll);
+            else parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
         }
     }
 }
