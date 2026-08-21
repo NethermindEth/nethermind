@@ -64,17 +64,12 @@ public class IpcSocketMessageStreamTests
         await using IpcSocketMessageStream stream = new(pair.Server);
         byte[] buffer = new byte[1024];
 
-        await pair.Client.SendAsync(" \t "u8.ToArray(), SocketFlags.None);
-        ReceiveResult first = await stream.ReceiveAsync(new ArraySegment<byte>(buffer, 0, buffer.Length), pair.Token);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first.EndOfMessage, Is.False);
-            Assert.That(first.Read, Is.EqualTo(3));
-        }
+        byte[] whitespace = " \t "u8.ToArray();
+        await pair.Client.SendAsync(whitespace, SocketFlags.None);
+        int whitespaceRead = await ReceiveWithoutEndOfMessageAsync(stream, buffer, whitespace.Length, pair.Token);
 
         await pair.Client.SendAsync("""{"id":1}"""u8.ToArray(), SocketFlags.None);
-        (int read, ReceiveResult second) = await ReceiveUntilEndOfMessageAsync(stream, buffer, pair.Token, first.Read);
+        (int read, ReceiveResult second) = await ReceiveUntilEndOfMessageAsync(stream, buffer, pair.Token, whitespaceRead);
 
         using (Assert.EnterMultipleScope())
         {
@@ -92,23 +87,17 @@ public class IpcSocketMessageStreamTests
         byte[] buffer = new byte[1024];
 
         await pair.Client.SendAsync(Encoding.UTF8.GetBytes(firstSend), SocketFlags.None);
-        ReceiveResult first = await stream.ReceiveAsync(new ArraySegment<byte>(buffer, 0, buffer.Length), pair.Token);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first.EndOfMessage, Is.False);
-            Assert.That(first.Read, Is.EqualTo(firstSend.Length));
-        }
+        await ReceiveWithoutEndOfMessageAsync(stream, buffer, firstSend.Length, pair.Token);
 
         // Reuse the buffer from offset zero — the non-accumulating caller pattern that the
         // saved-state validation in TryGetCompleteJsonLength guards against.
         await pair.Client.SendAsync(Encoding.UTF8.GetBytes(secondSend), SocketFlags.None);
-        ReceiveResult second = await stream.ReceiveAsync(new ArraySegment<byte>(buffer, 0, buffer.Length), pair.Token);
+        (int read, ReceiveResult second) = await ReceiveUntilEndOfMessageAsync(stream, buffer, pair.Token);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(second.EndOfMessage, Is.True);
-            Assert.That(Encoding.UTF8.GetString(buffer, 0, second.Read), Is.EqualTo(expectedMessage));
+            Assert.That(Encoding.UTF8.GetString(buffer, 0, read), Is.EqualTo(expectedMessage));
         }
     }
 
@@ -139,11 +128,14 @@ public class IpcSocketMessageStreamTests
     [Test]
     public async Task Dispose_twice_returns_pooled_overflow_buffer_only_once()
     {
+        const string firstMessage = """{"id":1}""";
+        const string overflowMessage = """{"id":2}""";
+
         using SocketPair pair = await SocketPair.CreateAsync();
         IpcSocketMessageStream stream = new(pair.Server);
 
         // Two messages in one read force the second into the pooled overflow buffer.
-        await pair.Client.SendAsync("""{"id":1}{"id":2}"""u8.ToArray(), SocketFlags.None);
+        await pair.Client.SendAsync(Encoding.UTF8.GetBytes(firstMessage + overflowMessage), SocketFlags.None);
         byte[] buffer = new byte[1024];
         ReceiveResult result = await stream.ReceiveAsync(new ArraySegment<byte>(buffer, 0, buffer.Length), pair.Token);
 
@@ -153,8 +145,8 @@ public class IpcSocketMessageStreamTests
         stream.Dispose();
 
         // A double return would corrupt the pool and hand out the same array twice.
-        byte[] firstRented = ArrayPool<byte>.Shared.Rent(8);
-        byte[] secondRented = ArrayPool<byte>.Shared.Rent(8);
+        byte[] firstRented = ArrayPool<byte>.Shared.Rent(overflowMessage.Length);
+        byte[] secondRented = ArrayPool<byte>.Shared.Rent(overflowMessage.Length);
 
         Assert.That(secondRented, Is.Not.SameAs(firstRented));
 
@@ -179,13 +171,35 @@ public class IpcSocketMessageStreamTests
         return (offset, result);
     }
 
-    private sealed record SocketPair(string Path, Socket Listener, Socket Server, Socket Client, CancellationTokenSource Cts) : IDisposable
+    /// <summary>
+    /// Accumulates exactly <paramref name="expectedTotal"/> bytes into <paramref name="buffer"/>,
+    /// asserting that no message boundary is reported while doing so.
+    /// </summary>
+    private static async Task<int> ReceiveWithoutEndOfMessageAsync(
+        IpcSocketMessageStream stream, byte[] buffer, int expectedTotal, CancellationToken token)
+    {
+        int offset = 0;
+        while (offset < expectedTotal)
+        {
+            ReceiveResult result = await stream.ReceiveAsync(new ArraySegment<byte>(buffer, offset, buffer.Length - offset), token);
+
+            Assert.That(result.EndOfMessage, Is.False);
+            Assert.That(result.Closed, Is.False);
+
+            offset += result.Read;
+        }
+
+        return offset;
+    }
+
+    private sealed record SocketPair(string SocketPath, Socket Listener, Socket Server, Socket Client, CancellationTokenSource Cts) : IDisposable
     {
         public CancellationToken Token => Cts.Token;
 
         public static async Task<SocketPair> CreateAsync()
         {
-            string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"nethermind-ipc-test-{Guid.NewGuid():N}.sock");
+            // Short name: macOS caps sun_path at 104 chars, ~49 of which its temp dir already uses.
+            string path = Path.Combine(Path.GetTempPath(), $"nm-ipc-{Guid.NewGuid():N}.sock");
             UnixDomainSocketEndPoint endPoint = new(path);
             Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             listener.Bind(endPoint);
@@ -202,9 +216,9 @@ public class IpcSocketMessageStreamTests
             Server.Dispose();
             Listener.Dispose();
             Cts.Dispose();
-            if (File.Exists(Path))
+            if (File.Exists(SocketPath))
             {
-                File.Delete(Path);
+                File.Delete(SocketPath);
             }
         }
     }
