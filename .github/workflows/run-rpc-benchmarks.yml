@@ -886,8 +886,8 @@ jobs:
           corpus_dir="$(get '.corpus_dir')";               [[ -z "${corpus_dir}" ]] && corpus_dir="${RESOLVED_CORPUS_DIR}"
           [[ -n "${corpus_dir}" ]] && export CORPUS_DIR="${corpus_dir}"
           corpus_glob="$(get '.corpus_glob')";             [[ -n "${corpus_glob}" ]] && export CORPUS_GLOB="${corpus_glob}"
-          # Sweep mode resolves one Nethermind flat snapshot, so the geth/reth default it used to carry
-          # made a bare dispatch fail its own guard. Cross-client work belongs in single-node mode.
+          # A bare dispatch benchmarks Nethermind: the geth/reth default this used to carry made every
+          # one of them start two extra nodes nobody asked for. Name them explicitly to sweep them.
           export CLIENTS="$(get '.clients')";              [[ -z "${CLIENTS}" ]] && export CLIENTS="nethermind"
           # An ABSENT rps_list means "use the default"; an explicitly EMPTY one means "no k6 cells"
           # (corpus runs that only want parity/timings). `// empty` cannot tell those apart.
