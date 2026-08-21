@@ -299,65 +299,50 @@ public class FrameTransactionForRpcTests
         }
     }
 
-    [Test]
-    public void ReceiptForRpc_FrameTx_ExposesPayer()
+    private static readonly LogEntry FrameLog = new(TestItem.AddressC, [1, 2, 3], [TestItem.KeccakA]);
+
+    private static TxReceipt BuildFrameTxReceipt() => new()
     {
-        TxReceipt receipt = new()
-        {
-            TxType = TxType.FrameTx,
-            Payer = TestItem.AddressA,
-            Sender = TestItem.AddressB,
-            BlockHash = Keccak.Zero,
-        };
+        TxType = TxType.FrameTx,
+        Payer = TestItem.AddressA,
+        Sender = TestItem.AddressB,
+        BlockHash = Keccak.Zero,
+        Logs = [FrameLog],
+        FrameReceipts =
+        [
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: [FrameLog]),
+            new TxFrameReceipt(TxFrameReceipt.StatusFailure, gasUsed: 5_000, logs: []),
+        ],
+    };
 
-        ReceiptForRpc receiptForRpc = new(Keccak.Zero, receipt, blockTimestamp: 0, new TxGasInfo(UInt256.One));
-
-        Assert.That(receiptForRpc.Payer, Is.EqualTo(TestItem.AddressA));
-    }
+    private static ReceiptForRpc ToRpc(TxReceipt receipt) =>
+        new(Keccak.Zero, receipt, blockTimestamp: 0, new TxGasInfo(UInt256.One));
 
     [Test]
-    public void ReceiptForRpc_FrameTx_ExposesFrameReceipts()
+    public void ReceiptForRpc_FrameTx_ExposesPayerAndFrameReceipts()
     {
-        TxReceipt receipt = new()
-        {
-            TxType = TxType.FrameTx,
-            Payer = TestItem.AddressA,
-            Sender = TestItem.AddressB,
-            BlockHash = Keccak.Zero,
-            FrameReceipts =
-            [
-                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: []),
-            ],
-        };
-
-        ReceiptForRpc receiptForRpc = new(Keccak.Zero, receipt, blockTimestamp: 0, new TxGasInfo(UInt256.One));
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receiptForRpc.FrameReceipts, Has.Length.EqualTo(1));
+            Assert.That(receiptForRpc.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(receiptForRpc.FrameReceipts, Has.Length.EqualTo(2));
             Assert.That(receiptForRpc.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
         }
     }
 
-    [Test]
-    public void ReceiptForRpc_FrameTx_RoundTripsPayerAndFrameReceipts()
+    [TestCase(false, TestName = "A frame receipt survives the in-memory round trip")]
+    [TestCase(true, TestName = "A frame receipt survives the JSON round trip")]
+    public void ReceiptForRpc_FrameTx_RoundTripsPayerAndFrameReceipts(bool throughJson)
     {
-        LogEntry log = new(TestItem.AddressC, [1, 2, 3], [TestItem.KeccakA]);
-        TxReceipt receipt = new()
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        if (throughJson)
         {
-            TxType = TxType.FrameTx,
-            Payer = TestItem.AddressA,
-            Sender = TestItem.AddressB,
-            BlockHash = Keccak.Zero,
-            Logs = [log],
-            FrameReceipts =
-            [
-                new TxFrameReceipt(TxFrameReceipt.StatusSuccess, gasUsed: 21_000, logs: [log]),
-                new TxFrameReceipt(TxFrameReceipt.StatusFailure, gasUsed: 5_000, logs: []),
-            ],
-        };
+            EthereumJsonSerializer serializer = new();
+            receiptForRpc = serializer.Deserialize<ReceiptForRpc>(serializer.Serialize(receiptForRpc));
+        }
 
-        TxReceipt roundTripped = new ReceiptForRpc(Keccak.Zero, receipt, blockTimestamp: 0, new TxGasInfo(UInt256.One)).ToReceipt();
+        TxReceipt roundTripped = receiptForRpc.ToReceipt();
 
         using (Assert.EnterMultipleScope())
         {
@@ -366,8 +351,38 @@ public class FrameTransactionForRpcTests
             Assert.That(roundTripped.FrameReceipts![0].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
             Assert.That(roundTripped.FrameReceipts[0].GasUsed, Is.EqualTo(21_000UL));
             Assert.That(roundTripped.FrameReceipts[0].Logs, Has.Length.EqualTo(1));
+            Assert.That(roundTripped.FrameReceipts[0].Logs[0].Address, Is.EqualTo(TestItem.AddressC));
+            Assert.That(roundTripped.FrameReceipts[0].Logs[0].Data, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(roundTripped.FrameReceipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
             Assert.That(roundTripped.FrameReceipts[1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
             Assert.That(roundTripped.FrameReceipts[1].GasUsed, Is.EqualTo(5_000UL));
+        }
+    }
+
+    /// <summary>Frame receipts win over top-level fields that contradict them.</summary>
+    /// <remarks>
+    /// debug_insertReceipts binds arbitrary payloads, and <see cref="TxReceipt.FrameReceipts"/> requires
+    /// <see cref="TxReceipt.Logs"/> to hold the frame log union, or the bloom disagrees with the frames.
+    /// </remarks>
+    [TestCase(true, TestName = "Frame receipts override contradicting top-level fields")]
+    [TestCase(false, TestName = "Without frame receipts the top-level fields stand")]
+    public void ReceiptForRpc_FrameTx_DerivesLogsAndStatusFromTheFrames(bool hasFrameReceipts)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.Logs = [];
+        receiptForRpc.Status = TxFrameReceipt.StatusSuccess;
+        if (!hasFrameReceipts)
+        {
+            receiptForRpc.FrameReceipts = null;
+        }
+
+        TxReceipt receipt = receiptForRpc.ToReceipt();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.Logs, Has.Length.EqualTo(hasFrameReceipts ? 1 : 0));
+            Assert.That(receipt.StatusCode,
+                Is.EqualTo(hasFrameReceipts ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess));
         }
     }
 }
