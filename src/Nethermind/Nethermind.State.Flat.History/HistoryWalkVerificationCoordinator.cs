@@ -27,6 +27,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private Task _loop = Task.CompletedTask;
     private object? _verdict;
+    private bool _disposed;
 
     public HistoryWalkVerificationCoordinator(
         IColumnsDb<FlatDbColumns> db,
@@ -124,6 +125,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+
+        _disposed = true;
         _cts.Cancel();
         try
         {

@@ -339,6 +339,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
             if (_isV3)
             {
+                // Tracked before the enumeration, so an account that trips the cap still gets splices for its
+                // in-walk slots. Those rows are unreachable behind the poison marker - wasted, never wrong.
                 pending!.TrackDestruct(addrHash, block);
                 HandleSelfDestructV3(block, addrHash, addrHash.Bytes, pending, columns.StorageHistory, columns.StorageClears);
             }

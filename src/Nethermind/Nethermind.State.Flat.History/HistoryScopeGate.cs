@@ -37,12 +37,21 @@ public sealed class HistoryScopeGate
 
     public void ExitScope(long scopeId) => _activeScopes.TryRemove(scopeId, out _);
 
-    /// <summary>Bumps the floor generation and waits (bounded) for every scope admitted under an older one to
-    /// close. On timeout no state needs restoring: a retry bumps again and still waits only on the genuinely old
-    /// scopes, while everything admitted since carries a newer generation.</summary>
-    internal bool TryDrainForFloorAdvance(TimeSpan timeout, CancellationToken token)
+    /// <summary>Bumps the floor generation, returning the value every scope open at this moment counts as older
+    /// than. A caller that has to retry its drain must re-wait on the generation it got here rather than bump
+    /// again: a fresh bump would also demote scopes admitted since the floor was published, and those are safe by
+    /// their own admission check - waiting for them would stall the pruner behind readers it has no reason to.
+    /// </summary>
+    internal long BeginFloorAdvance() => Interlocked.Increment(ref _floorGeneration);
+
+    /// <summary>Bumps and drains in one step - the shape every first attempt wants.</summary>
+    internal bool TryDrainForFloorAdvance(TimeSpan timeout, CancellationToken token) =>
+        TryDrain(BeginFloorAdvance(), timeout, token);
+
+    /// <summary>Waits (bounded) for every scope admitted under a generation older than <paramref name="generation"/>
+    /// to close. On timeout no state needs restoring - the caller keeps the generation and waits again.</summary>
+    internal bool TryDrain(long generation, TimeSpan timeout, CancellationToken token)
     {
-        long generation = Interlocked.Increment(ref _floorGeneration);
         Stopwatch stopwatch = Stopwatch.StartNew();
         while (AnyScopeBelow(generation))
         {

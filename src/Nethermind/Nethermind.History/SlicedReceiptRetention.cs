@@ -3,7 +3,6 @@
 
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
@@ -60,6 +59,14 @@ public sealed class SlicedReceiptRetention(IFlatDbConfig flatDbConfig, ILogIndex
         return false;
     }
 
-    private static FrozenSet<Address> ParseAddresses(string? raw) =>
-        SliceScopeConfig.Parse(raw).Select(static entry => entry.Address).ToFrozenSet();
+    private static FrozenSet<Address> ParseAddresses(string? raw)
+    {
+        HashSet<Address> addresses = [];
+        foreach (SliceScopeEntry entry in SliceScopeConfig.Parse(raw))
+        {
+            addresses.Add(entry.Address);
+        }
+
+        return addresses.ToFrozenSet();
+    }
 }

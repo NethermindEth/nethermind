@@ -165,6 +165,46 @@ public class HistoryWindowPrunerTests
     }
 
     [Test]
+    public void RunOnePass_WithTheDrainStillBlocked_RefusesToDeleteRowsThatOpenScopesCanStillRead()
+    {
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 5, new Account(1, 100));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+
+        HistoryScopeGate gate = new();
+        long stuckScope = gate.EnterScope();
+
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8, passBudgetSeconds: 1, scopeGate: gate);
+
+        bool firstPass = pruner.RunOnePass(CancellationToken.None);
+        bool secondPass = pruner.RunOnePass(CancellationToken.None);
+
+        HistoryStoreV3 accountHistoryV3 = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        Span<byte> buffer = stackalloc byte[256];
+        bool rowSurvived = accountHistoryV3.TryGetValueBeforeNextChange(4, AccountKey(), buffer, out _) > 0;
+
+        gate.ExitScope(stuckScope);
+        pruner.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstPass, Is.False, "precondition: the open scope must make the first drain time out");
+            Assert.That(secondPass, Is.False,
+                "the owed-deletes path must re-wait for the scopes the timed-out drain never collected, not walk straight into deleting");
+            Assert.That(rowSurvived, Is.True,
+                "a scope opened under the old floor is still resolving this row; deleting it would make that read answer from live state instead of failing closed");
+        }
+    }
+
+    [Test]
+    public void Dispose_CalledTwice_DoesNotThrow()
+    {
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        pruner.Dispose();
+
+        Assert.That(pruner.Dispose, Throws.Nothing);
+    }
+
+    [Test]
     public void RunOnePass_StorageColumnMakesProgressEvenWhenAccountColumnDoesNotComplete()
     {
         HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));

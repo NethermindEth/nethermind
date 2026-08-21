@@ -83,6 +83,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
+    // Accumulated across the table config and every column config, all of which are built during open, before this
+    // instance is handed out - so the reads from GetViewBetween on other threads never race a write.
     private int _prefixExtractorLength;
 
     private readonly IFileSystem _fileSystem;
@@ -2087,7 +2089,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private static int ParsePrefixExtractorLength(IDictionary<string, string> options)
     {
-        if (!options.TryGetValue("prefix_extractor", out string? extractor)) return 0;
+        // "nullptr" is RocksDB's own spelling for "no extractor", so it means no bucket exists rather than the
+        // widest possible one.
+        if (!options.TryGetValue("prefix_extractor", out string? extractor)
+            || string.IsNullOrWhiteSpace(extractor)
+            || extractor.Trim().Equals("nullptr", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
 
         int separator = extractor.LastIndexOfAny([':', '.']);
         // An extractor whose width cannot be read is treated as unbounded, so every range asks for total order.

@@ -171,6 +171,27 @@ public class SlicedReceiptRetentionTests
         Assert.That(retention.ShouldRetainReceipts(block), Is.EqualTo(expected));
     }
 
+    [Test]
+    public void ShouldRetainReceipts_AboveIntMaxValue_LetsTheBloomDecideAlone()
+    {
+        IFlatDbConfig flatDbConfig = new FlatDbConfig { HistorySliceAddresses = TestItem.AddressA.ToString() };
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(0);
+        logIndexStorage.MaxBlockNumber.Returns(int.MaxValue);
+        SlicedReceiptRetention retention = new(flatDbConfig, logIndexStorage);
+
+        Block block = BlockWithBloom(TestItem.AddressA, (ulong)int.MaxValue + 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retention.ShouldRetainReceipts(block), Is.True,
+                "the index is int-keyed so it cannot be asked about this height; the bloom match must decide rather than a wrapped range reporting no hit");
+            Assert.That(logIndexStorage.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(ILogIndexStorage.GetEnumerator)), Is.False,
+                "the index must not be queried at all for a height it cannot represent");
+        }
+    }
+
     private static Block BlockWithBloom(Address address, ulong number = 5)
     {
         Bloom bloom = new();

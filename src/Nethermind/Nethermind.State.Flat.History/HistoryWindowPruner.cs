@@ -44,6 +44,7 @@ public sealed class HistoryWindowPruner(
     private Thread? _loop;
     private ulong _lastFloorPublishWatermark;
     private bool _deletesOwed;
+    private long _owedDrainGeneration;
     private IReadOnlyList<SliceScopeEntry>? _configuredSlices;
     private bool _disposed;
     private bool _started;
@@ -226,6 +227,15 @@ public sealed class HistoryWindowPruner(
             // and comparing a fresh floor here would see "no advance" (the floor was already published) and skip
             // the pass entirely, silently abandoning the deletes it still owes for the current window.
             if (!availability.TryGetGlobalFloor(out floor)) return true;
+
+            // The owed path is the one whose drain TIMED OUT, so those scopes are still reading rows this pass is
+            // about to delete. Wait for them on the generation the failed drain used - a fresh bump would also
+            // demote the readers admitted since the publish, which are safe and must not hold the pruner up.
+            if (Volatile.Read(ref _deletesOwed)
+                && !scopeGate.TryDrain(Volatile.Read(ref _owedDrainGeneration), passBudget, token))
+            {
+                return false;
+            }
         }
         else
         {
@@ -244,8 +254,10 @@ public sealed class HistoryWindowPruner(
             // Floor publishes before the drain (and before any delete): a scope opened after this point already
             // sees the new floor at its own admission check, so it is safe by construction regardless of which
             // epoch it lands in — only scopes admitted under the old, lower floor need draining before deleting.
-            if (!scopeGate.TryDrainForFloorAdvance(passBudget, token))
+            long drainGeneration = scopeGate.BeginFloorAdvance();
+            if (!scopeGate.TryDrain(drainGeneration, passBudget, token))
             {
+                Volatile.Write(ref _owedDrainGeneration, drainGeneration);
                 Volatile.Write(ref _deletesOwed, true);
                 if (_logger.IsWarn) _logger.Warn(
                     "History window pruner published a new floor but historical read scopes opened before it did not drain within the budget; deletes for this floor are deferred to the next pass.");
@@ -488,6 +500,8 @@ public sealed class HistoryWindowPruner(
 
     public void Dispose()
     {
+        if (Volatile.Read(ref _disposed)) return;
+
         Volatile.Write(ref _disposed, true);
         if (_started)
         {

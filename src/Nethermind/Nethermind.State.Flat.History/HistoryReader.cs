@@ -89,8 +89,9 @@ public sealed class HistoryReader
     public bool IsBelowGlobalFloor(ulong block) => _availability.IsBelowGlobalFloor(block);
 
     /// <summary>Every configured per-address slice scope, for a restricted bundle to carry as its own in-memory,
-    /// no-further-DB-reads gate.</summary>
-    public ScopeFloor[] GetSliceScopesArray() => _availability.GetScopesArray();
+    /// no-further-DB-reads gate. Internal for the same reason <see cref="HistoryAvailability.GetScopesArray"/> is:
+    /// the array and its keys are shared and mutable, so the sharp edge stays inside this assembly.</summary>
+    internal ScopeFloor[] GetSliceScopesArray() => _availability.GetScopesArray();
 
     /// <summary>
     /// Resolves the account as of <paramref name="block"/>. Returns <c>false</c> when the account did not exist at
@@ -106,7 +107,7 @@ public sealed class HistoryReader
         int written = _isV3
             ? TryGetAccountV3(block, flatKey, valueBuffer)
             : _accountHistory!.TryGetAt(block, flatKey, valueBuffer);
-        if (written <= 0) // -1 (or persisted-column miss) = absent, 0 = deletion tombstone
+        if (written <= 0) // -1 = no such row; 0 = deletion tombstone, or a live-column miss under v3
         {
             account = default;
             return false;
@@ -116,17 +117,21 @@ public sealed class HistoryReader
         return AccountDecoder.Slim.TryDecodeStruct(ref context, out account);
     }
 
-    /// <remarks>Live column first, history second. Capture commits a block's row strictly before the flat persist
-    /// that supersedes it, so a round completing between the two reads is still caught: the seek runs after the
-    /// live read and is therefore guaranteed to observe the row. Seeking first would let that round slip between
-    /// the reads and return the post-change live value as the value at <paramref name="block"/>.</remarks>
+    /// <remarks>A found row is always the answer - rows are immutable once written and the pruner only deletes
+    /// below the floor - so a hit costs one read and never consults live state. A miss has to fall through to the
+    /// live column, and a capture round can commit between the two; the second seek settles that, because capture
+    /// commits a block's row strictly before the flat persist that supersedes it, so any round the live read
+    /// observed has its row in place by then.</remarks>
     [SkipLocalsInit]
     private int TryGetAccountV3(ulong block, ReadOnlySpan<byte> flatKey, Span<byte> valueBuffer)
     {
+        int written = _accountHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+        if (written >= 0) return written;
+
         Span<byte> liveBuffer = stackalloc byte[AccountValueBufferSize];
         int live = _persistedAccounts!.Get(HistoryKeyLayout.ToFlatStateKey(flatKey), liveBuffer);
 
-        int written = _accountHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+        written = _accountHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
         if (written >= 0) return written;
 
         if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
@@ -166,15 +171,20 @@ public sealed class HistoryReader
                     $"Storage history for account {addrHash} above block {block} was not fully captured (a self-destruct " +
                     "exceeded the per-slot enumeration cap) - the exact value cannot be determined.");
 
-            // Live column first, history second - see TryGetAccountV3's remarks for why the order is load-bearing.
-            Span<byte> liveBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-            int live = _persistedStorage!.Get(flatKey, liveBuffer);
-
+            // Seek, then live only on a miss, then seek again to settle a round that committed in between - see
+            // TryGetAccountV3's remarks for why the second seek is what makes the fallback sound.
             int written = _storageHistoryV3!.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
             if (written < 0)
             {
-                if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
-                written = live;
+                Span<byte> liveBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+                int live = _persistedStorage!.Get(flatKey, liveBuffer);
+
+                written = _storageHistoryV3.TryGetValueBeforeNextChange(block, flatKey, valueBuffer, out _);
+                if (written < 0)
+                {
+                    if (live > 0) liveBuffer[..live].CopyTo(valueBuffer);
+                    written = live;
+                }
             }
 
             if (written <= 0) { value = default; return false; }
