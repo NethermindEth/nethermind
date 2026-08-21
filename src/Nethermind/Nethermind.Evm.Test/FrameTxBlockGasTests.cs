@@ -34,13 +34,20 @@ public class FrameTxBlockGasTests
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly Address Writer = TestItem.AddressB;
     private static readonly Address Inert = TestItem.AddressC;
+    private static readonly Address Asserter = TestItem.AddressD;
 
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance));
         _state = TestWorldStateFactory.CreateForTest();
         _closer = _state.BeginScope(IWorldState.PreGenesis);
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
+    }
+
+    /// <summary>Points the processor at <paramref name="spec"/>, keeping the world state as it is.</summary>
+    private void UseSpec(IReleaseSpec spec)
+    {
+        _specProvider = new TestSpecProvider(spec);
         EthereumCodeInfoRepository codeInfoRepository = new(_state);
         EthereumVirtualMachine vm = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _state, vm, codeInfoRepository, LimboLogs.Instance);
@@ -112,6 +119,74 @@ public class FrameTxBlockGasTests
 
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
             "the batch was rolled back, so the slot its first frame wrote never grew the state");
+    }
+
+    /// <summary>A failed EIP-7906 assertion gives back the state gas of the body it discards.</summary>
+    /// <remarks>
+    /// The body's writes go with the prefix snapshot the assertion restores. Leaving their charge in the
+    /// state dimension inflates S, and header gasUsed = max(G - S, S) then lands below the true G.
+    /// </remarks>
+    [TestCase(true, 0ul, TestName = "A reverted POST_TX assertion discards the body's state gas")]
+    [TestCase(false, (ulong)GasCostOf.SSetState, TestName = "A satisfied POST_TX assertion keeps the body's state gas")]
+    public void Execute_PostTxOutcome_DecidesWhetherTheBodyOwesStateGas(bool assertionReverts, ulong expectedStateGas)
+    {
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        Deploy(Asserter, assertionReverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeSender, 0, Writer, gasLimit: 400_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModePostTx, 0, Asserter, gasLimit: 200_000, UInt256.Zero, default));
+
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
+                Is.EqualTo(tracer.GasConsumedResult.SpentGas - expectedStateGas),
+                "the two dimensions must together account for the gas the transaction spent");
+        }
+    }
+
+    /// <summary>Without EIP-8037 the block charge is a single dimension, not a 2D split.</summary>
+    /// <remarks>
+    /// EIP-7778 alone bills the block the pre-refund gross; without it the block owes the post-refund
+    /// spend. Both combinations are reachable — the two transition timestamps are independent.
+    /// </remarks>
+    [TestCase(false, TestName = "Before EIP-7778 the block owes the post-refund spend")]
+    [TestCase(true, TestName = "EIP-7778 alone bills the block the pre-refund gross")]
+    public void Execute_WithoutEip8037_ChargesTheBlockOneDimension(bool eip7778Enabled)
+    {
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip7778Enabled = eip7778Enabled });
+        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        // Setting a fresh slot and clearing it again earns an EIP-3529 refund, so the pre- and
+        // post-refund charges differ.
+        Deploy(Writer, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+
+        TestAllTracerWithOutput tracer = new();
+        Transaction tx = FrameTx(nonce: 0, Writer);
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        ulong spentGas = tracer.GasConsumedResult.SpentGas;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Refund, Is.GreaterThan(0), "the transaction must earn a refund for the two charges to differ");
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero, "there is no state dimension before EIP-8037");
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, eip7778Enabled
+                ? Is.GreaterThan(spentGas)
+                : Is.EqualTo(spentGas));
+            Assert.That(tx.BlockGasUsed, Is.EqualTo(tracer.GasConsumedResult.EffectiveBlockGas),
+                "block accounting reads BlockGasUsed, whose getter otherwise falls back to the frame-gas sum");
+        }
     }
 
     private static byte[] ApproveCode(byte scope) =>

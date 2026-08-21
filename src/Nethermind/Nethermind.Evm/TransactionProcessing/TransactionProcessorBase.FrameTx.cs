@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -246,6 +245,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Snapshot prefixEndSnapshot = txSnapshot;
         int prefixEndIndex = -1;
         long prefixEndRefund = 0;
+        long prefixEndStateGas = 0;
         bool postTxReverted = false;
 
         for (int i = 0; i < frames.Length; i++)
@@ -339,6 +339,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // atomic-batch unrolling, but unlike a VERIFY revert it leaves the transaction valid.
                 WorldState.Restore(prefixEndSnapshot);
                 refundCounter = prefixEndRefund;
+                // EIP-8037: the discarded body commits no state, so its state charges are not owed;
+                // the execution gas it consumed stays charged, as in the batch unroll below.
+                totalFrameStateGasUsed = prefixEndStateGas;
 
                 // Body logs go with the state that produced them; the tx log set is derived from these
                 // receipts, so clearing them here also keeps them out of the bloom.
@@ -373,6 +376,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     prefixEndSnapshot = WorldState.TakeSnapshot();
                     prefixEndIndex = i;
                     prefixEndRefund = refundCounter;
+                    prefixEndStateGas = totalFrameStateGasUsed;
                 }
             }
             else
@@ -418,6 +422,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                         prefixEndSnapshot = batchStartSnapshot;
                         prefixEndIndex = batchStartIndex - 1;
                         prefixEndRefund = batchStartRefund;
+                        prefixEndStateGas = batchStartStateGas;
                     }
 
                     int terminal = i;
@@ -451,16 +456,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // the net charge from below.
         ulong grossGas = intrinsicGas + totalFrameGasUsed;
         ulong spentGas = Math.Max(grossGas - RefundHelper.CalculateClaimableRefund(grossGas, (ulong)refundCounter, spec), floorGas);
-        ulong blockStateGas = (ulong)totalFrameStateGasUsed;
-        // blockStateGas <= grossGas by the reservoir-0 invariant: each frame rents an empty state-gas
-        // reservoir, so every state charge is already counted inside totalFrameGasUsed (hence grossGas),
-        // which is what makes the SaturatingSub in CalculateBlockExecutionGas sound.
-        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
+        // Every state charge is already inside grossGas by the reservoir-0 invariant (each frame rents an
+        // empty state-gas reservoir), which is what makes the subtraction CalculateBlockGas does sound.
+        (ulong blockRegularGas, long blockStateGas) = CalculateBlockGas(spec, totalFrameStateGasUsed, grossGas, floorGas);
+
+        GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, (ulong)blockStateGas, spentGas);
         // Block-level gas accounting reads Transaction.BlockGasUsed, whose getter otherwise falls back
         // to tx.GasLimit (the frame-gas sum, not the gas actually spent). Set it explicitly like the
         // regular path so parallel block validation (BlockAccessListManager) accumulates the frame
         // tx's real regular gas into the header.
-        tx.BlockGasUsed = blockRegularGas;
+        tx.BlockGasUsed = gasConsumed.EffectiveBlockGas;
         Address payer = frameContext.Payer;
 
         // The payer was charged the max cost at payment approval; refund the unused remainder and
@@ -527,7 +532,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
             // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
             LogEntry[] txLogs = TxFrameReceipt.ConcatLogs(frameReceipts);
-            GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
             if (postTxReverted)
             {
                 tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");

@@ -1767,7 +1767,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);
-            (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
+            (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, TGasPolicy.GetStateGasUsed(in gasAfterExecution), spentGas, floorGasLong);
 
             ulong operationGas = refund >= 0 ? spentGas - (ulong)refund : spentGas + (ulong)(-refund);
             ulong spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
@@ -1824,20 +1824,24 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual ulong CalculateClaimableRefund(ulong spentGas, ulong totalRefund, IReleaseSpec spec)
             => RefundHelper.CalculateClaimableRefund(spentGas, totalRefund, spec);
 
+        /// <summary>Splits the block charge into the EIP-8037 execution and state dimensions.</summary>
+        /// <remarks>
+        /// Before EIP-8037 the block keeps a single dimension: EIP-7778's pre-refund gross, or zero, which
+        /// leaves <see cref="GasConsumed.EffectiveBlockGas"/> falling back to the post-refund spend.
+        /// </remarks>
         private static (ulong blockGas, long blockStateGas) CalculateBlockGas(
             IReleaseSpec spec,
-            in TGasPolicy gasAfterExecution,
+            long stateGasUsed,
             ulong preRefundGas,
             ulong floorGas)
         {
             if (!spec.IsEip8037Enabled)
                 return (spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGas) : 0, 0);
 
-            long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
-            Debug.Assert(blockStateGas >= 0, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
+            Debug.Assert(stateGasUsed >= 0, $"EIP-8037 invariant violated: negative block state gas ({stateGasUsed}).");
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)stateGasUsed, floorGas);
 
-            return (blockGas, blockStateGas);
+            return (blockGas, stateGasUsed);
         }
 
         protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
