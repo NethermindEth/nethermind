@@ -16,6 +16,11 @@ internal sealed class PayerExposureCache
 
     public UInt256 GetReserved(AddressAsKey key) => _reserved.TryGetValue(key, out UInt256 reserved) ? reserved : UInt256.Zero;
 
+#if DEBUG
+    /// <summary>Every reservation currently held, for the owning pool's bookkeeping check.</summary>
+    public IEnumerable<KeyValuePair<AddressAsKey, UInt256>> Reservations => _reserved;
+#endif
+
     /// <summary>Atomically reserves <paramref name="cost"/> if the summed reservation stays within <paramref name="balance"/>.</summary>
     /// <param name="reserved">On rejection, the total observed at the decision point, for diagnostics; zero otherwise.</param>
     /// <param name="replaced">The reservation of a displaced pending transaction, excluded from the bound but still held; its release runs on removal.</param>

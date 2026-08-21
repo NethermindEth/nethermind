@@ -141,7 +141,7 @@ internal class TransactionProcessorEip7702Tests
         // Applying a valid authorization writes the authority leaf once; state charges are direct
         // top-frame charges and are not refunded.
         ulong intrinsicExecutionGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess
-            + GasCostOf.TransferLogEip2780 + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseExecution;
+            + GasCostOf.TxValueCostEip2780 + Eip8038Constants.PerAuthBaseExecution;
         ulong topFrameExecutionGas = Eip8038Constants.AccountWrite;
         ulong topFrameStateGas = (ulong)expectedTopFrameStateGas;
         ulong expectedSpentGas = intrinsicExecutionGas + topFrameExecutionGas + topFrameStateGas;

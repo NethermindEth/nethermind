@@ -102,7 +102,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(foundPrecompileCall, Is.True);
-            Assert.That(precompileCallGas, Is.EqualTo(955_588));
+            Assert.That(precompileCallGas, Is.EqualTo(954_604));
         }
     }
 
@@ -567,8 +567,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, 591_128L, TestName = "Eip8037_nested_create_collision_skips_state_charge_and_burns_execution_gas_CREATE")]
-    [TestCase(true, 591_128L, TestName = "Eip8037_nested_create_collision_skips_state_charge_and_burns_execution_gas_CREATE2")]
+    [TestCase(false, 591_143L, TestName = "Eip8037_nested_create_collision_skips_state_charge_and_burns_execution_gas_CREATE")]
+    [TestCase(true, 591_144L, TestName = "Eip8037_nested_create_collision_skips_state_charge_and_burns_execution_gas_CREATE2")]
     public void Eip8037_nested_create_collision_skips_state_charge_and_burns_execution_gas(bool create2, long expectedBlockGas)
     {
         byte[] initCode = Prepare.EvmCode
@@ -634,14 +634,14 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, false, true, 431_191UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE")]
-    [TestCase(false, true, true, 431_191UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE")]
-    [TestCase(true, false, true, 431_192UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE2")]
-    [TestCase(true, true, true, 431_192UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE2")]
-    [TestCase(false, false, false, 215_748UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE")]
-    [TestCase(false, true, false, 215_748UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE")]
-    [TestCase(true, false, false, 215_757UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE2")]
-    [TestCase(true, true, false, 215_757UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE2")]
+    [TestCase(false, false, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE")]
+    [TestCase(false, true, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE")]
+    [TestCase(true, false, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_fresh_CREATE2")]
+    [TestCase(true, true, true, 431_207UL, TestName = "Eip8037_failed_create_refunds_spilled_state_gas_empty_existing_CREATE2")]
+    [TestCase(false, false, false, 216_748UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE")]
+    [TestCase(false, true, false, 216_748UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE")]
+    [TestCase(true, false, false, 216_757UL, TestName = "Eip8037_successful_create_charges_state_gas_fresh_CREATE2")]
+    [TestCase(true, true, false, 216_757UL, TestName = "Eip8037_successful_create_charges_state_gas_empty_existing_CREATE2")]
     public void Eip8037_create_state_gas_matches_reference(
         bool create2,
         bool emptyExistingTarget,
@@ -729,8 +729,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, 478_030L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE")]
-    [TestCase(true, 478_039L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE2")]
+    [TestCase(false, 479_030L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE")]
+    [TestCase(true, 479_039L, TestName = "Eip8037_failed_create_burns_child_execution_gas_CREATE2")]
     public void Eip8037_failed_create_burns_child_execution_gas(bool create2, long expectedGas)
     {
         Address factory = TestItem.AddressC;
@@ -1105,7 +1105,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, 500_000, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(326_770));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(327_634));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(241_330));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }));

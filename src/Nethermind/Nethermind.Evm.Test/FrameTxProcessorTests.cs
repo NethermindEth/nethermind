@@ -2202,24 +2202,27 @@ public class FrameTxProcessorTests
         Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent, Is.EqualTo(referenceTokens * GasCostOf.TxDataZero));
     }
 
-    [Test]
-    public void RecentRootReference_intrinsic_gas_prices_the_address_and_both_keyed_preimages()
+    /// <remarks>
+    /// The totals are literal rather than re-derived: EIP-8272 prices a reference at the access-list entry
+    /// rates plus the 102 gas of the two key-derivation Keccaks (72- and 104-byte preimages), and a reprice
+    /// of either rate must surface here instead of silently following it.
+    /// </remarks>
+    [TestCase(true, 0, 0ul)]
+    [TestCase(true, 1, 5002ul)]
+    [TestCase(true, 2, 7104ul)]
+    [TestCase(true, Eip8272Constants.MaxRecentRootReferences, 36532ul)]
+    [TestCase(false, 1, 4402ul)]
+    [TestCase(false, Eip8272Constants.MaxRecentRootReferences, 34432ul)]
+    public void RecentRootReference_intrinsic_gas_prices_the_address_and_both_keyed_preimages(bool eip8038Enabled, int referenceCount, ulong expected)
     {
-        IReleaseSpec spec = Spec;
-        const int DomainLen = 32, SourceIdLen = 32, SlotLen = sizeof(ulong), RootLen = 32;
-        static ulong Keccak(int preimageBytes) => GasCostOf.Sha3 + GasCostOf.Sha3Word * (ulong)((preimageBytes + 31) / 32);
-        ulong addressCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListAddressCost : GasCostOf.AccessAccountListEntry;
-        ulong storageKeyCost = spec.IsEip8038Enabled ? Eip8038Constants.AccessListStorageKeyCost : GasCostOf.AccessStorageListEntry;
-        ulong expected = addressCost + storageKeyCost
-            + Keccak(DomainLen + SourceIdLen + SlotLen)
-            + Keccak(DomainLen + SourceIdLen + SlotLen + RootLen);
+        _spec.IsEip8038Enabled = eip8038Enabled;
+        RecentRootReference[] references = new RecentRootReference[referenceCount];
+        references.AsSpan().Fill(new RecentRootReference(default, 0, default));
 
-        RecentRootReference[] one = [new RecentRootReference(default, 0, default)];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(RecentRootReference.IntrinsicGas(one, spec), Is.EqualTo(expected));
-            Assert.That(RecentRootReference.IntrinsicGas([], spec), Is.Zero);
-            Assert.That(RecentRootReference.IntrinsicGas(null, spec), Is.Zero);
+            Assert.That(RecentRootReference.IntrinsicGas(references, Spec), Is.EqualTo(expected));
+            Assert.That(RecentRootReference.IntrinsicGas(null, Spec), Is.Zero);
         }
     }
 

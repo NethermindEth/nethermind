@@ -198,7 +198,7 @@ public class FrameTxPrefixRetryMeasurement
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
             ShouldGossip.Instance,
-            incomingTxFilter: null,
+            incomingTxFilters: null,
             new HeadTxValidator(),
             thereIsPriorityContract: false);
     }

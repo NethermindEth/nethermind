@@ -9,8 +9,11 @@ namespace Nethermind.Evm;
 /// <summary>Pre-state validity of a frame transaction's EIP-8272 recent-root references.</summary>
 public static class RecentRootReferences
 {
-    /// <summary>Checks every reference against the commitment in <c>RECENT_ROOT_ADDRESS</c>, warming the
-    /// predeploy and the keys read (already paid for by intrinsic gas).</summary>
+    /// <summary>
+    /// Checks every reference against the pre-state commitment in <c>RECENT_ROOT_ADDRESS</c>, warming the
+    /// predeploy and the keys read — for which the intrinsic gas has paid the access-list pre-warm rate; the
+    /// reads themselves are uncharged.
+    /// </summary>
     /// <returns><see langword="true"/> when every reference is committed and inside the usable window.</returns>
     public static bool Validate(IWorldState state, RecentRootReference[]? references, ulong? currentSlot, in StackAccessTracker accessTracker)
     {
