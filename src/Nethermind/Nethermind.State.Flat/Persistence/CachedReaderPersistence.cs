@@ -44,6 +44,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
                 {
                     await timer.WaitForNextTickAsync(_cancelTokenSource.Token);
                     ClearReaderCache();
+                    ReportExperimentStats();
                 }
             }
             catch (OperationCanceledException)
@@ -53,6 +54,33 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
         // Prime the reader cache
         using IPersistence.IPersistenceReader reader = CreateReader();
+    }
+
+    // Experiment (NM_XP_STATS): one grep-able line per tick so a benchmark run's log carries the
+    // cross-block cache numbers; the metrics endpoint is not scraped by the benchmark harness.
+    private static readonly bool ReportExperimentStatsEnabled = ExperimentSwitches.Bool("NM_XP_STATS");
+
+    private void ReportExperimentStats()
+    {
+        if (!ReportExperimentStatsEnabled || !_logger.IsInfo) return;
+
+        long slotHits = Metrics.CarryForwardSlotHits;
+        long slotMisses = Metrics.CarryForwardSlotMisses;
+        long accountHits = Metrics.CarryForwardAccountHits;
+        long accountMisses = Metrics.CarryForwardAccountMisses;
+
+        _logger.Info(
+            $"XPSTATS cf_slot_hits={slotHits} cf_slot_misses={slotMisses} " +
+            $"cf_slot_hitrate={Rate(slotHits, slotMisses):F4} " +
+            $"cf_acct_hits={accountHits} cf_acct_misses={accountMisses} " +
+            $"cf_acct_hitrate={Rate(accountHits, accountMisses):F4} " +
+            $"cf_wipes={Metrics.CarryForwardWipes} " +
+            $"cf_slot_count={Metrics.CarryForwardSlotCount} cf_acct_count={Metrics.CarryForwardAccountCount} " +
+            $"storage_cleared={Db.Metrics.StorageCleared} " +
+            $"preblock_slot_hits={Db.Metrics.PreBlockCacheStorageHits} preblock_slot_misses={Db.Metrics.PreBlockCacheStorageMisses} " +
+            $"preblock_acct_hits={Db.Metrics.PreBlockCacheAccountHits} preblock_acct_misses={Db.Metrics.PreBlockCacheAccountMisses}");
+
+        static double Rate(long hits, long misses) => hits + misses == 0 ? 0d : (double)hits / (hits + misses);
     }
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
