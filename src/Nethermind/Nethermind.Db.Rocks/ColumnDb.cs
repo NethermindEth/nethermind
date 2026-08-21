@@ -135,12 +135,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
 
     /// <summary>
-    /// Not sure how to handle delete of the columns DB
+    /// Clearing a single column family is not supported; it shares the underlying database with the other columns.
     /// </summary>
-    /// <exception cref="NotSupportedException"></exception>
+    /// <exception cref="NotSupportedException">Always thrown; clearing a single column family is not supported.</exception>
     public void Clear() => throw new NotSupportedException();
 
-    // Maybe it should be column-specific metric?
     public IDbMeta.DbMetric GatherMetric() => _mainDb.GatherMetric();
 
     public void SetWriteBuffer(long sizeBytes)
