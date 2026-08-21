@@ -618,7 +618,7 @@ namespace Nethermind.TxPool
 
         /// <summary>Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
         /// <remarks>The predeploy reverts only once <c>block.timestamp &gt; deadline</c>, so the comparison is strict here too.</remarks>
-        // EIP8141-GAP: linear scan, and expired txs held only by the broadcaster are not swept.
+        // EIP8141-GAP: linear scan; a deadline-ordered index is deferred to the scalable eviction layer.
         private void RemoveExpiredFrameTransactions(Block block)
         {
             if (Volatile.Read(ref _expiringFrameTxCount) == 0

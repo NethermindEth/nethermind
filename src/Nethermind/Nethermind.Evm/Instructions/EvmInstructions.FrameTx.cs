@@ -66,7 +66,7 @@ public static unsafe partial class EvmInstructions
             }
         }
 
-        // EIP8141-GAP: the spec leaves APPROVE's return data undefined; loaded with RETURN semantics.
+        // EIP-8141 APPROVE: the memory region becomes the frame's return data, following RETURN semantics.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in offset, in length, out ReadOnlyMemory<byte> returnData))
         {

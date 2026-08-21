@@ -12,7 +12,7 @@ public static class TxTypeExtensions
     public static bool Supports1559(this TxType txType)
         => txType >= TxType.EIP1559 && txType != TxType.DepositTx;
 
-    // EIP8141-GAP: blob sidecar/network-wrapper handling is not implemented for frame transactions.
+    // Type-3 only; a blob-carrying frame tx is matched by Transaction.CarriesBlobs instead.
     public static bool SupportsBlobs(this TxType txType)
         => txType == TxType.Blob;
 
