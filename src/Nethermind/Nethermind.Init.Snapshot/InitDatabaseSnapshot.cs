@@ -98,7 +98,7 @@ public class InitDatabaseSnapshot(
             {
                 StreamingSnapshotInitializer initializer = new(
                     snapshotConfig, snapshotUrl, dbPath, drives,
-                    SnapshotStreamSettings.Default(snapshotConfig.StreamingConnections, snapshotConfig.Checksum is not null), api.LogManager);
+                    SnapshotStreamSettings.Default(snapshotConfig.StreamingConnections), api.LogManager);
                 await initializer.InitializeAsync(checkpoint, cancellationToken).ConfigureAwait(false);
                 return;
             }

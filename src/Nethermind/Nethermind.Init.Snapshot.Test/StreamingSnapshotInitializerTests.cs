@@ -235,7 +235,7 @@ public class StreamingSnapshotInitializerTests
 
     private StreamingSnapshotInitializer CreateInitializer(int connections = 2, IDriveInfo[]? drives = null) =>
         new(_config, _server.Url, _dbPath, drives ?? [],
-            new SnapshotStreamSettings(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30), _config.Checksum is not null),
+            new SnapshotStreamSettings(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30)),
             LimboLogs.Instance);
 
     private SnapshotCheckpoint CreateCheckpoint() => new(_config, LimboLogs.Instance);

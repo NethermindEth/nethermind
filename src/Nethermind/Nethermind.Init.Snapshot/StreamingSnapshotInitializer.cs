@@ -35,19 +35,17 @@ internal sealed class StreamingSnapshotInitializer(
             LogMode(remoteInfo);
             CheckDiskSpace(remoteInfo.Length);
 
+            bool verified;
             try
             {
-                if (await StreamAndExtractAsync(client, remoteInfo, checkpoint, cancellationToken).ConfigureAwait(false))
-                    return;
-
-                DeleteDatabase();
-                return;
+                verified = await StreamAndExtractAsync(client, remoteInfo, checkpoint, cancellationToken).ConfigureAwait(false);
             }
             catch (SnapshotSourceChangedException e)
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"{e.Message} Restarting the snapshot download.");
                 DeleteDatabase();
+                continue;
             }
             catch (Exception e) when (e is IOException or InvalidDataException or EndOfStreamException or ZstdException)
             {
@@ -58,9 +56,15 @@ internal sealed class StreamingSnapshotInitializer(
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
+                if (_logger.IsError)
+                    _logger.Error($"Snapshot streaming failed: {e.Message} Deleting the partially extracted database.");
                 DeleteDatabase();
                 throw;
             }
+
+            if (!verified)
+                DeleteDatabase();
+            return;
         }
 
         if (_logger.IsError)

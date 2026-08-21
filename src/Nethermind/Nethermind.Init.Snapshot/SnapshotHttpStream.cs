@@ -12,10 +12,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Snapshot;
 
-internal sealed record SnapshotStreamSettings(int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay, TimeSpan StallTimeout, bool ComputeChecksum)
+internal sealed record SnapshotStreamSettings(
+    int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay, TimeSpan StallTimeout, bool ComputeChecksum = false)
 {
-    public static SnapshotStreamSettings Default(int connections, bool computeChecksum) =>
-        new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300), SnapshotHttpClient.DefaultStallTimeout, computeChecksum);
+    public static SnapshotStreamSettings Default(int connections) =>
+        new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300), SnapshotHttpClient.DefaultStallTimeout);
 }
 
 internal sealed class SnapshotHttpStream : Stream
