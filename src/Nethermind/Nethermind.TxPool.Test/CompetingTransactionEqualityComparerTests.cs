@@ -52,8 +52,7 @@ namespace Nethermind.TxPool.Test
         public bool HashCode_test(Transaction t1, Transaction t2) =>
             CompetingTransactionEqualityComparer.Instance.GetHashCode(t1) == CompetingTransactionEqualityComparer.Instance.GetHashCode(t2);
 
-        // The account-nonce case takes a two-value combine instead of the general loop; it has to
-        // produce the same value, or a pool entry stops being findable by an equal transaction.
+        // If the two-value combine diverges, a pool entry stops being findable by an equal transaction.
         [TestCaseSource(nameof(AccountNonceDomainTransactions))]
         public void HashCode_of_an_account_nonce_transaction_matches_the_general_algorithm(Transaction tx)
         {

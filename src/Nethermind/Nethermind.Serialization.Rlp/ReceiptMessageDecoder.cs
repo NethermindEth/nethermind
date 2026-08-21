@@ -224,15 +224,15 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        /// <summary>The receipt's content length, and the length of the inner sequence the encoder repeats:
+        /// the per-frame receipts for a frame transaction, the logs for every other type.</summary>
+        private (int Total, int Inner) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
                 return (0, 0);
             }
 
-            // A frame receipt carries the per-frame receipts where a plain one carries the logs, so the
-            // second element is that sequence's length.
             if (item.TxType == TxType.FrameTx)
             {
                 return GetFrameTxContentLength(item);
@@ -308,7 +308,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int totalContentLength, int logsLength) = GetContentLength(item, rlpBehaviors);
+            (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
@@ -325,7 +325,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (item.TxType == TxType.FrameTx)
             {
-                EncodeFrameTxReceipt(ref writer, item, totalContentLength, logsLength);
+                EncodeFrameTxReceipt(ref writer, item, totalContentLength, innerLength);
                 return;
             }
 
@@ -346,7 +346,7 @@ namespace Nethermind.Serialization.Rlp
             if (!skipBloom)
                 writer.Encode(item.Bloom);
 
-            writer.StartSequence(logsLength);
+            writer.StartSequence(innerLength);
             LogEntry[] logs = item.Logs;
             LogEntryDecoder logEntryDecoder = LogEntryDecoder.Instance;
             for (int i = 0; i < logs.Length; i++)

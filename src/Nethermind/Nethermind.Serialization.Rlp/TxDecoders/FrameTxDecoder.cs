@@ -340,8 +340,9 @@ public static class FrameTxNonceCalldata
     public static (int ZeroBytes, int NonZeroBytes) Measure(Transaction transaction)
     {
         int length = Length(transaction);
-        // Allocate only what is encoded, but keep the bound: the keys can reach here from an
-        // RPC-built transaction that never went through the decoder's count limit.
+        // A dynamic stackalloc turns an out-of-range length into an uncatchable stack overflow, and this is
+        // public: the keys can reach it from an RPC-built transaction the decoder never bounded.
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxCalldataLength);
         Span<byte> calldata = stackalloc byte[length];
         RlpWriter writer = new(calldata);

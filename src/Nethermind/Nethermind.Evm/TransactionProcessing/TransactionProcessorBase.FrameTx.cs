@@ -527,8 +527,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
             if (postTxReverted)
             {
-                // The failed receipt rebuilds the log set from the reported frame receipts, so
-                // concatenating here as well would only throw the result away.
+                // The failed receipt rebuilds the log set from the frame receipts reported above.
                 tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");
             }
             else

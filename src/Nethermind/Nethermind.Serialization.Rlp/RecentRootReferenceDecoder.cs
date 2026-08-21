@@ -65,8 +65,9 @@ public sealed class RecentRootReferenceDecoder : RlpDecoder<RecentRootReference>
         }
 
         int length = GetArrayLength(references);
-        // Allocate only what is encoded, but keep the bound: the references can reach here from an
-        // RPC-built transaction that never went through the decoder's count limit.
+        // A dynamic stackalloc turns an out-of-range length into an uncatchable stack overflow, and this is
+        // public: the references can reach it from an RPC-built transaction the decoder never bounded.
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaxCalldataLength);
         Span<byte> calldata = stackalloc byte[length];
         RlpWriter writer = new(calldata);
