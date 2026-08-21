@@ -308,6 +308,26 @@ jobs:
           SYNC_MODE: ${{ matrix.config.mode }}
         run: python scripts/wait-for-sync.py
 
+      - name: Collect sync metrics
+        if: success()
+        continue-on-error: true
+        env:
+          NETWORK: ${{ matrix.config.network }}
+          SYNC_MODE: ${{ matrix.config.mode }}
+          DOCKER_IMAGE: ${{ needs.setup-matrix.outputs.docker_image }}
+        # Filename must be unique across the matrix: publish-metrics merges all artifacts into one directory
+        run: python scripts/sync-metrics/collect.py sync-metrics-${{ matrix.config.network }}-${{ matrix.config.mode }}.json
+
+      - name: Upload sync metrics
+        if: success()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-metrics-${{ matrix.config.network }}-${{ matrix.config.mode }}
+          if-no-files-found: ignore
+          path: sync-metrics-${{ matrix.config.network }}-${{ matrix.config.mode }}.json
+          retention-days: 7
+
       - name: Get Nethermind Debug Logs
         if: failure() || cancelled()
         env:
@@ -389,6 +409,109 @@ jobs:
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
+
+  publish-metrics:
+    needs: [setup-matrix, sync-chain]
+    # Runs whenever any sync job may have produced metrics (partial failures included).
+    # Metrics must never turn a green sync run red; the timeout also keeps a hang from
+    # holding the concurrency group (and thus blocking every later run) for the 6h default.
+    if: ${{ !cancelled() && needs.setup-matrix.result == 'success' }}
+    continue-on-error: true
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    concurrency:
+      group: sync-metrics-publish
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/sync-metrics
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+
+      - name: Checkout metrics data branch
+        uses: actions/checkout@v6
+        with:
+          ref: sync-metrics
+          path: metrics-branch
+
+      - name: Download sync metrics artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sync-metrics-*
+          path: metrics
+          merge-multiple: true
+
+      - name: Append records to sync-metrics branch
+        id: append
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(metrics/*.json)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No sync metrics collected; skipping publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git -C metrics-branch config user.name "github-actions[bot]"
+          git -C metrics-branch config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # publish.py is idempotent, so on a push race we reset and re-apply
+          pushed=false
+          for _ in 1 2 3; do
+            python scripts/sync-metrics/publish.py metrics metrics-branch/history.jsonl
+            git -C metrics-branch add history.jsonl
+            if git -C metrics-branch diff --cached --quiet; then
+              echo "No new records."
+              pushed=true
+              break
+            fi
+            git -C metrics-branch commit -m "Record sync metrics for run ${GITHUB_RUN_ID}"
+            if git -C metrics-branch push origin HEAD:sync-metrics; then
+              pushed=true
+              break
+            fi
+            git -C metrics-branch fetch origin sync-metrics
+            git -C metrics-branch reset --hard FETCH_HEAD
+          done
+          if [ "$pushed" != true ]; then
+            echo "::error::Failed to push sync metrics after 3 attempts."
+            exit 1
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build dashboard site
+        if: steps.append.outputs.publish == 'true'
+        run: |
+          mkdir -p _site
+          cp scripts/sync-metrics/index.html _site/index.html
+          cp metrics-branch/history.jsonl _site/history.jsonl
+
+      - name: Configure GitHub Pages
+        if: steps.append.outputs.publish == 'true'
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload Pages artifact
+        if: steps.append.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        if: steps.append.outputs.publish == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   notify-on-failure:
     needs: [create_a_runner, sync-chain]
