@@ -14,4 +14,10 @@ namespace Nethermind.TxPool
 
         public const string SpecChangeTxValidatorKey = "SpecChangeTxValidator";
     }
+
+    public interface ILightTxValidator
+    {
+        /// <summary>Validates the fields retained by a light transaction.</summary>
+        ValidationResult IsWellFormedLight(LightTransaction transaction, IReleaseSpec releaseSpec);
+    }
 }

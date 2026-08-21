@@ -180,6 +180,7 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
+                // Count before resolving sidecars so an invalid pool cannot make fork-transition validation unbounded.
                 consideredBlobCount += txBlobCount;
                 bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
                 if (validateForkSensitiveState)
@@ -209,7 +210,7 @@ namespace Nethermind.Consensus.Producers
                     {
                         // Early exit, have complete set of 1 blob txs with maximal priority fees
                         // No need to consider other tx.
-                        return fullBlobTxs;
+                        return GetSelectedFullBlobTransactions();
                     }
                 }
                 else
@@ -228,7 +229,7 @@ namespace Nethermind.Consensus.Producers
             }
 
             // No leftover candidates
-            if (candidates is null) return fullBlobTxs;
+            if (candidates is null) return GetSelectedFullBlobTransactions();
 
             using (candidates)
             {
@@ -247,7 +248,27 @@ namespace Nethermind.Consensus.Producers
                 }
             }
 
-            return fullBlobTxs;
+            return GetSelectedFullBlobTransactions();
+
+            Dictionary<Hash256, Transaction>? GetSelectedFullBlobTransactions()
+            {
+                if (fullBlobTxs is null || fullBlobTxs.Count == selectedBlobTxs.Count)
+                {
+                    return fullBlobTxs;
+                }
+
+                Dictionary<Hash256, Transaction> selectedFullBlobTxs = new(selectedBlobTxs.Count);
+                foreach (Transaction selectedBlobTx in selectedBlobTxs)
+                {
+                    if (selectedBlobTx.Hash is Hash256 hash
+                        && fullBlobTxs.TryGetValue(hash, out Transaction? fullBlobTx))
+                    {
+                        selectedFullBlobTxs[hash] = fullBlobTx;
+                    }
+                }
+
+                return selectedFullBlobTxs;
+            }
         }
 
         /// <summary>

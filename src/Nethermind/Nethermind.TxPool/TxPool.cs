@@ -184,7 +184,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
-                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
+                new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
             ];
 
             if (incomingTxFilters is not null)
@@ -192,7 +192,7 @@ namespace Nethermind.TxPool
                 postHashFilters.AddRange(incomingTxFilters);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
+            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -580,12 +580,12 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.Invalid;
             }
 
-            TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
             AcceptTxResult accepted = AcceptTxResult.Invalid;
 
             _newHeadLock.EnterReadLock();
             try
             {
+                TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
                 accepted = FilterTransactions(tx, handlingOptions, ref state);
                 if (accepted)
                 {
@@ -906,6 +906,16 @@ namespace Nethermind.TxPool
                 }
 
                 Hash256 hash = lightTransaction.Hash!;
+                if (_specChangeTxValidator is ILightTxValidator lightTxValidator)
+                {
+                    ValidationResult validLightTransaction = lightTxValidator.IsWellFormedLight(lightTransaction, spec);
+                    if (!validLightTransaction)
+                    {
+                        invalidTransactions[hash] = validLightTransaction;
+                        continue;
+                    }
+                }
+
                 if (!_blobTransactions.TryGetValue(hash, out Transaction? fullTransaction))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Removing {lightTransaction.ToShortString()} from the blob pool because its full transaction is unavailable.");

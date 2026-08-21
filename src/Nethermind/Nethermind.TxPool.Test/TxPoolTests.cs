@@ -411,7 +411,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_not_report_fork_state_safe_after_empty_pool_crosses_fork()
+        public async Task should_report_fork_state_safe_after_empty_pool_crosses_fork()
         {
             Block head = _blockTree.Head;
             _blockTree.BestSuggestedHeader = head.Header;
@@ -425,7 +425,7 @@ namespace Nethermind.TxPool.Test
 
             await AddEmptyBlock();
 
-            Assert.That(_txPool.IsRevalidatedFor(_blockTree.Head.Header), Is.False);
+            Assert.That(_txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True);
         }
 
         [Test]

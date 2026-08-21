@@ -299,6 +299,33 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_not_load_persistent_blob_rejected_by_light_fork_validation()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
+            {
+                Params = new ChainSpecParamsJson
+                {
+                    Eip4844TransitionTimestamp = head.Timestamp,
+                    Eip7594TransitionTimestamp = head.Timestamp,
+                }
+            });
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([new LightTransaction(transaction)]);
+
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 1 },
+                provider,
+                txStorage: storage);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+            storage.DidNotReceiveWithAnyArgs().TryGet(default, default, default, out _);
+        }
+
+        [Test]
         public async Task should_allow_rebroadcast_of_blob_with_new_proofs_after_fork_when_balance_is_insufficient()
         {
             Block head = _blockTree.Head;
