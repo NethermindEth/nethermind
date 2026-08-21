@@ -153,52 +153,21 @@ public class InitDatabaseSnapshotTests
             "a checkpoint past Downloaded with no archive on disk must stream instead of skipping the download stage");
     }
 
-    [Test]
-    public async Task Execute_VerifiedCheckpointWithoutArchive_RedownloadsAndExtracts()
+    [TestCase(nameof(SnapshotStage.Verified), TestName = "Verified")]
+    [TestCase(nameof(SnapshotStage.Extracted), TestName = "Extracted")]
+    [TestCase(nameof(SnapshotStage.Completed), TestName = "Completed")]
+    public async Task Execute_CheckpointPastDownloadWithoutArchiveOrDatabase_RedownloadsAndExtracts(string stage)
     {
         using FlakySnapshotServer server = new();
-        using MemoryStream tarBuffer = new();
-        using (TarWriter tarWriter = new(tarBuffer, leaveOpen: true))
-        {
-            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "data"));
-            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "data/state.bin")
-            {
-                DataStream = new MemoryStream(new byte[1000])
-            });
-        }
-        server.Content = tarBuffer.ToArray();
-        AdvanceCheckpoint(SnapshotStage.Verified);
+        server.Content = TestArchive.BuildTar();
+        AdvanceCheckpoint(Enum.Parse<SnapshotStage>(stage));
         _snapshotConfig.DownloadUrl = server.Url;
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
 
         await step.Execute(CancellationToken.None);
 
         Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
-            "a checkpoint past the download with the archive deleted must restart the download instead of failing startup forever");
-    }
-
-    [Test]
-    public async Task Execute_CompletedCheckpointNoDatabaseNoArchive_RedownloadsAndExtracts()
-    {
-        using FlakySnapshotServer server = new();
-        using MemoryStream tarBuffer = new();
-        using (TarWriter tarWriter = new(tarBuffer, leaveOpen: true))
-        {
-            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "data"));
-            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "data/state.bin")
-            {
-                DataStream = new MemoryStream(new byte[1000])
-            });
-        }
-        server.Content = tarBuffer.ToArray();
-        AdvanceCheckpoint(SnapshotStage.Completed);
-        _snapshotConfig.DownloadUrl = server.Url;
-        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
-
-        await step.Execute(CancellationToken.None);
-
-        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
-            "a stale completed checkpoint with neither database nor archive must restart the two-phase flow from the download");
+            "a checkpoint past the download with neither archive nor database must restart the download instead of failing startup forever");
     }
 
     [Test]
@@ -241,15 +210,7 @@ public class InitDatabaseSnapshotTests
     [Test]
     public void Execute_ArchiveNotMatchingStripComponents_Throws()
     {
-        using (FileStream fileStream = File.Create(_snapshotPath))
-        using (TarWriter tarWriter = new(fileStream))
-        {
-            PaxTarEntry fileEntry = new(TarEntryType.RegularFile, "state.bin")
-            {
-                DataStream = new MemoryStream(new byte[1000])
-            };
-            tarWriter.WriteEntry(fileEntry);
-        }
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTarWithoutTopLevelDirectory());
         AdvanceCheckpoint(SnapshotStage.Verified);
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
 
@@ -284,17 +245,7 @@ public class InitDatabaseSnapshotTests
 
     private long WriteSnapshotTar()
     {
-        using (FileStream fileStream = File.Create(_snapshotPath))
-        using (TarWriter tarWriter = new(fileStream))
-        {
-            tarWriter.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "data"));
-            PaxTarEntry fileEntry = new(TarEntryType.RegularFile, "data/state.bin")
-            {
-                DataStream = new MemoryStream(new byte[SnapshotPayloadSize])
-            };
-            tarWriter.WriteEntry(fileEntry);
-        }
-
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(SnapshotPayloadSize));
         return new FileInfo(_snapshotPath).Length;
     }
 

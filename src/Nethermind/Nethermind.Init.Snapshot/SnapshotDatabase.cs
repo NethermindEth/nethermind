@@ -46,12 +46,19 @@ internal static class SnapshotDatabase
                 File.Delete(entry);
         }
 
+        TryRemoveDirectoryItself(dbPath);
+    }
+
+    private static bool TryRemoveDirectoryItself(string dbPath)
+    {
         try
         {
             Directory.Delete(dbPath);
+            return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
+            return false;
         }
     }
 }

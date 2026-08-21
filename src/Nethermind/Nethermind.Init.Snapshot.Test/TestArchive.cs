@@ -33,6 +33,35 @@ internal static class TestArchive
         return Compress(tarBuffer);
     }
 
+    public static byte[] BuildTar(int payloadSize = 1000)
+    {
+        using MemoryStream tarBuffer = new();
+        using (TarWriter writer = new(tarBuffer, leaveOpen: true))
+        {
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "data"));
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "data/state.bin")
+            {
+                DataStream = new MemoryStream(new byte[payloadSize])
+            });
+        }
+
+        return tarBuffer.ToArray();
+    }
+
+    public static byte[] BuildTarWithoutTopLevelDirectory()
+    {
+        using MemoryStream tarBuffer = new();
+        using (TarWriter writer = new(tarBuffer, leaveOpen: true))
+        {
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "state.bin")
+            {
+                DataStream = new MemoryStream(new byte[1000])
+            });
+        }
+
+        return tarBuffer.ToArray();
+    }
+
     public static byte[] BuildTarZstWithoutTopLevelDirectory()
     {
         using MemoryStream tarBuffer = new();

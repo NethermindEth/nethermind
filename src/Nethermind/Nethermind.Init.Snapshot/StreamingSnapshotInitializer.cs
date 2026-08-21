@@ -50,20 +50,25 @@ internal sealed class StreamingSnapshotInitializer(
             catch (Exception e) when (e is IOException or InvalidDataException or EndOfStreamException or ZstdException)
             {
                 if (_logger.IsError)
-                    _logger.Error($"Snapshot streaming failed: {e.Message} Deleting the partially extracted database; the node will continue running.");
+                    _logger.Error($"Snapshot streaming failed: {e.Message} Deleting the partially extracted database.");
                 DeleteDatabase();
+                LogContinuingWithoutSnapshot();
                 return;
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 if (_logger.IsError)
-                    _logger.Error($"Snapshot streaming failed: {e.Message} Deleting the partially extracted database.");
+                    _logger.Error("Snapshot streaming failed. Deleting the partially extracted database.", e);
                 DeleteDatabase();
                 throw;
             }
 
             if (!verified)
+            {
                 DeleteDatabase();
+                LogContinuingWithoutSnapshot();
+            }
+
             return;
         }
 
@@ -91,7 +96,7 @@ internal sealed class StreamingSnapshotInitializer(
                 _logger.Warn("Snapshot checksum is not configured.");
         }
         else if (checksum is null
-                 || !SnapshotChecksum.Verify(checksum, expectedChecksum, "Deleting the extracted database; the node will continue running.", _logger))
+                 || !SnapshotChecksum.Verify(checksum, expectedChecksum, "Deleting the extracted database.", _logger))
         {
             return false;
         }
@@ -167,6 +172,12 @@ internal sealed class StreamingSnapshotInitializer(
         }
 
         SnapshotDiskSpace.Check(drives, SnapshotDiskSpace.GetRequiredSpaceForExtraction(snapshotLength.Value), "extract");
+    }
+
+    private void LogContinuingWithoutSnapshot()
+    {
+        if (_logger.IsInfo)
+            _logger.Info("The node will continue running without a snapshot.");
     }
 
     private void DeleteDatabase()
