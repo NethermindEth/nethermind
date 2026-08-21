@@ -3244,6 +3244,82 @@ public class BlockTreeTests
         Assert.That(reloaded.BestSuggestedBeaconHeader?.Hash, Is.EqualTo(beaconSibling.Hash));
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Beacon_header_reinsert_keeps_body_metadata_so_load_sees_no_corruption()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block previous = SuggestProcessedPostMergeChain(tree)[^1];
+
+        // engine_newPayload while syncing stores the tip blocks with header + body beacon metadata
+        Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(0).WithParent(previous).TestObject;
+        Block block6 = Build.A.Block.WithNumber(6).WithDifficulty(0).WithParent(block5).TestObject;
+        Block block7 = Build.A.Block.WithNumber(7).WithDifficulty(0).WithParent(block6).TestObject;
+        tree.Insert(block5, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+        tree.Insert(block6, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+        tree.Insert(block7, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+
+        // a beacon pivot update / beacon-headers backfill re-inserts the same headers without a body flag
+        BlockTreeInsertHeaderOptions headerReinsert = BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
+        tree.Insert(block5.Header, headerReinsert);
+        tree.Insert(block6.Header, headerReinsert);
+        tree.Insert(block7.Header, headerReinsert);
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindLevel(7)!.BlockInfos[0].Metadata.HasFlag(BlockMetadata.BeaconBody), Is.True, "beacon body metadata");
+            Assert.That(reloaded.BestSuggestedBeaconBody?.Hash, Is.EqualTo(block7.Hash), "beacon body");
+            Assert.That(reloaded.BestSuggestedBody?.Number, Is.EqualTo(4UL), "suggested body");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Loads_with_bodies_ahead_of_lost_headers_when_nothing_processed_by_clamping_without_moving_head()
+    {
+        CustomSpecProvider specProvider = PostMergeSpecProvider();
+
+        BlockTreeBuilder builder = Build.A.BlockTree(specProvider).WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block genesis = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        tree.SuggestBlock(genesis);
+        tree.TryUpdateMainChain(genesis.Header, true, preloadedBlocks: new[] { genesis });
+
+        Block previous = genesis;
+        Block[] chain = new Block[8];
+        for (int i = 1; i <= 7; i++)
+        {
+            previous = chain[i] = Build.A.Block.WithNumber(i).WithDifficulty(0).WithParent(previous).TestObject;
+            tree.Insert(chain[i], BlockTreeInsertBlockOptions.SaveHeader);
+        }
+
+        // an unexpected shutdown lost the header tail while the bodies survived
+        for (int i = 5; i <= 7; i++)
+        {
+            builder.HeaderStore.Delete(chain[i].Hash!);
+        }
+
+        BlockTree reloaded = Build.A.BlockTree(specProvider)
+            .WithDatabaseFrom(builder)
+            .WithoutSettingHead
+            .TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.Head?.Number, Is.EqualTo(0UL), "head");
+            Assert.That(reloaded.BestSuggestedHeader?.Number, Is.EqualTo(4UL), "suggested header");
+            Assert.That(reloaded.BestSuggestedBody?.Number, Is.EqualTo(4UL), "suggested body clamped to header");
+        }
+    }
+
     private static CustomSpecProvider PostMergeSpecProvider() => new(((ForkActivation)0, London.Instance))
     {
         TerminalTotalDifficulty = UInt256.Zero

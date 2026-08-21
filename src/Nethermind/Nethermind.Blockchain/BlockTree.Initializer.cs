@@ -109,7 +109,14 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            ulong blockNumber = _stateBoundary.BestPersistedState ?? BestSuggestedHeader.Number;
+            if (_stateBoundary.BestPersistedState is not ulong blockNumber)
+            {
+                // Nothing was processed yet (fresh or still-syncing node): there is no processed head to
+                // restore, and the best-suggested-body clamp in LoadBestKnown is the entire recovery.
+                if (Logger.IsInfo) Logger.Info("Skipping head rollback for 'header < body' recovery - no block has been processed yet.");
+                return;
+            }
+
             ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
             if (canonicalBlock is not null && canonicalBlock.WasProcessed)
