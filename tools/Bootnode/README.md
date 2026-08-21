@@ -34,6 +34,41 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
 
 The tool is a discovery-only bootnode. It advertises TCP port `0` in the enode and omits TCP from the ENR unless a future TCP listener is added.
 
+## Release Assets
+
+Bootnode side releases use `bootnode-*` tags and the `Release Bootnode` GitHub workflow. The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image:
+
+```powershell
+docker pull nethermind/nethermind-bootnode:bootnode-r1
+```
+
+The default container command stores state in `/nethermind-bootnode/data` and binds REST and Prometheus to all interfaces:
+
+```powershell
+docker run --rm -it `
+  -p 30303:30303/udp `
+  -p 8546:8546 `
+  -p 6060:6060 `
+  -v bootnode-data:/nethermind-bootnode/data `
+  nethermind/nethermind-bootnode:bootnode-r1
+```
+
+Pass CLI options after the image name to override the defaults, for example:
+
+```powershell
+docker run --rm -it `
+  -p 30303:30303/udp `
+  -p 8546:8546 `
+  -p 6060:6060 `
+  -v bootnode-data:/nethermind-bootnode/data `
+  nethermind/nethermind-bootnode:bootnode-r1 `
+  --local-ip :: `
+  --external-ip-v4 203.0.113.10 `
+  --external-ip-v6 2001:db8::10 `
+  --http-host 0.0.0.0 `
+  --metrics-host 0.0.0.0
+```
+
 ## Advertised IPs
 
 Use `--local-ip` for the UDP socket bind address and `--external-ip*` for the address advertised to peers.

@@ -7,6 +7,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <PropertyGroup Label="PackagesLock">
+    <RuntimeIdentifiers>linux-arm64;linux-x64;osx-arm64;osx-x64;win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Bootnode.Test" />
   </ItemGroup>
