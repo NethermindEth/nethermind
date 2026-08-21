@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -495,13 +494,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         #region IPeerWithSatelliteProtocol
 
-        private readonly ConcurrentDictionary<string, object> _protocolHandlers = new();
+        private Dictionary<string, object>? _protocolHandlers;
+        private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= [];
 
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => _protocolHandlers[protocol] = protocolHandler;
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => ProtocolHandlers[protocol] = protocolHandler;
 
         public bool TryGetSatelliteProtocol<T>(string protocol, out T? protocolHandler) where T : class
         {
-            if (_protocolHandlers.TryGetValue(protocol, out object handler))
+            if (ProtocolHandlers.TryGetValue(protocol, out object handler))
             {
                 protocolHandler = handler as T;
                 return protocolHandler is not null;

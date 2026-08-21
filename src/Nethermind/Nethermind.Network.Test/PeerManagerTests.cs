@@ -16,7 +16,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
@@ -290,25 +289,6 @@ namespace Nethermind.Network.Test
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
             Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(2));
-        }
-
-        [Test]
-        public async Task Static_peer_is_dialed_even_when_the_active_peer_pool_is_full()
-        {
-            await using Context ctx = new(maxActivePeers: 3);
-            ctx.NetworkConfig.ConnectTimeoutMs = 0;
-            ctx.SetupPersistedPeers(10);
-            ctx.PeerPool.Start();
-            ctx.PeerManager.Start();
-
-            await ctx.RlpxPeer.WaitForConnectCallsAsync(3, TimeSpan.FromSeconds(30));
-            Assert.That(ctx.PeerPool.ActivePeers.Count, Is.AtLeast(3));
-
-            Node staticNode = new(TestItem.PublicKeyB, "1.2.3.10", 30303) { IsStatic = true };
-            ctx.PeerPool.GetOrAdd(staticNode);
-
-            Assert.That(() => ctx.PeerPool.ActivePeers.ContainsKey(staticNode.Id), Is.True.After(30_000, 100),
-                "a disconnected static peer must be dialed even with zero free peer slots");
         }
 
         [Test]
@@ -808,7 +788,6 @@ namespace Nethermind.Network.Test
             public PeerManager PeerManager { get; set; }
             public IPeerPool PeerPool { get; }
             public INetworkConfig NetworkConfig { get; }
-            public SyncConfig SyncConfig { get; } = new();
             public IStaticNodesManager StaticNodesManager { get; }
             public TestNodeSource TestNodeSource { get; }
             public List<Session> Sessions { get; } = [];

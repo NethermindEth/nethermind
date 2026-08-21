@@ -27,7 +27,7 @@ namespace Nethermind.Network
     public class ProtocolsManager : IProtocolsManager, IProtocolRegistrar
     {
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
-        private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<string, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
+        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ITxPool _txPool;
         private readonly INodeStatsManager _stats;
@@ -97,7 +97,12 @@ namespace Nethermind.Network
                 _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
             }
 
-            _hangingSatelliteProtocols.TryRemove(session.SessionId, out _);
+            if (session.Node is not null
+                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations)
+                && registrations is not null)
+            {
+                registrations.TryRemove(session.SessionId, out _);
+            }
 
             PublicKey? handlerKey = null;
             if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
@@ -203,23 +208,24 @@ namespace Nethermind.Network
             bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
-                if (_syncPeers.TryGetValue(session.SessionId, out SyncPeerProtocolHandlerBase? sessionSyncPeer))
+                PeerInfo? peer = _syncPool.GetPeer(session.Node);
+                if (peer is not null)
                 {
-                    sessionSyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
+                    peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                     if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
                     if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
                 }
                 else
                 {
-                    _hangingSatelliteProtocols.AddOrUpdate(session.SessionId,
-                        _ => new ConcurrentDictionary<string, ProtocolHandlerBase> { [handler.ProtocolCode] = handler },
+                    _hangingSatelliteProtocols.AddOrUpdate(session.Node,
+                        _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
                         (_, dict) =>
                         {
-                            dict[handler.ProtocolCode] = handler;
+                            dict[session.SessionId] = handler;
                             return dict;
                         });
 
-                    if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol waiting for the sync peer of {session}.");
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
@@ -280,13 +286,13 @@ namespace Nethermind.Network
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))
                 {
-                    if (_hangingSatelliteProtocols.TryRemove(session.SessionId, out ConcurrentDictionary<string, ProtocolHandlerBase> handlerDictionary))
+                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
                     {
-                        foreach (KeyValuePair<string, ProtocolHandlerBase> registration in handlerDictionary)
+                        foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
                         {
-                            handler.RegisterSatelliteProtocol(registration.Key, registration.Value);
+                            handler.RegisterSatelliteProtocol(registration.Value);
                             if (registration.Value.IsPriority) handler.IsPriority = true;
-                            if (_logger.IsDebug) _logger.Debug($"{registration.Key} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
+                            if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                         }
                     }
 

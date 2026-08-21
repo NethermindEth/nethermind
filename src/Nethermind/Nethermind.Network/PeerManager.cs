@@ -47,13 +47,6 @@ namespace Nethermind.Network
         private readonly List<PeerStats> _candidates;
         private readonly RateLimiter _outgoingConnectionRateLimiter;
 
-        private const long StaticDialDebounceMs = 5_000;
-        private const long StaleDialThresholdMs = 60_000;
-        private const long StaticSkipLogIntervalMs = 60_000;
-        private static readonly TimeSpan StalePongThreshold = TimeSpan.FromSeconds(35);
-        private readonly ConcurrentDictionary<PublicKey, long> _lastStaticDialAttempt = new();
-        private readonly ConcurrentDictionary<PublicKey, long> _lastStaticSkipLog = new();
-
         private int _pending;
         private int _tryCount;
         private int _newActiveNodes;
@@ -177,10 +170,6 @@ namespace Nethermind.Network
         {
             e.Peer.IsAwaitingConnection = false;
             _peerPool.ActivePeers.TryRemove(e.Peer.Node.Id, out Peer _);
-
-            PublicKey id = e.Peer.Node.Id;
-            _lastStaticDialAttempt.TryRemove(id, out _);
-            _lastStaticSkipLog.TryRemove(id, out _);
         }
 
         public void Start()
@@ -313,11 +302,6 @@ namespace Nethermind.Network
                     CleanupCandidatePeersSafely();
                     await WaitForPeerUpdateRequestAsync();
 
-                    if (_isStarted)
-                    {
-                        await EnsureStaticPeersConnectedAsync(taskChannel);
-                    }
-
                     if (!await CanRunPeerUpdateIterationAsync())
                     {
                         continue;
@@ -437,63 +421,6 @@ namespace Nethermind.Network
             await _peerUpdateRequested.WaitAsync(_cancellationTokenSource.Token);
         }
 
-        private async Task EnsureStaticPeersConnectedAsync(Channel<Peer> taskChannel)
-        {
-            DateTime nowUTC = DateTime.UtcNow;
-            foreach (Peer peer in _peerPool.StaticPeers)
-            {
-                ISession? openSession = peer.OutSession;
-                if (!HasOpenSession(openSession)) openSession = peer.InSession;
-                if (HasOpenSession(openSession))
-                {
-                    DateTime lastSignOfLife = openSession!.LastPongUtc == default ? openSession.LastPingUtc : openSession.LastPongUtc;
-                    if (lastSignOfLife != default && nowUTC - lastSignOfLife > StalePongThreshold)
-                    {
-                        LogStaticPeerSkip(peer, $"session {openSession} counts as open but last answered a ping at {lastSignOfLife:HH:mm:ss} UTC");
-                    }
-
-                    continue;
-                }
-
-                bool dialedRecently = _lastStaticDialAttempt.TryGetValue(peer.Node.Id, out long lastDial)
-                    && Environment.TickCount64 - lastDial < StaleDialThresholdMs;
-                if (peer.IsAwaitingConnection && dialedRecently)
-                {
-                    LogStaticPeerSkip(peer, "a dial is already in flight");
-                    continue;
-                }
-
-                if (peer.IsAwaitingConnection && _logger.IsInfo)
-                {
-                    _logger.Info($"Static peer {peer.Node.Host}:{peer.Node.Port} has been marked as awaiting a connection for over {StaleDialThresholdMs / 1000}s with nothing to show for it; dialing it again rather than waiting on a flag that no longer tracks a live attempt.");
-                }
-
-                // The queued dial only marks IsAwaitingConnection once a worker picks it up, so back-to-back
-                // loop iterations would re-queue (and re-log) the same peer during that window.
-                long now = Environment.TickCount64;
-                if (_lastStaticDialAttempt.TryGetValue(peer.Node.Id, out long last) && now - last < StaticDialDebounceMs)
-                {
-                    continue;
-                }
-
-                _lastStaticDialAttempt[peer.Node.Id] = now;
-                DeactivatePeerIfDisconnected(peer, "static peer reconnect");
-                if (_logger.IsInfo) _logger.Info($"Static peer {peer.Node:s} is not connected; dialing it regardless of available peer slots.");
-                await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
-            }
-        }
-
-        private void LogStaticPeerSkip(Peer peer, string reason)
-        {
-            if (!_logger.IsInfo) return;
-
-            long now = Environment.TickCount64;
-            if (_lastStaticSkipLog.TryGetValue(peer.Node.Id, out long last) && now - last < StaticSkipLogIntervalMs) return;
-
-            _lastStaticSkipLog[peer.Node.Id] = now;
-            _logger.Info($"Static peer {peer.Node:s} is not connected and not redialed: {reason}.");
-        }
-
         private void SignalPeerUpdateNeeded()
         {
             // Fast path: already signaled, nothing to do.
@@ -557,6 +484,7 @@ namespace Nethermind.Network
                 await taskChannel.Writer.WriteAsync(peer, _cancellationTokenSource.Token);
             }
         }
+
 
         private async Task RequestAnotherPeerUpdateIfNeededAsync()
         {
