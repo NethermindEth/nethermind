@@ -56,10 +56,16 @@ CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
 # is a no-op, so this is on by default: without it a cross-client latency gap cannot be attributed
 # to doing more work, waiting on IO, or leaving the machine idle.
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
-# Discarded load applied to each node before its measured cells. Default covers two 120s cells,
-# which is what the 2026-08-13 measurements showed is needed to reach a 0% failure rate; set to 0
-# to measure a cold node deliberately.
-CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-240s}"
+# Discarded load applied to each node before its measured cells; 0 measures a cold node
+# deliberately. The 2026-08-13 measurements put the cold-failure knee at ~24k requests (two 120s
+# cells at 100 rps); this window delivers that same count in a quarter of the wall time by warming
+# at CORPUS_WARMUP_RPS rather than at the rate the cells are measured at.
+CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"
+# Warm-up rate floor, decoupled from the measured rates so the window can shrink while the
+# delivered request count holds: 400 x 60s matches what 240s x 100 rps delivered. A run that
+# measures a higher rate warms at that rate instead. A saturated node absorbs fewer requests than
+# the target, so treat the count as an upper bound.
+CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"
 PARITY_STATE="$SCRATCH_ROOT/parity"
 
 # Free-form knobs reach shell arithmetic, where under `set -uo pipefail` (no -e) a value such as
@@ -76,6 +82,7 @@ require_positive_int CORPUS_REQUESTS "$CORPUS_REQUESTS"
 require_positive_int CORPUS_PASSES "$CORPUS_PASSES"
 require_positive_int CORPUS_TIMINGS_PASSES "$CORPUS_TIMINGS_PASSES"
 require_positive_int CORPUS_TIMINGS_CONCURRENCY "$CORPUS_TIMINGS_CONCURRENCY"
+require_positive_int CORPUS_WARMUP_RPS "$CORPUS_WARMUP_RPS"
 if [[ -n "$CORPUS_REQUESTS" && -n "$CORPUS_PASSES" ]]; then
   echo "::error::corpus_requests and corpus_passes are mutually exclusive"; exit 1
 fi
@@ -308,10 +315,14 @@ for entry in $CLIENTS; do
       # cold matrix looks exactly as authoritative as a warm one. Runs once per corpus on
       # purpose: different corpora can touch disjoint state.
       WARMED_SECONDS=0
+      WARMED_RPS=0
       if (( WARMUP_SECONDS > 0 )); then
-        # Warm at the highest rate the run will measure — the k6 cells AND the timings matrix
-        # both count, so the max spans both knobs; unpaced timings (0) falls back flat.
-        warm_rps=0
+        # Warm at CORPUS_WARMUP_RPS, which sizes the warm-up by the requests it delivers rather
+        # than by the rate the cells are measured at — a short window at a high rate reaches the
+        # same count. It acts as a floor, never a cap: warming slower than a cell is measured at
+        # would leave that cell under-warmed, and the k6 cells AND the timings matrix both count,
+        # so the floor spans both knobs. Unpaced timings (0) falls back flat.
+        warm_rps="${CORPUS_WARMUP_RPS:-0}"
         for r in $RPS_LIST; do (( r > warm_rps )) && warm_rps=$r; done
         [[ -n "$CORPUS_TIMINGS_PASSES" ]] && (( CORPUS_TIMINGS_RPS > warm_rps )) && warm_rps="$CORPUS_TIMINGS_RPS"
         (( warm_rps == 0 )) && warm_rps=100
@@ -335,7 +346,7 @@ for entry in $CLIENTS; do
           # status (a warm-up that did its job would report failure).
           if JB_MAX_FAIL_RATE_PCT=100 run_cell "$JB_BENCHMARK_CONFIG" "$warm_rps" "${WARMUP_SECONDS}s" \
               "$warm_cell" "$ctype" "$label" "$corpus" ""; then
-            WARMED_SECONDS="$WARMUP_SECONDS"
+            WARMED_SECONDS="$WARMUP_SECONDS"; WARMED_RPS="$warm_rps"
           else
             echo "::warning::warmup for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
           fi
@@ -361,7 +372,7 @@ for entry in $CLIENTS; do
           warm_status=$?
           # 124 = the timeout fired: the node still absorbed warm load for the whole window.
           if [[ "$warm_status" -eq 0 || "$warm_status" -eq 124 ]]; then
-            WARMED_SECONDS=$(( SECONDS - warm_started ))
+            WARMED_SECONDS=$(( SECONDS - warm_started )); WARMED_RPS="$warm_rps"
           else
             echo "::warning::warmup replay for ${label} failed — measured cells may be cold (recorded warmup_seconds=0)"
           fi
@@ -418,7 +429,7 @@ for entry in $CLIENTS; do
             --corpus "$corpus" --rpc-url "http://localhost:8545" \
             --out "$tdir/timings.csv" --passes "$CORPUS_TIMINGS_PASSES" \
             --rps "$CORPUS_TIMINGS_RPS" --concurrency "$CORPUS_TIMINGS_CONCURRENCY" \
-            --warmup-seconds "$WARMED_SECONDS"; then
+            --warmup-seconds "$WARMED_SECONDS" --warmup-rps "$WARMED_RPS"; then
           echo "::warning::timings replay failed for ${label} on corpus ${clabel}"
           cell_fail=$((cell_fail + 1))
         fi

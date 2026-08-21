@@ -389,22 +389,27 @@ random draw. The CSV carries record indexes, milliseconds and outcome names only
 safe to publish under the same boundary as the parity reports.
 
 A `timings.meta.json` sidecar records the head block hash, record/pass counts, target and
-achieved rate, concurrency, and `warmup_seconds` — the seconds of discarded warm load the
-node absorbed before the matrix (0 = measured cold). **Only compare matrices whose metadata
-matches** — a different head, rate or concurrency makes the numbers incomparable, and
-`warmup_seconds` most of all: a cold matrix reads ~60% higher on p99 than the same node warm,
-and nothing in the CSV itself would reveal that. On k6-warmed runs the field is the exact
+achieved rate, concurrency, and `warmup_seconds`/`warmup_rps` — the discarded warm load the
+node absorbed before the matrix (0 seconds = measured cold). **Only compare matrices whose
+metadata matches** — a different head, rate or concurrency makes the numbers incomparable, and
+the warm-up fields most of all (the same seconds at a different rate is a different warm
+state): a cold matrix reads ~60% higher on p99 than the same node warm, and nothing in the
+CSV itself would reveal that. On k6-warmed runs the field is the exact
 requested duration and can be matched literally; on replay-warmed runs it is a measured
 elapsed value (and ~request+60 when the wall-clock bound fired), so compare it as
 "both warm and within a few percent", not byte-for-byte.
 
 **What a corpus sweep does per client:** first a discarded **warm-up, once per
 corpus** (`corpus_warmup_duration`, integer seconds with an optional `s` suffix — `5m` is
-rejected; default `240s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
-N x 240 s per client before measuring): a k6 cell at the highest requested rate when
-`rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
-fixture-free mode stays fixture-free. Cold nodes fail ~2% of calls and read ~60% higher p99,
-so every measured number below assumes this ran. Then one k6 latency cell per corpus per
+rejected; default `60s`, `0` measures cold on purpose; an N-corpus sweep therefore burns
+N x 60 s per client before measuring) driven at `corpus_warmup_rps` (default `400`, so the
+window delivers the ~24k requests that `240s` at 100 rps used to, in a quarter of the wall
+time; it is a floor, so a run measuring a higher rate warms at that rate instead): a k6 cell
+when `rps_list` is non-empty, otherwise a paced `corpus_parity.py timings` replay so the
+fixture-free mode stays fixture-free. A saturated node absorbs fewer requests than the target
+rate implies, so read the warm-up's own reported rate rather than assuming the target was met.
+Cold nodes fail ~2% of calls and read ~60% higher p99, so every measured number below assumes
+this ran. Then one k6 latency cell per corpus per
 `rps_list` entry (the corpus replaces the workload's `calls:`; rendered as a
 JSON-array fixture because json-bench's JSONL reader caps lines at ~64 KiB),
 then one full-corpus replay via `corpus_parity.py` while the node is still up.
