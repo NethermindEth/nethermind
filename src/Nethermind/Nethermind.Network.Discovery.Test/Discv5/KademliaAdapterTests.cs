@@ -176,6 +176,20 @@ public class KademliaAdapterTests
         }
     }
 
+    [Test]
+    public void HasDiscoveryEndpoint_DoesNotThrowForNativeIpv6InIpEntry()
+    {
+        // A peer can place a 16-byte native IPv6 address under the 4-byte `ip` key (decoding does not
+        // enforce length); MapToIPv4 on such a value throws, so it must be treated as a non-match.
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(IPAddress.Parse("2001:db8::1")));
+        record.SetEntry(new UdpEntry(30304));
+
+        Assert.That(
+            KademliaAdapter.HasDiscoveryEndpoint(record, new IPEndPoint(IPAddress.Parse("192.0.2.1"), 30304)),
+            Is.False);
+    }
+
     [TestCaseSource(nameof(AcceptableNodeRecordCases))]
     public void IsAcceptableNodeRecord_ShouldValidateRecord(AcceptableNodeRecordCase testCase)
     {

@@ -912,8 +912,26 @@ public sealed class KademliaAdapter(
         }
 
         IPAddress endpointIpV4 = endpointAddress.IsIPv4MappedToIPv6 ? endpointAddress.MapToIPv4() : endpointAddress;
-        return record.GetObj<IPAddress>(EnrContentKey.Ip)?.MapToIPv4().Equals(endpointIpV4) == true &&
+        return GetIpV4Address(record)?.Equals(endpointIpV4) == true &&
                HasPort(record, EnrContentKey.Udp, endpoint.Port);
+    }
+
+    private static IPAddress? GetIpV4Address(NodeRecord record)
+    {
+        IPAddress? ip = record.GetObj<IPAddress>(EnrContentKey.Ip);
+        if (ip is null)
+        {
+            return null;
+        }
+
+        return ip.AddressFamily switch
+        {
+            AddressFamily.InterNetwork => ip,
+            // A peer-controlled `ip` entry can hold a 16-byte native IPv6 address; only map
+            // IPv4-mapped values, and reject the rest instead of letting MapToIPv4 throw.
+            AddressFamily.InterNetworkV6 when ip.IsIPv4MappedToIPv6 => ip.MapToIPv4(),
+            _ => null
+        };
     }
 
     private static bool HasIPv6Port(NodeRecord record, int expectedPort)

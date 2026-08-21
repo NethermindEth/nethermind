@@ -29,6 +29,9 @@ namespace Nethermind.Network
         /// </summary>
         public readonly record struct NethermindIp
         {
+            private readonly IPAddress? _externalIpV4Override;
+            private readonly IPAddress? _externalIpV6Override;
+
             public NethermindIp(IPAddress localIp, IPAddress externalIp)
                 : this(localIp, externalIp, null, null)
             {
@@ -38,14 +41,35 @@ namespace Nethermind.Network
             {
                 LocalIp = localIp;
                 ExternalIp = externalIp;
-                ExternalIpV4 = GetExternalIpV4(externalIpV4) ?? GetExternalIpV4(externalIp);
-                ExternalIpV6 = GetExternalIpV6(externalIpV6) ?? GetExternalIpV6(externalIp);
+                _externalIpV4Override = externalIpV4;
+                _externalIpV6Override = externalIpV6;
             }
 
             public IPAddress LocalIp { get; init; }
             public IPAddress ExternalIp { get; init; }
-            public IPAddress? ExternalIpV4 { get; init; }
-            public IPAddress? ExternalIpV6 { get; init; }
+
+            /// <summary>
+            /// The external IPv4 address to advertise, derived from the explicit IPv4 override or
+            /// <see cref="ExternalIp"/>, so a copied record (<c>with { ExternalIp = ... }</c>) keeps the
+            /// family addresses consistent with the primary address.
+            /// </summary>
+            public IPAddress? ExternalIpV4 => GetExternalIpV4(_externalIpV4Override) ?? GetExternalIpV4(ExternalIp);
+
+            /// <summary>
+            /// The external IPv6 address to advertise, derived from the explicit IPv6 override or
+            /// <see cref="ExternalIp"/>.
+            /// </summary>
+            public IPAddress? ExternalIpV6 => GetExternalIpV6(_externalIpV6Override) ?? GetExternalIpV6(ExternalIp);
+
+            /// <summary>
+            /// Preserves the deconstruction contract of the previous positional record so plugins that
+            /// deconstruct the resolver result keep compiling and running.
+            /// </summary>
+            public void Deconstruct(out IPAddress localIp, out IPAddress externalIp)
+            {
+                localIp = LocalIp;
+                externalIp = ExternalIp;
+            }
 
             private static IPAddress? GetExternalIpV4(IPAddress? ipAddress)
                 => ipAddress is null || IsUnspecified(ipAddress)

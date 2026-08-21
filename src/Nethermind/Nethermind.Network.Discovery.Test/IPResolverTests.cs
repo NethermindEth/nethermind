@@ -58,6 +58,56 @@ public class IPResolverTests
     }
 
     [Test]
+    public async Task Can_resolve_ipv6_only_override_without_becoming_primary()
+    {
+        INetworkConfig networkConfig = new NetworkConfig { ExternalIpV6 = "2001:db8::1" };
+        IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
+
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.ExternalIpV6, Is.EqualTo(IPAddress.Parse("2001:db8::1")));
+            Assert.That(ip.ExternalIp, Is.Not.EqualTo(IPAddress.Parse("2001:db8::1")));
+        }
+    }
+
+    [Test]
+    public async Task Mapped_unspecified_ipv4_override_does_not_suppress_resolution()
+    {
+        INetworkConfig networkConfig = new NetworkConfig { ExternalIpV4 = "::ffff:0.0.0.0" };
+        IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
+
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
+
+        Assert.That(ip.ExternalIp, Is.Not.EqualTo(IPAddress.Any));
+    }
+
+    [Test]
+    public void NethermindIp_with_ExternalIp_recomputes_family_addresses()
+    {
+        IIPResolver.NethermindIp ip = new(IPAddress.Loopback, IPAddress.Parse("192.0.2.1"));
+
+        IIPResolver.NethermindIp copied = ip with { ExternalIp = IPAddress.Parse("198.51.100.2") };
+
+        Assert.That(copied.ExternalIpV4, Is.EqualTo(IPAddress.Parse("198.51.100.2")));
+    }
+
+    [Test]
+    public void NethermindIp_deconstructs_to_local_and_external_addresses()
+    {
+        IIPResolver.NethermindIp ip = new(IPAddress.Loopback, IPAddress.Parse("192.0.2.1"));
+
+        (IPAddress localIp, IPAddress externalIp) = ip;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(localIp, Is.EqualTo(IPAddress.Loopback));
+            Assert.That(externalIp, Is.EqualTo(IPAddress.Parse("192.0.2.1")));
+        }
+    }
+
+    [Test]
     public async Task Can_resolve_local_ip_with_override()
     {
         const string ipOverride = "99.99.99.99";

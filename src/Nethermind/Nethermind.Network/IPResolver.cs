@@ -55,9 +55,10 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
         IPAddress? configuredExternalIpV4 = TryGetExternalIpOverride(_networkConfig.ExternalIpV4, nameof(NetworkConfig.ExternalIpV4), AddressFamily.InterNetwork);
         IPAddress? configuredExternalIpV6 = TryGetExternalIpOverride(_networkConfig.ExternalIpV6, nameof(NetworkConfig.ExternalIpV6), AddressFamily.InterNetworkV6);
 
+        // ExternalIpV6 must not become the primary address: IPv4-only consumers (enode, RLPx peer
+        // filter) would break, and an IPv6-only override would suppress IPv4 auto-detection.
         IPAddress externalIp = configuredExternalIp
             ?? configuredExternalIpV4
-            ?? configuredExternalIpV6
             ?? await ResolveExternalIp(cancellationToken);
 
         if (!IsUnspecified(externalIp))
@@ -156,6 +157,15 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
 
     private static IPAddress? NormalizeExternalIpOverride(IPAddress ipAddress, AddressFamily? expectedFamily)
     {
+        // Normalize IPv4-mapped IPv6 to IPv4 before rejecting unspecified values, so mapped
+        // unspecified overrides (::ffff:0.0.0.0, ::ffff:255.255.255.255) are rejected like their
+        // native IPv4 equivalents instead of being returned as IPAddress.Any/None and suppressing
+        // automatic resolution.
+        if (ipAddress.IsIPv4MappedToIPv6)
+        {
+            ipAddress = ipAddress.MapToIPv4();
+        }
+
         if (IsUnspecified(ipAddress))
         {
             return null;
@@ -163,15 +173,8 @@ public class IPResolver(INetworkConfig networkConfig, ILogManager logManager) : 
 
         return expectedFamily switch
         {
-            AddressFamily.InterNetwork => ipAddress.AddressFamily switch
-            {
-                AddressFamily.InterNetwork => ipAddress,
-                AddressFamily.InterNetworkV6 when ipAddress.IsIPv4MappedToIPv6 => ipAddress.MapToIPv4(),
-                _ => null
-            },
-            AddressFamily.InterNetworkV6 => ipAddress.AddressFamily == AddressFamily.InterNetworkV6 && !ipAddress.IsIPv4MappedToIPv6
-                ? ipAddress
-                : null,
+            AddressFamily.InterNetwork => ipAddress.AddressFamily == AddressFamily.InterNetwork ? ipAddress : null,
+            AddressFamily.InterNetworkV6 => ipAddress.AddressFamily == AddressFamily.InterNetworkV6 ? ipAddress : null,
             _ => ipAddress
         };
     }
