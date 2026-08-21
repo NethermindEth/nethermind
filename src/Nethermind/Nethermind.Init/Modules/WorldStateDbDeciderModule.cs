@@ -66,7 +66,13 @@ internal class WorldStateDbDeciderModule : Module
                 (policy, flatFactory, patriciaFactory) =>
                     policy.ShouldTurnOnFlatDb()
                         ? flatFactory()
-                        : (IFullStateFinder)patriciaFactory());
+                        : (IFullStateFinder)patriciaFactory())
+
+            .AddSingleton<IBalHealing, FlatStateActivationPolicy, Func<FlatBalHealing>>(
+                (policy, flatFactory) =>
+                    policy.ShouldTurnOnFlatDb()
+                        ? flatFactory()
+                        : NoopBalHealing.Instance);
 
     private sealed class ImportFallbackStateBoundary(
         FlatStateBoundary flat,

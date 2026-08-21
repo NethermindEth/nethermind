@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -18,6 +19,9 @@ namespace Nethermind.Synchronization.FastSync;
 
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
+    IBalHealing balHealing,
+    BalFetcher balFetcher,
+    IStateSyncPivot stateSyncPivot,
     TreeSync treeSync,
     SimpleDispatcher<StateSyncBatch> stateSyncDispatcher,
     ISyncConfig syncConfig,
@@ -44,13 +48,23 @@ public class StateSyncRunner(
 
             await StateSyncPrecursorWait(token);
             TuneStateDb(syncConfig.TuneDbMode);
+
             try
             {
                 if (syncConfig.SnapSync)
                 {
+                    BlockHeader? firstPivot = stateSyncPivot.GetPivotHeader();
                     if (_logger.IsInfo) _logger.Info("Starting snap sync.");
                     await snapSyncRunner.Run(token);
                     if (_logger.IsInfo) _logger.Info("Snap sync completed.");
+
+                    if (balHealing.CanHeal && firstPivot?.BlockAccessListHash is not null)
+                    {
+                        await RunBalHealing(firstPivot, token);
+                        return;
+                    }
+
+                    if (_logger.IsDebug) _logger.Debug($"BAL healing skipped - supported: {balHealing.CanHeal}, pivot: {firstPivot?.Number}, BAL hash: {firstPivot?.BlockAccessListHash}.");
                 }
 
                 await RunStateSyncRounds(token);
@@ -68,6 +82,60 @@ public class StateSyncRunner(
         {
             // Clean shutdown — swallow so Synchronizer doesn't log "State sync failed".
         }
+    }
+
+    public async Task RunBalHealing(BlockHeader firstPivot, CancellationToken token)
+    {
+        if (_logger.IsInfo) _logger.Info($"Starting BAL healing from block {firstPivot.Number}.");
+
+        Hash256 root = balHealing.Reassemble(stateSyncPivot.UpdatedStorages, token)
+            ?? throw new InvalidOperationException("BAL healing failed - trie reassembly produced no base state root.");
+
+        BlockHeader currentPivot = firstPivot;
+        BlockHeader? finalPivot = null;
+
+        while (!token.IsCancellationRequested)
+        {
+            stateSyncPivot.UpdateHeaderForcefully();
+            BlockHeader roundPivot = stateSyncPivot.GetPivotHeader() ?? throw new InvalidOperationException("BAL healing failed - no new pivot available.");
+
+            // Healed up to the latest pivot — wait for it to move on, unless it is final and healing is done.
+            if (currentPivot.Hash == roundPivot.Hash)
+            {
+                if (stateSyncPivot.CanFinalize(currentPivot))
+                {
+                    finalPivot = currentPivot;
+                    break;
+                }
+
+                await Task.Delay(1000, token);
+                continue;
+            }
+
+            if (!await balFetcher.EnsureRange(currentPivot, roundPivot, token))
+            {
+                if (_logger.IsWarn) _logger.Warn($"BAL healing stalled - no BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number} yet, retrying.");
+                await Task.Delay(1000, token);
+                continue;
+            }
+
+            root = balHealing.ApplyRange(root, currentPivot, roundPivot, token)
+                ?? throw new InvalidOperationException($"BAL healing failed - could not apply BALs for blocks {currentPivot.Number + 1}..{roundPivot.Number}.");
+
+            currentPivot = roundPivot;
+        }
+
+        if (finalPivot is null) return;
+
+        if (root != finalPivot.StateRoot)
+            throw new InvalidOperationException($"BAL healing failed - produced root {root} does not match pivot state root {finalPivot.StateRoot}.");
+
+        if (_logger.IsInfo) _logger.Info($"BAL healing finished at block {finalPivot.Number}");
+
+        balHealing.FinalizeSync(finalPivot);
+
+        if (syncConfig.VerifyTrieOnStateSyncFinished)
+            verifyTrieStarter?.TryStartVerifyTrie(finalPivot);
     }
 
     public async Task RunStateSyncRounds(CancellationToken token)
