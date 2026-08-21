@@ -134,6 +134,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     public void Compact() =>
         _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
 
+    /// <inheritdoc cref="DbOnTheRocks.ForceFullCompaction"/>
+    public void ForceFullCompaction() => _mainDb.ForceFullCompaction(_columnFamily);
+
+    /// <summary>Total on-disk size, in bytes, of this column's live SST files.</summary>
+    public long SstFilesSize => _mainDb.GetSstFilesSize(_columnFamily);
+
     /// <summary>
     /// Not sure how to handle delete of the columns DB
     /// </summary>

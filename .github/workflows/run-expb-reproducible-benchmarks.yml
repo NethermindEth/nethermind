@@ -813,6 +813,15 @@ jobs:
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
 
+          # A forced full compaction of the flat db runs during client startup and can exceed expb's default
+          # readiness budget (scenario startup_wait 30s + hard-coded json_rpc_wait_max_retries 1800 polls
+          # at 1/s ~= 30.5 min). Raise startup_wait only for compaction runs, so every other run keeps
+          # fast startup-failure detection.
+          if printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" | grep -qiE "FlatDbForceCompactOnStart(=|[[:space:]])true"; then
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".startup_wait = 10800" "${RENDERED_CONFIG_FILE}"
+            echo "Detected Db.FlatDbForceCompactOnStart=true - raised scenario startup_wait to 10800s."
+          fi
+
           # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
           if [[ -n "${TRACE_BLOCKS:-}" ]]; then
             SK="${scenario_key}" V="${TRACE_BLOCKS}" \
@@ -1959,6 +1968,15 @@ jobs:
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
           done < "${flags_file}"
+
+          # A forced full compaction of the flat db runs during client startup and can exceed expb's default
+          # readiness budget (scenario startup_wait 30s + hard-coded json_rpc_wait_max_retries 1800 polls
+          # at 1/s ~= 30.5 min). Raise startup_wait only for compaction runs, so every other run keeps
+          # fast startup-failure detection.
+          if printf '%s' "${ADDITIONAL_EXTRA_FLAGS}" | grep -qiE "FlatDbForceCompactOnStart(=|[[:space:]])true"; then
+            "${YQ}" -i ".scenarios.\"${scenario_key}\".startup_wait = 10800" "${RENDERED_CONFIG_FILE}"
+            echo "Detected Db.FlatDbForceCompactOnStart=true - raised scenario startup_wait to 10800s."
+          fi
 
           # Targeted per-block dotTrace: tell the client (BlockProfiler plugin) which blocks to snapshot.
           if [[ -n "${TRACE_BLOCKS:-}" ]]; then

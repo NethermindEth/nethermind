@@ -37,6 +37,11 @@ namespace Nethermind.Db.Rocks;
 
 public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
 {
+    private const string TotalSstFilesSizeProperty = "rocksdb.total-sst-files-size";
+
+    /// <summary>Value of <c>BottommostLevelCompaction::kForce</c> in the RocksDB C API.</summary>
+    private const byte BottommostLevelCompactionForce = 2;
+
     protected ILogger _logger;
 
     private string? _fullPath;
@@ -422,7 +427,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         try
         {
-            long sstSize = FetchTotalPropertyValue("rocksdb.total-sst-files-size");
+            long sstSize = FetchTotalPropertyValue(TotalSstFilesSizeProperty);
             long blobSize = FetchTotalPropertyValue("rocksdb.total-blob-file-size");
             return sstSize + blobSize;
         }
@@ -1526,6 +1531,53 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
     public virtual void Compact() => _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
+
+    /// <summary>
+    /// Compacts the whole key range, rewriting every SST file including the ones on the bottommost level.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Compact"/> leaves RocksDB's <c>bottommost_level_compaction</c> at its <c>kIfHaveCompactionFilter</c>
+    /// default, and with no compaction filter configured that skips the bottommost level — where nearly all of the
+    /// data lives. Table format and compression options apply to newly written SSTs only, so only a forced compaction
+    /// makes an existing database adopt them.
+    /// </remarks>
+    /// <param name="familyHandle">The column family to compact, or the default one when <c>null</c>.</param>
+    public void ForceFullCompaction(ColumnFamilyHandle? familyHandle = null)
+    {
+        ThrowIfDisposing();
+
+        IntPtr compactOptions = _rocksDbNative.rocksdb_compactoptions_create();
+        try
+        {
+            _rocksDbNative.rocksdb_compactoptions_set_bottommost_level_compaction(compactOptions, BottommostLevelCompactionForce);
+
+            // A null start/limit key is RocksDB's "entire key range".
+            if (familyHandle is null)
+            {
+                _rocksDbNative.rocksdb_compact_range_opt(_db.Handle, compactOptions, IntPtr.Zero, UIntPtr.Zero, IntPtr.Zero, UIntPtr.Zero);
+            }
+            else
+            {
+                _rocksDbNative.rocksdb_compact_range_cf_opt(_db.Handle, familyHandle.Handle, compactOptions, IntPtr.Zero, UIntPtr.Zero, IntPtr.Zero, UIntPtr.Zero);
+            }
+        }
+        finally
+        {
+            _rocksDbNative.rocksdb_compactoptions_destroy(compactOptions);
+        }
+    }
+
+    /// <summary>Total on-disk size, in bytes, of the live SST files of a column family (the whole DB when <c>null</c>).</summary>
+    public long GetSstFilesSize(ColumnFamilyHandle? familyHandle = null)
+    {
+        ThrowIfDisposing();
+
+        string? value = familyHandle is null
+            ? _db.GetProperty(TotalSstFilesSizeProperty)
+            : _db.GetProperty(TotalSstFilesSizeProperty, familyHandle);
+
+        return long.TryParse(value, out long size) ? size : 0;
+    }
 
     public virtual void SyncWal()
     {

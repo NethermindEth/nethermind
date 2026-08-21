@@ -291,6 +291,7 @@ public class DbConfig : IDbConfig
     public string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; } = "";
 
     public bool? FlatDbVerifyChecksum { get; set; } = true;
+    public bool FlatDbForceCompactOnStart { get; set; }
     public string FlatDbRocksDbOptions { get; set; } =
 
         // Common across flat columns.
@@ -357,6 +358,12 @@ public class DbConfig : IDbConfig
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
     public string? FlatStorageDbRocksDbOptions { get; set; } =
+        // Experiment: flat storage is a random point-read workload, so every cold block read pays a decompress.
+        // The Account column already runs uncompressed; this mirrors it on the larger and hotter Storage column,
+        // trading disk (LZ4 roughly halves this column) for read CPU. RocksDB applies compression to newly written
+        // SSTs only, so an existing database adopts this only after Db.FlatDbForceCompactOnStart has run once.
+        "compression=kNoCompression;" +
+
         // Keep last level bloom filter. Take up most index memory
         "optimize_filters_for_hits=false;" +
 

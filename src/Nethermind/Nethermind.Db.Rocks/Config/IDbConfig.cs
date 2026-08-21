@@ -122,6 +122,22 @@ public interface IDbConfig : IConfig
     string LogIndexStorageTopics3DbAdditionalRocksDbOptions { get; set; }
 
     bool? FlatDbVerifyChecksum { get; set; }
+
+    /// <summary>
+    /// Runs one forced full compaction of the flat Account and Storage columns during startup, before block
+    /// processing begins.
+    /// </summary>
+    /// <remarks>
+    /// RocksDB applies table-format and compression options to newly written SSTs only, so an existing database keeps
+    /// its old encoding indefinitely after such an option changes. A forced compaction (bottommost level included)
+    /// rewrites every SST and makes the new options take effect. Off by default: on a mainnet-sized flat database
+    /// this rewrites tens of gigabytes and takes hours, and it delays the node becoming ready.
+    /// </remarks>
+    [ConfigItem(
+        Description = "Run one forced full compaction (bottommost level included) of the flat Account and Storage columns at startup, so an existing database adopts RocksDB options that only apply to newly written SSTs. Takes hours on a mainnet-sized database.",
+        DefaultValue = "false")]
+    bool FlatDbForceCompactOnStart { get; set; }
+
     string FlatDbRocksDbOptions { get; set; }
     string? FlatDbAdditionalRocksDbOptions { get; set; }
 

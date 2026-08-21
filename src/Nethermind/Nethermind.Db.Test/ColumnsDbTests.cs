@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -168,4 +170,47 @@ public class ColumnsDbTests
 
         Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakA), Is.EqualTo(value));
     }
+
+    [Test]
+    public void ForceFullCompaction_RewritesBottommostSsts()
+    {
+        // RocksDB applies compression and block format to newly written SSTs only, so re-encoding an existing
+        // database hinges on the bottommost level being rewritten. Compact() leaves bottommost_level_compaction at
+        // its kIfHaveCompactionFilter default, which — with no compaction filter configured, as here — skips exactly
+        // that level. Assert the difference instead of trusting the option name.
+        ColumnDb column = (ColumnDb)_db.GetColumnDb(ReceiptsColumns.Blocks);
+
+        byte[] key = new byte[32];
+        byte[] value = new byte[256];
+        Random random = new(42);
+        for (int i = 1; i <= 2000; i++)
+        {
+            BinaryPrimitives.WriteInt32BigEndian(key.AsSpan(28), i);
+            random.NextBytes(value);
+            column.Set(key, value);
+        }
+
+        _db.Flush();
+
+        // Drive Compact() to its fixed point so that everything it is able to do is already done.
+        string[] files = SstFiles();
+        bool converged = false;
+        for (int i = 0; i < 12 && !converged; i++)
+        {
+            column.Compact();
+            string[] afterCompact = SstFiles();
+            converged = afterCompact.SequenceEqual(files);
+            files = afterCompact;
+        }
+
+        Assert.That(converged, Is.True, "Compact() never stopped changing the SST file set");
+        Assert.That(files, Is.Not.Empty, "the written data was expected to reach SST files");
+
+        column.ForceFullCompaction();
+
+        Assert.That(SstFiles(), Is.Not.EqualTo(files), "the forced compaction must rewrite the bottommost SSTs that Compact() skips");
+        Assert.That(column.SstFilesSize, Is.GreaterThan(0));
+    }
+
+    private string[] SstFiles() => Directory.GetFiles(DbPath, "*.sst", SearchOption.AllDirectories).Order().ToArray();
 }

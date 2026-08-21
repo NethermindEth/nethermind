@@ -124,6 +124,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
                 return new CarryForwardCachingPersistence(cachedReader);
             })
+            // No-op unless IDbConfig.FlatDbForceCompactOnStart is set.
+            .AddStep(typeof(ForceCompactFlatDb))
             ;
 
         if (!flatDbConfig.EnableLongFinality)
