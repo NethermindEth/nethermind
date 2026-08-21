@@ -157,6 +157,7 @@ namespace Nethermind.Blockchain.Test
                 maxTransactionsSelected.Transactions.ForEach(static tx =>
                 {
                     tx.Type = TxType.Blob;
+                    tx.GasLimit = 100_000;
                     tx.BlobVersionedHashes = new byte[1][];
                     tx.MaxFeePerBlobGas = 1;
                     tx.NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
@@ -177,10 +178,12 @@ namespace Nethermind.Blockchain.Test
                 Transaction[] expectedSelectedTransactions =
                     enoughTransactionsSelected.Transactions.OrderBy(static t => t.Nonce).ToArray();
                 expectedSelectedTransactions[0].Type = TxType.Blob;
+                expectedSelectedTransactions[0].GasLimit = 100_000;
                 expectedSelectedTransactions[0].BlobVersionedHashes = new byte[maxBlobCount][];
                 expectedSelectedTransactions[0].NetworkWrapper = new ShardBlobNetworkWrapper(new byte[maxBlobCount][], new byte[maxBlobCount][], new byte[maxBlobCount][], ProofVersion.V0);
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
                 expectedSelectedTransactions[1].Type = TxType.Blob;
+                expectedSelectedTransactions[1].GasLimit = 100_000;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
                 expectedSelectedTransactions[1].NetworkWrapper = new ShardBlobNetworkWrapper(new byte[1][], new byte[1][], new byte[1][], ProofVersion.V0);
                 expectedSelectedTransactions[1].MaxFeePerBlobGas = 1;
@@ -238,7 +241,7 @@ namespace Nethermind.Blockchain.Test
                 .WithNonce(nonce)
                 .WithMaxFeePerGas(maxFee)
                 .WithMaxPriorityFeePerGas(priority)
-                .WithGasLimit(20)
+                .WithGasLimit(100_000)
                 .SignedAndResolved(key).TestObject;
 
         public static IEnumerable BlobTransactionOrderingTestCases
@@ -551,8 +554,8 @@ namespace Nethermind.Blockchain.Test
 
             Dictionary<AddressAsKey, Transaction[]> transactions = GroupTransactions(false);
             Dictionary<AddressAsKey, Transaction[]> blobTransactions = GroupTransactions(true);
-            transactionPool.GetPendingTransactionsBySender().Returns(transactions);
-            transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
+            transactionPool.GetPendingForProduction(Arg.Any<BlockHeader>(), Arg.Any<bool>(), Arg.Any<UInt256>())
+                .Returns(new PendingTransactionsView(transactions, blobTransactions, isRevalidated: true));
             foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
             {
                 transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
@@ -580,7 +583,9 @@ namespace Nethermind.Blockchain.Test
                 parentHeader = parentHeader.WithExcessBlobGas(0);
             }
 
-            return poolTxSource.GetTransactions(parentHeader.TestObject, testCase.GasLimit).ToArray();
+            BlockHeader parent = parentHeader.TestObject;
+            BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
+            return poolTxSource.GetTransactions(parent, targetBlock, testCase.GasLimit).ToArray();
         }
 
         public class ProperTransactionsSelectedTestCase

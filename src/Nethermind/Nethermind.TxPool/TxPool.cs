@@ -54,7 +54,7 @@ namespace Nethermind.TxPool
         private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
-        private readonly ITxValidator? _headTxValidator;
+        private readonly ITxValidator _specChangeTxValidator;
         private readonly bool _blobReorgsSupportEnabled;
         private readonly DelegationCache _pendingDelegations = new();
 
@@ -79,6 +79,20 @@ namespace Nethermind.TxPool
         private ulong _lastBlockNumber = ulong.MaxValue;
         private Hash256? _lastBlockHash;
 
+        /// <summary>
+        /// The release specification every transaction currently in the pool has been validated against, or
+        /// <see langword="null"/> when nothing is known, either because the pool has never been walked or
+        /// because it took in a transaction judged by different rules.
+        /// </summary>
+        /// <remarks>
+        /// Only <see cref="UpdateBuckets"/> publishes a specification here, and it runs under the
+        /// <see cref="_newHeadLock"/> write lock, so no transaction can enter the pool while it walks it.
+        /// <see cref="AddCore"/> runs under the read lock and may only clear the field. Between two head
+        /// updates the value therefore moves at most from a specification to <see langword="null"/>, so a
+        /// lock-free reader either sees a specification that still covers the whole pool, or nothing.
+        /// </remarks>
+        private IReleaseSpec? _validatedSpec;
+
         private bool _isDisposed;
         private long _pendingTransactionsAdded = 0;
 
@@ -91,22 +105,22 @@ namespace Nethermind.TxPool
         /// <param name="chainHeadInfoProvider"></param>
         /// <param name="txPoolConfig"></param>
         /// <param name="validator"></param>
+        /// <param name="specChangeTxValidator">Validates transactions against the new fork rules, including light blob transactions.</param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
         /// <param name="transactionsGossipPolicy"></param>
         /// <param name="incomingTxFilters"></param>
         /// <param name="thereIsPriorityContract"></param>
-        /// <param name="headTxValidator"></param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
             ITxValidator validator,
+            [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator,
             ILogManager? logManager,
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter[]? incomingTxFilters = null,
-            [KeyFilter(ITxValidator.HeadTxValidatorKey)] ITxValidator? headTxValidator = null,
             bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -114,7 +128,7 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
-            _headTxValidator = headTxValidator;
+            _specChangeTxValidator = specChangeTxValidator ?? throw new ArgumentNullException(nameof(specChangeTxValidator));
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
@@ -144,8 +158,7 @@ namespace Nethermind.TxPool
             _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
                 : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
-            if (_blobTransactions.Count > 0)
-                _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            UpdateBuckets();
 
             _headInfo.HeadChanged += OnHeadChange;
 
@@ -162,7 +175,7 @@ namespace Nethermind.TxPool
             [
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
-                new MalformedTxFilter(_specProvider, validator, ecdsa, _logger),
+                new MalformedTxFilter(validator, ecdsa, _logger),
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
                 new BalanceZeroFilter(thereIsPriorityContract, _logger),
@@ -171,7 +184,7 @@ namespace Nethermind.TxPool
                 new FutureNonceFilter(txPoolConfig),
                 new GapNonceFilter(_transactions, _blobTransactions, _logger),
                 new RecoverAuthorityFilter(ecdsa),
-                new DelegatedAccountFilter(_specProvider, _transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
+                new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
             ];
 
             if (incomingTxFilters is not null)
@@ -179,7 +192,7 @@ namespace Nethermind.TxPool
                 postHashFilters.AddRange(incomingTxFilters);
             }
 
-            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _specProvider));
+            postHashFilters.Add(new DeployedCodeFilter(chainHeadInfoProvider.ReadOnlyStateProvider));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -567,12 +580,12 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.Invalid;
             }
 
-            TxFilteringState state = new(tx, _accounts);
             AcceptTxResult accepted = AcceptTxResult.Invalid;
 
             _newHeadLock.EnterReadLock();
             try
             {
+                TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
                 accepted = FilterTransactions(tx, handlingOptions, ref state);
                 if (accepted)
                 {
@@ -635,7 +648,17 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
-            bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
+            IReleaseSpec headSpec = state.HeadSpec;
+
+            // The filters judged this transaction by headSpec. If the pool is marked as validated against a
+            // different specification that mark stops covering the pool here, so drop it before the
+            // transaction becomes visible to IsRevalidatedFor.
+            if (Volatile.Read(ref _validatedSpec) is IReleaseSpec validatedSpec && !ReferenceEquals(validatedSpec, headSpec))
+            {
+                Volatile.Write(ref _validatedSpec, null);
+            }
+
+            bool eip1559Enabled = headSpec.IsEip1559Enabled;
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
             TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
 
@@ -726,16 +749,19 @@ namespace Nethermind.TxPool
                 UInt256 balance = account.Balance;
                 ulong currentNonce = account.Nonce;
 
-                UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx);
+                UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation: null, isBlobPool: false);
             }
         }
 
-        private void UpdateGasBottleneckAndMarkForEviction(
+        /// <returns>How many transactions were dropped as invalid under <paramref name="revalidation"/>.</returns>
+        private int UpdateGasBottleneckAndMarkForEviction(
             EnhancedSortedSet<Transaction> transactions,
             ulong currentNonce,
             UInt256 balance,
             Transaction? lastElement,
-            UpdateTransactionDelegate updateTx)
+            UpdateTransactionDelegate updateTx,
+            ForkRevalidation? revalidation,
+            bool isBlobPool)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -743,6 +769,7 @@ namespace Nethermind.TxPool
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
             bool isEip1559 = headSpec.IsEip1559Enabled;
             bool evictNextTxs = false;
+            int invalidatedByFork = 0;
 
             foreach (Transaction tx in transactions)
             {
@@ -756,12 +783,16 @@ namespace Nethermind.TxPool
                 {
                     UInt256 gasBottleneck = 0;
 
-                    ValidationResult valid = _headTxValidator?.IsWellFormed(tx, headSpec) ?? ValidationResult.Success;
-
-                    if (!valid)
+                    if (revalidation is not null)
                     {
-                        MarkForEviction(tx, valid.Error == TxErrorMessages.InvalidProofVersion);
-                        continue;
+                        ValidationResult valid = revalidation.Validate(tx, isBlobPool);
+
+                        if (!valid)
+                        {
+                            invalidatedByFork++;
+                            MarkForEviction(tx, ForkRevalidation.AllowsResubmission(valid), evictFollowingTransactions: true);
+                            continue;
+                        }
                     }
 
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
@@ -806,71 +837,200 @@ namespace Nethermind.TxPool
                 }
             }
 
-            void MarkForEviction(Transaction tx, bool allowLaterPoolReentrance)
+            return invalidatedByFork;
+
+            void MarkForEviction(Transaction tx, bool allowLaterPoolReentrance, bool evictFollowingTransactions = false)
             {
                 _broadcaster.StopBroadcast(tx.Hash!);
                 if (allowLaterPoolReentrance) _hashCache.DeleteFromLongTerm(tx.Hash!);
                 updateTx(transactions, tx, null, lastElement);
                 // evict all following txs to prevent nonce gaps between blob tx
-                evictNextTxs |= tx.SupportsBlobs;
+                evictNextTxs |= tx.SupportsBlobs || evictFollowingTransactions;
             }
         }
 
         private void UpdateBuckets()
         {
-            _transactions.UpdatePool(_accounts, _updateBucket);
-            _blobTransactions.UpdatePool(_accounts, _updateBucket);
+            IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
+
+            if (_transactions.Count == 0 && _blobTransactions.Count == 0)
+            {
+                // An empty pool trivially satisfies any specification, so it can be marked without a walk.
+                Volatile.Write(ref _validatedSpec, headSpec);
+                return;
+            }
+
+            if (ReferenceEquals(Volatile.Read(ref _validatedSpec), headSpec))
+            {
+                _transactions.UpdatePool(_accounts, _updateBucket);
+                _blobTransactions.UpdatePool(_accounts, _updateBucket);
+                return;
+            }
+
+            ForkRevalidation revalidation = new(this, headSpec);
+            _transactions.UpdatePool(_accounts, revalidation.UpdateBucket);
+            _blobTransactions.UpdatePool(_accounts, revalidation.UpdateBlobBucket);
+
+            // Published only after both pools have been walked, so a walk that throws leaves the pool unmarked
+            // and the next head retries it.
+            Volatile.Write(ref _validatedSpec, headSpec);
+
+            if (revalidation.RemovedCount != 0)
+            {
+                Metrics.PendingTransactionsEvicted += revalidation.RemovedCount;
+                if (_logger.IsInfo) _logger.Info($"Removed {revalidation.RemovedCount:N0} transactions invalid under {headSpec.Name} after the protocol change.");
+            }
         }
 
-        private void UpdateBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
+        /// <summary>
+        /// Validates the full body of every light blob transaction held by the pool against <paramref name="spec"/>.
+        /// </summary>
+        /// <remarks>
+        /// Resolving a full blob transaction takes the blob pool lock, which <see cref="TxDistinctSortedPool.UpdatePool"/>
+        /// holds while it walks and which throws on reentrancy, so the verdicts have to be collected beforehand.
+        /// </remarks>
+        /// <returns>The failures keyed by transaction hash; a transaction missing from it is valid.</returns>
+        private Dictionary<Hash256, ValidationResult> FindInvalidLightBlobTransactions(IReleaseSpec spec)
         {
-            if (transactions.Count != 0)
+            Dictionary<Hash256, ValidationResult> invalidTransactions = [];
+            if (_blobTransactions.Count == 0)
             {
-                UInt256 balance = account.Balance;
-                ulong currentNonce = account.Nonce;
-                Transaction? tx = null;
-                foreach (Transaction txn in transactions)
+                return invalidTransactions;
+            }
+
+            foreach (Transaction transaction in _blobTransactions.GetSnapshot())
+            {
+                if (transaction is not LightTransaction lightTransaction)
                 {
-                    if (txn.Nonce == currentNonce)
+                    continue;
+                }
+
+                Hash256 hash = lightTransaction.Hash!;
+                if (_specChangeTxValidator is ILightTxValidator lightTxValidator)
+                {
+                    ValidationResult validLightTransaction = lightTxValidator.IsWellFormedLight(lightTransaction, spec);
+                    if (!validLightTransaction)
                     {
-                        tx = txn;
-                        break;
+                        invalidTransactions[hash] = validLightTransaction;
+                        continue;
                     }
                 }
 
-                bool shouldBeDumped = false;
-
-                if (tx is null)
+                if (!_blobTransactions.TryGetValue(hash, out Transaction? fullTransaction))
                 {
-                    shouldBeDumped = true;
-                }
-                else if (balance < tx.ValueRef)
-                {
-                    shouldBeDumped = true;
-                }
-                else if (!tx.Supports1559)
-                {
-                    shouldBeDumped = UInt256.MultiplyOverflow((UInt256)tx.GasPrice, tx.GasLimit, out UInt256 cost);
-                    shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);
-                    shouldBeDumped |= balance < cost;
+                    if (_logger.IsDebug) _logger.Debug($"Removing {lightTransaction.ToShortString()} from the blob pool because its full transaction is unavailable.");
+                    invalidTransactions[hash] = TxErrorMessages.InvalidTransactionForm;
+                    continue;
                 }
 
-                if (shouldBeDumped)
+                ValidationResult valid = _specChangeTxValidator.IsWellFormed(fullTransaction, spec);
+                if (!valid)
                 {
-                    foreach (Transaction transaction in transactions)
-                    {
-                        // transaction removed from TxPool because of insufficient balance should have opportunity
-                        // to come back in the future, so it is removed from long term cache as well.
-                        _hashCache.DeleteFromLongTerm(transaction.Hash!);
-
-                        updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
-                    }
-                }
-                else
-                {
-                    UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx);
+                    invalidTransactions[hash] = valid;
                 }
             }
+
+            return invalidTransactions;
+        }
+
+        /// <summary>
+        /// One pass of pool revalidation against a newly activated release specification.
+        /// </summary>
+        /// <remarks>
+        /// Created by <see cref="UpdateBuckets"/> and passed down explicitly rather than kept on the pool, so
+        /// revalidation state cannot outlive the pass or leak into the ordinary bucket update path. The pass
+        /// runs under the <see cref="_newHeadLock"/> write lock and is therefore single threaded.
+        /// </remarks>
+        private sealed class ForkRevalidation(TxPool pool, IReleaseSpec spec)
+        {
+            private readonly Dictionary<Hash256, ValidationResult> _invalidLightBlobTransactions = pool.FindInvalidLightBlobTransactions(spec);
+
+            /// <summary>How many transactions the pass has dropped as invalid under the new specification.</summary>
+            public int RemovedCount { get; private set; }
+
+            public void UpdateBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx) =>
+                RemovedCount += pool.UpdateBucketCore(account, transactions, ref lastElement, updateTx, this, isBlobPool: false);
+
+            public void UpdateBlobBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx) =>
+                RemovedCount += pool.UpdateBucketCore(account, transactions, ref lastElement, updateTx, this, isBlobPool: true);
+
+            public ValidationResult Validate(Transaction transaction, bool isBlobPool) =>
+                isBlobPool && transaction is LightTransaction
+                    ? _invalidLightBlobTransactions.GetValueOrDefault(transaction.Hash!)
+                    : pool._specChangeTxValidator.IsWellFormed(transaction, spec);
+
+            /// <summary>
+            /// Whether a transaction rejected with <paramref name="valid"/> may be offered to the pool again.
+            /// </summary>
+            /// <remarks>
+            /// Only the blob wrapper checks can be satisfied by a resend under the new rules; any other failure
+            /// is permanent, so those hashes stay in the long term cache instead of being reprocessed.
+            /// </remarks>
+            public static bool AllowsResubmission(in ValidationResult valid) =>
+                valid.Error == TxErrorMessages.InvalidProofVersion || valid.Error == TxErrorMessages.InvalidTransactionForm;
+        }
+
+        private void UpdateBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx) =>
+            UpdateBucketCore(account, transactions, ref lastElement, updateTx, revalidation: null, isBlobPool: false);
+
+        /// <returns>How many transactions were dropped as invalid under <paramref name="revalidation"/>.</returns>
+        private int UpdateBucketCore(
+            in AccountStruct account,
+            EnhancedSortedSet<Transaction> transactions,
+            ref Transaction? lastElement,
+            UpdateTransactionDelegate updateTx,
+            ForkRevalidation? revalidation,
+            bool isBlobPool)
+        {
+            if (transactions.Count == 0)
+            {
+                return 0;
+            }
+
+            UInt256 balance = account.Balance;
+            ulong currentNonce = account.Nonce;
+            Transaction? tx = null;
+            foreach (Transaction txn in transactions)
+            {
+                if (txn.Nonce == currentNonce)
+                {
+                    tx = txn;
+                    break;
+                }
+            }
+
+            bool shouldBeDumped = false;
+
+            if (tx is null)
+            {
+                shouldBeDumped = true;
+            }
+            else if (balance < tx.ValueRef)
+            {
+                shouldBeDumped = true;
+            }
+            else if (!tx.Supports1559)
+            {
+                shouldBeDumped = UInt256.MultiplyOverflow((UInt256)tx.GasPrice, tx.GasLimit, out UInt256 cost);
+                shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);
+                shouldBeDumped |= balance < cost;
+            }
+
+            if (shouldBeDumped)
+            {
+                foreach (Transaction transaction in transactions)
+                {
+                    // transaction removed from TxPool because of insufficient balance should have opportunity
+                    // to come back in the future, so it is removed from long term cache as well.
+                    _hashCache.DeleteFromLongTerm(transaction.Hash!);
+
+                    updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
+                }
+
+                return 0;
+            }
+
+            return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation, isBlobPool);
         }
 
         public bool RemoveTransaction(Hash256? hash)
@@ -908,6 +1068,41 @@ namespace Nethermind.TxPool
 
         public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
             _blobTransactions.TryGetValue(hash, out blobTransaction);
+
+        /// <inheritdoc/>
+        public PendingTransactionsView GetPendingForProduction(BlockHeader targetBlock, bool filterToReadyTx, UInt256 baseFee)
+        {
+            // Taken under the lock a head update needs for writing, so no revalidation walk can run between
+            // the snapshots and the answer and evict a transaction the caller has already been handed.
+            _newHeadLock.EnterReadLock();
+            try
+            {
+                return new(
+                    filterToReadyTx ? GetPendingTransactionsBySender(true, baseFee) : GetPendingTransactionsBySender(),
+                    GetPendingLightBlobTransactionsBySender(),
+                    IsRevalidatedFor(targetBlock));
+            }
+            finally
+            {
+                _newHeadLock.ExitReadLock();
+            }
+        }
+
+        /// <summary>
+        /// Whether every transaction in the pool has been validated against the specification of
+        /// <paramref name="targetBlock"/>.
+        /// </summary>
+        /// <remarks>
+        /// Also requires that specification to be the current chain head one, so a transaction accepted while
+        /// the caller reads the pool is judged by the very same rules. Only meaningful while the caller keeps
+        /// the pool from being walked, which is why <see cref="GetPendingForProduction"/> holds the read lock.
+        /// </remarks>
+        internal bool IsRevalidatedFor(BlockHeader targetBlock)
+        {
+            IReleaseSpec targetSpec = _specProvider.GetSpec(targetBlock);
+            return ReferenceEquals(targetSpec, Volatile.Read(ref _validatedSpec))
+                && ReferenceEquals(targetSpec, _specProvider.GetCurrentHeadSpec());
+        }
 
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)

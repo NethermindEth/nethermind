@@ -10,6 +10,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.TxPool;
@@ -60,11 +61,10 @@ namespace Nethermind.Init.Steps
                 chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
+                SpecChangeTxValidator.Instance,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _txGossipPolicy,
-                null,
-                _api.HeadTxValidator
+                _txGossipPolicy
             );
 
             _api.DisposeStack.Push(txPool);

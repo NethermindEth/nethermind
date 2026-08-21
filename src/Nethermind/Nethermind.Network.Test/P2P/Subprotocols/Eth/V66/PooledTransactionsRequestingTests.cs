@@ -76,6 +76,7 @@ public class PooledTransactionsRequestingTests
                 new ChainHeadSpecProvider(specProvider, blockTree), blockTree, TestWorldStateFactory.CreateForTestWithStateReader(TestMemDbProvider.Init(), LimboLogs.Instance).Item2),
             new TxPoolConfig() { AcceptTxWhenNotSynced = true },
             new TxValidator(specProvider.ChainId),
+            SpecChangeTxValidator.Instance,
             LimboLogs.Instance,
             new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer());
         ISyncServer syncManager = Substitute.For<ISyncServer>();
