@@ -71,6 +71,45 @@ public class PayloadAttributesValidateTests
         }
     }
 
+    [Test]
+    public void Validate_accepts_null_inclusion_list_at_V5()
+    {
+        // The proposer's initial FCUv5 has no inclusion list yet, so V4-shaped attributes must validate.
+        ISpecProvider sp = Substitute.For<ISpecProvider>();
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip7805Enabled.Returns(true);
+        spec.IsEip7843Enabled.Returns(true);
+        spec.IsEip4844Enabled.Returns(true);
+        spec.WithdrawalsEnabled.Returns(true);
+        sp.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        PayloadAttributes attrs = BuildAttrs(withSlotNumber: true); // no InclusionListTransactions set
+
+        PayloadAttributesValidationResult result = attrs.Validate(sp, PayloadAttributesVersions.V5, out string error);
+
+        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.Success));
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void Validate_rejects_V4_fcu_at_Bogota_as_unsupported_fork()
+    {
+        // The null-IL V4-as-V5 leniency applies to FCUv5 alone; V4 must still report UnsupportedFork.
+        ISpecProvider sp = Substitute.For<ISpecProvider>();
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip7805Enabled.Returns(true);
+        spec.IsEip7843Enabled.Returns(true);
+        spec.IsEip4844Enabled.Returns(true);
+        spec.WithdrawalsEnabled.Returns(true);
+        sp.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        PayloadAttributes attrs = BuildAttrs(withSlotNumber: true);
+
+        PayloadAttributesValidationResult result = attrs.Validate(sp, PayloadAttributesVersions.V4, out _);
+
+        Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.UnsupportedFork));
+    }
+
     [TestCase(false, PayloadAttributesVersions.V1)]
     [TestCase(true, PayloadAttributesVersions.V4)]
     public void GetVersion_infers_correct_version_from_present_fields(

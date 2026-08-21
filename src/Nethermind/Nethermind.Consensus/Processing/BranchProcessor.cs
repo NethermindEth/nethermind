@@ -21,6 +21,7 @@ public class BranchProcessor(
     ISpecProvider specProvider,
     IWorldState stateProvider,
     IBlockhashProvider blockhashProvider,
+    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
@@ -153,6 +154,12 @@ public class BranchProcessor(
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
+
+                // A signal, not a rejection: the block is still committed. Runs here because it reads
+                // post-execution state.
+                bool inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider, blockOptions);
+                processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
+                suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 
                 QueueClearCaches(preWarmTask);
                 // Hint producers touch the active snapshot bundle, which CommitTree rotates.

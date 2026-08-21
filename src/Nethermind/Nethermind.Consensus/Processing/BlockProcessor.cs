@@ -108,6 +108,7 @@ public partial class BlockProcessor(
             if (!processed) block.DisposeAccountChanges();
         }
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
