@@ -37,6 +37,11 @@ on:
         required: false
         default: ''
         type: string
+      exclude:
+        description: Regex exclusion for test names
+        required: false
+        default: 'test_init_collision_(create_tx|create_opcode)\[.*-non-empty-balance-|test_create2_collision_storage\[|test_collision_with_create2_revert_in_initcode\['
+        type: string
       idle_timeout_minutes:
         description: Fail nethtest if no test progress is logged for this many minutes
         required: false
@@ -83,6 +88,11 @@ on:
         required: false
         default: ''
         type: string
+      exclude:
+        description: Regex exclusion for test names (optional)
+        required: false
+        default: 'test_init_collision_(create_tx|create_opcode)\[.*-non-empty-balance-|test_create2_collision_storage\[|test_collision_with_create2_revert_in_initcode\['
+        type: string
       idle_timeout_minutes:
         description: Fail nethtest if no test progress is logged for this many minutes
         required: false
@@ -98,6 +108,7 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   FILTER: ${{ inputs.filter || '' }}
+  EXCLUDE: ${{ inputs.exclude || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
   # Fixture source: the glamsterdam-devnet releases of ethereum/execution-specs. They ship
   # fixtures for all forks (Frontier..Amsterdam) with the devnet-8 Amsterdam semantics
@@ -488,6 +499,10 @@ jobs:
           if [ -n "$FILTER" ]; then
             FILTER_ARG="--filter $FILTER"
           fi
+          EXCLUDE_ARGS=()
+          if [ -n "$EXCLUDE" ]; then
+            EXCLUDE_ARGS+=(--exclude "$EXCLUDE")
+          fi
 
           SETUP_ARGS="--chunk $CHUNK"
           if [ "$FLATDB" = "1" ]; then
@@ -604,6 +619,10 @@ jobs:
             if [ -n "$FILTER" ]; then
               FILTER_CMD=" --filter '$FILTER'"
             fi
+            EXCLUDE_CMD=""
+            if [ -n "$EXCLUDE" ]; then
+              EXCLUDE_CMD=" --exclude '$EXCLUDE'"
+            fi
             {
               echo ""
               echo "### Run locally"
@@ -615,7 +634,7 @@ jobs:
               echo "# 2. Build and run"
               echo "cd src/Nethermind"
               echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false"
-              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- $RUNNER_FLAG --input /tmp/eest/fixtures --jsonout --workers '$WORKERS' --neverTrace ${SETUP_ARGS}${FILTER_CMD}"
+              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- $RUNNER_FLAG --input /tmp/eest/fixtures --jsonout --workers '$WORKERS' --neverTrace ${SETUP_ARGS}${FILTER_CMD}${EXCLUDE_CMD}"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
 
@@ -732,6 +751,7 @@ jobs:
             --neverTrace \
             $SETUP_ARGS \
             $FILTER_ARG \
+            "${EXCLUDE_ARGS[@]}" \
             > "$RESULTS_FILE" \
             2> >(tee "$STDERR_FILE" >&2) &
           NETHTEST_PID=$!

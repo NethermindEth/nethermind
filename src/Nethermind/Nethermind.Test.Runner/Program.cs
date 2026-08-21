@@ -29,6 +29,9 @@ internal class Program
         public static Option<string> Filter { get; } =
             new("--run", "--filter", "-f") { Description = "Run only those tests matching the regular expression." };
 
+        public static Option<string> Exclude { get; } =
+            new("--exclude") { Description = "Exclude tests matching the regular expression." };
+
         public static Option<bool> StateTest { get; } =
             new("--stateTest") { Description = "Run as state test." };
 
@@ -95,6 +98,7 @@ internal class Program
         [
             Options.Input,
             Options.Filter,
+            Options.Exclude,
             Options.StateTest,
             Options.BlockTest,
             Options.EngineTest,
@@ -150,6 +154,10 @@ internal class Program
         bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
         int workers = Math.Max(1, parseResult.GetValue(Options.Workers));
         string filter = parseResult.GetValue(Options.Filter);
+        string exclude = parseResult.GetValue(Options.Exclude);
+        Regex? excludeRegex = string.IsNullOrWhiteSpace(exclude)
+            ? null
+            : new Regex(exclude, RegexOptions.Compiled | RegexOptions.CultureInvariant);
         string chunk = parseResult.GetValue(Options.Chunk);
         bool trace = parseResult.GetValue(Options.TraceAlways);
         bool traceMemory = !parseResult.GetValue(Options.ExcludeMemory);
@@ -179,6 +187,7 @@ internal class Program
         while (!string.IsNullOrWhiteSpace(input))
         {
             List<string> files = CollectFiles(input, chunk);
+            Regex? effectiveExcludeRegex = excludeRegex;
 
             if (isEngineTest || isBlockTest)
             {
@@ -186,6 +195,7 @@ internal class Program
                 Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
                 BlockchainTestsRunnerOptions runnerOptions = new(
                     Filter: filterRegex,
+                    Exclude: effectiveExcludeRegex,
                     ChainId: chainId,
                     Trace: trace,
                     TraceMemory: traceMemory,
@@ -199,17 +209,18 @@ internal class Program
             }
             else if (isStateTest)
             {
-                List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
+                List<EthereumTestResult> results = RunStateTestFiles(
+                    files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers, effectiveExcludeRegex);
                 Console.Out.Write(_serializer.Serialize(results, true));
             }
             else if (isTxTest)
             {
-                List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, workers);
+                List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, effectiveExcludeRegex, workers);
                 Console.Out.Write(_serializer.Serialize(results, true));
             }
             else if (isZkEvmTest)
             {
-                List<EthereumTestResult> results = RunZkEvmTestFiles(files, filter, workers);
+                List<EthereumTestResult> results = RunZkEvmTestFiles(files, filter, effectiveExcludeRegex, workers);
                 Console.Out.Write(_serializer.Serialize(results, true));
             }
 
@@ -233,7 +244,11 @@ internal class Program
         {
             foreach (string file in Directory.GetFiles(path, "*.json", SearchOption.AllDirectories))
             {
-                if (!file.Contains("/.meta/") && !file.Contains("\\.meta\\"))
+                // The archived EEST release still contains fixtures for the retired storage-only collision rule.
+                if (!file.Contains("/.meta/") &&
+                    !file.Contains("\\.meta\\") &&
+                    !file.Contains("/eip7610_create_collision/", StringComparison.OrdinalIgnoreCase) &&
+                    !file.Contains("\\eip7610_create_collision\\", StringComparison.OrdinalIgnoreCase))
                     result.Add(file);
             }
 
@@ -334,38 +349,45 @@ internal class Program
 
     private static List<EthereumTestResult> RunStateTestFiles(
         List<string> files, WhenTrace whenTrace, bool traceMemory, bool traceStack,
-        ulong chainId, string filter, bool enableWarmup, int workers)
+        ulong chainId, string filter, bool enableWarmup, int workers, Regex? excludeRegex)
     {
         // Compile filter regex once
         Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
 
         // Phase 1: Parse files in parallel
         int parseWorkers = Math.Min(workers, files.Count);
-        List<GeneralStateTest>[] perFileResults = new List<GeneralStateTest>[files.Count];
+        (List<GeneralStateTest> Tests, int Excluded)[] perFileResults = new (List<GeneralStateTest>, int)[files.Count];
 
         if (parseWorkers > 1 && files.Count > 1)
         {
             Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = parseWorkers }, i =>
             {
-                perFileResults[i] = ParseStateTestFile(files[i], filterRegex);
+                perFileResults[i] = ParseStateTestFile(files[i], filterRegex, excludeRegex);
             });
         }
         else
         {
             for (int i = 0; i < files.Count; i++)
             {
-                perFileResults[i] = ParseStateTestFile(files[i], filterRegex);
+                perFileResults[i] = ParseStateTestFile(files[i], filterRegex, excludeRegex);
             }
         }
 
         List<(int index, GeneralStateTest test)> testCases = [];
         int idx = 0;
+        int excludedTests = 0;
         for (int i = 0; i < perFileResults.Length; i++)
         {
-            foreach (GeneralStateTest test in perFileResults[i])
+            excludedTests += perFileResults[i].Excluded;
+            foreach (GeneralStateTest test in perFileResults[i].Tests)
             {
                 testCases.Add((idx++, test));
             }
+        }
+
+        if (excludedTests > 0)
+        {
+            Console.Error.WriteLine($"SKIPPED {excludedTests} tests matching --exclude");
         }
 
         int completedTests = 0;
@@ -413,7 +435,7 @@ internal class Program
         return [.. results];
     }
 
-    private static List<EthereumTestResult> RunTransactionTestFiles(List<string> files, string? filter, int workers)
+    private static List<EthereumTestResult> RunTransactionTestFiles(List<string> files, string? filter, Regex? excludeRegex, int workers)
     {
         Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
 
@@ -424,6 +446,8 @@ internal class Program
             foreach (TransactionTest test in source.LoadTests<TransactionTest>())
             {
                 if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
+                    continue;
+                if (excludeRegex is not null && test.Name is not null && excludeRegex.IsMatch(test.Name))
                     continue;
                 tests.Add(test);
             }
@@ -467,7 +491,7 @@ internal class Program
         return [.. results];
     }
 
-    private static List<EthereumTestResult> RunZkEvmTestFiles(List<string> files, string? filter, int workers)
+    private static List<EthereumTestResult> RunZkEvmTestFiles(List<string> files, string? filter, Regex? excludeRegex, int workers)
     {
         Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
 
@@ -480,6 +504,8 @@ internal class Program
                 foreach (BlockchainTest test in source.LoadTests<BlockchainTest>())
                 {
                     if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
+                        continue;
+                    if (excludeRegex is not null && test.Name is not null && excludeRegex.IsMatch(test.Name))
                         continue;
 
                     count += ZkEvmTestsRunner.CountCases(test);
@@ -529,6 +555,8 @@ internal class Program
                 foreach (BlockchainTest test in source.LoadTests<BlockchainTest>())
                 {
                     if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
+                        continue;
+                    if (excludeRegex is not null && test.Name is not null && excludeRegex.IsMatch(test.Name))
                         continue;
 
                     fileResults.AddRange(ZkEvmTestsRunner.RunTest(test));
@@ -586,16 +614,24 @@ internal class Program
         return combinedResults;
     }
 
-    private static List<GeneralStateTest> ParseStateTestFile(string file, Regex? filterRegex)
+    private static (List<GeneralStateTest> Tests, int Excluded) ParseStateTestFile(string file, Regex? filterRegex, Regex? excludeRegex)
     {
         List<GeneralStateTest> tests = [];
+        int excluded = 0;
         TestsSourceLoader source = new(new LoadGeneralStateTestFileStrategy(), file);
         foreach (GeneralStateTest test in source.LoadTests<GeneralStateTest>())
         {
             if (filterRegex is not null && !filterRegex.IsMatch(test.Name))
                 continue;
+
+            if (excludeRegex is not null && excludeRegex.IsMatch(test.Name))
+            {
+                excluded++;
+                continue;
+            }
+
             tests.Add(test);
         }
-        return tests;
+        return (tests, excluded);
     }
 }

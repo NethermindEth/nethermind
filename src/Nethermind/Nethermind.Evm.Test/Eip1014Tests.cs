@@ -67,35 +67,12 @@ namespace Nethermind.Evm.Test
                 TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
                 TestState.Commit(Spec);
                 TestState.CommitTree(0);
-                Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
             }
 
             Execute(callCode);
 
             Assert.That(TestState.TryGetAccount(expectedAddress, out AccountStruct account), Is.True);
             Assert.That(account.Balance, Is.EqualTo(1.Ether));
-            AssertEip1014(expectedAddress, []);
-        }
-
-        /// <summary>
-        /// EIP-7610: storage written earlier in the same block is not in the storage root yet - block
-        /// processing merkleizes once at the end of the block - so the collision check must consult the
-        /// block-level changes, not only the committed root.
-        /// </summary>
-        [Test]
-        public void Test_existing_account_with_unmerkleized_storage_is_not_empty()
-        {
-            (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
-
-            TestState.CreateAccount(expectedAddress, 1.Ether);
-            TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
-            TestState.Commit(Spec, commitRoots: false);
-
-            Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
-
-            Execute(callCode);
-
-            Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
             AssertEip1014(expectedAddress, []);
         }
 

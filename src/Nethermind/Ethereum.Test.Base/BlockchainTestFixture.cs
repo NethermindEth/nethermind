@@ -39,8 +39,8 @@ public abstract class LegacyBlockchainTestFixture<TSelf, TPrefix> : BlockchainTe
     public async Task Test(BlockchainTest test) => await RunTest(test);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(),
-            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<BlockchainTest>();
+        LegacyFixtureExclusions.Filter(new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(),
+            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<BlockchainTest>());
 }
 
 /// <summary>Convenience alias defaulting to "bc" prefix.</summary>
@@ -58,8 +58,8 @@ public abstract class LegacyBlockchainTestFixtureNoRlpValidation<TSelf, TPrefix>
     public async Task Test(BlockchainTest test) => await RunTest(test, failOnInvalidRlp: false);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(),
-            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<BlockchainTest>();
+        LegacyFixtureExclusions.Filter(new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(),
+            TestDirectoryHelper.GetDirectoryByPrefix<TSelf>(TPrefix.Value)).LoadTests<BlockchainTest>());
 }
 
 /// <summary>Convenience alias defaulting to "bc" prefix.</summary>
