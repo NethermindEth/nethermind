@@ -157,7 +157,7 @@ public struct EvmPooledMemory
         int copiedLength = 0;
         if (sourceOffset < source.Length)
         {
-            int intSourceOffset = (int)sourceOffset;
+            int intSourceOffset = TruncateToInt32(sourceOffset.u0);
             copiedLength = Math.Min(source.Length - intSourceOffset, length);
             source.Slice(intSourceOffset, copiedLength).CopyTo(target);
         }
@@ -297,8 +297,8 @@ public struct EvmPooledMemory
     {
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
-        EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         PrepareAccessAfterGas(location.u0 + WordSize);
+        EvmWord value = Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word));
         ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
     }
@@ -309,7 +309,8 @@ public struct EvmPooledMemory
         Debug.Assert(location.IsUint64);
         int offset = TruncateToInt32(location.u0);
         PrepareAccessAfterGas(location.u0 + 1);
-        _memory![offset] = value;
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+        Unsafe.Add(ref memory, offset) = value;
     }
 
     /// <summary>
@@ -383,15 +384,14 @@ public struct EvmPooledMemory
 
         ulong newActiveWords = (newSize + (WordSize - 1UL)) >> 5;
         ulong activeWords = Size >> 5;
+        Size = newActiveWords << 5;
 
         // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
         // in ulong -- so the outOfGas propagation that older revisions carried is unreachable.
-        // newActiveWords >= activeWords by the gating condition in UpdateSize, so the subtractions are safe.
+        // newActiveWords >= activeWords by the caller's gating condition, so the subtractions are safe.
         ulong cost = (newActiveWords - activeWords) * GasCostOf.Memory +
             ((newActiveWords * newActiveWords) >> 9) -
             ((activeWords * activeWords) >> 9);
-
-        UpdateSize(newSize, rentIfNeeded: false);
 
         return cost;
     }

@@ -116,6 +116,31 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         TestContext.Out.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
     }
 
+    [TestCase(1UL, 32UL, 3UL)]
+    [TestCase(33UL, 64UL, 6UL)]
+    [TestCase(512UL, 512UL, 48UL)]
+    [TestCase(1024UL, 1024UL, 98UL)]
+    public void CalculateMemoryCost_aligns_size_and_charges_expected_cost(
+        ulong requestedSize,
+        ulong expectedSize,
+        ulong expectedCost)
+    {
+        EvmPooledMemory memory = new();
+        UInt256 location = UInt256.Zero;
+
+        ulong cost = memory.CalculateMemoryCost(in location, requestedSize, out bool outOfGas);
+        ulong repeatedCost = memory.CalculateMemoryCost(in location, requestedSize, out bool repeatedOutOfGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.False);
+            Assert.That(repeatedOutOfGas, Is.False);
+            Assert.That(memory.Size, Is.EqualTo(expectedSize));
+            Assert.That(cost, Is.EqualTo(expectedCost));
+            Assert.That(repeatedCost, Is.Zero);
+        }
+    }
+
     [Test]
     public void CalculateMemoryCost_LocationExceedsULong_ShouldReturnOutOfGas()
     {
@@ -469,6 +494,56 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(recycled.TryLoadSpan(0, (UInt256)size, out Span<byte> reused), Is.True);
         Assert.That(reused.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "recycled buffer must read as zero");
         recycled.Dispose();
+    }
+
+    [TestCase(false, 0)]
+    [TestCase(false, 1000)]
+    [TestCase(false, 4095)]
+    [TestCase(false, 5000)]
+    [TestCase(true, 0)]
+    [TestCase(true, 1023)]
+    [TestCase(true, 4096)]
+    [TestCase(true, 5000)]
+    public void StoreAfterGas_matches_independent_model_on_dirty_reused_buffer(bool storeByte, int offset)
+    {
+        PrimeDirtyBuffer();
+
+        int length = storeByte ? 1 : EvmPooledMemory.WordSize;
+        byte[] expected = new byte[AlignToWord(offset + length)];
+        byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x31);
+        const byte value = 0xa5;
+        if (storeByte)
+        {
+            expected[offset] = value;
+        }
+        else
+        {
+            word.CopyTo(expected, offset);
+        }
+
+        EvmPooledMemory memory = new();
+        try
+        {
+            UInt256 location = (UInt256)offset;
+            memory.CalculateMemoryCost(in location, (ulong)length, out bool outOfGas);
+            Assert.That(outOfGas, Is.False);
+
+            if (storeByte)
+            {
+                memory.StoreByteAfterGas(in location, value);
+            }
+            else
+            {
+                memory.StoreWordAfterGas(in location, word);
+            }
+
+            AssertDirtyTailWasReused(ref memory);
+            Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
+        }
+        finally
+        {
+            memory.Dispose();
+        }
     }
 
     [TestCaseSource(nameof(ZeroExtendedCopyCases))]
