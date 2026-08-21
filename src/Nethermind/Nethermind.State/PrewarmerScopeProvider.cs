@@ -40,6 +40,13 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 /// scope-local cache via <c>HintGet</c> (for its later commit); a populator does not. A consumer scope registers
 /// itself as the block's <see cref="PreBlockCaches.MainScope"/>; a populator pushes trie warm-up hints into it.
 /// </param>
+// Experiment (NM_XP_XBLOCK): with the pre-block caches retained across the block boundary, every value the block
+// changes must be written through, or the next block reads a stale pre-write value and computes a wrong state root.
+file static class CrossBlock
+{
+    public static readonly bool Enabled = ExperimentSwitches.Bool("NM_XP_XBLOCK");
+}
+
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     IPrewarmerState prewarmerState,
@@ -97,18 +104,18 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            if (!_measureMetric)
+            IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
+
+            if (_measureMetric)
             {
-                return baseScope.StartWriteBatch(estimatedAccountNum);
+                _writeBatchTime = Stopwatch.GetTimestamp();
+                batch = new WriteBatchLifetimeMeasurer(batch, _metricObserver, Stopwatch.GetTimestamp(), isPrewarmer);
             }
 
-            _writeBatchTime = Stopwatch.GetTimestamp();
-            long sw = Stopwatch.GetTimestamp();
-            return new WriteBatchLifetimeMeasurer(
-                baseScope.StartWriteBatch(estimatedAccountNum),
-                _metricObserver,
-                sw,
-                isPrewarmer);
+            // Only the consumer scope commits real state, so only its writes may update the shared caches.
+            return CrossBlock.Enabled && !isPrewarmer
+                ? new WriteThroughWriteBatch(batch, preBlockCache, storageCache)
+                : batch;
         }
 
         public void Commit(ulong blockNumber)
@@ -315,5 +322,58 @@ public class PrewarmerScopeProvider(
         public void Set(Address key, Account? account) => baseWriteBatch.Set(key, account);
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries);
+    }
+
+    /// <summary>Mirrors a committed block's account and storage writes into the shared pre-block caches.</summary>
+    /// <remarks>
+    /// Values are written through rather than invalidated, so a slot this block wrote is a hit for the next block
+    /// instead of a miss. A whole-storage clear cannot be expressed per key on a <see cref="SeqlockCache{TKey,TValue}"/>,
+    /// so it drops the storage cache wholesale — cheap, since Clear is an epoch bump, and rare post-EIP-6780.
+    /// </remarks>
+    private sealed class WriteThroughWriteBatch(
+        IWorldStateScopeProvider.IWorldStateWriteBatch baseWriteBatch,
+        SeqlockCache<AddressAsKey, Account> stateCache,
+        SeqlockCache<StorageCell, byte[]> storageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    {
+        public void Dispose() => baseWriteBatch.Dispose();
+
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
+        {
+            add => baseWriteBatch.OnAccountUpdated += value;
+            remove => baseWriteBatch.OnAccountUpdated -= value;
+        }
+
+        public void Set(Address key, Account? account)
+        {
+            baseWriteBatch.Set(key, account);
+            AddressAsKey addressAsKey = key;
+            stateCache.Set(in addressAsKey, account);
+            // A null account also wipes the account's storage, which cannot be enumerated here.
+            if (account is null) storageCache.Clear();
+        }
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
+            new WriteThroughStorageWriteBatch(baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries), storageCache, key);
+    }
+
+    private sealed class WriteThroughStorageWriteBatch(
+        IWorldStateScopeProvider.IStorageWriteBatch baseWriteBatch,
+        SeqlockCache<StorageCell, byte[]> storageCache,
+        Address address) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Dispose() => baseWriteBatch.Dispose();
+
+        public void Set(in UInt256 index, byte[] value)
+        {
+            baseWriteBatch.Set(in index, value);
+            StorageCell storageCell = new(address, in index);
+            storageCache.Set(in storageCell, value);
+        }
+
+        public void Clear()
+        {
+            baseWriteBatch.Clear();
+            storageCache.Clear();
+        }
     }
 }

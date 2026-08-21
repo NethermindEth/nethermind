@@ -22,6 +22,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
+    // Experiment: stop filling at the cap instead of clearing everything, so a hot set larger than the
+    // cap keeps what it captured first rather than losing all of it repeatedly.
+    private readonly bool _noWipe = ExperimentSwitches.Bool("NM_XP_CARRYFWD_NOWIPE");
+
     private readonly ConcurrentDictionary<Address, Account?> _accounts = new();
     private readonly ConcurrentDictionary<(Address, UInt256), CachedSlot> _slots = new();
     private int _accountCount;
@@ -34,7 +38,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
     {
         _inner = inner;
-        _maxEntriesPerKind = maxEntriesPerKind;
+        _maxEntriesPerKind = ExperimentSwitches.Int("NM_XP_CARRYFWD_ENTRIES", maxEntriesPerKind);
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
     }
@@ -85,6 +89,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (_accounts.ContainsKey(address)) return;
             if (_accountCount >= _maxEntriesPerKind)
             {
+                if (_noWipe) return;
                 _accounts.Clear();
                 _accountCount = 0;
                 Metrics.CarryForwardWipes++;
@@ -103,6 +108,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (_slots.ContainsKey(key)) return;
             if (_slotCount >= _maxEntriesPerKind)
             {
+                if (_noWipe) return;
                 _slots.Clear();
                 _slotCount = 0;
                 Metrics.CarryForwardWipes++;

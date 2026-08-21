@@ -30,6 +30,7 @@ public class BranchProcessor(
 
     private const int MaxUncommittedBlocks = 64;
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
+    private readonly Action<Task> _retainCaches = _ => preWarmer?.ClearCaches(retainForNextBlock: true);
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
@@ -154,7 +155,7 @@ public class BranchProcessor(
 
                 processedBlocks[i] = processedBlock;
 
-                QueueClearCaches(preWarmTask);
+                QueueClearCaches(preWarmTask, retainForNextBlock: true);
                 // Hint producers touch the active snapshot bundle, which CommitTree rotates.
                 WaitAndClear(ref preWarmTask);
 
@@ -241,16 +242,18 @@ public class BranchProcessor(
 
     private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
 
-    private void QueueClearCaches(Task? preWarmTask)
+    private void QueueClearCaches(Task? preWarmTask, bool retainForNextBlock = false)
     {
         if (preWarmTask is not null)
         {
             // Clear caches after prewarm completes; run inline to avoid ThreadPool scheduling jitter.
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.ExecuteSynchronously);
+            _clearTask = preWarmTask.ContinueWith(
+                retainForNextBlock ? _retainCaches : _clearCaches,
+                TaskContinuationOptions.ExecuteSynchronously);
         }
         else if (preWarmer is not null)
         {
-            preWarmer.ClearCaches();
+            preWarmer.ClearCaches(retainForNextBlock);
             _clearTask = Task.CompletedTask;
         }
     }

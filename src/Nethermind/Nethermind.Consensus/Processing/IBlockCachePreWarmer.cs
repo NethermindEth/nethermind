@@ -23,12 +23,17 @@ public interface IBlockCachePreWarmer : IDisposable
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default);
 
     /// <summary>Clears the block-processing caches.</summary>
+    /// <param name="retainForNextBlock">
+    /// Experiment (NM_XP_XBLOCK): the just-processed block committed successfully, so its post-state is a valid
+    /// parent state for the next block. Publishes a handoff marker instead of clearing, so a next block whose
+    /// parent matches reuses the entries. Ignored unless the cross-block experiment is enabled.
+    /// </param>
     /// <returns>
     /// The built-in implementation only reports <see cref="CacheType.Rlp"/>, which means that RLP node-storage caching
     /// was enabled, not necessarily that it contained entries. The storage, state, and precompile caches do not report
     /// whether they contained entries.
     /// </returns>
-    CacheType ClearCaches();
+    CacheType ClearCaches(bool retainForNextBlock = false);
 
     bool IsBalReadWarmingEnabled(IReleaseSpec spec);
 

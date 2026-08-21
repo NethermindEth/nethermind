@@ -735,10 +735,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return options;
     }
 
+    // Experiment: RocksDB async IO. On iterators this prefetches SST blocks in parallel without needing a
+    // coroutine-enabled build; on MultiGet parallel IO does need one, so a plain build simply ignores it there.
+    private static readonly bool AsyncIoReads = ExperimentSwitches.Bool("NM_XP_ASYNC_IO");
+
     internal ReadOptions CreateReadOptions()
     {
         ReadOptions readOptions = new();
         readOptions.SetVerifyChecksums(VerifyChecksum);
+        if (AsyncIoReads) readOptions.SetAsyncIO(true);
         return readOptions;
     }
 

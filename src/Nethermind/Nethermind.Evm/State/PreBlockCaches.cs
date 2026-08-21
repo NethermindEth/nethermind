@@ -26,7 +26,7 @@ public class PreBlockCaches
     private readonly Func<CacheType>[] _clearCaches;
 
     private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
-    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
+    private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
     private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
     private readonly ClockCache<PrecompileCacheKey, Result<byte[]>> _survivingPrecompileCache;
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
@@ -38,7 +38,10 @@ public class PreBlockCaches
 
     public PreBlockCaches(PreBlockCachesConfig config)
     {
-        _storageCache = new SeqlockCache<StorageCell, byte[]>(config.StorageCacheSetsBits);
+        _storageCache = new SeqlockCache<StorageCell, byte[]>(
+            ExperimentSwitches.Int("NM_XP_STORAGE_CACHE_BITS", config.StorageCacheSetsBits));
+        _stateCache = new SeqlockCache<AddressAsKey, Account>(
+            ExperimentSwitches.Int("NM_XP_STATE_CACHE_BITS", SeqlockCache<AddressAsKey, Account>.DefaultSetsBits));
         _survivingPrecompileCache = new ClockCache<PrecompileCacheKey, Result<byte[]>>(
             config.SurvivingPrecompileCacheMaxEntries, comparer: EqualityComparer<PrecompileCacheKey>.Default);
         _clearCaches =

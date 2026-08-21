@@ -648,7 +648,7 @@ public class BlockProcessorTests
             return Task.CompletedTask;
         }
 
-        public CacheType ClearCaches() => default;
+        public CacheType ClearCaches(bool retainForNextBlock = false) => default;
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, Block?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Dispose() { }

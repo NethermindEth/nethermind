@@ -66,6 +66,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     // which is what makes the marker and its shared tx-hash set safe to read without further sync.
     private WarmMarker? _warmMarker;
 
+    // Experiment (NM_XP_XBLOCK): retain the pre-block caches across the block boundary instead of clearing, so a
+    // block's own post-state serves the next block. The just-warmed block and spec are stashed so a retain can
+    // publish a handoff marker naming them, reusing the parent-hash guard the mempool handoff already relies on.
+    private static readonly bool CrossBlockRetain = ExperimentSwitches.Bool("NM_XP_XBLOCK");
+    private Hash256? _lastWarmedBlockHash;
+    private IReleaseSpec? _lastWarmedSpec;
+
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
     private readonly IHasAccessList[] _systemAccessLists;
 
@@ -134,6 +141,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (skipReactiveWarming) return Task.CompletedTask;
             _nodeStorageCache.Enabled = true;
         }
+
+        _lastWarmedBlockHash = suggestedBlock.Hash;
+        _lastWarmedSpec = spec;
 
         if (skipReactiveWarming) return Task.CompletedTask;
         return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken, _systemAccessLists);
@@ -470,10 +480,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _speculativeCts = cts;
             CancellationToken token = cts.Token;
 
-            ClearWarmMarker();
-            _warmedTxHashes.Clear();
-            _preBlockCaches.ClearCaches();
-            _nodeStorageCache.ClearCaches();
+            if (!CrossBlockRetain)
+            {
+                ClearWarmMarker();
+                _warmedTxHashes.Clear();
+                _preBlockCaches.ClearCaches();
+                _nodeStorageCache.ClearCaches();
+            }
             _nodeStorageCache.Enabled = true;
 
             return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token));
@@ -580,8 +593,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
     public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
 
-    public CacheType ClearCaches()
+    public CacheType ClearCaches(bool retainForNextBlock = false)
     {
+        if (retainForNextBlock && CrossBlockRetain && _lastWarmedBlockHash is not null && _lastWarmedSpec is not null)
+        {
+            // Keep the entries and hand them to the next block; write-through on the committed batch has already
+            // replaced every value this block changed, so what survives describes the post-state.
+            Volatile.Write(ref _warmMarker, new WarmMarker(_lastWarmedBlockHash, _lastWarmedSpec, _warmedTxHashes));
+            return CacheType.None;
+        }
+
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CancelAndJoinSpeculative();
         ClearWarmMarker();

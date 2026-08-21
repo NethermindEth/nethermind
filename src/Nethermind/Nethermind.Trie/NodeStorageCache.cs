@@ -1,13 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie;
 
 public sealed class NodeStorageCache
 {
-    private readonly SeqlockCache<NodeKey, byte[]> _cache = new();
+    private readonly SeqlockCache<NodeKey, byte[]> _cache = new(
+        ExperimentSwitches.Int("NM_XP_NODE_CACHE_BITS", SeqlockCache<NodeKey, byte[]>.DefaultSetsBits));
 
     private volatile bool _enabled = false;
 
