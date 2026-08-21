@@ -233,11 +233,7 @@ internal class Program
         {
             foreach (string file in Directory.GetFiles(path, "*.json", SearchOption.AllDirectories))
             {
-                // The archived EEST release still contains fixtures for the retired storage-only collision rule.
-                if (!file.Contains("/.meta/") &&
-                    !file.Contains("\\.meta\\") &&
-                    !file.Contains("/eip7610_create_collision/", StringComparison.OrdinalIgnoreCase) &&
-                    !file.Contains("\\eip7610_create_collision\\", StringComparison.OrdinalIgnoreCase))
+                if (!file.Contains("/.meta/") && !file.Contains("\\.meta\\"))
                     result.Add(file);
             }
 
