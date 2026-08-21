@@ -13,7 +13,6 @@ namespace Nethermind.TxPool.Filters
     /// Filters out malformed transactions and resolves the sender for subsequent state-dependent filters.
     /// </summary>
     internal sealed class MalformedTxFilter(
-        IChainHeadSpecProvider specProvider,
         ITxValidator txValidator,
         IEthereumEcdsa ecdsa,
         ILogger logger)
@@ -21,7 +20,7 @@ namespace Nethermind.TxPool.Filters
     {
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
-            IReleaseSpec spec = specProvider.GetCurrentHeadSpec();
+            IReleaseSpec spec = state.HeadSpec;
             ValidationResult result = txValidator.IsWellFormed(
                 tx,
                 spec,

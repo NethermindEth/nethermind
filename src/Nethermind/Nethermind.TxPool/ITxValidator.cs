@@ -24,6 +24,6 @@ namespace Nethermind.TxPool
             ulong blockGasLimit,
             TxValidationOptions options) => IsWellFormed(transaction, releaseSpec, blockGasLimit);
 
-        public const string HeadTxValidatorKey = "HeadTxValidator";
+        public const string SpecChangeTxValidatorKey = "SpecChangeTxValidator";
     }
 }

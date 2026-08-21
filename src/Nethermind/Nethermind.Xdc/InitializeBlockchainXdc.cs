@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
@@ -37,6 +38,7 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 chainHeadInfoProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
+                SpecChangeTxValidator.Instance,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
                 _txGossipPolicy,
@@ -44,7 +46,6 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                     new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),
                     new BlackListedAddressFilter(chainHeadInfoProvider, XdcSpecProvider, _api.LogManager)
                 ],
-                _api.HeadTxValidator,
                 true
             );
 

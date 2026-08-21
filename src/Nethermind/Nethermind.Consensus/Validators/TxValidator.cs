@@ -150,6 +150,11 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
     {
+        if (transaction is LightTransaction)
+        {
+            return TxErrorMessages.InvalidTransactionForm;
+        }
+
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {

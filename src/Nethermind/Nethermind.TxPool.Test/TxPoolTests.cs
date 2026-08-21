@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -16,6 +17,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -50,6 +52,20 @@ namespace Nethermind.TxPool.Test
         private TestBlockTree _blockTree;
 
         private const int TxGasLimit = 1_000_000;
+        // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
+        private const ulong UnderGassedTransactionGasLimit = 42_400;
+
+        private static AccessList BuildUnderGassedAccessList()
+        {
+            AccessList.Builder accessListBuilder = new();
+            accessListBuilder.AddAddress(TestItem.AddressC);
+            for (int i = 0; i < 10; i++)
+            {
+                accessListBuilder.AddStorage((UInt256)i);
+            }
+
+            return accessListBuilder.Build();
+        }
 
         [OneTimeSetUp]
         public static void OneTimeSetup() => KzgPolynomialCommitments.InitializeAsync().Wait();
@@ -284,6 +300,281 @@ namespace Nethermind.TxPool.Test
                 Assert.That(afterRecovery.AsBool(), Is.True);
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public async Task should_evict_transactions_that_become_under_gassed_after_fork()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+
+            Transaction transaction = Build.A.Transaction
+                .WithType(TxType.AccessList)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(UnderGassedTransactionGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            Transaction followUpTransaction = Build.A.Transaction
+                .WithType(TxType.AccessList)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(TxGasLimit)
+                .WithNonce(transaction.Nonce + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool = CreatePool(specProvider: provider);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(followUpTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+            }
+
+            await AddEmptyBlock();
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task should_evict_transactions_that_exceed_the_gas_limit_cap_after_fork()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+
+            _txPool = CreatePool(new TxPoolConfig { GasLimit = long.MaxValue }, provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction transaction = Build.A.Transaction
+                .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
+
+            await AddEmptyBlock();
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task should_run_spec_change_validation_only_at_fork_boundary()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 2
+            };
+            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+
+            _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction transaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            specChangeTxValidator.DidNotReceiveWithAnyArgs().IsWellFormed(default, default);
+            Assert.That(_txPool.IsRevalidatedFor(Build.A.BlockHeader.WithNumber(head.Number + 1).TestObject), Is.True);
+
+            await AddEmptyBlock();
+
+            specChangeTxValidator.DidNotReceiveWithAnyArgs().IsWellFormed(default, default);
+
+            Block nextBlock = Build.A.Block.WithNumber(head.Number + 2).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.False);
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+
+            specChangeTxValidator.Received(1).IsWellFormed(transaction, Osaka.Instance);
+            Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.True);
+        }
+
+        [Test]
+        public async Task should_not_report_fork_state_safe_after_empty_pool_crosses_fork()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            _txPool = CreatePool(specProvider: provider);
+
+            await AddEmptyBlock();
+
+            Assert.That(_txPool.IsRevalidatedFor(_blockTree.Head.Header), Is.False);
+        }
+
+        [Test]
+        public async Task should_drop_revalidated_state_when_transaction_is_accepted_under_another_spec()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            _txPool = CreatePool(specProvider: provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject,
+                TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await AddEmptyBlock();
+            BlockHeader forkHeader = _blockTree.BestSuggestedHeader;
+            Assert.That(_txPool.IsRevalidatedFor(forkHeader), Is.True);
+
+            // A reorg back below the fork makes the pool accept transactions under the previous rules again,
+            // which stops the mark left by the walk for the fork spec from covering the pool.
+            _blockTree.BestSuggestedHeader = head.Header;
+            Assert.That(_txPool.SubmitTx(Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject,
+                TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _blockTree.BestSuggestedHeader = forkHeader;
+            Assert.That(_txPool.IsRevalidatedFor(forkHeader), Is.False);
+        }
+
+        [Test]
+        public async Task should_retry_spec_change_revalidation_after_failure()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            TaskCompletionSource revalidationFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            int validationAttempts = 0;
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
+            {
+                if (validationAttempts++ == 0)
+                {
+                    revalidationFailed.TrySetResult();
+                    throw new InvalidOperationException();
+                }
+
+                return ValidationResult.Success;
+            });
+
+            _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction transaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = forkBlock.Header;
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
+            await revalidationFailed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.That(_txPool.IsRevalidatedFor(forkBlock.Header), Is.False);
+
+            Block nextBlock = Build.A.Block.WithNumber(forkBlock.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.IsRevalidatedFor(nextBlock.Header), Is.True);
+                Assert.That(validationAttempts, Is.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public async Task should_revalidate_after_queued_fork_reorg()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Prague.Instance)
+            {
+                NextForkSpec = Osaka.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            ITxValidator specChangeTxValidator = Substitute.For<ITxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+
+            _txPool = CreatePool(specProvider: provider, specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction transaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            ReaderWriterLockSlim newHeadLock = (ReaderWriterLockSlim)typeof(TxPool)
+                .GetField("_newHeadLock", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(_txPool)!;
+            Block forkBlock = Build.A.Block.WithNumber(head.Number + 1).TestObject;
+            Transaction forkSpecTransaction = Build.A.Transaction
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+            Task finalHeadProcessed = Wait.ForEventCondition<Block>(
+                CancellationToken.None,
+                handler => _txPool.TxPoolHeadChanged += handler,
+                handler => _txPool.TxPoolHeadChanged -= handler,
+                block => block.Hash == head.Hash);
+
+            // Holding the read lock keeps both head changes queued, so the pool accepts a transaction under the
+            // fork rules and then falls back below the fork without ever being walked in between.
+            newHeadLock.EnterReadLock();
+            try
+            {
+                _blockTree.BestSuggestedHeader = forkBlock.Header;
+                _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(forkBlock));
+                Assert.That(_txPool.SubmitTx(forkSpecTransaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+                _blockTree.BestSuggestedHeader = head.Header;
+                _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(head, forkBlock));
+
+                Assert.That(_txPool.IsRevalidatedFor(head.Header), Is.False);
+            }
+            finally
+            {
+                newHeadLock.ExitReadLock();
+            }
+
+            await finalHeadProcessed.WaitAsync(TimeSpan.FromSeconds(10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                specChangeTxValidator.Received(1).IsWellFormed(transaction, Prague.Instance);
+                specChangeTxValidator.Received(1).IsWellFormed(forkSpecTransaction, Prague.Instance);
+                Assert.That(_txPool.IsRevalidatedFor(head.Header), Is.True);
             }
         }
 
@@ -2495,7 +2786,8 @@ namespace Nethermind.TxPool.Test
             IIncomingTxFilter incomingTxFilter = null,
             IBlobTxStorage txStorage = null,
             bool thereIsPriorityContract = false,
-            IEthereumEcdsa ethereumEcdsa = null)
+            IEthereumEcdsa ethereumEcdsa = null,
+            ITxValidator specChangeTxValidator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -2514,11 +2806,11 @@ namespace Nethermind.TxPool.Test
                 _headInfo,
                 config ?? new TxPoolConfig() { GasLimit = TxGasLimit },
                 new TxValidator(_specProvider.ChainId),
+                specChangeTxValidator ?? SpecChangeTxValidator.Instance,
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
                 ShouldGossip.Instance,
                 incomingTxFilter is null ? null : [incomingTxFilter],
-                new HeadTxValidator(),
                 thereIsPriorityContract);
         }
 

@@ -78,6 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider) { HasSynced = true },
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
+                SpecChangeTxValidator.Instance,
                 LimboLogs.Instance,
                 new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer());
 
