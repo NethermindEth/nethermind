@@ -117,6 +117,19 @@ namespace Nethermind.Core
         void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
 
+    /// <summary>
+    /// A store that can drop a whole key range in one operation, at a cost independent of how many keys the range
+    /// holds. Only worth implementing where the keys are ordered along the dimension being dropped.
+    /// </summary>
+    public interface IRangeRemovableKeyValueStore : IWriteOnlyKeyValueStore
+    {
+        /// <summary>
+        /// Removes every key in <c>[firstKeyInclusive, lastKeyExclusive)</c>. Exact and durable: the keys stop being
+        /// visible immediately, and the space is returned whenever compaction next rewrites the affected files.
+        /// </summary>
+        void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+    }
+
     public interface ISortedKeyValueStore : IReadOnlyKeyValueStore
     {
         byte[]? FirstKey { get; }

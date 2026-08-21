@@ -35,7 +35,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
 {
     protected ILogger _logger;
 
@@ -1165,6 +1165,31 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         try
         {
             _db.Remove(key, null, WriteOptions);
+        }
+        catch (RocksDbSharpException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
+    public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) =>
+        RemoveRange(firstKeyInclusive, lastKeyExclusive, null);
+
+    internal void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ColumnFamilyHandle? cf)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        try
+        {
+            // Goes through a batch rather than the db directly: a range tombstone is a write like any other and
+            // has to reach the WAL, so a crash cannot resurrect the range.
+            using WriteBatch batch = new();
+            batch.DeleteRange(
+                firstKeyInclusive.ToArray(), (ulong)firstKeyInclusive.Length,
+                lastKeyExclusive.ToArray(), (ulong)lastKeyExclusive.Length,
+                cf);
+            _db.Write(batch, WriteOptions);
         }
         catch (RocksDbSharpException e)
         {

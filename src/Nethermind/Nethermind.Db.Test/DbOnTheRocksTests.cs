@@ -379,6 +379,109 @@ namespace Nethermind.Db.Test
             Assert.That(normalized, Is.EqualTo("foo=bar;baz=qux;optimize_filters_for_hits=true;"));
         }
 
+        // The bounds are the whole safety story for range removal: one byte wrong at either end and a node deletes
+        // history it has told the network it still serves. These pin both ends and the reopen.
+        [Test]
+        public void RemoveRange_RemovesTheRangeAndNothingTouchingIt()
+        {
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (byte i = 0; i < 10; i++)
+            {
+                db.PutSpan([i], [i], WriteFlags.None);
+            }
+
+            db.RemoveRange([3], [7]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(db, [2]), Is.EqualTo(new byte[] { 2 }), "the key below the lower bound must survive");
+                Assert.That(GetValue(db, [3]), Is.Null, "the lower bound is inclusive");
+                Assert.That(GetValue(db, [6]), Is.Null);
+                Assert.That(GetValue(db, [7]), Is.EqualTo(new byte[] { 7 }),
+                    "the upper bound is EXCLUSIVE - this is the block a pruning node still promises to serve");
+                Assert.That(GetValue(db, [8]), Is.EqualTo(new byte[] { 8 }));
+            }
+        }
+
+        [Test]
+        public void RemoveRange_OnAnEmptyRange_RemovesNothing()
+        {
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            db.PutSpan([5], [5], WriteFlags.None);
+            db.RemoveRange([5], [5]);
+
+            Assert.That(GetValue(db, [5]), Is.EqualTo(new byte[] { 5 }),
+                "first == last is an empty half-open range and must be a no-op, not a one-key delete");
+        }
+
+        [Test]
+        public void RemoveRange_SurvivesReopen()
+        {
+            IDbConfig config = new DbConfig();
+            using (DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance))
+            {
+                for (byte i = 0; i < 6; i++)
+                {
+                    db.PutSpan([i], [i], WriteFlags.None);
+                }
+
+                db.RemoveRange([1], [4]);
+            }
+
+            using DbOnTheRocks reopened = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(reopened, [0]), Is.EqualTo(new byte[] { 0 }));
+                Assert.That(GetValue(reopened, [1]), Is.Null, "the tombstone has to reach the WAL, or a restart resurrects a range the node already stopped announcing");
+                Assert.That(GetValue(reopened, [3]), Is.Null);
+                Assert.That(GetValue(reopened, [4]), Is.EqualTo(new byte[] { 4 }));
+            }
+        }
+
+        [Test]
+        public void RemoveRange_OnBlockNumberPrefixedKeys_TakesEveryHashAtEveryHeightInRange()
+        {
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            // Two competing hashes per height, which is what the per-block loop misses when a level record does not
+            // list an orphan.
+            for (ulong number = 1; number <= 5; number++)
+            {
+                foreach (byte tag in new byte[] { 0xAA, 0xBB })
+                {
+                    db.PutSpan(BlockKey(number, tag), [tag], WriteFlags.None);
+                }
+            }
+
+            db.RemoveRange(BlockKey(2, 0x00), BlockKey(4, 0x00));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetValue(db, BlockKey(1, 0xAA)), Is.Not.Null);
+                Assert.That(GetValue(db, BlockKey(2, 0xAA)), Is.Null);
+                Assert.That(GetValue(db, BlockKey(2, 0xBB)), Is.Null, "both hashes at a covered height must go, orphans included");
+                Assert.That(GetValue(db, BlockKey(3, 0xBB)), Is.Null);
+                Assert.That(GetValue(db, BlockKey(4, 0xAA)), Is.Not.Null, "the first retained height must be untouched");
+                Assert.That(GetValue(db, BlockKey(5, 0xBB)), Is.Not.Null);
+            }
+        }
+
+        private static byte[] BlockKey(ulong blockNumber, byte hashTag)
+        {
+            byte[] key = new byte[40];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, new ValueHash256(), key);
+            key[8] = hashTag;
+            return key;
+        }
+
+        private static byte[]? GetValue(DbOnTheRocks db, ReadOnlySpan<byte> key) => ((IReadOnlyKeyValueStore)db).Get(key);
+
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };

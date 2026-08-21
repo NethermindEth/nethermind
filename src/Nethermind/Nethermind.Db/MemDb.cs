@@ -14,7 +14,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
-    public class MemDb : IFullDb
+    public class MemDb : IFullDb, IRangeRemovableKeyValueStore
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
@@ -83,6 +83,21 @@ namespace Nethermind.Db
         public virtual void Flush(bool onlyWal = false) { }
 
         public void Clear() => _db.Clear();
+
+        /// <summary>Half-open, matching the RocksDB range tombstone this stands in for in tests.</summary>
+        public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        {
+            byte[] first = firstKeyInclusive.ToArray();
+            byte[] last = lastKeyExclusive.ToArray();
+
+            foreach (byte[] key in Keys)
+            {
+                if (Bytes.BytesComparer.Compare(key, first) >= 0 && Bytes.BytesComparer.Compare(key, last) < 0)
+                {
+                    Remove(key);
+                }
+            }
+        }
 
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => ordered ? OrderedDb : _db;
 
