@@ -361,7 +361,7 @@ jobs:
             dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           fi
 
-  # EEST fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
+  # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
   # through the reusable nethtest workflow: same fixture releases, sequential (patricia)
   # configuration plus the Amsterdam variant toggles, all fixture formats. The flat
   # layout runs from nethermind-tests-flat.yml.
@@ -369,7 +369,7 @@ jobs:
     name: EEST nethtest
     uses: ./.github/workflows/run-nethtest.yml
     with:
-      test_types: engineTest,blockTest,stateTest,syncTest,txTest,focilTest
+      test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest
       setup_group: sequential
 
   matrix-guard:

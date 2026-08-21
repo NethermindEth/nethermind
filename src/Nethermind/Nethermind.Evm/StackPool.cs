@@ -5,6 +5,14 @@ namespace Nethermind.Evm;
 
 internal sealed partial class StackPool
 {
+    /// <summary>
+    /// The process-wide pool, and the only instance. Stacks carry no gas-policy state, so one serves
+    /// every <see cref="VmState{TGasPolicy}"/> instantiation rather than one per closed type.
+    /// </summary>
+    public static readonly StackPool Shared = new();
+
+    private StackPool() { }
+
     // Also have parallel prewarming and Rpc calls
     private const int MaxStacksPooled = VirtualMachineStatics.MaxCallDepth * 2;
     public const int StackLength = (EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32;
