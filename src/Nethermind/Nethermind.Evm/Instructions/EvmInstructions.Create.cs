@@ -194,7 +194,7 @@ public static partial class EvmInstructions
         // Analyze and compile the initialization code.
         CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
 
-        // If the account already exists and is non-zero, then the creation fails.
+        // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
         // Collision behaves as an immediate exceptional halt — burned callGas counts as block_execution.
         if (isNonZeroAccount)
         {

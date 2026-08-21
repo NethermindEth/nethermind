@@ -117,8 +117,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
-    public bool IsStorageEmpty(Address address) => GetOrCreateStorage(address).IsEmpty;
-
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
     /// Called by Commit
@@ -500,19 +498,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 EnsureStorageTree();
                 return _backend.RootHash;
-            }
-        }
-
-        public bool IsEmpty
-        {
-            get
-            {
-                // _backend.RootHash is not reflected until after commit, but this need to be reflected before commit
-                // for SelfDestruct, since the deletion is not part of changelog, it need to be handled here.
-                if (BlockChange.HasClear) return true;
-
-                EnsureStorageTree();
-                return _backend.RootHash == Keccak.EmptyTreeHash;
             }
         }
 

@@ -67,7 +67,6 @@ namespace Nethermind.Evm.Test
                 TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
                 TestState.Commit(Spec);
                 TestState.CommitTree(0);
-                Assert.That(TestState.IsStorageEmpty(expectedAddress), Is.False);
             }
 
             Execute(callCode);

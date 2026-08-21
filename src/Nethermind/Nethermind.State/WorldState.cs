@@ -233,8 +233,6 @@ namespace Nethermind.State
             return _stateProvider.GetNonce(address);
         }
 
-        public bool IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
-
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
         public IDisposable BeginScope(BlockHeader? baseBlock)

@@ -231,7 +231,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Charge selection:
     ///  - <c>_deferredSpawned</c> set by ReportAction (child frame dispatched) → spawn estimate.
     ///  - Else if CREATE/CREATE2 reached ReportOperationRemainingGas without erroring,
-    ///    it must have been a post-trace bail (CREATE/CREATE2 collision);
+    ///    it must have been a post-trace bail (address collision);
     ///    REVM treats this as spawned too → spawn estimate.
     ///  - Otherwise (CALL-family with no dispatch, or any spawn op that errored mid-flight)
     ///    → measured raw gas delta.

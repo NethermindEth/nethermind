@@ -879,32 +879,6 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Selfdestruct_before_commit_will_mark_contract_as_empty()
-    {
-        using Context ctx = new(useFlat, setInitialState: false);
-        IWorldState provider = BuildStorageProvider(ctx);
-
-        BlockHeader baseBlock = null;
-        using (provider.BeginScope(baseBlock))
-        {
-            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
-            provider.Set(new StorageCell(TestItem.AddressA, 100), [1]);
-            provider.Set(new StorageCell(TestItem.AddressA, 200), [2]);
-            provider.Commit(Frontier.Instance);
-            provider.CommitTree(0);
-
-            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
-        }
-
-        using (provider.BeginScope(baseBlock))
-        {
-            provider.ClearStorage(TestItem.AddressA);
-            provider.DeleteAccount(TestItem.AddressA);
-            Assert.That(provider.IsStorageEmpty(TestItem.AddressA), Is.True);
-        }
-    }
-
-    [Test]
     public void Selfdestruct_persist_between_commit()
     {
         PreBlockCaches preBlockCaches = new();
