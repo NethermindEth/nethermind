@@ -607,6 +607,10 @@ public abstract class BlockchainTestBase
         ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit:"),
         ("BlockException.RLP_BLOCK_LIMIT_EXCEEDED", "ExceededBlockSizeLimit: Exceeded block size limit"),
         ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", "DepositsInvalid: Invalid deposit event layout:"),
+        // A layout that still decodes yields well-formed but wrong requests, so it surfaces as a
+        // hash mismatch: the requests hash pre-Amsterdam, the BAL hash once EIP-7928 covers the log.
+        ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", "InvalidRequestsHash: Requests hash mismatch in block"),
+        ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", "InvalidBlockLevelAccessListHash:"),
         ("BlockException.INVALID_BASEFEE_PER_GAS", "InvalidBaseFeePerGas: Does not match calculated"),
         ("BlockException.INVALID_BLOCK_TIMESTAMP_OLDER_THAN_PARENT", "InvalidTimestamp: Timestamp in header cannot be lower than ancestor"),
         ("BlockException.INVALID_BLOCK_NUMBER", "InvalidBlockNumber: Block number does not match the parent"),

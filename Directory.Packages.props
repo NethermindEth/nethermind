@@ -66,6 +66,7 @@
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.6.0" />
+    <PackageVersion Include="Nethermind.RocksDbBindings" Version="11.8.1-preview.75" />
     <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.0.0" />
     <PackageVersion Include="Nethermind.Zkvm.Abstractions" Version="1.0.0-preview.2" />
     <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="1.0.0-preview.7" />
@@ -84,7 +85,6 @@
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
     <PackageVersion Include="Pyroscope" Version="1.4.0" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="[10.10.1.1747]" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="SlackNet" Version="0.17.9" />
     <PackageVersion Include="SmartFormat" Version="3.6.1" />
