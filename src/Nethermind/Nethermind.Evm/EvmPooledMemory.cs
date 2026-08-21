@@ -502,8 +502,9 @@ public struct EvmPooledMemory
     [ThreadStatic] private static int _cachedArrayCount;
     [ThreadStatic] private static int _cachedArrayBytes;
 
-    // Cached dirty; RentSlow zero-extends past Size in chunks on growth.
-    private static byte[] Rent(int minLength)
+    // Explicit allocations are runtime-zeroed, while cached and pooled arrays are untrusted.
+    // The initialized extent lets the slow paths preserve that distinction through growth.
+    private static byte[] Rent(int minLength, out ulong initializedExtent)
     {
         byte[]?[]? cache = _cachedArrays;
         int cachedArrayCount = _cachedArrayCount - 1;
@@ -512,6 +513,7 @@ public struct EvmPooledMemory
             byte[] candidate = cache![i]!;
             if (candidate.Length >= minLength)
             {
+                initializedExtent = 0;
                 _cachedArrayCount = cachedArrayCount;
                 _cachedArrayBytes -= candidate.Length;
                 cache[i] = cache[cachedArrayCount];
@@ -522,10 +524,12 @@ public struct EvmPooledMemory
 
         if (minLength > MaxNewAllocLength)
         {
-            return RentLarge(minLength);
+            return RentLarge(minLength, out initializedExtent);
         }
 
-        return new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+        byte[] fresh = new byte[BitOperations.RoundUpToPowerOf2((uint)minLength)];
+        initializedExtent = (ulong)fresh.Length;
+        return fresh;
     }
 
     private static void Return(byte[] array)
@@ -550,7 +554,11 @@ public struct EvmPooledMemory
     }
 
 #if ZK_EVM
-    private static byte[] RentLarge(int minLength) => SafeArrayPool<byte>.Shared.Rent(minLength);
+    private static byte[] RentLarge(int minLength, out ulong initializedExtent)
+    {
+        initializedExtent = 0;
+        return SafeArrayPool<byte>.Shared.Rent(minLength);
+    }
 
     private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
 #else
@@ -560,13 +568,28 @@ public struct EvmPooledMemory
     private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
         System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
 
-    private static byte[] RentLarge(int minLength)
-        => minLength > MaxSharedArrayLength
+    private static byte[] RentLarge(int minLength, out ulong initializedExtent)
+    {
+        if (minLength > MaxLargePooledArrayLength)
+        {
+            byte[] fresh = new byte[minLength];
+            initializedExtent = (ulong)fresh.Length;
+            return fresh;
+        }
+
+        initializedExtent = 0;
+        return minLength > MaxSharedArrayLength
             ? _largeArrayPool.Rent(minLength)
             : SafeArrayPool<byte>.Shared.Rent(minLength);
+    }
 
     private static void ReturnLarge(byte[] array)
     {
+        if (array.Length > MaxLargePooledArrayLength)
+        {
+            return;
+        }
+
         if (array.Length > MaxSharedArrayLength)
             _largeArrayPool.Return(array);
         else
@@ -580,15 +603,16 @@ public struct EvmPooledMemory
         byte[]? memory = _memory;
         if (memory is null)
         {
-            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize));
-            _lastZeroedSize = 0;
+            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize), out ulong initializedExtent);
+            _lastZeroedSize = initializedExtent;
         }
         else if (Size > (ulong)memory.LongLength)
         {
-            byte[] grown = Rent(TruncateToInt32(Size));
+            byte[] grown = Rent(TruncateToInt32(Size), out ulong initializedExtent);
             Array.Copy(memory, 0, grown, 0, (int)_lastZeroedSize);
             Return(memory);
             _memory = memory = grown;
+            _lastZeroedSize = Math.Max(_lastZeroedSize, initializedExtent);
         }
 
         ulong size = Size;
@@ -609,19 +633,22 @@ public struct EvmPooledMemory
         ulong zeroedSize = _lastZeroedSize;
         if (memory is null)
         {
-            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize));
-            zeroedSize = 0;
+            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize), out ulong initializedExtent);
+            zeroedSize = initializedExtent;
         }
         else if (Size > (ulong)memory.LongLength)
         {
-            byte[] grown = Rent(TruncateToInt32(Size));
+            byte[] grown = Rent(TruncateToInt32(Size), out ulong initializedExtent);
             Array.Copy(memory, 0, grown, 0, (int)zeroedSize);
             Return(memory);
             _memory = memory = grown;
+            zeroedSize = Math.Max(zeroedSize, initializedExtent);
         }
 
         const ulong zeroChunk = 4 * 1024;
-        ulong target = Math.Min((ulong)memory.Length, (Size + (zeroChunk - 1)) & ~(zeroChunk - 1));
+        ulong target = Math.Max(
+            zeroedSize,
+            Math.Min((ulong)memory.Length, (Size + (zeroChunk - 1)) & ~(zeroChunk - 1)));
         ulong beforeOverwriteEnd = Math.Min(overwriteStart, target);
         if (beforeOverwriteEnd > zeroedSize)
         {

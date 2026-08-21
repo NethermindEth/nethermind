@@ -166,6 +166,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(32 * 1024)]
     [TestCase(70 * 1024)]
     [TestCase(2 * 1024 * 1024)]
+    [TestCase(4 * 1024 * 1024)]
     public void Pooled_buffer_is_zeroed_on_reuse(int size)
     {
         EvmPooledMemory dirty = new();
@@ -181,6 +182,68 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(data.Length, Is.EqualTo(size));
         Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "pooled buffer leaked stale data");
         clean.Dispose();
+    }
+
+    [Test]
+    public void Fresh_non_pooled_large_allocation_has_zero_gap_and_written_tail()
+    {
+        const int memorySize = (4 * 1024 * 1024) + 64;
+        int destinationOffset = memorySize - EvmPooledMemory.WordSize;
+        byte[] word = Enumerable.Range(0, EvmPooledMemory.WordSize)
+            .Select(static value => (byte)(value * 29 + 0x17))
+            .ToArray();
+        byte[] expected = new byte[memorySize];
+        word.CopyTo(expected, destinationOffset);
+
+        EvmPooledMemory memory = default;
+        try
+        {
+            UInt256 destination = (UInt256)destinationOffset;
+            memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out bool outOfGas);
+            memory.StoreWordAfterGas(in destination, word);
+
+            Assert.That(outOfGas, Is.False);
+            Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
+            Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Test]
+    public void Growth_into_fresh_non_pooled_large_allocation_preserves_prefix_and_zeroes_gap()
+    {
+        const int prefixOffset = 257;
+        const int memorySize = (4 * 1024 * 1024) + 96;
+        int destinationOffset = memorySize - EvmPooledMemory.WordSize;
+        byte[] prefix = Enumerable.Range(0, 97)
+            .Select(static value => (byte)(value * 31 + 0x23))
+            .ToArray();
+        byte[] word = Enumerable.Range(0, EvmPooledMemory.WordSize)
+            .Select(static value => (byte)(value * 37 + 0x41))
+            .ToArray();
+        byte[] expected = new byte[memorySize];
+        prefix.CopyTo(expected, prefixOffset);
+        word.CopyTo(expected, destinationOffset);
+
+        EvmPooledMemory memory = default;
+        try
+        {
+            UInt256 prefixDestination = (UInt256)prefixOffset;
+            Assert.That(memory.TrySave(in prefixDestination, prefix), Is.True);
+
+            UInt256 destination = (UInt256)destinationOffset;
+            Assert.That(memory.TrySave(in destination, word), Is.True);
+
+            Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
+            Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
+        }
+        finally
+        {
+            memory.Dispose();
+        }
     }
 
     [Test]
