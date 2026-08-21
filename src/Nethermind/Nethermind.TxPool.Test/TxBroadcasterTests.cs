@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -869,14 +868,17 @@ public class TxBroadcasterTests
     // EIP-8141: the pool's expiry pass reaches only the pending pools, so without a sweep here a locally
     // submitted frame tx evicted from them would be re-announced forever. The boundary case pins the strict
     // comparison: at deadline == timestamp the expiry-verifier predeploy still accepts, so the tx must stay.
-    [TestCase(999UL, true, TestName = "expired frame tx stops being broadcast")]
-    [TestCase(1_000UL, false, TestName = "frame tx at its deadline keeps being broadcast")]
-    [TestCase(1_001UL, false, TestName = "unexpired frame tx keeps being broadcast")]
-    public void should_stop_broadcasting_expired_frame_txs_on_new_head(ulong deadline, bool shouldBeDropped)
+    [TestCase(999UL, true, false, TestName = "expired frame tx stops being broadcast")]
+    [TestCase(1_000UL, false, false, TestName = "frame tx at its deadline keeps being broadcast")]
+    [TestCase(1_001UL, false, false, TestName = "unexpired frame tx keeps being broadcast")]
+    // A blob-carrying frame tx is held as a LightTransaction, which has no frames: its deadline has to survive
+    // as PersistedExpiryDeadline for the sweep to reach it at all.
+    [TestCase(999UL, true, true, TestName = "expired blob-carrying frame tx stops being broadcast")]
+    public void should_stop_broadcasting_expired_frame_txs_on_new_head(ulong deadline, bool shouldBeDropped, bool carriesBlobs)
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
-        Transaction frameTx = FrameTxWithDeadline(deadline);
+        Transaction frameTx = FrameTxWithDeadline(deadline, carriesBlobs);
         Transaction regularTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
         _broadcaster.Broadcast(frameTx, true);
         _broadcaster.Broadcast(regularTx, true);
@@ -889,23 +891,18 @@ public class TxBroadcasterTests
             "a transaction without a frame expiry deadline must never be swept");
     }
 
-    private Transaction FrameTxWithDeadline(ulong deadline)
+    private Transaction FrameTxWithDeadline(ulong deadline, bool carriesBlobs = false)
     {
-        byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
-        BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline);
-
         Transaction tx = new()
         {
             Type = TxType.FrameTx,
             ChainId = _specProvider.ChainId,
             SenderAddress = TestItem.AddressA,
             // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
-            Frames =
-            [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData),
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default),
-            ],
+            Frames = [FrameTxTestFrames.ExpiryAt(deadline, gasLimit: 50_000), FrameTxTestFrames.SelfVerify(gasLimit: 50_000)],
             FrameSignatures = [],
+            BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
+            MaxFeePerBlobGas = carriesBlobs ? 1 : null,
             GasLimit = 100_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,

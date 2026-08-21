@@ -4,6 +4,7 @@
 using System;
 using NonBlocking;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -68,6 +69,10 @@ namespace Nethermind.TxPool
 
         private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
 
+        /// <summary>Persistent txs carrying an EIP-8141 expiry deadline; zero lets the per-head sweep skip the walk.</summary>
+        /// <remarks>Maintained from the pool's own insert and removal events, so no mutation path can bypass it.</remarks>
+        private int _expiringFrameTxCount;
+
         private readonly ILogger _logger;
         private readonly ITimestamper _timestamper;
 
@@ -87,6 +92,8 @@ namespace Nethermind.TxPool
             _gossipFilter = _txGossipPolicy.ShouldGossipTransaction;
             _logger = logManager?.GetClassLogger<TxBroadcaster>() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
+            _persistentTxs.Inserted += OnInsertedTx;
+            _persistentTxs.Removed += OnRemovedTx;
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
             _txsToSend = new ResettableList<Transaction>(512, 4);
 
@@ -161,9 +168,9 @@ namespace Nethermind.TxPool
         /// <c>block.timestamp &gt; deadline</c>, and the comparison is strict here to match that condition exactly.
         /// No fork gate is needed — only a frame transaction ever carries a deadline.
         /// </remarks>
-        internal void StopBroadcastingExpiredFrameTxs(ulong timestamp)
+        private void StopBroadcastingExpiredFrameTxs(ulong timestamp)
         {
-            if (_persistentTxs.Count == 0)
+            if (Volatile.Read(ref _expiringFrameTxCount) == 0)
             {
                 return;
             }
@@ -175,9 +182,33 @@ namespace Nethermind.TxPool
                     && timestamp > deadline)
                 {
                     StopBroadcast(tx.Hash!);
+                    // The only signal that the node stopped announcing a transaction its own user submitted.
+                    if (_logger.IsDebug) _logger.Debug($"Stopped broadcasting expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
                 }
             }
         }
+
+        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
+        {
+            if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+        }
+
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        {
+            if (HasExpiryDeadline(args.Value))
+            {
+                int remaining = Interlocked.Decrement(ref _expiringFrameTxCount);
+                AssertExpiringFrameTxCountNotNegative(remaining);
+            }
+        }
+
+        // Drift that would defeat the fast path for good. Judged on the decrement's own result, because
+        // re-reading the field lets a concurrent insert hide the excursion.
+        [Conditional("DEBUG")]
+        private static void AssertExpiringFrameTxCountNotNegative(int remaining) =>
+            Debug.Assert(remaining >= 0, "Expiring frame transaction count went negative.");
+
+        private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
 
         internal UInt256 CalculateBaseFeeThreshold()
         {
