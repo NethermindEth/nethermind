@@ -19,9 +19,9 @@
 
 set -uo pipefail
 
-# Managed frames come from the runtime's perf map and carry a namespace-qualified
-# name; native frames are bare symbols, often suffixed with their DSO in brackets.
-NATIVE_FILTER='!/^[A-Z][A-Za-z0-9_]*(\.[A-Za-z0-9_<>`|+]+)+/'
+# The runtime perf map writes managed frames as "<ret> [Assembly] Type::Method(args)".
+# Everything else - bare C/C++ symbols, kernel symbols, unresolved DSO placeholders - is not.
+NATIVE_FILTER='$1 !~ /\[[A-Za-z0-9_.]+\] [^ ]*::/'
 
 self_time() {
     awk '{
@@ -66,8 +66,7 @@ require_file() {
 print_table() {
     local title="$1" n="$2"
     sort -t$'\t' -k2 -rn \
-        | head -n "$n" \
-        | awk -F'\t' -v title="$title" '
+        | awk -F'\t' -v title="$title" -v limit="$n" '
             BEGIN {
                 printf "\n  %s\n\n", title
                 printf "  %-4s %-72s %10s %8s\n", "#", "Frame", "Samples", "Self %"
@@ -75,7 +74,7 @@ print_table() {
                     "------------------------------------------------------------", \
                     "--------", "------"
             }
-            { printf "  %-4d %-72s %10d %7.2f%%\n", NR, substr($1, 1, 72), $2, $3 }
+            NR <= limit { printf "  %-4d %-72s %10d %7.2f%%\n", NR, substr($1, 1, 72), $2, $3 }
             END { printf "\n" }'
 }
 
