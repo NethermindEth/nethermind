@@ -41,6 +41,9 @@ public sealed class FlatWorldStateScope :
     private readonly ConcurrencyController _concurrencyQuota;
     // Diagnostic Patricia cross-check of the sparse root; non-null only under VerifyWithTrie.
     private readonly StateTree? _stateTree;
+    // Warm-up walks fill the shared committed-node cache the sparse reveal reads from; they never
+    // touch the sparse arena, so warmer threads never contend for its single-writer ownership.
+    private readonly PatriciaTree _warmupStateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -103,6 +106,11 @@ public sealed class FlatWorldStateScope :
                 RootHash = currentStateId.StateRoot.ToCommitment()
             }
             : null;
+
+        _warmupStateTree = new PatriciaTree(new StateTrieStoreWarmerAdapter(snapshotBundle), logManager)
+        {
+            RootHash = currentStateId.StateRoot.ToCommitment()
+        };
 
         RetainedGeneration? checkedOut = sparseCache?.TryCheckout(currentStateId.StateRoot);
         SparseSession = new FlatSparseTrieSession(
@@ -477,8 +485,9 @@ public sealed class FlatWorldStateScope :
 
             try
             {
-                ValueHash256 key = address.ToAccountPath;
-                SparseSession.PrefetchState(in key);
+                // Warms the committed nodes on this path into the shared cache; the walk result is
+                // never consumed, only the cached nodes the sparse reveal later reads.
+                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
                 return true;
             }

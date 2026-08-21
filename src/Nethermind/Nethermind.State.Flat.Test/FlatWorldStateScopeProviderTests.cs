@@ -1438,7 +1438,7 @@ public class FlatWorldStateScopeProviderTests
             scope.Dispose();
         }
 
-        Assert.That(warmer.CallbackException, Is.TypeOf<MissingTrieNodeException>());
+        Assert.That(warmer.CallbackException, Is.AssignableTo<TrieException>());
     }
 
     [Test]
@@ -1496,7 +1496,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void WarmupPopulatesSparseArenasDirectly()
+    public void WarmupLeavesSparseArenasUntouched()
     {
         InlineTrieWarmer warmer = new();
         using TestContext ctx = new(trieWarmer: warmer);
@@ -1509,7 +1509,9 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
         storageTree.HintSet((UInt256)1, [1]);
 
-        Assert.That(scope.SparseSession.RetainedTrieCount, Is.EqualTo(2));
+        // Warm-up fills the shared committed-node cache the reveal reads from; it must never
+        // materialize an arena, because warmer threads would then serialize on its single writer.
+        Assert.That(scope.SparseSession.RetainedTrieCount, Is.Zero);
 
         scope.Commit(2);
 

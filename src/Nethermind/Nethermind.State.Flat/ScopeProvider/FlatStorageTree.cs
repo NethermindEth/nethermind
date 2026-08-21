@@ -20,6 +20,9 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
     private readonly StorageTree _tree;
+    // Warm-up walks fill the shared committed-node cache the sparse reveal reads from; they never
+    // touch a sparse arena, so warmer threads never contend for one account's trie.
+    private readonly StorageTree _warmupStorageTree;
     private readonly Address _address;
     private readonly IFlatDbConfig _config;
     private readonly ITrieWarmer _trieCacheWarmer;
@@ -61,6 +64,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         {
             RootHash = storageRoot
         };
+
+        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
+        _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
+        _warmupStorageTree.SetRootHash(storageRoot, false);
+        _warmupStorageTree.RootRef = _tree.RootRef;
 
         _sparseRoot = storageRoot;
         _config = config;
@@ -134,9 +142,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             try
             {
+                // Warms the committed nodes on this path into the shared cache. The root is not
+                // re-read after a write batch and a clear is not reflected, which is fine: the
+                // result is never consumed, only the cached nodes are.
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
-                _scope.SparseSession.PrefetchStorage(_addressHash.ValueHash256, _sparseRoot.ValueHash256, in key);
+                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
                 return true;
             }
             finally
