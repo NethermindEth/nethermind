@@ -494,7 +494,7 @@ public static class FrameTxValidation
             totalFrameGas = accumulated;
             totalStateGas += frame.StateGasLimit;
 
-            if (!frame.Value.IsZero && frame.Target is not null && frame.Target != transaction.SenderAddress)
+            if (spec.IsEip2780Enabled && !frame.Value.IsZero && frame.Target is not null && frame.Target != transaction.SenderAddress)
             {
                 valueTransferCost += GasCostOf.TxValueCostEip2780;
             }

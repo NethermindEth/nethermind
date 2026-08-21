@@ -36,12 +36,20 @@ namespace Nethermind.Consensus.Processing
                 Block block,
                 Transaction currentTx,
                 IReadOnlySet<Transaction> transactionsInBlock,
+                IReadOnlyStateProvider stateProvider) =>
+                CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider, block.GasUsed, 0);
+
+            public virtual AddingTxEventArgs CanAddTransaction(
+                Block block,
+                Transaction currentTx,
+                IReadOnlySet<Transaction> transactionsInBlock,
                 IReadOnlyStateProvider stateProvider,
-                ulong cumulativeStateGas = 0)
+                ulong cumulativeBlockExecutionGas,
+                ulong cumulativeBlockStateGas)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                ulong gasRemaining = block.Header.GasLimit - block.GasUsed;
+                ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
                 // No more gas available in block for any transactions,
                 // the only case we have to really stop
@@ -70,7 +78,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeStateGas);
+                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
                 ulong executionReservation;
                 ulong stateReservation;
                 if (currentTx.SupportsFrames)

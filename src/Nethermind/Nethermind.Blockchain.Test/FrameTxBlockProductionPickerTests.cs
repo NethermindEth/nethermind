@@ -97,8 +97,45 @@ public class FrameTxBlockProductionPickerTests
             tx,
             new HashSet<Transaction>(),
             state,
+            cumulativeBlockExecutionGas: 0,
             cumulativeStateGas);
 
         Assert.That(args.Action, Is.EqualTo(expectedAction));
+    }
+
+    [Test]
+    public void Execution_headroom_is_measured_from_cumulative_execution_not_the_block_maximum()
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Bogota.Instance);
+        BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider, BlocksConfig.DefaultMaxTxKilobytes);
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        state.GetNonce(TestItem.AddressA).Returns(AccountNonce);
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = 1,
+            Nonce = AccountNonce,
+            SenderAddress = TestItem.AddressA,
+            Frames =
+            [
+                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                    executionGasLimit: 500_000, stateGasLimit: 0, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+        Block block = Build.A.Block.WithGasLimit(1_000_000).TestObject;
+
+        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(
+            block,
+            tx,
+            new HashSet<Transaction>(),
+            state,
+            cumulativeBlockExecutionGas: 100_000,
+            cumulativeBlockStateGas: 600_000);
+
+        Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
     }
 }

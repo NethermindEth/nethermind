@@ -104,6 +104,7 @@ namespace Nethermind.Consensus.Processing
                     currentTx,
                     transactionsInBlock,
                     stateProvider,
+                    receiptsTracer.CumulativeExecutionGasUsed,
                     receiptsTracer.BlockStateGasUsed);
 
                 if (args.Action != TxAction.Add)

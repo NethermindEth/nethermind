@@ -297,7 +297,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
             if (frameSucceeded && frameContext.ApprovalScopeSignal != 0)
             {
-                long remainingStateGas = (long)frame.StateGasLimit - frameStateGas;
+                long remainingStateGas = (frame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)frame.StateGasLimit) - frameStateGas;
                 if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
                 {
                     frameSucceeded = false;
@@ -673,7 +673,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
                 {
-                    long remainingStateGas = (long)boundedFrame.StateGasLimit - frameStateGas;
+                    long remainingStateGas = (boundedFrame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)boundedFrame.StateGasLimit) - frameStateGas;
                     if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
                     {
                         substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
@@ -937,9 +937,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer)
             : VirtualMachine.ExecuteTransaction(state, WorldState, tracer);
 
+        long stateReservoirSeed = frame.StateGasLimit > long.MaxValue ? long.MaxValue : (long)frame.StateGasLimit;
         if (substate.IsError || substate.ShouldRevert)
         {
-            TGasPolicy.ResetForHalt(ref state.Gas, (long)frame.StateGasLimit, 0);
+            TGasPolicy.ResetForHalt(ref state.Gas, stateReservoirSeed, 0);
         }
 
         ulong combinedLimit = frame.ExecutionGasLimit + frame.StateGasLimit;
@@ -950,7 +951,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         if (!substate.ShouldRevert && !substate.IsError && frameContext.ApprovalScopeSignal != 0)
         {
-            long remainingStateGas = (long)frame.StateGasLimit - stateGasUsed;
+            long remainingStateGas = stateReservoirSeed - stateGasUsed;
             if (!TryApplyApproval(frameContext, resolvedTarget, spec, in accessTracker, remainingStateGas, out long approvalStateGas))
             {
                 substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
@@ -1084,6 +1085,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             frameContext.Payer = resolvedTarget;
+            // EIP-8141: payment approval warms the payer for later same-account access.
             if (spec.UseHotAndColdStorage) accessTracker.WarmUp(resolvedTarget);
         }
 
