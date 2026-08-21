@@ -170,7 +170,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         // A reader is shared by every thread reading its state, so the hit/miss counters go straight to the
         // atomic globals. Captured once per reader to keep the increments off the hot path when disabled.
-        private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
+        // Gated on the experiment's own switch rather than DetailedMetricsEnabled: that flag is only ever set
+        // by MetricsController via reflection, so reaching it needs the monitoring stack up, whereas the
+        // measurement run wants nothing but an env var.
+        private readonly bool _recordDetailedMetrics = ExperimentSwitches.Bool("NM_XP_STATS");
 
         public Account? GetAccount(Address address)
         {
