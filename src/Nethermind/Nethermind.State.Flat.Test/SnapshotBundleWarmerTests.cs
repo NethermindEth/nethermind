@@ -6,10 +6,12 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -28,8 +30,11 @@ public class SnapshotBundleWarmerTests
 
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
+        public int TryGetCount;
+
         public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
         {
+            TryGetCount++;
             node = null;
             return false;
         }
@@ -73,28 +78,67 @@ public class SnapshotBundleWarmerTests
         // from them, so afterwards they are reachable only through the path the warmer must not take.
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
 
-        // Read normally first: the warmer caches its own Unknown result into the transient, which a later
-        // normal read would then serve.
-        TrieNode normalStateRead = bundle.FindStateNodeOrUnknown(committedPath, TestItem.KeccakA);
-        TrieNode normalStorageRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, TestItem.KeccakA);
         TrieNode warmedCommittedState = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, TestItem.KeccakA);
         TrieNode warmedCommittedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, committedStoragePath, TestItem.KeccakA);
         TrieNode warmedPersistedState = bundle.FindStateNodeOrUnknownForTrieWarmer(persistedPath, TestItem.KeccakB);
         TrieNode warmedPersistedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, persistedStoragePath, TestItem.KeccakB);
 
+        TrieNode normalStateRead = bundle.FindStateNodeOrUnknown(committedPath, TestItem.KeccakA);
+        TrieNode normalStorageRead = bundle.FindStorageNodeOrUnknown(storageAddress, committedStoragePath, TestItem.KeccakA);
+
         using (Assert.EnterMultipleScope())
         {
-            // The committed nodes really are reachable, so the warmer's Unknown below is a genuine miss.
-            Assert.That(normalStateRead, Is.SameAs(committedNode));
-            Assert.That(normalStorageRead, Is.SameAs(committedStorageNode));
-
             Assert.That(warmedCommittedState.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(warmedCommittedStorage.NodeType, Is.EqualTo(NodeType.Unknown));
 
-            // The warmer still returns nodes that are in persistence (state and storage).
             Assert.That(warmedPersistedState, Is.SameAs(persistedNode));
             Assert.That(warmedPersistedStorage, Is.SameAs(persistedStorageNode));
+
+            Assert.That(normalStateRead, Is.SameAs(committedNode));
+            Assert.That(normalStorageRead, Is.SameAs(committedStorageNode));
         }
+    }
+
+    [Test]
+    public void Promoted_warmer_miss_does_not_poison_a_later_live_read()
+    {
+        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        TreePath path = TreePath.FromHexString("12");
+        Hash256 hash = TestItem.KeccakA;
+
+        TrieNode warmed = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+        Assert.That(warmed.NodeType, Is.EqualTo(NodeType.Unknown));
+
+        (_, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        cache.Add(retired!);
+        retired!.ReleaseLease();
+
+        TrieNode realNode = Leaf(0x99);
+        bundle.SetStateNode(path, realNode);
+        bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakB), returnSnapshot: false);
+
+        TrieNode read = bundle.FindStateNodeOrUnknown(path, hash);
+        Assert.That(read, Is.SameAs(realNode));
+    }
+
+    // The regression this PR fixes is a +3-5% AVG slowdown from #12793 dropping the warmer's negative cache.
+    // Pin that the cache exists: a second warmer visit to the same missing path must be served from the
+    // transient sentinel and must not re-probe the persistence-backed lookup a second time.
+    [Test]
+    public void Repeated_warmer_miss_is_served_from_the_negative_cache()
+    {
+        NullTrieNodeCache cache = new();
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        TreePath path = TreePath.FromHexString("12");
+        Hash256 hash = TestItem.KeccakA;
+
+        bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+        bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
+
+        Assert.That(cache.TryGetCount, Is.EqualTo(1));
     }
 
     // Dispose releases the transient back to the pool while warmer jobs may still be in flight. A read that

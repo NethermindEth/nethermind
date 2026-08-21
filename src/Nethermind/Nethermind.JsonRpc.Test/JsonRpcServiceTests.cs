@@ -18,6 +18,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -619,6 +620,55 @@ public class JsonRpcServiceTests
         JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         AssertJsonRpcError(response, ErrorCodes.InternalError);
+    }
+
+    [Test]
+    public void Invocation_limit_exceeded_suppresses_warning()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_getLogs(Arg.Any<Filter>()).Throws(new LimitExceededException("limit"));
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            TestRequest(ethRpcModule, "eth_getLogs", "{}"),
+            ErrorCodes.LimitExceeded,
+            "Too many requests");
+
+        Assert.That(response.Error!.SuppressWarning, Is.True);
+    }
+
+    [TestCaseSource(nameof(ModuleRentalOverloadExceptions))]
+    public void Module_rental_overload_does_not_log_or_return_exception_data(
+        Exception exception,
+        int expectedCode,
+        string expectedMessage)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(exception));
+
+        using JsonRpcErrorResponse response = AssertJsonRpcError(
+            TestRequestWithPool(pool, "eth_getLogs", "{}"),
+            expectedCode,
+            expectedMessage);
+
+        Assert.That(response.Error!.SuppressWarning, Is.True);
+        Assert.That(response.Error.Data, Is.Null);
+        logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception?>());
+    }
+
+    private static IEnumerable<TestCaseData> ModuleRentalOverloadExceptions()
+    {
+        yield return new TestCaseData(
+            new LimitExceededException("limit"),
+            ErrorCodes.LimitExceeded,
+            "Too many requests");
+        yield return new TestCaseData(
+            new ModuleRentalTimeoutException("timeout"),
+            ErrorCodes.ModuleTimeout,
+            "Timeout");
     }
 
     [Test]

@@ -316,7 +316,7 @@ public partial class EngineModuleTests
     }
 
 
-    [TestCase("0xc4381c18996bd5d960341ebc28c01fee26da6ceed629f3c843a5569417ea8879", "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x473fd433a95499ad431e9cc7a1abce2af66e7f5841474acb3ccf7292a6b0e18a", false, false)]
+    [TestCase("0x63c4e9be558e6f4446bebacafd184339fe60851fd2eff7ba78e5d7fb7c295273", "0x984cf2a2391acd1f82a6de566c3833583c6c3010189c9c074de07a7ff57d9843", "0x545c6930d939f6ab63caf8667daa557fa6d2d3664a56234cce8d3976d07421c6", false, false)]
     [TestCase(null, null, null, false, true)]
     [TestCase("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, false)]
     [TestCase("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, true)]
@@ -471,15 +471,15 @@ public partial class EngineModuleTests
     {
         (string blockHash, BalErrorKind errorKind)[] perKindCases =
         [
-            ("0x182bb32c98232d184b2f2ae55a520dfdbccf1b55f7b51d4d9c49cf8afdd5a446", BalErrorKind.IncorrectChange),
-            ("0x9e12675c03cb89267871756c96cb42ba8e1ea66f4e58629a09a81f83adc85687", BalErrorKind.MissingChange),
-            ("0x74d51d0ee2492b02fa56ea6a8fcb0c79855b390b933e958cf9bafb64f7f9be1e", BalErrorKind.SurplusChange),
-            ("0xb097d4bdb0ce7465a75f1066c0442da0cc1360ef075873f338aac4810a91933c", BalErrorKind.SurplusReads),
+            ("0x042127ebb0aca883ac57b4864a7c063d53b7afd3c3d8367e89ba2da12d644134", BalErrorKind.IncorrectChange),
+            ("0x6c5ddddfda2f0b0cd74077604a7372391bd838a3b61065db422cccbb70252e75", BalErrorKind.MissingChange),
+            ("0xec65b02910f7a1ec55337c066d838f9eb1dcb9f211b6f77fcb6e54e2137506a1", BalErrorKind.SurplusChange),
+            ("0x9d1b7ff4f6f3b655113b4da108dfe7d9bad7331c8f6d0b8a90235db05afa6428", BalErrorKind.SurplusReads),
         ];
 
         foreach ((string blockHash, BalErrorKind errorKind) in perKindCases)
         {
-            yield return new TestCaseData(blockHash, "0x9a4312ed592f7dd89396b4a87f09cb501ccd451562c68979997ccc69d45bf9b3", "0x473fd433a95499ad431e9cc7a1abce2af66e7f5841474acb3ccf7292a6b0e18a", false, false, errorKind);
+            yield return new TestCaseData(blockHash, "0x984cf2a2391acd1f82a6de566c3833583c6c3010189c9c074de07a7ff57d9843", "0x545c6930d939f6ab63caf8667daa557fa6d2d3664a56234cce8d3976d07421c6", false, false, errorKind);
             yield return new TestCaseData(null, null, null, false, true, errorKind);
             yield return new TestCaseData("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, false, errorKind);
             yield return new TestCaseData("0x430047ea0888f341cd491947802468f1881fcc293e2a87bf1285fb2d55cd7cf2", "0x40a2086362a12d916313b9529e43649c17130fedbdbb7884626a6c459ed0797b", "0x16aae2fc4fbde1ad2afa4635aaef15944c8699446b85dc7dd394b79651970aa2", true, true, errorKind);
@@ -1140,8 +1140,8 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         const long gasUsedTx1 = 15000;
-        const long gasUsed = 102240;
-        const long gasUsedBeforeFinal = 56100;
+        const long gasUsed = 103340;
+        const long gasUsedBeforeFinal = 57100;
         const ulong gasPrice = 2;
         const long gasLimit = 100000;
         const ulong timestamp = 1000000;

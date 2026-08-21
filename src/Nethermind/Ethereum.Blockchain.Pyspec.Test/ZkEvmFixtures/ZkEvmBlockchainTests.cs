@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-extern alias stateless;
-
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -15,7 +13,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -23,9 +20,6 @@ using Nethermind.Specs.GnosisForks;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
-using StatelessExecutionPayloadV1 = stateless::Nethermind.Merge.Plugin.SszRest.SszExecutionPayloadV1;
-using StatelessExecutionPayloadV3 = stateless::Nethermind.Merge.Plugin.SszRest.SszExecutionPayloadV3;
-using StatelessExecutionPayloadV4 = stateless::Nethermind.Merge.Plugin.SszRest.SszExecutionPayloadV4;
 
 namespace Ethereum.Blockchain.Pyspec.Test.ZkEvmFixtures;
 
@@ -89,29 +83,73 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
 [TestFixture]
 public class StatelessSchemaTests
 {
+    private const ulong ChainId = BlockchainIds.Mainnet;
+
+    // Past every Mainnet fork activation, so the current-fork schema resolves to the newest known rules
+    private const ulong BlockNumber = 30_000_000;
+    private const ulong Timestamp = 2_000_000_000;
+
+    [TestCase(InputDecoder.CurrentForkSchemaId)]
+    [TestCase(InputDecoder.AmsterdamSchemaId)]
+    public void Revision_1_schema_roundtrips(ushort schemaId)
+    {
+        byte[] encoded = schemaId == InputDecoder.AmsterdamSchemaId
+            ? EncodeInput(new SszExecutionPayloadAmsterdam(), schemaId)
+            : EncodeInput(new SszExecutionPayload(), schemaId);
+
+        StatelessPayload payload = InputDecoder.Decode(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.SchemaId, Is.EqualTo(schemaId));
+            Assert.That(payload.ChainId, Is.EqualTo(ChainId));
+            Assert.That(payload.GetBlock().Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash));
+        }
+    }
+
+    /// <summary>
+    /// Block reconstruction must stay out of <see cref="InputDecoder.Decode"/>: a throw before
+    /// <see cref="StatelessExecutor.FailureOutput"/> is published reports the zero sentinel.
+    /// </summary>
+    [Test]
+    public void Decoding_defers_block_reconstruction()
+    {
+        byte[] encoded = EncodeInput(new SszExecutionPayload(), InputDecoder.CurrentForkSchemaId, MalformedTransaction);
+
+        StatelessPayload payload = InputDecoder.Decode(encoded);
+
+        Assert.That(payload.GetBlock, Throws.InvalidOperationException);
+    }
+
+    [Test]
+    public void Malformed_transaction_rlp_reports_the_decoded_metadata()
+    {
+        byte[] encoded = EncodeInput(new SszExecutionPayload(), InputDecoder.CurrentForkSchemaId, MalformedTransaction);
+        byte[] expected = StatelessValidationResult.Encode(new StatelessValidationResult
+        {
+            NewPayloadRequestRoot = InputDecoder.Decode(encoded).NewPayloadRequestRoot,
+            IsSuccess = false,
+            ChainId = ChainId,
+            SchemaId = InputDecoder.CurrentForkSchemaId
+        });
+
+        Assert.That(StatelessExecutor.Execute(encoded), Is.EqualTo(expected));
+    }
+
     [TestCase(ProtocolFork.Cancun)]
     [TestCase(ProtocolFork.Prague)]
     [TestCase(ProtocolFork.Osaka)]
     [TestCase(ProtocolFork.BPO1)]
     [TestCase(ProtocolFork.BPO2)]
     [TestCase(ProtocolFork.Amsterdam)]
-    public void Revision_1_schema_roundtrips(ProtocolFork fork)
+    public void Fork_name_roundtrips(ProtocolFork fork)
     {
-        byte[] encoded = fork == ProtocolFork.Amsterdam
-            ? EncodeInput<StatelessExecutionPayloadV4>(fork)
-            : EncodeInput<StatelessExecutionPayloadV3>(fork);
-
-        StatelessPayload payload = InputDecoder.Decode(encoded);
         bool foundByName = ProtocolForkExtensions.TryGetByName(fork.GetName(), out ProtocolFork forkByName);
-        Hash256 expectedRequestsHash = fork >= ProtocolFork.Prague ? ExecutionRequestExtensions.EmptyRequestsHash : null;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload.ProtocolFork, Is.EqualTo(fork));
-            Assert.That(payload.ChainConfig.ChainId, Is.EqualTo(1));
             Assert.That(foundByName, Is.True);
             Assert.That(forkByName, Is.EqualTo(fork));
-            Assert.That(payload.Block.Header.RequestsHash, Is.EqualTo(expectedRequestsHash));
         }
     }
 
@@ -154,8 +192,11 @@ public class StatelessSchemaTests
         Assert.That(() => InputDecoder.Decode(encoded), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
-    [TestCase(0x0f01)]
-    [TestCase(0x1002)]
+    [TestCase(0x0000)]
+    [TestCase(0x0002)]
+    [TestCase(0x1001)]
+    [TestCase(0x1401)]
+    [TestCase(0x1502)]
     [TestCase(0x1601)]
     public void Unsupported_schema_id_is_rejected(int schemaId)
     {
@@ -167,43 +208,14 @@ public class StatelessSchemaTests
             Throws.TypeOf<ArgumentException>().With.Message.Contains($"0x{schemaId:x4}"));
     }
 
-    [TestCase(10UL, 20UL, true)]
-    [TestCase(9UL, 20UL, false)]
-    [TestCase(10UL, 19UL, false)]
-    public void Every_fork_activation_bound_must_be_active(ulong blockNumber, ulong timestamp, bool expected)
-    {
-        SszForkActivation activation = new() { BlockNumber = [10], Timestamp = [20] };
-
-        Assert.That(activation.IsActive(CreateHeader(blockNumber, timestamp)), Is.EqualTo(expected));
-    }
-
-    [Test]
-    public void Fork_activation_requires_at_least_one_bound()
-    {
-        SszForkActivation activation = new() { BlockNumber = [], Timestamp = [] };
-
-        Assert.That(() => activation.IsActive(CreateHeader(10, 20)), Throws.TypeOf<InvalidDataException>());
-    }
-
     [TestCase(BlockchainIds.Sepolia, false)]
     [TestCase(BlockchainIds.Gnosis, true)]
     [TestCase(BlockchainIds.Chiado, true)]
     public void Amsterdam_schema_uses_chain_appropriate_fork_catalog(ulong chainId, bool usesGnosisRules)
     {
-        IForkAwareSpecProvider baseProvider = chainId switch
-        {
-            BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
-            BlockchainIds.Gnosis => GnosisSpecProvider.Instance,
-            BlockchainIds.Chiado => ChiadoSpecProvider.Instance,
-            _ => throw new AssertionException($"Unsupported test chain: {chainId}")
-        };
-        ForkConfig forkConfig = new()
-        {
-            Activation = new SszForkActivation { BlockNumber = [], Timestamp = [20] }
-        };
-
-        ISpecProvider provider = StatelessSpecProvider.Create(baseProvider, chainId, forkConfig, ProtocolFork.Amsterdam);
-        IReleaseSpec spec = provider.GetSpec(new ForkActivation(1, 20));
+        ForkActivation activation = new(1, 20);
+        ISpecProvider provider = StatelessSpecProvider.Create(chainId, ProtocolFork.Amsterdam, activation);
+        IReleaseSpec spec = provider.GetSpec(activation);
 
         using (Assert.EnterMultipleScope())
         {
@@ -213,16 +225,95 @@ public class StatelessSchemaTests
         }
     }
 
-    private static byte[] EncodeInput<TExecutionPayload>(ProtocolFork fork)
-        where TExecutionPayload : StatelessExecutionPayloadV1,
-        stateless::Nethermind.Merge.Plugin.SszRest.ISszExecutionPayloadFactory<TExecutionPayload>,
-        ISszCodec<TExecutionPayload>, new()
+    [TestCase(BlockchainIds.Mainnet)]
+    [TestCase(BlockchainIds.Sepolia)]
+    [TestCase(BlockchainIds.Gnosis)]
+    public void Current_fork_schema_takes_the_rules_from_the_chain_schedule(ulong chainId)
     {
+        IForkAwareSpecProvider baseProvider = chainId switch
+        {
+            BlockchainIds.Mainnet => MainnetSpecProvider.Instance,
+            BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
+            BlockchainIds.Gnosis => GnosisSpecProvider.Instance,
+            _ => throw new AssertionException($"Unsupported test chain: {chainId}")
+        };
+        ForkActivation activation = new(BlockNumber, Timestamp);
+        ISpecProvider provider = StatelessSpecProvider.Create(chainId, ProtocolFork.Current, activation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.ChainId, Is.EqualTo(chainId));
+            Assert.That(provider.GetSpec(activation).Name, Is.EqualTo(baseProvider.GetSpec(activation).Name));
+        }
+    }
+
+    [TestCaseSource(nameof(BlobVersionedHashCases))]
+    public bool Blob_versioned_hashes_must_match_in_payload_order(Transaction[] transactions, Hash256[] expected) =>
+        StatelessExecutor.BlobVersionedHashesMatch(transactions, expected);
+
+    private static IEnumerable<TestCaseData> BlobVersionedHashCases()
+    {
+        yield return new TestCaseData(new[] { BlobTx(1, 2), BlobTx(3) }, Hashes(1, 2, 3))
+            .Returns(true).SetName("Matching hashes in payload order");
+        yield return new TestCaseData(new[] { new Transaction(), BlobTx(1), new Transaction() }, Hashes(1))
+            .Returns(true).SetName("Non-blob transactions are skipped");
+        yield return new TestCaseData(new[] { new Transaction() }, Hashes())
+            .Returns(true).SetName("No blob transactions and no hashes");
+        yield return new TestCaseData(new[] { BlobTx(1, 2), BlobTx(3) }, Hashes(1, 3, 2))
+            .Returns(false).SetName("Hashes out of payload order");
+        yield return new TestCaseData(new[] { BlobTx(1, 2) }, Hashes(1))
+            .Returns(false).SetName("Fewer hashes than the payload commits to");
+        yield return new TestCaseData(new[] { BlobTx(1) }, Hashes(1, 2))
+            .Returns(false).SetName("More hashes than the payload commits to");
+    }
+
+    private static Transaction BlobTx(params byte[] ids)
+    {
+        byte[][] hashes = new byte[ids.Length][];
+
+        for (int i = 0; i < ids.Length; i++)
+            hashes[i] = HashBytes(ids[i]);
+
+        return new Transaction { BlobVersionedHashes = hashes };
+    }
+
+    private static Hash256[] Hashes(params byte[] ids)
+    {
+        Hash256[] hashes = new Hash256[ids.Length];
+
+        for (int i = 0; i < ids.Length; i++)
+            hashes[i] = new Hash256(HashBytes(ids[i]));
+
+        return hashes;
+    }
+
+    private static byte[] HashBytes(byte id)
+    {
+        byte[] bytes = new byte[Hash256.Size];
+
+        bytes[^1] = id;
+
+        return bytes;
+    }
+
+    /// <summary>Transaction payload that is well-formed SSZ but not decodable as transaction RLP.</summary>
+    private static SszProgressiveBytes[] MalformedTransaction => [new() { Bytes = [0xff, 0xff] }];
+
+    private static byte[] EncodeInput<TExecutionPayload>(
+        TExecutionPayload executionPayload, ushort schemaId, SszProgressiveBytes[] transactions = null)
+        where TExecutionPayload : SszExecutionPayload, ISszCodec<TExecutionPayload>, new()
+    {
+        executionPayload.BlockNumber = BlockNumber;
+        executionPayload.Timestamp = Timestamp;
+
+        if (transactions is not null)
+            executionPayload.Transactions = transactions;
+
         StatelessInput<TExecutionPayload> input = new()
         {
             NewPayloadRequest = new()
             {
-                ExecutionPayload = new TExecutionPayload(),
+                ExecutionPayload = executionPayload,
                 VersionedHashes = [],
                 ParentBeaconBlockRoot = Hash256.Zero,
                 ExecutionRequests = new()
@@ -240,36 +331,15 @@ public class StatelessSchemaTests
                 Codes = [],
                 Headers = []
             },
-            ChainConfig = new()
-            {
-                ChainId = 1,
-                ActiveFork = new()
-                {
-                    Activation = new()
-                    {
-                        BlockNumber = [0],
-                        Timestamp = []
-                    }
-                }
-            },
+            ChainId = ChainId,
             PublicKeys = []
         };
         byte[] payload = StatelessInput<TExecutionPayload>.Encode(input);
         byte[] encoded = new byte[sizeof(ushort) + payload.Length];
 
-        BinaryPrimitives.WriteUInt16BigEndian(encoded, fork.ToRevision1SchemaId());
+        BinaryPrimitives.WriteUInt16BigEndian(encoded, schemaId);
         payload.AsSpan().CopyTo(encoded.AsSpan(sizeof(ushort)));
 
         return encoded;
     }
-
-    private static BlockHeader CreateHeader(ulong blockNumber, ulong timestamp) => new(
-        Hash256.Zero,
-        Hash256.Zero,
-        Address.Zero,
-        UInt256.Zero,
-        blockNumber,
-        0,
-        timestamp,
-        []);
 }

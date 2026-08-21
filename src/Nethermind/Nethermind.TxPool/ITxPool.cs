@@ -75,6 +75,22 @@ namespace Nethermind.TxPool
         IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
         bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
+
+        /// <summary>
+        /// Gets a pending transaction for metadata-only consumers. Blob and cell payloads are
+        /// elided from returned blob transactions while commitments and proofs are preserved.
+        /// </summary>
+        bool TryGetPendingTransactionWithoutBlobs(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        {
+            if (TryGetPendingTransaction(hash, out transaction) && transaction is not null)
+            {
+                transaction = BlobTransactionPayload.Elide(transaction);
+                return true;
+            }
+
+            transaction = default;
+            return false;
+        }
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
         bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,

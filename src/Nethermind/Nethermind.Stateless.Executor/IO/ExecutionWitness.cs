@@ -10,10 +10,10 @@ namespace Nethermind.Stateless.Execution.IO;
 [SszContainer]
 public partial struct ExecutionWitness
 {
-    [SszList(0x40_0000)]
+    [SszProgressiveList]
     public SszWitnessState[] State { get; set; }
 
-    [SszList(0x4_0000)]
+    [SszProgressiveList]
     public SszWitnessCodes[] Codes { get; set; }
 
     [SszList(0x100)]
