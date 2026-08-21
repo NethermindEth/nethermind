@@ -194,7 +194,16 @@ public static class BasePersistence
                     continue;
                 }
 
-                foreach (byte[] key in db.GetColumnDb(column).GetAllKeys())
+                IDb columnDb = db.GetColumnDb(column);
+
+                // Let the backend drop the column wholesale first, and only scan what it could not take.
+                // Scanning every key is what makes a restart mid snap sync look like a hang: on a mainnet DB
+                // abandoned at 19% of the range phase it held EnsureInitialize for ~20 minutes, with no state
+                // requests dispatched and nothing logged, and the cost grows with how much of the state was
+                // already downloaded.
+                if (columnDb.TryDeleteAll()) continue;
+
+                foreach (byte[] key in columnDb.GetAllKeys())
                 {
                     batch.GetColumnBatch(column).Remove(key);
                     if (++count == batchSize)

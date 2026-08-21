@@ -30,6 +30,19 @@ namespace Nethermind.Db
         /// <summary>Syncs the write-ahead log to durable storage, throwing on failure (<see cref="Flush"/> swallows).</summary>
         void SyncWal() => Flush(onlyWal: true);
         void Clear() { }
+
+        /// <summary>
+        /// Empties the store through a bulk backend path rather than one delete per key. Returns <c>true</c> only
+        /// when the store is left empty; <c>false</c> means keys may remain - the backend has no bulk path, or the
+        /// path it has could not take everything - and the caller has to delete the rest itself.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="Clear"/> the store stays open and usable. Space is reclaimed as the keys go, so
+        /// readers holding an older view of the store - snapshots, iterators - are left behind: only call this
+        /// when nothing else is reading it.
+        /// </remarks>
+        bool TryDeleteAll() => false;
+
         void Compact() { }
         void SetWriteBuffer(long sizeBytes) { }
 

@@ -60,6 +60,52 @@ public class ColumnsDbTests
         Assert.That(defaultCol.Get(TestItem.KeccakB), Is.Null);
     }
 
+    // Level 0 is out of reach of the file drop, so cover a column whose data is still there - what an
+    // interrupted sync leaves behind - as well as one already compacted down.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TryDeleteAll_EmptiesTheColumnAndLeavesTheOthers(bool compactedFirst)
+    {
+        IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        IDb colB = _db.GetColumnDb(ReceiptsColumns.Transactions);
+
+        // Spread the keys out so the delete covers more than a single point.
+        colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
+        colA.Set(TestItem.KeccakB, TestItem.KeccakB.BytesToArray());
+        colA.Set(TestItem.KeccakC, TestItem.KeccakC.BytesToArray());
+        colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
+
+        if (compactedFirst)
+        {
+            colA.Flush(onlyWal: false);
+            colA.Compact();
+        }
+
+        Assert.That(colA.TryDeleteAll(), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(colA.Get(TestItem.KeccakA), Is.Null);
+            Assert.That(colA.Get(TestItem.KeccakB), Is.Null);
+            Assert.That(colA.Get(TestItem.KeccakC), Is.Null);
+            Assert.That(colA.GetAllKeys(), Is.Empty);
+            Assert.That(colB.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB.BytesToArray()), "other columns keep their keys");
+        }
+
+        // The column stays open, so the sync that follows the wipe can write into it right away.
+        colA.Set(TestItem.KeccakA, TestItem.KeccakC.BytesToArray());
+        Assert.That(colA.Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakC.BytesToArray()));
+    }
+
+    [Test]
+    public void TryDeleteAll_OnEmptyColumn_DoesNothing()
+    {
+        IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
+
+        Assert.That(colA.TryDeleteAll(), Is.True);
+        Assert.That(colA.GetAllKeys(), Is.Empty);
+    }
+
     [Test]
     public void SmokeTestMemtableSize()
     {

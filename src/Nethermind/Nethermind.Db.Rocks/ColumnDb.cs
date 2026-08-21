@@ -140,6 +140,41 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() => throw new NotSupportedException();
 
+    /// <summary>
+    /// Drops the files behind the column instead of writing a tombstone per key, and reports whether that
+    /// emptied it. Deleting key by key costs an hour or more on a column left behind by an interrupted snap
+    /// sync, all of it inside the call.
+    /// </summary>
+    /// <remarks>
+    /// Files are dropped without tombstones, so readers holding an older view of the column - snapshots,
+    /// iterators - are left behind. A file locked by a running compaction survives, hence the emptiness check
+    /// rather than an unconditional <c>true</c>; deleting the remainder is then the caller's fallback.
+    /// A range tombstone would be cheaper still, but tailing iterators - which this DB hands out for
+    /// unordered enumeration and read-ahead - do not apply them and would keep serving the deleted keys.
+    /// </remarks>
+    public bool TryDeleteAll()
+    {
+        _mainDb.ThrowIfDisposing();
+
+        // Only files are dropped below, so the memtable has to become one first.
+        _mainDb.FlushWithColumnFamily(_columnFamily);
+
+        // Everything below level 0 goes by metadata alone, which is the bulk of a large column.
+        DeleteAllFiles();
+
+        // Level 0 is out of the drop's reach, so compact what is left down a level and drop that too. The
+        // input is only ever the level 0 files, the levels below having just been emptied.
+        _rocksDb.CompactRange((byte[]?)null, (byte[]?)null, _columnFamily);
+        DeleteAllFiles();
+
+        // A file locked by a running compaction survives both passes, so report what actually happened.
+        return FirstKey is null;
+    }
+
+    /// <summary>Drops every file of this column that RocksDB will let go of. Null bounds span the whole key space.</summary>
+    private void DeleteAllFiles() => Native.Instance.rocksdb_delete_file_in_range_cf(
+        _rocksDb.Handle, _columnFamily.Handle, (byte[]?)null, UIntPtr.Zero, (byte[]?)null, UIntPtr.Zero);
+
     // Maybe it should be column-specific metric?
     public IDbMeta.DbMetric GatherMetric() => _mainDb.GatherMetric();
 

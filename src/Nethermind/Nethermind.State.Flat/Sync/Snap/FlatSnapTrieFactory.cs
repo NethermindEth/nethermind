@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,8 +24,13 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
     public void EnsureInitialize()
     {
+        // Snap sync cannot resume, so whatever the previous run left behind has to go before this one starts.
+        // Report it: the wipe blocks the snap-sync runner, so anything it spends is time the node looks idle -
+        // no state requests, no peers assigned, no progress lines.
         if (_logger.IsInfo) _logger.Info("Clearing database");
+        long startTimestamp = Stopwatch.GetTimestamp();
         persistence.Clear();
+        if (_logger.IsInfo) _logger.Info($"Cleared database in {Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds:N2}s");
     }
 
     public void FinalizeSync() => persistence.Flush();
