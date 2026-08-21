@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -14,9 +15,10 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// timestamp a missed slot moves, so a narrower gate risks refusing the activation slot itself.</remarks>
 public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
+    IBlockTree blockTree,
     ISpecProvider specProvider) : IHandler<InclusionListBytes>
 {
-    private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool);
+    private readonly InclusionListBuilder? _inclusionListBuilder = txPool is null ? null : new(txPool, blockTree, specProvider);
 
     public ResultWrapper<InclusionListBytes> Handle()
         => !specProvider.GetFinalSpec().IsEip7805Enabled

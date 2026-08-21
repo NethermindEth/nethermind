@@ -2,55 +2,84 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class InclusionListBuilder(ITxPool txPool)
+public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider)
 {
     public InclusionListBytes GetInclusionList()
     {
-        using ArrayPoolListRef<Transaction> reservoir = ReservoirSampleNonBlobTxs(txPool.GetPendingTransactions());
-        return EncodeTransactionsUpToLimit(in reservoir);
+        using ArrayPoolListRef<Transaction> sample = SampleAppendableTxs();
+        return EncodeTransactionsUpToLimit(in sample);
     }
 
-    // Reservoir sample (Algorithm R + final Fisher-Yates) keeps memory at O(MaxTxs) for any mempool size.
-    private static ArrayPoolListRef<Transaction> ReservoirSampleNonBlobTxs(Transaction[] mempool)
+    /// <summary>Draws candidate transactions for the list, at most one sender's worth per draw.</summary>
+    /// <remarks>
+    /// Candidates are restricted to what the next block could actually append: senders whose lowest pending
+    /// nonce is the account's next one and can pay the base fee, then that sender's gapless nonce run. An
+    /// entry outside that set can never be appendable, so it would spend list bytes without adding
+    /// censorship resistance. Senders are drawn uniformly rather than by fee, because the list exists for
+    /// the transactions a builder passes over, which are exactly the ones a fee-ordered draw drops first.
+    /// </remarks>
+    private ArrayPoolListRef<Transaction> SampleAppendableTxs()
     {
         const int capacity = Eip7805Constants.MaxTransactionsPerInclusionList;
-        ArrayPoolListRef<Transaction> reservoir = new(capacity);
         Random rnd = Random.Shared;
+
+        using ArrayPoolListRef<Transaction[]> senders = new(capacity);
         int seen = 0;
-
-        for (int i = 0; i < mempool.Length; i++)
+        foreach (Transaction[] bySender in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, NextBlockBaseFee()).Values)
         {
-            Transaction tx = mempool[i];
             // Blob txs MUST NOT appear in an IL.
-            if (tx.SupportsBlobs) continue;
+            if (bySender is not [{ SupportsBlobs: false }, ..]) continue;
 
-            if (reservoir.Count < capacity)
+            if (senders.Count < capacity)
             {
-                reservoir.Add(tx);
+                senders.Add(bySender);
             }
             else
             {
                 int j = rnd.Next(seen + 1);
-                if (j < capacity) reservoir[j] = tx;
+                if (j < capacity) senders[j] = bySender;
             }
             seen++;
         }
 
         // The byte-cap loop below treats position as priority, so shuffle: membership alone isn't enough.
-        for (int i = reservoir.Count - 1; i > 0; i--)
+        for (int i = senders.Count - 1; i > 0; i--)
         {
             int j = rnd.Next(i + 1);
-            (reservoir[i], reservoir[j]) = (reservoir[j], reservoir[i]);
+            (senders[i], senders[j]) = (senders[j], senders[i]);
         }
 
-        return reservoir;
+        ArrayPoolListRef<Transaction> sample = new(capacity);
+        foreach (Transaction[] bySender in senders)
+        {
+            ulong nextNonce = bySender[0].Nonce;
+            foreach (Transaction tx in bySender)
+            {
+                // A gap or a blob tx ends the run: nothing behind it can be appended either.
+                if (sample.Count == capacity) return sample;
+                if (tx.Nonce != nextNonce || tx.SupportsBlobs) break;
+
+                sample.Add(tx);
+                nextNonce++;
+            }
+        }
+        return sample;
+    }
+
+    private UInt256 NextBlockBaseFee()
+    {
+        BlockHeader? head = blockTree.Head?.Header;
+        return head is null ? UInt256.Zero : BaseFeeCalculator.Calculate(head, specProvider.GetSpec(head.Number + 1, head.Timestamp));
     }
 
     private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)
