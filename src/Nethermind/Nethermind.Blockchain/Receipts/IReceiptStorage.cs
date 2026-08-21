@@ -31,6 +31,10 @@ namespace Nethermind.Blockchain.Receipts
         void EnsureCanonical(Block block);
         void RemoveReceipts(Block block);
 
+        /// <summary>Re-encodes the block's receipts as a standalone self-describing record before the block's body
+        /// is pruned, so they stay readable without it. False when the implementation does not support it.</summary>
+        bool TryRetainSelfDescribing(Block block) => false;
+
         /// <summary>
         /// Receipts for canonical chain changed.
         /// </summary>

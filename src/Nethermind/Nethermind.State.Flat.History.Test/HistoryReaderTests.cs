@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -25,7 +26,9 @@ public class HistoryReaderTests
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
+        FlatDbConfig config = new();
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        _reader = new HistoryReader(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -35,7 +38,6 @@ public class HistoryReaderTests
         _historyColumns.Dispose();
     }
 
-    // Account: nonce/balance set at block 5, overwritten at 20, deleted at 30. -1 == absent.
     [TestCase(3ul, -1)]
     [TestCase(5ul, 5)]
     [TestCase(19ul, 5)]
@@ -65,7 +67,6 @@ public class HistoryReaderTests
         }
     }
 
-    // Storage: 0xAA at block 5, 0xBBCC at block 20, cleared at block 30. null == unset.
     [TestCase(3ul, null)]
     [TestCase(5ul, "aa")]
     [TestCase(19ul, "aa")]
@@ -91,6 +92,47 @@ public class HistoryReaderTests
         {
             Assert.That(found, Is.True);
             Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
+        }
+    }
+
+    [Test]
+    public void TryGetAccount_AtBlockAboveGlobalFloor_ResolvesNormally()
+    {
+        HistoryColumnsWriter.RecordAccount(_historyColumns, Address, 5, new Account(5, 500));
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 30);
+        HistoryColumnsWriter.SetGlobalFloor(_historyColumns, 5);
+
+        bool found = _reader.TryGetAccount(20, Address, out AccountStruct account);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True, "a read at or above the floor must resolve exactly as it would with no window configured");
+            Assert.That(account.Nonce, Is.EqualTo(5UL));
+        }
+    }
+
+    [Test]
+    public void IsAvailable_AtBlockBelowGlobalFloor_ReportsFalseWithoutThrowing()
+    {
+        HistoryColumnsWriter.MarkBlock(_historyColumns, 6, TestItem.KeccakA);
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 30);
+        HistoryColumnsWriter.SetGlobalFloor(_historyColumns, 10);
+
+        bool available = _reader.IsAvailable(new StateId(6, TestItem.KeccakA));
+
+        Assert.That(available, Is.False, "the scope-entry gate reports unavailable rather than throwing, so the caller can fall through to its own unavailable-state handling");
+    }
+
+    [Test]
+    public void IsPrunedBelowFloor_DistinguishesPrunedFromNeverCaptured()
+    {
+        HistoryColumnsWriter.SetWatermark(_historyColumns, 30);
+        HistoryColumnsWriter.SetGlobalFloor(_historyColumns, 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_reader.IsPrunedBelowFloor(6), Is.True, "covered by the watermark but below the floor must report pruned");
+            Assert.That(_reader.IsPrunedBelowFloor(40), Is.False, "above the watermark is 'never captured', not 'pruned'");
         }
     }
 }

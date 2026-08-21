@@ -42,6 +42,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IProcessExitSource _processExitSource;
     private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
     private readonly IHistoryConfig _historyConfig;
+    private readonly IPrunedReceiptRetention _receiptRetention;
     private readonly bool _enabled;
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
@@ -74,6 +75,7 @@ public class HistoryPruner : IHistoryPruner
         IProcessExitSource processExitSource,
         IBackgroundTaskScheduler backgroundTaskScheduler,
         IBlockProcessingQueue blockProcessingQueue,
+        IPrunedReceiptRetention receiptRetention,
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<HistoryPruner>();
@@ -86,6 +88,7 @@ public class HistoryPruner : IHistoryPruner
         _processExitSource = processExitSource;
         _backgroundTaskScheduler = backgroundTaskScheduler;
         _historyConfig = historyConfig;
+        _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
@@ -397,7 +400,15 @@ public class HistoryPruner : IHistoryPruner
 
                         if (_logger.IsDebug) _logger.Debug($"Deleting old block {number} with hash {blockInfo.BlockHash}.");
                         _blockTree.DeleteOldBlock(number, blockInfo.BlockHash);
-                        _receiptStorage.RemoveReceipts(block);
+                        if (_receiptRetention.ShouldRetainReceipts(block)
+                            && _receiptStorage.TryRetainSelfDescribing(block))
+                        {
+                            Metrics.SlicedReceiptsRetained++;
+                        }
+                        else
+                        {
+                            _receiptStorage.RemoveReceipts(block);
+                        }
                         // Only delete the BAL if the BAL-only pass hasn't already covered this block;
                         // otherwise the delete is a no-op and the counter would over-report.
                         if (number >= _balsDeletePointer)

@@ -25,6 +25,27 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
 
+    [ConfigItem(Description = "Bounded rolling-window retention for flat history, in blocks below the watermark. 0 disables windowing: history is retained unbounded from genesis/pivot, today's shipped behavior.", DefaultValue = "0")]
+    ulong HistoryRetentionBlocks { get; set; }
+
+    [ConfigItem(Description = "How many blocks the watermark must advance since the last floor publish before the history window pruner re-evaluates and advances the floor. Only consulted when HistoryRetentionBlocks is set.", DefaultValue = "1024")]
+    ulong HistoryPruneIntervalBlocks { get; set; }
+
+    [ConfigItem(Description = "Per-pass wall-clock budget, in seconds, for the history window pruner's incremental scan-and-delete. A pass yields at the budget and resumes from its persisted cursor on the next pass rather than running unbounded.", DefaultValue = "5")]
+    int HistoryPrunePassBudgetSeconds { get; set; }
+
+    [ConfigItem(Description = "A comma-separated list of contract addresses to retain unbounded (or far deeper than HistoryRetentionBlocks) flat history for, independent of the general rolling window. Static allow-list only - an address is never added or removed except by editing this config and restarting. Receipts are retained for every block one of these addresses appears in, and re-encoding those receipts recovers each sender, so a contract busy enough to match most blocks makes ancient-history pruning materially slower.", DefaultValue = "null")]
+    string? HistorySliceAddresses { get; set; }
+
+    [ConfigItem(Description = "Rebuild the state root from flat history rows at every covered block and compare against this node's own headers, once, in the background. Unwindowed archives only; memory-heavy on large ranges.", DefaultValue = "false")]
+    bool HistoryVerifyEveryBlock { get; set; }
+
+    [ConfigItem(Description = "Concurrent segments the every-block history verification splits its range into. Each segment is independently anchored to its own start header, so segments share nothing but the read-only columns. 0 means half the processor count.", DefaultValue = "0")]
+    int HistoryVerifySegments { get; set; }
+
+    [ConfigItem(Description = "Rows the every-block history verification may hold in memory before it declines the run. Its working set follows state size rather than range length, so a full archive needs a large value and a machine to match. 0 uses the built-in ceiling.", DefaultValue = "0")]
+    long HistoryVerifyMaxRows { get; set; }
+
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 

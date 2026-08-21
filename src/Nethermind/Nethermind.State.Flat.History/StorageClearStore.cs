@@ -29,12 +29,57 @@ internal sealed class StorageClearStore
         _clears = sortedClears;
     }
 
+    // Distinguishes a poisoned clear (over the v3 per-slot destruct cap) from a normal one (empty value) at the
+    // same key shape, so HasClearInRange (unaware of poisoning, used by both v2 and v3's normal path) and
+    // HasPoisonedClearAbove (v3-only, fail-closed path) can share one column without a schema change.
+    private static ReadOnlySpan<byte> PoisonedMarker => "poisoned"u8;
+
     [SkipLocalsInit]
     public void RecordClear(ulong block, scoped ReadOnlySpan<byte> accountKey, IWriteBatch batch)
     {
         Span<byte> key = stackalloc byte[accountKey.Length + BlockBytes];
         WriteClearKey(key, accountKey, block);
         batch.Set(key, Array.Empty<byte>());
+    }
+
+    /// <summary>
+    /// Records a destruct whose persisted storage exceeded the v3 per-slot enumeration cap: no per-slot pre-value
+    /// rows were written for it, so a v3 read below this block for this account cannot be answered correctly and
+    /// must fail closed instead of silently omitting slots — see <see cref="HasPoisonedClearAbove"/>.
+    /// </summary>
+    [SkipLocalsInit]
+    public void RecordPoisonedClear(ulong block, scoped ReadOnlySpan<byte> accountKey, IWriteBatch batch)
+    {
+        Span<byte> key = stackalloc byte[accountKey.Length + BlockBytes];
+        WriteClearKey(key, accountKey, block);
+        batch.PutSpan(key, PoisonedMarker);
+    }
+
+    /// <summary>Whether a poisoned (over-cap) destruct is recorded for this account at any block strictly above
+    /// <paramref name="afterBlockExclusive"/> — the v3 storage read path's fail-closed check.</summary>
+    [SkipLocalsInit]
+    public bool HasPoisonedClearAbove(scoped ReadOnlySpan<byte> accountKey, ulong afterBlockExclusive)
+    {
+        if (afterBlockExclusive == ulong.MaxValue) return false;
+
+        Span<byte> lowerBound = stackalloc byte[accountKey.Length + BlockBytes];
+        WriteClearKey(lowerBound, accountKey, afterBlockExclusive + 1);
+
+        Span<byte> upperBound = stackalloc byte[accountKey.Length + BlockBytes + 1];
+        accountKey.CopyTo(upperBound);
+        upperBound[accountKey.Length..].Fill(0xFF);
+
+        using ISortedView view = _clears.GetViewBetween(lowerBound, upperBound);
+        while (view.MoveNext())
+        {
+            ReadOnlySpan<byte> foundKey = view.CurrentKey;
+            if (foundKey.Length != accountKey.Length + BlockBytes || !foundKey[..accountKey.Length].SequenceEqual(accountKey))
+                return false; // ran past this account's key range
+
+            if (view.CurrentValue.SequenceEqual(PoisonedMarker)) return true;
+        }
+
+        return false;
     }
 
     /// <summary>

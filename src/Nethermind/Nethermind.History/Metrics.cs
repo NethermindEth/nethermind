@@ -24,6 +24,10 @@ public static class Metrics
     [Description("The number of the historical block access lists that have been pruned (since restart).")]
     public static long BlockAccessListsPruned { get; set; }
 
+    [CounterMetric]
+    [Description("The number of historical blocks whose receipts were retained past the pruning cutoff because their logs matched a configured slice address (since restart).")]
+    public static long SlicedReceiptsRetained { get; set; }
+
     [GaugeMetric]
     [Description("The cutoff block number from which historical blocks will be pruned.")]
     public static ulong? PruningCutoffBlocknumber { get; set; }

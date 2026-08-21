@@ -20,12 +20,6 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
 
-/// <summary>
-/// Regression guard for historical <c>trace_*</c>/<c>debug_trace*</c> returning <c>[]</c>: the post-block commit
-/// used to resolve trie nodes via the history-backed reader, which throws. Drives the tracer's commit path
-/// (<c>Commit</c> → <c>RecalculateStateRoot</c> → <c>CommitTree</c>) against a real trie-less scope below the
-/// barrier and asserts the re-executed mutations are observable through the flat overlay.
-/// </summary>
 [TestFixture]
 public class HistoricalTraceReExecutionTests
 {
@@ -63,7 +57,9 @@ public class HistoricalTraceReExecutionTests
 
         _historyDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _historyReader = new HistoryReader(_historyDb, _historyColumns, LimboLogs.Instance);
+        FlatDbConfig historyConfig = new();
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, historyConfig);
+        _historyReader = new HistoryReader(_historyDb, _historyColumns, historyConfig, availability, rowFormat, LimboLogs.Instance);
 
         _persistenceManager.GetCurrentPersistedStateId().Returns(new StateId(HistoryBarrier, TestItem.KeccakA));
     }
@@ -80,12 +76,9 @@ public class HistoricalTraceReExecutionTests
     [Test]
     public async Task HistoricalTraceReExecution_OverTrieLessScope_DoesNotThrow_AndAppliesChangesToFlatOverlay()
     {
-        // History as of the traced block: an account with a single non-zero slot, finalized at block 5.
         Account existing = new(nonce: 3, balance: 300);
         HistoryColumnsWriter.RecordAccount(_historyColumns, ExistingAddr, 5, existing);
         HistoryColumnsWriter.RecordStorage(_historyColumns, ExistingAddr, ExistingSlot, 5, [0xAA]);
-        // The historical scope is opened on a header at HistoricalBlock with state root KeccakB; availability requires
-        // both the watermark to cover the block and the captured root to match that header (EIP-1898 binding).
         HistoryColumnsWriter.MarkBlock(_historyColumns, HistoricalBlock, TestItem.KeccakB);
         HistoryColumnsWriter.SetWatermark(_historyColumns, HistoricalBlock);
 
@@ -102,7 +95,8 @@ public class HistoricalTraceReExecutionTests
             _historyReader,
             _trieNodeCache,
             _resourcePool,
-            enableDetailedMetrics: false);
+            enableDetailedMetrics: false,
+            new HistoryScopeGate());
         using FlatScopeProvider scopeProvider = CreateScopeProvider(manager);
         WorldState worldState = new(scopeProvider, LimboLogs.Instance);
 
@@ -115,13 +109,9 @@ public class HistoricalTraceReExecutionTests
         {
             using IDisposable scope = worldState.BeginScope(historicalHeader);
 
-            // Reading the historical state from flat history must work — this is what the re-executing tx sees.
             Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)3));
             Assert.That(worldState.GetBalance(ExistingAddr), Is.EqualTo((UInt256)300));
 
-            // Re-execute the kind of mutations a traced transaction performs: touch an existing account, write a brand
-            // new account, and change storage for both. These flow through the same write-batch/commit path that the
-            // block processor drives for the tracer.
             worldState.AddToBalance(ExistingAddr, 50, spec);
             worldState.IncrementNonce(ExistingAddr);
             worldState.Set(new StorageCell(ExistingAddr, ExistingSlot), updatedExistingSlotValue);
@@ -129,7 +119,6 @@ public class HistoricalTraceReExecutionTests
             worldState.CreateAccount(freshAddr, balance: 7, nonce: 1);
             worldState.Set(new StorageCell(freshAddr, freshSlot), freshSlotValue);
 
-            // Block-processing commit sequence that previously threw on the trie-less scope.
             worldState.Commit(spec);
             worldState.RecalculateStateRoot();
             worldState.CommitTree(HistoricalBlock);
@@ -139,7 +128,6 @@ public class HistoricalTraceReExecutionTests
 
             using (Assert.EnterMultipleScope())
             {
-                // The re-executed changes must be visible through the flat overlay — the state a non-empty trace reports.
                 Assert.That(existingBalanceAfter, Is.EqualTo((UInt256)350));
                 Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)4));
                 Assert.That(worldState.Get(new StorageCell(ExistingAddr, ExistingSlot)).ToArray(), Is.EqualTo(updatedExistingSlotValue));
@@ -148,7 +136,6 @@ public class HistoricalTraceReExecutionTests
                 Assert.That(freshReadBack.Nonce, Is.EqualTo((ulong)1));
                 Assert.That(worldState.Get(new StorageCell(freshAddr, freshSlot)).ToArray(), Is.EqualTo(freshSlotValue));
 
-                // The historical root is known up-front and must be retained (no trie traversal recomputed it).
                 Assert.That(worldState.StateRoot, Is.EqualTo(TestItem.KeccakB));
             }
         }, Throws.Nothing);
@@ -167,8 +154,6 @@ public class HistoricalTraceReExecutionTests
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
-    // Historical re-execution runs through the read-only processing env, as in production;
-    // HistoricalFlatDbManager rejects MainBlockProcessing at a trie-less historical state.
     private static FlatScopeProvider CreateScopeProvider(IFlatDbManager manager) => new(
         new MemDb(),
         manager,

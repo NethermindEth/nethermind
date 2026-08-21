@@ -291,6 +291,7 @@ public class HistoryPrunerTests
             new ProcessExitSource(new()),
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
+            NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance);
 
         if (shouldThrow)

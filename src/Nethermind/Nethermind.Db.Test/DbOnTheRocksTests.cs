@@ -382,6 +382,95 @@ namespace Nethermind.Db.Test
         private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
         };
+
+        [Test]
+        public void GetViewBetween_on_a_prefix_extractor_database_honours_a_bound_that_crosses_prefixes()
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (int i = 0; i < 16; i++)
+            {
+                byte[] key = new byte[32];
+                key[0] = (byte)i;
+                key[1] = (byte)i;
+                db.PutSpan(key, new byte[] { (byte)i }, WriteFlags.None);
+            }
+
+            db.Flush();
+
+            // A one-byte lower bound and a 128-byte upper bound, so the two bounds fall in different capped:8
+            // prefix buckets.
+            byte[] upperBound = new byte[128];
+            upperBound[0] = 0x0F;
+            upperBound.AsSpan(1).Fill(0xFF);
+
+            int seen = 0;
+            using (ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween([0x00], upperBound))
+            {
+                while (view.MoveNext()) seen++;
+            }
+
+            Assert.That(seen, Is.EqualTo(16),
+                "every key from 0x00 to 0x0F is inside the requested range, so a prefix-configured database must still walk all of them rather than stopping inside the lower bound's prefix bucket");
+        }
+
+        [Test]
+        public void GetViewBetween_on_a_prefix_extractor_database_returns_a_range_that_stays_inside_one_prefix()
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (int i = 0; i < 16; i++)
+            {
+                byte[] key = new byte[32];
+                key[8] = (byte)i;
+                db.PutSpan(key, new byte[] { (byte)i }, WriteFlags.None);
+            }
+
+            db.Flush();
+
+            byte[] lowerBound = new byte[32];
+            byte[] upperBound = new byte[32];
+            upperBound[8] = 0x10;
+
+            int seen = 0;
+            using (ISortedView view = ((ISortedKeyValueStore)db).GetViewBetween(lowerBound, upperBound))
+            {
+                while (view.MoveNext()) seen++;
+            }
+
+            Assert.That(seen, Is.EqualTo(16),
+                "the bounds share their capped:8 prefix, so this range keeps the prefix index and must still yield every key in it");
+        }
+
+        [TestCase(0, 0, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnADatabaseWithoutAnExtractor_IsFalse")]
+        [TestCase(8, 3, ExpectedResult = true, TestName = "CrossesPrefixBucket_OnBoundsShorterThanThePrefix_IsTrue")]
+        [TestCase(8, 8, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnBoundsSharingThePrefix_IsFalse")]
+        public bool CrossesPrefixBucket_classifies_bounds(int prefixLength, int sharedBytes)
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            string dbName = prefixLength == 0 ? "Blocks" : "Code";
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, dbName), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            byte[] first = new byte[sharedBytes == 3 ? 3 : 32];
+            byte[] last = new byte[first.Length];
+            if (first.Length > sharedBytes) last[sharedBytes] = 0xFF;
+
+            return db.CrossesPrefixBucket(first, last);
+        }
     }
 
     [TestFixture(true)]

@@ -79,9 +79,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private readonly IRocksDbConfig _perTableDbConfig;
     internal bool VerifyChecksum => _perTableDbConfig.VerifyChecksum ?? true;
+    internal ulong ReadAheadSize => _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
+    // Accumulated across the table config and every column config, all of which are built during open, before this
+    // instance is handed out - so the reads from GetViewBetween on other threads never race a write.
+    private int _prefixExtractorLength;
 
     private readonly IFileSystem _fileSystem;
 
@@ -547,6 +551,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _minWriteBufferToMerge = int.Parse(optionsAsDict["min_write_buffer_number_to_merge"]);
         _writeBufferSize = ulong.Parse(optionsAsDict["write_buffer_size"]);
         _maxWriteBufferNumber = int.Parse(optionsAsDict["max_write_buffer_number"]);
+        _prefixExtractorLength = Math.Max(_prefixExtractorLength, ParsePrefixExtractorLength(optionsAsDict));
 
         ulong blockCacheSize = 0;
         if (optionsAsDict.TryGetValue("block_based_table_factory.block_cache", out string? blockCacheSizeStr))
@@ -2069,11 +2074,49 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey) => GetViewBetween(firstKey, lastKey, null);
+    public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) => GetViewBetween(firstKey, lastKey, null, flags);
 
-    internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ColumnFamilyHandle? cf)
+    /// <summary>Whether a range view over these bounds can leave the prefix bucket its seek lands in. The length
+    /// is the widest extractor configured across this database and its columns, which errs toward totality: a
+    /// column with a shorter extractor, or none at all, is never told to trust a bucket it does not have.</summary>
+    internal bool CrossesPrefixBucket(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey)
+    {
+        int length = _prefixExtractorLength;
+        if (length == 0) return false;
+        if (firstKey.Length < length || lastKey.Length < length) return true;
+        return !firstKey[..length].SequenceEqual(lastKey[..length]);
+    }
+
+    private static int ParsePrefixExtractorLength(IDictionary<string, string> options)
+    {
+        // "nullptr" is RocksDB's own spelling for "no extractor", so it means no bucket exists rather than the
+        // widest possible one.
+        if (!options.TryGetValue("prefix_extractor", out string? extractor)
+            || string.IsNullOrWhiteSpace(extractor)
+            || extractor.Trim().Equals("nullptr", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        int separator = extractor.LastIndexOfAny([':', '.']);
+        // An extractor whose width cannot be read is treated as unbounded, so every range asks for total order.
+        return separator >= 0 && int.TryParse(extractor.AsSpan(separator + 1), out int length) && length > 0
+            ? length
+            : int.MaxValue;
+    }
+
+    internal ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ColumnFamilyHandle? cf, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = CreateReadOptions();
+        if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
+        if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(ReadAheadSize);
+
+        // A view promises every key between its bounds. Where a prefix extractor is configured - the code
+        // database has one, along with a hash index and a prefix-hash memtable - an iterator is only required to
+        // stay correct within the seek key's prefix bucket, so a range crossing buckets can come back short or
+        // empty. Total order fixes that at the cost of the prefix index and bloom, so it is asked for only when
+        // the range can actually leave the bucket; a range that stays inside one keeps the optimisation.
+        if (CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
 
         IntPtr iterateLowerBound;
         IntPtr iterateUpperBound;

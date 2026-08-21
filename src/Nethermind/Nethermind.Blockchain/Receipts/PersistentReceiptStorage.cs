@@ -25,6 +25,8 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
     {
+        private static readonly ReceiptArrayStorageDecoder SelfDescribingStorageDecoder = new(compactEncoding: false);
+
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptsRecovery _receiptsRecovery;
@@ -480,8 +482,30 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
         {
             Block? block = _blockTree.FindBlock(blockHash);
-            if (block is null) return [];
-            return Get(block, recover, false);
+            if (block is not null) return Get(block, recover, false);
+            return GetRetainedWithoutBody(blockHash);
+        }
+
+        /// <summary>Serves a block whose body was pruned but whose receipts were retained self-describing: the
+        /// encoding carries everything recovery would otherwise derive from the body, so it decodes standalone.
+        /// A compact (body-dependent) record cannot be decoded any more and reports empty.</summary>
+        private TxReceipt[] GetRetainedWithoutBody(Hash256 blockHash)
+        {
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null) return [];
+
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached)) return cached ?? [];
+
+            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            try
+            {
+                if (receiptsData.IsNullOrEmpty() || ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return [];
+                return _storageDecoder.Decode(in receiptsData);
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
         }
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => blockNumber >= MigratedBlockNumber;
@@ -836,6 +860,33 @@ namespace Nethermind.Blockchain.Receipts
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
                 return _receiptsDb.KeyExists(blockNumPrefixed) || _receiptsDb.KeyExists(blockHash);
             }
+        }
+
+        [SkipLocalsInit]
+        public bool TryRetainSelfDescribing(Block block)
+        {
+            TxReceipt[] receipts = Get(block, recover: true, recoverSender: true);
+            if (block.Transactions.Length != receipts.Length)
+            {
+                return false;
+            }
+
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
+
+            using ArrayPoolSpan<byte> rlp = SelfDescribingStorageDecoder.EncodeToArrayPoolSpan(receipts, behaviors);
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
+            _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+
+            // On a legacy-keyed database the plain-hash entry is read first and would shadow the retained copy
+            // with the compact encoding the pruned body can no longer decode.
+            if (_legacyHashKey) _receiptsDb.Remove(block.Hash!.Bytes);
+
+            // The pruner sweeps millions of ancient blocks; leaving them in the LRU would evict the live working
+            // set eth_getLogs reads.
+            _receiptsCache.Delete(block.Hash!);
+            return true;
         }
 
         public void EnsureCanonical(Block block) => EnsureCanonical(block, null);

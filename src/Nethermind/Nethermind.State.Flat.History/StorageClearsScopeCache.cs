@@ -12,6 +12,7 @@ namespace Nethermind.State.Flat.History;
 internal sealed class StorageClearsScopeCache
 {
     private readonly ConcurrentDictionary<ValueHash256, bool> _hasAnyClear = new();
+    private readonly ConcurrentDictionary<ValueHash256, bool> _poisonedAbove = new();
 
     public bool HasAnyClearUpTo(in ValueHash256 addrHash, scoped ReadOnlySpan<byte> accountKey, StorageClearStore clears, ulong block)
     {
@@ -20,5 +21,14 @@ internal sealed class StorageClearsScopeCache
         hasAny = clears.HasClearInRange(accountKey, 0, block);
         _hasAnyClear.TryAdd(addrHash, hasAny);
         return hasAny;
+    }
+
+    public bool HasPoisonedClearAbove(in ValueHash256 addrHash, StorageClearStore clears, ulong block)
+    {
+        if (_poisonedAbove.TryGetValue(addrHash, out bool poisoned)) return poisoned;
+
+        poisoned = clears.HasPoisonedClearAbove(addrHash.Bytes, block);
+        _poisonedAbove.TryAdd(addrHash, poisoned);
+        return poisoned;
     }
 }
