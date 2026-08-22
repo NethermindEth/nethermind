@@ -19,6 +19,8 @@ public struct EvmPooledMemory
     internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
     internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
+    // Bytes below this prefix are valid; Size may exceed both it and the backing array until a read
+    // materializes the logical zero tail.
     private ulong _initializedSize;
 
     private byte[]? _memory;
@@ -466,7 +468,8 @@ public struct EvmPooledMemory
     /// <remarks>
     /// The caller must write every byte in the range before passing the result to
     /// <see cref="CommitOverwrite"/>. A zero result is a sentinel indicating that the range was
-    /// already initialized and no commit is required.
+    /// already initialized and no commit is required. Preparation guarantees backing capacity only
+    /// through the end of the overwrite; bytes above it remain lazy.
     /// </remarks>
     /// <param name="offset">The start of the overwrite range.</param>
     /// <param name="length">The length of the overwrite range.</param>
