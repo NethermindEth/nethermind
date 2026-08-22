@@ -272,9 +272,8 @@ public class HistoryPruner : IHistoryPruner
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
 
                 // Unconditional: gating this on the blocks pass finishing meant that whenever that pass was cut
-                // short - which was every pass - access lists were never pruned at all. Both passes check the token
-                // themselves, and the BAL one now publishes its own boundary before reclaiming, so entering it with
-                // a spent token costs one no-op rather than a lost range.
+                // short - which was every pass - access lists were never pruned at all. It checks the token itself
+                // and advances its own pointer per chunk, so entering it with a spent token costs one no-op.
                 PruneBlockAccessLists(balUpper, cancellationToken);
             }
             else if (_logger.IsDebug)
@@ -399,7 +398,9 @@ public class HistoryPruner : IHistoryPruner
 
         // Never genesis. The reclaim chases the published boundary, NOT the cutoff: they part company the moment a
         // pass is interrupted, and the cursor is the only thing that knows where the disk actually stands.
-        ulong limit = _blocksDeletePointer;
+        // Re-clamped against the live pivot rather than trusting the one that was current when the boundary was
+        // published, possibly in an earlier process: the boundary is durable, the pivot is not monotonic in config.
+        ulong limit = ulong.Min(_blocksDeletePointer, _blockTree.SyncPivot.BlockNumber);
         ulong start = ulong.Max(_blocksReclaimCursor, _minDeletableBlockNumber);
         if (start >= limit) return;
 
@@ -427,6 +428,9 @@ public class HistoryPruner : IHistoryPruner
                 // access list pass to re-issue tombstones over a range it had already reclaimed.
                 if (_balsDeletePointer < to)
                 {
+                    // Only the ground not already claimed, so the two passes cannot count the same heights twice
+                    // and neither can end up reporting nothing for work it did.
+                    Metrics.BlockAccessListsPruned += (long)(to - ulong.Max(from, _balsDeletePointer));
                     _balsDeletePointer = to;
                     Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
                 }
@@ -451,8 +455,9 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    /// <summary>Access lists past the block cutoff, whose blocks are still retained. Same shape as
-    /// <see cref="PruneBlocksAndReceipts"/>: the pointer moves first, the disk follows in bounded steps.</summary>
+    /// <summary>Access lists past the block cutoff, whose blocks are still retained. Unlike
+    /// <see cref="PruneBlocksAndReceipts"/> there is no boundary to publish first - this pointer is local
+    /// bookkeeping, announced to nobody - so the pointer simply follows the reclaim, chunk by chunk.</summary>
     private void PruneBlockAccessLists(ulong upperExclusive, CancellationToken cancellationToken)
     {
         ulong limit = ulong.Min(upperExclusive, _blockTree.SyncPivot.BlockNumber);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -100,6 +101,29 @@ namespace Nethermind.Blockchain.Receipts
             foreach (Transaction tx in block.Transactions)
             {
                 _transactions.TryRemove(tx.Hash, out _);
+            }
+        }
+
+        /// <summary>Keyed by block hash throughout, so the height comes off the receipts themselves. A block that
+        /// carried no transactions has nothing to read a height from and is left in place - harmless here, where
+        /// nothing serves an availability boundary.</summary>
+        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
+        {
+            foreach (KeyValuePair<Hash256AsKey, TxReceipt[]> entry in _receipts)
+            {
+                TxReceipt[] receipts = entry.Value;
+                if (receipts.Length == 0) continue;
+
+                ulong blockNumber = receipts[0].BlockNumber;
+                if (blockNumber < fromInclusive || blockNumber >= toExclusive) continue;
+
+                if (_receipts.TryRemove(entry.Key, out TxReceipt[]? removed))
+                {
+                    foreach (TxReceipt receipt in removed)
+                    {
+                        _transactions.TryRemove(receipt.TxHash, out _);
+                    }
+                }
             }
         }
 
