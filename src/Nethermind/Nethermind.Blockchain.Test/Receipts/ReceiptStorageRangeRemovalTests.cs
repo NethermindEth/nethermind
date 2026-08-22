@@ -34,7 +34,7 @@ public class ReceiptStorageRangeRemovalTests
         for (ulong number = 1; number <= 5; number++)
         {
             Block block = Build.A.Block.WithNumber(number).WithTransactions(Build.A.Transaction.TestObject).TestObject;
-                storage.Insert(block, [Build.A.Receipt.WithBlockHash(block.Hash).TestObject]);
+            storage.Insert(block, [Build.A.Receipt.WithBlockHash(block.Hash).TestObject]);
             blocks[number] = block;
         }
 
