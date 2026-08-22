@@ -53,6 +53,10 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public bool RedirectFirstRequest { get; set; }
 
+    public int? DropETagAfterRequests { get; set; }
+
+    public int? DropEveryAttemptAfterBytes { get; set; }
+
     public int RequestCount => _requestCount;
 
     public void SwitchSourceAfterRequests(int requestCount, byte[] newContent, string? newETag)
@@ -106,6 +110,8 @@ internal sealed class FlakySnapshotServer : IDisposable
         string? etag = requestNumber > _switchAfterRequests ? _newETag : ETag;
         if (RotateETagEveryRequest)
             etag = $"\"v{requestNumber}\"";
+        if (DropETagAfterRequests is int dropEtagAfter && requestNumber > dropEtagAfter)
+            etag = null;
         HttpListenerResponse response = context.Response;
 
         try
@@ -177,6 +183,14 @@ internal sealed class FlakySnapshotServer : IDisposable
                 await response.OutputStream.WriteAsync(content.AsMemory((int)from, hangAfter));
                 await response.OutputStream.FlushAsync();
                 await Task.Delay(Timeout.InfiniteTimeSpan, _hangCts.Token).ContinueWith(static _ => { }, TaskScheduler.Default);
+                response.Abort();
+                return;
+            }
+
+            if (DropEveryAttemptAfterBytes is int alwaysDropAfter)
+            {
+                if (alwaysDropAfter > 0)
+                    await response.OutputStream.WriteAsync(content.AsMemory((int)from, (int)Math.Min(alwaysDropAfter, length)));
                 response.Abort();
                 return;
             }

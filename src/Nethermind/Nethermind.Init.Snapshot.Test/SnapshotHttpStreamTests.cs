@@ -96,6 +96,42 @@ public class SnapshotHttpStreamTests
     }
 
     [Test]
+    public void Read_ETagDisappearsMidDownloadWithoutChecksum_Throws()
+    {
+        _server.Content = BuildContent(100_000);
+        _server.DropETagAfterRequests = 1;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
+
+        Assert.ThrowsAsync<InvalidDataException>(
+            () => DownloadAsync(connections: 1, computeChecksum: false, cancellationToken: timeout.Token),
+            "a source that stops identifying itself must abort the stream, because nothing else would notice a same-size replacement");
+    }
+
+    [Test]
+    public void Read_ServerNeverDeliversBytes_GivesUpInsteadOfRetryingForever()
+    {
+        _server.Content = BuildContent(100_000);
+        _server.DropEveryAttemptAfterBytes = 0;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
+
+        Assert.ThrowsAsync<IOException>(
+            () => DownloadAsync(connections: 1, maxNoProgressRetries: 3, cancellationToken: timeout.Token),
+            "a connection that accepts the range and then delivers nothing must be bounded, otherwise node startup hangs forever");
+    }
+
+    [TestCase("https://host/a", "http://host/b", TestName = "HttpsToHttp")]
+    public void ResolveRedirect_Downgrade_Throws(string from, string to) =>
+        Assert.Throws<IOException>(() => SnapshotHttpClient.ResolveRedirect(new Uri(from), new Uri(to)),
+            "following a redirect off https would expose the headers the integrity policy relies on");
+
+    [TestCase("https://host/a", "https://other/b", TestName = "HttpsToHttps")]
+    [TestCase("http://host/a", "http://other/b", TestName = "HttpToHttp")]
+    [TestCase("https://host/a", "/b", TestName = "RelativeKeepsScheme")]
+    public void ResolveRedirect_NoDowngrade_Resolves(string from, string to) =>
+        Assert.That(SnapshotHttpClient.ResolveRedirect(new Uri(from), new Uri(to, UriKind.RelativeOrAbsolute)).AbsoluteUri,
+            Is.Not.Empty, "a redirect that keeps or raises the transport must be followed");
+
+    [Test]
     public void Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying()
     {
         _server.Content = BuildContent(100_000);
@@ -149,9 +185,11 @@ public class SnapshotHttpStreamTests
         AssertDeliveredExactly(delivered, hash, content, "a connection that stops delivering bytes must be detected as stalled and the chunk re-fetched", "bytes received before the stall must be hashed exactly once");
     }
 
-    private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(int connections, TimeSpan? stallTimeout = null, CancellationToken cancellationToken = default)
+    private async Task<(byte[] Delivered, byte[] Hash)> DownloadAsync(
+        int connections, TimeSpan? stallTimeout = null, bool computeChecksum = true, int maxNoProgressRetries = 20, CancellationToken cancellationToken = default)
     {
-        SnapshotStreamSettings settings = new(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), stallTimeout ?? TimeSpan.FromSeconds(30), ComputeChecksum: true);
+        SnapshotStreamSettings settings = new(connections, TestChunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50),
+            stallTimeout ?? TimeSpan.FromSeconds(30), computeChecksum, maxNoProgressRetries);
         using SnapshotHttpClient client = new();
         SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, cancellationToken);
         await using SnapshotHttpStream stream = new(client, _server.Url, remoteInfo, settings, LimboLogs.Instance, cancellationToken);

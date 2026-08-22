@@ -74,7 +74,7 @@ internal sealed class SnapshotHttpClient : IDisposable
                         response.Dispose();
                         if (location is null)
                             throw new IOException("Redirect response missing Location header.");
-                        currentUri = new Uri(currentUri, location);
+                        currentUri = ResolveRedirect(currentUri, location);
                         continue;
                     }
                 case HttpStatusCode.RequestedRangeNotSatisfiable:
@@ -96,6 +96,16 @@ internal sealed class SnapshotHttpClient : IDisposable
     }
 
     public void Dispose() => _httpClient.Dispose();
+
+    internal static Uri ResolveRedirect(Uri currentUri, Uri location)
+    {
+        Uri redirectUri = new(currentUri, location);
+        if (currentUri.Scheme == Uri.UriSchemeHttps && redirectUri.Scheme != Uri.UriSchemeHttps)
+            throw new IOException(
+                $"Snapshot redirect from {currentUri} to {redirectUri} would downgrade the transport from https; refusing to follow.");
+
+        return redirectUri;
+    }
 
     public static bool IsPermanentHttpError(HttpRequestException e) =>
         e.StatusCode is >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError

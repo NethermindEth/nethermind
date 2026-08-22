@@ -107,6 +107,7 @@ internal sealed class StreamingSnapshotInitializer(
     private async Task<SnapshotRemoteInfo> ProbeWithRetryAsync(SnapshotHttpClient client, CancellationToken cancellationToken)
     {
         TimeSpan retryDelay = settings.InitialRetryDelay;
+        int attempts = 0;
         while (true)
         {
             try
@@ -119,6 +120,9 @@ internal sealed class StreamingSnapshotInitializer(
             }
             catch (Exception e) when (e is IOException or HttpRequestException)
             {
+                if (++attempts >= settings.MaxNoProgressRetries)
+                    throw new IOException($"The snapshot could not be reached across {attempts} attempts.", e);
+
                 if (_logger.IsWarn)
                     _logger.Warn($"Snapshot probe failed. Retrying in {retryDelay.TotalSeconds}s. Error: {e.Message}");
                 await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);

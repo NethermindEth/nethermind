@@ -13,7 +13,8 @@ using Nethermind.Logging;
 namespace Nethermind.Init.Snapshot;
 
 internal sealed record SnapshotStreamSettings(
-    int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay, TimeSpan StallTimeout, bool ComputeChecksum = false)
+    int Connections, int ChunkSize, TimeSpan InitialRetryDelay, TimeSpan MaxRetryDelay, TimeSpan StallTimeout,
+    bool ComputeChecksum = false, int MaxNoProgressRetries = 20)
 {
     public static SnapshotStreamSettings Default(int connections) =>
         new(connections, 64 * 1024 * 1024, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(300), SnapshotHttpClient.DefaultStallTimeout);
@@ -247,6 +248,7 @@ internal sealed class SnapshotHttpStream : Stream
         int rangeRejections = 0;
         int received = 0;
         int receivedAtLastFailure = 0;
+        int noProgressRetries = 0;
 
         while (true)
         {
@@ -289,6 +291,12 @@ internal sealed class SnapshotHttpStream : Stream
                 {
                     receivedAtLastFailure = received;
                     retryDelay = _settings.InitialRetryDelay;
+                    noProgressRetries = 0;
+                }
+                else if (++noProgressRetries >= _settings.MaxNoProgressRetries)
+                {
+                    throw new IOException(
+                        $"Snapshot chunk at {offset} received no bytes across {_settings.MaxNoProgressRetries} consecutive attempts.", e);
                 }
 
                 if (_logger.IsWarn)
@@ -311,6 +319,8 @@ internal sealed class SnapshotHttpStream : Stream
             byte[] buffer = RentBuffer();
             TimeSpan retryDelay = _settings.InitialRetryDelay;
             Stream? content = null;
+            long producedAtLastFailure = -1;
+            int noProgressRetries = 0;
 
             while (true)
             {
@@ -347,6 +357,18 @@ internal sealed class SnapshotHttpStream : Stream
                     response?.Dispose();
                     response = null;
                     content = null;
+
+                    if (produced + filled > producedAtLastFailure)
+                    {
+                        producedAtLastFailure = produced + filled;
+                        noProgressRetries = 0;
+                    }
+                    else if (++noProgressRetries >= _settings.MaxNoProgressRetries)
+                    {
+                        throw new IOException(
+                            $"The snapshot stream received no bytes across {_settings.MaxNoProgressRetries} consecutive attempts.", e);
+                    }
+
                     if (_logger.IsWarn)
                         _logger.Warn($"Snapshot stream interrupted after {produced + filled} bytes. Retrying in {retryDelay.TotalSeconds}s. Error: {e.Message}");
                     await Task.Delay(retryDelay, _cts.Token).ConfigureAwait(false);
@@ -411,8 +433,12 @@ internal sealed class SnapshotHttpStream : Stream
     {
         EntityTagHeaderValue? expected = _remoteInfo.ETag;
         EntityTagHeaderValue? actual = response.Headers.ETag;
-        if (expected is not null && actual is not null && expected.Tag != actual.Tag)
-            throw new SnapshotSourceChangedException($"Snapshot changed on the server during the download (ETag {expected.Tag} -> {actual.Tag}).");
+        if (expected is not null && actual is null && !_settings.ComputeChecksum)
+            throw new InvalidDataException(
+                "The server stopped returning an ETag mid-download and Snapshot.Checksum is not set, so a replaced snapshot could not be detected.");
+
+        if (expected is not null && actual is not null && (expected.Tag != actual.Tag || expected.IsWeak != actual.IsWeak))
+            throw new SnapshotSourceChangedException($"Snapshot changed on the server during the download (ETag {expected} -> {actual}).");
 
         long? total = response.StatusCode switch
         {
