@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -20,7 +19,7 @@ public class PrecompileCachedCodeInfoRepository(
     IWorldState worldState,
     IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
-    PreBlockCaches? precompileCaches) : ICodeInfoRepository
+    PrecompileCaches? precompileCaches) : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _cachedPrecompile = precompileCaches is null
         ? precompileProvider.GetPrecompiles()
@@ -53,23 +52,21 @@ public class PrecompileCachedCodeInfoRepository(
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
-        PreBlockCaches caches)
+        PrecompileCaches caches)
     {
         IPrecompile precompile = originalPrecompile.Value.Precompile!;
 
-        return !precompile.SupportsCaching
+        return !precompile.SupportsCaching || !caches.TryGetPartition(originalPrecompile.Key.Value, out PrecompileCaches.Partition? partition)
             ? originalPrecompile.Value
-            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, caches.PrecompileCache, caches.SurvivingPrecompileCache));
+            : new CodeInfo(new CachedPrecompile(originalPrecompile.Key.Value, precompile, partition, caches.SurvivingCache));
     }
 
     private class CachedPrecompile(
         Address address,
         IPrecompile precompile,
-        ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> blockCache,
-        ClockCache<PreBlockCaches.PrecompileCacheKey, Result<byte[]>> survivingCache) : IPrecompile
+        PrecompileCaches.Partition blockCache,
+        ClockCache<PrecompileCaches.Key, Result<byte[]>> survivingCache) : IPrecompile
     {
-        private const int MaxSurvivingEntryBytes = 2048;
-
         public ulong BaseGasCost(IReleaseSpec releaseSpec) => precompile.BaseGasCost(releaseSpec);
 
         public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => precompile.DataGasCost(inputData, releaseSpec);
@@ -77,8 +74,8 @@ public class PrecompileCachedCodeInfoRepository(
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
-            PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput, releaseSpec);
-            if (blockCache.TryGetValue(key, out Result<byte[]> result))
+            PrecompileCaches.Key key = new(address, effectiveInput, releaseSpec);
+            if (blockCache.TryGet(key, out Result<byte[]> result))
             {
                 return result;
             }
@@ -95,13 +92,13 @@ public class PrecompileCachedCodeInfoRepository(
             if (result is { IsError: true, Error: Errors.InvalidInputLength })
                 return result;
 
-            // we need to rebuild the key with data copy as the data can be changed by VM processing
-            // effective-input bounds are expected to remain the same
-            key = new(address, effectiveInput.ToArray(), releaseSpec);
-            blockCache.TryAdd(key, result);
-            if (effectiveInput.Length + (result.Data?.Length ?? 0) <= MaxSurvivingEntryBytes)
+            int entryBytes = effectiveInput.Length + (result.Data?.Length ?? 0);
+            bool storedInBlockTier = blockCache.TryAdd(key, result, entryBytes, out PrecompileCaches.Key storedKey);
+
+            if (entryBytes <= PrecompileCaches.MaxSurvivingEntryBytes)
             {
-                survivingCache.Set(key, result);
+                // The key must own its data, as the VM may change the input buffer; reuse the block tier's copy.
+                survivingCache.Set(storedInBlockTier ? storedKey : key.WithCopiedData(), result);
             }
 
             return result;
