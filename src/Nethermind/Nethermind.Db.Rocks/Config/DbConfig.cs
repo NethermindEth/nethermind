@@ -41,7 +41,11 @@ public class DbConfig : IDbConfig
         // Increase it to reduce stalls under heavy compaction.
         "max_compaction_bytes=4000000000;" +
 
-        "compression=kSnappyCompression;" +
+        // LZ4 over Snappy: same ratio class, but markedly cheaper both ways. Profiling
+        // showed Snappy at ~47% of compaction-thread CPU on fusaka block processing and
+        // ~60% on the eth_call corpus - all of it from the databases that inherit this
+        // default, since the state and flat databases already select LZ4 below.
+        "compression=kLZ4Compression;" +
         "optimize_filters_for_hits=true;" +
         "advise_random_on_open=true;" +
 
