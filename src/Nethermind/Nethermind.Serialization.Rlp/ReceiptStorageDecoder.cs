@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using System;
 using System.Collections.Generic;
@@ -195,7 +196,7 @@ namespace Nethermind.Serialization.Rlp
         private static TxFrameReceipt[] DecodeFrameReceipts(ref RlpReader decoderContext)
         {
             int framesEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-            List<TxFrameReceipt> frameReceipts = [];
+            using ArrayPoolListRef<TxFrameReceipt> frameReceipts = new(Eip8141Constants.MaxFrames);
             while (decoderContext.Position < framesEnd)
             {
                 int frameEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
@@ -203,7 +204,7 @@ namespace Nethermind.Serialization.Rlp
                 ulong gasUsed = decoderContext.DecodeULong();
 
                 int logsEnd = decoderContext.ReadSequenceLength() + decoderContext.Position;
-                List<LogEntry> frameLogs = [];
+                using ArrayPoolListRef<LogEntry> frameLogs = new(4);
                 while (decoderContext.Position < logsEnd)
                 {
                     frameLogs.Add(Rlp.Decode<LogEntry>(ref decoderContext, RlpBehaviors.AllowExtraBytes));

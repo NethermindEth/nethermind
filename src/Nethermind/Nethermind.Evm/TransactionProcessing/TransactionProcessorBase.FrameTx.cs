@@ -524,17 +524,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameReceiptTracer.ReportFrameTxReceipt(payer, frameReceipts);
             }
 
-            // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
-            // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
-            LogEntry[] txLogs = TxFrameReceipt.ConcatLogs(frameReceipts);
             GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, spentGas);
             if (postTxReverted)
             {
+                // The failed receipt rebuilds the log set from the frame receipts reported above.
                 tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");
             }
             else
             {
-                tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], txLogs);
+                // Derive the tx log set from the per-frame receipts rather than maintaining a parallel
+                // union, so the two can't diverge: an unrolled batch clears its frames' logs above.
+                tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, in gasConsumed, [], TxFrameReceipt.ConcatLogs(frameReceipts));
             }
         }
 
