@@ -20,6 +20,18 @@ public static class Eip8037BlockGasInclusionCheck
         ulong cumulativeBlockState,
         ulong txGas)
     {
+        ulong worstCaseExecution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
+        return Validate(blockGasLimit, cumulativeBlockExecution, cumulativeBlockState, worstCaseExecution, txGas);
+    }
+
+    /// <summary>Validates a frame transaction's exact per-dimension block reservations against the remaining execution and state capacity (EIP-8141).</summary>
+    public static Outcome Validate(
+        ulong blockGasLimit,
+        ulong cumulativeBlockExecution,
+        ulong cumulativeBlockState,
+        ulong executionReservation,
+        ulong stateReservation)
+    {
         // A cumulative dimension that already exceeded the block limit must reject — silent saturation
         // would otherwise let the worst-case check pass and admit a tx that block-end validation rejects.
         if (cumulativeBlockExecution > blockGasLimit) return Outcome.ExecutionDimensionExceeded;
@@ -28,13 +40,10 @@ public static class Eip8037BlockGasInclusionCheck
         ulong executionAvailable = blockGasLimit - cumulativeBlockExecution;
         ulong stateAvailable = blockGasLimit - cumulativeBlockState;
 
-        // EIP-8037: reserve the full gas limit in each dimension (no intrinsic subtraction). Only the
-        // execution dimension is bounded by the EIP-7825 per-tx cap; state work can exceed it via the reservoir.
-        ulong worstCaseExecution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
-        if (worstCaseExecution > executionAvailable)
+        if (executionReservation > executionAvailable)
             return Outcome.ExecutionDimensionExceeded;
 
-        if (txGas > stateAvailable)
+        if (stateReservation > stateAvailable)
             return Outcome.StateDimensionExceeded;
 
         return Outcome.Ok;

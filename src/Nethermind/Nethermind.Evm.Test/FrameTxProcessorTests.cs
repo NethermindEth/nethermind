@@ -53,7 +53,8 @@ public class FrameTxProcessorTests
     private static readonly Address Beneficiary = TestItem.AddressE;
 
     // The gas leg of max_cost (TXPARAM 0x06) for a SelfVerify + one DEFAULT frame at max fee 1, blob-free.
-    private const ulong BlobFreeMaxCost = 415_950;
+    private const ulong DefaultFrameStateGasLimit = 200_000;
+    private const ulong BlobFreeMaxCost = 612_950;
 
     [SetUp]
     public void Setup()
@@ -448,12 +449,12 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x03, 1UL, TestName = "Execute_TxParam_MaxPriorityFee")]
     [TestCase((byte)0x04, 1UL, TestName = "Execute_TxParam_MaxFee")]
     [TestCase((byte)0x05, 0UL, TestName = "Execute_TxParam_MaxBlobFee")]
-    // Max cost = sum(frame gas) 400000 + intrinsic 15000 + per-frame 475×2 (no calldata/sig).
     [TestCase((byte)0x06, BlobFreeMaxCost, TestName = "Execute_TxParam_MaxCost")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_TxParam_BlobHashCount")]
     [TestCase((byte)0x09, 2UL, TestName = "Execute_TxParam_FrameCount")]
     [TestCase((byte)0x0A, 1UL, TestName = "Execute_TxParam_CurrentFrameIndex")]
     [TestCase((byte)0x0B, 0UL, TestName = "Execute_TxParam_SignatureCount")]
+    [TestCase((byte)0x0C, DefaultFrameStateGasLimit, TestName = "Execute_TxParam_StateGasLeft")]
     public void Execute_TxParamIntrospection_ExposesTransactionField(byte param, ulong expected)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -506,6 +507,7 @@ public class FrameTxProcessorTests
     [TestCase((byte)0x06, 3UL, TestName = "Execute_FrameParam_AllowedScope")]
     [TestCase((byte)0x07, 0UL, TestName = "Execute_FrameParam_AtomicBatch")]
     [TestCase((byte)0x08, 0UL, TestName = "Execute_FrameParam_Value")]
+    [TestCase((byte)0x09, 0UL, TestName = "Execute_FrameParam_StateGasLimit")]
     public void Execute_FrameParamIntrospection_ReadsCompletedFrame(byte param, ulong expected)
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
@@ -519,6 +521,52 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         AssertStorage(Observer, 0, (UInt256)expected);
+    }
+
+    [Test]
+    public void Execute_FrameParam_StateGasLimit_ReadsDeclaredStateBudget()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(0x09).PushData(1).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            new TxFrame(TxFrame.ModeDefault, 0, Observer, 200_000, 150_000, UInt256.Zero, default));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        AssertStorage(Observer, 0, (UInt256)150_000);
+    }
+
+    [TestCase((byte)0x0A, TestName = "Execute_FrameParam_ExecutionGasUsed")]
+    [TestCase((byte)0x0B, TestName = "Execute_FrameParam_StateGasUsed")]
+    public void Execute_FrameParamGasUsed_SplitsTheCompletedFramesDimensions(byte param)
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(param).PushData(1).Op(Instruction.FRAMEPARAM).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(TxFrame.ModeDefault, target: Recipient),
+            Frame(TxFrame.ModeDefault, target: Observer));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        UInt256 observed = new(_stateProvider.Get(new StorageCell(Observer, UInt256.Zero)), isBigEndian: true);
+        UInt256 stateGasUsed = (UInt256)(ulong)GasCostOf.SSetState;
+        if (param == 0x0B)
+        {
+            Assert.That(observed, Is.EqualTo(stateGasUsed), "the fresh-slot write lands in the state dimension");
+        }
+        else
+        {
+            Assert.That(observed, Is.GreaterThan(UInt256.Zero), "the writing frame spent execution gas too");
+            Assert.That(observed, Is.Not.EqualTo(stateGasUsed), "the execution dimension excludes the state charge");
+        }
     }
 
     [Test]
@@ -609,19 +657,18 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_SigParamCopy_UsesMemOffsetDataOffsetLengthOrder()
+    public void Execute_SigDataCopy_UsesMemOffsetDataOffsetLengthOrder()
     {
         // signature bytes[i] == i; copy 8 bytes from dataOffset 4 into memOffset 0, then MLOAD(0).
-        // Operand order (top to bottom) is memOffset, dataOffset, length — matching CALLDATACOPY and
-        // FRAMEDATACOPY. Asymmetric operands catch a reversed pop order.
+        // Operand order (top to bottom) is memOffset, dataOffset, length, signatureIndex — matching
+        // CALLDATACOPY. Asymmetric operands catch a reversed pop order.
         byte[] signatureBytes = new byte[32];
         for (int i = 0; i < signatureBytes.Length; i++) signatureBytes[i] = (byte)i;
 
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(8).PushData(4).PushData(0)   // length, dataOffset, memOffset (deepest to top)
-            .PushData(0x04).PushData(0)            // param (copy form), signatureIndex on top
-            .Op(Instruction.SIGPARAM)
+            .PushData(0).PushData(8).PushData(4).PushData(0)
+            .Op(Instruction.SIGDATACOPY)
             .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
@@ -1181,12 +1228,14 @@ public class FrameTxProcessorTests
             Frame(TxFrame.ModePostTx, target: Recipient));
 
         UInt256 balanceBefore = _stateProvider.GetBalance(Sender);
-        CallOutputTracer tracer = new();
+        FrameReceiptTracer tracer = new();
         TransactionResult result = Process(tx, tracer: tracer);
 
         Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert must not invalidate the transaction");
         AssertStorage(Observer, 0, assertionFails ? UInt256.Zero : UInt256.One,
             "the execution body is kept exactly when the assertion holds");
+        Assert.That(tracer.FrameReceipts![1].StateGasUsed,
+            Is.EqualTo(assertionFails ? 0UL : (ulong)GasCostOf.SSetState));
         Assert.That(_stateProvider.GetBalance(Sender), Is.LessThan(balanceBefore), "the payer pays for what ran");
         return tracer.StatusCode;
     }
@@ -1387,6 +1436,47 @@ public class FrameTxProcessorTests
         {
             Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.APPROVE)), "the validation prefix is traced");
             Assert.That(entries, Has.Some.Property(nameof(GethTxTraceEntry.Opcode)).EqualTo(nameof(Instruction.SSTORE)), "the execution frame is traced");
+        }
+    }
+
+    [TestCase((ulong)GasCostOf.SSetState, TxFrameReceipt.StatusFailure, 0UL, 0UL)]
+    [TestCase((ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState), TxFrameReceipt.StatusSuccess, 1UL, (ulong)(GasCostOf.SSetState + GasCostOf.NewAccountState))]
+    public void Execute_PaymentApprovalChargesSenderCreationToTheApprovingFrame(
+        ulong stateGasLimit,
+        byte expectedStatus,
+        ulong expectedStorage,
+        ulong expectedStateGasUsed)
+    {
+        Address sponsorA = TestItem.AddressD;
+        Address sponsorB = TestItem.AddressF;
+        DeployContract(sponsorA,
+            Prepare.EvmCode
+                .PushData(1).PushData(0).Op(Instruction.SSTORE)
+                .PushData(TxFrame.ApprovePayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done,
+            1.Ether);
+        DeployContract(sponsorB, ApproveCode(TxFrame.ApprovePayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsorA, executionGasLimit: 200_000, stateGasLimit, UInt256.Zero, default),
+            new TxFrame(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsorB, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyA, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, vrs)];
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(expectedStatus));
+            Assert.That(tracer.FrameReceipts[1].StateGasUsed, Is.EqualTo(expectedStateGasUsed));
+            AssertStorage(sponsorA, 0, (UInt256)expectedStorage);
         }
     }
 
@@ -1596,8 +1686,10 @@ public class FrameTxProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
-            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(frame.GasLimit),
-                "the halt consumes the frame's whole gas limit whatever its designation access cost");
+            Assert.That(tracer.FrameReceipts[1].GasUsed, Is.EqualTo(frame.ExecutionGasLimit),
+                "the halt consumes the frame's whole execution limit whatever its designation access cost");
+            Assert.That(tracer.FrameReceipts[1].StateGasUsed, Is.Zero,
+                "a halted frame commits no state, so it owes no state gas");
         }
     }
 
@@ -2147,7 +2239,7 @@ public class FrameTxProcessorTests
         _stateProvider.IncrementNonce(Sender);
         _stateProvider.Commit(Spec);
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(0x0C).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0x11).Op(Instruction.TXPARAM).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
 
         Transaction tx = FrameTx(nonce: 1, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
@@ -2381,8 +2473,8 @@ public class FrameTxProcessorTests
     private static TxFrame SelfVerifyFrame() =>
         new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
-    private static TxFrame Frame(byte mode, byte flags = 0, Address? target = null, UInt256 value = default, byte[]? data = null) =>
-        new(mode, flags, target, gasLimit: 200_000, value, data ?? Array.Empty<byte>());
+    private static TxFrame Frame(byte mode, byte flags = 0, Address? target = null, UInt256 value = default, byte[]? data = null, ulong stateGasLimit = DefaultFrameStateGasLimit) =>
+        new(mode, flags, target, executionGasLimit: 200_000, stateGasLimit, value, data ?? Array.Empty<byte>());
 
     private static Transaction FrameTx(ulong nonce, params TxFrame[] frames) =>
         new()

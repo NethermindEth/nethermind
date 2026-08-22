@@ -206,6 +206,16 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
+        if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, releaseSpec, out ulong executionReservation, out _))
+        {
+            return FrameTxValidation.FrameGasOverflow;
+        }
+
+        if (releaseSpec.IsEip8037Enabled && executionReservation > Eip7825Constants.DefaultTxGasLimitCap)
+        {
+            return FrameTxValidation.FrameExecutionGasExceedsCap(executionReservation, Eip7825Constants.DefaultTxGasLimitCap);
+        }
+
         // EIP-7594: a blob-carrying frame tx is bound by the same per-tx blob-count limit and
         // versioned-hash version byte as a type-3 blob tx.
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
