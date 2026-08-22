@@ -115,7 +115,10 @@ internal sealed class FlatSparseTrieSession : IDisposable
         _rootWorker = rootWorker;
         _rootHash = anchorStateRoot;
         _retentionEnabled = retentionEnabled;
-        _concurrentRootEnabled = retentionEnabled && SparseTrieRetention.ConcurrentRootEnabled;
+        // The provider decides whether to hand out a root worker; the session follows what it was
+        // given rather than re-reading the global switch, so a caller can drive the streamed path
+        // (tests, experiments) independently of the default.
+        _concurrentRootEnabled = retentionEnabled && rootWorker is not null;
         _readerContext = checkedOut?.ReaderContext ?? new FlatTrieNodeReaderContext(bundle);
         _readerContext.Rebind(bundle);
         if (_concurrentRootEnabled)

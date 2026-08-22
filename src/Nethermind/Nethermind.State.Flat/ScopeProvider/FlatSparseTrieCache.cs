@@ -85,8 +85,11 @@ internal static class SparseTrieRetention
     public static bool Enabled { get; } =
         Environment.GetEnvironmentVariable("NETHERMIND_SPARSE_TRIE_RETENTION") != "0";
 
+    // Off by default: streaming committed values to the single root worker makes the block thread
+    // wait for it at the commit barrier, which costs more than the overlap saves (fusaka 1k, flat:
+    // -20.7% AVG with it off before the warm-up contention fix, -3.4% after). Opt in to measure.
     public static bool ConcurrentRootEnabled { get; } =
-        Environment.GetEnvironmentVariable("NETHERMIND_SPARSE_TRIE_CONCURRENT_ROOT") != "0";
+        Environment.GetEnvironmentVariable("NETHERMIND_SPARSE_TRIE_CONCURRENT_ROOT") == "1";
 
     public static ulong GetSparseBudget(ulong totalBudget) => totalBudget / SparseBudgetDivisor;
 
