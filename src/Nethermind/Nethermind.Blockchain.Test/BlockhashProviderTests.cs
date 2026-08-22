@@ -98,7 +98,7 @@ public class BlockhashProviderTests
     private static BlockhashProvider CreateBlockHashProvider(IHeaderFinder headerFinder, IReleaseSpec spec)
     {
         (IWorldState worldState, Hash256 _) = CreateWorldState();
-        BlockhashProvider provider = new(new BlockhashCache(headerFinder, LimboLogs.Instance), worldState, LimboLogs.Instance);
+        BlockhashProvider provider = new(new BlockhashCache(headerFinder, LimboLogs.Instance), LimboLogs.Instance);
         return provider;
     }
 
@@ -283,7 +283,7 @@ public class BlockhashProviderTests
         CustomSpecProvider specProvider = new(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
-        BlockhashProvider provider = new(new BlockhashCache(blockTreeBuilder.HeaderStore, LimboLogs.Instance), worldState, LimboLogs.Instance);
+        BlockhashProvider provider = new(new BlockhashCache(blockTreeBuilder.HeaderStore, LimboLogs.Instance), LimboLogs.Instance);
         BlockhashStore store = new(worldState);
 
         using IDisposable _ = worldState.BeginScope(current.Header);
@@ -307,9 +307,7 @@ public class BlockhashProviderTests
     private static void AssertGenesisHash(IReleaseSpec spec, BlockhashProvider provider, BlockHeader currentHeader, Hash256? genesisHash)
     {
         Hash256? result = provider.GetBlockhash(currentHeader, 0, spec);
-        Assert.That(result, (spec.IsEip7709Enabled && currentHeader.Number > Eip2935Constants.RingBufferSize) || currentHeader.Number > 256
-                ? Is.Null
-                : Is.EqualTo(genesisHash));
+        Assert.That(result, currentHeader.Number > BlockhashProvider.MaxDepth ? Is.Null : Is.EqualTo(genesisHash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -341,7 +339,7 @@ public class BlockhashProviderTests
         // 2. Store parent hash with leading zeros
         store.ApplyBlockhashStateChanges(current.Header, specProvider.GetSpec(current.Header));
         // 3. Try to retrieve the parent hash from the state
-        Hash256? result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1, specProvider.GetSpec(current.Header));
+        Hash256? result = ReadRingBuffer(worldState, current.Header.Number - 1, specProvider.GetSpec(current.Header));
         Assert.That(result, Is.EqualTo(current.Header.ParentHash));
     }
 
@@ -428,16 +426,19 @@ public class BlockhashProviderTests
         // At block 150 with buffer size 100, only blocks [50, 149] should be retrievable
         for (ulong blockNum = 1ul; blockNum < (chainLength - customRingBufferSize); blockNum++)
         {
-            Hash256? result = store.GetBlockHashFromState(current.Header, blockNum, customSpec);
+            BlockHeader? evictedHeader = tree.FindHeader(blockNum, BlockTreeLookupOptions.None);
+            Hash256? result = ReadRingBuffer(worldState, blockNum, customSpec);
 
-            Assert.That(result, Is.Null,
+            // The slot has been overwritten by a newer block that wraps onto it; with the default 8,191 buffer it would
+            // still hold this block's own hash.
+            Assert.That(result, Is.Not.Null.And.Not.EqualTo(evictedHeader!.Hash),
                 $"Block {blockNum} should be outside custom ring buffer of size {customRingBufferSize} (proves custom size is used, not default 8191)");
         }
 
         for (ulong blockNum = chainLength - customRingBufferSize; blockNum < chainLength; blockNum++)
         {
             BlockHeader? expectedHeader = tree.FindHeader(blockNum, BlockTreeLookupOptions.None);
-            Hash256? result = store.GetBlockHashFromState(current.Header, blockNum, customSpec);
+            Hash256? result = ReadRingBuffer(worldState, blockNum, customSpec);
 
             Assert.That(result, Is.EqualTo(expectedHeader!.Hash),
                 $"Block {blockNum} should be retrievable within custom ring buffer of size {customRingBufferSize}");
@@ -478,5 +479,16 @@ public class BlockhashProviderTests
 
         Hash256? result = provider.GetBlockhash(head, expectedBlockNumber, Frontier.Instance);
         Assert.That(result, Is.EqualTo(expected.Hash));
+    }
+
+    /// <summary>
+    /// Reads a hash straight out of the EIP-2935 ring buffer, the way the <c>BLOCKHASH</c> opcode does under EIP-7709.
+    /// </summary>
+    private static Hash256? ReadRingBuffer(IWorldState worldState, ulong blockNumber, IReleaseSpec spec)
+    {
+        StorageCell cell = new(spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+            new UInt256(blockNumber % spec.Eip2935RingBufferSize));
+        ReadOnlySpan<byte> data = worldState.Get(cell);
+        return data.Length == 1 && data[0] == 0 ? null : Hash256.FromBytesWithPadding(data);
     }
 }

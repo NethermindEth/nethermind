@@ -4,25 +4,22 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.State;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
     public class BlockhashProvider(
         IBlockhashCache blockhashCache,
-        IWorldState worldState,
         ILogManager? logManager,
         IUnresolvedBlockhashPolicy? unresolvedBlockhashPolicy = null)
         : IBlockhashProvider
     {
         public const ulong MaxDepth = 256;
-        private readonly IBlockhashStore _blockhashStore = new BlockhashStore(worldState);
+        private readonly Lock _prefetchLock = new();
         private readonly ILogger _logger = logManager?.GetClassLogger<BlockhashProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IUnresolvedBlockhashPolicy _unresolvedBlockhashPolicy = unresolvedBlockhashPolicy ?? ThrowingUnresolvedBlockhashPolicy.Instance;
         private Hash256[]? _hashes;
@@ -30,11 +27,6 @@ namespace Nethermind.Blockchain
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
-            if (spec.IsBlockHashInStateAvailable)
-            {
-                return _blockhashStore.GetBlockHashFromState(currentBlock, number, spec);
-            }
-
             ulong depth = currentBlock.Number - number;
             if (depth == 0 || depth > MaxDepth)
             {
@@ -69,7 +61,7 @@ namespace Nethermind.Blockchain
             // If the cancellation was requested it means block processing finished before prefetching is done
             // This means we don't want to set hashes, as next block might already be prefetching
             // This allows us to avoid await on Prefetch in BranchProcessor
-            lock (_blockhashStore)
+            lock (_prefetchLock)
             {
                 if (!token.IsCancellationRequested && prefetchVersion == Interlocked.Read(ref _prefetchVersion))
                 {
