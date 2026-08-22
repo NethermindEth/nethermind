@@ -24,6 +24,7 @@ public static class SafeArrayPool<T>
     private static readonly SingleThreadedPow2Pool Pool = new();
 
     /// <summary>Gets the shared zkVM array pool.</summary>
+    /// <remarks>The concrete return type allows the zkVM AOT compiler to devirtualize pool operations.</remarks>
     public static SingleThreadedPow2Pool Shared => Pool;
 
     internal static T[] Rent(int minimumLength, out bool isFresh) => Pool.Rent(minimumLength, out isFresh);
@@ -39,6 +40,21 @@ public static class SafeArrayPool<T>
 
         public override T[] Rent(int minimumLength) => Rent(minimumLength, out _);
 
+        /// <summary>Rents an array and reports whether its elements are known to be default-initialized.</summary>
+        /// <param name="minimumLength">The minimum length of the requested array.</param>
+        /// <param name="isFresh">
+        /// <see langword="true"/> when the array cannot contain data from a previous renter;
+        /// otherwise, <see langword="false"/>.
+        /// </param>
+        /// <returns>An array whose length is at least <paramref name="minimumLength"/>.</returns>
+        /// <remarks>
+        /// A non-fresh array has arbitrary contents that callers must clear before exposing unwritten elements.
+        /// A zero-length request returns <see cref="Array.Empty{T}"/> with <paramref name="isFresh"/> set to
+        /// <see langword="true"/> because the singleton exposes no elements.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="minimumLength"/> is negative.
+        /// </exception>
         public T[] Rent(int minimumLength, out bool isFresh)
         {
             if (minimumLength == 0)

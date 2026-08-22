@@ -559,6 +559,49 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         recycled.Dispose();
     }
 
+    [Test]
+    public void CopyAfterGas_after_dispose_treats_reused_memory_as_uninitialized()
+    {
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
+        const int memorySize = 4 * 1024;
+        byte[] dirtyBytes = new byte[memorySize];
+        dirtyBytes.AsSpan().Fill(0xa7);
+        UInt256 zero = UInt256.Zero;
+        EvmPooledMemory memory = new();
+
+        try
+        {
+            Assert.That(memory.TryLoadSpan(in zero, (UInt256)memorySize, out _), Is.True);
+            byte[]? firstBackingMemory = GetBackingMemory(ref memory);
+            Assert.That(firstBackingMemory, Is.Not.Null);
+            memory.Dispose();
+
+            EvmPooledMemory dirty = new();
+            try
+            {
+                Assert.That(dirty.TrySave(in zero, dirtyBytes), Is.True);
+                Assert.That(GetBackingMemory(ref dirty), Is.SameAs(firstBackingMemory));
+            }
+            finally
+            {
+                dirty.Dispose();
+            }
+
+            memory.CopyAfterGas(in zero, in zero, EvmPooledMemory.WordSize);
+
+            byte[] actual = ReadVisibleMemory(ref memory);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetBackingMemory(ref memory), Is.SameAs(firstBackingMemory));
+                Assert.That(actual.AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     [TestCase(false, 0)]
     [TestCase(false, 1000)]
     [TestCase(false, 4095)]
@@ -569,7 +612,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [TestCase(true, 5000)]
     public void StoreAfterGas_matches_independent_model_on_dirty_reused_buffer(bool storeByte, int offset)
     {
-        PrimeDirtyBuffer();
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
 
         int length = storeByte ? 1 : EvmPooledMemory.WordSize;
         byte[] expected = new byte[AlignToWord(offset + length)];
@@ -652,7 +695,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         ulong sourceOffset,
         int length)
     {
-        PrimeDirtyBuffer();
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         byte[] initial = CreatePattern(initialLength, 0x11);
         byte[] source = CreatePattern(sourceLength, 0x61);
         int expectedSize = AlignToWord(Math.Max(initialLength, destinationOffset + length));
@@ -696,7 +739,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         const int destinationOffset = 5000;
         const int sourceLength = 6000;
-        PrimeDirtyBuffer();
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         byte[] initial = CreatePattern(64, 0x21);
         byte[] source = CreatePattern(sourceLength, 0x81);
         byte[] expected = new byte[AlignToWord(destinationOffset + sourceLength)];
@@ -736,7 +779,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         int length,
         bool materializeSourceFirst)
     {
-        PrimeDirtyBuffer();
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         byte[] initial = CreatePattern(initialLength, 0x31);
         int expectedSize = AlignToWord(Math.Max(destinationOffset + length, sourceOffset + length));
         byte[] before = new byte[expectedSize];
@@ -771,8 +814,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
-    private static void PrimeDirtyBuffer()
+    private static ThreadCacheReservation PrimeDirtyBuffer()
     {
+        ThreadCacheReservation cacheReservation = new();
         const int dirtySize = 32 * 1024;
         byte[] dirtyBytes = new byte[dirtySize];
         dirtyBytes.AsSpan().Fill(0xa7);
@@ -780,6 +824,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         try
         {
             Assert.That(dirty.TrySave(UInt256.Zero, dirtyBytes), Is.True);
+            return cacheReservation;
+        }
+        catch
+        {
+            cacheReservation.Dispose();
+            throw;
         }
         finally
         {
@@ -791,7 +841,39 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         byte[]? backingMemory = GetBackingMemory(ref memory);
         Assert.That(backingMemory, Is.Not.Null);
+        Assert.That(backingMemory!.Length, Is.GreaterThan(16 * 1024), "negative control requires a sufficiently large pooled buffer");
         Assert.That(backingMemory![16 * 1024], Is.EqualTo(0xa7), "negative control requires a stale pooled tail");
+    }
+
+    private sealed class ThreadCacheReservation : IDisposable
+    {
+        private const int ThreadCacheSlots = 16;
+        private readonly EvmPooledMemory[] _rentals = new EvmPooledMemory[ThreadCacheSlots];
+
+        public ThreadCacheReservation()
+        {
+            try
+            {
+                UInt256 zero = UInt256.Zero;
+                for (int i = 0; i < _rentals.Length; i++)
+                {
+                    Assert.That(_rentals[i].TrySaveByte(in zero, 0), Is.True);
+                }
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+        }
+
+        public void Dispose()
+        {
+            for (int i = 0; i < _rentals.Length; i++)
+            {
+                _rentals[i].Dispose();
+            }
+        }
     }
 
     private static void WriteInitialMemory(ref EvmPooledMemory memory, byte[] initial)
