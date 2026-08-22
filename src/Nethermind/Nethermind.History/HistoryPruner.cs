@@ -372,6 +372,16 @@ public class HistoryPruner : IHistoryPruner
     private const ulong MinimumReclaimChunkBlocks = 100_000;
 
     /// <summary>
+    /// Heights the next chunk covers. The only way a pass sees an already-spent token is the scheduler running an
+    /// expired activity, which it does while block processing is active - and a chunk writes range tombstones and
+    /// unlinks the SST files under them. So such a pass takes a fraction of the usual step: enough that progress
+    /// cannot reach zero, not enough to sit in front of a block. Shared by both reclaim loops, which run back to
+    /// back on the same token, so a full step in either of them would undo the other's restraint.
+    /// </summary>
+    private static ulong ChunkStep(ulong reclaimed, CancellationToken cancellationToken) =>
+        reclaimed == 0 && cancellationToken.IsCancellationRequested ? MinimumReclaimChunkBlocks : ReclaimChunkBlocks;
+
+    /// <summary>
     /// Ceiling on entries examined per pass, not the thing that governs the rate: with a non-zero
     /// <c>PruningTimeoutSeconds</c> the token almost always ends the walk first. The index therefore settles at some
     /// stale fraction of the live set rather than at zero, and this bounds one pass rather than closing that gap.
@@ -401,16 +411,7 @@ public class HistoryPruner : IHistoryPruner
         {
             for (ulong from = start; from < limit;)
             {
-                // A pass whose budget was already spent on arrival still has to move, but it does not have to move a
-                // full chunk. The only way a pass sees a spent token is the scheduler running an expired activity,
-                // which it does while block processing is active - and a chunk now unlinks SST files as well as
-                // writing tombstones. So the first chunk of such a pass is a fraction of the usual one: enough that
-                // progress cannot reach zero, small enough not to sit in front of a block.
-                ulong step = reclaimed == 0 && cancellationToken.IsCancellationRequested
-                    ? MinimumReclaimChunkBlocks
-                    : ReclaimChunkBlocks;
-
-                ulong to = ulong.Min(from + step, limit);
+                ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
                 _blockTree.DeleteOldBlockRange(from, to);
                 _receiptStorage.RemoveReceiptsRange(from, to);
                 _blockAccessListStore.DeleteRange(from, to);
@@ -516,7 +517,7 @@ public class HistoryPruner : IHistoryPruner
         {
             for (ulong from = start; from < limit;)
             {
-                ulong to = ulong.Min(from + ReclaimChunkBlocks, limit);
+                ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
                 _blockAccessListStore.DeleteRange(from, to);
 
                 _balsDeletePointer = to;
