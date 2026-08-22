@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -27,6 +28,9 @@ public class ZeroNettyFrameMergerTests
         }
     }
 
+    /// <summary>Byte offset of the context id within a frame header: 3 size bytes, the RLP list prefix, the capability id.</summary>
+    private const int ContextIdOffsetInHeader = 5;
+
     private static IByteBuffer BuildFrames(int count)
     {
         TestFrameHelper frameBuilder = new();
@@ -37,6 +41,36 @@ public class ZeroNettyFrameMergerTests
 
         IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(totalLength + Frame.CalculatePadding(totalLength) + count * 16);
         frameBuilder.Encode(input, output);
+        return output;
+    }
+
+    private static IByteBuffer BuildFrame(byte[] payload, int contextId, int? totalPacketSize = null)
+    {
+        int paddingSize = Frame.CalculatePadding(payload.Length);
+        IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(Frame.HeaderSize + payload.Length + paddingSize);
+
+        output.WriteByte(payload.Length >> 16);
+        output.WriteByte(payload.Length >> 8);
+        output.WriteByte(payload.Length);
+
+        int headerContentLength = Rlp.LengthOf(0) + Rlp.LengthOf(contextId);
+        if (totalPacketSize.HasValue)
+        {
+            headerContentLength += Rlp.LengthOf(totalPacketSize.Value);
+        }
+
+        ByteBufferRlpWriter writer = new(output);
+        writer.StartSequence(headerContentLength);
+        writer.Encode(0);
+        writer.Encode(contextId);
+        if (totalPacketSize.HasValue)
+        {
+            writer.Encode(totalPacketSize.Value);
+        }
+
+        output.WriteZero(Frame.HeaderSize - output.WriterIndex);
+        output.WriteBytes(payload);
+        output.WriteZero(paddingSize);
         return output;
     }
 
@@ -183,31 +217,184 @@ public class ZeroNettyFrameMergerTests
     }
 
     [Test]
-    public void Throws_on_continuation_frame_with_no_in_progress_packet()
+    public void Throws_when_continuation_frame_exceeds_remaining_packet_size()
     {
-        ZeroFrameMergerTestWrapper wrapper = new();
+        using PooledBufferLeakDetector detector = new(message: "the in-progress packet buffer must be released, not just dropped");
+        ZeroFrameMergerTestWrapper wrapper = new(detector.Allocator);
 
-        using DisposableByteBuffer firstPacket = BuildFrames(3).AsDisposable();
-        ZeroPacket completed = null;
+        // Build a valid two-frame packet and then corrupt the continuation frame's size field.
+        using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
+
+        // Locate the second frame. First frame payload = Frame.DefaultMaxFrameSize (1024), padding = 0.
+        int firstFrameLength = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
+        int secondFrameOffset = firstFrameLength;
+
+        // The second frame originally has payload size 2. Tamper with its 3-byte size
+        // field to claim 100 payload bytes, which exceeds the remaining packet size.
+        const int tamperedSecondFrameSize = 100;
+        frames.SetByte(secondFrameOffset, tamperedSecondFrameSize >> 16);
+        frames.SetByte(secondFrameOffset + 1, tamperedSecondFrameSize >> 8);
+        frames.SetByte(secondFrameOffset + 2, tamperedSecondFrameSize);
+
+        using DisposableByteBuffer firstFrame = PooledByteBufferAllocator.Default.Buffer(firstFrameLength).AsDisposable();
+        firstFrame.WriteBytes(frames, frames.ReaderIndex, firstFrameLength);
+        ZeroPacket completed = wrapper.Decode(firstFrame);
+        Assert.That(completed, Is.Null, "first frame alone should not complete a packet");
+
+        int secondFrameLength = Frame.HeaderSize + tamperedSecondFrameSize + Frame.CalculatePadding(tamperedSecondFrameSize);
+        using DisposableByteBuffer continuationFrame = PooledByteBufferAllocator.Default.Buffer(secondFrameLength).AsDisposable();
+        continuationFrame.WriteBytes(frames, secondFrameOffset, Frame.HeaderSize);
+        continuationFrame.WriteZero(tamperedSecondFrameSize);
+        continuationFrame.WriteZero(Frame.CalculatePadding(tamperedSecondFrameSize));
+
+        Assert.That(() => wrapper.Decode(continuationFrame),
+            Throws.InstanceOf<CorruptedFrameException>(),
+            "continuation frame larger than remaining packet size must be rejected");
+
+        using DisposableByteBuffer recoveryInput = BuildFrames(1).AsDisposable();
+        ZeroPacket recovered = wrapper.Decode(recoveryInput);
         try
         {
-            completed = wrapper.Decode(firstPacket);
-            Assert.That(completed, Is.Not.Null);
-
-            using DisposableByteBuffer orphanSource = BuildFrames(3).AsDisposable();
-            const int firstFrameSize = Frame.HeaderSize + Frame.DefaultMaxFrameSize;
-            const int continuationFrameOffset = firstFrameSize;
-            using DisposableByteBuffer orphanFrame = PooledByteBufferAllocator.Default.Buffer(firstFrameSize).AsDisposable();
-            orphanFrame.WriteBytes(orphanSource, srcIndex: continuationFrameOffset, length: firstFrameSize);
-
-            Assert.That(() => wrapper.Decode(orphanFrame),
-                Throws.InstanceOf<CorruptedFrameException>(),
-                "continuation frame without an in-progress packet must be rejected");
+            Assert.That(recovered, Is.Not.Null, "merger must accept a fresh packet after recovery from the throw");
         }
         finally
         {
-            completed?.Release();
+            recovered?.Release();
         }
+    }
+
+    [TestCase(false, TestName = "Merges_normal_frame_with_context_id_on_fresh_connection")]
+    [TestCase(true, TestName = "Merges_normal_frame_reusing_completed_context_id")]
+    public void Merges_normal_frame_with_context_id_when_no_packet_is_in_progress(bool completeChunkedPacketFirst)
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        if (completeChunkedPacketFirst)
+        {
+            using DisposableByteBuffer chunkedFrames = BuildFrames(2).AsDisposable();
+            ZeroPacket completedPacket = wrapper.Decode(chunkedFrames);
+            try
+            {
+                Assert.That(completedPacket, Is.Not.Null);
+            }
+            finally
+            {
+                completedPacket?.Release();
+            }
+        }
+
+        using DisposableByteBuffer frame = BuildFrames(1).AsDisposable();
+
+        // The splitter emits [capability id, context id] = [0, 0] for a single frame; a non-zero context id with no
+        // total packet size is still a normal frame as long as no packet is open under it.
+        frame.SetByte(ContextIdOffsetInHeader, 1);
+
+        ZeroPacket packet = wrapper.Decode(frame);
+        try
+        {
+            Assert.That(packet, Is.Not.Null, "a frame carrying a context id must not be mistaken for a continuation");
+        }
+        finally
+        {
+            packet?.Release();
+        }
+    }
+
+    [Test]
+    public void Merges_chunked_packet_when_intermediate_frame_has_padding()
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        using DisposableByteBuffer firstFrame = BuildFrame([2, 0, 0, 0, 0], contextId: 1, totalPacketSize: 7).AsDisposable();
+        Assert.That(wrapper.Decode(firstFrame), Is.Null, "the first chunk must leave the packet open");
+
+        using DisposableByteBuffer finalFrame = BuildFrame([0, 0], contextId: 1).AsDisposable();
+        ZeroPacket packet = wrapper.Decode(finalFrame);
+        try
+        {
+            Assert.That(packet, Is.Not.Null);
+            Assert.That(packet.Content.ReadableBytes, Is.EqualTo(6));
+        }
+        finally
+        {
+            packet?.Release();
+        }
+    }
+
+    [Test]
+    public void Allocates_chunked_packet_buffer_incrementally()
+    {
+        using PooledBufferLeakDetector detector = new();
+        ZeroFrameMergerTestWrapper wrapper = new(detector.Allocator);
+        long usedBefore = detector.Allocator.Metric.UsedHeapMemory;
+
+        byte[] firstPayload = new byte[Frame.DefaultMaxFrameSize];
+        firstPayload[0] = 2;
+        using DisposableByteBuffer firstFrame = BuildFrame(firstPayload, contextId: 1, totalPacketSize: SnappyParameters.MaxSnappyLength).AsDisposable();
+
+        try
+        {
+            Assert.That(wrapper.Decode(firstFrame), Is.Null, "the first chunk must leave the packet open");
+
+            long allocatedBytes = detector.Allocator.Metric.UsedHeapMemory - usedBefore;
+            Assert.That(allocatedBytes, Is.LessThan(SnappyParameters.MaxSnappyLength / 2),
+                "a small first chunk must not eagerly allocate the entire declared packet size");
+        }
+        finally
+        {
+            wrapper.HandlerRemoved(Substitute.For<IChannelHandlerContext>());
+        }
+    }
+
+    [Test]
+    public void Throws_when_continuation_frame_carries_a_different_context_id()
+    {
+        using PooledBufferLeakDetector detector = new(message: "the in-progress packet buffer must be released, not just dropped");
+        ZeroFrameMergerTestWrapper wrapper = new(detector.Allocator);
+
+        using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
+
+        // Bumping the context id detaches the continuation frame from the packet opened by the frame above it.
+        const int continuationContextIdOffset = Frame.HeaderSize + Frame.DefaultMaxFrameSize + ContextIdOffsetInHeader;
+        frames.SetByte(continuationContextIdOffset, frames.GetByte(continuationContextIdOffset) + 1);
+
+        Assert.That(() => wrapper.Decode(frames),
+            Throws.InstanceOf<CorruptedFrameException>(),
+            "a frame from another context id must not be merged into the in-progress packet");
+    }
+
+    [Test]
+    [TestCaseSource(nameof(MalformedPacketTypePayloads))]
+    public void Throws_when_packet_type_prefix_is_invalid_or_exceeds_frame_size(byte[] payloadPrefix, int frameSize)
+    {
+        ZeroFrameMergerTestWrapper wrapper = new();
+
+        int paddingSize = Frame.CalculatePadding(frameSize);
+        using DisposableByteBuffer frame = PooledByteBufferAllocator.Default.Buffer(Frame.HeaderSize + frameSize + paddingSize).AsDisposable();
+
+        frame.WriteByte(frameSize >> 16);
+        frame.WriteByte(frameSize >> 8);
+        frame.WriteByte(frameSize);
+
+        frame.WriteByte(0xc2);
+        frame.WriteByte(0x80);
+        frame.WriteByte(0x80);
+        frame.WriteZero(Frame.HeaderSize - frame.WriterIndex);
+
+        frame.WriteBytes(payloadPrefix);
+        frame.WriteZero(frameSize - payloadPrefix.Length + paddingSize);
+
+        Assert.That(() => wrapper.Decode(frame),
+            Throws.InstanceOf<CorruptedFrameException>(),
+            "malformed packet type RLP must be rejected as corrupted frame");
+    }
+
+    private static IEnumerable<TestCaseData> MalformedPacketTypePayloads()
+    {
+        yield return new TestCaseData(new byte[] { 0x85, 0x01 }, 5).SetName("Packet_type_length_exceeds_frame_size");
+        yield return new TestCaseData(new byte[] { 0xb8, 0x38 }, 5).SetName("Packet_type_integer_length_exceeds_supported_width");
+        // 256 would otherwise be truncated to 0 and delivered as a Hello.
+        yield return new TestCaseData(new byte[] { 0x82, 0x01, 0x00 }, 5).SetName("Packet_type_value_does_not_fit_in_a_byte");
     }
 
     [Test]

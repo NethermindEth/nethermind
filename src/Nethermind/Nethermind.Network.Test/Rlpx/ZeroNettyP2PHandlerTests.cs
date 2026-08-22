@@ -1,37 +1,44 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 using Snappier;
-using System.Linq;
 
 namespace Nethermind.Network.Test.Rlpx;
 
 public class ZeroNettyP2PHandlerTests
 {
     [Test]
-    public void When_exception_is_thrown_send_disconnect_message()
+    [TestCaseSource(nameof(ExceptionDisconnectCases))]
+    public void When_exception_is_thrown_send_disconnect_message(Exception exception, DisconnectReason expectedReason)
     {
         ISession session = Substitute.For<ISession>();
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
 
-        handler.ExceptionCaught(channelHandlerContext, new Exception());
+        handler.ExceptionCaught(channelHandlerContext, exception);
 
-        session.Received().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        session.Received().InitiateDisconnect(expectedReason, Arg.Any<string>());
+    }
+
+    private static IEnumerable<TestCaseData> ExceptionDisconnectCases()
+    {
+        yield return new TestCaseData(new Exception(), DisconnectReason.Exception).SetName("Generic_exception_uses_generic_reason");
+        yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.BreachOfProtocol).SetName("Corrupted_frame_uses_protocol_breach_reason");
     }
 
     [Test]
@@ -46,23 +53,14 @@ public class ZeroNettyP2PHandlerTests
         await channelHandlerContext.DidNotReceive().DisconnectAsync();
     }
 
-
     [Test]
-    public void When_not_a_snappy_encoded_data_then_pass_data_directly()
+    [TestCaseSource(nameof(MalformedSnappyPayloads))]
+    public void When_malformed_snappy_data_then_throw_corrupted_frame(byte[] msg)
     {
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
         channelHandlerContext.Allocator.Returns(UnpooledByteBufferAllocator.Default);
 
-        byte[] msg = Bytes.FromHexString("0x10");
-
         ISession session = Substitute.For<ISession>();
-        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
-            .Do(c =>
-            {
-                ZeroPacket packet = (ZeroPacket)c[0];
-                Assert.That(packet.Content.ReadAllBytesAsArray(), Is.EqualTo(msg));
-            });
-
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
 
@@ -70,7 +68,60 @@ public class ZeroNettyP2PHandlerTests
         buff.WriteBytes(msg);
         ZeroPacket packet = new(buff);
 
-        handler.ChannelRead(channelHandlerContext, packet); // releases buffer
+        Assert.That(() => handler.ChannelRead(channelHandlerContext, packet), Throws.InstanceOf<CorruptedFrameException>());
+
+        session.DidNotReceive().ReceiveMessage(Arg.Any<ZeroPacket>());
+        Assert.That(packet.ReferenceCount, Is.Zero, "the inbound packet must be released even when decoding throws");
+    }
+
+    private static IEnumerable<TestCaseData> MalformedSnappyPayloads()
+    {
+        yield return new TestCaseData(new byte[] { 0x80 }).SetName("Invalid_length_varint");
+        yield return new TestCaseData(new byte[] { 0x01 }).SetName("Missing_literal_data");
+        // A frame sized exactly to its packet type prefix leaves no content bytes at all.
+        yield return new TestCaseData(Array.Empty<byte>()).SetName("Empty_payload");
+    }
+
+    [Test]
+    public void When_snappy_length_exceeds_signed_range_then_disconnect_before_allocating()
+    {
+        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        channelHandlerContext.Allocator.Returns(allocator);
+
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+
+        IByteBuffer content = Unpooled.WrappedBuffer([0xff, 0xff, 0xff, 0xff, 0x0f]);
+        ZeroPacket packet = new(content);
+
+        handler.ChannelRead(channelHandlerContext, packet);
+
+        session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
+        allocator.DidNotReceive().Buffer(Arg.Any<int>());
+        Assert.That(packet.ReferenceCount, Is.Zero, "the inbound packet must be released after disconnecting");
+    }
+
+    [Test]
+    public void When_snappy_length_cannot_be_represented_by_payload_then_throw_before_allocating()
+    {
+        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        channelHandlerContext.Allocator.Returns(allocator);
+
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+
+        IByteBuffer content = Unpooled.WrappedBuffer([0x80, 0x80, 0x80, 0x08]);
+        ZeroPacket packet = new(content);
+
+        Assert.That(() => handler.ChannelRead(channelHandlerContext, packet), Throws.InstanceOf<CorruptedFrameException>());
+
+        allocator.DidNotReceive().Buffer(Arg.Any<int>());
+        session.DidNotReceive().ReceiveMessage(Arg.Any<ZeroPacket>());
+        Assert.That(packet.ReferenceCount, Is.Zero, "the inbound packet must be released when validation throws");
     }
 
     [Test]
