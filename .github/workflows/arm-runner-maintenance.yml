@@ -52,6 +52,25 @@ jobs:
           docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
           docker volume prune -f || true
 
+      - name: Reap stale expb overlay mounts
+        shell: bash
+        run: |
+          set -uo pipefail
+          # A cancelled expb run never unmounts its snapshot overlay, so the next run's
+          # `mount -t overlay ... <work>/merged` fails with exit status 32 and the whole
+          # benchmark dies ~90s in. Nothing above reaps it: container, network and volume
+          # pruning all leave the mount in place (they report 0B reclaimed).
+          mapfile -t stale < <(awk '$3 == "overlay" && $2 ~ /expb-data\/work\/merged$/ { print $2 }' /proc/self/mounts)
+          if [[ "${#stale[@]}" -eq 0 ]]; then
+            echo "No stale expb overlay mounts."
+          else
+            for mp in "${stale[@]}"; do
+              # Lazy unmount: a leftover container may still hold a reference, and the mount
+              # only has to be gone by the time the next run mounts over the same path.
+              if umount -l "${mp}"; then echo "unmounted ${mp}"; else echo "::warning::failed to unmount ${mp}"; fi
+            done
+          fi
+
       - name: Prune docker caches and dangling images
         shell: bash
         env:
