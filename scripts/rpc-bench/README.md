@@ -19,12 +19,23 @@ snapshot set — Nethermind in the **flat** layout — so there `client`,
 and an image it would have to build is refused as well (that box's ~19G root disk
 dies under a build). `resolve` checks those limits against the selected runner.
 
-Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
-Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
-a non-Nethermind entry in `tool_config.clients`
-instead of those inputs. `start-node.sh` stays client-generic, so re-enabling
-geth/reth or a second layout is a matter of provisioning the snapshot set and
-widening those two guards.
+**Sweep mode** (`jsonbench-sweep`) resolves a snapshot set per client type, the
+same `<snapshot root>/<client>-<block>` layout the single-node path uses, so
+`tool_config.clients` may name `geth` and `reth` entries alongside Nethermind
+ones. `run-rpc-sweep.sh` checks every requested type's set exists before it
+starts a node, so a type the selected box cannot serve is one clear error rather
+than a per-client warning and a partly-empty matrix reported as success. As of
+2026-08 the amd64 box carries `nethermind-flat-25490000`,
+`nethermind-25490000`, `nethermind-flat-snapshot`, `geth-25490000` and
+`reth-25490000`; the arm64 box carries the Nethermind flat set only.
+
+Isolation is per client type too. reth's DB is a single large `mdbx.dat` whose
+first write forces overlayfs to copy the whole file up before the node opens, so
+reth runs `direct` (a read-write bind mount of its own set, which is not shared
+with expb); everything else stays on `overlay`. Across types the isolation
+therefore differs, so **never read a cross-type disk-read delta as a code
+difference** — within one type it is uniform, which is what a version comparison
+needs.
 
 ## Goals
 
@@ -164,8 +175,8 @@ the workflow's defensive-cleanup step).
 | Input | Meaning |
 |---|---|
 | `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
-| `client` | `nethermind` — the only client with a snapshot set on this runner. |
-| `reference_client` | `none` — cross-client comparison needs a second client's snapshot, which this runner does not carry. Compare two Nethermind builds with a `jsonbench-sweep` instead. |
+| `client` | `nethermind`, `geth` or `reth` — whichever has a snapshot set on the selected runner (arm64 serves Nethermind only). |
+| `reference_client` | Second client to compare against, or `none`. Needs that client's same-block set on the selected runner. For a perf A/B prefer two single-node runs or a `jsonbench-sweep`; a comparison run shares the box between both nodes, so it measures correctness rather than clean latency. |
 | `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
 | `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |

@@ -96,6 +96,8 @@ on:
           Tool config as JSON — empty is fine for defaults. Common recipes:
           (1) cross-client sweep: {"clients":"nethermind reth","rps_list":"50 100","duration":"60s"} —
           clients take an optional @image (nethermind@nethermindeth/nethermind:master reth@ghcr.io/paradigmxyz/reth:v2.2.0), run one at a time;
+          an entry may append +flag,flag to pass node flags to that arm alone, which is how one dispatch A/Bs a flag
+          against the same image; {ARM_SCRATCH} in a flag expands to an empty per-arm directory (wiped, not inherited);
           (2) PRIVATE corpus sweep (latency + response parity on every eth-call-corpus*.jsonl.gz found on the runner; call contents never reach logs/artifacts — see README "Private eth_call corpus"):
           {"eth_call_corpus":true,"clients":"nethermind reth","rps_list":"10 100","duration":"120s"} — first client is the parity baseline;
           (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
