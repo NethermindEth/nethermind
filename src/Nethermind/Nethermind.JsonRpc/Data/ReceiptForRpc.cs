@@ -97,6 +97,23 @@ namespace Nethermind.JsonRpc.Data
                 PostTransactionState = Root,
                 TxType = Type
             };
+
+            // EIP-8141: mirror the constructor so a frame receipt survives the round trip.
+            if (Type == TxType.FrameTx)
+            {
+                receipt.Payer = Payer;
+                TxFrameReceipt[] frameReceipts = (FrameReceipts ?? []).Select(static f => f.ToFrameReceipt()).ToArray();
+                receipt.FrameReceipts = frameReceipts;
+
+                // Frames are authoritative, as on the wire path: derive the dependent fields so a payload
+                // cannot leave Logs and the bloom contradicting the frame receipts on the same receipt.
+                if (frameReceipts.Length > 0)
+                {
+                    receipt.Logs = TxFrameReceipt.ConcatLogs(frameReceipts);
+                    receipt.StatusCode = TxFrameReceipt.AggregateStatus(frameReceipts);
+                }
+            }
+
             return receipt;
         }
     }

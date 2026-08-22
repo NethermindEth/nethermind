@@ -21,5 +21,9 @@ public class FrameReceiptForRpc
 
     public byte Status { get; set; }
     public ulong GasUsed { get; set; }
-    public LogEntry[] Logs { get; set; } = [];
+
+    /// <summary>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</summary>
+    public LogEntry[]? Logs { get; set; } = [];
+
+    public TxFrameReceipt ToFrameReceipt() => new(Status, GasUsed, Logs ?? []);
 }
