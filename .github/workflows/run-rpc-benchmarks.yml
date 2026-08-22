@@ -884,6 +884,7 @@ jobs:
         id: run-sweep
         if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
         env:
+          PERF: ${{ needs.resolve.outputs.perf }}
           NM_IMAGE: ${{ needs.resolve.outputs.image_ref }}
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}
