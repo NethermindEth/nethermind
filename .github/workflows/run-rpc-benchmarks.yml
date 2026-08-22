@@ -79,6 +79,18 @@ on:
           - tracing
           - timeline
         default: "false"
+      perf:
+        description: >-
+          Record a Linux perf profile of the node (nethermind only). perf samples on the host and
+          resolves managed frames from the runtime's perf map plus native frames from the container's
+          shared objects, so time inside the interpreter, the allocator, memory zeroing and the GC is
+          attributed instead of collapsing into dotTrace's single '[Native or optimized code]' node.
+          Ships perf.data and a folded profile readable with scripts/perf-report.sh. Independent of
+          dottrace; enabling both samples the node twice and perturbs latency, so use perf runs for
+          attribution and not for reported numbers.
+        required: false
+        type: boolean
+        default: false
       state_layout:
         description: State layout — picks the Nethermind DB snapshot and layout flags (expb convention); ignored for geth/reth
         required: true
@@ -138,6 +150,7 @@ jobs:
       reference_client: ${{ steps.resolve.outputs.reference_client }}
       comparison: ${{ steps.resolve.outputs.comparison }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      perf: ${{ steps.resolve.outputs.perf }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       image_mode: ${{ steps.resolve.outputs.image_mode }}
       image_ref: ${{ steps.resolve.outputs.image_ref }}
@@ -176,6 +189,7 @@ jobs:
           IN_SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
           IN_DOCKER_IMAGE: ${{ inputs.docker_image }}
           IN_DOTTRACE: ${{ inputs.dottrace }}
+          IN_PERF: ${{ inputs.perf }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
           IN_ARCH: ${{ inputs.arch }}
           IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
@@ -192,6 +206,7 @@ jobs:
             snapshot_block="${IN_SNAPSHOT_BLOCK:-}"
             docker_image="${IN_DOCKER_IMAGE:-}"
             dottrace="${IN_DOTTRACE:-false}"
+            perf="${IN_PERF:-false}"
             state_layout="${IN_STATE_LAYOUT:-flat}"
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
@@ -508,6 +523,7 @@ jobs:
             echo "reference_client=${reference_client}"
             echo "comparison=${comparison}"
             echo "dottrace=${dottrace}"
+            echo "perf=${perf:-false}"
             echo "dottrace_mode=${dottrace_mode}"
             echo "image_mode=${image_mode}"
             echo "image_ref=${image_ref}"
@@ -719,6 +735,7 @@ jobs:
           # Same raised cap as corpus sweep cells, so both dispatch modes agree (empty = script default).
           RPC_GAS_CAP: ${{ needs.resolve.outputs.eth_call_corpus == 'true' && '1000000000000' || '' }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           NODE_CPUSET: ${{ needs.resolve.outputs.node_cpuset }}
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
@@ -741,6 +758,7 @@ jobs:
           ADDITIONAL_FLAGS: ${{ needs.resolve.outputs.ref_additional_flags }}
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
           DOTTRACE: "false"
+          PERF: "false"
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
 
@@ -866,6 +884,7 @@ jobs:
         id: run-sweep
         if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
         env:
+          PERF: ${{ needs.resolve.outputs.perf }}
           NM_IMAGE: ${{ needs.resolve.outputs.image_ref }}
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           JSONRPC_MODULES: ${{ needs.resolve.outputs.jsonrpc_modules }}
@@ -948,12 +967,27 @@ jobs:
             echo "No dotTrace snapshots found under ${DIAG_DIR}/dottrace."
           fi
 
+      - name: Collect perf profile
+        if: always() && needs.resolve.outputs.perf == 'true'
+        shell: bash
+        env:
+          ARCHIVE: ${{ runner.temp }}/perf-rpcbench.zip
+        run: |
+          set -euo pipefail
+          if [[ -d "${DIAG_DIR}/perf" ]] && [[ -n "$(find "${DIAG_DIR}/perf" -type f 2>/dev/null)" ]]; then
+            ( cd "${DIAG_DIR}" && zip -9r "${ARCHIVE}" perf )
+            echo "Archived perf profile to ${ARCHIVE}"
+          else
+            echo "No perf profile found under ${DIAG_DIR}/perf."
+          fi
+
       - name: Scan node logs for errors
         id: scan
         if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
         env:
           CLIENT: ${{ needs.resolve.outputs.client }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
           # Corpus runs print match COUNTS only — log lines could quote private call data.
           ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
         shell: bash
@@ -1104,6 +1138,15 @@ jobs:
         with:
           name: dottrace-rpcbench
           path: ${{ runner.temp }}/dottrace-rpcbench.zip
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload perf profile
+        if: always() && needs.resolve.outputs.perf == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-rpcbench
+          path: ${{ runner.temp }}/perf-rpcbench.zip
           retention-days: 30
           if-no-files-found: ignore
 
