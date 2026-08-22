@@ -142,6 +142,12 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _storageSkippedWrites;
         internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites.Value, value);
 
+        [CounterMetric]
+        [Description("Number of contracts whose whole storage was cleared at commit (self-destruct or account re-creation).")]
+        public static long StorageCleared => _storageCleared.Value;
+        private static CacheLinePaddedLong _storageCleared;
+        internal static void IncrementStorageCleared() => Interlocked.Increment(ref _storageCleared.Value);
+
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
