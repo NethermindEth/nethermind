@@ -1086,7 +1086,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             frameContext.Payer = resolvedTarget;
-            // EIP-8141: payment approval warms the payer for later same-account access.
             if (spec.UseHotAndColdStorage) accessTracker.WarmUp(resolvedTarget);
         }
 

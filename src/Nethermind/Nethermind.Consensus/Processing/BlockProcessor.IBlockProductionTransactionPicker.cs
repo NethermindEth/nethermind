@@ -17,7 +17,6 @@ public partial class BlockProcessor
         AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx,
             IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider);
 
-        // EIP-8037: per-dimension block gas; the default bridges to the legacy member so existing implementors keep binding.
         AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx,
             IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider,
             ulong cumulativeBlockExecutionGas, ulong cumulativeBlockStateGas)

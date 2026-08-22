@@ -667,7 +667,7 @@ public class FrameTxProcessorTests
 
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode
-            .PushData(0).PushData(8).PushData(4).PushData(0) // signatureIndex, length, dataOffset, memOffset (deepest to top)
+            .PushData(0).PushData(8).PushData(4).PushData(0)
             .Op(Instruction.SIGDATACOPY)
             .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done);
