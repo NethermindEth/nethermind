@@ -91,7 +91,8 @@ public sealed class FlatWorldStateScope :
         Lazy<WarmReadPool>? warmReadPool,
         bool isReadOnly,
         FlatSparseTrieCache? sparseCache,
-        SparseTrieRootWorker? rootWorker = null)
+        SparseTrieRootWorker? rootWorker = null,
+        bool streamCommittedValues = true)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
@@ -119,7 +120,8 @@ public sealed class FlatWorldStateScope :
             logManager.GetClassLogger<FlatSparseTrieSession>(),
             checkedOut,
             retentionEnabled: sparseCache is not null,
-            rootWorker);
+            rootWorker,
+            streamCommittedValues);
         _configuration = configuration;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
@@ -201,7 +203,10 @@ public sealed class FlatWorldStateScope :
                 if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s");
                 stopwatch.Restart();
             }
-            spinWait.SpinOnce();
+
+            // Runs on the block-processing thread at the head of every write batch, so escalating to
+            // Thread.Sleep(1) here spends a millisecond of the block budget on each wait.
+            spinWait.SpinOnce(sleep1Threshold: -1);
         }
     }
 
@@ -487,7 +492,12 @@ public sealed class FlatWorldStateScope :
             {
                 // Warms the committed nodes on this path into the shared cache; the walk result is
                 // never consumed, only the cached nodes the sparse reveal later reads.
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+                ValueHash256 key = address.ToAccountPath;
+                _warmupStateTree.WarmUpPath(key.Bytes);
+
+                // Hand the now-warm path to the state worker so the arena is revealed off the block
+                // thread rather than inside the commit.
+                SparseSession.EnqueueStatePrefetch(in key);
 
                 return true;
             }

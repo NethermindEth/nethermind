@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -37,6 +38,13 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private Hash256 _sparseRoot;
     private Hash256? _diagnosticRoot;
     private bool _inChangedSet;
+
+    // Slot paths hinted by warmer threads, revealed as one batch by whichever thread wins the drain.
+    // A hot contract draws every warmer at once, so per-slot reveals would lose the arena race and
+    // fall back to the cache walk; batching gets one traversal per drain and no warmer ever waits.
+    private readonly ConcurrentQueue<ValueHash256> _pendingWarmKeys = new();
+    private int _warmDrainOwner;
+    private const int MaxWarmDrainBatch = 256;
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
@@ -142,17 +150,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
             try
             {
-                // Reveal straight into the arena when it is free, so the commit path finds the path
-                // already there; otherwise warm the shared committed-node cache the reveal reads
-                // from. Either way the walk never waits on another warmer. The root is not re-read
-                // after a write batch and a clear is not reflected, which is fine for a warm-up:
-                // the result is never consumed, only the nodes it materializes.
+                // The root is not re-read after a write batch and a clear is not reflected, which is
+                // fine for a warm-up: the result is never consumed, only the nodes it materializes.
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
-                if (!_scope.SparseSession.TryPrefetchStorage(_addressHash.ValueHash256, _sparseRoot.ValueHash256, in key))
-                {
-                    _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
-                }
+                _pendingWarmKeys.Enqueue(key);
+                DrainWarmKeys();
 
                 return true;
             }
@@ -187,6 +190,50 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _bundle.Clear(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
+    }
+
+    /// <summary>Reveals the queued slot paths, one batch per winner, without ever blocking a warmer.</summary>
+    private void DrainWarmKeys()
+    {
+        while (!_pendingWarmKeys.IsEmpty)
+        {
+            if (Interlocked.CompareExchange(ref _warmDrainOwner, 1, 0) != 0) return;
+
+            try
+            {
+                DrainWarmKeysOwned();
+            }
+            finally
+            {
+                Volatile.Write(ref _warmDrainOwner, 0);
+            }
+
+            // A key enqueued between the last dequeue and the release would otherwise wait for the
+            // commit path, so re-take ownership while it is still free.
+        }
+    }
+
+    private void DrainWarmKeysOwned()
+    {
+        using ArrayPoolList<ValueHash256> keys = new(MaxWarmDrainBatch);
+        while (keys.Count < MaxWarmDrainBatch && _pendingWarmKeys.TryDequeue(out ValueHash256 key))
+        {
+            keys.Add(key);
+        }
+
+        if (keys.Count == 0) return;
+
+        Span<ValueHash256> batch = keys.AsSpan();
+        if (_scope.SparseSession.TryPrefetchStorage(_addressHash.ValueHash256, _sparseRoot.ValueHash256, batch))
+        {
+            return;
+        }
+
+        // The arena is in use by the storage phase; warm the shared node cache its reveal reads instead.
+        for (int i = 0; i < batch.Length; i++)
+        {
+            _warmupStorageTree.WarmUpPath(batch[i].BytesAsSpan);
+        }
     }
 
     private void ResetSparseTrie()

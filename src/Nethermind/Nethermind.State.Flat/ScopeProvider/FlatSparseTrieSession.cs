@@ -108,17 +108,17 @@ internal sealed class FlatSparseTrieSession : IDisposable
         ILogger logger,
         RetainedGeneration? checkedOut = null,
         bool retentionEnabled = false,
-        SparseTrieRootWorker? rootWorker = null)
+        SparseTrieRootWorker? rootWorker = null,
+        bool streamCommittedValues = true)
     {
         _bundle = bundle;
         _logger = logger;
         _rootWorker = rootWorker;
         _rootHash = anchorStateRoot;
         _retentionEnabled = retentionEnabled;
-        // The provider decides whether to hand out a root worker; the session follows what it was
-        // given rather than re-reading the global switch, so a caller can drive the streamed path
-        // (tests, experiments) independently of the default.
-        _concurrentRootEnabled = retentionEnabled && rootWorker is not null;
+        // Two separate concerns: the worker thread is always useful for draining prefetches off the
+        // block thread, while streaming committed values to it is the part that has to be asked for.
+        _concurrentRootEnabled = retentionEnabled && rootWorker is not null && streamCommittedValues;
         _readerContext = checkedOut?.ReaderContext ?? new FlatTrieNodeReaderContext(bundle);
         _readerContext.Rebind(bundle);
         if (_concurrentRootEnabled)
@@ -317,6 +317,22 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
             return;
         }
+
+        _pendingStatePrefetch.Enqueue(key);
+        EnsureStateWorkerScheduled();
+    }
+
+    /// <summary>
+    /// Queues one account path for the state worker without ever taking the arena.
+    /// </summary>
+    /// <remarks>For warmer threads: taking the single-writer state arena would convoy them, and the
+    /// walk that just warmed the shared node cache has made the reveal a memory-only operation, so
+    /// the dedicated worker can absorb it off the block-processing thread.</remarks>
+    public void EnqueueStatePrefetch(in ValueHash256 key)
+    {
+        // Without the dedicated worker the drain would land on the thread pool, which the parallel
+        // executor has saturated for the whole block - that trades a cheap warm reveal for a queued one.
+        if (_rootWorker is null || _disposed || _poisoned) return;
 
         _pendingStatePrefetch.Enqueue(key);
         EnsureStateWorkerScheduled();
@@ -1097,6 +1113,29 @@ internal sealed class FlatSparseTrieSession : IDisposable
         try
         {
             trie.Prefetch(key);
+        }
+        finally
+        {
+            Monitor.Exit(trie);
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc cref="TryPrefetchStorage(in ValueHash256, in ValueHash256, in ValueHash256)"/>
+    /// <remarks>Batched form: one traversal reveals every key, sharing their common prefixes.</remarks>
+    public bool TryPrefetchStorage(in ValueHash256 addressHash, in ValueHash256 anchorRoot, ReadOnlySpan<ValueHash256> keys)
+    {
+        GuardPoisoned();
+        if (keys.IsEmpty) return true;
+        if (_committedStorageStates.ContainsKey(addressHash)) return false;
+
+        SparseTrie trie = GetOrCreatePrefetchStorageTrie(addressHash, in anchorRoot);
+        if (!Monitor.TryEnter(trie)) return false;
+
+        try
+        {
+            trie.Prefetch(keys);
         }
         finally
         {

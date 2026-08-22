@@ -54,9 +54,9 @@ public class FlatScopeProvider(
             warmReadPool: _warmReadPool,
             isReadOnly: isReadOnly,
             sparseCache: _sparseCache,
-            rootWorker: _sparseCache is not null && SparseTrieRetention.ConcurrentRootEnabled
-                ? _sparseCache.RootWorker
-                : null);
+            // The worker thread drains warm-up prefetches whether or not committed values stream to it.
+            rootWorker: _sparseCache?.RootWorker,
+            streamCommittedValues: SparseTrieRetention.ConcurrentRootEnabled);
     }
 
     public void Dispose()
