@@ -332,7 +332,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
     {
         // Without the dedicated worker the drain would land on the thread pool, which the parallel
         // executor has saturated for the whole block - that trades a cheap warm reveal for a queued one.
-        if (_rootWorker is null || _disposed || _poisoned) return;
+        if (_rootWorker is null || _disposed || _poisoned || _concurrentRootDisabled || _generationExtracted) return;
 
         _pendingStatePrefetch.Enqueue(key);
         EnsureStateWorkerScheduled();
@@ -516,7 +516,7 @@ internal sealed class FlatSparseTrieSession : IDisposable
 
     private void EnsureStateWorkerScheduled()
     {
-        if (_disposed || !HasSchedulableStateWork()
+        if (_disposed || _generationExtracted || !HasSchedulableStateWork()
             || Interlocked.CompareExchange(ref _stateWorkerScheduled, 1, 0) != 0)
         {
             return;
@@ -823,9 +823,20 @@ internal sealed class FlatSparseTrieSession : IDisposable
             keys.Add(key);
         }
 
-        if (keys.Count > 0)
+        if (keys.Count == 0) return;
+
+        try
         {
             GetOrCreateStateTrie().Prefetch(keys.AsSpan());
+        }
+        // These paths came from warm-up, where TrieWarmer.HandleJob swallows exactly these: the
+        // warmer can lag until a node is gone, or read a bundle that moved under it. Draining them
+        // here must stay as advisory as revealing them on the warmer thread was - the drain runs
+        // inside UpdateRootHash and ApplyStateUpdates, which would otherwise poison the session or
+        // throw the whole warm arena away over a warm-up race.
+        catch (Exception e) when (e is TrieException or NodeHashMismatchException or ObjectDisposedException)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Discarded a warm-up state prefetch: {e.Message}");
         }
     }
 
@@ -1551,6 +1562,11 @@ internal sealed class FlatSparseTrieSession : IDisposable
             _stateTrie = null;
             _storageTries = [];
             _generationExtracted = true;
+
+            // Anything still queued belongs to a trie this session no longer owns. Left in place it
+            // would re-arm the state worker on the way out of this method and rebuild a trie that
+            // nothing disposes, since dispose returns early once the generation is extracted.
+            _pendingStatePrefetch.Clear();
             return generation;
         }
         finally

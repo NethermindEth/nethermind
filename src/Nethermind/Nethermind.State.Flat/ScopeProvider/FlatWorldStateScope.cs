@@ -492,12 +492,7 @@ public sealed class FlatWorldStateScope :
             {
                 // Warms the committed nodes on this path into the shared cache; the walk result is
                 // never consumed, only the cached nodes the sparse reveal later reads.
-                ValueHash256 key = address.ToAccountPath;
-                _warmupStateTree.WarmUpPath(key.Bytes);
-
-                // Hand the now-warm path to the state worker so the arena is revealed off the block
-                // thread rather than inside the commit.
-                SparseSession.EnqueueStatePrefetch(in key);
+                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
 
                 return true;
             }
