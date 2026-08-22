@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <Import Project="../tests.props" />
+
+  <ItemGroup>
+    <Compile Include="Collections\SafeArrayPoolZkEvmTests.cs" />
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
+    <Error Text="Build this project with EnableZkEvm=true." />
+  </Target>
+
+</Project>

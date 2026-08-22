@@ -10,6 +10,9 @@
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="Collections\SafeArrayPoolZkEvmTests.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.AuRa.Test" />
   </ItemGroup>
   <ItemGroup>

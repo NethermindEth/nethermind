@@ -13,8 +13,8 @@ public class EvmPooledMemoryBenchmarks
     private const int FourKiB = 4 * 1024;
     private const int OneMiB = 1 << 20;
 
-    private static readonly byte[] FourKiBPayload = CreatePayload(FourKiB);
-    private static readonly byte[] OneMiBPayload = CreatePayload(OneMiB);
+    private static readonly byte[] FourKiBPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(FourKiB);
+    private static readonly byte[] OneMiBPayload = EvmPooledMemoryBenchmarkHelper.CreatePayload(OneMiB);
 
     [Benchmark]
     public ulong FullOneMiBExternalOverwrite()
@@ -112,16 +112,5 @@ public class EvmPooledMemoryBenchmarks
         {
             memory.Dispose();
         }
-    }
-
-    private static byte[] CreatePayload(int length)
-    {
-        byte[] payload = new byte[length];
-        for (int i = 0; i < payload.Length; i++)
-        {
-            payload[i] = (byte)(i * 37 + 0x41);
-        }
-
-        return payload;
     }
 }

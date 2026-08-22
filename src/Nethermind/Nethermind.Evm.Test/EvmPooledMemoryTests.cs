@@ -189,9 +189,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         const int memorySize = (4 * 1024 * 1024) + 64;
         int destinationOffset = memorySize - EvmPooledMemory.WordSize;
-        byte[] word = Enumerable.Range(0, EvmPooledMemory.WordSize)
-            .Select(static value => (byte)(value * 29 + 0x17))
-            .ToArray();
+        byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x17, 29);
         byte[] expected = new byte[memorySize];
         word.CopyTo(expected, destinationOffset);
 
@@ -202,9 +200,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             memory.CalculateMemoryCost(in destination, EvmPooledMemory.WordSize, out bool outOfGas);
             memory.StoreWordAfterGas(in destination, word);
 
-            Assert.That(outOfGas, Is.False);
-            Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
-            Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(outOfGas, Is.False);
+                Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
+                Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
+            }
         }
         finally
         {
@@ -218,12 +219,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         const int prefixOffset = 257;
         const int memorySize = (4 * 1024 * 1024) + 96;
         int destinationOffset = memorySize - EvmPooledMemory.WordSize;
-        byte[] prefix = Enumerable.Range(0, 97)
-            .Select(static value => (byte)(value * 31 + 0x23))
-            .ToArray();
-        byte[] word = Enumerable.Range(0, EvmPooledMemory.WordSize)
-            .Select(static value => (byte)(value * 37 + 0x41))
-            .ToArray();
+        byte[] prefix = CreatePattern(97, 0x23, 31);
+        byte[] word = CreatePattern(EvmPooledMemory.WordSize, 0x41, 37);
         byte[] expected = new byte[memorySize];
         prefix.CopyTo(expected, prefixOffset);
         word.CopyTo(expected, destinationOffset);
@@ -237,8 +234,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             UInt256 destination = (UInt256)destinationOffset;
             Assert.That(memory.TrySave(in destination, word), Is.True);
 
-            Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
-            Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memory.Size, Is.EqualTo((ulong)memorySize));
+                Assert.That(memory.GetTrace().Slice(0, memorySize).ToArray(), Is.EqualTo(expected));
+            }
         }
         finally
         {
@@ -806,12 +806,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     private static byte[] ReadVisibleMemory(ref EvmPooledMemory memory)
         => memory.GetTrace().Slice(0, (int)memory.Size).ToArray();
 
-    private static byte[] CreatePattern(int length, byte seed)
+    private static byte[] CreatePattern(int length, byte seed, int multiplier = 37)
     {
         byte[] pattern = new byte[length];
         for (int i = 0; i < pattern.Length; i++)
         {
-            pattern[i] = (byte)(seed + i * 37);
+            pattern[i] = (byte)(seed + i * multiplier);
         }
 
         return pattern;

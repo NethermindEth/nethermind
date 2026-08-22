@@ -564,7 +564,7 @@ public struct EvmPooledMemory
     private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
 #else
     private const int MaxSharedArrayLength = 1 << 20;
-    // Above this, buffers fall back to plain allocation (not pooled), as before this change.
+    // Buffers above this limit are allocated directly and are never returned to a pool.
     private const int MaxLargePooledArrayLength = 1 << 22;
     private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
         System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
@@ -601,50 +601,27 @@ public struct EvmPooledMemory
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow()
     {
-        byte[]? memory = _memory;
-        if (memory is null)
-        {
-            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize), out ulong initializedExtent);
-            _lastZeroedSize = initializedExtent;
-        }
-        else if (Size > (ulong)memory.LongLength)
-        {
-            byte[] grown = Rent(TruncateToInt32(Size), out ulong initializedExtent);
-            Array.Copy(memory, 0, grown, 0, (int)_lastZeroedSize);
-            Return(memory);
-            _memory = memory = grown;
-            _lastZeroedSize = Math.Max(_lastZeroedSize, initializedExtent);
-        }
+        ulong zeroedSize = _lastZeroedSize;
+        byte[] memory = EnsureCapacity(ref zeroedSize);
 
         ulong size = Size;
-        if (size > _lastZeroedSize)
+        if (size > zeroedSize)
         {
             // Over-zero to a chunk boundary so sequential MSTORE growth does not take RentSlow per word.
             const ulong zeroChunk = 4 * 1024;
             ulong target = Math.Min((ulong)memory.Length, (size + (zeroChunk - 1)) & ~(zeroChunk - 1));
-            Array.Clear(memory, (int)_lastZeroedSize, (int)(target - _lastZeroedSize));
-            _lastZeroedSize = target;
+            Array.Clear(memory, (int)zeroedSize, (int)(target - zeroedSize));
+            zeroedSize = target;
         }
+
+        _lastZeroedSize = zeroedSize;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private ulong RentForOverwriteSlow(ulong overwriteStart, ulong overwriteEnd)
     {
-        byte[]? memory = _memory;
         ulong zeroedSize = _lastZeroedSize;
-        if (memory is null)
-        {
-            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize), out ulong initializedExtent);
-            zeroedSize = initializedExtent;
-        }
-        else if (Size > (ulong)memory.LongLength)
-        {
-            byte[] grown = Rent(TruncateToInt32(Size), out ulong initializedExtent);
-            Array.Copy(memory, 0, grown, 0, (int)zeroedSize);
-            Return(memory);
-            _memory = memory = grown;
-            zeroedSize = Math.Max(zeroedSize, initializedExtent);
-        }
+        byte[] memory = EnsureCapacity(ref zeroedSize);
 
         const ulong zeroChunk = 4 * 1024;
         ulong target = Math.Max(
@@ -663,6 +640,27 @@ public struct EvmPooledMemory
         }
 
         return target;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] EnsureCapacity(ref ulong initializedSize)
+    {
+        byte[]? memory = _memory;
+        if (memory is null)
+        {
+            _memory = memory = Rent((int)Math.Max((uint)Size, MinRentSize), out ulong initializedExtent);
+            initializedSize = initializedExtent;
+        }
+        else if (Size > (ulong)memory.LongLength)
+        {
+            byte[] grown = Rent(TruncateToInt32(Size), out ulong initializedExtent);
+            Array.Copy(memory, 0, grown, 0, (int)initializedSize);
+            Return(memory);
+            _memory = memory = grown;
+            initializedSize = Math.Max(initializedSize, initializedExtent);
+        }
+
+        return memory;
     }
 
     // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a

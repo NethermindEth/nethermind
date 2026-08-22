@@ -424,31 +424,6 @@ public class ArrayPoolListTests
         Assert.That(list.AsSpan().Length, Is.EqualTo(0));
     }
 
-#if ZK_EVM
-    [Test]
-    public void Safe_array_pool_reports_only_proven_fresh_allocations()
-    {
-        FreshnessMarker[] first = SafeArrayPool<FreshnessMarker>.Rent(3, out bool firstFresh);
-        SafeArrayPool<FreshnessMarker>.Shared.Return(first);
-        FreshnessMarker[] second = SafeArrayPool<FreshnessMarker>.Rent(3, out bool secondFresh);
-
-        try
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(firstFresh, Is.True);
-                Assert.That(secondFresh, Is.False);
-            }
-        }
-        finally
-        {
-            SafeArrayPool<FreshnessMarker>.Shared.Return(second);
-        }
-    }
-
-    private readonly struct FreshnessMarker;
-#endif
-
 #if DEBUG
     [Test]
     [Explicit("Crashes the test runner")]
