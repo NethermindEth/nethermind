@@ -80,6 +80,14 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             .SetName("MCopy_source_expansion_dominates");
         yield return new TestCaseData(128, 4096, 32, 160, true)
             .SetName("MCopy_tracing_materializes_source_first");
+        yield return new TestCaseData(32 * 1024, 16 * 1024, 0, 32 * 1024, false)
+            .SetName("MCopy_overlap_right_preserves_source_during_resize");
+        yield return new TestCaseData(32 * 1024, 24 * 1024, 16 * 1024, 32 * 1024, false)
+            .SetName("MCopy_partial_source_overlap_preserves_source_during_resize");
+        yield return new TestCaseData(32 * 1024, 16 * 1024, 16 * 1024, 32 * 1024, false)
+            .SetName("MCopy_same_partial_range_preserves_source_during_resize");
+        yield return new TestCaseData(32 * 1024, 16 * 1024, 64 * 1024, 64 * 1024, false)
+            .SetName("MCopy_zero_source_preserves_only_destination_prefix_during_resize");
     }
 
     [TestCase(32UL, 1UL)]
@@ -831,7 +839,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     public void Full_overwrite_matches_independent_model_on_dirty_reused_buffer(bool afterGas)
     {
         const int destinationOffset = 5000;
-        const int sourceLength = 6000;
+        const int sourceLength = 64 * 1024;
         using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         byte[] initial = CreatePattern(64, 0x21);
         byte[] source = CreatePattern(sourceLength, 0x81);
@@ -885,7 +893,10 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         try
         {
             WriteInitialMemory(ref memory, initial);
-            AssertDirtyTailWasReused(ref memory);
+            if (initialLength <= 16 * 1024)
+            {
+                AssertDirtyTailWasReused(ref memory);
+            }
             UInt256 destination = (UInt256)destinationOffset;
             UInt256 source = (UInt256)sourceOffset;
             UInt256 expansionStart = (UInt256)Math.Max(destinationOffset, sourceOffset);
