@@ -112,6 +112,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void Execute(Processor processor)
     {
+        using PersistenceReadRole.Scope _ = PersistenceReadRole.Enter(PersistenceReadRole.Role.Warmer);
         try
         {
             while (true)

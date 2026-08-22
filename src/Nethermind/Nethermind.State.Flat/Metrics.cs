@@ -126,6 +126,23 @@ public static class Metrics
     [Description("Slots currently held by the carry-forward cache")]
     public static long CarryForwardSlotCount;
 
+    // Attribution of persistence-reader probes by the role of the calling thread. Answers who actually
+    // drives the slow read path, which the aggregate counters cannot.
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward reader probes from the trie warmer")]
+    public static long CarryForwardProbesWarmer;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward reader probes from the block commit / state-root path")]
+    public static long CarryForwardProbesCommit;
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward reader probes from any other caller (EVM fallthrough, RPC, sync)")]
+    public static long CarryForwardProbesOther;
+
     [DetailedMetric]
     [Description("Time spend compacting snapshots")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]

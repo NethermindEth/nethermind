@@ -160,6 +160,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void UpdateRootHash()
     {
+        using PersistenceReadRole.Scope _ = PersistenceReadRole.Enter(PersistenceReadRole.Role.Commit);
         if (!_trieless) _stateTree.UpdateRootHash();
     }
 
@@ -463,6 +464,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void Commit(ulong blockNumber)
     {
+        using PersistenceReadRole.Scope _ = PersistenceReadRole.Enter(PersistenceReadRole.Role.Commit);
         _pausePrewarmer = true;
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
@@ -531,6 +533,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         public void Dispose()
         {
+            using PersistenceReadRole.Scope _role = PersistenceReadRole.Enter(PersistenceReadRole.Role.Commit);
             try
             {
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))

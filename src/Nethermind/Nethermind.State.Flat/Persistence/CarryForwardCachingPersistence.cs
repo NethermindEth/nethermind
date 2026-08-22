@@ -170,10 +170,21 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         // A reader is shared by every thread reading its state, so the hit/miss counters go straight to the
         // atomic globals. Captured once per reader to keep the increments off the hot path when disabled.
-        private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
+        private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled || Nethermind.Core.ExperimentSwitches.Bool("NM_XP_STATS");
+
+        private static void CountProbe()
+        {
+            switch (PersistenceReadRole.Current)
+            {
+                case PersistenceReadRole.Role.Warmer: Interlocked.Increment(ref Metrics.CarryForwardProbesWarmer); break;
+                case PersistenceReadRole.Role.Commit: Interlocked.Increment(ref Metrics.CarryForwardProbesCommit); break;
+                default: Interlocked.Increment(ref Metrics.CarryForwardProbesOther); break;
+            }
+        }
 
         public Account? GetAccount(Address address)
         {
+            if (_recordDetailedMetrics) CountProbe();
             bool current = parent.IsCurrent(generation);
             if (current && parent._accounts.TryGetValue(address, out Account? cached))
             {
@@ -190,6 +201,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
         {
             (Address, UInt256) key = (address, slot);
+            if (_recordDetailedMetrics) CountProbe();
             bool current = parent.IsCurrent(generation);
             if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
             {

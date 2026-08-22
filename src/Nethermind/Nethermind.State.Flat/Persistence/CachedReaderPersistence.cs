@@ -44,6 +44,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
                 {
                     await timer.WaitForNextTickAsync(_cancelTokenSource.Token);
                     ClearReaderCache();
+                    ReportExperimentStats();
                 }
             }
             catch (OperationCanceledException)
@@ -53,6 +54,27 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
         // Prime the reader cache
         using IPersistence.IPersistenceReader reader = CreateReader();
+    }
+
+    private static readonly bool ReportStats = Nethermind.Core.ExperimentSwitches.Bool("NM_XP_STATS");
+
+    private void ReportExperimentStats()
+    {
+        if (!ReportStats || !_logger.IsInfo) return;
+
+        long w = Metrics.CarryForwardProbesWarmer, c = Metrics.CarryForwardProbesCommit, o = Metrics.CarryForwardProbesOther;
+        long total = w + c + o;
+        _logger.Info(
+            $"XPSTATS cf_acct_hits={Metrics.CarryForwardAccountHits} cf_acct_misses={Metrics.CarryForwardAccountMisses} " +
+            $"cf_slot_hits={Metrics.CarryForwardSlotHits} cf_slot_misses={Metrics.CarryForwardSlotMisses} " +
+            $"cf_wipes={Metrics.CarryForwardWipes} cf_acct_count={Metrics.CarryForwardAccountCount} cf_slot_count={Metrics.CarryForwardSlotCount} " +
+            $"probes_warmer={w} probes_commit={c} probes_other={o} " +
+            $"pct_warmer={Pct(w, total):F1} pct_commit={Pct(c, total):F1} pct_other={Pct(o, total):F1} " +
+            $"storage_cleared={Db.Metrics.StorageCleared} " +
+            $"preblock_slot_hits={Db.Metrics.PreBlockCacheStorageHits} preblock_slot_misses={Db.Metrics.PreBlockCacheStorageMisses} " +
+            $"preblock_acct_hits={Db.Metrics.PreBlockCacheAccountHits} preblock_acct_misses={Db.Metrics.PreBlockCacheAccountMisses}");
+
+        static double Pct(long part, long whole) => whole == 0 ? 0d : part * 100d / whole;
     }
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
