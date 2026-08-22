@@ -265,9 +265,12 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 PruneBlocksAndReceipts(blockUpper, cancellationToken);
-                SweepTransactionIndex(cancellationToken);
-
                 PruneBlockAccessLists(balUpper, cancellationToken);
+
+                // Last, and the order matters: this is the only pass whose cost is not bounded by its range, so
+                // ahead of the others it would take the whole timeout on every pass and starve them. The access
+                // list pass is range deletes with nothing to read, so it costs this one almost nothing.
+                SweepTransactionIndex(cancellationToken);
             }
             else if (_logger.IsDebug)
             {
@@ -363,8 +366,10 @@ public class HistoryPruner : IHistoryPruner
 
     private const ulong ReclaimChunkBlocks = 1_000_000;
 
-    /// <summary>Index entries examined per pass, sized to outpace the arrival rate: fall behind it and the index just
-    /// settles at a larger multiple of the live set. Overshooting costs a resumed pass, the walk being cancellable.
+    /// <summary>
+    /// Ceiling on entries examined per pass, not the thing that governs the rate: with a non-zero
+    /// <c>PruningTimeoutSeconds</c> the token almost always ends the walk first. The index therefore settles at some
+    /// stale fraction of the live set rather than at zero, and this bounds one pass rather than closing that gap.
     /// </summary>
     private const int TxIndexSweepEntriesPerPass = 500_000;
 
@@ -449,8 +454,23 @@ public class HistoryPruner : IHistoryPruner
         if (cancellationToken.IsCancellationRequested || _blocksDeletePointer <= _minDeletableBlockNumber) return;
 
         LoadTxIndexSweepCursor();
-        byte[]? next = _receiptStorage.SweepTransactionIndex(
-            _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, cancellationToken, out int removed);
+
+        byte[]? next;
+        int removed;
+        try
+        {
+            next = _receiptStorage.SweepTransactionIndex(
+                _blocksDeletePointer, _txIndexSweepCursor, TxIndexSweepEntriesPerPass, cancellationToken, out removed);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Isolated from the passes around it: this one walks a column and decodes what it finds, so it has
+            // failure modes they do not, and none of them should cost a reclaim that has nothing to do with it.
+            // Cancellation is not one of those - it means the caller wants to stop, so it is left to propagate.
+            if (_logger.IsWarn) _logger.Warn($"Transaction index sweep failed and will resume next pass: {e.Message}");
+            return;
+        }
+
         Metrics.TransactionIndexEntriesPruned += removed;
 
         if (Bytes.AreEqual(_txIndexSweepCursor, next)) return;

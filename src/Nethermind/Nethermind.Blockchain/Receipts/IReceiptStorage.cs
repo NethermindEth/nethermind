@@ -38,7 +38,8 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <summary>Drops up to <paramref name="maxEntries"/> transaction-index entries naming blocks below
         /// <paramref name="retainedFromBlock"/>, from <paramref name="resumeFrom"/> on. Keyed by transaction hash, so
-        /// the column has to be walked.</summary>
+        /// the column has to be walked. <paramref name="maxEntries"/> must exceed one, because the resume key is
+        /// re-examined and counted; a budget of one makes no progress and is treated as nothing to do.</summary>
         /// <returns>Where to resume, on cancellation as well as on budget exhaustion, or <c>null</c> at the end.</returns>
         byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
         {

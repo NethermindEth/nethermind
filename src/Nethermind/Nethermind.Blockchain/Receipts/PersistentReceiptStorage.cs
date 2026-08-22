@@ -900,7 +900,9 @@ namespace Nethermind.Blockchain.Receipts
         public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
         {
             removed = 0;
-            if (retainedFromBlock == 0 || maxEntries <= 0 || _transactionDb is not ISortedKeyValueStore sorted) return null;
+            // Not <= 0: the resume key is re-examined and counted, so a budget of one would return the key it
+            // started from and stall there for good rather than erroring.
+            if (retainedFromBlock == 0 || maxEntries <= 1 || _transactionDb is not ISortedKeyValueStore sorted) return null;
 
             // Below the TxLookupLimit horizon the per-block path already does this, at no read cost. On shipping
             // defaults the retained window is the wider of the two, so without this the walk never finds anything.
@@ -970,7 +972,9 @@ namespace Nethermind.Blockchain.Receipts
 
         /// <summary>Whether an index value names a block at or below the last reclaimed one. Under
         /// <see cref="IReceiptConfig.CompactTxIndex"/> the value is the number, otherwise the hash, and the header
-        /// supplies the number - headers never being pruned. A hash that does not resolve is left alone.</summary>
+        /// supplies the number - headers never being pruned. A hash that does not resolve is left alone.
+        /// The two branches are not the same cost: the number is read from the iterator's own buffer, while the hash
+        /// costs a header lookup per entry, so the same pass budget covers far fewer entries.</summary>
         private bool PointsBelow(ReadOnlySpan<byte> value, ulong retainedFromBlock)
         {
             if (value.Length == 0) return false;
