@@ -5,9 +5,7 @@ description: >-
 
 inputs:
   action:
-    description: >-
-      "create" to spawn a runner, "destroy" to remove it from a separate job, or
-      "destroy-self" to request deletion of the instance the step is running on.
+    description: '"create" to spawn a runner, "destroy" to remove it.'
     required: true
   runner_label:
     description: Label the runner registers under, and the seed for the instance name.
@@ -97,6 +95,12 @@ inputs:
     description: Boot image project.
     required: false
     default: ubuntu-os-cloud
+  expect_instance:
+    description: >-
+      Whether an instance should exist at destroy time. Pass false when creation failed, so
+      a missing instance is reported as expected rather than as a possible leak.
+    required: false
+    default: "true"
   skip_auth:
     description: Skip the built-in GCP authentication, for callers that already authenticated.
     required: false
@@ -123,26 +127,22 @@ outputs:
     value: ${{ steps.destroy.outputs.preempted }}
   terminated_by:
     description: >-
-      One of deleted-by-action, deleted-by-self, deleted-concurrently, preempted,
-      terminated, delete-failed or unknown.
+      One of deleted-by-action, already-deleted, deleted-concurrently, preempted,
+      terminated, delete-failed, lookup-failed or unknown.
     value: ${{ steps.destroy.outputs.terminated_by }}
 
 runs:
   using: composite
   steps:
     - name: Authenticate to GCP
-      id: auth
       if: inputs.skip_auth != 'true'
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: ${{ inputs.workload_identity_provider }}
         service_account: ${{ inputs.spawner_service_account }}
-        token_format: access_token
 
-    # destroy-self runs on the ephemeral runner and talks to the compute API over plain
-    # HTTP, so it does not pay for a gcloud install there.
     - name: Set up gcloud
-      if: inputs.skip_auth != 'true' && inputs.action != 'destroy-self'
+      if: inputs.skip_auth != 'true'
       uses: google-github-actions/setup-gcloud@v2
 
     - name: Create runner
@@ -184,12 +184,5 @@ runs:
         RUNNER_LABEL: ${{ inputs.runner_label }}
         ZONES: ${{ inputs.zones }}
         PROJECT_ID: ${{ inputs.project_id }}
+        EXPECT_INSTANCE: ${{ inputs.expect_instance }}
       run: bash "${GITHUB_ACTION_PATH}/destroy.sh"
-
-    - name: Request deletion of this runner
-      if: inputs.action == 'destroy-self'
-      shell: bash
-      env:
-        ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
-        PROJECT_ID: ${{ inputs.project_id }}
-      run: bash "${GITHUB_ACTION_PATH}/self-destroy.sh"
