@@ -57,3 +57,48 @@ public class EvmPooledMemoryMStoreBenchmarks
         }
     }
 }
+
+[MemoryDiagnoser]
+[BenchmarkCategory("EVM", "Memory", "MSTORE8")]
+public class EvmPooledMemoryMStore8Benchmarks
+{
+    private const int FourKiB = 4 * 1024;
+    private const int OneMiB = 1 << 20;
+
+    [Params(1, 256, FourKiB, FourKiB + 1, OneMiB)]
+    public int MemorySize { get; set; }
+
+    [Benchmark]
+    public ulong HighWaterJump()
+    {
+        EvmPooledMemory memory = default;
+        try
+        {
+            EvmPooledMemoryBenchmarkHelper.MStore8(ref memory, MemorySize - 1);
+            return memory.Size;
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [Benchmark]
+    public ulong SequentialGrowth()
+    {
+        EvmPooledMemory memory = default;
+        try
+        {
+            for (int offset = 0; offset < MemorySize; offset++)
+            {
+                EvmPooledMemoryBenchmarkHelper.MStore8(ref memory, offset);
+            }
+
+            return memory.Size;
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+}

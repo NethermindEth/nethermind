@@ -16,6 +16,13 @@ internal static class EvmPooledMemoryBenchmarkHelper
         memory.StoreWordAfterGas(in destination, Word);
     }
 
+    public static void MStore8(ref EvmPooledMemory memory, int offset)
+    {
+        UInt256 destination = (UInt256)offset;
+        memory.CalculateMemoryCost(in destination, 1, out _);
+        memory.StoreByteAfterGas(in destination, 0x41);
+    }
+
     public static byte[] CreatePayload(int length)
     {
         byte[] payload = new byte[length];
